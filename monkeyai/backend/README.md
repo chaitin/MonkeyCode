@@ -111,7 +111,8 @@ migrations/<唯一版本>_<feature>_*.sql
 - 路由使用 `chi/v5` 组织版本、调用方和中间件，处理器保持标准 `http.Handler` 接口。
 - HTTP DTO 不直接充当业务对象。
 - 测试与对应 Go 源码放在同一目录；暂不创建独立测试树。
-- 迁移文件使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成，采用默认六位递增序号。合并前必须检查序号未被其他分支占用；如有冲突，重新生成序号。已经发布的迁移不可改写。
+- 本次重新部署将原 1–13 版收敛为完整初始化版本 `000001`，仅用于全新数据库；不能直接升级旧库或通过 `force 1` 切换。详见 [迁移说明](migrations/README.md)。
+- 后续迁移文件使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成，采用默认六位递增序号。合并前必须检查序号未被其他分支占用；如有冲突，重新生成序号。已经发布的迁移不可改写。
 - 不创建 `pkg`、`utils` 或 `common`；出现明确复用对象后再决定归属。
 
 ## Go 编码原则
@@ -153,7 +154,7 @@ export MONKEYAI_S3_SECRET_KEY='测试访问密钥密码'
 go test ./... -count=1
 ```
 
-集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的 up/down/up、版本 2 的计费升级、版本 3 的旧系统分组升级与授权和额度保留、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、独立资源目录 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
+集成测试创建独立随机 schema，测试结束后删除该 schema，不重置其他 schema；必须使用测试数据库和测试 Bucket。测试包括版本 1 的完整初始化及带业务数据的 down/up、计费账户与不可变流水、连接多凭证约束、虚拟团队根节点及分组操作、Cookie 管理员身份与 Agent Bearer 身份、权限差异、独立资源目录 ETag、技能字节上传/重建/下载、专家委托、撤权、真实 MCP HTTP 协议、用户目录隔离及本地 OAuth state/PKCE 回调防重放。测试可能留下不可变技能对象，仅位于测试 Bucket。
 
 业务标识统一由后端通过 Go 标准库 `uuid.New()` 生成。MCP 连接模板的内部 `identifier` 不接受客户端指定，管理端与 Agent API 均不返回该字段或 `provider_identifier`，调用方使用资源 `id` 关联。保存 `authentication` 设置时，新 OAuth 连接省略 `id`，后端生成并通过保存响应返回，后续编辑和删除使用返回的 `id`。管理员额度调整提交当前账户返回的 `version`；后端在事务中检查账本版本，相同版本和内容的重试不会重复记账，版本过期或已用于不同调整时须刷新账户再确认。
 

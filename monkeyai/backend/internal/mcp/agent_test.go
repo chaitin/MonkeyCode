@@ -42,8 +42,7 @@ type fixture struct {
 	users   map[string]string
 }
 
-func setup(t *testing.T) *fixture { return setupAt(t, 0) }
-func setupAt(t *testing.T, last int) *fixture {
+func setup(t *testing.T) *fixture {
 	t.Helper()
 	dsn := os.Getenv("MONKEYAI_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -70,10 +69,7 @@ func setupAt(t *testing.T, last int) *fixture {
 	}
 	t.Cleanup(pool.Close)
 	files, _ := filepath.Glob("../../migrations/*.up.sql")
-	for i, path := range files {
-		if last > 0 && i >= last {
-			break
-		}
+	for _, path := range files {
 		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -311,66 +307,26 @@ func TestOAuthMultipleCredentials(t *testing.T) {
 	}
 }
 
-func TestCredentialMigration(t *testing.T) {
-	f := setupAt(t, 11)
-	p, c1, c2, cred, tool, expert, auth := resource.ID(), resource.ID(), resource.ID(), resource.ID(), resource.ID(), resource.ID(), resource.ID()
-	f.sql(`INSERT INTO connector_providers(id,identifier,owner_user_id,name,url,authorization_mode,authorization_method,enabled,icon_s3_key) VALUES($1,'legacy',$2,'旧模板','https://template.example','independent','http_header',false,'shared/icon.png')`, p, f.users["owner"])
+func TestCredentialConstraints(t *testing.T) {
+	f := setup(t)
+	c1, c2 := resource.ID(), resource.ID()
 	for _, id := range []string{c1, c2} {
-		f.sql(`INSERT INTO connectors(id,provider_id,owner_user_id,name,url,authorization_mode,authorization_method) VALUES($1,$2,$3,($1::uuid)::text,'https://instance.example','independent','http_header')`, id, p, f.users["owner"])
+		f.sql(`INSERT INTO connectors(id,owner_user_id,name,url,authorization_mode,authorization_method) VALUES($1,$2,($1::uuid)::text,'https://connector.example','independent','http_header')`, id, f.users["owner"])
 	}
-	f.sql(`INSERT INTO connector_credentials(id,connector_id,user_id,method,http_headers,config_revision) VALUES($1,$2,$3,'http_header','{"X-Key":"preserved"}',1)`, cred, c1, f.users["owner"])
-	f.sql(`INSERT INTO mcp_tools(id,connector_id,credential_id,name,config_revision,enabled) VALUES($1,$2,$3,'legacy',1,true)`, tool, c1, cred)
-	f.sql(`INSERT INTO experts(id,name,description,prompt,owner_user_id,created_by_user_id) VALUES($1,'旧专家','','测试',$2,$2)`, expert, f.users["owner"])
-	f.sql(`INSERT INTO expert_connector_providers(expert_id,provider_id,required,tool_allowlist) VALUES($1,$2,false,'{legacy}')`, expert, p)
-	f.sql(`INSERT INTO connector_oauth_requests(id,connector_id,user_id,centralized,config_revision,state_hash,verifier,redirect_uri,expires_at) VALUES($1,$2,$3,false,1,'state','verifier','http://localhost',now()+interval '1 minute')`, auth, c1, f.users["owner"])
-	report, err := os.ReadFile("../../tools/connectorcheck.sql")
-	if err != nil {
-		t.Fatal(err)
+	cred := resource.ID()
+	f.sql(`INSERT INTO connector_credentials(id,connector_id,user_id,name,http_headers,config_revision) VALUES($1,$2,$3,'同名凭证','{"X-Key":"first"}',1)`, cred, c1, f.users["owner"])
+	f.sql(`INSERT INTO connector_credentials(connector_id,user_id,name,http_headers,config_revision) VALUES($1,$2,'同名凭证','{"X-Key":"second"}',1)`, c1, f.users["owner"])
+	f.sql(`INSERT INTO mcp_tools(connector_id,credential_id,name,config_revision) VALUES($1,$2,'tool',1)`, c1, cred)
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO mcp_tools(connector_id,credential_id,name,config_revision) VALUES($1,$2,'tool',1)`, c2, cred); err == nil {
+		t.Fatal("工具允许引用其他连接的凭证")
 	}
-	if _, err = f.pool.Exec(t.Context(), string(report)); err != nil {
-		t.Fatalf("只读预检查失败: %v", err)
+	f.sql(`UPDATE connectors SET authorization_mode='centralized' WHERE id=$1`, c2)
+	f.sql(`INSERT INTO connector_credentials(connector_id,name,config_revision) VALUES($1,'集中凭证',1)`, c2)
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO connector_credentials(connector_id,name,config_revision) VALUES($1,'第二份集中凭证',1)`, c2); err == nil {
+		t.Fatal("连接允许多份有效集中凭证")
 	}
-	up, err := os.ReadFile("../../migrations/000012_mcp_connector_credentials.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = f.pool.Exec(t.Context(), string(up)); err == nil || !strings.Contains(err.Error(), "ambiguous_connector") {
-		t.Fatalf("多候选迁移应停止: %v", err)
-	}
-	var count int
-	if err = f.pool.QueryRow(t.Context(), `SELECT count(*) FROM connector_providers WHERE id=$1`, p).Scan(&count); err != nil || count != 1 {
-		t.Fatal("失败迁移修改了原数据")
-	}
-	conn, err := f.pool.Acquire(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	mapping, _ := json.Marshal(resource.Object{expert: resource.Object{p: c1}})
-	if _, err = conn.Exec(t.Context(), `SELECT set_config('monkeyai.connector_mappings',$1,false)`, string(mapping)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = conn.Exec(t.Context(), string(up)); err != nil {
-		t.Fatal(err)
-	}
-	var target, icon, address, status string
-	var enabled, required bool
-	if err = f.pool.QueryRow(t.Context(), `SELECT x.connector_id::text,x.required,c.icon_s3_key,c.url,c.enabled FROM expert_connectors x JOIN connectors c ON c.id=x.connector_id WHERE expert_id=$1`, expert).Scan(&target, &required, &icon, &address, &enabled); err != nil {
-		t.Fatal(err)
-	}
-	if target != c1 || required || icon != "shared/icon.png" || address != "https://instance.example" || enabled {
-		t.Fatal("映射、实例配置或旧停用状态未保留")
-	}
-	if err = f.pool.QueryRow(t.Context(), `SELECT status FROM connector_oauth_requests WHERE id=$1`, auth).Scan(&status); err != nil || status != "failed" {
-		t.Fatal("旧授权事务仍可写入")
-	}
-	if err = f.pool.QueryRow(t.Context(), `SELECT count(*) FROM mcp_tools WHERE id=$1 AND credential_id=$2 AND deleted_at IS NULL`, tool, cred).Scan(&count); err != nil || count != 1 {
-		t.Fatal("迁移丢失有效工具历史")
-	}
-	f.sql(`INSERT INTO connector_credentials(connector_id,user_id,name,http_headers,config_revision) VALUES($1,$2,'新增','{"X-Key":"second"}',1)`, c1, f.users["owner"])
-	if err = f.pool.QueryRow(t.Context(), `SELECT count(*) FROM connector_credentials WHERE connector_id=$1 AND user_id=$2`, c1, f.users["owner"]).Scan(&count); err != nil || count != 2 {
-		t.Fatal("迁移后仍限制单凭证")
-	}
+	f.sql(`UPDATE connector_credentials SET revoked_at=now() WHERE connector_id=$1`, c2)
+	f.sql(`INSERT INTO connector_credentials(connector_id,name,config_revision) VALUES($1,'新集中凭证',1)`, c2)
 }
 
 func TestRefreshRevocation(t *testing.T) {

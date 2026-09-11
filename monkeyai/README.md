@@ -54,6 +54,8 @@ MIGRATE_IMAGE=registry.example.com/team/monkeyai-migrate:v1.0.0 \
 docker compose up --no-build
 ```
 
+当前迁移已收敛为完整初始化版本 `000001`，需连接全新的 PostgreSQL 数据库或数据目录。不能复用已执行旧版迁移的数据目录，也不能通过 `force 1` 完成升级；需要保留旧数据时应另行制定迁移方案。验证要求见 [数据库迁移说明](backend/migrations/README.md)。
+
 迁移 SQL 已打包在 Migrate 镜像中。远程部署无需同步 `backend/migrations` 目录，但必须为 `MIGRATE_IMAGE` 指定与 Backend 相同发布版本的已推送镜像。
 
 停止服务：
@@ -66,7 +68,7 @@ PostgreSQL 数据保存在 `./data/postgres`，执行 `docker compose down` 不�
 
 ## 资源管理与 RustFS
 
-Connector 已直接保存连接与认证配置，支持同一用户在同一连接下持有多份凭证。设计见 [连接与多凭证认证设计](design/connector-auth-design.md)，现有数据库升级见 [迁移与接入说明](design/connector-migration.md)。
+Connector 已直接保存连接与认证配置，支持同一用户在同一连接下持有多份凭证。设计见 [连接与多凭证认证设计](design/connector-auth-design.md)，初始化部署与客户端接入见 [迁移与接入说明](design/connector-migration.md)。
 
 技能、规则、专家和 MCP 连接使用 PostgreSQL 持久化；技能 ZIP 和连接图标字节保存在私有 RustFS Bucket。后台和工作 Agent 均经后端鉴权下载，不直接接触对象存储凭据；技能包在返回前校验大小与 SHA-256，发现损坏时拒绝下发。技能编辑会重建 ZIP 并计算 SHA-256，保留包内附件。
 
@@ -102,7 +104,7 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 
 计费后台使用 `/api/admin/v1/billing/*`。管理员可以设置分组/个人周期额度、独立保存价格和计费方式、查看账户余额与冻结额、调整当期积分，并查询流水、退款和待处理交易。组织授权分组与单一计费归属分组分开维护。
 
-- 首次升级先执行 `000002_billing_create_transactions` 增量迁移；保留历史账户和流水。已有交易后 down 迁移主动拒绝，回滚应关闭新调用扣费并保留交易恢复能力。
+- 计费账户、交易与流水已纳入 `000001` 初始化结构；down 会删除业务数据，仅供可丢弃测试库验证。
 - 默认关闭实际扣费，仅记录调用。检查价格、额度和模型上限后，在费用设置中开启。旧计费设置写接口返回冲突提示，统一通过计费接口写入。
 - 模型需要配置有效的 `context_window_tokens` 和 `max_output_tokens`。代理以管理员确认的模型上下文上界预留、强制输出限制，使用真实 usage 结算；目前仅支持单结果同步调用，不支持 `n > 1`、`best_of > 1` 或后台异步生成。上下文上界错误、缺失用量或实际费用超出预留都会转待核查，不能按估值扣款。
 - 模型调用沿用 `/v1/chat/completions`、`/v1/responses`、`/v1/messages`；MCP 使用 `POST /mcp/connectors/{id}/credentials/{credential_id}`，免认证使用 `POST /mcp/connectors/{id}`；全局调用密钥认证用户，地址确定授权资源，密钥作用域为 `mcp:invoke`。集中认证工具成功收费；独立认证、免认证和明确失败不收费。入口采用无状态 Streamable HTTP，支持握手、通知、工具列表和调用，返回 JSON；上游 JSON/SSE 均可解析。OAuth 调用前自动刷新，每次上游会话结束后清理。详见 [MCP 接入说明](backend/api/README.md#mcp-代理)。
@@ -128,7 +130,7 @@ Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rul
 
 部署配置支持 `BAIZHIYUN_BASE_URL`、`BAIZHIYUN_APP_ID`、`MONKEYAI_WALLET_CERT_DIR`；未填写 URL 时仍兼容 `BAIZHIYUN_ENV=dev/prod`，目录包含上述三个文件；后台保存的配置优先。存在未完成远程交易时禁止切换服务 URL 或应用 ID，同一应用允许更新证书。证书配置成功仅表示本地校验通过，真实钱包连接和账户权限仍需联调确认。
 
-升级时迁移 `000008` 自动将已有环境配置和交易快照转换为对应 URL。已有自定义 URL 配置或交易记录时禁止回退该迁移，避免旧版本把交易发送到错误的服务。
+初始化结构直接使用 `wallet_billing_records.base_url` 保存交易服务地址，钱包设置同样使用 `base_url`。
 
 容器部署时通过单独 Compose override 或现有部署系统向后端传入上述变量，将真实证书目录只读挂载到 `MONKEYAI_WALLET_CERT_DIR`。证书和私钥不进入镜像。新增私有 SDK 依赖，构建机需要私有模块读取权限；Docker 构建支持 BuildKit 的 `netrc` secret（`--secret id=netrc,src=<已有认证文件>`），不得将凭据写入 Dockerfile 或构建参数。
 

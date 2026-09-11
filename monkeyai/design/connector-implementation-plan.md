@@ -1,5 +1,7 @@
 # Connector 多凭证实施计划
 
+> 2026-09-11 迁移收敛：按本轮重新部署要求，原 1–13 版已折叠到 `000001` 完整初始化结构，仅支持全新数据库。下文旧增量迁移及验收记录保留为实施历史，当前部署以 [数据库迁移说明](../backend/migrations/README.md) 为准。
+
 状态：多凭证认证、用户信息回包、全局 API Key 与凭证专属 MCP 地址均已完成实现与本地验收，通过 [PR #1275](https://github.com/chaitin/MonkeyCode/pull/1275) 交付，等待审查。依据 [设计方案](connector-auth-design.md)。
 
 - [x] 同步 main，创建 `feat-connector-credentials` worktree，迁入已确认设计。

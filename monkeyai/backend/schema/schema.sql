@@ -14,6 +14,7 @@ CREATE TABLE users (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
+    billing_group_id uuid,
     CONSTRAINT users_role_check CHECK (role IN ('admin', 'user')),
     CONSTRAINT users_status_check CHECK (status IN ('active', 'disabled')),
     CONSTRAINT users_disabled_at_check CHECK (
@@ -35,7 +36,7 @@ CREATE TABLE user_identities (
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
     CONSTRAINT user_identities_provider_check CHECK (
-        provider IN ('github', 'google', 'microsoft', 'gitlab', 'oidc')
+        provider IN ('github', 'google', 'microsoft', 'gitlab', 'oidc', 'baizhiyun')
     )
 );
 
@@ -49,6 +50,9 @@ CREATE TABLE groups (
     deleted_at timestamptz,
     CONSTRAINT groups_not_own_parent_check CHECK (parent_id IS DISTINCT FROM id)
 );
+
+ALTER TABLE users ADD CONSTRAINT users_billing_group_id_fkey
+    FOREIGN KEY (billing_group_id) REFERENCES groups (id);
 
 CREATE TABLE group_users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -67,6 +71,7 @@ CREATE TABLE settings (
     updated_by_user_id uuid NOT NULL REFERENCES users (id),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    revision bigint NOT NULL DEFAULT 1,
     CONSTRAINT settings_key_check CHECK (
         key IN ('branding', 'authentication', 'email', 'billing')
     ),
@@ -140,32 +145,8 @@ CREATE TABLE rules (
     CONSTRAINT rules_ownership_type_check CHECK (ownership_type IN ('system', 'user'))
 );
 
-CREATE TABLE connector_providers (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    identifier text NOT NULL,
-    ownership_type text NOT NULL DEFAULT 'system' CHECK (ownership_type IN ('system','user')),
-    owner_user_id uuid NOT NULL REFERENCES users(id),
-    name text NOT NULL,
-    description text NOT NULL DEFAULT '',
-    icon_s3_key text NOT NULL DEFAULT '',
-    url text NOT NULL,
-    authorization_mode text NOT NULL CHECK (authorization_mode IN ('none','centralized','independent')),
-    authorization_method text CHECK (authorization_method IN ('http_header','oauth')),
-    header_schema jsonb NOT NULL DEFAULT '{}'::jsonb,
-    oauth_config jsonb NOT NULL DEFAULT '{}'::jsonb,
-    oauth_client_secret text NOT NULL DEFAULT '',
-    enabled boolean NOT NULL DEFAULT true,
-    revision bigint NOT NULL DEFAULT 1,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz,
-    CHECK ((authorization_mode = 'none' AND authorization_method IS NULL) OR
-           (authorization_mode <> 'none' AND authorization_method IS NOT NULL))
-);
-
 CREATE TABLE connectors (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider_id uuid NOT NULL REFERENCES connector_providers(id),
     ownership_type text NOT NULL DEFAULT 'system' CHECK (ownership_type IN ('system','user')),
     owner_user_id uuid NOT NULL REFERENCES users(id),
     name text NOT NULL,
@@ -184,6 +165,7 @@ CREATE TABLE connectors (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
+    icon_s3_key text NOT NULL DEFAULT '',
     CHECK ((authorization_mode = 'none' AND authorization_method IS NULL) OR
            (authorization_mode <> 'none' AND authorization_method IS NOT NULL))
 );
@@ -192,17 +174,20 @@ CREATE TABLE connector_credentials (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connector_id uuid NOT NULL REFERENCES connectors(id),
     user_id uuid REFERENCES users(id),
-    method text NOT NULL CHECK (method IN ('oauth','http_header')),
     http_headers jsonb NOT NULL DEFAULT '{}'::jsonb,
     oauth_access_token text NOT NULL DEFAULT '',
     oauth_refresh_token text NOT NULL DEFAULT '',
     oauth_expires_at timestamptz,
-    status text NOT NULL DEFAULT 'authorized' CHECK (status IN ('authorized','expired','revoked','error')),
     config_revision bigint NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     revoked_at timestamptz,
-    UNIQUE NULLS NOT DISTINCT (connector_id,user_id)
+    name text NOT NULL DEFAULT '原有凭证' CHECK (char_length(btrim(name)) BETWEEN 1 AND 128),
+    revision bigint NOT NULL DEFAULT 1,
+    connection_status text NOT NULL DEFAULT 'unknown' CHECK (connection_status IN ('unknown','connected','error')),
+    last_checked_at timestamptz,
+    last_error text,
+    CONSTRAINT connector_credentials_id_connector_key UNIQUE (id, connector_id)
 );
 
 CREATE TABLE mcp_tools (
@@ -218,14 +203,15 @@ CREATE TABLE mcp_tools (
     discovered_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
-    UNIQUE NULLS NOT DISTINCT (connector_id,credential_id,name)
+    UNIQUE NULLS NOT DISTINCT (connector_id,credential_id,name),
+    CONSTRAINT mcp_tools_credential_connector_fkey
+        FOREIGN KEY (credential_id, connector_id) REFERENCES connector_credentials(id, connector_id)
 );
 
 CREATE TABLE connector_oauth_requests (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connector_id uuid NOT NULL REFERENCES connectors(id),
     user_id uuid NOT NULL REFERENCES users(id),
-    centralized boolean NOT NULL,
     config_revision bigint NOT NULL,
     state_hash text NOT NULL UNIQUE,
     verifier text NOT NULL,
@@ -233,7 +219,11 @@ CREATE TABLE connector_oauth_requests (
     expires_at timestamptz NOT NULL,
     consumed_at timestamptz,
     status text NOT NULL DEFAULT 'pending',
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    credential_id uuid REFERENCES connector_credentials(id),
+    credential_revision bigint,
+    name text NOT NULL DEFAULT '原有凭证',
+    CONSTRAINT connector_oauth_requests_status_check CHECK (status IN ('pending','processing','succeeded','failed','expired'))
 );
 
 CREATE TABLE experts (
@@ -241,13 +231,14 @@ CREATE TABLE experts (
     name text NOT NULL,
     description text NOT NULL,
     prompt text NOT NULL,
-    default_model_id uuid REFERENCES models(id),
     enabled boolean NOT NULL DEFAULT true,
     created_by_user_id uuid NOT NULL REFERENCES users (id),
     revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz
+    deleted_at timestamptz,
+    ownership_type text NOT NULL DEFAULT 'system' CHECK (ownership_type IN ('system', 'user')),
+    owner_user_id uuid NOT NULL REFERENCES users(id)
 );
 
 CREATE TABLE resource_access_grants (
@@ -261,11 +252,12 @@ CREATE TABLE resource_access_grants (
     granted_by_user_id uuid NOT NULL REFERENCES users (id),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    all_users boolean NOT NULL DEFAULT false,
     CONSTRAINT resource_access_grants_resource_type_check CHECK (
         resource_type IN ('model', 'skill', 'rule', 'connector', 'expert')
     ),
     CONSTRAINT resource_access_grants_subject_check CHECK (
-        (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer = 1
+        (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer + all_users::integer = 1
     ),
     CONSTRAINT resource_access_grants_access_level_check CHECK (
         access_level IN ('read_only', 'read_write')
@@ -289,13 +281,13 @@ CREATE TABLE resource_tags (
     CONSTRAINT resource_tags_resource_key UNIQUE (resource_type, resource_id, tag_id)
 );
 
-CREATE TABLE expert_connector_providers (
+CREATE TABLE expert_connectors (
     expert_id uuid NOT NULL REFERENCES experts(id),
-    provider_id uuid NOT NULL REFERENCES connector_providers(id),
+    connector_id uuid NOT NULL REFERENCES connectors(id),
     required boolean NOT NULL DEFAULT true,
     tool_allowlist text[] NOT NULL DEFAULT '{}',
     tool_denylist text[] NOT NULL DEFAULT '{}',
-    PRIMARY KEY (expert_id,provider_id)
+    PRIMARY KEY (expert_id, connector_id)
 );
 
 CREATE TABLE expert_rules (
@@ -347,7 +339,7 @@ CREATE TABLE sessions (
 
 CREATE TABLE model_calls (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id uuid NOT NULL REFERENCES sessions (id),
+    session_id uuid REFERENCES sessions (id),
     user_id uuid NOT NULL REFERENCES users (id),
     model_id uuid NOT NULL REFERENCES models (id),
     request_id text,
@@ -381,7 +373,7 @@ CREATE TABLE model_calls (
 
 CREATE TABLE mcp_tool_calls (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id uuid NOT NULL REFERENCES sessions (id),
+    session_id uuid REFERENCES sessions (id),
     user_id uuid NOT NULL REFERENCES users (id),
     connector_id uuid NOT NULL REFERENCES connectors (id),
     tool_id uuid NOT NULL REFERENCES mcp_tools (id),
@@ -423,14 +415,51 @@ CREATE TABLE billing_quotas (
 
 CREATE TABLE credit_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES users (id) UNIQUE,
+    user_id uuid NOT NULL REFERENCES users (id),
     balance numeric(24, 6) NOT NULL DEFAULT 0,
     period_start_at timestamptz NOT NULL,
     period_end_at timestamptz NOT NULL,
     last_refreshed_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT credit_accounts_period_check CHECK (period_end_at > period_start_at)
+    frozen numeric(24,6) NOT NULL DEFAULT 0,
+    quota numeric(24,6) NOT NULL DEFAULT 0,
+    group_id uuid REFERENCES groups(id),
+    sequence bigint NOT NULL DEFAULT 0,
+    CONSTRAINT credit_accounts_period_check CHECK (period_end_at > period_start_at),
+    CONSTRAINT credit_accounts_amount_check CHECK (balance >= 0 AND frozen >= 0 AND frozen <= balance)
+);
+
+CREATE TABLE billing_transactions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    account_id uuid NOT NULL REFERENCES credit_accounts(id),
+    session_id uuid REFERENCES sessions(id),
+    category text NOT NULL CHECK(category IN ('model','tool')),
+    resource_id uuid NOT NULL,
+    connector_id uuid REFERENCES connectors(id),
+    item_name text NOT NULL,
+    user_name text NOT NULL,
+    user_email text NOT NULL,
+    group_id uuid REFERENCES groups(id),
+    mode text NOT NULL CHECK(mode IN ('local','remote')),
+    status text NOT NULL CHECK(status IN ('created','reserved','running','settling','settled','released','rejected','unknown')),
+    reserve numeric(24,6) NOT NULL CHECK(reserve >= 0),
+    amount numeric(24,6),
+    raw_amount numeric(24,6),
+    pricing jsonb NOT NULL CHECK(jsonb_typeof(pricing)='object'),
+    usage jsonb NOT NULL DEFAULT '{}',
+    result text,
+    error_code text NOT NULL DEFAULT '',
+    idempotency_key text,
+    request_hash text NOT NULL DEFAULT '',
+    request_id text NOT NULL DEFAULT '',
+    attempts integer NOT NULL DEFAULT 0,
+    next_retry_at timestamptz,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK(amount IS NULL OR amount >= 0)
 );
 
 CREATE TABLE credit_ledger_entries (
@@ -454,6 +483,14 @@ CREATE TABLE credit_ledger_entries (
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
     occurred_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
+    transaction_id uuid REFERENCES billing_transactions(id),
+    event_key text,
+    sequence bigint,
+    user_name text,
+    user_email text,
+    group_id uuid REFERENCES groups(id),
+    mode text NOT NULL DEFAULT 'local',
+    reverses_id uuid REFERENCES credit_ledger_entries(id),
     CONSTRAINT credit_ledger_entries_entry_type_check CHECK (
         entry_type IN ('charge', 'grant', 'refund', 'reset', 'adjustment')
     ),
@@ -479,6 +516,39 @@ CREATE TABLE credit_ledger_entries (
     CONSTRAINT credit_ledger_entries_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
 );
 
+CREATE TABLE wallet_user_bindings (
+    user_id uuid PRIMARY KEY REFERENCES users(id),
+    external_user_id text NOT NULL UNIQUE,
+    verified_at timestamptz NOT NULL,
+    updated_by_user_id uuid NOT NULL REFERENCES users(id)
+);
+
+CREATE TABLE wallet_billing_records (
+    biz_id text PRIMARY KEY,
+    transaction_id uuid NOT NULL UNIQUE REFERENCES billing_transactions(id),
+    external_user_id text NOT NULL,
+    team_slug text NOT NULL DEFAULT '',
+    base_url text NOT NULL,
+    app_id integer NOT NULL,
+    status text NOT NULL CHECK(status IN ('pending','reserved','confirming','confirmed','rejected','unknown')),
+    frozen_amount_quota bigint NOT NULL CHECK(frozen_amount_quota >= 0),
+    actual_amount_quota bigint,
+    confirmation_status text,
+    error_code text NOT NULL DEFAULT '',
+    trace_id text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    confirmed_at timestamptz
+);
+
+CREATE TABLE billing_migration_issues (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    subject text NOT NULL,
+    value jsonb NOT NULL,
+    reason text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE audits (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_type text NOT NULL,
@@ -496,9 +566,27 @@ CREATE TABLE audits (
     error_message text,
     occurred_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
+    request_id text,
     CONSTRAINT audits_actor_type_check CHECK (actor_type IN ('user', 'system')),
     CONSTRAINT audits_result_check CHECK (result IN ('success', 'failed')),
     CONSTRAINT audits_request_params_check CHECK (jsonb_typeof(request_params) = 'object')
+);
+
+CREATE TABLE email_codes (
+    email text NOT NULL,
+    purpose text NOT NULL CHECK (purpose IN ('login', 'register', 'reset')),
+    code_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    attempts integer NOT NULL DEFAULT 0,
+    ready boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (email, purpose)
+);
+
+CREATE TABLE email_code_deliveries (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    email text NOT NULL,
+    ip_hash text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE browser_sessions (
@@ -511,7 +599,7 @@ CREATE TABLE browser_sessions (
     created_at timestamptz NOT NULL DEFAULT now(),
     revoked_at timestamptz,
     CONSTRAINT browser_sessions_authentication_method_check CHECK (
-        authentication_method IN ('password', 'oauth')
+        authentication_method IN ('password', 'oauth', 'email_code')
     ),
     CONSTRAINT browser_sessions_expiry_check CHECK (expires_at > created_at)
 );
@@ -592,196 +680,3 @@ CREATE TABLE api_keys (
     ),
     CONSTRAINT api_keys_expiry_check CHECK (expires_at > created_at)
 );
-
-ALTER TABLE settings ADD COLUMN revision bigint NOT NULL DEFAULT 1;
-
-ALTER TABLE users ADD COLUMN billing_group_id uuid REFERENCES groups(id);
-
-ALTER TABLE credit_accounts DROP CONSTRAINT credit_accounts_user_id_key;
-
-ALTER TABLE credit_accounts ADD COLUMN frozen numeric(24,6) NOT NULL DEFAULT 0;
-
-ALTER TABLE credit_accounts ADD COLUMN quota numeric(24,6) NOT NULL DEFAULT 0;
-
-ALTER TABLE credit_accounts ADD COLUMN group_id uuid REFERENCES groups(id);
-
-ALTER TABLE credit_accounts ADD COLUMN sequence bigint NOT NULL DEFAULT 0;
-
-ALTER TABLE credit_accounts ADD CONSTRAINT credit_accounts_amount_check CHECK(balance >= 0 AND frozen >= 0 AND frozen <= balance) NOT VALID;
-
-ALTER TABLE model_calls ALTER COLUMN session_id DROP NOT NULL;
-
-ALTER TABLE mcp_tool_calls ALTER COLUMN session_id DROP NOT NULL;
-
-CREATE TABLE billing_transactions (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
- user_id uuid NOT NULL REFERENCES users(id),
- account_id uuid NOT NULL REFERENCES credit_accounts(id),
- session_id uuid REFERENCES sessions(id),
- category text NOT NULL CHECK(category IN ('model','tool')),
- resource_id uuid NOT NULL,
- connector_id uuid REFERENCES connectors(id),
- item_name text NOT NULL,
- user_name text NOT NULL,
- user_email text NOT NULL,
- group_id uuid REFERENCES groups(id),
- mode text NOT NULL CHECK(mode IN ('local','remote')),
- status text NOT NULL CHECK(status IN ('created','reserved','running','settling','settled','released','rejected','unknown')),
- reserve numeric(24,6) NOT NULL CHECK(reserve >= 0),
- amount numeric(24,6),
- raw_amount numeric(24,6),
- pricing jsonb NOT NULL CHECK(jsonb_typeof(pricing)='object'),
- usage jsonb NOT NULL DEFAULT '{}',
- result text,
- error_code text NOT NULL DEFAULT '',
- idempotency_key text,
- request_hash text NOT NULL DEFAULT '',
- request_id text NOT NULL DEFAULT '',
- attempts integer NOT NULL DEFAULT 0,
- next_retry_at timestamptz,
- started_at timestamptz NOT NULL DEFAULT now(),
- completed_at timestamptz,
- updated_at timestamptz NOT NULL DEFAULT now(),
- CHECK(amount IS NULL OR amount >= 0)
-);
-
-ALTER TABLE credit_ledger_entries ADD COLUMN transaction_id uuid REFERENCES billing_transactions(id);
-
-ALTER TABLE credit_ledger_entries ADD COLUMN event_key text;
-
-ALTER TABLE credit_ledger_entries ADD COLUMN sequence bigint;
-
-ALTER TABLE credit_ledger_entries ADD COLUMN user_name text;
-
-ALTER TABLE credit_ledger_entries ADD COLUMN user_email text;
-
-ALTER TABLE credit_ledger_entries ADD COLUMN group_id uuid REFERENCES groups(id);
-
-ALTER TABLE credit_ledger_entries ADD COLUMN mode text NOT NULL DEFAULT 'local';
-
-ALTER TABLE credit_ledger_entries ADD COLUMN reverses_id uuid REFERENCES credit_ledger_entries(id);
-
-CREATE TABLE wallet_user_bindings (
- user_id uuid PRIMARY KEY REFERENCES users(id),
- external_user_id text NOT NULL UNIQUE,
- verified_at timestamptz NOT NULL,
- updated_by_user_id uuid NOT NULL REFERENCES users(id)
-);
-
-CREATE TABLE wallet_billing_records (
- biz_id text PRIMARY KEY,
- transaction_id uuid NOT NULL UNIQUE REFERENCES billing_transactions(id),
- external_user_id text NOT NULL,
- team_slug text NOT NULL DEFAULT '',
- environment text NOT NULL,
- app_id integer NOT NULL,
- status text NOT NULL CHECK(status IN ('pending','reserved','confirming','confirmed','rejected','unknown')),
- frozen_amount_quota bigint NOT NULL CHECK(frozen_amount_quota >= 0),
- actual_amount_quota bigint,
- confirmation_status text,
- error_code text NOT NULL DEFAULT '',
- trace_id text NOT NULL DEFAULT '',
- created_at timestamptz NOT NULL DEFAULT now(),
- updated_at timestamptz NOT NULL DEFAULT now(),
- confirmed_at timestamptz
-);
-
-CREATE TABLE billing_migration_issues (
- id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- subject text NOT NULL,
- value jsonb NOT NULL,
- reason text NOT NULL,
- created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE credit_ledger_entries DISABLE TRIGGER credit_ledger_immutable;
-
-ALTER TABLE credit_ledger_entries ENABLE TRIGGER credit_ledger_immutable;
-
-ALTER TABLE audits ADD COLUMN request_id text;
-
-CREATE TABLE email_codes (
- email text NOT NULL,
- purpose text NOT NULL CHECK (purpose IN ('login', 'register', 'reset')),
- code_hash text NOT NULL,
- expires_at timestamptz NOT NULL,
- attempts integer NOT NULL DEFAULT 0,
- ready boolean NOT NULL DEFAULT false,
- PRIMARY KEY (email, purpose)
-);
-
-CREATE TABLE email_code_deliveries (
- id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- email text NOT NULL,
- ip_hash text NOT NULL,
- created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE browser_sessions DROP CONSTRAINT browser_sessions_authentication_method_check;
-
-ALTER TABLE browser_sessions ADD CONSTRAINT browser_sessions_authentication_method_check CHECK (authentication_method IN ('password', 'oauth', 'email_code'));
-
-ALTER TABLE resource_access_grants
-    ADD COLUMN all_users boolean NOT NULL DEFAULT false,
-    DROP CONSTRAINT resource_access_grants_subject_check,
-    ADD CONSTRAINT resource_access_grants_subject_check CHECK (
-        (user_id IS NOT NULL)::integer + (group_id IS NOT NULL)::integer + all_users::integer = 1
-    );
-
-ALTER TABLE wallet_billing_records RENAME COLUMN environment TO base_url;
-
-ALTER TABLE user_identities
-    DROP CONSTRAINT user_identities_provider_check,
-    ADD CONSTRAINT user_identities_provider_check CHECK (
-        provider IN ('github', 'google', 'microsoft', 'gitlab', 'oidc', 'baizhiyun')
-    );
-
-ALTER TABLE experts
-    ADD COLUMN ownership_type text NOT NULL DEFAULT 'system'
-        CHECK (ownership_type IN ('system', 'user')),
-    ADD COLUMN owner_user_id uuid REFERENCES users(id);
-
-ALTER TABLE experts ALTER COLUMN owner_user_id SET NOT NULL;
-
-CREATE TABLE expert_connectors (
-    expert_id uuid NOT NULL REFERENCES experts(id),
-    connector_id uuid NOT NULL REFERENCES connectors(id),
-    required boolean NOT NULL DEFAULT true,
-    tool_allowlist text[] NOT NULL DEFAULT '{}',
-    tool_denylist text[] NOT NULL DEFAULT '{}',
-    PRIMARY KEY (expert_id, connector_id)
-);
-
-ALTER TABLE connectors ADD COLUMN icon_s3_key text NOT NULL DEFAULT '';
-
-ALTER TABLE connector_credentials
-    DROP CONSTRAINT connector_credentials_connector_id_user_id_key,
-    ADD COLUMN name text NOT NULL DEFAULT '原有凭证' CHECK (char_length(btrim(name)) BETWEEN 1 AND 128),
-    ADD COLUMN revision bigint NOT NULL DEFAULT 1,
-    ADD COLUMN connection_status text NOT NULL DEFAULT 'unknown' CHECK (connection_status IN ('unknown','connected','error')),
-    ADD COLUMN last_checked_at timestamptz,
-    ADD COLUMN last_error text;
-
-ALTER TABLE connector_credentials DROP COLUMN method, DROP COLUMN status;
-
-ALTER TABLE connector_credentials ADD CONSTRAINT connector_credentials_id_connector_key UNIQUE(id, connector_id);
-
-ALTER TABLE mcp_tools ADD CONSTRAINT mcp_tools_credential_connector_fkey
-    FOREIGN KEY (credential_id, connector_id) REFERENCES connector_credentials(id, connector_id);
-
-ALTER TABLE connector_oauth_requests
-    ADD COLUMN credential_id uuid REFERENCES connector_credentials(id),
-    ADD COLUMN credential_revision bigint,
-    ADD COLUMN name text NOT NULL DEFAULT '原有凭证',
-    DROP COLUMN centralized;
-
-ALTER TABLE connector_oauth_requests ADD CONSTRAINT connector_oauth_requests_status_check
-    CHECK (status IN ('pending','processing','succeeded','failed','expired'));
-
-DROP TABLE expert_connector_providers;
-
-ALTER TABLE connectors DROP COLUMN provider_id;
-
-DROP TABLE connector_providers;
-
-ALTER TABLE experts DROP COLUMN default_model_id;
