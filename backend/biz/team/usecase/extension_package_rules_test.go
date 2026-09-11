@@ -137,11 +137,73 @@ func TestExtensionRuleImporterUpdatesSamePackageRule(t *testing.T) {
 	if active.Content != "v2" {
 		t.Fatalf("active content = %q, want v2", active.Content)
 	}
-	if _, err := importer.ImportRules(ctx, userID, pkg); err != nil {
+	result, err = (&extensionRuleImporter{db: client}).ImportRules(ctx, userID, pkg)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result != (domain.ExtensionRuleImportResult{}) {
+		t.Fatalf("unchanged import result = %#v", result)
 	}
 	if count := client.AgentRuleVersion.Query().CountX(ctx); count != 1 {
 		t.Fatalf("version count after repeated import = %d, want 1", count)
+	}
+	unchanged := client.AgentRule.GetX(ctx, rule.ID)
+	if unchanged.ActiveVersionID == nil || *unchanged.ActiveVersionID != active.ID || !unchanged.UpdatedAt.Equal(rule.UpdatedAt) {
+		t.Fatalf("unchanged rule was rewritten: %#v", unchanged)
+	}
+}
+
+func TestExtensionRuleImporterReimportsChanges(t *testing.T) {
+	for _, change := range []string{"content", "name", "description", "version", "history", "deleted", "missing-active", "database-content"} {
+		t.Run(change, func(t *testing.T) {
+			ctx := context.Background()
+			client := newRuleImportTestClient(t)
+			importer := &extensionRuleImporter{db: client}
+			userID := uuid.New()
+			pkg := &parsedExtensionPackage{
+				PackageID: "pack",
+				Version:   "1.0.0",
+				Rules:     []parsedExtensionRule{{RuleID: "base", Name: "base", Description: "base", Content: "original"}},
+			}
+			if _, err := importer.ImportRules(ctx, userID, pkg); err != nil {
+				t.Fatal(err)
+			}
+			original := client.AgentRule.Query().OnlyX(ctx)
+			switch change {
+			case "content":
+				pkg.Rules[0].Content = "updated"
+			case "name":
+				pkg.Rules[0].Name = "renamed"
+			case "description":
+				pkg.Rules[0].Description = "updated"
+			case "version":
+				pkg.Version = "1.0.1"
+			case "history":
+				client.AgentRuleVersion.Create().SetRuleID(original.ID).SetVersion("20260623115903").SetContent("historical").SaveX(ctx)
+			case "deleted":
+				client.AgentRule.UpdateOne(original).SetIsDeleted(true).ExecX(ctx)
+			case "missing-active":
+				client.AgentRule.UpdateOne(original).ClearActiveVersionID().ExecX(ctx)
+			case "database-content":
+				client.AgentRuleVersion.UpdateOneID(*original.ActiveVersionID).SetContent("manual change").ExecX(ctx)
+			}
+
+			result, err := importer.ImportRules(ctx, userID, pkg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.CreatedRules+result.UpdatedRules != 1 {
+				t.Fatalf("changed import result = %#v", result)
+			}
+			rule := client.AgentRule.Query().OnlyX(ctx)
+			version := client.AgentRuleVersion.Query().OnlyX(ctx)
+			if rule.IsDeleted || rule.ActiveVersionID == nil || *rule.ActiveVersionID != version.ID || version.ID == *original.ActiveVersionID {
+				t.Fatalf("changed rule was not replaced: %#v", rule)
+			}
+			if rule.Name != pkg.Rules[0].Name || rule.Description != pkg.Rules[0].Description || rule.ExtensionVersion == nil || *rule.ExtensionVersion != pkg.Version || version.Content != pkg.Rules[0].Content {
+				t.Fatalf("rule does not match package: rule=%#v version=%#v", rule, version)
+			}
+		})
 	}
 }
 
