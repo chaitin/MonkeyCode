@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"uuid"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -203,17 +202,10 @@ func TestResourceIntegration(t *testing.T) {
 	}
 	t.Run("固定查询保留缺省字段与显式空值", func(t *testing.T) {
 		input := resource.Object{"name": "字段更新测试", "url": "https://example.com/mcp", "authorization_mode": "none", "description": "保留描述", "enabled": false}
-		provider := must("POST", "/api/admin/v1/connector-providers", input, "", "")
-		path := "/api/admin/v1/connector-providers/" + provider.String("id")
+		provider := must("POST", "/api/admin/v1/connectors", input, "", "")
+		path := "/api/admin/v1/connectors/" + provider.String("id")
 		if _, ok := provider["identifier"]; ok {
 			t.Fatal("连接模板响应不应暴露内部标识")
-		}
-		var identifier string
-		if err := pool.QueryRow(ctx, "SELECT identifier FROM connector_providers WHERE id=$1", provider.String("id")).Scan(&identifier); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := uuid.Parse(identifier); err != nil {
-			t.Fatalf("内部标识应为服务端生成的 UUID: %v", err)
 		}
 		if provider.Bool("enabled") || provider["authorization_method"] != nil {
 			t.Fatalf("创建字段错误: %v", provider)
@@ -232,10 +224,6 @@ func TestResourceIntegration(t *testing.T) {
 		input["name"] = "有效更新"
 		input["identifier"] = "client-supplied"
 		current = must("PUT", path, input, "", `"1"`)
-		var updatedIdentifier string
-		if err := pool.QueryRow(ctx, "SELECT identifier FROM connector_providers WHERE id=$1", provider.String("id")).Scan(&updatedIdentifier); err != nil || updatedIdentifier != identifier {
-			t.Fatalf("更新连接模板不应改变内部标识: %v", err)
-		}
 		if _, ok := current["identifier"]; ok {
 			t.Fatal("更新响应不应暴露内部标识")
 		}
@@ -344,7 +332,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		t.Fatal(err)
 	}
 
-	expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": grantA}, "", "")
+	expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "connectors": []any{}, "grants": grantA}, "", "")
 	experts := must("GET", "/api/v1/experts", nil, "a", "")
 	if items := experts["experts"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != expert.String("id") {
 		t.Fatalf("专家目录缺失授权项: %v", experts)
@@ -407,7 +395,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 	}))
 	defer upstream.Close()
-	provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "测试 MCP", "description": "测试", "url": upstream.URL, "authorization_mode": "none"}, "", "")
+	conn := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "测试 MCP", "description": "测试", "url": upstream.URL, "authorization_mode": "none", "grants": grantA}, "", "")
 	var iconBytes bytes.Buffer
 	if err := png.Encode(&iconBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
 		t.Fatal(err)
@@ -417,7 +405,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	iconPart, _ := iconWriter.CreateFormFile("icon", "icon.png")
 	_, _ = iconPart.Write(iconBytes.Bytes())
 	_ = iconWriter.Close()
-	iconRequest := httptest.NewRequest("PUT", "/api/admin/v1/connector-providers/"+provider.String("id")+"/icon", &iconForm)
+	iconRequest := httptest.NewRequest("PUT", "/api/admin/v1/connectors/"+conn.String("id")+"/icon", &iconForm)
 	iconRequest.Header.Set("Content-Type", iconWriter.FormDataContentType())
 	iconRequest.Header.Set("If-Match", `"1"`)
 	iconRequest.AddCookie(cookie)
@@ -430,7 +418,6 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		t.Fatal("图标响应不应包含内部存储 key")
 	}
 
-	conn := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "测试连接", "description": "测试", "provider_id": provider.String("id"), "grants": grantA}, "", "")
 	t.Run("资源授权返回用户信息", func(t *testing.T) {
 		for kind, item := range map[string]resource.Object{"rule": rule, "skill": skill, "expert": expert, "connector": conn} {
 			t.Run(kind, func(t *testing.T) {
@@ -539,13 +526,13 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if proxy["url"] != "http://localhost:8080"+gateway || proxy["transport"] != "streamable_http" || proxy["required_scope"] != "mcp:invoke" || len(entry["capabilities"].([]any)) != 2 {
 			t.Fatalf("未下发可执行代理: %v", entry)
 		}
-		if _, err := pool.Exec(ctx, `UPDATE connector_providers SET enabled=false WHERE id=$1`, provider.String("id")); err != nil {
+		if _, err := pool.Exec(ctx, `UPDATE connectors SET enabled=false WHERE id=$1`, conn.String("id")); err != nil {
 			t.Fatal(err)
 		}
 		if code, _, _ := call("POST", gateway, in, invokeKeys["a"], ""); code != 404 {
 			t.Fatal("禁用模板仍可代理")
 		}
-		if _, err := pool.Exec(ctx, `UPDATE connector_providers SET enabled=true WHERE id=$1`, provider.String("id")); err != nil {
+		if _, err := pool.Exec(ctx, `UPDATE connectors SET enabled=true WHERE id=$1`, conn.String("id")); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -553,14 +540,15 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	must("PUT", "/api/admin/v1/groups/"+allGroup.String("id")+"/members", resource.Object{"member_ids": users}, "", "")
 	must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "required"}}}, "", "")
 	t.Run("个人 MCP 工具下发与历史数据修复", func(t *testing.T) {
-		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "自定义 MCP", "url": upstream.URL, "authorization_mode": "none"}, "a", "")
-		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "自定义连接", "provider_id": provider["id"]}, "a", "")
+		provider := resource.Object{"name": "自定义 MCP", "url": upstream.URL, "authorization_mode": "none"}
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "自定义连接", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"]}, "a", "")
 		path := "/api/v1/connectors/" + connector.String("id")
 		gateway := "/mcp/connectors/" + connector.String("id")
-		must("POST", path+"/test", nil, "a", "")
+		ownerPath := path
+		must("POST", ownerPath+"/test", nil, "a", "")
 		verify := func() {
 			t.Helper()
-			items := must("GET", path+"/tools", nil, "a", "")["items"].([]any)
+			items := must("GET", ownerPath+"/tools", nil, "a", "")["items"].([]any)
 			if len(items) != 1 || items[0].(map[string]any)["enabled"] != true {
 				t.Fatalf("个人工具未自动启用并下发：%v", items)
 			}
@@ -614,7 +602,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if len(resolved["rules"].([]any)) != 1 {
 		t.Fatal("显式分组的强制规则缺失")
 	}
-	must("PUT", "/api/admin/v1/experts/"+expert.String("id"), resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": []any{}}, "", `"1"`)
+	must("PUT", "/api/admin/v1/experts/"+expert.String("id"), resource.Object{"name": "专家", "description": "测试", "prompt": "审查代码", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "connectors": []any{}, "grants": []any{}}, "", `"1"`)
 	if code, _, _ := call("GET", "/api/v1/experts/"+expert.String("id")+"/skills/"+skill.String("id")+"/package", nil, "a", ""); code != 404 {
 		t.Fatal("撤权后委托下载仍可用")
 	}
@@ -636,44 +624,108 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 	}))
 	defer independent.Close()
-	p2 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "独立 MCP", "url": independent.URL, "authorization_mode": "independent", "authorization_method": "http_header"}, "", "")
-	c2 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "独立连接", "description": "按用户隔离", "provider_id": p2.String("id"), "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "optional"}}}, "", "")
+	p2 := resource.Object{"name": "独立 MCP", "url": independent.URL, "authorization_mode": "independent", "authorization_method": "http_header"}
+	c2 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "独立连接", "description": "按用户隔离", "url": p2["url"], "authorization_mode": p2["authorization_mode"], "authorization_method": p2["authorization_method"], "oauth_config": p2["oauth_config"], "oauth_client_secret": p2["oauth_client_secret"], "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "optional"}}}, "", "")
+	credentialIDs := map[string]string{}
 	for i, name := range []string{"a", "b"} {
-		must("PUT", "/api/v1/connectors/"+c2.String("id")+"/credential", resource.Object{"http_headers": resource.Object{"X-Account": "Tool-" + name}}, name, "")
-		must("POST", "/api/v1/connectors/"+c2.String("id")+"/test", nil, name, "")
-		directory := must("GET", "/api/admin/v1/connectors/"+c2.String("id")+"/tools?user_id="+users[i], nil, "", "")
-		items := directory["items"].([]any)
-		if len(items) != 1 {
-			t.Fatal("认证目录未隔离")
+		credential := must("POST", "/api/v1/connectors/"+c2.String("id")+"/credentials", resource.Object{"name": "凭证-" + name, "http_headers": resource.Object{"X-Account": "Tool-" + name}}, name, "")
+		assertShareUser(t, credential["user"], users[i], name, name+"@example.com")
+		credentialIDs[name] = credential.String("id")
+		path := "/connectors/" + c2.String("id") + "/credentials/" + credential.String("id")
+		must("POST", "/api/v1"+path+"/test", nil, name, "")
+		items := must("GET", "/api/admin/v1"+path+"/tools", nil, "", "")["items"].([]any)
+		if len(items) != 1 || items[0].(map[string]any)["name"] != "Tool-"+name {
+			t.Fatal("凭证目录未隔离")
 		}
 		tool := resource.Object(items[0].(map[string]any))
-		if tool.String("name") != "Tool-"+name {
-			t.Fatal("账号工具串用")
-		}
 		must("PATCH", "/api/admin/v1/connectors/"+c2.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
-	}
-	for _, name := range []string{"a", "b"} {
-		directory := must("GET", "/api/v1/connectors/"+c2.String("id")+"/tools", nil, name, "")
-		encoded, _ := json.Marshal(directory)
-		if strings.Contains(string(encoded), "credential_id") || len(directory["items"].([]any)) != 1 {
-			t.Fatal("用户工具目录泄露认证元信息或缺失")
+		out := must("POST", "/mcp"+path, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys[name], "")
+		if out["result"].(map[string]any)["tools"].([]any)[0].(map[string]any)["name"] != "Tool-"+name {
+			t.Fatal("网关跨凭证混用")
 		}
 	}
-	for _, name := range []string{"a", "b"} {
-		out := must("POST", "/mcp/connectors/"+c2.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys[name], "")
-		tools := out["result"].(map[string]any)["tools"].([]any)
-		if len(tools) != 1 || tools[0].(map[string]any)["name"] != "Tool-"+name {
-			t.Fatal("独立凭证代理目录串用")
+	t.Run("凭证返回所属平台用户", func(t *testing.T) {
+		path := "/api/v1/connectors/" + c2.String("id") + "/credentials/" + credentialIDs["b"]
+		credential := must("GET", path, nil, "b", "")
+		assertShareUser(t, credential["user"], users[1], "b", "b@example.com")
+		credential = must("PATCH", path, resource.Object{"name": "改名后的凭证"}, "b", `"1"`)
+		assertShareUser(t, credential["user"], users[1], "b", "b@example.com")
+		before := must("GET", "/api/v1/connectors", nil, "b", "")
+		if _, err := pool.Exec(ctx, `UPDATE users SET name='凭证用户',email='credential@example.com' WHERE id=$1`, users[1]); err != nil {
+			t.Fatal(err)
 		}
+		t.Cleanup(func() { _, _ = pool.Exec(ctx, `UPDATE users SET name='b',email='b@example.com' WHERE id=$1`, users[1]) })
+		items := must("GET", "/api/v1/connectors/"+c2.String("id")+"/credentials", nil, "b", "")["items"].([]any)
+		assertShareUser(t, items[0].(map[string]any)["user"], users[1], "凭证用户", "credential@example.com")
+		catalog := must("GET", "/api/v1/connectors", nil, "b", "")
+		if catalog.String("version") == before.String("version") {
+			t.Fatal("凭证用户资料变化未更新目录版本")
+		}
+		for _, raw := range catalog["connectors"].([]any) {
+			connector := raw.(map[string]any)
+			if connector["id"] == c2.String("id") {
+				credentials := connector["credentials"].([]any)
+				assertShareUser(t, credentials[0].(map[string]any)["user"], users[1], "凭证用户", "credential@example.com")
+			}
+		}
+		contexts := must("GET", "/api/admin/v1/connectors/"+c2.String("id")+"/tool-contexts", nil, "", "")["items"].([]any)
+		if len(contexts) != 2 {
+			t.Fatalf("管理端缺少用户凭证上下文: %v", contexts)
+		}
+		for _, raw := range contexts {
+			credential := resource.Object(raw.(map[string]any))
+			if credential.String("id") == credentialIDs["a"] {
+				assertShareUser(t, credential["user"], users[0], "a", "a@example.com")
+			} else {
+				assertShareUser(t, credential["user"], users[1], "凭证用户", "credential@example.com")
+			}
+		}
+	})
+	t.Run("会话明确绑定凭证", func(t *testing.T) {
+		id := c2.String("id")
+		second := must("POST", "/api/v1/connectors/"+id+"/credentials", resource.Object{"name": "第二份凭证", "http_headers": resource.Object{"X-Account": "Tool-second"}}, "a", "")
+		selected := resource.Object{"connector_ids": []string{id}}
+		out := must("POST", "/api/v1/resources/resolve", selected, "a", "")
+		if out.Bool("available") || out["issues"].([]any)[0].(map[string]any)["code"] != "credential_selection_required" {
+			t.Fatalf("多份凭证未要求选择: %v", out)
+		}
+		selected["connector_bindings"] = resource.Object{id: credentialIDs["a"]}
+		out = must("POST", "/api/v1/resources/resolve", selected, "a", "")
+		binding := out["connectors"].([]any)[0].(map[string]any)
+		if !out.Bool("available") || binding["credential_id"] != credentialIDs["a"] || !strings.HasSuffix(binding["mcp_gateway"].(map[string]any)["url"].(string), "/credentials/"+credentialIDs["a"]) {
+			t.Fatalf("解析未固定凭证: %v", out)
+		}
+		selected["connector_bindings"] = resource.Object{id: credentialIDs["b"]}
+		if code, _, _ := call("POST", "/api/v1/resources/resolve", selected, "a", ""); code != 404 {
+			t.Fatalf("可绑定他人凭证: %d", code)
+		}
+		if code, _, _ := call("POST", "/api/v1/resources/resolve", resource.Object{"connector_bindings": resource.Object{id: second["id"]}}, "a", ""); code != 400 {
+			t.Fatal("凭证绑定隐式添加了连接")
+		}
+		expert := must("POST", "/api/v1/experts", resource.Object{"name": "明确连接依赖", "prompt": "测试", "connectors": []resource.Object{{"connector_id": id, "required": true, "tool_denylist": []string{"Tool-a"}}}}, "a", "")
+		selected["expert_id"] = expert["id"]
+		selected["connector_bindings"] = resource.Object{id: credentialIDs["a"]}
+		out = must("POST", "/api/v1/resources/resolve", selected, "a", "")
+		if len(out["connectors"].([]any)[0].(map[string]any)["tools"].([]any)) != 0 {
+			t.Fatal("专家工具过滤未应用于所选凭证")
+		}
+		if code, _, _ := call("DELETE", "/api/admin/v1/connectors/"+id, nil, "", `"1"`); code != 409 {
+			t.Fatal("连接删除未检查专家引用")
+		}
+		must("DELETE", "/api/v1/experts/"+expert.String("id"), nil, "a", `"1"`)
+		must("DELETE", "/api/v1/connectors/"+id+"/credentials/"+second.String("id"), nil, "a", `"1"`)
+		out = must("POST", "/api/v1/resources/resolve", resource.Object{"connector_ids": []string{id}}, "a", "")
+		if out["connectors"].([]any)[0].(map[string]any)["credential_id"] != credentialIDs["a"] {
+			t.Fatal("唯一可用凭证未自动固定")
+		}
+	})
+	credentialPath := "/connectors/" + c2.String("id") + "/credentials/" + credentialIDs["a"]
+	must("DELETE", "/api/v1"+credentialPath, nil, "a", `"1"`)
+	if code, _, _ := call("POST", "/mcp"+credentialPath, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], ""); code != 404 {
+		t.Fatal("撤销后网关仍可用")
 	}
-	must("DELETE", "/api/v1/connectors/"+c2.String("id")+"/credential", nil, "a", "")
-	if code, _, _ := call("POST", "/mcp/connectors/"+c2.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], ""); code != 403 {
-		t.Fatal("撤销凭证后代理仍可使用")
-	}
-
-	directory := must("GET", "/api/v1/connectors/"+c2.String("id")+"/tools", nil, "a", "")
-	if len(directory["items"].([]any)) != 0 {
-		t.Fatal("撤销凭证后工具仍可用")
+	if code, _, _ := call("GET", "/api/v1"+credentialPath+"/tools", nil, "a", ""); code != 404 {
+		t.Fatal("撤销后目录仍可访问")
 	}
 	// OAuth 回调绑定 MCP id、state 和 PKCE，只能消费一次，Token 只存服务端。
 	var redirect, challenge string
@@ -690,8 +742,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		_, _ = io.WriteString(w, `{"access_token":"private-oauth-token","refresh_token":"private-refresh-token","token_type":"Bearer","expires_in":3600}`)
 	}))
 	defer oauthServer.Close()
-	p3 := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "OAuth MCP", "url": upstream.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauthServer.URL + "/authorize", "token_url": oauthServer.URL + "/token", "client_id": "test-client"}, "oauth_client_secret": "private-client-secret"}, "", "")
-	c3 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "OAuth 连接", "provider_id": p3.String("id"), "grants": grantA}, "", "")
+	p3 := resource.Object{"name": "OAuth MCP", "url": upstream.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauthServer.URL + "/authorize", "token_url": oauthServer.URL + "/token", "client_id": "test-client"}, "oauth_client_secret": "private-client-secret"}
+	c3 := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "OAuth 连接", "url": p3["url"], "authorization_mode": p3["authorization_mode"], "authorization_method": p3["authorization_method"], "oauth_config": p3["oauth_config"], "oauth_client_secret": p3["oauth_client_secret"], "grants": grantA}, "", "")
 	redirect = "http://localhost:8080/oauth/connectors/" + c3.String("id") + "/callback"
 	if c3.String("callback_url") != redirect {
 		t.Fatalf("创建 MCP 未返回专属回调地址：%v", c3)
@@ -700,11 +752,11 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if detail.String("callback_url") != redirect {
 		t.Fatal("MCP 详情回调地址与创建响应不一致")
 	}
-	other := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "另一个 OAuth 连接", "provider_id": p3.String("id")}, "", "")
+	other := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "另一个 OAuth 连接", "url": p3["url"], "authorization_mode": p3["authorization_mode"], "authorization_method": p3["authorization_method"], "oauth_config": p3["oauth_config"], "oauth_client_secret": p3["oauth_client_secret"]}, "", "")
 	if other.String("callback_url") == redirect || other.String("callback_url") == "" {
 		t.Fatal("同一模板下的 MCP 未区分回调地址")
 	}
-	auth := must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/oauth/authorizations", nil, "", "")
+	auth := must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/oauth/authorizations", resource.Object{"name": "测试凭证"}, "", "")
 	target, err := url.Parse(auth.String("authorization_url"))
 	if err != nil || target.Query().Get("code_challenge") == "" || target.Query().Get("redirect_uri") != redirect {
 		t.Fatal("授权 URL 未绑定回调地址或 PKCE")
@@ -731,18 +783,18 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		t.Fatalf("OAuth callback 可重放: %d", code)
 	}
 	status := must("GET", "/api/admin/v1/connector-authorizations/"+auth.String("id"), nil, "", "")
-	if status.String("status") != "authorized" {
+	if status.String("status") != "succeeded" {
 		t.Fatal("OAuth 状态未落库")
 	}
 	for _, scenario := range []string{"取消", "过期", "配置变更", "交换失败"} {
 		t.Run("OAuth 回调"+scenario, func(t *testing.T) {
-			auth := must("POST", "/api/admin/v1/connectors/"+other.String("id")+"/oauth/authorizations", nil, "", "")
+			auth := must("POST", "/api/admin/v1/connectors/"+other.String("id")+"/oauth/authorizations", resource.Object{"name": "测试凭证"}, "", "")
 			target, err := url.Parse(auth.String("authorization_url"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			path := other.String("callback_url") + "?state=" + url.QueryEscape(target.Query().Get("state")) + "&code=test-code"
-			wantCode, wantStatus := 400, "error"
+			wantCode, wantStatus := 400, "failed"
 			switch scenario {
 			case "取消":
 				path += "&error=access_denied"
@@ -750,6 +802,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 				_, err = pool.Exec(ctx, "UPDATE connector_oauth_requests SET expires_at=now()-interval '1 minute' WHERE id=$1", auth.String("id"))
 				wantStatus = "expired"
 			case "配置变更":
+				wantCode = 412
 				_, err = pool.Exec(ctx, "UPDATE connectors SET config_revision=config_revision+1 WHERE id=$1", other.String("id"))
 			case "交换失败":
 				wantCode = 502
@@ -771,8 +824,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		})
 	}
 	t.Run("个人 MCP OAuth 回调", func(t *testing.T) {
-		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "个人 OAuth MCP", "url": upstream.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": p3["oauth_config"], "oauth_client_secret": "private-client-secret"}, "a", "")
-		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人 OAuth 连接", "provider_id": provider.String("id")}, "a", "")
+		provider := resource.Object{"name": "个人 OAuth MCP", "url": upstream.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": p3["oauth_config"], "oauth_client_secret": "private-client-secret"}
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人 OAuth 连接", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"]}, "a", "")
 		redirect = "http://localhost:8080/oauth/connectors/" + connector.String("id") + "/callback"
 		if connector.String("callback_url") != redirect {
 			t.Fatal("个人 MCP 创建未返回专属回调地址")
@@ -781,7 +834,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if detail.String("callback_url") != redirect {
 			t.Fatal("个人 MCP 详情回调地址错误")
 		}
-		auth := must("POST", "/api/v1/connectors/"+connector.String("id")+"/oauth/authorizations", nil, "a", "")
+		auth := must("POST", "/api/v1/connectors/"+connector.String("id")+"/oauth/authorizations", resource.Object{"name": "测试凭证"}, "a", "")
 		target, err := url.Parse(auth.String("authorization_url"))
 		if err != nil || target.Query().Get("redirect_uri") != redirect {
 			t.Fatal("个人 MCP 授权 URL 未绑定回调地址")
@@ -795,15 +848,15 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("个人 MCP 公开回调失败：%d", code)
 		}
 		status := must("GET", "/api/v1/connector-authorizations/"+auth.String("id"), nil, "a", "")
-		if status.String("status") != "authorized" {
+		if status.String("status") != "succeeded" {
 			t.Fatal("个人 MCP OAuth 状态未落库")
 		}
 		var owner string
-		if err := pool.QueryRow(ctx, "SELECT user_id::text FROM connector_credentials WHERE connector_id=$1 AND status='authorized'", connector.String("id")).Scan(&owner); err != nil || owner != users[0] {
+		if err := pool.QueryRow(ctx, "SELECT user_id::text FROM connector_credentials WHERE connector_id=$1 AND revoked_at IS NULL", connector.String("id")).Scan(&owner); err != nil || owner != users[0] {
 			t.Fatalf("独立 OAuth 凭证未保存到发起用户：%s %v", owner, err)
 		}
-		must("POST", "/api/v1/connectors/"+connector.String("id")+"/test", nil, "a", "")
-		out := must("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], "")
+		must("POST", "/api/v1/connectors/"+connector.String("id")+"/credentials/"+status.String("credential_id")+"/test", nil, "a", "")
+		out := must("POST", "/mcp/connectors/"+connector.String("id")+"/credentials/"+status.String("credential_id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys["a"], "")
 		if out["result"] == nil || len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
 			t.Fatalf("个人 OAuth 工具未自动启用并下发：%v", out)
 		}
@@ -822,7 +875,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatal("可自动刷新的 OAuth 凭证不应要求手工重新授权")
 		}
 	}
-	refreshed := must("POST", "/mcp/connectors/"+c3.String("id"), resource.Object{"jsonrpc": "2.0", "id": "oauth", "method": "tools/list"}, invokeKeys["a"], "")
+	refreshed := must("POST", "/mcp/connectors/"+c3.String("id")+"/credentials/"+status.String("credential_id"), resource.Object{"jsonrpc": "2.0", "id": "oauth", "method": "tools/list"}, invokeKeys["a"], "")
 	if refreshed["result"] == nil {
 		t.Fatalf("OAuth 自动刷新失败: %v", refreshed)
 	}
@@ -973,27 +1026,31 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}))
 		defer remote.Close()
 		for _, mode := range []string{"none", "independent"} {
-			provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "共享认证-" + mode, "url": remote.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "a", "")
-			connector := must("POST", "/api/v1/connectors", resource.Object{"name": "共享认证-" + mode, "provider_id": provider["id"]}, "a", "")
+			provider := resource.Object{"name": "共享认证-" + mode, "url": remote.URL, "authorization_mode": mode, "authorization_method": "http_header"}
+			connector := must("POST", "/api/v1/connectors", resource.Object{"name": "共享认证-" + mode, "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"]}, "a", "")
 			path := "/api/v1/connectors/" + connector.String("id")
 			gateway := "/mcp/connectors/" + connector.String("id")
+			ownerPath := path
+			var recipient resource.Object
 			if mode == "independent" {
-				must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test-User": "owner"}}, "a", "")
+				owner := must("POST", path+"/credentials", resource.Object{"name": "所有者", "http_headers": resource.Object{"X-Test-User": "owner"}}, "a", "")
+				ownerPath += "/credentials/" + owner.String("id")
 			}
-			must("POST", path+"/test", nil, "a", "")
+			must("POST", ownerPath+"/test", nil, "a", "")
 			share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "connector", ID: connector.String("id")}}, UserIDs: []string{users[1]}}
 			must("POST", "/api/v1/resources/shares", share, "a", "")
 			list := resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 			want := ""
 			if mode == "independent" {
-				if code, _, _ := call("POST", gateway, list, invokeKeys["b"], ""); code != 403 {
+				if code, _, _ := call("POST", gateway, list, invokeKeys["b"], ""); code != 400 {
 					t.Fatalf("接收方使用了所有者认证: %d", code)
 				}
-				if items := must("GET", path+"/tools", nil, "b", "")["items"].([]any); len(items) != 0 {
-					t.Fatal("接收方收到所有者工具上下文")
+				if code, _, _ := call("GET", path+"/tools", nil, "b", ""); code != 400 {
+					t.Fatal("独立连接允许隐式目录")
 				}
-				must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test-User": "recipient"}}, "b", "")
-				must("POST", path+"/test", nil, "b", "")
+				recipient = must("POST", path+"/credentials", resource.Object{"name": "接收方", "http_headers": resource.Object{"X-Test-User": "recipient"}}, "b", "")
+				must("POST", path+"/credentials/"+recipient.String("id")+"/test", nil, "b", "")
+				gateway += "/credentials/" + recipient.String("id")
 				want = "recipient"
 			}
 			out := must("POST", gateway, list, invokeKeys["b"], "")
@@ -1004,8 +1061,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 				t.Fatalf("网关未返回当前用户的认证上下文: %v", tool)
 			}
 			if mode == "independent" {
-				must("DELETE", path+"/credential", nil, "b", "")
-				if len(must("GET", path+"/tools", nil, "a", "")["items"].([]any)) != 1 {
+				must("DELETE", path+"/credentials/"+recipient.String("id"), nil, "b", `"1"`)
+				if len(must("GET", ownerPath+"/tools", nil, "a", "")["items"].([]any)) != 1 {
 					t.Fatal("接收方撤销凭证影响所有者")
 				}
 			}
@@ -1017,6 +1074,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	})
 
 	t.Run("个人资源创作与分享", func(t *testing.T) { testPersonalResources(t, pool, handler, users) })
+	t.Run("凭证地址与全局调用密钥", func(t *testing.T) { testMCPAddresses(t, pool, handler, users, cookie) })
 
 	t.Run("百智云扣费限制系统资源", func(t *testing.T) {
 		must := func(method, path string, body any, token, revision string) resource.Object {
@@ -1027,7 +1085,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			}
 			return out
 		}
-		expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "百智云权限测试专家", "description": "访问控制测试", "prompt": "测试", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "providers": []any{}, "grants": grantA}, "", "")
+		expert := must("POST", "/api/admin/v1/experts", resource.Object{"name": "百智云权限测试专家", "description": "访问控制测试", "prompt": "测试", "rule_ids": []string{rule.String("id")}, "skill_ids": []string{skill.String("id")}, "connectors": []any{}, "grants": grantA}, "", "")
 		exec := func(query string, args ...any) {
 			t.Helper()
 			if _, err := pool.Exec(ctx, query, args...); err != nil {
@@ -1088,15 +1146,9 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			"/api/v1/skills/" + skill.String("id") + "/package",
 			"/api/v1/experts/" + expert.String("id") + "/skills/" + skill.String("id") + "/package",
 			"/api/v1/connectors/" + conn.String("id") + "/tools",
-			"/api/v1/connector-providers/" + provider.String("id"),
 		} {
 			if code, _, _ := call("GET", path, nil, "a", ""); code != 404 {
 				t.Fatalf("系统资源未拒绝访问: %s %d", path, code)
-			}
-		}
-		for _, raw := range must("GET", "/api/v1/connector-providers", nil, "a", "")["items"].([]any) {
-			if raw.(map[string]any)["ownership_type"] == "system" {
-				t.Fatal("非百智云用户收到系统连接模板")
 			}
 		}
 		if code, _, _ := call("POST", "/mcp/connectors/"+conn.String("id"), resource.Object{"jsonrpc": "2.0", "id": "blocked", "method": "initialize"}, invokeKeys["a"], ""); code != 404 {
@@ -1137,18 +1189,16 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
 	})
 
-	// 虚拟根的数据转换不可逆；可丢弃测试库从初始结构重建。
-	for i := len(migrations) - 1; i >= 0; i-- {
-		if filepath.Base(migrations[i]) == "000003_group_virtual_root.up.sql" {
-			continue
-		}
-		down, err := os.ReadFile(strings.Replace(migrations[i], ".up.sql", ".down.sql", 1))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = pool.Exec(ctx, string(down)); err != nil {
-			t.Fatal(err)
-		}
+	// 多凭证迁移拒绝有损回滚；测试库显式重建验证全量初始化。
+	down, err := os.ReadFile("../../migrations/000012_mcp_connector_credentials.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("多凭证迁移允许有损回滚")
+	}
+	if _, err = root.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE; CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
 	}
 	for _, path := range migrations {
 		up, err := os.ReadFile(path)
@@ -1171,8 +1221,16 @@ func assertNoIdentifiers(t *testing.T, value any) {
 	case resource.Object:
 		assertNoIdentifiers(t, map[string]any(v))
 	case map[string]any:
+		if _, credential := v["header_names"]; credential {
+			if _, exists := v["user_id"]; exists {
+				t.Fatal("凭证响应不应返回 user_id")
+			}
+			if _, exists := v["user"]; !exists {
+				t.Fatal("凭证响应缺少 user 字段")
+			}
+		}
 		for key, child := range v {
-			if key == "identifier" || key == "provider_identifier" {
+			if key == "identifier" || key == "provider_identifier" || key == "owner_user_id" || key == "owner_name" || key == "tools_path" {
 				t.Fatalf("API 响应不应暴露内部字段 %s", key)
 			}
 			assertNoIdentifiers(t, child)

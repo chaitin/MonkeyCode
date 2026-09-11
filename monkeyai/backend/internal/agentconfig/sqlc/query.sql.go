@@ -9,6 +9,35 @@ import (
 	"context"
 )
 
+const catalogConnectorLinks = `-- name: CatalogConnectorLinks :many
+SELECT
+    to_jsonb (t)
+FROM
+    expert_connectors t
+ORDER BY
+    expert_id
+`
+
+func (q *Queries) CatalogConnectorLinks(ctx context.Context) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogConnectorLinks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogConnectors = `-- name: CatalogConnectors :many
 SELECT
     to_jsonb (t)
@@ -49,64 +78,6 @@ WHERE
 
 func (q *Queries) CatalogExperts(ctx context.Context) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, catalogExperts)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const catalogProviderLinks = `-- name: CatalogProviderLinks :many
-SELECT
-    to_jsonb (t)
-FROM
-    expert_connector_providers t
-ORDER BY
-    expert_id
-`
-
-func (q *Queries) CatalogProviderLinks(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogProviderLinks)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const catalogProviders = `-- name: CatalogProviders :many
-SELECT
-    to_jsonb (t)
-FROM
-    connector_providers t
-WHERE
-    deleted_at IS NULL
-`
-
-func (q *Queries) CatalogProviders(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogProviders)
 	if err != nil {
 		return nil, err
 	}
@@ -239,23 +210,6 @@ func (q *Queries) CatalogSkills(ctx context.Context) ([][]byte, error) {
 		return nil, err
 	}
 	return items, nil
-}
-
-const credentialCurrent = `-- name: CredentialCurrent :one
-SELECT
-    oauth_expires_at IS NULL
-    OR oauth_expires_at > now()
-FROM
-    connector_credentials
-WHERE
-    id = $1
-`
-
-func (q *Queries) CredentialCurrent(ctx context.Context, id string) (*bool, error) {
-	row := q.db.QueryRow(ctx, credentialCurrent, id)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
 }
 
 const isAdmin = `-- name: IsAdmin :one

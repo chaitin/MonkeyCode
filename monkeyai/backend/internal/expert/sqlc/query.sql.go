@@ -11,23 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const createProviderLink = `-- name: CreateProviderLink :execresult
-INSERT INTO expert_connector_providers (expert_id, provider_id, required, tool_allowlist, tool_denylist)
+const createConnectorLink = `-- name: CreateConnectorLink :execresult
+INSERT INTO expert_connectors (expert_id, connector_id, required, tool_allowlist, tool_denylist)
     VALUES ($1, $2, $3, $4, $5)
 `
 
-type CreateProviderLinkParams struct {
+type CreateConnectorLinkParams struct {
 	ExpertID      string
-	ProviderID    string
+	ConnectorID   string
 	Required      bool
 	ToolAllowlist []string
 	ToolDenylist  []string
 }
 
-func (q *Queries) CreateProviderLink(ctx context.Context, arg CreateProviderLinkParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, createProviderLink,
+func (q *Queries) CreateConnectorLink(ctx context.Context, arg CreateConnectorLinkParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, createConnectorLink,
 		arg.ExpertID,
-		arg.ProviderID,
+		arg.ConnectorID,
 		arg.Required,
 		arg.ToolAllowlist,
 		arg.ToolDenylist,
@@ -96,13 +96,13 @@ func (q *Queries) CreateSkillLink(ctx context.Context, arg CreateSkillLinkParams
 	return err
 }
 
-const deleteProviderLinks = `-- name: DeleteProviderLinks :execresult
-DELETE FROM expert_connector_providers
+const deleteConnectorLinks = `-- name: DeleteConnectorLinks :execresult
+DELETE FROM expert_connectors
 WHERE expert_id = $1
 `
 
-func (q *Queries) DeleteProviderLinks(ctx context.Context, expertID string) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, deleteProviderLinks, expertID)
+func (q *Queries) DeleteConnectorLinks(ctx context.Context, expertID string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, deleteConnectorLinks, expertID)
 }
 
 const deleteResource = `-- name: DeleteResource :exec
@@ -180,43 +180,19 @@ func (q *Queries) IsAdmin(ctx context.Context, id string) (bool, error) {
 	return column_1, err
 }
 
-const listProviderConnectors = `-- name: ListProviderConnectors :many
-SELECT to_jsonb(c) FROM connectors c WHERE provider_id = $1 AND deleted_at IS NULL AND enabled
-`
-
-func (q *Queries) ListProviderConnectors(ctx context.Context, providerID string) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listProviderConnectors, providerID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
-			return nil, err
-		}
-		items = append(items, to_jsonb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listProviderLinks = `-- name: ListProviderLinks :many
+const listConnectorLinks = `-- name: ListConnectorLinks :many
 SELECT
     to_jsonb (x)
 FROM
-    expert_connector_providers x
+    expert_connectors x
 WHERE
     expert_id = $1
 ORDER BY
-    provider_id
+    connector_id
 `
 
-func (q *Queries) ListProviderLinks(ctx context.Context, expertID string) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listProviderLinks, expertID)
+func (q *Queries) ListConnectorLinks(ctx context.Context, expertID string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listConnectorLinks, expertID)
 	if err != nil {
 		return nil, err
 	}
@@ -329,18 +305,18 @@ func (q *Queries) ListSkillIDs(ctx context.Context, expertID string) ([]string, 
 	return items, nil
 }
 
-const lockProvider = `-- name: LockProvider :one
+const lockConnector = `-- name: LockConnector :one
 SELECT
     to_jsonb (p)
 FROM
-    connector_providers p
+    connectors p
 WHERE
     id = $1
-    AND deleted_at IS NULL FOR SHARE
+    AND deleted_at IS NULL AND enabled FOR SHARE
 `
 
-func (q *Queries) LockProvider(ctx context.Context, id string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, lockProvider, id)
+func (q *Queries) LockConnector(ctx context.Context, id string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockConnector, id)
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err

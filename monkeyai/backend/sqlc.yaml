@@ -170,18 +170,6 @@ sql:
       query_parameter_limit: 1
 - engine: postgresql
   schema: schema/schema.sql
-  queries: internal/mcp/provider.sql
-  gen:
-    go:
-      package: provider
-      out: internal/mcp/sqlc/provider
-      sql_package: pgx/v5
-      emit_pointers_for_null_types: true
-      emit_empty_slices: true
-      omit_unused_structs: true
-      query_parameter_limit: 1
-- engine: postgresql
-  schema: schema/schema.sql
   queries: internal/mcp/connector.sql
   gen:
     go:

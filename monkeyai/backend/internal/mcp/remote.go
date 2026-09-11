@@ -18,6 +18,10 @@ type remoteClient struct {
 	target, session, version string
 	headers                  map[string]string
 }
+type remoteStatus int
+
+func (s remoteStatus) Error() string { return fmt.Sprintf("MCP 返回 HTTP %d", s) }
+
 type rpcError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
@@ -66,7 +70,7 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("MCP 返回 HTTP %d", response.StatusCode)
+		return nil, remoteStatus(response.StatusCode)
 	}
 	if method == "initialize" {
 		c.session = response.Header.Get("Mcp-Session-Id")
@@ -162,7 +166,7 @@ func openRemote(ctx context.Context, target string, headers map[string]string) (
 	}
 	response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("MCP 初始化通知失败")
+		return nil, remoteStatus(response.StatusCode)
 	}
 	initialized = true
 	return c, nil

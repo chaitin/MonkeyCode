@@ -1,5 +1,7 @@
 # MonkeyAI Admin 数据模型设计
 
+> 2026-09-11 实施更新：Connector、凭证、工具和专家连接关联以 [连接与多凭证认证设计](connector-auth-design.md) 为准；新方案已实施，本文相关旧表结构保留供追溯。
+
 > 状态：方案设计草案
 >
 > 数据库语义：PostgreSQL

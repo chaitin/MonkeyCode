@@ -65,7 +65,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		for _, raw := range out[kind].([]any) {
 			o := resource.Object(raw.(map[string]any))
 			if o.String("id") == id {
-				if o.String("ownership_type") != "user" || o.String("owner_user_id") != users[0] || o.Int("revision") < 1 {
+				if o.String("ownership_type") != "user" || o["user"].(map[string]any)["id"] != users[0] || o.Int("revision") < 1 {
 					t.Fatalf("目录缺少个人资源管理信息: %v", o)
 				}
 				if (token != "a" || kind == "rules") && o["shared_users"] != nil {
@@ -80,7 +80,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("POST", "/rules", "", "", ruleInput, 401)
 	rule := call("POST", "/rules", "a", "", ruleInput, 201)
 	ruleID := rule.String("id")
-	if rule.String("owner_user_id") != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
+	if rule["user"].(map[string]any)["id"] != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
 		t.Fatalf("规则归属或授权被请求篡改: %v", rule)
 	}
 	call("POST", "/rules", "a", "", ruleInput, 409)
@@ -174,7 +174,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	upload("POST", "/skills", "", "", "初始正文", 401)
 	savedSkill := upload("POST", "/skills", "a", "", "初始正文", 201)
 	skillID := savedSkill.String("id")
-	if savedSkill.String("owner_user_id") != users[0] || savedSkill.String("ownership_type") != "user" || !savedSkill.Bool("enabled") || len(savedSkill["grants"].([]any)) != 0 {
+	if savedSkill["user"].(map[string]any)["id"] != users[0] || savedSkill.String("ownership_type") != "user" || !savedSkill.Bool("enabled") || len(savedSkill["grants"].([]any)) != 0 {
 		t.Fatalf("技能归属、启用状态或授权被篡改: %v", savedSkill)
 	}
 	call("GET", "/skills/"+skillID+"/manifest", "b", "", nil, 404)
@@ -187,7 +187,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	expert := call("POST", "/experts", "a", "", expertInput, 201)
 	expertID := expert.String("id")
 	expertPath := "/experts/" + expertID
-	if expert.String("owner_user_id") != users[0] || expert.String("ownership_type") != "user" || !expert.Bool("enabled") || len(expert["grants"].([]any)) != 0 {
+	if expert["user"].(map[string]any)["id"] != users[0] || expert.String("ownership_type") != "user" || !expert.Bool("enabled") || len(expert["grants"].([]any)) != 0 {
 		t.Fatalf("专家归属、启用状态或授权被篡改: %v", expert)
 	}
 	call("POST", "/experts", "a", "", expertInput, 409)
@@ -393,33 +393,24 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	}
 	call("DELETE", "/rules/"+otherRule.String("id"), "b", etag(otherRule), nil, 204)
 
-	provider := call("POST", "/connector-providers", "a", "", resource.Object{
-		"name": "个人服务", "identifier": "github", "url": "https://example.com/mcp", "authorization_mode": "independent", "authorization_method": "http_header", "ownership_type": "system", "owner_user_id": users[1],
-	}, 201)
-	providerID := provider.String("id")
-	if provider["identifier"] != nil || provider.String("owner_user_id") != users[0] || provider.String("ownership_type") != "user" {
-		t.Fatalf("个人 Provider 归属或 identifier 错误: %v", provider)
-	}
-	call("GET", "/connector-providers/"+providerID, "b", "", nil, 404)
-	call("POST", "/connectors", "b", "", resource.Object{"name": "他人服务", "provider_id": providerID}, 400)
 	connector := call("POST", "/connectors", "a", "", resource.Object{
-		"name": "个人连接", "provider_id": providerID, "url": "https://override.example.com/mcp", "authorization_mode": "centralized", "enabled": false, "grants": []resource.Object{{"all_users": true}},
+		"name": "个人连接", "url": "https://example.com/mcp", "authorization_mode": "independent", "authorization_method": "http_header", "enabled": false, "grants": []resource.Object{{"all_users": true}},
 	}, 201)
 	connectorID := connector.String("id")
 	if connector.String("url") != "https://example.com/mcp" || connector.String("authorization_mode") != "independent" || !connector.Bool("enabled") || len(connector["grants"].([]any)) != 0 {
 		t.Fatalf("个人 Connector 覆盖了连接模板: %v", connector)
 	}
-	call("PUT", "/connectors/"+connectorID+"/credential", "a", "", resource.Object{"http_headers": resource.Object{"X-Test-Key": "personal-header-secret"}}, 204)
+	call("POST", "/connectors/"+connectorID+"/credentials", "a", "", resource.Object{"name": "测试凭证", "http_headers": resource.Object{"X-Test-Key": "personal-header-secret"}}, 201)
 	connector = call("GET", "/connectors/"+connectorID, "a", "", nil, 200)
 	if !connector.Bool("credential_configured") {
 		t.Fatal("个人凭证状态未返回")
 	}
 	connector = call("PUT", "/connectors/"+connectorID, "a", etag(connector), resource.Object{"name": "编辑个人连接"}, 200)
-	if !connector.Bool("credential_configured") || connector.String("provider_id") != providerID {
+	if !connector.Bool("credential_configured") {
 		t.Fatal("编辑连接丢失模板或凭证")
 	}
 	call("GET", "/connectors/"+connectorID, "b", "", nil, 404)
-	call("PUT", "/connectors/"+connectorID+"/credential", "b", "", resource.Object{"http_headers": resource.Object{"X-Test-Key": "other"}}, 404)
+	call("POST", "/connectors/"+connectorID+"/credentials", "b", "", resource.Object{"name": "测试凭证", "http_headers": resource.Object{"X-Test-Key": "other"}}, 404)
 	call("DELETE", "/connectors/"+connectorID, "b", etag(connector), nil, 404)
 	if !contains("connectors", "a", connectorID) || contains("connectors", "b", connectorID) {
 		t.Fatal("个人 Connector 可见范围错误")
@@ -432,12 +423,11 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		t.Fatal("共享工具目录或版本未更新")
 	}
 	call("GET", "/connectors/"+connectorID, "b", "", nil, 404)
-	call("GET", "/connector-providers/"+providerID, "b", "", nil, 404)
 	call("PUT", "/connectors/"+connectorID, "b", etag(connector), resource.Object{"name": "越权编辑"}, 404)
 	call("DELETE", "/connectors/"+connectorID, "b", etag(connector), nil, 404)
 	call("POST", "/resources/shares", "b", "", resource.ShareInput{Resources: connectorShare.Resources, UserIDs: []string{users[0]}}, 404)
-	call("PUT", "/connectors/"+connectorID+"/credential", "b", "", resource.Object{"http_headers": resource.Object{"X-Test-Key": "recipient-secret"}}, 204)
-	boundExpert := call("POST", "/experts", "b", "", resource.Object{"name": "使用共享连接的专家", "prompt": "测试", "providers": []resource.Object{{"provider_id": providerID}}}, 201)
+	call("POST", "/connectors/"+connectorID+"/credentials", "b", "", resource.Object{"name": "测试凭证", "http_headers": resource.Object{"X-Test-Key": "recipient-secret"}}, 201)
+	boundExpert := call("POST", "/experts", "b", "", resource.Object{"name": "使用共享连接的专家", "prompt": "测试", "connectors": []resource.Object{{"connector_id": connectorID}}}, 201)
 	boundPath := "/experts/" + boundExpert.String("id")
 	if out := call("GET", boundPath+"/manifest", "b", "", nil, 200); !out.Bool("available") {
 		t.Fatalf("共享连接不能用于专家: %v", out)
@@ -447,7 +437,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		t.Fatal("撤销后仍下发共享工具")
 	}
 	call("GET", "/connectors/"+connectorID+"/tools", "b", "", nil, 404)
-	call("PUT", "/connectors/"+connectorID+"/credential", "b", "", resource.Object{"http_headers": resource.Object{}}, 404)
+	call("POST", "/connectors/"+connectorID+"/credentials", "b", "", resource.Object{"name": "测试凭证", "http_headers": resource.Object{}}, 404)
 	if out := call("GET", boundPath+"/manifest", "b", "", nil, 200); out.Bool("available") {
 		t.Fatalf("共享连接撤权后专家仍可用: %v", out)
 	}
@@ -458,7 +448,6 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		t.Fatal("工具共享名单重复或缺失")
 	}
 
-	call("DELETE", "/connector-providers/"+providerID, "a", etag(provider), nil, 409)
 	call("DELETE", "/connectors/"+connectorID, "a", etag(connector), nil, 204)
 	call("GET", "/connectors/"+connectorID+"/tools", "b", "", nil, 404)
 	var grants int
@@ -469,6 +458,4 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	if err = pool.QueryRow(t.Context(), `SELECT count(*) FROM connector_credentials WHERE connector_id=$1 AND revoked_at IS NULL`, connectorID).Scan(&activeCredentials); err != nil || activeCredentials != 0 {
 		t.Fatalf("删除 Connector 未撤销凭证: count=%d err=%v", activeCredentials, err)
 	}
-	call("DELETE", "/connector-providers/"+providerID, "a", etag(provider), nil, 204)
-	call("GET", "/connector-providers/"+providerID, "a", "", nil, 404)
 }

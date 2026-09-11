@@ -50,7 +50,7 @@ test("tools only configure remote MCP servers with client or centralized auth", 
   assert.match(source, /<TabsTrigger value="httpHeader">/)
   assert.match(source, /<TabsTrigger value="none">/)
   assert.doesNotMatch(source, /ToggleGroup/)
-  assert.match(source, /name="httpHeaders"/)
+  assert.match(source, /ConnectorCredentials/)
   assert.doesNotMatch(source, /name="keyName"|name="keyValue"/)
   assert.match(source, /defaultValue=/)
   assert.match(

@@ -2,68 +2,64 @@ package mcp
 
 import (
 	"context"
-	"net/http"
-	"strings"
+	"errors"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/go-chi/chi/v5"
 )
 
-func (s *Service) listProviders(w http.ResponseWriter, r *http.Request) {
-	u, _ := identity.UserFromContext(r.Context())
-	allowed, err := resource.CanUseSystem(r.Context(), s.Store.Pool, u.ID)
-	if err != nil {
-		resource.Fail(w, err)
-		return
+func (s *Service) gateway(c resource.Object, credential string) resource.Object {
+	url := s.PublicURL + "/mcp/connectors/" + c.String("id")
+	if credential != "" {
+		url += "/credentials/" + credential
 	}
-	items, err := resource.DecodeObjects(sqlc.New(s.Store.Pool).ListUserProviders(r.Context(), sqlc.ListUserProvidersParams{UserID: u.ID, SystemAccess: allowed}))
-	if err != nil {
-		resource.Fail(w, err)
-		return
-	}
-	for _, p := range items {
-		userProvider(p)
-	}
-	resource.JSON(w, http.StatusOK, resource.Object{"items": items})
+	return resource.Object{"url": url, "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}
 }
-
-func (s *Service) getProvider(w http.ResponseWriter, r *http.Request) {
-	u, _ := identity.UserFromContext(r.Context())
-	p, err := s.userProvider(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID)
-	if err != nil {
-		resource.Fail(w, err)
-		return
+func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	out := resource.Object{"id": c["id"], "name": c["name"], "authorization_mode": c["authorization_mode"], "authorization_method": c["authorization_method"], "icon_path": "", "capabilities": []string{"catalog", "invoke"}}
+	if key := c.String("icon_s3_key"); key != "" {
+		out["icon_path"] = "/api/v1/connectors/" + c.String("id") + "/icon?v=" + resource.Hash(key)
 	}
-	userProvider(p)
-	resource.ETag(w, p)
-	resource.JSON(w, http.StatusOK, p)
-}
-
-func userProvider(p resource.Object) {
-	delete(p, "identifier")
-	p["icon_path"] = ""
-	if key := p.String("icon_s3_key"); key != "" {
-		p["icon_path"] = "/api/v1/connector-providers/" + p.String("id") + "/icon?v=" + resource.Hash(key)
+	if c.String("authorization_mode") == "independent" {
+		creds, err := s.Credentials(ctx, q, c, user)
+		if err != nil {
+			return nil, err
+		}
+		for _, cred := range creds {
+			// 自动刷新令牌的时间变化不影响公开目录版本。
+			delete(cred, "updated_at")
+			delete(cred, "oauth_expires_at")
+			tools, err := s.Tools(ctx, q, c, user, cred.String("id"), false)
+			if err != nil {
+				return nil, err
+			}
+			cred["tools"], cred["tools_version"] = safeTools(tools), resource.Hash(safeTools(tools))
+			if cred.String("authorization_status") == "authorized" {
+				cred["mcp_gateway"] = s.gateway(c, cred.String("id"))
+			}
+		}
+		out["credentials"] = creds
+		return out, nil
 	}
-	delete(p, "icon_s3_key")
-	delete(p, "oauth_client_secret")
-}
-
-func userIcon(o resource.Object) {
-	path := o.String("icon_path")
-	if id := o.String("provider_id"); id != "" {
-		o["icon_path"] = strings.Replace(path, "/api/admin/v1/connector-providers/"+id, "/api/v1/connectors/"+o.String("id"), 1)
-	} else {
-		o["icon_path"] = strings.Replace(path, "/api/admin/v1/", "/api/v1/", 1)
+	out["authorization_status"] = "not_required"
+	out["connection_status"] = c["connection_status"]
+	cred, err := s.Credential(ctx, q, c, user, "")
+	if err != nil && !errors.Is(err, authorizationRequired) {
+		return nil, err
 	}
-}
-
-func (s *Service) userProvider(ctx context.Context, q resource.Queryer, id, user string) (resource.Object, error) {
-	allowed, err := resource.CanUseSystem(ctx, q, user)
+	if c.String("authorization_mode") == "centralized" {
+		out["authorization_status"], out["connection_status"] = credentialStatus(c, cred), "unknown"
+		if cred != nil {
+			out["connection_status"] = cred["connection_status"]
+			out["credential_id"] = cred["id"]
+		}
+	}
+	tools, err := credentialTools(ctx, q, c, cred, false)
 	if err != nil {
 		return nil, err
 	}
-	return resource.DecodeObject(sqlc.New(q).GetUserProvider(ctx, sqlc.GetUserProviderParams{ID: id, UserID: user, SystemAccess: allowed}))
+	out["tools"], out["tools_version"] = safeTools(tools), resource.Hash(safeTools(tools))
+	if c.String("authorization_mode") == "none" || credentialStatus(c, cred) == "authorized" {
+		out["mcp_gateway"] = s.gateway(c, cred.String("id"))
+	}
+	return out, nil
 }

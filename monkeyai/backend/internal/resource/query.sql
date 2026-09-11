@@ -208,13 +208,13 @@ INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_i
     VALUES (sqlc.arg(resource_type), sqlc.arg(resource_id), NULLIF (sqlc.arg(user_id)::text,
 	'')::UUID,NULLIF(sqlc.arg(group_id)::text,'')::uuid, sqlc.arg(all_users), 'read_only', sqlc.arg(usage_requirement), sqlc.arg(granted_by_user_id));
 
--- name: GetOwnerName :one
+-- name: ListOwners :many
 SELECT
-    name
+    id, name, email
 FROM
     users
 WHERE
-    id = $1;
+    id::text = ANY ($1::text[]);
 
 -- name: CanUseSystem :one
 SELECT EXISTS (

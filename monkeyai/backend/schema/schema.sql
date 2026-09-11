@@ -742,3 +742,44 @@ ALTER TABLE experts
     ADD COLUMN owner_user_id uuid REFERENCES users(id);
 
 ALTER TABLE experts ALTER COLUMN owner_user_id SET NOT NULL;
+
+CREATE TABLE expert_connectors (
+    expert_id uuid NOT NULL REFERENCES experts(id),
+    connector_id uuid NOT NULL REFERENCES connectors(id),
+    required boolean NOT NULL DEFAULT true,
+    tool_allowlist text[] NOT NULL DEFAULT '{}',
+    tool_denylist text[] NOT NULL DEFAULT '{}',
+    PRIMARY KEY (expert_id, connector_id)
+);
+
+ALTER TABLE connectors ADD COLUMN icon_s3_key text NOT NULL DEFAULT '';
+
+ALTER TABLE connector_credentials
+    DROP CONSTRAINT connector_credentials_connector_id_user_id_key,
+    ADD COLUMN name text NOT NULL DEFAULT '原有凭证' CHECK (char_length(btrim(name)) BETWEEN 1 AND 128),
+    ADD COLUMN revision bigint NOT NULL DEFAULT 1,
+    ADD COLUMN connection_status text NOT NULL DEFAULT 'unknown' CHECK (connection_status IN ('unknown','connected','error')),
+    ADD COLUMN last_checked_at timestamptz,
+    ADD COLUMN last_error text;
+
+ALTER TABLE connector_credentials DROP COLUMN method, DROP COLUMN status;
+
+ALTER TABLE connector_credentials ADD CONSTRAINT connector_credentials_id_connector_key UNIQUE(id, connector_id);
+
+ALTER TABLE mcp_tools ADD CONSTRAINT mcp_tools_credential_connector_fkey
+    FOREIGN KEY (credential_id, connector_id) REFERENCES connector_credentials(id, connector_id);
+
+ALTER TABLE connector_oauth_requests
+    ADD COLUMN credential_id uuid REFERENCES connector_credentials(id),
+    ADD COLUMN credential_revision bigint,
+    ADD COLUMN name text NOT NULL DEFAULT '原有凭证',
+    DROP COLUMN centralized;
+
+ALTER TABLE connector_oauth_requests ADD CONSTRAINT connector_oauth_requests_status_check
+    CHECK (status IN ('pending','processing','succeeded','failed','expired'));
+
+DROP TABLE expert_connector_providers;
+
+ALTER TABLE connectors DROP COLUMN provider_id;
+
+DROP TABLE connector_providers;

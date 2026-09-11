@@ -11,13 +11,23 @@ export type Grant = {
   group_id?: string | null
   usage_requirement: "optional" | "required"
 }
+export type Credential = {
+  id: string
+  connector_id: string
+  user: ResourceRow["user"] | null
+  name: string
+  revision: number
+  authorization_status: "authorized" | "authorization_required" | "revoked"
+  connection_status: "unknown" | "connected" | "error"
+  header_names: string[]
+  last_error: string | null
+}
 export type ResourceRow = {
   id: string
   name: string
   revision: number
   ownership_type: "system" | "user"
-  owner_user_id: string
-  owner_name?: string
+  user: { id: string; name: string; email: string }
   description: string
   content: string
   enabled: boolean
@@ -29,14 +39,14 @@ export type ResourceRow = {
   default_model_id: string | null
   rule_ids: string[]
   skill_ids: string[]
-  providers: {
-    provider_id: string
+  connectors: {
+    connector_id: string
     required: boolean
     tool_allowlist: string[]
     tool_denylist: string[]
   }[]
   updated_at: string
-  provider_id: string
+  credentials: Credential[]
   url: string
   authorization_mode: "none" | "centralized" | "independent"
   authorization_method: "oauth" | "http_header" | null

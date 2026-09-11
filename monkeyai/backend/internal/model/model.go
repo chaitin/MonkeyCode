@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+)
 
 type Protocol string
 
@@ -27,7 +31,8 @@ type Model struct {
 	SharedUsers      []Subject      `json:"-"`
 	ID               string         `json:"id"`
 	OwnershipType    string         `json:"ownership_type"`
-	OwnerUserID      string         `json:"owner_user_id"`
+	OwnerUserID      string         `json:"-"`
+	User             resource.User  `json:"user"`
 	ModelID          string         `json:"model_id"`
 	DisplayName      string         `json:"display_name"`
 	Protocol         Protocol       `json:"protocol"`
@@ -44,19 +49,19 @@ type Model struct {
 }
 
 type AgentModel struct {
-	OwnershipType       string     `json:"ownership_type"`
-	OwnerUserID         string     `json:"owner_user_id"`
-	Creator             *Subject   `json:"creator,omitempty"`
-	SharedUsers         *[]Subject `json:"shared_users,omitempty"`
-	ID                  string     `json:"id"`
-	Model               string     `json:"model"`
-	DisplayName         string     `json:"display_name"`
-	Protocol            Protocol   `json:"protocol"`
-	ContextWindowTokens int64      `json:"context_window_tokens"`
-	MaxOutputTokens     int64      `json:"max_output_tokens"`
-	SupportsVision      bool       `json:"supports_vision"`
-	CreditMultiplier    float64    `json:"credit_multiplier"`
-	UpdatedAt           time.Time  `json:"-"`
+	OwnershipType       string        `json:"ownership_type"`
+	User                resource.User `json:"user"`
+	Creator             *Subject      `json:"creator,omitempty"`
+	SharedUsers         *[]Subject    `json:"shared_users,omitempty"`
+	ID                  string        `json:"id"`
+	Model               string        `json:"model"`
+	DisplayName         string        `json:"display_name"`
+	Protocol            Protocol      `json:"protocol"`
+	ContextWindowTokens int64         `json:"context_window_tokens"`
+	MaxOutputTokens     int64         `json:"max_output_tokens"`
+	SupportsVision      bool          `json:"supports_vision"`
+	CreditMultiplier    float64       `json:"credit_multiplier"`
+	UpdatedAt           time.Time     `json:"-"`
 }
 
 type Target struct {

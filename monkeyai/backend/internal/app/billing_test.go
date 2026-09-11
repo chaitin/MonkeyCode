@@ -314,24 +314,28 @@ func TestBillingIntegration(t *testing.T) {
 	}))
 	defer mcpUpstream.Close()
 	for _, mode := range []string{"centralized", "independent", "none"} {
-		provider := must("POST", "/api/admin/v1/connector-providers", resource.Object{"name": "计费工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
-		connector := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "连接-" + mode, "description": "测试", "provider_id": provider.String("id"), "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}, "")
+		provider := resource.Object{"name": "计费工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}
+		connector := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "连接-" + mode, "description": "测试", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"], "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}, "")
 		path := "/api/admin/v1/connectors/" + connector.String("id")
+		credentialID := ""
+		gateway := "/mcp/connectors/" + connector.String("id")
 		if mode != "none" {
-			credentialPath := path + "/credential"
+			credentialPath := path + "/credentials"
 			if mode == "independent" {
-				credentialPath = "/api/v1/connectors/" + connector.String("id") + "/credential"
+				credentialPath = "/api/v1/connectors/" + connector.String("id") + "/credentials"
 			}
-			must("PUT", credentialPath, resource.Object{"http_headers": resource.Object{"X-Test": "billing"}}, "")
+			credential := must("POST", credentialPath, resource.Object{"name": "计费凭证", "http_headers": resource.Object{"X-Test": "billing"}}, "")
+			credentialID = credential.String("id")
+			gateway += "/credentials/" + credentialID
 		}
 		testPath := path + "/test"
 		if mode == "independent" {
-			testPath = "/api/v1/connectors/" + connector.String("id") + "/test"
+			testPath = "/api/v1/connectors/" + connector.String("id") + "/credentials/" + credentialID + "/test"
 		}
 		must("POST", testPath, nil, "")
 		toolsPath := path + "/tools"
 		if mode == "independent" {
-			toolsPath += "?user_id=" + user
+			toolsPath = path + "/credentials/" + credentialID + "/tools"
 		}
 		list := must("GET", toolsPath, nil, "")["items"].([]any)
 		tool := resource.Object(list[0].(map[string]any))
@@ -341,7 +345,7 @@ func TestBillingIntegration(t *testing.T) {
 		}
 		must("PATCH", path+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": cost}, "")
 		for _, failed := range []bool{false, true} {
-			_, _, h := call("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search", "arguments": resource.Object{"fail": failed}}}, key, "")
+			_, _, h := call("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search", "arguments": resource.Object{"fail": failed}}}, key, "")
 			id := h.Get("X-Billing-Transaction-ID")
 			if id == "" {
 				t.Fatalf("MCP %s 缺少交易", mode)
@@ -355,8 +359,24 @@ func TestBillingIntegration(t *testing.T) {
 				t.Fatalf("MCP %s %t: %v", mode, failed, detail)
 			}
 		}
+		if mode == "independent" {
+			request := resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search"}}
+			code, _, _ := call("POST", gateway, request, key, "cross-credential")
+			if code != 200 {
+				t.Fatal("第一次凭证调用失败")
+			}
+			second := must("POST", "/api/v1/connectors/"+connector.String("id")+"/credentials", resource.Object{"name": "第二份", "http_headers": resource.Object{"X-Test": "second"}}, "")
+			cp := "/connectors/" + connector.String("id") + "/credentials/" + second.String("id")
+			must("POST", "/api/v1"+cp+"/test", nil, "")
+			two := must("GET", "/api/admin/v1"+cp+"/tools", nil, "")["items"].([]any)[0].(map[string]any)
+			must("PATCH", path+"/tools/"+two["id"].(string), resource.Object{"enabled": true, "credits_per_call": "0"}, "")
+			before := toolCalls.Load()
+			code, _, _ = call("POST", "/mcp"+cp, request, key, "cross-credential")
+			if code != 409 || toolCalls.Load() != before {
+				t.Fatal("同幂等键跨凭证执行了第二次工具调用")
+			}
+		}
 		if mode == "centralized" {
-			gateway := "/mcp/connectors/" + connector.String("id")
 			request := resource.Object{"jsonrpc": "2.0", "id": "client-call", "method": "tools/call", "params": json.RawMessage(`{"name":"search","arguments":{"value":9007199254740993},"_meta":{"trace":"request-trace"}}`)}
 			code, out, first := call("POST", gateway, request, key, "mcp-once")
 			if code != 200 || out.String("id") != "client-call" || out["result"] == nil {
@@ -394,15 +414,18 @@ func TestBillingIntegration(t *testing.T) {
 
 	}
 	for _, mode := range []string{"none", "independent"} {
-		provider := must("POST", "/api/v1/connector-providers", resource.Object{"name": "个人工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}, "")
-		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人连接-" + mode, "provider_id": provider["id"]}, "")
+		provider := resource.Object{"name": "个人工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}
+		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "个人连接-" + mode, "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"]}, "")
 		path := "/api/v1/connectors/" + connector.String("id")
+		gateway := "/mcp/connectors/" + connector.String("id")
 		if mode == "independent" {
-			must("PUT", path+"/credential", resource.Object{"http_headers": resource.Object{"X-Test": "personal"}}, "")
+			credential := must("POST", path+"/credentials", resource.Object{"name": "个人凭证", "http_headers": resource.Object{"X-Test": "personal"}}, "")
+			path += "/credentials/" + credential.String("id")
+			gateway += "/credentials/" + credential.String("id")
 		}
 		must("POST", path+"/test", nil, "")
 		before := toolCalls.Load()
-		code, out, headers := call("POST", "/mcp/connectors/"+connector.String("id"), resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search"}}, key, "")
+		code, out, headers := call("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search"}}, key, "")
 		id := headers.Get("X-Billing-Transaction-ID")
 		if code != 200 || out["result"] == nil || out["error"] != nil || id == "" || toolCalls.Load() != before+1 {
 			t.Fatalf("个人 MCP %s 发现后不能直接调用：%d %v", mode, code, out)

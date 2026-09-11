@@ -22,10 +22,30 @@ type Service struct {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, UserFields: []string{"name", "description", "prompt", "default_model_id", "rule_ids", "skill_ids", "providers"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, UserFields: []string{"name", "description", "prompt", "default_model_id", "rule_ids", "skill_ids", "connectors"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	if _, exists := in["providers"]; exists {
+		return resource.Invalid("专家依赖请使用 connectors")
+	}
+	if raw, exists := in["connectors"]; exists {
+		b, err := json.Marshal(raw)
+		var links []struct {
+			ConnectorID string   `json:"connector_id"`
+			Required    *bool    `json:"required"`
+			Allow       []string `json:"tool_allowlist"`
+			Deny        []string `json:"tool_denylist"`
+		}
+		if err != nil || string(b) == "null" || json.Unmarshal(b, &links) != nil {
+			return resource.Invalid("连接依赖格式无效")
+		}
+		for _, link := range links {
+			if link.ConnectorID == "" {
+				return resource.Invalid("连接依赖必须包含 connector_id")
+			}
+		}
+	}
 	personal := in.String("ownership_type") == "user"
 	if personal {
 		for _, key := range []string{"description", "prompt", "default_model_id"} {
@@ -79,12 +99,12 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	for _, link := range []struct {
 		key, kind string
 		lock      func(context.Context, string) ([]byte, error)
-	}{{"rule_ids", "rule", queries.LockRule}, {"skill_ids", "skill", queries.LockSkill}, {"providers", "provider", queries.LockProvider}} {
+	}{{"rule_ids", "rule", queries.LockRule}, {"skill_ids", "skill", queries.LockSkill}, {"connectors", "connector", queries.LockConnector}} {
 		ids := resource.Strings(in[link.key])
-		if link.kind == "provider" {
+		if link.kind == "connector" {
 			ids = nil
-			for _, p := range providerLinks(in[link.key]) {
-				ids = append(ids, p.String("provider_id"))
+			for _, p := range connectorLinks(in[link.key]) {
+				ids = append(ids, p.String("connector_id"))
 			}
 		}
 		seen := map[string]bool{}
@@ -102,11 +122,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 			}
 			ok := o.String("ownership_type") == "system"
 			if personal {
-				if link.kind == "provider" {
-					ok, err = s.providerAvailable(ctx, tx, o, in.String("actor_id"))
-				} else {
-					ok, err = resource.Accessible(ctx, tx, link.kind, o, in.String("actor_id"))
-				}
+				ok, err = resource.Accessible(ctx, tx, link.kind, o, in.String("actor_id"))
 				if err != nil {
 					return err
 				}
@@ -119,37 +135,11 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	return nil
 }
 
-func (s *Service) providerAvailable(ctx context.Context, tx pgx.Tx, provider resource.Object, actor string) (bool, error) {
-	if !provider.Bool("enabled") {
-		return false, nil
-	}
-	if provider.String("ownership_type") == "system" {
-		ok, err := resource.CanUseSystem(ctx, tx, actor)
-		if err != nil || ok {
-			return ok, err
-		}
-	}
-	if provider.String("owner_user_id") == actor {
-		return true, nil
-	}
-	connectors, err := resource.DecodeObjects(sqlc.New(tx).ListProviderConnectors(ctx, provider.String("id")))
-	if err != nil {
-		return false, err
-	}
-	for _, connector := range connectors {
-		ok, err := resource.Accessible(ctx, tx, "connector", connector, actor)
-		if err != nil || ok {
-			return ok, err
-		}
-	}
-	return false, nil
-}
-
 func (s *Service) RegisterAgent(r chi.Router) {
 	s.CRUD.RegisterAgent(r)
 }
 
-func providerLinks(v any) []resource.Object {
+func connectorLinks(v any) []resource.Object {
 	b, _ := json.Marshal(v)
 	out := []resource.Object{}
 	_ = json.Unmarshal(b, &out)
@@ -178,18 +168,18 @@ func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) erro
 			}
 		}
 	}
-	if _, ok := in["providers"]; ok {
-		if _, err := sqlc.New(tx).DeleteProviderLinks(ctx, in.String("id")); err != nil {
+	if _, ok := in["connectors"]; ok {
+		if _, err := sqlc.New(tx).DeleteConnectorLinks(ctx, in.String("id")); err != nil {
 			return err
 		}
-		for _, p := range providerLinks(in["providers"]) {
+		for _, p := range connectorLinks(in["connectors"]) {
 			required := true
 			if v, ok := p["required"].(bool); ok {
 				required = v
 			}
-			if _, err := sqlc.New(tx).CreateProviderLink(ctx, sqlc.CreateProviderLinkParams{
+			if _, err := sqlc.New(tx).CreateConnectorLink(ctx, sqlc.CreateConnectorLinkParams{
 				ExpertID:      in.String("id"),
-				ProviderID:    p.String("provider_id"),
+				ConnectorID:   p.String("connector_id"),
 				Required:      required,
 				ToolAllowlist: resource.Strings(p["tool_allowlist"]),
 				ToolDenylist:  resource.Strings(p["tool_denylist"]),
@@ -211,8 +201,8 @@ func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.O
 		return err
 	}
 	o["rule_ids"], o["skill_ids"] = rules, skills
-	p, err := resource.DecodeObjects(sqlc.New(q).ListProviderLinks(ctx, o.String("id")))
-	o["providers"] = p
+	p, err := resource.DecodeObjects(sqlc.New(q).ListConnectorLinks(ctx, o.String("id")))
+	o["connectors"] = p
 	return err
 }
 func (s *Service) RegisterAdmin(r chi.Router) {

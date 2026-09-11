@@ -1,5 +1,7 @@
 # MonkeyAI 技能、专家、规则与 Connector 设计
 
+> 2026-09-11 实施更新：Connector、凭证和专家连接依赖以 [连接与多凭证认证设计](connector-auth-design.md) 为准；新方案已实施，本文相关旧设计保留供追溯。
+
 > 状态：已确认设计
 >
 > 适用范围：MonkeyAI Admin、MonkeyCode Desktop、OhMyAgent

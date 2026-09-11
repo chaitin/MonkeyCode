@@ -10,14 +10,10 @@ import (
 )
 
 const createResource = `-- name: CreateResource :exec
-INSERT INTO connectors (provider_id, name, description, url, authorization_mode, authorization_method, oauth_config,
+INSERT INTO connectors (name, description, url, authorization_mode, authorization_method, oauth_config,
     oauth_client_secret, enabled, config_revision, connection_status, id, owner_user_id, ownership_type)
     VALUES (
-        CASE WHEN $1::jsonb ? 'provider_id' THEN
-            ($1::jsonb ->> 'provider_id')::uuid
-        ELSE
-            NULL
-        END, CASE WHEN $1::jsonb ? 'name' THEN
+        CASE WHEN $1::jsonb ? 'name' THEN
             ($1::jsonb ->> 'name')::text
         ELSE
             NULL
@@ -49,8 +45,10 @@ func (q *Queries) CreateResource(ctx context.Context, data []byte) error {
 const deleteResource = `-- name: DeleteResource :exec
 WITH revoked AS (
     UPDATE connector_credentials
-    SET revoked_at = now(), status = 'revoked', updated_at = now()
+    SET revoked_at = now(), revision = revision + 1, updated_at = now()
     WHERE connector_credentials.connector_id = $1 AND connector_credentials.revoked_at IS NULL
+), invalidated AS (
+    UPDATE mcp_tools SET deleted_at = now() WHERE connector_id = $1 AND deleted_at IS NULL
 )
 UPDATE
     connectors
@@ -205,11 +203,6 @@ const updateResource = `-- name: UpdateResource :exec
 UPDATE
     connectors
 SET
-    provider_id = CASE WHEN $1::jsonb ? 'provider_id' THEN
-        ($1::jsonb ->> 'provider_id')::uuid
-    ELSE
-        provider_id
-    END,
     name = CASE WHEN $1::jsonb ? 'name' THEN
         ($1::jsonb ->> 'name')::text
     ELSE
@@ -260,6 +253,8 @@ SET
     ELSE
         connection_status
     END,
+    last_checked_at = CASE WHEN ($1::jsonb ->> 'config_revision')::bigint IS DISTINCT FROM config_revision THEN NULL ELSE last_checked_at END,
+    last_error = CASE WHEN ($1::jsonb ->> 'config_revision')::bigint IS DISTINCT FROM config_revision THEN NULL ELSE last_error END,
     revision = revision + 1,
     updated_at = now()
 WHERE
