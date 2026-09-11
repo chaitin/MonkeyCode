@@ -1109,7 +1109,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		personalModel := must("POST", "/api/v1/models", input, "a", "")
 		key := must("POST", "/api/v1/api-keys", resource.Object{"name": "百智云访问测试", "scopes": []string{"model:invoke"}}, "a", "").String("api_key")
 		personalRule := must("POST", "/api/v1/rules", resource.Object{"name": "远程模式个人规则", "content": "个人内容"}, "a", "")
-		personalExpert := must("POST", "/api/v1/experts", resource.Object{"name": "远程模式个人专家", "prompt": "测试", "default_model_id": personalModel["id"], "rule_ids": []string{personalRule.String("id")}}, "a", "")
+		personalExpert := must("POST", "/api/v1/experts", resource.Object{"name": "远程模式个人专家", "prompt": "测试", "rule_ids": []string{personalRule.String("id")}}, "a", "")
 		personalExpertPath := "/api/v1/experts/" + personalExpert.String("id")
 		defer func() {
 			current := must("GET", personalExpertPath, nil, "a", "")
@@ -1187,6 +1187,95 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 		exec(`UPDATE settings SET value=value || '{"charging_mode":"local"}' WHERE key='billing'`)
 		must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
+	})
+
+	t.Run("专家移除模型依赖及存量迁移", func(t *testing.T) {
+		must := func(method, path string, body any, token, revision string) resource.Object {
+			t.Helper()
+			code, out, _ := call(method, path, body, token, revision)
+			if code < 200 || code > 299 {
+				t.Fatalf("%s %s: %d %v", method, path, code, out)
+			}
+			data, err := json.Marshal(out)
+			if err != nil || bytes.Contains(data, []byte(`"default_model_id"`)) {
+				t.Fatalf("响应仍包含专家默认模型: %s: %s %v", path, data, err)
+			}
+			return out
+		}
+		apply := func(direction string) {
+			t.Helper()
+			data, err := os.ReadFile("../../migrations/000013_expert_remove_default_model." + direction + ".sql")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, string(data)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := must("POST", "/api/admin/v1/models", resource.Object{"model_id": "expert-independent", "display_name": "专家独立模型", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test", "advanced_config": resource.Object{"context_window_tokens": 1000, "max_output_tokens": 100}, "credit_multiplier": 1, "authorization": resource.Object{"all_users": true}}, "", "")
+		rule := must("POST", "/api/admin/v1/rules", resource.Object{"name": "专家模型移除规则", "content": "保留关联规则", "grants": grantA}, "", "")
+		var saved []resource.Object
+		paths := []string{"/api/admin/v1/experts", "/api/v1/experts"}
+		tokens := []string{"", "a"}
+		for i, path := range paths {
+			input := resource.Object{"name": fmt.Sprintf("独立于模型的专家%d", i), "description": "保留描述", "prompt": "保留提示词", "rule_ids": []string{rule.String("id")}, "grants": grantA, "default_model_id": "removed-model"}
+			expert := must("POST", path, input, tokens[i], "")
+			paths[i] += "/" + expert.String("id")
+			input["name"] = input["name"].(string) + "已编辑"
+			saved = append(saved, must("PUT", paths[i], input, tokens[i], `"1"`))
+		}
+
+		apply("down")
+		var bindings int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM experts WHERE default_model_id IS NOT NULL`).Scan(&bindings); err != nil || bindings != 0 {
+			t.Fatalf("回滚应仅恢复空字段: %d %v", bindings, err)
+		}
+		for _, expert := range saved {
+			if _, err := pool.Exec(ctx, `UPDATE experts SET default_model_id=$2 WHERE id=$1`, expert.String("id"), model.String("id")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		apply("up")
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='experts' AND column_name='default_model_id'`).Scan(&bindings); err != nil || bindings != 0 {
+			t.Fatalf("升级未删除默认模型字段: %d %v", bindings, err)
+		}
+		versions := make([]string, len(saved))
+		for i, expert := range saved {
+			current := must("GET", paths[i], nil, tokens[i], "")
+			if resource.Hash(current) != resource.Hash(expert) {
+				t.Fatalf("迁移改变了专家数据或关联: %v", current)
+			}
+			manifest := must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
+			if !manifest.Bool("available") || len(manifest["rules"].([]any)) != 1 {
+				t.Fatalf("升级后专家或规则不可用: %v", manifest)
+			}
+			versions[i] = manifest.String("version")
+		}
+		catalog := must("GET", "/api/v1/experts", nil, "a", "")
+		must("GET", "/api/admin/v1/experts", nil, "", "")
+		for _, action := range []struct{ method, suffix string }{{"PATCH", "/enabled"}, {"DELETE", ""}} {
+			must(action.method, "/api/admin/v1/models/"+model.String("id")+action.suffix, resource.Object{"enabled": false}, "", "")
+			for i, expert := range saved {
+				manifest := must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
+				if !manifest.Bool("available") || manifest.String("version") != versions[i] {
+					t.Fatalf("模型变更影响专家: %v", manifest)
+				}
+				resolved := must("POST", "/api/v1/resources/resolve", resource.Object{"expert_id": expert.String("id")}, "a", "")
+				if !resolved.Bool("available") {
+					t.Fatalf("专家资源无法解析: %v", resolved)
+				}
+			}
+			if current := must("GET", "/api/v1/experts", nil, "a", ""); current.String("version") != catalog.String("version") {
+				t.Fatal("模型变更影响专家目录版本")
+			}
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM models WHERE id=$1`, model.String("id")); err != nil {
+			t.Fatalf("移除默认模型后仍有外键引用: %v", err)
+		}
+		copy := must("POST", paths[0]+"/copy", resource.Object{"name": "独立于模型的专家副本"}, "", "")
+		if copy.String("prompt") != saved[0].String("prompt") || len(copy["rule_ids"].([]any)) != 1 {
+			t.Fatalf("复制专家丢失提示词或规则: %v", copy)
+		}
 	})
 
 	// 多凭证迁移拒绝有损回滚；测试库显式重建验证全量初始化。

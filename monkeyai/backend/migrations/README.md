@@ -6,7 +6,7 @@
 
 - `000004_stats_add_indexes`：为统计查询补充调用与会话的时间索引，仅增索引，可独立回滚。
 
-运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=4, dirty=false`，再次执行为 `no change`。已有版本 1、2 或 3 的数据库执行增量升级，无需清库或 `force`。
+运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=13, dirty=false`，再次执行为 `no change`。已有数据库执行增量升级，无需清库或 `force`。
 
 团队根节点仅用于界面展示，名称读取 `settings` 中 `branding` 的 `workspace_name`，不写入 `groups`。`parent_id IS NULL` 的记录均为团队根节点的直属子分组；成员关系通过 `group_users` 显式维护，不根据用户角色自动建组或分配。
 
@@ -23,3 +23,5 @@
 - `000010_mcp_enable_personal_tools`：启用已有个人 MCP 中当前配置版本下未删除的工具，修复服务端发现工具但客户端目录为空的问题。系统工具配置保持原值。此迁移仅修复数据，down 保留修复结果，不重新禁用个人工具；部署本次 MCP 修复时需升级至版本 10。
 
 - `000011_expert_personal_ownership`：为专家增加归属与所有者，历史专家保持系统归属，个人专家按所有者约束名称唯一。部署个人专家共享功能前升级至版本 11；存在未删除的个人专家时拒绝回滚，避免将个人数据转换为系统资源。
+
+- `000013_expert_remove_default_model`：删除系统和个人专家的 `default_model_id` 及模型外键，保留专家本身与规则、技能、连接关系。升级服务前先执行迁移至版本 13。down 只恢复可空字段与外键，原模型绑定不能恢复。

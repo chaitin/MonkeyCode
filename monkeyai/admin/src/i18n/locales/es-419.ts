@@ -470,7 +470,7 @@ export const es419 = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "Herramientas",
+      title: "Conectores",
       description:
         "Configura servidores MCP que los clientes pueden conectar y usar.",
     },

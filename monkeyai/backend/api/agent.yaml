@@ -2702,11 +2702,6 @@ components:
           type: string
         prompt:
           type: string
-        default_model_id:
-          type:
-          - string
-          - 'null'
-          format: uuid
         rule_ids:
           type: array
           items:
@@ -3813,8 +3808,6 @@ components:
           type: string
         prompt:
           type: string
-        default_model_id:
-          type: string
         version:
           type: string
         available:
@@ -4115,11 +4108,6 @@ components:
           type: string
         prompt:
           type: string
-        default_model_id:
-          type:
-          - string
-          - 'null'
-          format: uuid
         rule_ids:
           type: array
           items:
@@ -4146,11 +4134,6 @@ components:
           type: string
         prompt:
           type: string
-        default_model_id:
-          type:
-          - string
-          - 'null'
-          format: uuid
         rule_ids:
           type: array
           items:

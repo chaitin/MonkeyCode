@@ -22,7 +22,7 @@ type Service struct {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "default_model_id", "enabled"}, UserFields: []string{"name", "description", "prompt", "default_model_id", "rule_ids", "skill_ids", "connectors"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
@@ -48,7 +48,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	}
 	personal := in.String("ownership_type") == "user"
 	if personal {
-		for _, key := range []string{"description", "prompt", "default_model_id"} {
+		for _, key := range []string{"description", "prompt"} {
 			if _, ok := in[key]; !ok {
 				in[key] = old.String(key)
 			}
@@ -58,44 +58,6 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		return resource.Invalid("专家 Prompt 不能为空")
 	}
 	queries := sqlc.New(tx)
-	if in.String("default_model_id") == "" {
-		in["default_model_id"] = nil
-	} else if personal {
-		model, err := resource.DecodeObject(queries.GetModel(ctx, in.String("default_model_id")))
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return resource.Invalid("默认模型不存在或不可用")
-			}
-			return err
-		}
-		ok, err := resource.Accessible(ctx, tx, "model", model, in.String("actor_id"))
-		if err != nil {
-			return err
-		}
-		if !ok && model.String("ownership_type") == "system" && model.Bool("enabled") {
-			ok, err = resource.CanUseSystem(ctx, tx, in.String("actor_id"))
-			if err != nil {
-				return err
-			}
-			if ok {
-				ok, err = queries.IsAdmin(ctx, in.String("actor_id"))
-				if err != nil {
-					return err
-				}
-			}
-		}
-		if !ok {
-			return resource.Invalid("默认模型不存在或不可用")
-		}
-	} else {
-		ok, err := queries.ModelAvailable(ctx, in.String("default_model_id"))
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return resource.Invalid("默认模型不存在或不可用")
-		}
-	}
 	for _, link := range []struct {
 		key, kind string
 		lock      func(context.Context, string) ([]byte, error)

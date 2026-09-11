@@ -1,16 +1,3 @@
--- name: ModelAvailable :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            models
-        WHERE
-            id = $1
-            AND ownership_type = 'system'
-            AND deleted_at IS NULL
-            AND enabled);
-
 -- name: LockConnector :one
 SELECT
     to_jsonb (p)
@@ -84,7 +71,7 @@ ORDER BY
 LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
-INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id, owner_user_id, ownership_type)
+INSERT INTO experts (name, description, prompt, enabled, id, created_by_user_id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
@@ -96,10 +83,6 @@ INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, c
             NULL
         END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'prompt' THEN
             (sqlc.arg(DATA)::jsonb ->> 'prompt')::text
-        ELSE
-            NULL
-        END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'default_model_id' THEN
-            (sqlc.arg(DATA)::jsonb ->> 'default_model_id')::uuid
         ELSE
             NULL
         END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'enabled' THEN
@@ -127,11 +110,6 @@ SET
         (sqlc.arg(DATA)::jsonb ->> 'prompt')::text
     ELSE
         prompt
-    END,
-    default_model_id = CASE WHEN sqlc.arg(DATA)::jsonb ? 'default_model_id' THEN
-        (sqlc.arg(DATA)::jsonb ->> 'default_model_id')::uuid
-    ELSE
-        default_model_id
     END,
     enabled = CASE WHEN sqlc.arg(DATA)::jsonb ? 'enabled' THEN
         (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean
@@ -225,9 +203,3 @@ WHERE
     expert_id = $1
 ORDER BY
     skill_id;
-
--- name: GetModel :one
-SELECT to_jsonb(m) FROM models m WHERE id = $1 AND deleted_at IS NULL;
-
--- name: IsAdmin :one
-SELECT role = 'admin' FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL;

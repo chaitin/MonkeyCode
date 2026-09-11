@@ -36,7 +36,6 @@ export type ResourceRow = {
   package_file_name: string
   file_count: number
   prompt: string
-  default_model_id: string | null
   rule_ids: string[]
   skill_ids: string[]
   connectors: {

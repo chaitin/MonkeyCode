@@ -783,3 +783,5 @@ DROP TABLE expert_connector_providers;
 ALTER TABLE connectors DROP COLUMN provider_id;
 
 DROP TABLE connector_providers;
+
+ALTER TABLE experts DROP COLUMN default_model_id;

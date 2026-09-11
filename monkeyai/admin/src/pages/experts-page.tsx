@@ -91,7 +91,6 @@ type Expert = {
   description: string
   prompt: string
   connectorSettings: ResourceRow["connectors"]
-  defaultModelId: string
   knowledgeBaseIds: string[]
   toolIds: string[]
   ruleIds: string[]
@@ -123,7 +122,6 @@ function toExpert(row: ResourceRow): Expert {
     description: row.description,
     prompt: row.prompt,
     connectorSettings: row.connectors ?? [],
-    defaultModelId: row.default_model_id ?? "",
     knowledgeBaseIds: [],
     toolIds: (row.connectors ?? []).map((p) => p.connector_id),
     ruleIds: row.rule_ids ?? [],
@@ -138,7 +136,6 @@ const EMPTY_FORM: ExpertForm = {
   description: "",
   prompt: "",
   connectorSettings: [],
-  defaultModelId: "",
   knowledgeBaseIds: [],
   toolIds: [],
   ruleIds: [],
@@ -289,9 +286,6 @@ export function ExpertsPage() {
   const [options, setOptions] = useState<
     Record<AssociationKey, AssociationOption[]>
   >({ knowledgeBaseIds: [], toolIds: [], ruleIds: [], skillIds: [] })
-  const [models, setModels] = useState<{ id: string; display_name: string }[]>(
-    []
-  )
   const [optionError, setOptionError] = useState("")
 
   const [query, setQuery] = useState("")
@@ -306,12 +300,9 @@ export function ExpertsPage() {
     Promise.all([
       listResources(base + "/rules?ownership_type=system"),
       listResources(base + "/skills?ownership_type=system"),
-      listResources(base + "/connector-connectors?ownership_type=system"),
-      api<{ models: { id: string; display_name: string }[] }>(
-        base + "/models?ownership_type=system"
-      ),
+      listResources(base + "/connectors?ownership_type=system"),
     ])
-      .then(([rules, skills, connectors, models]) => {
+      .then(([rules, skills, connectors]) => {
         if (cancelled) return
         const map = (rows: ResourceRow[]) =>
           rows
@@ -327,7 +318,6 @@ export function ExpertsPage() {
           skillIds: map(skills.items),
           toolIds: map(connectors.items),
         })
-        setModels(models.models)
         setOptionError("")
       })
       .catch((e) => {
@@ -361,7 +351,6 @@ export function ExpertsPage() {
       name: expert.name,
       description: expert.description,
       prompt: expert.prompt,
-      defaultModelId: expert.defaultModelId,
       connectorSettings: expert.connectorSettings,
       knowledgeBaseIds: expert.knowledgeBaseIds,
       toolIds: expert.toolIds,
@@ -405,7 +394,6 @@ export function ExpertsPage() {
           name: form.name,
           description: form.description,
           prompt: form.prompt,
-          default_model_id: form.defaultModelId || null,
           rule_ids: form.ruleIds,
           skill_ids: form.skillIds,
           connectors: form.toolIds.map(
@@ -666,24 +654,6 @@ export function ExpertsPage() {
             onSubmit={saveExpert}
           >
             <FieldGroup className="max-h-[calc(100vh-12rem)] gap-6 overflow-y-auto pe-1">
-              <Field>
-                <FieldLabel htmlFor="expert-model">
-                  {t("resources.defaultModel")}
-                </FieldLabel>
-                <select
-                  id="expert-model"
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={form.defaultModelId}
-                  onChange={(e) => updateForm("defaultModelId", e.target.value)}
-                >
-                  <option value="">{t("resources.noDefaultModel")}</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.display_name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
               <Field>
                 <FieldLabel htmlFor="expert-name">
                   {t("pages.experts.name")}

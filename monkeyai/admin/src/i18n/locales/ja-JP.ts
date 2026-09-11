@@ -463,7 +463,7 @@ export const jaJP = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "ツール",
+      title: "コネクタ",
       description: "クライアントが接続して利用する MCP サーバーを設定します。",
     },
     rules: {

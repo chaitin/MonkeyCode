@@ -45,22 +45,6 @@ WHERE
 GROUP BY
     resource_type,
     resource_id;
--- name: ListModels :many
-SELECT
-    jsonb_build_object('id', id, 'ownership_type', ownership_type, 'owner_user_id', owner_user_id, 'enabled', enabled)
-FROM
-    models
-WHERE
-    deleted_at IS NULL;
--- name: IsAdmin :one
-SELECT
-    ROLE = 'admin'
-FROM
-    users
-WHERE
-    id = $1
-    AND status = 'active'
-    AND deleted_at IS NULL;
 -- name: ListSkillTags :many
 SELECT
     jsonb_build_object('id', t.id, 'name', t.name)
