@@ -99,7 +99,6 @@ func TestGroups(t *testing.T) {
 	if err != nil || len(groups) != 0 {
 		t.Fatalf("初始化不应创建分组: %v, %v", groups, err)
 	}
-	testLegacyGroups(t, pool, actor, member)
 	rootID := resource.ID()
 	create := func(name string, parent any) Group {
 		t.Helper()
@@ -242,109 +241,4 @@ func TestGroups(t *testing.T) {
 			t.Fatal("列表仍包含已删除的分组")
 		}
 	}
-}
-
-func testLegacyGroups(t *testing.T, pool *pgxpool.Pool, actor, member string) {
-	t.Helper()
-	ctx := t.Context()
-	upgrade, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000003_group_virtual_root.up.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 新库执行增量迁移也不能初始化分组。
-	if _, err = pool.Exec(ctx, string(upgrade)); err != nil {
-		t.Fatal(err)
-	}
-	groups, err := NewService(pool).List(ctx)
-	if err != nil || len(groups) != 0 {
-		t.Fatalf("新库迁移创建了分组: %v %v", groups, err)
-	}
-	root, admin := "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"
-	custom, nested, item := resource.ID(), resource.ID(), resource.ID()
-	if _, err = pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,NULL,'旧团队'),($2,$1,'管理员'),($3,$1,'旧业务组'),($4,$2,'旧管理员子组')`, root, admin, custom, nested); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `CREATE UNIQUE INDEX groups_one_active_root_key ON groups ((true)) WHERE parent_id IS NULL AND deleted_at IS NULL`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, nested, member, actor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,group_id,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,$2,'read_only','optional',$4),('rule',$1,$3,'read_write','required',$4)`, item, root, admin, actor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,$2,'read_only','optional',$3)`, item, member, actor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO settings(key,value,updated_by_user_id) VALUES('billing','{}',$1)`, actor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO billing_quotas(subject_type,group_id,credits_per_cycle,updated_by_user_id) VALUES('group',$1,222,$3),('group',$2,77,$3)`, root, admin, actor); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `UPDATE users SET billing_group_id=$1 WHERE id=$2`, root, member); err != nil {
-		t.Fatal(err)
-	}
-	var account string
-	if err = pool.QueryRow(ctx, `INSERT INTO credit_accounts(user_id,balance,quota,group_id,period_start_at,period_end_at,last_refreshed_at) VALUES($1,42,222,$2,now(),now()+interval '1 month',now()) RETURNING id`, member, root).Scan(&account); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,item_name,credit_delta,balance_after,occurred_at,group_id,sequence) VALUES($1,$2,'grant','other','旧周期额度',42,42,now(),$3,1)`, account, member, root); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, string(upgrade)); err != nil {
-		t.Fatal(err)
-	}
-	groups, err = NewService(pool).List(ctx)
-	if err != nil || len(groups) != 2 {
-		t.Fatalf("旧库升级后的分组: %v %v", groups, err)
-	}
-	var rootCredits, adminCredits, childCredits, balance, legacy string
-	var billingGroup, accountGroup, ledgerGroup *string
-	if err = pool.QueryRow(ctx, `SELECT (SELECT value->>'root_credits' FROM settings WHERE key='billing'),(SELECT credits_per_cycle::text FROM billing_quotas WHERE user_id=$1),(SELECT credits_per_cycle::text FROM billing_quotas WHERE group_id=$2),(SELECT billing_group_id::text FROM users WHERE id=$3)`, actor, nested, member).Scan(&rootCredits, &adminCredits, &childCredits, &billingGroup); err != nil {
-		t.Fatal(err)
-	}
-	if rootCredits != "222.000000" || adminCredits != "77.000000" || childCredits != "77.000000" || billingGroup != nil {
-		t.Fatalf("旧额度迁移错误: %s %s %s %v", rootCredits, adminCredits, childCredits, billingGroup)
-	}
-	if err = pool.QueryRow(ctx, `SELECT a.balance::text,a.group_id::text,e.group_id::text,e.metadata->>'legacy_group_id' FROM credit_accounts a JOIN credit_ledger_entries e ON e.account_id=a.id WHERE a.id=$1`, account).Scan(&balance, &accountGroup, &ledgerGroup, &legacy); err != nil {
-		t.Fatal(err)
-	}
-	if balance != "42.000000" || accountGroup != nil || ledgerGroup != nil || legacy != root {
-		t.Fatalf("旧账户流水迁移错误: %s %v %v %s", balance, accountGroup, ledgerGroup, legacy)
-	}
-	if _, err = pool.Exec(ctx, `UPDATE credit_ledger_entries SET balance_after=0 WHERE account_id=$1`, account); err == nil {
-		t.Fatal("迁移后流水防修改触发器未恢复")
-	}
-	for _, group := range groups {
-		if group.ParentID != nil || group.ID == root || group.ID == admin {
-			t.Fatalf("旧系统分组未移除或子分组未提升: %+v", group)
-		}
-	}
-	var count int
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM resource_access_grants WHERE resource_id=$1 AND user_id IN ($2,$3) AND access_level='read_write' AND usage_requirement='required'`, item, actor, member).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Fatalf("旧授权展开或合并错误: %d", count)
-	}
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM group_users WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL`, nested, member).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("自定义组成员关系丢失: %d %v", count, err)
-	}
-	if _, err = pool.Exec(ctx, string(upgrade)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `DELETE FROM resource_access_grants WHERE resource_id=$1`, item); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `DELETE FROM group_users WHERE group_id=$1`, nested); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `DELETE FROM billing_quotas WHERE group_id IN ($1,$2)`, custom, nested); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, `DELETE FROM groups WHERE id IN ($1,$2)`, custom, nested); err != nil {
-		t.Fatal(err)
-	}
-
 }

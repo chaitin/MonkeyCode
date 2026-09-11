@@ -326,7 +326,7 @@ func TestWalletCustomURLs(t *testing.T) {
 	}
 }
 
-func TestWalletURLMigration(t *testing.T) {
+func TestWalletURLPersistence(t *testing.T) {
 	for _, env := range []string{"dev", "prod"} {
 		t.Run(env, func(t *testing.T) {
 			s, user, model := fixture(t)
@@ -349,28 +349,13 @@ func TestWalletURLMigration(t *testing.T) {
 			if _, err := s.pool.Exec(t.Context(), `UPDATE settings SET value=jsonb_set(value,'{wallet}',$1::jsonb) WHERE key='billing'`, raw); err != nil {
 				t.Fatal(err)
 			}
-			for _, direction := range []string{"down", "up"} {
-				migration, err := os.ReadFile("../../migrations/000008_billing_wallet_urls." + direction + ".sql")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err = s.pool.Exec(t.Context(), string(migration)); err != nil {
-					t.Fatal(err)
-				}
-				if direction == "down" {
-					var stored string
-					if err := s.pool.QueryRow(t.Context(), `SELECT value#>>'{wallet,environment}' FROM settings WHERE key='billing'`).Scan(&stored); err != nil || stored != env {
-						t.Fatal("未恢复旧环境配置", err)
-					}
-				}
-			}
 			wallet, err := s.wallet(t.Context(), s.pool)
 			if err != nil || !wallet.ready() || wallet.config != cfg {
-				t.Fatal("旧配置迁移后未正确恢复", err)
+				t.Fatal("钱包地址配置未正确保存", err)
 			}
 			var baseURL string
 			if err := s.pool.QueryRow(t.Context(), `SELECT base_url FROM wallet_billing_records`).Scan(&baseURL); err != nil || baseURL != cfg.BaseURL {
-				t.Fatal("原交易地址未正确迁移", err)
+				t.Fatal("交易未保存服务地址", err)
 			}
 			call := walletAdmin(t, s, user)
 			call("PATCH", "/billing/settings/wallet", map[string]any{"revision": 1, "base_url": cfg.BaseURL, "app_id": cfg.AppID}, 200)

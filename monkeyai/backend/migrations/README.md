@@ -1,27 +1,25 @@
 # 数据库迁移
 
-- `000001_initial_create_schema`：完整初始结构，包含身份、OAuth、调用密钥、模型、资源、计费及审计；不预置任何分组。
-- `000002_billing_create_transactions`：计费账户、额度与流水。
-- `000003_group_virtual_root`：将旧部署的系统分组转换为虚拟团队根节点的结构。新库同样执行此版本，不会创建分组。
+本次按重新部署要求，将原 `000001` 至 `000013` 的最终结构收敛到一版初始化迁移：
 
-- `000004_stats_add_indexes`：为统计查询补充调用与会话的时间索引，仅增索引，可独立回滚。
+- `000001_initial_create_schema.up.sql`：完整创建身份与邮箱认证、OAuth、调用密钥、分组、设置、模型、资源、连接与多凭证、专家、计费、统计索引及审计结构。
+- `000001_initial_create_schema.down.sql`：按依赖逆序删除本版本的表、序列和计费流水保护函数，仅用于可丢弃测试数据库。
 
-运行 `migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up`。成功后应为 `version=13, dirty=false`，再次执行为 `no change`。已有数据库执行增量升级，无需清库或 `force`。
+必须使用全新的 PostgreSQL 数据库或数据目录。重建容器但复用旧数据目录不构成全新初始化。此版本替换了旧迁移历史，不支持在已执行旧版迁移的数据库上直接升级，也不能通过 `force 1` 代替数据迁移；需保留旧数据时应另行制定迁移方案。本次代码收敛不操作现有部署数据。
 
-团队根节点仅用于界面展示，名称读取 `settings` 中 `branding` 的 `workspace_name`，不写入 `groups`。`parent_id IS NULL` 的记录均为团队根节点的直属子分组；成员关系通过 `group_users` 显式维护，不根据用户角色自动建组或分配。
+从 `backend` 目录执行：
 
-版本 3 升级会移除旧版固定 ID 的根组和管理员组，将它们的子分组提升到团队下，保留自定义分组、成员账号和自定义组的成员关系。旧系统组的资源授权转换为升级时有效成员的直接用户授权，保留强制规则和读写权限；后续新用户或角色变化不会自动获得这些授权。用户原有的直接授权和其他分组授权会保留。
+```sh
+migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
+migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
+```
 
-升级前应备份数据库。系统分组及其授权转换无法无损还原，因此版本 3 的 down 脚本明确拒绝回滚，需要恢复升级前备份。版本 1 的 down 脚本仅供可丢弃测试数据库验证。
+成功后 `schema_migrations` 应为 `version=1, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
-后续 schema 变更追加迁移版本。字符串统一使用 `text`，候选值使用 `CHECK`。
+初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
-团队额度存入计费设置，旧管理员组额度转为当前相关用户及直属子分组的显式额度。旧系统组计费归属置空，历史账户金额保持不变，流水的旧分组 ID 留在 metadata 中。
+连接直接保存配置，专家直接关联连接；同一用户可以为同一连接创建多份凭证，每个连接最多保留一份未撤销的集中凭证。工具的组合外键防止跨连接引用凭证。计费账户从初始化起校验余额与冻结金额，流水触发器禁止修改和删除。
 
-- `000005_audit_request`：增加审计请求关联字段和索引，保留历史记录；升级服务前先执行迁移。
+`migrations` 仍是结构定义的唯一来源。修改后在 `backend` 运行 `make generate` 更新 sqlc schema 与生成文件，再运行 `make check`；数据库集成测试验证有业务数据时的 `down → up`。迁移文件名和 up/down 配对由 `go test ./migrations` 检查。
 
-- `000010_mcp_enable_personal_tools`：启用已有个人 MCP 中当前配置版本下未删除的工具，修复服务端发现工具但客户端目录为空的问题。系统工具配置保持原值。此迁移仅修复数据，down 保留修复结果，不重新禁用个人工具；部署本次 MCP 修复时需升级至版本 10。
-
-- `000011_expert_personal_ownership`：为专家增加归属与所有者，历史专家保持系统归属，个人专家按所有者约束名称唯一。部署个人专家共享功能前升级至版本 11；存在未删除的个人专家时拒绝回滚，避免将个人数据转换为系统资源。
-
-- `000013_expert_remove_default_model`：删除系统和个人专家的 `default_model_id` 及模型外键，保留专家本身与规则、技能、连接关系。升级服务前先执行迁移至版本 13。down 只恢复可空字段与外键，原模型绑定不能恢复。
+本次单版重置是重新部署的特定安排。后续正式发布后的 schema 变更正常追加六位递增迁移版本，已发布迁移不再改写。字符串统一使用 `text`，候选值使用 `CHECK`。

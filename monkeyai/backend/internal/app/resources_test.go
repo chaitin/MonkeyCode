@@ -245,6 +245,11 @@ CREATE CONSTRAINT TRIGGER reject_test_tag AFTER INSERT ON tags
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`); err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if _, err := pool.Exec(ctx, `DROP TRIGGER reject_test_tag ON tags; DROP FUNCTION reject_test_tag()`); err != nil {
+				t.Error(err)
+			}
+		})
 		if code, _, _ := call("POST", "/api/admin/v1/tags", resource.Object{"name": "提交失败测试"}, "", ""); code != 500 {
 			t.Fatalf("提交失败应返回 500: %d", code)
 		}
@@ -539,7 +544,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	allGroup := must("POST", "/api/admin/v1/groups", resource.Object{"name": "资源测试组", "parent_id": nil}, "", "")
 	must("PUT", "/api/admin/v1/groups/"+allGroup.String("id")+"/members", resource.Object{"member_ids": users}, "", "")
 	must("POST", "/api/admin/v1/rules", resource.Object{"name": "强制规则", "content": "强制", "grants": []resource.Object{{"group_id": allGroup.String("id"), "usage_requirement": "required"}}}, "", "")
-	t.Run("个人 MCP 工具下发与历史数据修复", func(t *testing.T) {
+	t.Run("个人 MCP 工具下发与重新发现", func(t *testing.T) {
 		provider := resource.Object{"name": "自定义 MCP", "url": upstream.URL, "authorization_mode": "none"}
 		connector := must("POST", "/api/v1/connectors", resource.Object{"name": "自定义连接", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"]}, "a", "")
 		path := "/api/v1/connectors/" + connector.String("id")
@@ -579,22 +584,14 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatal(err)
 		}
 		before := must("GET", "/api/v1/connectors", nil, "a", "")
-		for _, direction := range []string{"up", "down", "up"} {
-			migration, err := os.ReadFile("../../migrations/000010_mcp_enable_personal_tools." + direction + ".sql")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = pool.Exec(ctx, string(migration)); err != nil {
-				t.Fatal(err)
-			}
-			verify()
-			var enabled bool
-			if err := pool.QueryRow(ctx, `SELECT bool_or(enabled) FROM mcp_tools WHERE connector_id=$1 OR (connector_id=$2 AND name IN ('removed','stale'))`, conn.String("id"), connector.String("id")).Scan(&enabled); err != nil || enabled {
-				t.Fatalf("数据修复启用了系统工具或失效个人工具：%v", err)
-			}
+		must("POST", ownerPath+"/test", nil, "a", "")
+		verify()
+		var enabled bool
+		if err := pool.QueryRow(ctx, `SELECT bool_or(enabled) FROM mcp_tools WHERE connector_id=$1 OR (connector_id=$2 AND name IN ('removed','stale'))`, conn.String("id"), connector.String("id")).Scan(&enabled); err != nil || enabled {
+			t.Fatalf("重新发现启用了系统工具或失效个人工具：%v", err)
 		}
 		if after := must("GET", "/api/v1/connectors", nil, "a", ""); after.String("version") == before.String("version") {
-			t.Fatal("个人工具修复后资源目录版本未更新")
+			t.Fatal("重新发现后资源目录版本未更新")
 		}
 		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
 	})
@@ -1189,7 +1186,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
 	})
 
-	t.Run("专家移除模型依赖及存量迁移", func(t *testing.T) {
+	t.Run("专家不依赖模型", func(t *testing.T) {
 		must := func(method, path string, body any, token, revision string) resource.Object {
 			t.Helper()
 			code, out, _ := call(method, path, body, token, revision)
@@ -1201,16 +1198,6 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 				t.Fatalf("响应仍包含专家默认模型: %s: %s %v", path, data, err)
 			}
 			return out
-		}
-		apply := func(direction string) {
-			t.Helper()
-			data, err := os.ReadFile("../../migrations/000013_expert_remove_default_model." + direction + ".sql")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := pool.Exec(ctx, string(data)); err != nil {
-				t.Fatal(err)
-			}
 		}
 		model := must("POST", "/api/admin/v1/models", resource.Object{"model_id": "expert-independent", "display_name": "专家独立模型", "protocol": "openai_chat_completions", "base_url": upstream.URL, "api_key": "test", "advanced_config": resource.Object{"context_window_tokens": 1000, "max_output_tokens": 100}, "credit_multiplier": 1, "authorization": resource.Object{"all_users": true}}, "", "")
 		rule := must("POST", "/api/admin/v1/rules", resource.Object{"name": "专家模型移除规则", "content": "保留关联规则", "grants": grantA}, "", "")
@@ -1225,29 +1212,19 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			saved = append(saved, must("PUT", paths[i], input, tokens[i], `"1"`))
 		}
 
-		apply("down")
 		var bindings int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM experts WHERE default_model_id IS NOT NULL`).Scan(&bindings); err != nil || bindings != 0 {
-			t.Fatalf("回滚应仅恢复空字段: %d %v", bindings, err)
-		}
-		for _, expert := range saved {
-			if _, err := pool.Exec(ctx, `UPDATE experts SET default_model_id=$2 WHERE id=$1`, expert.String("id"), model.String("id")); err != nil {
-				t.Fatal(err)
-			}
-		}
-		apply("up")
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='experts' AND column_name='default_model_id'`).Scan(&bindings); err != nil || bindings != 0 {
-			t.Fatalf("升级未删除默认模型字段: %d %v", bindings, err)
+			t.Fatalf("初始化不应包含默认模型字段: %d %v", bindings, err)
 		}
 		versions := make([]string, len(saved))
 		for i, expert := range saved {
 			current := must("GET", paths[i], nil, tokens[i], "")
 			if resource.Hash(current) != resource.Hash(expert) {
-				t.Fatalf("迁移改变了专家数据或关联: %v", current)
+				t.Fatalf("读取的专家数据或关联与保存结果不一致: %v", current)
 			}
 			manifest := must("GET", "/api/v1/experts/"+expert.String("id")+"/manifest", nil, "a", "")
 			if !manifest.Bool("available") || len(manifest["rules"].([]any)) != 1 {
-				t.Fatalf("升级后专家或规则不可用: %v", manifest)
+				t.Fatalf("专家或规则不可用: %v", manifest)
 			}
 			versions[i] = manifest.String("version")
 		}
@@ -1278,16 +1255,17 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		}
 	})
 
-	// 多凭证迁移拒绝有损回滚；测试库显式重建验证全量初始化。
-	down, err := os.ReadFile("../../migrations/000012_mcp_connector_credentials.down.sql")
+	// 在已有业务数据的测试库验证完整回滚，再重新初始化。
+	down, err := os.ReadFile("../../migrations/000001_initial_create_schema.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, string(down)); err == nil {
-		t.Fatal("多凭证迁移允许有损回滚")
-	}
-	if _, err = root.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE; CREATE SCHEMA "+schema); err != nil {
+	if _, err = pool.Exec(ctx, string(down)); err != nil {
 		t.Fatal(err)
+	}
+	var remaining int
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM pg_class WHERE relnamespace=current_schema()::regnamespace)+(SELECT count(*) FROM pg_proc WHERE pronamespace=current_schema()::regnamespace)`).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("回滚后仍有数据库对象: %d %v", remaining, err)
 	}
 	for _, path := range migrations {
 		up, err := os.ReadFile(path)

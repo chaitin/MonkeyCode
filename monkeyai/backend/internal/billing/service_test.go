@@ -478,68 +478,6 @@ func TestMissingUsageKeepsReservation(t *testing.T) {
 	}
 }
 
-func TestLegacyQuotaMigration(t *testing.T) {
-	dsn := os.Getenv("MONKEYAI_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("需要 PostgreSQL")
-	}
-	ctx := t.Context()
-	root, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema := "test_legacy_billing_" + strings.ReplaceAll(resource.ID(), "-", "")
-	if _, err = root.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		pool.Close()
-		_, _ = root.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		root.Close()
-	})
-	apply := func(path string) {
-		t.Helper()
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = pool.Exec(ctx, string(raw)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	apply("../../migrations/000001_initial_create_schema.up.sql")
-	id := resource.ID()
-	if _, err = pool.Exec(ctx, `INSERT INTO users(id,name,email,role) VALUES($1,'旧用户','legacy@example.com','admin')`, id); err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := json.Marshal(map[string]any{"root_credits": 222, "quota_overrides": map[string]string{id: "33", "member-01": "44"}, "remote_billing_api_key": "legacy-secret"})
-	if _, err = pool.Exec(ctx, `INSERT INTO settings(key,value,updated_by_user_id) VALUES('billing',$1,$2)`, raw, id); err != nil {
-		t.Fatal(err)
-	}
-	apply("../../migrations/000002_billing_create_transactions.up.sql")
-	var credits string
-	var issues int
-	if err = pool.QueryRow(ctx, `SELECT credits_per_cycle::text FROM billing_quotas WHERE user_id=$1`, id).Scan(&credits); err != nil || amountText(credits) != amountText("33") {
-		t.Fatal(credits, err)
-	}
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM billing_migration_issues`).Scan(&issues); err != nil || issues != 1 {
-		t.Fatal(issues, err)
-	}
-	var secret bool
-	if err = pool.QueryRow(ctx, `SELECT value ? 'remote_billing_api_key' FROM settings WHERE key='billing'`).Scan(&secret); err != nil || secret {
-		t.Fatal("旧密钥未移除", err)
-	}
-}
-
 func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
