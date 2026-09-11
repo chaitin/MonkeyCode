@@ -96,7 +96,7 @@ func TestParseExtensionPackageRejectsDuplicateRuleID(t *testing.T) {
 	}
 }
 
-func TestParseExtensionPackageRequiresAtLeastOneResource(t *testing.T) {
+func TestParseExtensionPackageRejectsMissingResources(t *testing.T) {
 	data := makeExtensionZip(t, map[string]string{
 		"manifest.json": `{"package_id":"pack","version":"1.0.0"}`,
 	})
