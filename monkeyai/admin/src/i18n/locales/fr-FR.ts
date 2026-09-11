@@ -468,7 +468,7 @@ export const frFR = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "Outils",
+      title: "Connecteurs",
       description:
         "Configurez les serveurs MCP auxquels les clients peuvent se connecter.",
     },

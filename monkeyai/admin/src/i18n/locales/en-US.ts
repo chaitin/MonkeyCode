@@ -112,8 +112,6 @@ export const enUS = {
     saving: "Saving…",
     availableScope: "Available to",
     selectScope: "Select users or groups",
-    defaultModel: "Default model",
-    noDefaultModel: "User selects a model",
     saveBeforeAuthorize:
       "Create the MCP to get its callback URL, then register it in your OAuth app before authorizing.",
     callbackURL: "OAuth callback URL",
@@ -626,7 +624,7 @@ export const enUS = {
       deleteDescription: 'Delete "{{expert}}"? This action cannot be undone.',
     },
     tools: {
-      title: "Tools",
+      title: "Connectors",
       description: "Configure MCP servers that clients can connect to and use.",
       type: "MCP type",
       systemTool: "System MCP",

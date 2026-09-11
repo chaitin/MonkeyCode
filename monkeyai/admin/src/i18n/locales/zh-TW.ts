@@ -443,7 +443,7 @@ export const zhTW = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "工具",
+      title: "連接器",
       description: "設定客戶端可連線和呼叫的 MCP 服務。",
     },
     rules: {

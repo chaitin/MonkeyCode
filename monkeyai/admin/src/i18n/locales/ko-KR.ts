@@ -457,7 +457,7 @@ export const koKR = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "도구",
+      title: "커넥터",
       description: "클라이언트가 연결하여 사용할 MCP 서버를 설정합니다.",
     },
     rules: {

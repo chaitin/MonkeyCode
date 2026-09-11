@@ -499,7 +499,6 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `name` | `text` | 是 | 无 | 专家名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
 | `prompt` | `text` | 是 | 无 | 专家角色、目标和工作方式提示词。 |
-| `default_model_id` | `uuid` | 否 | `NULL` | 默认模型 ID；用户仍可选择其他有权模型。 |
 | `resource_manifest_hash` | `text` | 是 | 无 | 当前专家资源清单 SHA-256。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许新会话使用。 |
 | `created_by_user_id` | `uuid` | 是 | 无 | 创建管理员。 |
@@ -507,7 +506,7 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
 
-`default_model_id` 外键关联 `models.id`。模型被 Expert 引用时禁止删除；禁用后不再作为新会话默认值，用户需选择其他有权模型。
+专家不关联模型，会话模型由用户独立选择。模型的启停、删除和授权变化不影响专家资源清单。
 
 ### 8.11 `expert_connector_providers`：专家 Connector Provider 关系
 
@@ -545,7 +544,7 @@ Expert 关联 Connector Provider 类型，不直接绑定包含账号与凭证�
 
 两张关系表均要求同一专家不能重复关联同一资源。运行时按资源规范化名称、资源 ID 升序稳定装配；规范化名称去除首尾空格并转换为小写。解除关系时物理删除并写入审计。被有效关系引用的 Rule 或 Skill 禁止删除。
 
-`resource_manifest_hash` 包含 Prompt、默认模型、Connector Provider 关系及过滤条件、专家 Rule 和 Skill 包摘要，不包含 Connector Provider 自身配置和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
+`resource_manifest_hash` 包含 Prompt、Connector Provider 关系及过滤条件、专家 Rule 和 Skill 包摘要，不包含 Connector Provider 自身配置和系统强制 Rule。相关资源或关系变化时在同一事务内同步重算。
 
 ## 9. 会话与用量事实
 

@@ -35,7 +35,7 @@ func (q *Queries) CreateConnectorLink(ctx context.Context, arg CreateConnectorLi
 }
 
 const createResource = `-- name: CreateResource :exec
-INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, created_by_user_id, owner_user_id, ownership_type)
+INSERT INTO experts (name, description, prompt, enabled, id, created_by_user_id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN $1::jsonb ? 'name' THEN
             ($1::jsonb ->> 'name')::text
@@ -47,10 +47,6 @@ INSERT INTO experts (name, description, prompt, default_model_id, enabled, id, c
             NULL
         END, CASE WHEN $1::jsonb ? 'prompt' THEN
             ($1::jsonb ->> 'prompt')::text
-        ELSE
-            NULL
-        END, CASE WHEN $1::jsonb ? 'default_model_id' THEN
-            ($1::jsonb ->> 'default_model_id')::uuid
         ELSE
             NULL
         END, CASE WHEN $1::jsonb ? 'enabled' THEN
@@ -141,17 +137,6 @@ func (q *Queries) DeleteSkillLinks(ctx context.Context, expertID string) error {
 	return err
 }
 
-const getModel = `-- name: GetModel :one
-SELECT to_jsonb(m) FROM models m WHERE id = $1 AND deleted_at IS NULL
-`
-
-func (q *Queries) GetModel(ctx context.Context, id string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getModel, id)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
-}
-
 const getResource = `-- name: GetResource :one
 SELECT
     to_jsonb (t)
@@ -167,17 +152,6 @@ func (q *Queries) GetResource(ctx context.Context, id string) ([]byte, error) {
 	var to_jsonb []byte
 	err := row.Scan(&to_jsonb)
 	return to_jsonb, err
-}
-
-const isAdmin = `-- name: IsAdmin :one
-SELECT role = 'admin' FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
-`
-
-func (q *Queries) IsAdmin(ctx context.Context, id string) (bool, error) {
-	row := q.db.QueryRow(ctx, isAdmin, id)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
 }
 
 const listConnectorLinks = `-- name: ListConnectorLinks :many
@@ -374,27 +348,6 @@ func (q *Queries) LockSkill(ctx context.Context, id string) ([]byte, error) {
 	return to_jsonb, err
 }
 
-const modelAvailable = `-- name: ModelAvailable :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            models
-        WHERE
-            id = $1
-            AND ownership_type = 'system'
-            AND deleted_at IS NULL
-            AND enabled)
-`
-
-func (q *Queries) ModelAvailable(ctx context.Context, id string) (bool, error) {
-	row := q.db.QueryRow(ctx, modelAvailable, id)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const pageResources = `-- name: PageResources :many
 SELECT
     to_jsonb (t)
@@ -480,11 +433,6 @@ SET
         ($1::jsonb ->> 'prompt')::text
     ELSE
         prompt
-    END,
-    default_model_id = CASE WHEN $1::jsonb ? 'default_model_id' THEN
-        ($1::jsonb ->> 'default_model_id')::uuid
-    ELSE
-        default_model_id
     END,
     enabled = CASE WHEN $1::jsonb ? 'enabled' THEN
         ($1::jsonb ->> 'enabled')::boolean

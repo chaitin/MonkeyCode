@@ -473,7 +473,7 @@ export const deDE = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "Werkzeuge",
+      title: "Konnektoren",
       description:
         "Konfigurieren Sie MCP-Server, die Clients verbinden und verwenden können.",
     },

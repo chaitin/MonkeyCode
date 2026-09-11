@@ -66,7 +66,7 @@
 改动：
 
 - 保留 `experts.prompt`。
-- 增加 `experts.default_model_id` 和 `resource_manifest_hash`。
+- 专家不绑定模型，资源清单按 Prompt 和资源依赖计算版本。
 - 不新增 `expert_agents`。
 - 删除 `expert_mcp_tools`；新增 `expert_connector_providers`，关联 Connector Provider 并保存必需标记和工具过滤条件。
 - `expert_rules`、`expert_skills` 仅保存资源关联，按资源规范化名称和资源 ID 稳定装配。
@@ -77,7 +77,6 @@
 ```mermaid
 erDiagram
     USERS ||--o{ EXPERTS : creates
-    MODELS ||--o{ EXPERTS : defaults_for
     EXPERTS ||--o{ EXPERT_RULES : binds
     RULES ||--o{ EXPERT_RULES : referenced_by
     EXPERTS ||--o{ EXPERT_SKILLS : binds
@@ -93,19 +92,12 @@ erDiagram
         text name
         text description
         text prompt
-        uuid default_model_id FK
         text resource_manifest_hash
         boolean enabled
         uuid created_by_user_id FK
         timestamptz created_at
         timestamptz updated_at
         timestamptz deleted_at
-    }
-
-    MODELS {
-        uuid id PK
-        text name
-        boolean enabled
     }
 
     EXPERT_RULES {

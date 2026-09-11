@@ -100,7 +100,7 @@ ai-resources/connector-icons/<provider-id>/<object-id>/github.svg
 | Skill ZIP | `skills` | `package_file_name`、`package_s3_key`、`package_size_bytes`、`package_sha256` |
 | Connector 图标 | `connector_providers` | `icon_file_name`、`icon_s3_key`、`icon_mime_type`、`icon_size_bytes`、`icon_sha256` |
 
-服务端不保存组装后的系统专家 ZIP。Prompt、默认模型及资源关系保存在数据库，Rule 正文保存在数据库，Skill ZIP 通过 `skills.package_s3_key` 定位；Desktop 根据专家 Manifest 组装专家目录。
+服务端不保存组装后的系统专家 ZIP。Prompt 及资源关系保存在数据库，Rule 正文保存在数据库，Skill ZIP 通过 `skills.package_s3_key` 定位；Desktop 根据专家 Manifest 组装专家目录。
 
 ### 3.5 Skill 包
 
@@ -154,9 +154,9 @@ Connector Provider 直接保存图标 Object Key 和元数据。PNG 保留原始
 
 一个 Expert 就是一个 Agent。`experts.prompt` 保存该 Agent 的角色、目标和工作方式；Rule、Skill 与 Connector 依赖均直接作用于该 Agent。本期不保留成员、角色、团队拓扑或成员级资源范围。
 
-### 4.3 默认模型与 Connector Provider
+### 4.3 模型选择与 Connector Provider
 
-`experts.default_model_id` 可空并关联 `models.id`，只作为新任务默认值，用户仍可选择其他有权模型。不配置 Expert 级 `max_turns`。
+专家不绑定模型。用户在创建会话时独立选择有权使用的模型，模型的启停、删除和授权变化不影响专家可用性及资源清单版本。不配置 Expert 级 `max_turns`。
 
 Expert 通过 `expert_connector_providers` 关联系统 Connector Provider。每项关系保存 `required`、`tool_whitelist` 和 `tool_blacklist`：
 
@@ -206,7 +206,6 @@ Skill 名称同样去除首尾空格并忽略大小写。专家 Skill 按规范�
 
 `experts.resource_manifest_hash` 持久化服务端当前专家资源组合的 SHA-256。摘要包含：
 
-- `experts.default_model_id`；
 - `expert_connector_providers` 关系、必需标记和工具过滤条件；
 - `experts.prompt`；
 - 专家 Rule 关系、名称和正文摘要；
@@ -217,7 +216,7 @@ Skill 名称同样去除首尾空格并忽略大小写。专家 Skill 按规范�
 - Connector Provider；
 - 系统强制 Rule。
 
-以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.prompt` 或 `experts.default_model_id`；新增、修改或删除 `expert_connector_providers`、`expert_rules` 或 `expert_skills`；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
+以下变化在同一数据库事务内同步重算所有受影响专家的摘要：修改 `experts.prompt`；新增、修改或删除 `expert_connector_providers`、`expert_rules` 或 `expert_skills`；修改被引用 Rule 的名称或正文；修改被引用 Skill 的名称、描述、包文件或启用状态。
 
 摘要输入采用确定性 JSON：对象键按 Unicode 码点升序排列；Connector Provider 关系按 Provider identifier、Provider ID 升序排列，白名单和黑名单分别按规范化工具名称升序排列；Rule 和 Skill 关系按资源规范化名称、资源 ID 升序排列；字符串使用 UTF-8；缺失值与 `null` 区分；数组保持业务顺序；最终对无额外空白的 JSON 字节计算 SHA-256。
 
@@ -456,7 +455,7 @@ expert/
         └── ...
 ```
 
-默认模型、Connector Provider 依赖和 Rule 可随资源清单内联下发；Skill 通过独立 ZIP 下载并由 Desktop 组装。OhMyAgent 只消费物化结果，不需要理解资源来自系统、个人或专家包。
+Connector Provider 依赖和 Rule 可随资源清单内联下发；Skill 通过独立 ZIP 下载并由 Desktop 组装。OhMyAgent 只消费物化结果，不需要理解资源来自系统、个人或专家包。
 
 ## 12. 本地 stdio MCP
 
@@ -518,7 +517,6 @@ erDiagram
     MCP_TOOLS ||--o{ MCP_TOOL_CALLS : called_as
 
     USERS ||--o{ EXPERTS : creates
-    MODELS ||--o{ EXPERTS : defaults_for
     EXPERTS ||--o{ EXPERT_CONNECTOR_PROVIDERS : requires
     CONNECTOR_PROVIDERS ||--o{ EXPERT_CONNECTOR_PROVIDERS : referenced_by
     EXPERTS ||--o{ EXPERT_RULES : binds

@@ -109,8 +109,6 @@ export const zhCN = {
     saving: "正在保存…",
     availableScope: "可用范围",
     selectScope: "选择用户或分组",
-    defaultModel: "默认模型",
-    noDefaultModel: "由用户选择模型",
     saveBeforeAuthorize:
       "创建 MCP 后将显示专属回调地址，登记到 OAuth 应用后即可授权。",
     callbackURL: "OAuth 回调地址",
@@ -599,7 +597,7 @@ export const zhCN = {
       deleteDescription: "确定删除“{{expert}}”吗？此操作无法撤销。",
     },
     tools: {
-      title: "工具",
+      title: "连接器",
       description: "配置客户端可连接和调用的 MCP 服务。",
       type: "MCP 类型",
       systemTool: "系统 MCP",

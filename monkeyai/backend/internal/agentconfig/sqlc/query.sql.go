@@ -212,24 +212,6 @@ func (q *Queries) CatalogSkills(ctx context.Context) ([][]byte, error) {
 	return items, nil
 }
 
-const isAdmin = `-- name: IsAdmin :one
-SELECT
-    ROLE = 'admin'
-FROM
-    users
-WHERE
-    id = $1
-    AND status = 'active'
-    AND deleted_at IS NULL
-`
-
-func (q *Queries) IsAdmin(ctx context.Context, id string) (bool, error) {
-	row := q.db.QueryRow(ctx, isAdmin, id)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const listGrants = `-- name: ListGrants :many
 WITH RECURSIVE user_groups (
     group_id
@@ -281,35 +263,6 @@ GROUP BY
 
 func (q *Queries) ListGrants(ctx context.Context, userID *string) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listGrants, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var jsonb_build_object []byte
-		if err := rows.Scan(&jsonb_build_object); err != nil {
-			return nil, err
-		}
-		items = append(items, jsonb_build_object)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listModels = `-- name: ListModels :many
-SELECT
-    jsonb_build_object('id', id, 'ownership_type', ownership_type, 'owner_user_id', owner_user_id, 'enabled', enabled)
-FROM
-    models
-WHERE
-    deleted_at IS NULL
-`
-
-func (q *Queries) ListModels(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listModels)
 	if err != nil {
 		return nil, err
 	}

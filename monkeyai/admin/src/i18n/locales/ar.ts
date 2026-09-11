@@ -455,7 +455,7 @@ export const ar = {
     },
     tools: {
       ...enUS.pages.tools,
-      title: "الأدوات",
+      title: "الموصلات",
       description:
         "قم بإعداد خوادم MCP التي يمكن للعملاء الاتصال بها واستخدامها.",
     },

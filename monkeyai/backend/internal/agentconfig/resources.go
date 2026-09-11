@@ -33,11 +33,10 @@ type catalog struct {
 	grants                             map[string]bool
 	required                           map[string]bool
 	links                              map[string][]resource.Object
-	models                             map[string]bool
 }
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
-	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, models: map[string]bool{}}
+	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}}
 	systemAccess, err := resource.CanUseSystem(ctx, q, user)
 	if err != nil {
 		return c, err
@@ -98,19 +97,6 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 		for _, o := range out {
 			c.links[o.String("expert_id")+":"+link.table] = append(c.links[o.String("expert_id")+":"+link.table], o)
 		}
-	}
-	models, err := resource.DecodeObjects(sqlc.New(q).ListModels(ctx))
-	if err != nil {
-		return c, err
-	}
-	var admin bool
-	admin, err = sqlc.New(q).IsAdmin(ctx, user)
-	if err != nil {
-		return c, err
-	}
-
-	for _, m := range models {
-		c.models[m.String("id")] = m.Bool("enabled") && (m.String("ownership_type") == "user" || systemAccess) && ((admin && m.String("ownership_type") == "system") || m.String("owner_user_id") == user || c.grants["model:"+m.String("id")])
 	}
 	return c, nil
 }
@@ -213,16 +199,11 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 		connectors = append(connectors, dto)
 	}
 
-	model := e.String("default_model_id")
-	if model != "" && !c.models[model] {
-		issues = append(issues, resource.Object{"code": "model_unavailable", "blocking": true})
-		model = ""
-	}
 	resource.Stable(rules)
 	resource.Stable(skills)
 	resource.Stable(connectors)
 	slices.SortFunc(issues, func(a, b resource.Object) int { return strings.Compare(resource.Hash(a), resource.Hash(b)) })
-	out := resource.Object{"expert_id": expert, "name": e["name"], "prompt": e["prompt"], "default_model_id": model, "rules": rules, "skills": skills, "connectors": connectors, "issues": issues, "available": true}
+	out := resource.Object{"expert_id": expert, "name": e["name"], "prompt": e["prompt"], "rules": rules, "skills": skills, "connectors": connectors, "issues": issues, "available": true}
 	for _, issue := range issues {
 		if issue.Bool("blocking") {
 			out["available"] = false
