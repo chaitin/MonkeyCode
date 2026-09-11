@@ -17,9 +17,12 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/aiguard"
+	"github.com/chaitin/MonkeyCode/backend/pkg/auditmeta"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 )
 
@@ -30,13 +33,16 @@ const skillS3KeyPrefix = "agent-resources/skills/team"
 type teamSkillUsecase struct {
 	repo     domain.TeamSkillRepo
 	objstore agentresource.ObjectStore
+	guard    domain.SkillGuard
 	logger   *slog.Logger
 }
 
 func NewTeamSkillUsecase(i *do.Injector) (domain.TeamSkillUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
 	return &teamSkillUsecase{
 		repo:     do.MustInvoke[domain.TeamSkillRepo](i),
 		objstore: do.MustInvoke[agentresource.ObjectStore](i),
+		guard:    aiguard.NewClient(cfg.AIGuard),
 		logger:   do.MustInvoke[*slog.Logger](i),
 	}, nil
 }
@@ -78,6 +84,18 @@ func (u *teamSkillUsecase) AddPackage(ctx context.Context, teamUser *domain.Team
 	frontmatterTags, err := validateSkillZipPackage(req.PackageData)
 	if err != nil {
 		return nil, err
+	}
+
+	if !req.GuardChecked {
+		result, err := u.guard.Scan(ctx, domain.SkillGuardRequest{
+			Name:     req.Name,
+			Filename: req.PackageFilename,
+			Package:  req.PackageData,
+		})
+		auditmeta.SetGuardResult(ctx, result)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 取 team 的 bare repo;不存在视为系统级 bug(InitTeam 应已 provision)。

@@ -95,6 +95,9 @@ type AddTeamSkillReq struct {
 	SourceType         string `json:"source_type" validate:"omitempty"`
 	SourceLabel        string `json:"source_label" validate:"omitempty"`
 	ExtensionPackageID string `json:"extension_package_id,omitempty" swaggerignore:"true"`
+	// GuardChecked is set only by an internal caller after it has scanned the
+	// complete package exactly once (for example, extension-package import).
+	GuardChecked bool `json:"-" swaggerignore:"true"`
 }
 
 // AddTeamSkillPackageReq multipart 上传:从 zip 包里解 SKILL.md 验证,frontmatter

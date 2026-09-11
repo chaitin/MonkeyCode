@@ -15,11 +15,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/aiguard"
+	"github.com/chaitin/MonkeyCode/backend/pkg/auditmeta"
 )
 
 type teamExtensionPackageUsecase struct {
 	repo              domain.TeamExtensionPackageRepo
 	skillUsecase      domain.TeamSkillUsecase
+	guard             domain.SkillGuard
 	ruleImporter      extensionPackageRuleImporter
 	staticDir         string
 	staticRoutePrefix string
@@ -36,6 +39,7 @@ func NewTeamExtensionPackageUsecase(i *do.Injector) (domain.TeamExtensionPackage
 	return &teamExtensionPackageUsecase{
 		repo:              do.MustInvoke[domain.TeamExtensionPackageRepo](i),
 		skillUsecase:      do.MustInvoke[domain.TeamSkillUsecase](i),
+		guard:             aiguard.NewClient(cfg.AIGuard),
 		ruleImporter:      &extensionRuleImporter{db: dbClient},
 		staticDir:         cfg.StaticFiles.Dir,
 		staticRoutePrefix: cfg.StaticFiles.RoutePrefix,
@@ -50,6 +54,19 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	}
 
 	teamID := teamUser.GetTeamID()
+	skillImports := extensionSkillImports(pkg)
+	if len(skillImports) > 0 {
+		result, err := u.guard.Scan(ctx, domain.SkillGuardRequest{
+			Name:     pkg.PackageID,
+			Version:  pkg.Version,
+			Filename: req.Filename,
+			Package:  req.Data,
+		})
+		auditmeta.SetGuardResult(ctx, result)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var ruleResult domain.ExtensionRuleImportResult
 	if u.ruleImporter != nil {
@@ -62,7 +79,7 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	// Skill 导入:复用 TeamSkillUsecase.Add 走 bare repo + agent_skill 标准流程。
 	// extension_version 作为 agent_skill_version 的版本号,name 做幂等匹配。
 	var createdSkills, updatedSkills int
-	for _, s := range extensionSkillImports(pkg) {
+	for _, s := range skillImports {
 		_, err := u.skillUsecase.Add(ctx, teamUser, &domain.AddTeamSkillReq{
 			Name:               s.Name,
 			Description:        s.Description,
@@ -72,6 +89,7 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 			SourceType:         "extension-package",
 			SourceLabel:        pkg.PackageID,
 			ExtensionPackageID: pkg.PackageID,
+			GuardChecked:       true,
 		})
 		if err != nil {
 			return nil, err

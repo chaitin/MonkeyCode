@@ -1,14 +1,17 @@
 package v1
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
 
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
@@ -16,6 +19,7 @@ import (
 
 type TeamExtensionPackageHandler struct {
 	usecase domain.TeamExtensionPackageUsecase
+	repo    domain.TeamGroupUserRepo
 	cfg     *config.Config
 }
 
@@ -26,11 +30,19 @@ func NewTeamExtensionPackageHandler(i *do.Injector) (*TeamExtensionPackageHandle
 
 	h := &TeamExtensionPackageHandler{
 		usecase: do.MustInvoke[domain.TeamExtensionPackageUsecase](i),
+		repo:    do.MustInvoke[domain.TeamGroupUserRepo](i),
 		cfg:     do.MustInvoke[*config.Config](i),
 	}
+	adminAuth := middleware.TeamAdminAuth(func(ctx context.Context, teamID, userID uuid.UUID) bool {
+		member, err := h.repo.GetMember(ctx, teamID, userID)
+		if err != nil {
+			return false
+		}
+		return member.Role == consts.TeamMemberRoleAdmin
+	})
 
 	g := w.Group("/api/v1/teams/extension-packages")
-	g.Use(auth.TeamAuth())
+	g.Use(auth.TeamAuth(), adminAuth)
 	g.POST("", web.BindHandler(h.Import), audit.Audit("import_team_extension_package"))
 
 	return h, nil

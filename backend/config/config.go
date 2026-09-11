@@ -92,13 +92,24 @@ type Config struct {
 	// 流式语音识别配置（豆包 SAUC bigmodel，用于 WS 实时流式接口）
 	Doubao Doubao `mapstructure:"doubao"`
 
-	ReviewAgent ReviewAgent `mapstructure:"review_agent"`
-	Security    Security    `mapstructure:"security"`
+	ReviewAgent ReviewAgent   `mapstructure:"review_agent"`
+	Security    Security      `mapstructure:"security"`
+	AIGuard     AIGuardConfig `mapstructure:"aiguard"`
 }
 
 type Security struct {
 	BlockPrivateNetwork bool `mapstructure:"block_private_network"`
 	CaptchaEnabled      bool `mapstructure:"captcha_enabled"`
+}
+
+// AIGuardConfig is the runtime contract for the Skill static-scan service.
+// Empty BaseURL or APIToken is intentionally fail-closed.
+type AIGuardConfig struct {
+	BaseURL        string `mapstructure:"base_url"`
+	APIToken       string `mapstructure:"api_token"`
+	RequestTimeout string `mapstructure:"request_timeout"`
+	WaitTimeout    string `mapstructure:"wait_timeout"`
+	PollInterval   string `mapstructure:"poll_interval"`
 }
 
 type ReviewAgent struct {
@@ -388,6 +399,13 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("mcp_hub.url", "")
 	v.SetDefault("mcp_hub.token", "")
 	v.SetDefault("mcp_hub.upstream_timeout", "60s")
+	// AIGuard Skill static-scan integration. Empty URL/token is deliberately
+	// fail-closed at request time and does not prevent the backend from starting.
+	v.SetDefault("aiguard.base_url", "")
+	v.SetDefault("aiguard.api_token", "")
+	v.SetDefault("aiguard.request_timeout", "10s")
+	v.SetDefault("aiguard.wait_timeout", "10m")
+	v.SetDefault("aiguard.poll_interval", "1s")
 	v.SetDefault("attachment.allowed_url_prefixes", []string{})
 	v.SetDefault("object_storage.enabled", false)
 	v.SetDefault("object_storage.provider", "s3")
