@@ -92,6 +92,10 @@ func (AgentSkillVersion) Fields() []ent.Field {
 		field.String("version").NotEmpty(),
 		field.String("s3_key").NotEmpty(),
 		field.JSON("parsed_meta", types.SkillParsedMeta{}).Optional(),
+		field.String("guard_status").MaxLen(16).Default("approved"),
+		field.String("guard_task_id").MaxLen(128).Optional().Nillable(),
+		field.Time("guard_deadline").Optional().Nillable(),
+		field.String("guard_error").MaxLen(255).Optional().Nillable(),
 		field.Time("created_at").Default(time.Now),
 	}
 }
@@ -107,5 +111,6 @@ func (AgentSkillVersion) Edges() []ent.Edge {
 func (AgentSkillVersion) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("resource_id"),
+		index.Fields("guard_status", "guard_deadline"),
 	}
 }

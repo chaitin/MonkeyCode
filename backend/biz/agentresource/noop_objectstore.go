@@ -25,3 +25,7 @@ func (noopObjectStore) PresignGet(_ context.Context, _ string, _ time.Duration) 
 func (noopObjectStore) PutFile(_ context.Context, _, _ string, _ io.Reader) error {
 	return errors.New("object storage disabled")
 }
+
+func (noopObjectStore) DeleteObject(_ context.Context, _ string) error {
+	return errors.New("object storage disabled")
+}

@@ -23,6 +23,14 @@ const (
 	FieldS3Key = "s3_key"
 	// FieldParsedMeta holds the string denoting the parsed_meta field in the database.
 	FieldParsedMeta = "parsed_meta"
+	// FieldGuardStatus holds the string denoting the guard_status field in the database.
+	FieldGuardStatus = "guard_status"
+	// FieldGuardTaskID holds the string denoting the guard_task_id field in the database.
+	FieldGuardTaskID = "guard_task_id"
+	// FieldGuardDeadline holds the string denoting the guard_deadline field in the database.
+	FieldGuardDeadline = "guard_deadline"
+	// FieldGuardError holds the string denoting the guard_error field in the database.
+	FieldGuardError = "guard_error"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeSkill holds the string denoting the skill edge name in mutations.
@@ -45,6 +53,10 @@ var Columns = []string{
 	FieldVersion,
 	FieldS3Key,
 	FieldParsedMeta,
+	FieldGuardStatus,
+	FieldGuardTaskID,
+	FieldGuardDeadline,
+	FieldGuardError,
 	FieldCreatedAt,
 }
 
@@ -63,6 +75,14 @@ var (
 	VersionValidator func(string) error
 	// S3KeyValidator is a validator for the "s3_key" field. It is called by the builders before save.
 	S3KeyValidator func(string) error
+	// DefaultGuardStatus holds the default value on creation for the "guard_status" field.
+	DefaultGuardStatus string
+	// GuardStatusValidator is a validator for the "guard_status" field. It is called by the builders before save.
+	GuardStatusValidator func(string) error
+	// GuardTaskIDValidator is a validator for the "guard_task_id" field. It is called by the builders before save.
+	GuardTaskIDValidator func(string) error
+	// GuardErrorValidator is a validator for the "guard_error" field. It is called by the builders before save.
+	GuardErrorValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -90,6 +110,26 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByS3Key orders the results by the s3_key field.
 func ByS3Key(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldS3Key, opts...).ToFunc()
+}
+
+// ByGuardStatus orders the results by the guard_status field.
+func ByGuardStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuardStatus, opts...).ToFunc()
+}
+
+// ByGuardTaskID orders the results by the guard_task_id field.
+func ByGuardTaskID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuardTaskID, opts...).ToFunc()
+}
+
+// ByGuardDeadline orders the results by the guard_deadline field.
+func ByGuardDeadline(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuardDeadline, opts...).ToFunc()
+}
+
+// ByGuardError orders the results by the guard_error field.
+func ByGuardError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuardError, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
