@@ -73,13 +73,29 @@ func TestLoadRejectsInvalidPublicURL(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresPublicAndAdminURLOnSameHost(t *testing.T) {
-	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
-	t.Setenv("MONKEYAI_PUBLIC_URL", "https://api.example.com")
-	t.Setenv("MONKEYAI_ADMIN_URL", "https://admin.example.com")
-
-	if _, err := Load(nil); err == nil {
-		t.Fatal("期望公网地址与管理端地址主机名不同时返回错误")
+func TestLoadPublicURL(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		env  string
+		args []string
+		want string
+	}{
+		{name: "默认地址", want: "http://localhost:8080"},
+		{name: "HTTPS 地址", env: " https://ai.example.com:8443/ ", want: "https://ai.example.com:8443"},
+		{name: "开发页面入口", env: "http://localhost:5173/", want: "http://localhost:5173"},
+		{name: "命令行覆盖", env: "http://localhost:8080", args: []string{"-public-url=https://ai.example.com/"}, want: "https://ai.example.com"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+			t.Setenv("MONKEYAI_PUBLIC_URL", test.env)
+			cfg, err := Load(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.PublicURL != test.want {
+				t.Fatalf("PublicURL = %q, want %q", cfg.PublicURL, test.want)
+			}
+		})
 	}
 }
 

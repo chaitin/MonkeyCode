@@ -3,6 +3,7 @@ package identity
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -114,14 +115,38 @@ func TestValidateUpstreamUserForAdminLogin(t *testing.T) {
 	}
 }
 
-func TestAdminOAuthResultURL(t *testing.T) {
-	service := &Service{adminURL: "https://admin.example.com"}
-	state := LoginState{Purpose: loginPurposeAdmin}
-
-	if got := service.upstreamResultURL(state, ""); got != "https://admin.example.com/login" {
-		t.Fatalf("success URL = %q", got)
+func TestOAuthURLsUsePublicURL(t *testing.T) {
+	const base = "https://ai.example.com:8443"
+	service := NewService(nil, nil, base+"/")
+	for _, test := range []struct {
+		name    string
+		state   LoginState
+		errCode string
+		path    string
+	}{
+		{name: "管理员登录", state: LoginState{Purpose: loginPurposeAdmin}, path: "/login"},
+		{name: "管理员登录失败", state: LoginState{Purpose: loginPurposeAdmin}, errCode: "admin_role_required", path: "/login?oauth_error=admin_role_required"},
+		{name: "客户端登录", state: LoginState{Purpose: loginPurposeClient, AuthorizationRequestID: "request/1"}, path: "/client-login?request_id=request%2F1"},
+		{name: "客户端登录失败", state: LoginState{Purpose: loginPurposeClient, AuthorizationRequestID: "request/1"}, errCode: "user_unavailable", path: "/client-login?error=user_unavailable&request_id=request%2F1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := service.upstreamResultURL(test.state, test.errCode); got != base+test.path {
+				t.Fatalf("跳转地址 = %q, want %q", got, base+test.path)
+			}
+		})
 	}
-	if got := service.upstreamResultURL(state, "admin_role_required"); got != "https://admin.example.com/login?oauth_error=admin_role_required" {
-		t.Fatalf("error URL = %q", got)
+
+	recorder := httptest.NewRecorder()
+	service.OAuthMetadata(recorder, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil))
+	var metadata map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	for key, path := range map[string]string{
+		"issuer": "", "authorization_endpoint": "/oauth/authorize", "token_endpoint": "/oauth/token", "revocation_endpoint": "/oauth/revoke",
+	} {
+		if metadata[key] != base+path {
+			t.Fatalf("%s = %v, want %q", key, metadata[key], base+path)
+		}
 	}
 }

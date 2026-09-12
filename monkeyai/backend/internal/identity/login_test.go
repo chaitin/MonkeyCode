@@ -42,7 +42,7 @@ func TestLoginRoles(t *testing.T) {
 		} {
 			t.Run(account.name+"/"+method.name, func(t *testing.T) {
 				sender := &mailStub{}
-				s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true}`)}, "http://localhost", "http://localhost").WithEmailSender(sender)
+				s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 				email := account.name + "." + method.name + "@example.com"
 				user, err := s.insertUser(t.Context(), account.name, email, account.role, hash)
 				if err != nil {

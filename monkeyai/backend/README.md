@@ -136,7 +136,9 @@ export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkey
 go run ./cmd/server
 ```
 
-可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL`、`MONKEYAI_PUBLIC_URL` 和 `MONKEYAI_ADMIN_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是上游 OAuth 回调和 OAuth 元数据使用的服务地址，`MONKEYAI_ADMIN_URL` 是登录完成后返回的页面地址；两者必须使用相同协议和主机名，开发环境可以使用不同端口，正式环境应使用 HTTPS。
+可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL` 和 `MONKEYAI_PUBLIC_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，统一用于 OAuth 回调、元数据和登录后的页面跳转，默认 `http://localhost:8080`，正式环境应使用 HTTPS。
+
+前后端分别启动时，将后端的 `MONKEYAI_PUBLIC_URL` 设置为浏览器访问的 Vite 地址，例如 `http://localhost:5173`。Vite 将 `/api`、`/oauth`、`/mcp`、`/v1` 和 OAuth 元数据请求代理到后端；后端实际监听地址仍由 `MONKEYAI_HTTP_ADDR` 配置，开发代理目标由 `MONKEYAI_DEV_BACKEND_URL` 配置，默认 `http://localhost:8080`。
 
 空数据库首次启动时，必须通过 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD` 创建管理员账号，可选 `MONKEYAI_INITIAL_ADMIN_NAME` 设置显示名称。密码至少 12 个字符；未配置时服务会拒绝启动，避免产生无法管理的实例。服务只在用户表为空时创建账号，不会在后续启动时重置密码。创建完成后应移除密码环境变量。完整登录流程见 [`../design/agent-auth-settings.md`](../design/agent-auth-settings.md)。
 

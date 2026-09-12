@@ -1,0 +1,35 @@
+resolver 127.0.0.11 valid=300s ipv6=off;
+
+acme_issuer monkeyai {
+    uri ${MONKEYAI_AUTO_TLS_CA};
+    contact ${MONKEYAI_AUTO_TLS_EMAIL};
+    challenge http-01;
+    state_path ${MONKEYAI_ACME_STATE};
+    ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+    accept_terms_of_service;
+}
+
+server {
+    listen 8080;
+    server_name ${MONKEYAI_DOMAIN};
+
+    include /etc/nginx/monkeyai/health.conf;
+
+    location / {
+        return 308 ${MONKEYAI_ORIGIN}$request_uri;
+    }
+}
+
+server {
+    listen 8443 ssl;
+    server_name ${MONKEYAI_DOMAIN};
+
+    acme_certificate monkeyai;
+    ssl_certificate $acme_certificate;
+    ssl_certificate_key $acme_certificate_key;
+    ssl_certificate_cache max=2;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    include /etc/nginx/monkeyai/health.conf;
+    include /etc/nginx/monkeyai/app.conf;
+}

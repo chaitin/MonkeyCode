@@ -13,7 +13,64 @@ docker compose up --build
 
 初始管理员只会在用户表为空时创建。首次启动成功后，可从 `.env` 中移除 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD`，服务不会重置已有账号或密码。
 
-若修改 `MONKEYAI_ADMIN_PORT`，还需将 `MONKEYAI_PUBLIC_URL` 和 `MONKEYAI_ADMIN_URL` 改为浏览器实际访问的地址。生产环境应使用同一域名下的 HTTPS 地址。
+`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，也用于 OAuth 回调、元数据及登录后的页面跳转。若修改 `MONKEYAI_ADMIN_PORT`，还需将该地址改为浏览器实际访问的地址；生产环境应使用 HTTPS。
+
+## 自动域名证书
+
+Admin 镜像包含 Nginx 官方 ACME 模块，自动申请、续期并动态加载证书。功能默认关闭；Go 后端不参与证书管理。启用前，将域名解析到部署服务器，确保公网 TCP 80、443 可达，容器能够解析并访问 CA 的 HTTPS 接口。如果域名配置了 AAAA 记录，其 IPv6 入口也必须能完成验证。
+
+镜像固定 Nginx 1.30.4 和 ACME 0.4.1，校验官方源码的 SHA-256 后构建动态模块。构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于构建阶段。
+
+在 `.env` 中配置：
+
+```dotenv
+MONKEYAI_AUTO_TLS_ENABLED=true
+MONKEYAI_AUTO_TLS_EMAIL=admin@example.com
+MONKEYAI_PUBLIC_URL=https://ai.example.com
+MONKEYAI_ADMIN_PORT=80
+MONKEYAI_HTTPS_PORT=443
+```
+
+启用表示同意所使用 CA 的服务条款，默认 CA 为 [Let's Encrypt](https://letsencrypt.org/repository/)。域名从 `MONKEYAI_PUBLIC_URL` 提取；该配置必须是 HTTPS 根地址，允许末尾 `/` 和默认端口 `443`，不支持路径前缀、查询参数、IP、localhost 或泛域名。首版只使用 HTTP-01 验证，公网 80 必须转发到 admin 容器的 8080，443 转发到 8443。
+
+已有部署更新 Admin 镜像并应用配置：
+
+```bash
+docker compose build admin
+docker compose up -d backend admin
+docker compose logs -f admin
+```
+
+使用预构建镜像时，将 `ADMIN_IMAGE` 更新到包含此功能的版本，再执行 `docker compose up -d backend admin`。需要同时应用 backend 的公网地址，以保证 OAuth 回调、资源地址和登录 Cookie 使用 HTTPS。修改 `.env` 后用 `up -d` 重建相关容器，`restart` 不会更新环境变量或端口映射。
+
+首次启动无需预先放置证书。Nginx 启动后在后台签发，签发完成前 HTTPS 握手暂不可用；成功后新连接自动使用证书，续期也无需重载或重启 Nginx。HTTP 的普通请求会跳转到配置的固定 HTTPS 地址，验证请求由 ACME 模块处理。`http://127.0.0.1:8080/healthz` 只表示容器内的 Nginx 已启动，不能证明证书已经就绪；应从外部访问实际 HTTPS 域名确认。
+
+证书、私钥和 ACME 账户保存在 Compose 命名卷 `acme`（实际名称通常为 `<项目名>_acme`），只挂载到 admin，目录仅允许 nginx 用户读写。容器保持非 root 和只读根文件系统，生成的配置位于 `/tmp/nginx`。重建容器和普通 `docker compose down` 保留证书；`docker compose down -v` 会删除命名卷，执行前应备份。备份包含私钥，需要限制访问权限。
+
+可选配置：
+
+| 环境变量 | 默认值 | 用途 |
+|---|---|---|
+| `MONKEYAI_AUTO_TLS_ENABLED` | `false` | 仅接受 `true` 或 `false` |
+| `MONKEYAI_AUTO_TLS_EMAIL` | 空 | 启用时必填，CA 联系邮箱 |
+| `MONKEYAI_AUTO_TLS_CA` | `https://acme-v02.api.letsencrypt.org/directory` | HTTPS ACME 目录地址，不支持用户信息、查询参数和片段 |
+| `MONKEYAI_ADMIN_PORT` | `8080` | HTTP 主机端口；公网 HTTP-01 验证使用 80 |
+| `MONKEYAI_HTTPS_PORT` | `8443` | HTTPS 主机端口；标准 HTTPS 使用 443 |
+
+测试公网验证时可将 `MONKEYAI_AUTO_TLS_CA` 设置为 `https://acme-staging-v02.api.letsencrypt.org/directory`，该环境签发的证书不受浏览器信任。模块按 CA 地址隔离持久化目录，切回正式 CA 时会另行申请正式证书。
+
+关闭时设置 `MONKEYAI_AUTO_TLS_ENABLED=false`，同步将 `MONKEYAI_PUBLIC_URL` 改为实际使用的 HTTP 地址（或外部网关提供的 HTTPS 地址），再运行 `docker compose up -d backend admin`。已有证书数据保留，后续可继续复用。HTTPS 端口映射仍占用主机端口，但 Nginx 不再监听 TLS；默认保留主机 8443，避免占用已有网关的 443。
+
+签发失败时先查看 `docker compose logs admin`，核对 A/AAAA 解析、80 端口转发、CAA 是否允许所选 CA、CA 网络连通性和数据卷权限。临时网络或 CA 服务错误会按退避策略自动重试；账户或订单被 CA 判定无效时，修复问题后执行 `docker compose restart admin` 重新尝试。已有证书继续使用，但到期后客户端会拒绝过期证书，需及时处理日志中的错误。
+
+本地集成验证需要 Docker、Python 3.9+ 和 OpenSSL，测试使用独立网络、临时数据卷和本地 Pebble CA，不请求公网 CA；结束后清理测试容器、网络及数据卷：
+
+```bash
+docker build -t monkeyai-admin:acme-test ./admin
+python3 admin/test/acme.py --image monkeyai-admin:acme-test
+```
+
+测试覆盖开关和配置校验、空卷首次签发、CA 不可用时重建复用、自动续期、续期失败重试、代理协议头及流式连接。它不代替实际部署域名的公网 DNS、端口和 OAuth 提供方联调。
 
 ## 构建和推送镜像
 

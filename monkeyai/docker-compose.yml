@@ -69,7 +69,6 @@ services:
       MONKEYAI_HTTP_ADDR: :8080
       MONKEYAI_LOG_LEVEL: ${MONKEYAI_LOG_LEVEL:-info}
       MONKEYAI_PUBLIC_URL: ${MONKEYAI_PUBLIC_URL:-http://localhost:8080}
-      MONKEYAI_ADMIN_URL: ${MONKEYAI_ADMIN_URL:-http://localhost:8080}
       MONKEYAI_INITIAL_ADMIN_NAME: ${MONKEYAI_INITIAL_ADMIN_NAME:-MonkeyAI Admin}
       MONKEYAI_INITIAL_ADMIN_EMAIL: ${MONKEYAI_INITIAL_ADMIN_EMAIL:-}
       MONKEYAI_INITIAL_ADMIN_PASSWORD: ${MONKEYAI_INITIAL_ADMIN_PASSWORD:-}
@@ -94,13 +93,21 @@ services:
       context: ./admin
     restart: unless-stopped
     init: true
+    environment:
+      MONKEYAI_AUTO_TLS_ENABLED: ${MONKEYAI_AUTO_TLS_ENABLED:-false}
+      MONKEYAI_AUTO_TLS_EMAIL: ${MONKEYAI_AUTO_TLS_EMAIL:-}
+      MONKEYAI_AUTO_TLS_CA: ${MONKEYAI_AUTO_TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
+      MONKEYAI_PUBLIC_URL: ${MONKEYAI_PUBLIC_URL:-http://localhost:8080}
     ports:
       - "${MONKEYAI_ADMIN_PORT:-8080}:8080"
+      - "${MONKEYAI_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - acme:/var/lib/nginx/acme
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "-Y", "off", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -108,3 +115,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+
+volumes:
+  acme:
