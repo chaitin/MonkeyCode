@@ -110,8 +110,14 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 		})
 		auditmeta.SetGuardResult(ctx, result)
 		if err != nil {
-			if stageCreated && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				u.rejectExtensionStage(ctx, teamID, stageKey, err)
+			if stageCreated {
+				if isRequestCancellation(err) {
+					if enqueueErr := u.skillUsecase.EnqueueGuardStage(context.WithoutCancel(ctx), stageKey); enqueueErr != nil {
+						u.logger.ErrorContext(ctx, "failed to enqueue cancelled extension package scan", "stage_key", stageKey, "error", enqueueErr)
+					}
+				} else {
+					u.rejectExtensionStage(ctx, teamID, stageKey, err)
+				}
 			}
 			return nil, err
 		}

@@ -118,11 +118,6 @@ func (u *teamSkillUsecase) AddPackage(ctx context.Context, teamUser *domain.Team
 		if err != nil {
 			return nil, err
 		}
-		if pendingGuard {
-			if err := u.enqueueGuardJob(ctx, staged.versionID, time.Now()); err != nil {
-				return nil, err
-			}
-		}
 		return u.loadDTO(ctx, teamID, staged.skillID)
 	}
 
@@ -138,12 +133,16 @@ func (u *teamSkillUsecase) AddPackage(ctx context.Context, teamUser *domain.Team
 			return stageErr
 		}
 		pending = staged
-		return u.enqueueGuardJob(ctx, staged.versionID, time.Now())
+		return nil
 	})
 	auditmeta.SetGuardResult(ctx, result)
 	if err != nil {
-		if pending != nil && !isRequestCancellation(err) {
-			if rejectErr := u.rejectPending(context.WithoutCancel(ctx), pending, err); rejectErr != nil {
+		if pending != nil {
+			if isRequestCancellation(err) {
+				if enqueueErr := u.enqueueGuardJob(context.WithoutCancel(ctx), pending.versionID, time.Now()); enqueueErr != nil {
+					u.logger.ErrorContext(ctx, "failed to enqueue cancelled skill scan", "skill_id", pending.skillID, "version_id", pending.versionID, "error", enqueueErr)
+				}
+			} else if rejectErr := u.rejectPending(context.WithoutCancel(ctx), pending, err); rejectErr != nil {
 				u.logger.ErrorContext(ctx, "failed to persist rejected skill scan", "skill_id", pending.skillID, "version_id", pending.versionID, "error", rejectErr)
 			}
 		}
@@ -408,6 +407,19 @@ func (u *teamSkillUsecase) enqueueGuardJobIfMissing(ctx context.Context, version
 	}
 	_, _, err := u.queue.EnqueueIfMissing(ctx, consts.SkillGuardQueueKey, &domain.SkillGuardJob{VersionID: versionID}, runAt, versionID.String())
 	return err
+}
+
+func (u *teamSkillUsecase) EnqueueGuardStage(ctx context.Context, stageKey string) error {
+	versions, err := u.pendingGuardStageVersions(ctx, stageKey)
+	if err != nil {
+		return err
+	}
+	if len(versions) == 0 {
+		return nil
+	}
+	// Every version in a stage polls the same package-level task and can
+	// finalize the stage. One recovery job is therefore sufficient.
+	return u.enqueueGuardJob(ctx, versions[0].ID, time.Now())
 }
 
 func (u *teamSkillUsecase) removeGuardJob(ctx context.Context, versionID uuid.UUID) {

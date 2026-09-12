@@ -191,6 +191,97 @@ func TestTeamSkillUsecasePendingGuardHandlerReschedulesPayload(t *testing.T) {
 	}
 }
 
+func TestTeamSkillUsecaseCancellationTransfersPendingScanToQueue(t *testing.T) {
+	ctx := context.Background()
+	packageData, err := packageSkillMarkdownContent("---\nname: pending-skill\ndescription: pending\n---\nbody\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &teamSkillRepoStub{}
+	queue, rdb := newSkillGuardTestQueue(t)
+	var jobExistsBeforeCancel bool
+	guard := &cancellingObservedSkillGuardStub{beforeReturn: func() {
+		_, _, ok, infoErr := queue.GetJobInfo(ctx, consts.SkillGuardQueueKey, repo.pendingVersionID.String())
+		if infoErr != nil {
+			t.Errorf("GetJobInfo() error = %v", infoErr)
+		}
+		jobExistsBeforeCancel = ok
+	}}
+	u := &teamSkillUsecase{
+		repo:             repo,
+		objstore:         &skillGuardObjectStoreStub{},
+		guard:            guard,
+		queue:            queue,
+		guardWaitTimeout: time.Minute,
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	_, err = u.AddPackage(ctx, &domain.TeamUser{
+		User: &domain.User{ID: uuid.New()},
+		Team: &domain.Team{ID: uuid.New()},
+	}, &domain.AddTeamSkillPackageReq{
+		AddTeamSkillReq: domain.AddTeamSkillReq{Name: "pending-skill", Description: "pending"},
+		PackageFilename: "pending-skill.zip",
+		PackageData:     packageData,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("AddPackage() error = %v, want context.Canceled", err)
+	}
+	if jobExistsBeforeCancel {
+		t.Fatal("pending scan was queued before the request-side poller exited")
+	}
+	_, runAt, ok, err := queue.GetJobInfo(ctx, consts.SkillGuardQueueKey, repo.pendingVersionID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || runAt.After(time.Now()) {
+		t.Fatalf("cancelled pending scan was not queued immediately: exists=%v runAt=%s", ok, runAt)
+	}
+	if zcard, err := rdb.ZCard(ctx, "mcai:skillguard:dq:"+consts.SkillGuardQueueKey+":delayed").Result(); err != nil || zcard != 1 {
+		t.Fatalf("queue cardinality = %d, err = %v, want 1", zcard, err)
+	}
+}
+
+func TestTeamExtensionPackageCancellationTransfersPendingStageToRecovery(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	skills := &teamSkillUsecaseStub{}
+	finalizer := &extensionPackageStageFinalizerStub{}
+	guard := &cancellingObservedSkillGuardStub{}
+	u := &teamExtensionPackageUsecase{
+		repo:           &extensionPackageRepoStub{},
+		skillUsecase:   skills,
+		guard:          guard,
+		objstore:       &skillGuardObjectStoreStub{},
+		stageFinalizer: finalizer,
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":     `{"package_id":"pack","version":"1.0.0","skills":[{"skill_id":"a","path":"skills/a/SKILL.md"}]}`,
+		"skills/a/SKILL.md": "---\nname: skill-a\ndescription: A\n---\nbody-a\n",
+	})
+
+	_, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{Filename: "pack.zip", Data: data})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Import() error = %v, want context.Canceled", err)
+	}
+	if skills.enqueueStageCalls != 1 || len(skills.adds) != 1 {
+		t.Fatalf("enqueue stage calls=%d adds=%d, want 1/1", skills.enqueueStageCalls, len(skills.adds))
+	}
+	if finalizer.calls != 0 {
+		t.Fatalf("finalizer calls = %d, want 0", finalizer.calls)
+	}
+}
+
+func newSkillGuardTestQueue(t *testing.T) (*delayqueue.SkillGuardQueue, *redis.Client) {
+	t.Helper()
+	srv := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return delayqueue.NewSkillGuardQueue(rdb, slog.New(slog.NewTextHandler(io.Discard, nil))), rdb
+}
+
 func TestTeamSkillUsecaseContentUpdateUsesGuard(t *testing.T) {
 	skillID := uuid.New()
 	teamID := uuid.New()
@@ -374,6 +465,29 @@ type observedSkillGuardStub struct {
 	scanCalls     int
 }
 
+type cancellingObservedSkillGuardStub struct {
+	beforeReturn func()
+}
+
+func (*cancellingObservedSkillGuardStub) Scan(context.Context, domain.SkillGuardRequest) (*domain.SkillGuardResult, error) {
+	return nil, errors.New("Scan must not be called by the guarded write path")
+}
+
+func (s *cancellingObservedSkillGuardStub) ScanObserved(_ context.Context, _ domain.SkillGuardRequest, onTask func(*domain.SkillGuardResult) error) (*domain.SkillGuardResult, error) {
+	pending := &domain.SkillGuardResult{TaskID: "task-pending", Status: "running"}
+	if err := onTask(pending); err != nil {
+		return pending, err
+	}
+	if s.beforeReturn != nil {
+		s.beforeReturn()
+	}
+	return pending, context.Canceled
+}
+
+func (*cancellingObservedSkillGuardStub) Poll(context.Context, string) (*domain.SkillGuardResult, error) {
+	return nil, errors.New("Poll must not be called by the cancelled request path")
+}
+
 func (s *observedSkillGuardStub) Scan(context.Context, domain.SkillGuardRequest) (*domain.SkillGuardResult, error) {
 	s.scanCalls++
 	return nil, errors.New("Scan must not be called by the guarded write path")
@@ -418,6 +532,7 @@ func (s *skillGuardStub) Poll(context.Context, string) (*domain.SkillGuardResult
 type teamSkillUsecaseStub struct {
 	adds              []*domain.AddTeamSkillReq
 	approveStageCalls int
+	enqueueStageCalls int
 }
 
 func (s *teamSkillUsecaseStub) List(context.Context, *domain.TeamUser) (*domain.ListTeamSkillsResp, error) {
@@ -442,6 +557,11 @@ func (s *teamSkillUsecaseStub) RejectGuardStage(context.Context, string, error) 
 	return nil
 }
 
+func (s *teamSkillUsecaseStub) EnqueueGuardStage(context.Context, string) error {
+	s.enqueueStageCalls++
+	return nil
+}
+
 func (s *teamSkillUsecaseStub) Update(context.Context, *domain.TeamUser, *domain.UpdateTeamSkillReq) (*domain.TeamSkill, error) {
 	return &domain.TeamSkill{}, nil
 }
@@ -457,6 +577,7 @@ type teamSkillRepoStub struct {
 	skills              []*db.AgentSkill
 	updateMetaCalled    bool
 	pendingVersionCalls int
+	pendingVersionID    uuid.UUID
 	pendingTaskID       string
 	approveCalls        int
 	approveStageCalls   int
@@ -527,7 +648,8 @@ func (s *teamSkillRepoStub) CreateVersion(context.Context, uuid.UUID, string, st
 func (s *teamSkillRepoStub) CreatePendingVersion(_ context.Context, skillID uuid.UUID, _, _ string, _ domain.SkillVersionMeta, _ []uuid.UUID, taskID string, _ time.Time) (*db.AgentSkillVersion, error) {
 	s.pendingVersionCalls++
 	s.pendingTaskID = taskID
-	return &db.AgentSkillVersion{ID: uuid.New(), ResourceID: skillID, GuardStatus: domain.SkillGuardStatusPending}, nil
+	s.pendingVersionID = uuid.New()
+	return &db.AgentSkillVersion{ID: s.pendingVersionID, ResourceID: skillID, GuardStatus: domain.SkillGuardStatusPending}, nil
 }
 
 func (s *teamSkillRepoStub) GetVersion(context.Context, uuid.UUID) (*db.AgentSkillVersion, error) {

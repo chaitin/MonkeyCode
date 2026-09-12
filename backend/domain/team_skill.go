@@ -44,6 +44,9 @@ type TeamSkillUsecase interface {
 	// RejectGuardStage fail-closes every pending version belonging to one
 	// extension-package scan stage.
 	RejectGuardStage(ctx context.Context, stageKey string, scanErr error) error
+	// EnqueueGuardStage schedules one recovery job for all pending versions in
+	// an extension-package stage after the request-side poller exits.
+	EnqueueGuardStage(ctx context.Context, stageKey string) error
 	Update(ctx context.Context, teamUser *TeamUser, req *UpdateTeamSkillReq) (*TeamSkill, error)
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamSkillReq) error
 }
