@@ -192,6 +192,7 @@ func TestEmailAuthentication(t *testing.T) {
 	sender.fail = false
 	clearLimit()
 	calls := sender.calls
+	s.settings = authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"registration_enabled":false}`)}
 	authCall(t, s, "/email/code", emailInput{Email: "missing@example.com", Purpose: "login"}, 200)
 	if sender.calls != calls {
 		t.Fatal("未知账号收到登录邮件")
@@ -203,6 +204,173 @@ func TestEmailAuthentication(t *testing.T) {
 	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: "123456"}, 403)
 	authCall(t, s, "/email/register", emailInput{Email: "new@example.com", Code: "123456", Name: "用户", Password: "new-password-123"}, 403)
 	authCall(t, s, "/email/reset-password", emailInput{Email: "user@example.com", Code: "123456", Password: "new-password-123"}, 403)
+}
+
+func TestEmailAutoRegistration(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		closed         bool
+		closeAfter     bool
+		disableAfter   bool
+		admin          bool
+		existingStatus string
+		createAfter    bool
+		wantMail       bool
+		wantStatus     int
+	}{
+		{name: "自动创建账号", wantMail: true, wantStatus: 200},
+		{name: "注册关闭", closed: true, wantStatus: 400},
+		{name: "发送后关闭注册", closeAfter: true, wantMail: true, wantStatus: 401},
+		{name: "发送后关闭验证码登录", disableAfter: true, wantMail: true, wantStatus: 403},
+		{name: "管理员入口不创建账号", admin: true, wantMail: true, wantStatus: 401},
+		{name: "停用账号不发送", existingStatus: "disabled", wantStatus: 400},
+		{name: "发送后账号被停用", existingStatus: "disabled", createAfter: true, wantMail: true, wantStatus: 401},
+		{name: "发送后账号已创建", existingStatus: "active", createAfter: true, wantMail: true, wantStatus: 200},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pool := emailDatabase(t)
+			sender := &mailStub{}
+			methods := loginMethods{EmailCodeEnabled: true, RegistrationEnabled: !test.closed}
+			s := NewService(pool, nil, "http://localhost").WithEmailSender(sender)
+			setMethods := func() {
+				t.Helper()
+				value, err := json.Marshal(methods)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.settings = authenticationStub{value}
+			}
+			setMethods()
+			input := emailInput{Email: "new@example.com", Purpose: "login"}
+			var existing User
+			createUser := func() {
+				t.Helper()
+				var err error
+				existing, err = s.insertUser(t.Context(), "已有姓名", input.Email, "user", "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.updateUser(t.Context(), existing.ID, existing.Name, existing.Role, test.existingStatus, ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.existingStatus != "" && !test.createAfter {
+				createUser()
+			}
+			countUsers := func(want int) {
+				t.Helper()
+				var count int
+				if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM users").Scan(&count); err != nil || count != want {
+					t.Fatalf("账号数量=%d，期望=%d，错误=%v", count, want, err)
+				}
+			}
+			authCall(t, s, "/email/code", emailInput{Email: " NEW@EXAMPLE.COM ", Purpose: "login"}, 200)
+			if (sender.calls == 1) != test.wantMail {
+				t.Fatalf("邮件发送次数=%d，期望发送=%t", sender.calls, test.wantMail)
+			}
+			if existing.ID == "" {
+				countUsers(0)
+			}
+			if test.createAfter {
+				createUser()
+			}
+			methods.RegistrationEnabled = methods.RegistrationEnabled && !test.closeAfter
+			methods.EmailCodeEnabled = !test.disableAfter
+			setMethods()
+			path := "/email/login"
+			if test.admin {
+				path = "/admin/email/login"
+			}
+			input.Code = sender.code
+			if input.Code == "" {
+				input.Code = "123456"
+			}
+			if test.wantStatus == 200 && existing.ID == "" {
+				wrong := input
+				wrong.Code = "000000"
+				if wrong.Code == input.Code {
+					wrong.Code = "111111"
+				}
+				authCall(t, s, path, wrong, 400)
+				countUsers(0)
+			}
+			response := authCall(t, s, path, input, test.wantStatus)
+			if test.wantStatus != 200 {
+				if existing.ID == "" {
+					countUsers(0)
+				} else {
+					countUsers(1)
+				}
+				if len(response.Result().Cookies()) != 0 {
+					t.Fatal("被拒绝的登录不应创建会话")
+				}
+				return
+			}
+			countUsers(1)
+			var user User
+			if err := json.Unmarshal(response.Body.Bytes(), &user); err != nil {
+				t.Fatal(err)
+			}
+			if user.Email != input.Email || user.Role != "user" || user.Status != "active" {
+				t.Fatalf("登录账号异常: %+v", user)
+			}
+			if existing.ID != "" && (user.ID != existing.ID || user.Name != existing.Name) {
+				t.Fatal("已有账号被覆盖")
+			}
+			var password *string
+			if err := pool.QueryRow(t.Context(), "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&password); err != nil || password != nil {
+				t.Fatalf("无密码登录不应设置密码: %v", err)
+			}
+			cookies := response.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatal("未建立登录会话")
+			}
+			checkClientAuthorization(t, s, cookies[0], user)
+			authCall(t, s, path, input, 400)
+		})
+	}
+}
+
+func TestConcurrentEmailAutoRegistration(t *testing.T) {
+	pool := emailDatabase(t)
+	sender := &mailStub{}
+	s := NewService(pool, authenticationStub{json.RawMessage(`{"email_code_enabled":true,"registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
+	input := emailInput{Email: "new@example.com", Purpose: "login"}
+	authCall(t, s, "/email/code", input, 200)
+	input.Code = sender.code
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	results := make(chan int, 8)
+	for range 8 {
+		wg.Go(func() {
+			req := httptest.NewRequest(http.MethodPost, "/email/login", strings.NewReader(string(body)))
+			rec := httptest.NewRecorder()
+			s.AuthRouter().ServeHTTP(rec, req)
+			results <- rec.Code
+		})
+	}
+	wg.Wait()
+	close(results)
+	success := 0
+	for status := range results {
+		if status == 200 {
+			success++
+		} else if status != 400 {
+			t.Fatalf("并发登录返回异常状态: %d", status)
+		}
+	}
+	if success != 1 {
+		t.Fatalf("同一验证码登录成功次数=%d", success)
+	}
+	for _, query := range []string{"SELECT count(*) FROM users", "SELECT count(*) FROM browser_sessions"} {
+		var count int
+		if err := pool.QueryRow(t.Context(), query).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("账号或会话数量=%d，错误=%v", count, err)
+		}
+	}
 }
 
 func TestConcurrentEmailCode(t *testing.T) {

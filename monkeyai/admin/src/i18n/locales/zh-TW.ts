@@ -779,13 +779,13 @@ export const zhTW = {
         emailCodeDescription: "允許成員透過電子郵件接收驗證碼登入。",
         allowRegistration: "允許新帳號註冊",
         allowRegistrationDescription:
-          "允許新使用者透過已啟用的 OAuth / OIDC 登入方式自動建立一般帳號。",
+          "允許新使用者透過已啟用的電子郵件驗證碼或 OAuth / OIDC 登入方式自動建立一般帳號，也支援單獨以電子郵件註冊。",
         enableRegistrationDialogTitle: "開啟新帳號註冊？",
         enableRegistrationDialogDescription:
-          "開啟後，新使用者通過 OAuth / OIDC 驗證時將自動建立一般帳號。",
+          "開啟後，新使用者透過已啟用的電子郵件驗證碼或 OAuth / OIDC 驗證即可自動建立一般帳號並登入，無須單獨註冊。",
         disableRegistrationDialogTitle: "關閉新帳號註冊？",
         disableRegistrationDialogDescription:
-          "關閉後，僅已新增的成員可以透過 OAuth / OIDC 登入，既有帳號不受影響。",
+          "關閉後，僅現有帳號可透過電子郵件驗證碼或 OAuth / OIDC 登入，現有帳號不受影響。",
         confirmEnableRegistration: "確認開啟",
         confirmDisableRegistration: "確認關閉",
       },
@@ -798,7 +798,8 @@ export const zhTW = {
         provider: "提供者",
         name: "顯示名稱",
         namePlaceholder: "例如：公司 GitHub",
-        baizhiyunScopes: "預設授權範圍： auth_certification openid phone user email",
+        baizhiyunScopes:
+          "預設授權範圍： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

@@ -168,6 +168,22 @@ func (q *Queries) CreateBrowserSession(ctx context.Context, arg CreateBrowserSes
 	)
 }
 
+const createEmailUser = `-- name: CreateEmailUser :exec
+INSERT INTO users (name, email, ROLE)
+    VALUES ($1, $2, 'user')
+ON CONFLICT (lower(email)) WHERE deleted_at IS NULL DO NOTHING
+`
+
+type CreateEmailUserParams struct {
+	Name  string
+	Email string
+}
+
+func (q *Queries) CreateEmailUser(ctx context.Context, arg CreateEmailUserParams) error {
+	_, err := q.db.Exec(ctx, createEmailUser, arg.Name, arg.Email)
+	return err
+}
+
 const createIdentityUser = `-- name: CreateIdentityUser :one
 INSERT INTO users (name, email, avatar_url, ROLE, last_login_at)
     VALUES ($1, $2, NULLIF ($3::text, ''),

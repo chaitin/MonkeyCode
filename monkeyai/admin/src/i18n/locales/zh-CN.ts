@@ -1012,13 +1012,13 @@ export const zhCN = {
         emailCodeDescription: "允许成员通过邮箱接收验证码登录。",
         allowRegistration: "允许新账号注册",
         allowRegistrationDescription:
-          "允许新用户通过邮箱注册，或通过已启用的 OAuth / OIDC 登录方式自动创建普通账号。",
+          "允许新用户通过已启用的邮箱验证码或 OAuth / OIDC 登录方式自动创建普通账号，也支持单独邮箱注册。",
         enableRegistrationDialogTitle: "开启新账号注册？",
         enableRegistrationDialogDescription:
-          "开启后，新用户通过 OAuth / OIDC 认证成功时将自动创建普通账号。",
+          "开启后，新用户通过已启用的邮箱验证码或 OAuth / OIDC 验证即可自动创建普通账号并登录，无需单独注册。",
         disableRegistrationDialogTitle: "关闭新账号注册？",
         disableRegistrationDialogDescription:
-          "关闭后，仅已添加的成员可以通过 OAuth / OIDC 登录，已有账号不受影响。",
+          "关闭后，仅已有账号可通过邮箱验证码或 OAuth / OIDC 登录，已有账号不受影响。",
         confirmEnableRegistration: "确认开启",
         confirmDisableRegistration: "确认关闭",
       },

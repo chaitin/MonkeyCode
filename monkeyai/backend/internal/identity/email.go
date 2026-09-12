@@ -48,11 +48,11 @@ func (s *Service) methods(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, methods)
 }
 
-func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose string) bool {
+func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose string) (loginMethods, bool) {
 	methods, err := s.loginMethods(r.Context())
 	if err != nil {
 		writeError(w, 503, "settings_unavailable", "认证配置不可用")
-		return false
+		return methods, false
 	}
 	allowed := false
 	switch purpose {
@@ -65,9 +65,9 @@ func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose str
 	}
 	if !allowed {
 		writeError(w, 403, "method_disabled", "该认证方式未启用")
-		return false
+		return methods, false
 	}
-	return true
+	return methods, true
 }
 
 type emailInput struct {
@@ -99,7 +99,8 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request", "验证码用途无效")
 		return
 	}
-	if !s.allowEmail(w, r, input.Purpose) {
+	methods, allowed := s.allowEmail(w, r, input.Purpose)
+	if !allowed {
 		return
 	}
 	if s.email == nil {
@@ -126,11 +127,13 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "server_error", "发送验证码失败")
 		return
 	}
-	// 对不存在、已停用或不符合用途的账号返回相同结果，避免泄露账号状态。
+	// 对不符合用途的账号返回相同结果，避免泄露账号状态。
 	user, lookupErr := sqlc.New(s.db).GetUserByEmail(r.Context(), input.Email)
 	eligible := lookupErr == nil && user.Status == "active"
 	if input.Purpose == "register" {
 		eligible = errors.Is(lookupErr, pgx.ErrNoRows)
+	} else if input.Purpose == "login" && methods.RegistrationEnabled && errors.Is(lookupErr, pgx.ErrNoRows) {
+		eligible = true
 	}
 	if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
 		writeError(w, 500, "server_error", "发送验证码失败")
@@ -228,7 +231,8 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		return
 	}
 	input.Purpose = purpose
-	if !s.allowEmail(w, r, purpose) {
+	methods, allowed := s.allowEmail(w, r, purpose)
+	if !allowed {
 		return
 	}
 	if len(input.Code) != 6 || strings.Trim(input.Code, "0123456789") != "" {
@@ -295,6 +299,13 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 	default:
 		row, lookupErr := q.GetUserByEmail(ctx, input.Email)
 		admin := strings.HasPrefix(r.URL.Path, "/admin/") || strings.Contains(r.URL.Path, "/v1/admin/")
+		if errors.Is(lookupErr, pgx.ErrNoRows) && methods.RegistrationEnabled && !admin {
+			if err := q.CreateEmailUser(ctx, sqlc.CreateEmailUserParams{Name: input.Email, Email: input.Email}); err != nil {
+				writeError(w, 500, "server_error", "创建账号失败")
+				return
+			}
+			row, lookupErr = q.GetUserByEmail(ctx, input.Email)
+		}
 		if lookupErr != nil || row.Status != "active" || admin && row.Role != "admin" {
 			writeError(w, 401, "invalid_credentials", "账号不可用于此登录入口")
 			return
