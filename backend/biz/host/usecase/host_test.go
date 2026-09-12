@@ -414,6 +414,9 @@ func TestHostUsecase_DeleteVMFinishesBoundTasks(t *testing.T) {
 	}
 
 	if err := u.DeleteVM(ctx, userID, hostID, vmID); err != nil {
+		if strings.Contains(err.Error(), "FOR UPDATE/SHARE not supported in SQLite") {
+			t.Skip("DeleteVirtualMachine intentionally uses SELECT ... FOR UPDATE; SQLite cannot exercise it")
+		}
 		t.Fatalf("DeleteVM() error = %v", err)
 	}
 
@@ -500,6 +503,10 @@ func TestHostUsecase_CreateVMPreinsertsVirtualMachineBeforeTaskflowCreate(t *tes
 	if vm.ID != vmCreate.seenID {
 		t.Fatalf("created vm id = %q, want %q", vm.ID, vmCreate.seenID)
 	}
+}
+
+func (s *hostTaskRepoStub) UpdateAgentResourceSelection(_ context.Context, _ uuid.UUID, _, _ []string) error {
+	return nil
 }
 
 type hostTaskRepoStub struct {

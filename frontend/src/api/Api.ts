@@ -2335,6 +2335,53 @@ export interface GithubComChaitinMonkeyCodeBackendDomainTeamSkill {
   updated_at?: number;
 }
 
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamRule {
+  active_version?: string;
+  content?: string;
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  id?: string;
+  name?: string;
+  updated_at?: number;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainListTeamRulesResp {
+  rules?: GithubComChaitinMonkeyCodeBackendDomainTeamRule[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainAddTeamRuleReq {
+  content: string;
+  description?: string;
+  name: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainUpdateTeamRuleReq {
+  content?: string;
+  description?: string;
+  name?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainSetTeamRuleEnabledReq {
+  enabled: boolean;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainTeamRuleVersion {
+  created_at?: number;
+  id?: string;
+  version?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainListTeamRuleVersionsResp {
+  versions?: GithubComChaitinMonkeyCodeBackendDomainTeamRuleVersion[];
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainRestoreTeamRuleReq {
+  version_id: string;
+}
+
+
+
 export interface GithubComChaitinMonkeyCodeBackendDomainTeamTaskItem {
   content?: string;
   created_at?: number;
@@ -4537,6 +4584,174 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/skills/${skillId}`,
         method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesList
+     * @summary 获取企业级全局规范列表
+     * @request GET:/api/v1/teams/rules
+     * @secure
+     */
+    v1TeamsRulesList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainListTeamRulesResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesCreate
+     * @summary 新建企业级全局规范
+     * @request POST:/api/v1/teams/rules
+     * @secure
+     */
+    v1TeamsRulesCreate: (
+      req: GithubComChaitinMonkeyCodeBackendDomainAddTeamRuleReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamRule;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesUpdate
+     * @summary 编辑企业级全局规范
+     * @request PUT:/api/v1/teams/rules/{rule_id}
+     * @secure
+     */
+    v1TeamsRulesUpdate: (
+      ruleId: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainUpdateTeamRuleReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamRule;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules/${ruleId}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesEnabledUpdate
+     * @summary 启用或禁用企业级全局规范
+     * @request PUT:/api/v1/teams/rules/{rule_id}/enabled
+     * @secure
+     */
+    v1TeamsRulesEnabledUpdate: (
+      ruleId: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainSetTeamRuleEnabledReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamRule;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules/${ruleId}/enabled`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesDelete
+     * @summary 软删除企业级全局规范
+     * @request DELETE:/api/v1/teams/rules/{rule_id}
+     * @secure
+     */
+    v1TeamsRulesDelete: (ruleId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/rules/${ruleId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesVersionsList
+     * @summary 查看规范历史版本
+     * @request GET:/api/v1/teams/rules/{rule_id}/versions
+     * @secure
+     */
+    v1TeamsRulesVersionsList: (ruleId: string, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainListTeamRuleVersionsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules/${ruleId}/versions`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @tags 【Team 管理员】全局规范
+     * @name V1TeamsRulesRestoreCreate
+     * @summary 恢复历史版本
+     * @request POST:/api/v1/teams/rules/{rule_id}/restore
+     * @secure
+     */
+    v1TeamsRulesRestoreCreate: (
+      ruleId: string,
+      req: GithubComChaitinMonkeyCodeBackendDomainRestoreTeamRuleReq,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: GithubComChaitinMonkeyCodeBackendDomainTeamRule;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/rules/${ruleId}/restore`,
+        method: "POST",
+        body: req,
         secure: true,
         type: ContentType.Json,
         format: "json",
