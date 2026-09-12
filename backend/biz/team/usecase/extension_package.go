@@ -1,17 +1,22 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -23,9 +28,12 @@ type teamExtensionPackageUsecase struct {
 	repo              domain.TeamExtensionPackageRepo
 	skillUsecase      domain.TeamSkillUsecase
 	guard             domain.SkillGuard
+	objstore          agentresource.ObjectStore
+	stageFinalizer    domain.ExtensionPackageStageFinalizer
 	ruleImporter      extensionPackageRuleImporter
 	staticDir         string
 	staticRoutePrefix string
+	guardWaitTimeout  time.Duration
 	logger            *slog.Logger
 }
 
@@ -40,9 +48,12 @@ func NewTeamExtensionPackageUsecase(i *do.Injector) (domain.TeamExtensionPackage
 		repo:              do.MustInvoke[domain.TeamExtensionPackageRepo](i),
 		skillUsecase:      do.MustInvoke[domain.TeamSkillUsecase](i),
 		guard:             aiguard.NewClient(cfg.AIGuard),
+		objstore:          do.MustInvoke[agentresource.ObjectStore](i),
+		stageFinalizer:    do.MustInvoke[domain.ExtensionPackageStageFinalizer](i),
 		ruleImporter:      &extensionRuleImporter{db: dbClient},
 		staticDir:         cfg.StaticFiles.Dir,
 		staticRoutePrefix: cfg.StaticFiles.RoutePrefix,
+		guardWaitTimeout:  positiveDuration(cfg.AIGuard.WaitTimeout, defaultGuardWaitTimeout),
 		logger:            do.MustInvoke[*slog.Logger](i),
 	}, nil
 }
@@ -55,16 +66,79 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 
 	teamID := teamUser.GetTeamID()
 	skillImports := extensionSkillImports(pkg)
+	stageKey := ""
+	stageCreated := false
 	if len(skillImports) > 0 {
-		result, err := u.guard.Scan(ctx, domain.SkillGuardRequest{
+		stageKey = extensionPackageStageKey(teamID)
+		result, err := u.guard.ScanObserved(ctx, domain.SkillGuardRequest{
 			Name:     pkg.PackageID,
 			Version:  pkg.Version,
 			Filename: req.Filename,
 			Package:  req.Data,
+		}, func(task *domain.SkillGuardResult) error {
+			if u.objstore == nil {
+				return errors.New("extension package staging object store is unavailable")
+			}
+			prefix, filename := path.Split(stageKey)
+			if err := u.objstore.PutFile(ctx, strings.TrimSuffix(prefix, "/"), filename, bytes.NewReader(req.Data)); err != nil {
+				return err
+			}
+			stageCreated = true
+			deadline := time.Now().Add(u.waitTimeout())
+			for _, skill := range skillImports {
+				if _, err := u.skillUsecase.Add(ctx, teamUser, &domain.AddTeamSkillReq{
+					Name:                   skill.Name,
+					Description:            skill.Description,
+					Tags:                   skill.Tags,
+					Content:                skill.Content,
+					SkillMDPath:            skill.Path,
+					SourceType:             "extension-package",
+					SourceLabel:            pkg.PackageID,
+					ExtensionPackageID:     pkg.PackageID,
+					GuardChecked:           true,
+					GuardTaskID:            task.TaskID,
+					GuardDeadline:          deadline,
+					GuardStageKey:          stageKey,
+					PendingGuardOwner:      domain.SkillGuardOwnerExtensionPackage,
+					PendingPackageFilename: req.Filename,
+					PendingPackageVersion:  pkg.Version,
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 		auditmeta.SetGuardResult(ctx, result)
 		if err != nil {
+			if stageCreated && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				u.rejectExtensionStage(ctx, teamID, stageKey, err)
+			}
 			return nil, err
+		}
+		if stageCreated {
+			finalized, err := u.finalizeExtensionStage(ctx, teamID, teamUser.User.ID, stageKey, pkg.PackageID, pkg.Version)
+			if err != nil {
+				if !isRequestCancellation(err) {
+					u.rejectExtensionStage(ctx, teamID, stageKey, err)
+				}
+				return nil, err
+			}
+			if err := u.skillUsecase.ApproveGuardStage(ctx, teamID, stageKey); err != nil {
+				if !isRequestCancellation(err) {
+					u.rejectExtensionStage(ctx, teamID, stageKey, err)
+				}
+				return nil, err
+			}
+			u.discardExtensionStage(ctx, stageKey)
+			return &domain.ImportTeamExtensionPackageResp{
+				PackageID:     pkg.PackageID,
+				Version:       pkg.Version,
+				CreatedRules:  finalized.CreatedRules,
+				UpdatedRules:  finalized.UpdatedRules,
+				UpdatedSkills: len(skillImports),
+				CreatedImages: finalized.CreatedImages,
+				UpdatedImages: finalized.UpdatedImages,
+			}, nil
 		}
 	}
 
@@ -134,6 +208,44 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	}, nil
 }
 
+const extensionPackageStagePrefix = "agent-resources/extension-package-staging"
+
+func extensionPackageStageKey(teamID uuid.UUID) string {
+	return path.Join(extensionPackageStagePrefix, teamID.String(), uuid.NewString(), "package.zip")
+}
+
+func (u *teamExtensionPackageUsecase) waitTimeout() time.Duration {
+	if u.guardWaitTimeout > 0 {
+		return u.guardWaitTimeout
+	}
+	return defaultGuardWaitTimeout
+}
+
+func (u *teamExtensionPackageUsecase) finalizeExtensionStage(ctx context.Context, teamID, userID uuid.UUID, stageKey, packageID, version string) (*domain.ExtensionPackageStageResult, error) {
+	if u.stageFinalizer == nil {
+		return nil, errors.New("extension package stage finalizer is unavailable")
+	}
+	return u.stageFinalizer.Finalize(ctx, stageKey, teamID, userID, packageID, version)
+}
+
+func (u *teamExtensionPackageUsecase) rejectExtensionStage(ctx context.Context, teamID uuid.UUID, stageKey string, scanErr error) {
+	cleanupCtx := context.WithoutCancel(ctx)
+	if err := u.skillUsecase.RejectGuardStage(cleanupCtx, stageKey, scanErr); err != nil {
+		u.logger.ErrorContext(ctx, "failed to reject extension package guard stage", "team_id", teamID, "error", err)
+		return
+	}
+	u.discardExtensionStage(cleanupCtx, stageKey)
+}
+
+func (u *teamExtensionPackageUsecase) discardExtensionStage(ctx context.Context, stageKey string) {
+	if u.stageFinalizer == nil || strings.TrimSpace(stageKey) == "" {
+		return
+	}
+	if err := u.stageFinalizer.Discard(ctx, stageKey); err != nil {
+		u.logger.WarnContext(ctx, "failed to discard extension package guard stage", "stage_key", stageKey, "error", err)
+	}
+}
+
 type noopExtensionPackageRuleImporter struct{}
 
 func (noopExtensionPackageRuleImporter) ImportRules(context.Context, uuid.UUID, *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
@@ -175,6 +287,10 @@ type extensionImagesManifestImage struct {
 }
 
 func (u *teamExtensionPackageUsecase) writeImageManifests(teamID uuid.UUID, archives []*db.TeamExtensionImageArchive) error {
+	return writeExtensionImageManifests(u.staticDir, teamID, archives)
+}
+
+func writeExtensionImageManifests(staticDir string, teamID uuid.UUID, archives []*db.TeamExtensionImageArchive) error {
 	byArch := map[string][]*db.TeamExtensionImageArchive{}
 	for _, archive := range archives {
 		if strings.TrimSpace(archive.Arch) == "" {
@@ -188,7 +304,7 @@ func (u *teamExtensionPackageUsecase) writeImageManifests(teamID uuid.UUID, arch
 		if err != nil {
 			return err
 		}
-		path := filepath.Join(u.staticDir, "extensions", "teams", teamID.String(), "images", arch, "manifest.json")
+		path := filepath.Join(staticDir, "extensions", "teams", teamID.String(), "images", arch, "manifest.json")
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}

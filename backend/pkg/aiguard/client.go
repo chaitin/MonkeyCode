@@ -71,6 +71,13 @@ func durationOr(raw string, fallback time.Duration) time.Duration {
 // a sanitized result even when the decision is non-safe, so callers can audit
 // the task ID and status without receiving the service's raw response.
 func (c *Client) Scan(ctx context.Context, req domain.SkillGuardRequest) (*domain.SkillGuardResult, error) {
+	return c.ScanObserved(ctx, req, nil)
+}
+
+// ScanObserved behaves like Scan and invokes onTask after the create response
+// establishes a non-terminal task. The callback gives callers a chance to
+// persist taskID before the first poll, which makes restart recovery possible.
+func (c *Client) ScanObserved(ctx context.Context, req domain.SkillGuardRequest, onTask func(*domain.SkillGuardResult) error) (*domain.SkillGuardResult, error) {
 	if c == nil || c.baseURL == "" || c.apiToken == "" {
 		return nil, ErrNotConfigured
 	}
@@ -91,6 +98,11 @@ func (c *Client) Scan(ctx context.Context, req domain.SkillGuardRequest) (*domai
 	}
 	createdTaskID := strings.TrimSpace(result.TaskID)
 	result.TaskID = createdTaskID
+	if onTask != nil {
+		if err := onTask(result); err != nil {
+			return result, err
+		}
+	}
 
 	timer := time.NewTimer(c.waitTimeout)
 	defer timer.Stop()
@@ -100,7 +112,7 @@ func (c *Client) Scan(ctx context.Context, req domain.SkillGuardRequest) (*domai
 	for {
 		select {
 		case <-ctx.Done():
-			return result, fmt.Errorf("%w: %v", ErrUnavailable, ctx.Err())
+			return result, fmt.Errorf("%w: %w", ErrUnavailable, ctx.Err())
 		case <-timer.C:
 			if result == nil {
 				result = &domain.SkillGuardResult{}
@@ -125,6 +137,35 @@ func (c *Client) Scan(ctx context.Context, req domain.SkillGuardRequest) (*domai
 			}
 		}
 	}
+}
+
+// Poll checks one scan task without creating a new task. A pending/running
+// result is returned with a nil error so callers can persist it and poll again
+// after a restart.
+func (c *Client) Poll(ctx context.Context, taskID string) (*domain.SkillGuardResult, error) {
+	if c == nil || c.baseURL == "" || c.apiToken == "" {
+		return nil, ErrNotConfigured
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, fmt.Errorf("%w: empty task id", ErrUnavailable)
+	}
+	result, err := c.getTask(ctx, taskID)
+	if err != nil {
+		return result, err
+	}
+	if result == nil {
+		result = &domain.SkillGuardResult{}
+	}
+	if strings.TrimSpace(result.TaskID) != taskID {
+		result.TaskID = taskID
+		return result, fmt.Errorf("%w: poll response task id mismatch", ErrUnavailable)
+	}
+	result.TaskID = taskID
+	if _, err := evaluatePollResult(result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func evaluateCreateResult(result *domain.SkillGuardResult) (bool, error) {

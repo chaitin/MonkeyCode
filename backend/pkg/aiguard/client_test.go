@@ -263,3 +263,65 @@ func TestScanRejectsPollResponseWithDifferentTaskID(t *testing.T) {
 		t.Fatalf("result = %#v, want original task-1", result)
 	}
 }
+
+func TestScanObservedPersistsTaskBeforeFirstPoll(t *testing.T) {
+	var observed []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`{"data":{"taskId":"task-1","status":"running"}}`))
+			return
+		}
+		observed = append(observed, r.URL.Path)
+		_, _ = w.Write([]byte(`{"data":{"taskId":"task-1","status":"completed","detectionResult":"safe"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.AIGuardConfig{
+		BaseURL:        server.URL,
+		APIToken:       "test-token",
+		RequestTimeout: "1s",
+		WaitTimeout:    "1s",
+		PollInterval:   "5ms",
+	})
+	callbackCalled := false
+	result, err := client.ScanObserved(context.Background(), domain.SkillGuardRequest{
+		Name:     "guard-smoke",
+		Filename: "skill.zip",
+		Package:  []byte("zip-bytes"),
+	}, func(task *domain.SkillGuardResult) error {
+		callbackCalled = true
+		if task == nil || task.TaskID != "task-1" || task.Status != "running" {
+			t.Fatalf("observed task = %#v", task)
+		}
+		if len(observed) != 0 {
+			t.Fatal("callback ran after polling began")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ScanObserved() error = %v", err)
+	}
+	if !callbackCalled || result == nil || result.DetectionResult != "safe" {
+		t.Fatalf("callback=%v result=%#v", callbackCalled, result)
+	}
+}
+
+func TestPollReturnsPendingWithoutError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"taskId":"task-1","status":"running"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.AIGuardConfig{
+		BaseURL:        server.URL,
+		APIToken:       "test-token",
+		RequestTimeout: "1s",
+	})
+	result, err := client.Poll(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	if result == nil || result.Status != "running" {
+		t.Fatalf("result = %#v", result)
+	}
+}

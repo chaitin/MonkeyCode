@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/aiguard"
 	"github.com/chaitin/MonkeyCode/backend/pkg/auditmeta"
+	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 )
 
 func TestTeamSkillUsecaseAddPackageScansOnceAndRecordsAuditMetadata(t *testing.T) {
@@ -76,6 +82,45 @@ func TestTeamSkillUsecaseAddPackageDoesNotWriteWhenGuardIsUnavailable(t *testing
 	}
 	if guard.calls != 1 {
 		t.Fatalf("guard calls = %d, want 1", guard.calls)
+	}
+}
+
+func TestTeamSkillUsecasePersistsPendingVersionBeforePolling(t *testing.T) {
+	packageData, err := packageSkillMarkdownContent("---\nname: pending-skill\ndescription: pending\n---\nbody\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &teamSkillRepoStub{}
+	guard := &observedSkillGuardStub{}
+	u := &teamSkillUsecase{
+		repo:             repo,
+		objstore:         &skillGuardObjectStoreStub{},
+		guard:            guard,
+		guardWaitTimeout: time.Minute,
+	}
+
+	_, err = u.AddPackage(context.Background(), &domain.TeamUser{
+		User: &domain.User{ID: uuid.New()},
+		Team: &domain.Team{ID: uuid.New()},
+	}, &domain.AddTeamSkillPackageReq{
+		AddTeamSkillReq: domain.AddTeamSkillReq{Name: "pending-skill", Description: "pending"},
+		PackageFilename: "pending-skill.zip",
+		PackageData:     packageData,
+	})
+	if err != nil {
+		t.Fatalf("AddPackage() error = %v", err)
+	}
+	if repo.pendingVersionCalls != 1 {
+		t.Fatalf("pending version writes = %d, want 1", repo.pendingVersionCalls)
+	}
+	if repo.pendingTaskID != "task-pending" {
+		t.Fatalf("pending task id = %q, want task-pending", repo.pendingTaskID)
+	}
+	if repo.approveCalls != 1 {
+		t.Fatalf("approve calls = %d, want 1", repo.approveCalls)
+	}
+	if guard.observedCalls != 1 || guard.scanCalls != 0 {
+		t.Fatalf("guard calls observed=%d scan=%d, want 1/0", guard.observedCalls, guard.scanCalls)
 	}
 }
 
@@ -169,11 +214,115 @@ func TestTeamExtensionPackageImportScansWholePackageOnce(t *testing.T) {
 	}
 }
 
+func TestTeamExtensionPackageImportPersistsPendingStageAndFinalizes(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	guard := &observedSkillGuardStub{}
+	skills := &teamSkillUsecaseStub{}
+	finalizer := &extensionPackageStageFinalizerStub{result: &domain.ExtensionPackageStageResult{CreatedRules: 1, CreatedImages: 1}}
+	u := &teamExtensionPackageUsecase{
+		repo:           &extensionPackageRepoStub{},
+		skillUsecase:   skills,
+		guard:          guard,
+		objstore:       &skillGuardObjectStoreStub{},
+		stageFinalizer: finalizer,
+		ruleImporter:   &extensionPackageRuleImporterStub{},
+		staticDir:      t.TempDir(),
+		logger:         slog.Default(),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":     `{"package_id":"pack","version":"1.0.0","skills":[{"skill_id":"a","path":"skills/a/SKILL.md"},{"skill_id":"b","path":"skills/b/SKILL.md"}]}`,
+		"skills/a/SKILL.md": "---\nname: skill-a\ndescription: A\n---\nbody-a\n",
+		"skills/b/SKILL.md": "---\nname: skill-b\ndescription: B\n---\nbody-b\n",
+	})
+
+	resp, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{Filename: "pack.zip", Data: data})
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if resp.UpdatedSkills != 2 || resp.CreatedRules != 1 || resp.CreatedImages != 1 {
+		t.Fatalf("response = %#v", resp)
+	}
+	if guard.observedCalls != 1 || guard.scanCalls != 0 {
+		t.Fatalf("guard calls observed=%d scan=%d, want 1/0", guard.observedCalls, guard.scanCalls)
+	}
+	if len(skills.adds) != 2 {
+		t.Fatalf("skill adds = %d, want 2", len(skills.adds))
+	}
+	stageKey := skills.adds[0].GuardStageKey
+	for i, req := range skills.adds {
+		if req.GuardTaskID != "task-pending" || req.GuardDeadline.IsZero() || req.GuardStageKey == "" {
+			t.Fatalf("skill add %d missing pending guard state: %#v", i, req)
+		}
+		if req.GuardStageKey != stageKey || req.PendingGuardOwner != domain.SkillGuardOwnerExtensionPackage {
+			t.Fatalf("skill add %d not grouped under extension stage: %#v", i, req)
+		}
+	}
+	if finalizer.calls != 1 || skills.approveStageCalls != 1 || finalizer.discardCalls != 1 {
+		t.Fatalf("finalizer calls=%d approve=%d discard=%d", finalizer.calls, skills.approveStageCalls, finalizer.discardCalls)
+	}
+}
+
+func TestTeamSkillUsecaseRecoversPendingExtensionStage(t *testing.T) {
+	stageKey := "agent-resources/extension-package-staging/team/stage/package.zip"
+	skillID := uuid.New()
+	versionID := uuid.New()
+	teamID := uuid.New()
+	userID := uuid.New()
+	taskID := "task-pending"
+	deadline := time.Now().Add(time.Hour)
+	version := &db.AgentSkillVersion{
+		ID:            versionID,
+		ResourceID:    skillID,
+		GuardStatus:   domain.SkillGuardStatusPending,
+		GuardTaskID:   &taskID,
+		GuardDeadline: &deadline,
+		ParsedMeta:    types.SkillParsedMeta{PendingGuardOwner: domain.SkillGuardOwnerExtensionPackage, PendingStageKey: stageKey, SourceLabel: "pack", PendingPackageVersion: "1.0.0"},
+	}
+	repo := &teamSkillRepoStub{pendingVersions: []*db.AgentSkillVersion{version}}
+	repo.skills = []*db.AgentSkill{{ID: skillID, ScopeType: "team", ScopeID: teamID.String(), CreatedBy: userID}}
+	guard := &skillGuardStub{result: &domain.SkillGuardResult{TaskID: "task-pending", Status: "completed", DetectionResult: "safe"}}
+	finalizer := &extensionPackageStageFinalizerStub{}
+	u := &teamSkillUsecase{repo: repo, guard: guard, stageFinalizer: finalizer, logger: slog.Default()}
+
+	err := u.handleGuardJob(context.Background(), &delayqueue.Job[*domain.SkillGuardJob]{Payload: &domain.SkillGuardJob{VersionID: versionID}})
+	if err != nil {
+		t.Fatalf("handleGuardJob() error = %v", err)
+	}
+	if finalizer.calls != 1 || repo.approveStageCalls != 1 {
+		t.Fatalf("finalizer calls=%d approve stage calls=%d, want 1/1", finalizer.calls, repo.approveStageCalls)
+	}
+}
+
 type skillGuardStub struct {
 	calls       int
 	lastRequest domain.SkillGuardRequest
 	result      *domain.SkillGuardResult
 	err         error
+}
+
+type observedSkillGuardStub struct {
+	observedCalls int
+	scanCalls     int
+}
+
+func (s *observedSkillGuardStub) Scan(context.Context, domain.SkillGuardRequest) (*domain.SkillGuardResult, error) {
+	s.scanCalls++
+	return nil, errors.New("Scan must not be called by the guarded write path")
+}
+
+func (s *observedSkillGuardStub) ScanObserved(_ context.Context, _ domain.SkillGuardRequest, onTask func(*domain.SkillGuardResult) error) (*domain.SkillGuardResult, error) {
+	s.observedCalls++
+	pending := &domain.SkillGuardResult{TaskID: "task-pending", Status: "running"}
+	if err := onTask(pending); err != nil {
+		return pending, err
+	}
+	return &domain.SkillGuardResult{TaskID: "task-pending", Status: "completed", DetectionResult: "safe"}, nil
+}
+
+func (s *observedSkillGuardStub) Poll(context.Context, string) (*domain.SkillGuardResult, error) {
+	return nil, errors.New("Poll must not be called by ScanObserved")
 }
 
 func (s *skillGuardStub) Scan(_ context.Context, req domain.SkillGuardRequest) (*domain.SkillGuardResult, error) {
@@ -182,8 +331,26 @@ func (s *skillGuardStub) Scan(_ context.Context, req domain.SkillGuardRequest) (
 	return s.result, s.err
 }
 
+func (s *skillGuardStub) ScanObserved(ctx context.Context, req domain.SkillGuardRequest, onTask func(*domain.SkillGuardResult) error) (*domain.SkillGuardResult, error) {
+	result, err := s.Scan(ctx, req)
+	if err == nil && result != nil && onTask != nil {
+		status := strings.ToLower(strings.TrimSpace(result.Status))
+		if status == "" || status == "pending" || status == "running" {
+			if err := onTask(result); err != nil {
+				return result, err
+			}
+		}
+	}
+	return result, err
+}
+
+func (s *skillGuardStub) Poll(context.Context, string) (*domain.SkillGuardResult, error) {
+	return s.result, s.err
+}
+
 type teamSkillUsecaseStub struct {
-	adds []*domain.AddTeamSkillReq
+	adds              []*domain.AddTeamSkillReq
+	approveStageCalls int
 }
 
 func (s *teamSkillUsecaseStub) List(context.Context, *domain.TeamUser) (*domain.ListTeamSkillsResp, error) {
@@ -199,6 +366,15 @@ func (s *teamSkillUsecaseStub) AddPackage(context.Context, *domain.TeamUser, *do
 	return &domain.TeamSkill{}, nil
 }
 
+func (s *teamSkillUsecaseStub) ApproveGuardStage(context.Context, uuid.UUID, string) error {
+	s.approveStageCalls++
+	return nil
+}
+
+func (s *teamSkillUsecaseStub) RejectGuardStage(context.Context, string, error) error {
+	return nil
+}
+
 func (s *teamSkillUsecaseStub) Update(context.Context, *domain.TeamUser, *domain.UpdateTeamSkillReq) (*domain.TeamSkill, error) {
 	return &domain.TeamSkill{}, nil
 }
@@ -211,9 +387,50 @@ var _ domain.SkillGuard = (*skillGuardStub)(nil)
 var _ domain.TeamSkillUsecase = (*teamSkillUsecaseStub)(nil)
 
 type teamSkillRepoStub struct {
-	skills           []*db.AgentSkill
-	updateMetaCalled bool
+	skills              []*db.AgentSkill
+	updateMetaCalled    bool
+	pendingVersionCalls int
+	pendingTaskID       string
+	approveCalls        int
+	approveStageCalls   int
+	pendingVersions     []*db.AgentSkillVersion
 }
+
+type extensionPackageStageFinalizerStub struct {
+	calls        int
+	discardCalls int
+	result       *domain.ExtensionPackageStageResult
+	err          error
+}
+
+func (s *extensionPackageStageFinalizerStub) Finalize(context.Context, string, uuid.UUID, uuid.UUID, string, string) (*domain.ExtensionPackageStageResult, error) {
+	s.calls++
+	if s.result == nil {
+		s.result = &domain.ExtensionPackageStageResult{}
+	}
+	return s.result, s.err
+}
+
+func (s *extensionPackageStageFinalizerStub) Discard(context.Context, string) error {
+	s.discardCalls++
+	return nil
+}
+
+type skillGuardObjectStoreStub struct{}
+
+func (*skillGuardObjectStoreStub) GetObject(context.Context, string) (io.ReadCloser, error) {
+	return nil, errors.New("unexpected GetObject")
+}
+
+func (*skillGuardObjectStoreStub) PresignGet(context.Context, string, time.Duration) (string, error) {
+	return "", errors.New("unexpected PresignGet")
+}
+
+func (*skillGuardObjectStoreStub) PutFile(context.Context, string, string, io.Reader) error {
+	return nil
+}
+
+func (*skillGuardObjectStoreStub) DeleteObject(context.Context, string) error { return nil }
 
 func (s *teamSkillRepoStub) List(context.Context, uuid.UUID) ([]*db.AgentSkill, error) {
 	return s.skills, nil
@@ -233,11 +450,47 @@ func (s *teamSkillRepoStub) GetBareRepoID(context.Context, uuid.UUID) (uuid.UUID
 }
 
 func (s *teamSkillRepoStub) UpsertSkill(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string, bool, string) (*db.AgentSkill, error) {
-	return &db.AgentSkill{}, nil
+	return &db.AgentSkill{ID: uuid.New(), Name: "guarded-skill", Enabled: true}, nil
 }
 
 func (s *teamSkillRepoStub) CreateVersion(context.Context, uuid.UUID, string, string, domain.SkillVersionMeta) (*db.AgentSkillVersion, error) {
 	return &db.AgentSkillVersion{}, nil
+}
+
+func (s *teamSkillRepoStub) CreatePendingVersion(_ context.Context, skillID uuid.UUID, _, _ string, _ domain.SkillVersionMeta, _ []uuid.UUID, taskID string, _ time.Time) (*db.AgentSkillVersion, error) {
+	s.pendingVersionCalls++
+	s.pendingTaskID = taskID
+	return &db.AgentSkillVersion{ID: uuid.New(), ResourceID: skillID, GuardStatus: domain.SkillGuardStatusPending}, nil
+}
+
+func (s *teamSkillRepoStub) GetVersion(context.Context, uuid.UUID) (*db.AgentSkillVersion, error) {
+	if len(s.pendingVersions) > 0 {
+		return s.pendingVersions[0], nil
+	}
+	return nil, &db.NotFoundError{}
+}
+
+func (s *teamSkillRepoStub) ListPendingGuardVersions(context.Context) ([]*db.AgentSkillVersion, error) {
+	return s.pendingVersions, nil
+}
+
+func (s *teamSkillRepoStub) ApproveVersion(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, []uuid.UUID) error {
+	s.approveCalls++
+	return nil
+}
+
+func (s *teamSkillRepoStub) RejectVersion(context.Context, uuid.UUID, string, string) error {
+	return nil
+}
+
+func (s *teamSkillRepoStub) ApproveGuardStage(context.Context, uuid.UUID, string) (int, error) {
+	s.approveCalls++
+	s.approveStageCalls++
+	return 1, nil
+}
+
+func (s *teamSkillRepoStub) RejectGuardStage(context.Context, string, string, string) (int, error) {
+	return 1, nil
 }
 
 func (s *teamSkillRepoStub) UpdateMeta(context.Context, uuid.UUID, uuid.UUID, string, *string, *bool) (*db.AgentSkill, error) {
@@ -259,6 +512,17 @@ func (s *teamSkillRepoStub) ReplaceGroupBindings(context.Context, uuid.UUID, uui
 
 func (s *teamSkillRepoStub) GetActiveVersion(context.Context, uuid.UUID) (*db.AgentSkillVersion, error) {
 	return nil, nil
+}
+
+func (s *teamSkillRepoStub) GetLatestVersion(context.Context, uuid.UUID) (*db.AgentSkillVersion, error) {
+	return nil, &db.NotFoundError{}
+}
+
+func (s *teamSkillRepoStub) GetSkillByID(context.Context, uuid.UUID) (*db.AgentSkill, error) {
+	if len(s.skills) > 0 {
+		return s.skills[0], nil
+	}
+	return nil, &db.NotFoundError{}
 }
 
 func (s *teamSkillRepoStub) NextVersionFor(context.Context, uuid.UUID) (string, error) {

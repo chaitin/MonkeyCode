@@ -191,6 +191,16 @@ func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, erro
 	return out.Body, nil
 }
 
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	if _, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(c.cfg.Bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		return fmt.Errorf("oss: delete %q: %w", key, err)
+	}
+	return nil
+}
+
 func (c *Client) WithAccessEndpoint(endpoint string) *Client {
 	endpoint = strings.TrimSpace(endpoint)
 	if c == nil || endpoint == "" {
