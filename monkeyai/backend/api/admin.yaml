@@ -71,7 +71,8 @@ paths:
       summary: 发送邮箱验证码
       description: login 受 email_code_enabled 控制；register 需要开放注册并至少启用一种邮箱登录方式；reset 受
         password_enabled 控制。每邮箱每分钟最多 1 次、每小时最多 10 次，每连接来源 IP 每小时最多 30
-        次；失败发送也计入限额。不存在或不符合用途的账号返回相同成功响应但不发送邮件。
+        次；失败发送也计入限额。开启 registration_enabled 时，新邮箱可获取 login 验证码；
+        未开放注册的未知邮箱、停用或不符合用途的账号返回相同成功响应但不发送邮件。
       security: []
       requestBody:
         required: true
@@ -348,6 +349,7 @@ paths:
       summary: 使用邮箱验证码登录管理后台
       description: 需要开启 email_code_enabled，使用 login
         用途验证码。仅允许启用状态的管理员，成功建立浏览器会话；验证码最多允许 5 次错误尝试。
+        此入口不自动创建账号，registration_enabled 开启也不例外。
       security: []
       requestBody:
         required: true
@@ -4343,7 +4345,7 @@ components:
           description: 验证码登录开关，默认 false。
         registration_enabled:
           type: boolean
-          description: 自助注册开关，默认 false。
+          description: 新账号注册开关，默认 false；开启后允许邮箱验证码登录时自动创建普通账号，也允许邮箱注册和 OAuth / OIDC 自动注册。
     EmailAuthUser:
       type: object
       required:
