@@ -157,6 +157,12 @@ func (u *teamSkillUsecase) AddPackage(ctx context.Context, teamUser *domain.Team
 		return u.loadDTO(ctx, teamID, staged.skillID)
 	}
 	if err := u.approvePending(ctx, teamID, pending); err != nil {
+		// The scan has already been accepted, but a transient approval failure
+		// must not strand the pending version until the next process restart.
+		// Transfer it to the durable scan queue for a retry on the same task ID.
+		if enqueueErr := u.enqueueGuardJob(context.WithoutCancel(ctx), pending.versionID, time.Now()); enqueueErr != nil {
+			u.logger.ErrorContext(ctx, "failed to enqueue pending skill scan after approval failure", "skill_id", pending.skillID, "version_id", pending.versionID, "error", enqueueErr)
+		}
 		return nil, err
 	}
 	return u.loadDTO(ctx, teamID, pending.skillID)
