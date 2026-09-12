@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
@@ -301,8 +303,23 @@ func TestTeamRuleUsecaseRestoreKeepsDisabled(t *testing.T) {
 }
 
 func TestTeamRuleUsecaseRestrictsAdminSurfaceToGlobalScope(t *testing.T) {
-	ctx := context.Background()
 	client := newRuleTestClient(t, "team-rule-global-scope")
+	assertRuleUsecaseRestrictsAdminSurfaceToGlobalScope(t, client)
+}
+
+func TestTeamRuleUsecaseRestrictsAdminSurfaceToGlobalScopePostgres(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("G2_TEST_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set G2_TEST_POSTGRES_DSN to run the PostgreSQL integration test")
+	}
+	client := enttest.Open(t, "postgres", dsn)
+	t.Cleanup(func() { _ = client.Close() })
+	assertRuleUsecaseRestrictsAdminSurfaceToGlobalScope(t, client)
+}
+
+func assertRuleUsecaseRestrictsAdminSurfaceToGlobalScope(t *testing.T, client *db.Client) {
+	t.Helper()
+	ctx := context.Background()
 	uc := &teamRuleUsecase{db: client}
 	user := testTeamUser()
 
