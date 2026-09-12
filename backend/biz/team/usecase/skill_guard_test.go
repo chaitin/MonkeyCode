@@ -330,6 +330,38 @@ func TestTeamSkillUsecaseRejectFailureTransfersPendingScanToQueue(t *testing.T) 
 	}
 }
 
+func TestTeamExtensionPackageRejectFailureTransfersPendingStageToRecovery(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	skills := &teamSkillUsecaseStub{rejectStageErr: errors.New("reject stage persistence failed")}
+	finalizer := &extensionPackageStageFinalizerStub{}
+	guard := &observedSkillGuardStub{scanErr: aiguard.ErrUnavailable}
+	u := &teamExtensionPackageUsecase{
+		repo:           &extensionPackageRepoStub{},
+		skillUsecase:   skills,
+		guard:          guard,
+		objstore:       &skillGuardObjectStoreStub{},
+		stageFinalizer: finalizer,
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":     `{"package_id":"pack","version":"1.0.0","skills":[{"skill_id":"a","path":"skills/a/SKILL.md"}]}`,
+		"skills/a/SKILL.md": "---\nname: skill-a\ndescription: A\n---\nbody-a\n",
+	})
+
+	_, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{Filename: "pack.zip", Data: data})
+	if !errors.Is(err, aiguard.ErrUnavailable) {
+		t.Fatalf("Import() error = %v, want ErrUnavailable", err)
+	}
+	if skills.rejectStageCalls != 1 || skills.enqueueStageCalls != 1 {
+		t.Fatalf("reject stage calls=%d enqueue stage calls=%d, want 1/1", skills.rejectStageCalls, skills.enqueueStageCalls)
+	}
+	if finalizer.calls != 0 {
+		t.Fatalf("finalizer calls = %d, want 0", finalizer.calls)
+	}
+}
+
 func TestTeamExtensionPackageCancellationTransfersPendingStageToRecovery(t *testing.T) {
 	ctx := context.Background()
 	teamID := uuid.New()
@@ -625,6 +657,8 @@ type teamSkillUsecaseStub struct {
 	adds              []*domain.AddTeamSkillReq
 	approveStageCalls int
 	enqueueStageCalls int
+	rejectStageCalls  int
+	rejectStageErr    error
 }
 
 func (s *teamSkillUsecaseStub) List(context.Context, *domain.TeamUser) (*domain.ListTeamSkillsResp, error) {
@@ -646,7 +680,8 @@ func (s *teamSkillUsecaseStub) ApproveGuardStage(context.Context, uuid.UUID, str
 }
 
 func (s *teamSkillUsecaseStub) RejectGuardStage(context.Context, string, error) error {
-	return nil
+	s.rejectStageCalls++
+	return s.rejectStageErr
 }
 
 func (s *teamSkillUsecaseStub) EnqueueGuardStage(context.Context, string) error {

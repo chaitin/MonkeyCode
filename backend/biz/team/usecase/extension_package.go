@@ -238,6 +238,9 @@ func (u *teamExtensionPackageUsecase) rejectExtensionStage(ctx context.Context, 
 	cleanupCtx := context.WithoutCancel(ctx)
 	if err := u.skillUsecase.RejectGuardStage(cleanupCtx, stageKey, scanErr); err != nil {
 		u.logger.ErrorContext(ctx, "failed to reject extension package guard stage", "team_id", teamID, "error", err)
+		if enqueueErr := u.skillUsecase.EnqueueGuardStage(cleanupCtx, stageKey); enqueueErr != nil {
+			u.logger.ErrorContext(ctx, "failed to enqueue extension package guard stage recovery", "team_id", teamID, "stage_key", stageKey, "error", enqueueErr)
+		}
 		return
 	}
 	u.discardExtensionStage(cleanupCtx, stageKey)
