@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -95,6 +96,18 @@ type Config struct {
 	ReviewAgent ReviewAgent   `mapstructure:"review_agent"`
 	Security    Security      `mapstructure:"security"`
 	AIGuard     AIGuardConfig `mapstructure:"aiguard"`
+}
+
+// LogValue deliberately exposes only an allowlist of non-secret settings.
+// Config contains credentials throughout its nested structs, so logging it with
+// slog.Any would disclose secrets at debug level.
+func (c Config) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Bool("debug", c.Debug),
+		slog.String("server.addr", c.Server.Addr),
+		slog.String("root_path", c.RootPath),
+		slog.String("logger.level", c.Logger.Level),
+	)
 }
 
 type Security struct {
