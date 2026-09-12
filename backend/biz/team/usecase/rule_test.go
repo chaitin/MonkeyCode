@@ -299,3 +299,93 @@ func TestTeamRuleUsecaseRestoreKeepsDisabled(t *testing.T) {
 		t.Fatalf("disabled restored rule still injected: %+v", active)
 	}
 }
+
+func TestTeamRuleUsecaseRestrictsAdminSurfaceToGlobalScope(t *testing.T) {
+	ctx := context.Background()
+	client := newRuleTestClient(t, "team-rule-global-scope")
+	uc := &teamRuleUsecase{db: client}
+	user := testTeamUser()
+
+	rule, err := client.AgentRule.Create().
+		SetName("non-global-rule").
+		SetScopeID("team-" + uuid.NewString()).
+		SetCreatedBy(uuid.New()).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule: %v", err)
+	}
+	version, err := client.AgentRuleVersion.Create().
+		SetRuleID(rule.ID).
+		SetVersion("v1").
+		SetContent("# scoped\n").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule version: %v", err)
+	}
+	if _, err := client.AgentRule.UpdateOneID(rule.ID).SetActiveVersionID(version.ID).Save(ctx); err != nil {
+		t.Fatalf("set non-global active version: %v", err)
+	}
+
+	listed, err := uc.List(ctx, user)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(listed.Rules) != 0 {
+		t.Fatalf("List exposed non-global rules: %+v", listed.Rules)
+	}
+
+	operations := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "update",
+			call: func() error {
+				_, err := uc.Update(ctx, user, &domain.UpdateTeamRuleReq{RuleID: rule.ID, Content: "# changed\n"})
+				return err
+			},
+		},
+		{
+			name: "set enabled",
+			call: func() error {
+				_, err := uc.SetEnabled(ctx, user, &domain.SetTeamRuleEnabledReq{RuleID: rule.ID, Enabled: false})
+				return err
+			},
+		},
+		{
+			name: "list versions",
+			call: func() error {
+				_, err := uc.ListVersions(ctx, user, &domain.ListTeamRuleVersionsReq{RuleID: rule.ID})
+				return err
+			},
+		},
+		{
+			name: "restore",
+			call: func() error {
+				_, err := uc.Restore(ctx, user, &domain.RestoreTeamRuleReq{RuleID: rule.ID, VersionID: version.ID})
+				return err
+			},
+		},
+		{
+			name: "delete",
+			call: func() error {
+				return uc.Delete(ctx, user, &domain.DeleteTeamRuleReq{RuleID: rule.ID})
+			},
+		},
+	}
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			if err := operation.call(); err == nil {
+				t.Fatal("operation reached a non-global rule")
+			}
+		})
+	}
+
+	stored, err := client.AgentRule.Get(ctx, rule.ID)
+	if err != nil {
+		t.Fatalf("get non-global rule: %v", err)
+	}
+	if stored.IsDeleted || !stored.Enabled || stored.ActiveVersionID == nil || *stored.ActiveVersionID != version.ID {
+		t.Fatalf("non-global rule was mutated: %+v", stored)
+	}
+}

@@ -269,6 +269,41 @@ func TestListActiveRules_SkipsDanglingActiveVersion(t *testing.T) {
 	}
 }
 
+func TestListActiveRules_SkipsNonGlobalScope(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-rules-scope")
+
+	globalID, _ := seedRule(t, ctx, client, "global", false, "global", true)
+	scoped, err := client.AgentRule.Create().
+		SetName("scoped").
+		SetScopeID("team-" + uuid.NewString()).
+		SetCreatedBy(uuid.New()).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule: %v", err)
+	}
+	version, err := client.AgentRuleVersion.Create().
+		SetRuleID(scoped.ID).
+		SetVersion("v1").
+		SetContent("scoped").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule version: %v", err)
+	}
+	if _, err := client.AgentRule.UpdateOneID(scoped.ID).SetActiveVersionID(version.ID).Save(ctx); err != nil {
+		t.Fatalf("set non-global active version: %v", err)
+	}
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(out) != 1 || out[0].ID != globalID {
+		t.Fatalf("expected only global rule, got %+v (scoped=%s)", out, scoped.ID)
+	}
+}
+
 // ---- ListActiveSkills ----
 
 func TestListActiveSkills_UnionWithForceDelivery(t *testing.T) {

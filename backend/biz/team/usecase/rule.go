@@ -13,12 +13,27 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
 	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 const maxRuleContentBytes = 1 << 20
+
+const globalRuleScopeID = "global"
+
+func globalRulePredicates() []predicate.AgentRule {
+	return []predicate.AgentRule{
+		agentrule.ScopeTypeEQ(agentrule.ScopeTypeGlobal),
+		agentrule.ScopeIDEQ(globalRuleScopeID),
+	}
+}
+
+func aliveGlobalRulePredicates(id uuid.UUID) []predicate.AgentRule {
+	preds := globalRulePredicates()
+	return append(preds, agentrule.IDEQ(id), agentrule.IsDeletedEQ(false))
+}
 
 type teamRuleUsecase struct {
 	db *db.Client
@@ -31,6 +46,7 @@ func NewTeamRuleUsecase(i *do.Injector) (domain.TeamRuleUsecase, error) {
 func (u *teamRuleUsecase) List(ctx context.Context, _ *domain.TeamUser) (*domain.ListTeamRulesResp, error) {
 	rules, err := u.db.AgentRule.Query().
 		Where(agentrule.IsDeletedEQ(false)).
+		Where(globalRulePredicates()...).
 		Order(db.Desc(agentrule.FieldUpdatedAt)).
 		All(ctx)
 	if err != nil {
@@ -62,6 +78,8 @@ func (u *teamRuleUsecase) Add(ctx context.Context, teamUser *domain.TeamUser, re
 		rule, err := tx.AgentRule.Create().
 			SetName(name).
 			SetDescription(strings.TrimSpace(req.Description)).
+			SetScopeType(agentrule.ScopeTypeGlobal).
+			SetScopeID(globalRuleScopeID).
 			SetCreatedBy(userID).
 			SetEnabled(true).
 			SetIsDeleted(false).
@@ -118,7 +136,7 @@ func (u *teamRuleUsecase) Update(ctx context.Context, _ *domain.TeamUser, req *d
 	}
 	err = entx.WithTx2(ctx, u.db, func(tx *db.Tx) error {
 		update := tx.AgentRule.UpdateOneID(rule.ID).
-			Where(agentrule.IsDeletedEQ(false)).
+			Where(aliveGlobalRulePredicates(rule.ID)...).
 			SetName(name).
 			SetDescription(description)
 		if _, err := update.Save(ctx); err != nil {
@@ -152,7 +170,7 @@ func (u *teamRuleUsecase) SetEnabled(ctx context.Context, _ *domain.TeamUser, re
 		return nil, err
 	}
 	if _, err := u.db.AgentRule.UpdateOneID(req.RuleID).
-		Where(agentrule.IsDeletedEQ(false)).
+		Where(aliveGlobalRulePredicates(req.RuleID)...).
 		SetEnabled(req.Enabled).
 		Save(ctx); err != nil {
 		return nil, err
@@ -165,7 +183,7 @@ func (u *teamRuleUsecase) Delete(ctx context.Context, _ *domain.TeamUser, req *d
 		return err
 	}
 	_, err := u.db.AgentRule.UpdateOneID(req.RuleID).
-		Where(agentrule.IsDeletedEQ(false)).
+		Where(aliveGlobalRulePredicates(req.RuleID)...).
 		SetIsDeleted(true).
 		Save(ctx)
 	return err
@@ -210,7 +228,7 @@ func (u *teamRuleUsecase) Restore(ctx context.Context, _ *domain.TeamUser, req *
 		return nil, err
 	}
 	if _, err := u.db.AgentRule.UpdateOneID(req.RuleID).
-		Where(agentrule.IsDeletedEQ(false)).
+		Where(aliveGlobalRulePredicates(req.RuleID)...).
 		SetActiveVersionID(version.ID).
 		Save(ctx); err != nil {
 		return nil, err
@@ -220,7 +238,7 @@ func (u *teamRuleUsecase) Restore(ctx context.Context, _ *domain.TeamUser, req *
 
 func (u *teamRuleUsecase) getAlive(ctx context.Context, id uuid.UUID) (*db.AgentRule, error) {
 	rule, err := u.db.AgentRule.Query().
-		Where(agentrule.IDEQ(id), agentrule.IsDeletedEQ(false)).
+		Where(aliveGlobalRulePredicates(id)...).
 		Only(ctx)
 	if err != nil {
 		if db.IsNotFound(err) {

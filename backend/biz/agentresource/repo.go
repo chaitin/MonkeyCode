@@ -82,13 +82,19 @@ func NewRepo(client *db.Client) Repo {
 
 // ---- rules ----
 
+func activeGlobalRulePredicates() []predicate.AgentRule {
+	return []predicate.AgentRule{
+		agentrule.IsDeletedEQ(false),
+		agentrule.EnabledEQ(true),
+		agentrule.ActiveVersionIDNotNil(),
+		agentrule.ScopeTypeEQ(agentrule.ScopeTypeGlobal),
+		agentrule.ScopeIDEQ("global"),
+	}
+}
+
 func (r *repoImpl) ListActiveRules(ctx context.Context) ([]*RuleWithVersion, error) {
 	rules, err := r.db.AgentRule.Query().
-		Where(
-			agentrule.IsDeletedEQ(false),
-			agentrule.EnabledEQ(true),
-			agentrule.ActiveVersionIDNotNil(),
-		).
+		Where(activeGlobalRulePredicates()...).
 		Order(db.Asc(agentrule.FieldName)).
 		All(ctx)
 	if err != nil {
