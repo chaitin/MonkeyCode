@@ -286,6 +286,50 @@ func TestTeamSkillUsecaseApprovalFailureTransfersPendingScanToQueue(t *testing.T
 	}
 }
 
+func TestTeamSkillUsecaseRejectFailureTransfersPendingScanToQueue(t *testing.T) {
+	ctx := context.Background()
+	packageData, err := packageSkillMarkdownContent("---\nname: pending-skill\ndescription: pending\n---\nbody\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &teamSkillRepoStub{rejectErr: errors.New("reject persistence failed")}
+	queue, rdb := newSkillGuardTestQueue(t)
+	guard := &observedSkillGuardStub{scanErr: aiguard.ErrUnavailable}
+	u := &teamSkillUsecase{
+		repo:             repo,
+		objstore:         &skillGuardObjectStoreStub{},
+		guard:            guard,
+		queue:            queue,
+		guardWaitTimeout: time.Minute,
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	_, err = u.AddPackage(ctx, &domain.TeamUser{
+		User: &domain.User{ID: uuid.New()},
+		Team: &domain.Team{ID: uuid.New()},
+	}, &domain.AddTeamSkillPackageReq{
+		AddTeamSkillReq: domain.AddTeamSkillReq{Name: "pending-skill", Description: "pending"},
+		PackageFilename: "pending-skill.zip",
+		PackageData:     packageData,
+	})
+	if !errors.Is(err, aiguard.ErrUnavailable) {
+		t.Fatalf("AddPackage() error = %v, want ErrUnavailable", err)
+	}
+	if repo.rejectCalls != 1 {
+		t.Fatalf("reject calls = %d, want 1", repo.rejectCalls)
+	}
+	_, runAt, ok, err := queue.GetJobInfo(ctx, consts.SkillGuardQueueKey, repo.pendingVersionID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || runAt.After(time.Now()) {
+		t.Fatalf("reject failure was not queued for recovery: exists=%v runAt=%s", ok, runAt)
+	}
+	if zcard, err := rdb.ZCard(ctx, "mcai:skillguard:dq:"+consts.SkillGuardQueueKey+":delayed").Result(); err != nil || zcard != 1 {
+		t.Fatalf("queue cardinality = %d, err = %v, want 1", zcard, err)
+	}
+}
+
 func TestTeamExtensionPackageCancellationTransfersPendingStageToRecovery(t *testing.T) {
 	ctx := context.Background()
 	teamID := uuid.New()
@@ -507,6 +551,7 @@ type skillGuardStub struct {
 type observedSkillGuardStub struct {
 	observedCalls int
 	scanCalls     int
+	scanErr       error
 }
 
 type cancellingObservedSkillGuardStub struct {
@@ -542,6 +587,9 @@ func (s *observedSkillGuardStub) ScanObserved(_ context.Context, _ domain.SkillG
 	pending := &domain.SkillGuardResult{TaskID: "task-pending", Status: "running"}
 	if err := onTask(pending); err != nil {
 		return pending, err
+	}
+	if s.scanErr != nil {
+		return pending, s.scanErr
 	}
 	return &domain.SkillGuardResult{TaskID: "task-pending", Status: "completed", DetectionResult: "safe"}, nil
 }
@@ -625,6 +673,8 @@ type teamSkillRepoStub struct {
 	pendingTaskID       string
 	approveCalls        int
 	approveErr          error
+	rejectCalls         int
+	rejectErr           error
 	approveStageCalls   int
 	pendingVersions     []*db.AgentSkillVersion
 }
@@ -714,7 +764,8 @@ func (s *teamSkillRepoStub) ApproveVersion(context.Context, uuid.UUID, uuid.UUID
 }
 
 func (s *teamSkillRepoStub) RejectVersion(context.Context, uuid.UUID, string, string) error {
-	return nil
+	s.rejectCalls++
+	return s.rejectErr
 }
 
 func (s *teamSkillRepoStub) ApproveGuardStage(context.Context, uuid.UUID, string) (int, error) {

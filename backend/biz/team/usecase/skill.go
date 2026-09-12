@@ -144,6 +144,9 @@ func (u *teamSkillUsecase) AddPackage(ctx context.Context, teamUser *domain.Team
 				}
 			} else if rejectErr := u.rejectPending(context.WithoutCancel(ctx), pending, err); rejectErr != nil {
 				u.logger.ErrorContext(ctx, "failed to persist rejected skill scan", "skill_id", pending.skillID, "version_id", pending.versionID, "error", rejectErr)
+				if enqueueErr := u.enqueueGuardJob(context.WithoutCancel(ctx), pending.versionID, time.Now()); enqueueErr != nil {
+					u.logger.ErrorContext(ctx, "failed to enqueue rejected skill scan recovery", "skill_id", pending.skillID, "version_id", pending.versionID, "error", enqueueErr)
+				}
 			}
 		}
 		return nil, err
