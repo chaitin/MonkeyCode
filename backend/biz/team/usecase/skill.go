@@ -504,7 +504,13 @@ func (u *teamSkillUsecase) handleGuardJob(ctx context.Context, job *delayqueue.J
 	if result != nil {
 		switch strings.ToLower(strings.TrimSpace(result.Status)) {
 		case "pending", "running":
-			return u.enqueueGuardJob(ctx, version.ID, time.Now().Add(guardRecoveryInterval))
+			if err := u.enqueueGuardJob(ctx, version.ID, time.Now().Add(guardRecoveryInterval)); err != nil {
+				return err
+			}
+			// The consumer deletes the current payload after a nil handler result.
+			// Tell it that this ID was deliberately rescheduled so the replacement
+			// job written by enqueueGuardJob remains available.
+			return delayqueue.ErrJobRescheduled
 		}
 	}
 
@@ -538,7 +544,12 @@ func (u *teamSkillUsecase) handleExtensionPackageGuardJob(ctx context.Context, v
 	if result != nil {
 		switch strings.ToLower(strings.TrimSpace(result.Status)) {
 		case "pending", "running":
-			return u.enqueueGuardJob(ctx, version.ID, time.Now().Add(guardRecoveryInterval))
+			if err := u.enqueueGuardJob(ctx, version.ID, time.Now().Add(guardRecoveryInterval)); err != nil {
+				return err
+			}
+			// See handleGuardJob: returning nil would delete the replacement
+			// payload immediately after it is written.
+			return delayqueue.ErrJobRescheduled
 		}
 	}
 	if u.stageFinalizer == nil {

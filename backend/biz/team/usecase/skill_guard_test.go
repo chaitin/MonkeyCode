@@ -10,9 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/aiguard"
@@ -121,6 +125,69 @@ func TestTeamSkillUsecasePersistsPendingVersionBeforePolling(t *testing.T) {
 	}
 	if guard.observedCalls != 1 || guard.scanCalls != 0 {
 		t.Fatalf("guard calls observed=%d scan=%d, want 1/0", guard.observedCalls, guard.scanCalls)
+	}
+}
+
+func TestTeamSkillUsecasePendingGuardHandlerReschedulesPayload(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		owner string
+	}{
+		{name: "standalone"},
+		{name: "extension package", owner: domain.SkillGuardOwnerExtensionPackage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			versionID := uuid.New()
+			skillID := uuid.New()
+			teamID := uuid.New()
+			taskID := "task-pending"
+			deadline := time.Now().Add(time.Minute)
+
+			meta := types.SkillParsedMeta{PendingGuardOwner: tc.owner}
+			if tc.owner != "" {
+				meta.PendingStageKey = "stage-key"
+			}
+			repo := &teamSkillRepoStub{
+				skills: []*db.AgentSkill{{
+					ID:        skillID,
+					ScopeType: agentskill.ScopeTypeTeam,
+					ScopeID:   teamID.String(),
+				}},
+				pendingVersions: []*db.AgentSkillVersion{{
+					ID:            versionID,
+					ResourceID:    skillID,
+					GuardStatus:   domain.SkillGuardStatusPending,
+					GuardTaskID:   &taskID,
+					GuardDeadline: &deadline,
+					ParsedMeta:    meta,
+				}},
+			}
+			guard := &skillGuardStub{result: &domain.SkillGuardResult{TaskID: taskID, Status: "running"}}
+
+			srv := miniredis.RunT(t)
+			rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
+			t.Cleanup(func() { _ = rdb.Close() })
+			queue := delayqueue.NewSkillGuardQueue(rdb, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			u := &teamSkillUsecase{repo: repo, guard: guard, queue: queue}
+
+			err := u.handleGuardJob(ctx, &delayqueue.Job[*domain.SkillGuardJob]{
+				Payload: &domain.SkillGuardJob{VersionID: versionID},
+			})
+			if !errors.Is(err, delayqueue.ErrJobRescheduled) {
+				t.Fatalf("handleGuardJob() error = %v, want ErrJobRescheduled", err)
+			}
+			job, runAt, ok, err := queue.GetJobInfo(ctx, consts.SkillGuardQueueKey, versionID.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok || job == nil || job.Payload == nil || job.Payload.VersionID != versionID {
+				t.Fatalf("rescheduled job = %#v, exists=%v", job, ok)
+			}
+			if runAt.Before(time.Now()) {
+				t.Fatalf("rescheduled job runAt = %s, want future time", runAt)
+			}
+		})
 	}
 }
 
