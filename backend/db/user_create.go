@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
@@ -441,6 +442,21 @@ func (_c *UserCreate) AddMcpUpstreams(v ...*MCPUpstream) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddMcpUpstreamIDs(ids...)
+}
+
+// AddEndpointIDs adds the "endpoints" edge to the Endpoint entity by IDs.
+func (_c *UserCreate) AddEndpointIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddEndpointIDs(ids...)
+	return _c
+}
+
+// AddEndpoints adds the "endpoints" edges to the Endpoint entity.
+func (_c *UserCreate) AddEndpoints(v ...*Endpoint) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddEndpointIDs(ids...)
 }
 
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
@@ -947,6 +963,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.EndpointsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

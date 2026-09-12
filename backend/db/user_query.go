@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
@@ -63,6 +64,7 @@ type UserQuery struct {
 	withProjectIssueComments *ProjectIssueCommentQuery
 	withGitBots              *GitBotQuery
 	withMcpUpstreams         *MCPUpstreamQuery
+	withEndpoints            *EndpointQuery
 	withTeamMembers          *TeamMemberQuery
 	withTeamGroupMembers     *TeamGroupMemberQuery
 	withGitBotUsers          *GitBotUserQuery
@@ -499,6 +501,28 @@ func (_q *UserQuery) QueryMcpUpstreams() *MCPUpstreamQuery {
 	return query
 }
 
+// QueryEndpoints chains the current query on the "endpoints" edge.
+func (_q *UserQuery) QueryEndpoints() *EndpointQuery {
+	query := (&EndpointClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(endpoint.Table, endpoint.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.EndpointsTable, user.EndpointsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryTeamMembers chains the current query on the "team_members" edge.
 func (_q *UserQuery) QueryTeamMembers() *TeamMemberQuery {
 	query := (&TeamMemberClient{config: _q.config}).Query()
@@ -775,6 +799,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withProjectIssueComments: _q.withProjectIssueComments.Clone(),
 		withGitBots:              _q.withGitBots.Clone(),
 		withMcpUpstreams:         _q.withMcpUpstreams.Clone(),
+		withEndpoints:            _q.withEndpoints.Clone(),
 		withTeamMembers:          _q.withTeamMembers.Clone(),
 		withTeamGroupMembers:     _q.withTeamGroupMembers.Clone(),
 		withGitBotUsers:          _q.withGitBotUsers.Clone(),
@@ -983,6 +1008,17 @@ func (_q *UserQuery) WithMcpUpstreams(opts ...func(*MCPUpstreamQuery)) *UserQuer
 	return _q
 }
 
+// WithEndpoints tells the query-builder to eager-load the nodes that are connected to
+// the "endpoints" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithEndpoints(opts ...func(*EndpointQuery)) *UserQuery {
+	query := (&EndpointClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withEndpoints = query
+	return _q
+}
+
 // WithTeamMembers tells the query-builder to eager-load the nodes that are connected to
 // the "team_members" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithTeamMembers(opts ...func(*TeamMemberQuery)) *UserQuery {
@@ -1094,7 +1130,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [21]bool{
+		loadedTypes = [22]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
@@ -1113,6 +1149,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withProjectIssueComments != nil,
 			_q.withGitBots != nil,
 			_q.withMcpUpstreams != nil,
+			_q.withEndpoints != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
 			_q.withGitBotUsers != nil,
@@ -1266,6 +1303,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadMcpUpstreams(ctx, query, nodes,
 			func(n *User) { n.Edges.McpUpstreams = []*MCPUpstream{} },
 			func(n *User, e *MCPUpstream) { n.Edges.McpUpstreams = append(n.Edges.McpUpstreams, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withEndpoints; query != nil {
+		if err := _q.loadEndpoints(ctx, query, nodes,
+			func(n *User) { n.Edges.Endpoints = []*Endpoint{} },
+			func(n *User, e *Endpoint) { n.Edges.Endpoints = append(n.Edges.Endpoints, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1924,6 +1968,36 @@ func (_q *UserQuery) loadMcpUpstreams(ctx context.Context, query *MCPUpstreamQue
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadEndpoints(ctx context.Context, query *EndpointQuery, nodes []*User, init func(*User), assign func(*User, *Endpoint)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(endpoint.FieldUserID)
+	}
+	query.Where(predicate.Endpoint(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.EndpointsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

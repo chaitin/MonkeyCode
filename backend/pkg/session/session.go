@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -102,6 +103,26 @@ func Get[T any](s *Session, c echo.Context, name string) (T, error) {
 		return zero, err
 	}
 	return t, nil
+}
+
+func (s *Session) Valid(ctx context.Context, name, cookie string) bool {
+	valid, _ := s.Check(ctx, name, cookie)
+	return valid
+}
+
+func (s *Session) Check(ctx context.Context, name, cookie string) (bool, error) {
+	rawUID, err := s.rdb.Get(ctx, lookupKey(name, cookie)).Result()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	uid, err := uuid.Parse(rawUID)
+	if err != nil {
+		return false, nil
+	}
+	return s.rdb.HExists(ctx, hashKey(name, uid), cookie).Result()
 }
 
 // Del 删除单个 session（登出）
