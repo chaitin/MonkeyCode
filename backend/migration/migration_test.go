@@ -142,4 +142,3 @@ func TestAgentRulesEnabledMigrationExists(t *testing.T) {
 		t.Fatalf("down migration does not drop enabled")
 	}
 }
-
