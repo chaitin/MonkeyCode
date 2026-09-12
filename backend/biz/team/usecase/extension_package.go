@@ -112,9 +112,7 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 		if err != nil {
 			if stageCreated {
 				if isRequestCancellation(err) {
-					if enqueueErr := u.skillUsecase.EnqueueGuardStage(context.WithoutCancel(ctx), stageKey); enqueueErr != nil {
-						u.logger.ErrorContext(ctx, "failed to enqueue cancelled extension package scan", "stage_key", stageKey, "error", enqueueErr)
-					}
+					u.enqueueExtensionStageRecovery(ctx, teamID, stageKey, "scan")
 				} else {
 					u.rejectExtensionStage(ctx, teamID, stageKey, err)
 				}
@@ -124,13 +122,17 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 		if stageCreated {
 			finalized, err := u.finalizeExtensionStage(ctx, teamID, teamUser.User.ID, stageKey, pkg.PackageID, pkg.Version)
 			if err != nil {
-				if !isRequestCancellation(err) {
+				if isRequestCancellation(err) {
+					u.enqueueExtensionStageRecovery(ctx, teamID, stageKey, "finalize")
+				} else {
 					u.rejectExtensionStage(ctx, teamID, stageKey, err)
 				}
 				return nil, err
 			}
 			if err := u.skillUsecase.ApproveGuardStage(ctx, teamID, stageKey); err != nil {
-				if !isRequestCancellation(err) {
+				if isRequestCancellation(err) {
+					u.enqueueExtensionStageRecovery(ctx, teamID, stageKey, "approve")
+				} else {
 					u.rejectExtensionStage(ctx, teamID, stageKey, err)
 				}
 				return nil, err
@@ -244,6 +246,12 @@ func (u *teamExtensionPackageUsecase) rejectExtensionStage(ctx context.Context, 
 		return
 	}
 	u.discardExtensionStage(cleanupCtx, stageKey)
+}
+
+func (u *teamExtensionPackageUsecase) enqueueExtensionStageRecovery(ctx context.Context, teamID uuid.UUID, stageKey, phase string) {
+	if err := u.skillUsecase.EnqueueGuardStage(context.WithoutCancel(ctx), stageKey); err != nil {
+		u.logger.ErrorContext(ctx, "failed to enqueue cancelled extension package stage", "team_id", teamID, "stage_key", stageKey, "phase", phase, "error", err)
+	}
 }
 
 func (u *teamExtensionPackageUsecase) discardExtensionStage(ctx context.Context, stageKey string) {

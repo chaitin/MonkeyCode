@@ -394,6 +394,72 @@ func TestTeamExtensionPackageCancellationTransfersPendingStageToRecovery(t *test
 	}
 }
 
+func TestTeamExtensionPackageFinalizeCancellationTransfersPendingStageToRecovery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	teamID := uuid.New()
+	userID := uuid.New()
+	skills := &teamSkillUsecaseStub{}
+	finalizer := &extensionPackageStageFinalizerStub{err: context.Canceled}
+	guard := &observedSkillGuardStub{}
+	u := &teamExtensionPackageUsecase{
+		repo:           &extensionPackageRepoStub{},
+		skillUsecase:   skills,
+		guard:          guard,
+		objstore:       &skillGuardObjectStoreStub{},
+		stageFinalizer: finalizer,
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":     `{"package_id":"pack","version":"1.0.0","skills":[{"skill_id":"a","path":"skills/a/SKILL.md"}]}`,
+		"skills/a/SKILL.md": "---\nname: skill-a\ndescription: A\n---\nbody-a\n",
+	})
+
+	_, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{Filename: "pack.zip", Data: data})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Import() error = %v, want context.Canceled", err)
+	}
+	if skills.enqueueStageCalls != 1 || skills.enqueueStageCtxErr != nil {
+		t.Fatalf("enqueue stage calls=%d ctx err=%v, want one detached enqueue", skills.enqueueStageCalls, skills.enqueueStageCtxErr)
+	}
+	if finalizer.calls != 1 || skills.approveStageCalls != 0 || skills.rejectStageCalls != 0 || finalizer.discardCalls != 0 {
+		t.Fatalf("finalizer=%d approve=%d reject=%d discard=%d, want 1/0/0/0", finalizer.calls, skills.approveStageCalls, skills.rejectStageCalls, finalizer.discardCalls)
+	}
+}
+
+func TestTeamExtensionPackageApproveCancellationTransfersPendingStageToRecovery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	teamID := uuid.New()
+	userID := uuid.New()
+	skills := &teamSkillUsecaseStub{approveStageErr: context.Canceled}
+	finalizer := &extensionPackageStageFinalizerStub{result: &domain.ExtensionPackageStageResult{CreatedRules: 1}}
+	guard := &observedSkillGuardStub{}
+	u := &teamExtensionPackageUsecase{
+		repo:           &extensionPackageRepoStub{},
+		skillUsecase:   skills,
+		guard:          guard,
+		objstore:       &skillGuardObjectStoreStub{},
+		stageFinalizer: finalizer,
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":     `{"package_id":"pack","version":"1.0.0","skills":[{"skill_id":"a","path":"skills/a/SKILL.md"}]}`,
+		"skills/a/SKILL.md": "---\nname: skill-a\ndescription: A\n---\nbody-a\n",
+	})
+
+	_, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{Filename: "pack.zip", Data: data})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Import() error = %v, want context.Canceled", err)
+	}
+	if skills.enqueueStageCalls != 1 || skills.enqueueStageCtxErr != nil {
+		t.Fatalf("enqueue stage calls=%d ctx err=%v, want one detached enqueue", skills.enqueueStageCalls, skills.enqueueStageCtxErr)
+	}
+	if finalizer.calls != 1 || skills.approveStageCalls != 1 || skills.rejectStageCalls != 0 || finalizer.discardCalls != 0 {
+		t.Fatalf("finalizer=%d approve=%d reject=%d discard=%d, want 1/1/0/0", finalizer.calls, skills.approveStageCalls, skills.rejectStageCalls, finalizer.discardCalls)
+	}
+}
+
 func newSkillGuardTestQueue(t *testing.T) (*delayqueue.SkillGuardQueue, *redis.Client) {
 	t.Helper()
 	srv := miniredis.RunT(t)
@@ -654,11 +720,13 @@ func (s *skillGuardStub) Poll(context.Context, string) (*domain.SkillGuardResult
 }
 
 type teamSkillUsecaseStub struct {
-	adds              []*domain.AddTeamSkillReq
-	approveStageCalls int
-	enqueueStageCalls int
-	rejectStageCalls  int
-	rejectStageErr    error
+	adds               []*domain.AddTeamSkillReq
+	approveStageCalls  int
+	approveStageErr    error
+	enqueueStageCalls  int
+	enqueueStageCtxErr error
+	rejectStageCalls   int
+	rejectStageErr     error
 }
 
 func (s *teamSkillUsecaseStub) List(context.Context, *domain.TeamUser) (*domain.ListTeamSkillsResp, error) {
@@ -676,7 +744,7 @@ func (s *teamSkillUsecaseStub) AddPackage(context.Context, *domain.TeamUser, *do
 
 func (s *teamSkillUsecaseStub) ApproveGuardStage(context.Context, uuid.UUID, string) error {
 	s.approveStageCalls++
-	return nil
+	return s.approveStageErr
 }
 
 func (s *teamSkillUsecaseStub) RejectGuardStage(context.Context, string, error) error {
@@ -684,8 +752,9 @@ func (s *teamSkillUsecaseStub) RejectGuardStage(context.Context, string, error) 
 	return s.rejectStageErr
 }
 
-func (s *teamSkillUsecaseStub) EnqueueGuardStage(context.Context, string) error {
+func (s *teamSkillUsecaseStub) EnqueueGuardStage(ctx context.Context, _ string) error {
 	s.enqueueStageCalls++
+	s.enqueueStageCtxErr = ctx.Err()
 	return nil
 }
 
