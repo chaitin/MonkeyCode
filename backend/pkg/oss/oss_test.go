@@ -238,7 +238,7 @@ func TestPresignWithAccessEndpointKeepsPathPrefixOutsideSignature(t *testing.T) 
 func TestPresignPathStyleKeepsBucketWhenDomainStartsWithBucket(t *testing.T) {
 	client, err := NewS3Compatible(context.Background(), config.ObjectStorageConfig{
 		Endpoint:        "http://internal:9000",
-		AccessEndpoint:  "http://monkeycode.citicsinfo.com/oss",
+		AccessEndpoint:  "http://monkeycode.example.com/oss",
 		AccessKey:       "ak",
 		AccessKeySecret: "sk",
 		Bucket:          "monkeycode",
