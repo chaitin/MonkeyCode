@@ -61,8 +61,21 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	}
 	if method == "oauth" {
 		o := oauthSettings(in)
+		prev := oauthSettings(old)
+		if o.Mode != "" && o.Mode != "manual" && o.Mode != "dynamic" {
+			return resource.Invalid("OAuth 客户端配置模式无效")
+		}
+		if o.Mode == "dynamic" {
+			// 自动发现结果和注册凭证由后端维护，普通编辑不能覆盖或清除。
+			o = oauthConfig{Mode: "dynamic"}
+			in["oauth_client_secret"] = ""
+			if prev.Mode == "dynamic" && old.String("url") == in.String("url") {
+				o = prev
+				in["oauth_client_secret"] = old.String("oauth_client_secret")
+			}
+		}
 		o.ClientID = strings.TrimSpace(o.ClientID)
-		if !validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || (o.ClientID == "" && o.RegistrationURL == "") {
+		if o.Mode != "dynamic" && (!validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || (o.ClientID == "" && o.RegistrationURL == "")) {
 			return resource.Invalid("OAuth 应用配置不完整，请填写 Client ID 或 Registration URL")
 		}
 		if o.RegistrationURL != "" && !validURL(o.RegistrationURL) {
@@ -73,6 +86,12 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 		}
 		o.Scopes = strings.Join(strings.Fields(o.Scopes), " ")
 		config := resource.Object{"authorization_url": o.AuthorizationURL, "token_url": o.TokenURL, "client_id": o.ClientID, "scopes": o.Scopes}
+		if o.Mode != "" {
+			config["mode"] = o.Mode
+		}
+		if o.Mode == "dynamic" && o.Resource != "" {
+			config["resource"] = o.Resource
+		}
 		if o.RegistrationURL != "" {
 			config["registration_url"] = o.RegistrationURL
 		}
@@ -80,10 +99,9 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 			config["token_endpoint_auth_method"] = o.TokenAuthMethod
 		}
 		in["oauth_config"] = config
-		prev := oauthSettings(old)
 		if _, exists := in["oauth_client_secret"]; !exists {
 			in["oauth_client_secret"] = old.String("oauth_client_secret")
-			if prev.ClientID != o.ClientID || prev.TokenURL != o.TokenURL || prev.AuthorizationURL != o.AuthorizationURL {
+			if prev.Mode != o.Mode || prev.ClientID != o.ClientID || prev.TokenURL != o.TokenURL || prev.AuthorizationURL != o.AuthorizationURL {
 				in["oauth_client_secret"] = ""
 			}
 		}

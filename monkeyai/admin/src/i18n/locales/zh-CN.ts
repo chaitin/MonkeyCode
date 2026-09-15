@@ -109,6 +109,15 @@ export const zhCN = {
     saving: "正在保存…",
     availableScope: "可用范围",
     selectScope: "选择用户或分组",
+    oauthClientMode: "OAuth 客户端配置",
+    oauthClientDynamic: "动态 Client（自动发现）",
+    oauthClientManual: "传统配置（手动）",
+    oauthDiscoveryHint:
+      "只需填写上方 MCP 地址。首次授权时自动发现 OAuth 配置、注册客户端及回调地址，无需填写 Client ID 或 Secret。服务需支持自动发现和动态注册。",
+    oauthTokenAuthMethod: "Token 端点认证方式",
+    oauthTokenAuthDefault: "默认（client_secret_post）",
+    oauthTokenAuthLegacyDefault:
+      "默认（未注册时使用 none，已有客户端使用 client_secret_post）",
     saveBeforeAuthorize:
       "创建 MCP 后将显示专属回调地址，登记到 OAuth 应用后即可授权。",
     callbackURL: "OAuth 回调地址",

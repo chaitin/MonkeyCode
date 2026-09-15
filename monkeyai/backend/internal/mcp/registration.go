@@ -22,6 +22,13 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	if o.ClientID != "" && !o.clientSecretExpired() {
 		return nil
 	}
+	if o.Mode == "dynamic" && o.ClientID == "" {
+		var err error
+		o, err = discoverOAuth(ctx, c.String("url"))
+		if err != nil {
+			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
+		}
+	}
 	registered, err := registerOAuthClient(ctx, o, redirect)
 	if err != nil {
 		return &resource.Error{Status: 502, Code: "oauth_registration_failed", Message: "OAuth 动态客户端注册失败，请检查注册端点或手动配置 Client ID"}
