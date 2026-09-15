@@ -91,6 +91,31 @@ import {
 type McpServerType = "system" | "user"
 type McpAuthorizationMode = "none" | "independent" | "centralized"
 type McpAuthorizationMethod = "oauth" | "httpHeader"
+type OAuthClientMode = "dynamic" | "manual"
+
+function oauthFormConfig(
+  mode: OAuthClientMode,
+  formData: FormData,
+  existing?: Record<string, string>
+) {
+  if (mode === "dynamic") return { mode: "dynamic" }
+  return {
+    mode:
+      !existing || existing.mode === "dynamic"
+        ? "manual"
+        : (existing.mode ?? ""),
+    authorization_url: String(
+      formData.get("oauthAuthorizationURL") ?? ""
+    ).trim(),
+    token_url: String(formData.get("oauthTokenURL") ?? "").trim(),
+    client_id: String(formData.get("oauthClientID") ?? "").trim(),
+    registration_url: String(formData.get("oauthRegistrationURL") ?? "").trim(),
+    token_endpoint_auth_method: String(
+      formData.get("oauthTokenAuthMethod") ?? ""
+    ),
+    scopes: String(formData.get("oauthScopes") ?? "").trim(),
+  }
+}
 type ConnectionStatus = "connected" | "error" | "unknown"
 
 type McpToolConfig = {
@@ -172,6 +197,8 @@ export function ToolsPage() {
     useState<McpAuthorizationMode>("independent")
   const [authorizationMethod, setAuthorizationMethod] =
     useState<McpAuthorizationMethod>("oauth")
+  const [oauthClientMode, setOAuthClientMode] =
+    useState<OAuthClientMode>("dynamic")
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -187,6 +214,10 @@ export function ToolsPage() {
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
   const editingServer = servers.find((server) => server.id === editingServerId)
   const viewingServer = servers.find((server) => server.id === viewingServerId)
+  const manualOAuthConfig =
+    editingServer?.oauthConfig.mode === "dynamic"
+      ? {}
+      : (editingServer?.oauthConfig ?? {})
 
   const setConnectionEnabled = async (server: McpServer) => {
     await remote.run(async () => {
@@ -201,6 +232,7 @@ export function ToolsPage() {
     setEditingServerId(null)
     setAuthorizationMode("independent")
     setAuthorizationMethod("oauth")
+    setOAuthClientMode("dynamic")
     setAuthorizationOpen(false)
     setAuthorization({ groupIds: [], memberIds: [] })
   }
@@ -216,6 +248,9 @@ export function ToolsPage() {
     setEditingServerId(server.id)
     setAuthorizationMode(server.authorizationMode)
     setAuthorizationMethod(server.authorizationMethod ?? "oauth")
+    setOAuthClientMode(
+      server.oauthConfig.mode === "dynamic" ? "dynamic" : "manual"
+    )
     setAuthorization(server.authorization)
     setAuthorizationOpen(false)
     setDialogOpen(true)
@@ -245,21 +280,14 @@ export function ToolsPage() {
               : authorizationMethod === "httpHeader"
                 ? "http_header"
                 : "oauth",
-          oauth_config: {
-            authorization_url: String(
-              formData.get("oauthAuthorizationURL") ?? ""
-            ),
-            token_url: String(formData.get("oauthTokenURL") ?? ""),
-            client_id: String(formData.get("oauthClientID") ?? ""),
-            registration_url: String(
-              formData.get("oauthRegistrationURL") ?? ""
-            ),
-            token_endpoint_auth_method: String(
-              formData.get("oauthTokenAuthMethod") ?? ""
-            ),
-            scopes: String(formData.get("oauthScopes") ?? ""),
-          },
-          ...(secret || !editingServer ? { oauth_client_secret: secret } : {}),
+          oauth_config: oauthFormConfig(
+            oauthClientMode,
+            formData,
+            editingServer?.oauthConfig
+          ),
+          ...(oauthClientMode === "manual" && (secret || !editingServer)
+            ? { oauth_client_secret: secret }
+            : {}),
         },
         editingServer?.revision
       )
@@ -278,7 +306,11 @@ export function ToolsPage() {
       if (saved.authorization_mode === "centralized") {
         handleDialogOpenChange(false)
         setCredentialServer(toServer(saved))
-      } else if (!saved.callback_url || editingServer)
+      } else if (
+        !saved.callback_url ||
+        editingServer ||
+        oauthClientMode === "dynamic"
+      )
         handleDialogOpenChange(false)
     })
   }
@@ -528,110 +560,141 @@ export function ToolsPage() {
                       {authorizationMode !== "none" &&
                         authorizationMethod === "oauth" && (
                           <>
-                            {editingServer?.callbackURL ? (
-                              <Field>
-                                <FieldLabel htmlFor="mcp-callback-url">
-                                  {t("resources.callbackURL")}
-                                </FieldLabel>
-                                <Input
-                                  id="mcp-callback-url"
-                                  readOnly
-                                  value={editingServer.callbackURL}
-                                  onFocus={(event) =>
-                                    event.currentTarget.select()
-                                  }
-                                />
-                                <FieldDescription>
-                                  {t("resources.callbackURLDescription")}
-                                </FieldDescription>
-                              </Field>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">
-                                {t("resources.saveBeforeAuthorize")}
-                              </p>
-                            )}
-                            {(
-                              [
-                                [
-                                  "oauthAuthorizationURL",
-                                  "authorization_url",
-                                  "OAuth Authorization URL",
-                                ],
-                                [
-                                  "oauthTokenURL",
-                                  "token_url",
-                                  "OAuth Token URL",
-                                ],
-                                [
-                                  "oauthClientID",
-                                  "client_id",
-                                  "OAuth Client ID",
-                                ],
-                                [
-                                  "oauthRegistrationURL",
-                                  "registration_url",
-                                  "OAuth Registration URL",
-                                ],
-                                ["oauthScopes", "scopes", "OAuth Scopes"],
-                                [
-                                  "oauthClientSecret",
-                                  "secret",
-                                  "OAuth Client Secret",
-                                ],
-                              ] as const
-                            ).map(([name, key, label]) => (
-                              <Field key={name}>
-                                <FieldLabel htmlFor={name}>{label}</FieldLabel>
-                                <Input
-                                  id={name}
-                                  name={name}
-                                  type={key === "secret" ? "password" : "text"}
-                                  defaultValue={
-                                    editingServer?.oauthConfig[key] ?? ""
-                                  }
-                                  required={[
-                                    "authorization_url",
-                                    "token_url",
-                                  ].includes(key)}
-                                />
-                              </Field>
-                            ))}
-                            <FieldDescription>
-                              {t("resources.oauthRegistrationHint", {
-                                defaultValue:
-                                  "Client ID 留空并填写 Registration URL 时，首次授权自动注册客户端。注册密钥到期后，再次授权会重新注册，旧客户端的凭证需重新授权。授权与 Token URL 仍需手动填写。",
-                              })}
-                            </FieldDescription>
-                            <Field>
-                              <FieldLabel htmlFor="oauthTokenAuthMethod">
-                                {t("resources.oauthTokenAuthMethod", {
-                                  defaultValue: "Token 端点认证方式",
-                                })}
-                              </FieldLabel>
-                              <select
-                                id="oauthTokenAuthMethod"
-                                name="oauthTokenAuthMethod"
-                                className="h-9 rounded-md border bg-background px-3 text-sm"
-                                defaultValue={
-                                  editingServer?.oauthConfig
-                                    .token_endpoint_auth_method ?? ""
-                                }
+                            <Tabs
+                              value={oauthClientMode}
+                              onValueChange={(value) =>
+                                setOAuthClientMode(value as OAuthClientMode)
+                              }
+                            >
+                              <TabsList
+                                aria-label={t("resources.oauthClientMode")}
                               >
-                                <option value="">
-                                  {t("resources.oauthTokenAuthDefault", {
-                                    defaultValue:
-                                      "默认（动态注册使用 none，手动配置使用 client_secret_post）",
-                                  })}
-                                </option>
-                                <option value="none">none (PKCE)</option>
-                                <option value="client_secret_post">
-                                  client_secret_post
-                                </option>
-                                <option value="client_secret_basic">
-                                  client_secret_basic
-                                </option>
-                              </select>
-                            </Field>
+                                <TabsTrigger value="dynamic">
+                                  {t("resources.oauthClientDynamic")}
+                                </TabsTrigger>
+                                <TabsTrigger value="manual">
+                                  {t("resources.oauthClientManual")}
+                                </TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                            {oauthClientMode === "dynamic" ? (
+                              <FieldDescription>
+                                {t("resources.oauthDiscoveryHint")}
+                              </FieldDescription>
+                            ) : (
+                              <>
+                                {editingServer?.callbackURL ? (
+                                  <Field>
+                                    <FieldLabel htmlFor="mcp-callback-url">
+                                      {t("resources.callbackURL")}
+                                    </FieldLabel>
+                                    <Input
+                                      id="mcp-callback-url"
+                                      readOnly
+                                      value={editingServer.callbackURL}
+                                      onFocus={(event) =>
+                                        event.currentTarget.select()
+                                      }
+                                    />
+                                    <FieldDescription>
+                                      {t("resources.callbackURLDescription")}
+                                    </FieldDescription>
+                                  </Field>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("resources.saveBeforeAuthorize")}
+                                  </p>
+                                )}
+                                {(
+                                  [
+                                    [
+                                      "oauthAuthorizationURL",
+                                      "authorization_url",
+                                      "OAuth Authorization URL",
+                                    ],
+                                    [
+                                      "oauthTokenURL",
+                                      "token_url",
+                                      "OAuth Token URL",
+                                    ],
+                                    [
+                                      "oauthClientID",
+                                      "client_id",
+                                      "OAuth Client ID",
+                                    ],
+                                    [
+                                      "oauthRegistrationURL",
+                                      "registration_url",
+                                      "OAuth Registration URL",
+                                    ],
+                                    ["oauthScopes", "scopes", "OAuth Scopes"],
+                                    [
+                                      "oauthClientSecret",
+                                      "secret",
+                                      "OAuth Client Secret",
+                                    ],
+                                  ] as const
+                                )
+                                  .filter(
+                                    ([, key]) =>
+                                      key !== "registration_url" ||
+                                      manualOAuthConfig.registration_url
+                                  )
+                                  .map(([name, key, label]) => (
+                                    <Field key={name}>
+                                      <FieldLabel htmlFor={name}>
+                                        {label}
+                                      </FieldLabel>
+                                      <Input
+                                        id={name}
+                                        name={name}
+                                        type={
+                                          key === "secret" ? "password" : "text"
+                                        }
+                                        defaultValue={
+                                          manualOAuthConfig[key] ?? ""
+                                        }
+                                        required={[
+                                          "authorization_url",
+                                          "token_url",
+                                          ...(!manualOAuthConfig.registration_url
+                                            ? ["client_id"]
+                                            : []),
+                                        ].includes(key)}
+                                      />
+                                    </Field>
+                                  ))}
+                                <Field>
+                                  <FieldLabel htmlFor="oauthTokenAuthMethod">
+                                    {t("resources.oauthTokenAuthMethod")}
+                                  </FieldLabel>
+                                  <select
+                                    id="oauthTokenAuthMethod"
+                                    name="oauthTokenAuthMethod"
+                                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                                    defaultValue={
+                                      manualOAuthConfig.token_endpoint_auth_method ??
+                                      ""
+                                    }
+                                  >
+                                    <option value="">
+                                      {t(
+                                        manualOAuthConfig.registration_url
+                                          ? "resources.oauthTokenAuthLegacyDefault"
+                                          : "resources.oauthTokenAuthDefault"
+                                      )}
+                                    </option>
+                                    <option value="none">none (PKCE)</option>
+                                    <option value="client_secret_post">
+                                      client_secret_post
+                                    </option>
+                                    <option value="client_secret_basic">
+                                      client_secret_basic
+                                    </option>
+                                  </select>
+                                </Field>
+                              </>
+                            )}
                           </>
                         )}
                     </Field>

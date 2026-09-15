@@ -26,6 +26,8 @@ import (
 )
 
 type oauthConfig struct {
+	Mode                  string `json:"mode,omitempty"`
+	Resource              string `json:"resource,omitempty"`
 	AuthorizationURL      string `json:"authorization_url"`
 	TokenURL              string `json:"token_url"`
 	ClientID              string `json:"client_id"`
@@ -135,6 +137,9 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	q.Set("redirect_uri", redirect)
 	q.Set("state", state)
 	q.Set("scope", o.Scopes)
+	if o.Resource != "" {
+		q.Set("resource", o.Resource)
+	}
 	challenge := sha256.Sum256([]byte(verifier))
 	q.Set("code_challenge", base64.RawURLEncoding.EncodeToString(challenge[:]))
 	q.Set("code_challenge_method", "S256")
@@ -311,6 +316,9 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 		return tokens{}, invalidGrant
 	}
 	v.Set("client_id", o.ClientID)
+	if o.Resource != "" {
+		v.Set("resource", o.Resource)
+	}
 	secret := c.String("oauth_client_secret")
 	if secret != "" && (o.TokenAuthMethod == "" || o.TokenAuthMethod == "client_secret_post") {
 		v.Set("client_secret", secret)

@@ -100,6 +100,74 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
   }
 })
 
+test("动态 Client 仅提交模式，传统配置不混入自动发现字段", async () => {
+  const source = await readFile(
+    new URL("../src/pages/tools-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const tree = ts.createSourceFile(
+    "page.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  )
+  const helper = tree.statements.find(
+    (node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "oauthFormConfig"
+  )
+  assert.ok(helper)
+  const buildConfig = runInNewContext(
+    ts.transpileModule(`(${helper.getText(tree)})`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText
+  )
+  const form = new FormData()
+  form.set("oauthAuthorizationURL", " https://auth.example.com/authorize ")
+  form.set("oauthTokenURL", "https://auth.example.com/token")
+  form.set("oauthClientID", " manual-client ")
+  form.set("oauthScopes", "read")
+  form.set("oauthClientSecret", "secret")
+  const dynamic = buildConfig("dynamic", form, { client_id: "existing" })
+  assert.deepEqual(JSON.parse(JSON.stringify(dynamic)), { mode: "dynamic" })
+  const manual = buildConfig("manual", form, {
+    mode: "dynamic",
+    resource: "old-resource",
+  })
+  assert.equal(manual.mode, "manual")
+  assert.equal(manual.client_id, "manual-client")
+  assert.equal(manual.authorization_url, "https://auth.example.com/authorize")
+  assert.equal(manual.registration_url, "")
+  assert.equal(manual.resource, undefined)
+  assert.equal(manual.client_secret, undefined)
+  form.set("oauthRegistrationURL", "https://auth.example.com/register")
+  assert.equal(buildConfig("manual", form).mode, "manual")
+  const legacy = buildConfig("manual", form, {})
+  assert.equal(legacy.mode, "")
+  assert.equal(legacy.registration_url, "https://auth.example.com/register")
+
+  let branch
+  const visit = (node) => {
+    if (
+      ts.isConditionalExpression(node) &&
+      node.condition.getText(tree) === 'oauthClientMode === "dynamic"'
+    )
+      branch = node
+    ts.forEachChild(node, visit)
+  }
+  visit(tree)
+  assert.ok(branch)
+  assert.match(branch.whenTrue.getText(tree), /resources\.oauthDiscoveryHint/)
+  assert.doesNotMatch(
+    branch.whenTrue.getText(tree),
+    /<Input|<select|saveBeforeAuthorize/
+  )
+  assert.match(branch.whenFalse.getText(tree), /oauthAuthorizationURL/)
+  assert.match(branch.whenFalse.getText(tree), /oauthClientID/)
+  assert.match(branch.whenFalse.getText(tree), /oauthClientSecret/)
+  assert.match(source, /useState<OAuthClientMode>\("dynamic"\)/)
+})
+
 test("admin login lists configured OAuth providers and uses the admin flow", async () => {
   const [page, form] = await Promise.all([
     readFile(new URL("../src/pages/login-page.tsx", import.meta.url), "utf8"),

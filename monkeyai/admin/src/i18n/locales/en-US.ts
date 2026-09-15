@@ -112,6 +112,15 @@ export const enUS = {
     saving: "Saving…",
     availableScope: "Available to",
     selectScope: "Select users or groups",
+    oauthClientMode: "OAuth client configuration",
+    oauthClientDynamic: "Dynamic client (auto-discovery)",
+    oauthClientManual: "Manual configuration",
+    oauthDiscoveryHint:
+      "Only the MCP URL above is needed. OAuth settings, the client, and its callback URL are discovered or registered on first authorization. No Client ID or Secret is required. The server must support discovery and dynamic registration.",
+    oauthTokenAuthMethod: "Token endpoint authentication",
+    oauthTokenAuthDefault: "Default (client_secret_post)",
+    oauthTokenAuthLegacyDefault:
+      "Default (none for registration, client_secret_post for existing clients)",
     saveBeforeAuthorize:
       "Create the MCP to get its callback URL, then register it in your OAuth app before authorizing.",
     callbackURL: "OAuth callback URL",
