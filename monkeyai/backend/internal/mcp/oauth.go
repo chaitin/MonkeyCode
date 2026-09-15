@@ -26,10 +26,13 @@ import (
 )
 
 type oauthConfig struct {
-	AuthorizationURL string `json:"authorization_url"`
-	TokenURL         string `json:"token_url"`
-	ClientID         string `json:"client_id"`
-	Scopes           string `json:"scopes"`
+	AuthorizationURL      string `json:"authorization_url"`
+	TokenURL              string `json:"token_url"`
+	ClientID              string `json:"client_id"`
+	Scopes                string `json:"scopes"`
+	RegistrationURL       string `json:"registration_url,omitempty"`
+	TokenAuthMethod       string `json:"token_endpoint_auth_method,omitempty"`
+	ClientSecretExpiresAt int64  `json:"client_secret_expires_at,omitempty"`
 }
 
 func oauthSettings(c resource.Object) oauthConfig {
@@ -68,7 +71,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		resource.Fail(w, resource.Invalid("此连接不支持 OAuth 授权"))
 		return
 	}
-	data := resource.Object{"id": resource.ID(), "connector_id": c.String("id"), "user_id": u.ID, "config_revision": c.Int("config_revision")}
+	data := resource.Object{"id": resource.ID(), "connector_id": c.String("id"), "user_id": u.ID}
 	if id := chi.URLParam(r, "credentialID"); id != "" {
 		cred, err := s.Credential(ctx, tx, c, u.ID, id)
 		if err == nil {
@@ -109,6 +112,11 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	}
 	state, verifier := token(), token()
 	redirect := s.callbackURL(c.String("id"))
+	if err = s.ensureOAuthClient(ctx, tx, c, redirect); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	data["config_revision"] = c.Int("config_revision")
 	data["state_hash"], data["verifier"], data["redirect_uri"] = hash(state), verifier, redirect
 	b, _ := json.Marshal(data)
 	request, err := resource.DecodeObject(sqlc.New(tx).CreateOAuthRequest(ctx, b))
@@ -299,13 +307,20 @@ var invalidGrant = errors.New("OAuth 凭证已失效")
 
 func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
 	o := oauthSettings(c)
+	if o.clientSecretExpired() {
+		return tokens{}, invalidGrant
+	}
 	v.Set("client_id", o.ClientID)
-	if secret := c.String("oauth_client_secret"); secret != "" {
+	secret := c.String("oauth_client_secret")
+	if secret != "" && (o.TokenAuthMethod == "" || o.TokenAuthMethod == "client_secret_post") {
 		v.Set("client_secret", secret)
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", o.TokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return tokens{}, err
+	}
+	if o.TokenAuthMethod == "client_secret_basic" {
+		req.SetBasicAuth(url.QueryEscape(o.ClientID), url.QueryEscape(secret))
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")

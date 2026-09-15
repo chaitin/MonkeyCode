@@ -251,6 +251,12 @@ export function ToolsPage() {
             ),
             token_url: String(formData.get("oauthTokenURL") ?? ""),
             client_id: String(formData.get("oauthClientID") ?? ""),
+            registration_url: String(
+              formData.get("oauthRegistrationURL") ?? ""
+            ),
+            token_endpoint_auth_method: String(
+              formData.get("oauthTokenAuthMethod") ?? ""
+            ),
             scopes: String(formData.get("oauthScopes") ?? ""),
           },
           ...(secret || !editingServer ? { oauth_client_secret: secret } : {}),
@@ -561,6 +567,11 @@ export function ToolsPage() {
                                   "client_id",
                                   "OAuth Client ID",
                                 ],
+                                [
+                                  "oauthRegistrationURL",
+                                  "registration_url",
+                                  "OAuth Registration URL",
+                                ],
                                 ["oauthScopes", "scopes", "OAuth Scopes"],
                                 [
                                   "oauthClientSecret",
@@ -581,11 +592,46 @@ export function ToolsPage() {
                                   required={[
                                     "authorization_url",
                                     "token_url",
-                                    "client_id",
                                   ].includes(key)}
                                 />
                               </Field>
                             ))}
+                            <FieldDescription>
+                              {t("resources.oauthRegistrationHint", {
+                                defaultValue:
+                                  "Client ID 留空并填写 Registration URL 时，首次授权自动注册客户端。注册密钥到期后，再次授权会重新注册，旧客户端的凭证需重新授权。授权与 Token URL 仍需手动填写。",
+                              })}
+                            </FieldDescription>
+                            <Field>
+                              <FieldLabel htmlFor="oauthTokenAuthMethod">
+                                {t("resources.oauthTokenAuthMethod", {
+                                  defaultValue: "Token 端点认证方式",
+                                })}
+                              </FieldLabel>
+                              <select
+                                id="oauthTokenAuthMethod"
+                                name="oauthTokenAuthMethod"
+                                className="h-9 rounded-md border bg-background px-3 text-sm"
+                                defaultValue={
+                                  editingServer?.oauthConfig
+                                    .token_endpoint_auth_method ?? ""
+                                }
+                              >
+                                <option value="">
+                                  {t("resources.oauthTokenAuthDefault", {
+                                    defaultValue:
+                                      "默认（动态注册使用 none，手动配置使用 client_secret_post）",
+                                  })}
+                                </option>
+                                <option value="none">none (PKCE)</option>
+                                <option value="client_secret_post">
+                                  client_secret_post
+                                </option>
+                                <option value="client_secret_basic">
+                                  client_secret_basic
+                                </option>
+                              </select>
+                            </Field>
                           </>
                         )}
                     </Field>

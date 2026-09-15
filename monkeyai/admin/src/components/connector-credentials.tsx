@@ -236,6 +236,8 @@ export function ConnectorCredentials({
         popup?.close()
         throw e
       }
+      // 动态注册可能已更新连接版本，不能等用户完成授权后再同步。
+      await onChange()
     })
   }
   return (

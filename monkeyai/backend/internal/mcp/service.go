@@ -61,17 +61,38 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	}
 	if method == "oauth" {
 		o := oauthSettings(in)
-		if !validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || o.ClientID == "" {
-			return resource.Invalid("OAuth 应用配置不完整")
+		o.ClientID = strings.TrimSpace(o.ClientID)
+		if !validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || (o.ClientID == "" && o.RegistrationURL == "") {
+			return resource.Invalid("OAuth 应用配置不完整，请填写 Client ID 或 Registration URL")
+		}
+		if o.RegistrationURL != "" && !validURL(o.RegistrationURL) {
+			return resource.Invalid("OAuth Registration URL 无效")
+		}
+		if o.TokenAuthMethod != "" && o.TokenAuthMethod != "none" && o.TokenAuthMethod != "client_secret_post" && o.TokenAuthMethod != "client_secret_basic" {
+			return resource.Invalid("OAuth Token 端点认证方式无效")
 		}
 		o.Scopes = strings.Join(strings.Fields(o.Scopes), " ")
-		in["oauth_config"] = resource.Object{"authorization_url": o.AuthorizationURL, "token_url": o.TokenURL, "client_id": o.ClientID, "scopes": o.Scopes}
+		config := resource.Object{"authorization_url": o.AuthorizationURL, "token_url": o.TokenURL, "client_id": o.ClientID, "scopes": o.Scopes}
+		if o.RegistrationURL != "" {
+			config["registration_url"] = o.RegistrationURL
+		}
+		if o.TokenAuthMethod != "" {
+			config["token_endpoint_auth_method"] = o.TokenAuthMethod
+		}
+		in["oauth_config"] = config
+		prev := oauthSettings(old)
 		if _, exists := in["oauth_client_secret"]; !exists {
-			prev := oauthSettings(old)
 			in["oauth_client_secret"] = old.String("oauth_client_secret")
 			if prev.ClientID != o.ClientID || prev.TokenURL != o.TokenURL || prev.AuthorizationURL != o.AuthorizationURL {
 				in["oauth_client_secret"] = ""
 			}
+		}
+		if o.ClientID == "" || o.TokenAuthMethod == "none" {
+			in["oauth_client_secret"] = ""
+		}
+		// 到期时间由注册服务器提供，编辑其他配置时保留，不接受调用方覆盖。
+		if prev.ClientSecretExpiresAt > 0 && o.ClientID == prev.ClientID && o.TokenURL == prev.TokenURL && o.AuthorizationURL == prev.AuthorizationURL && in.String("oauth_client_secret") != "" && in.String("oauth_client_secret") == old.String("oauth_client_secret") {
+			config["client_secret_expires_at"] = prev.ClientSecretExpiresAt
 		}
 	} else {
 		in["oauth_config"], in["oauth_client_secret"] = resource.Object{}, ""
