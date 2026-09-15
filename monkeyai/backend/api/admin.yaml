@@ -5561,6 +5561,7 @@ components:
       - name
     OAuthConnectionConfig:
       type: object
+      description: 授权与 Token URL 必填；Client ID 和 Registration URL 至少填写一个。Client ID 为空时首次授权动态注册并持久化客户端，后续授权与刷新复用；不自动发现端点，不支持需要初始访问令牌的注册端点。
       properties:
         authorization_url:
           type: string
@@ -5568,6 +5569,18 @@ components:
           type: string
         client_id:
           type: string
+        registration_url:
+          type: string
+          description: RFC 7591 动态客户端注册端点；已有 Client ID 时复用，动态注册密钥到期后在下次授权前重新注册，旧客户端对应的凭证需重新授权。
+        token_endpoint_auth_method:
+          type: string
+          enum: ['', none, client_secret_post, client_secret_basic]
+          description: 留空时动态注册请求 none，手动配置沿用 client_secret_post；注册后保存服务端返回的方式。
+        client_secret_expires_at:
+          type: integer
+          format: int64
+          readOnly: true
+          description: 注册服务器返回的客户端密钥到期时间（Unix 秒）；未返回或为 0 表示无已知期限，由后端维护，修改请求中的值被忽略。
         scopes:
           type: string
     ResourceIssue:
