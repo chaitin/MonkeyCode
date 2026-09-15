@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -307,6 +308,7 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 		return tokens{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
 	h := client()
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
@@ -326,7 +328,15 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 		Error   string `json:"error"`
 	}
 	if json.Unmarshal(data, &payload) != nil {
-		return tokens{}, fmt.Errorf("Token 响应无效")
+		form, err := url.ParseQuery(string(data))
+		if err != nil {
+			return tokens{}, fmt.Errorf("Token 响应无效")
+		}
+		payload.Access = form.Get("access_token")
+		payload.Refresh = form.Get("refresh_token")
+		payload.Type = form.Get("token_type")
+		payload.Error = form.Get("error")
+		payload.Expires, _ = strconv.ParseInt(form.Get("expires_in"), 10, 64)
 	}
 	if resp.StatusCode == 400 && payload.Error == "invalid_grant" {
 		return tokens{}, invalidGrant
