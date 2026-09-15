@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -239,17 +241,18 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		"oauth_expires_at": result.Expires, "config_revision": c.Int("config_revision"), "auth_change": true}
 	b, _ := json.Marshal(data)
 	queries := sqlc.New(tx)
+	var cred resource.Object
 	if create {
-		_, err = queries.CreateCredential(ctx, b)
+		cred, err = resource.DecodeObject(queries.CreateCredential(ctx, b))
 	} else {
-		_, err = queries.UpdateCredential(ctx, b)
+		cred, err = resource.DecodeObject(queries.UpdateCredential(ctx, b))
 	}
 	if err == nil {
 		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: id, CredentialID: credential})
 	}
 	if err == nil {
 		var rows int64
-		rows, err = queries.FinishOAuthRequest(ctx, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "succeeded", CredentialID: credential})
+		rows, err = queries.FinishOAuthRequest(ctx, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "processing", CredentialID: credential})
 		if err == nil && rows != 1 {
 			err = resource.Conflict
 		}
@@ -264,9 +267,26 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	_, testErr := s.testConnection(check, c, cred, request.String("user_id"), c.String("authorization_mode") == "centralized")
+	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer stop()
+	rows, err := sqlc.New(s.Store.Pool).FinishOAuthRequest(finish, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "succeeded", CredentialID: credential})
+	if err == nil && rows != 1 {
+		err = resource.Conflict
+	}
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	success = true
+	message := "授权成功，已自动测试连接并更新工具列表，请返回 MonkeyAI。"
+	if testErr != nil {
+		message = "授权成功，但自动连接测试失败，请返回 MonkeyAI 查看凭证状态并重试连接测试。"
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>授权成功，请返回 MonkeyAI 并测试所选凭证。</p></html>")
+	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>%s</p></html>", message)
 }
 
 type tokens struct {
@@ -375,13 +395,52 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 	}
 	return out, tx.Commit(ctx)
 }
+func (s *Service) refreshCredentials(ctx context.Context) {
+	query, cancel := context.WithTimeout(ctx, 10*time.Second)
+	pending, err := sqlc.New(s.Store.Pool).ListExpiringCredentials(query)
+	cancel()
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.ErrorContext(ctx, "读取待刷新 Connector 凭证失败", "error", err)
+		}
+		return
+	}
+	var workers sync.WaitGroup
+	slots := make(chan struct{}, 4)
+	for _, item := range pending {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			workers.Wait()
+			return
+		}
+		workers.Go(func() {
+			defer func() { <-slots }()
+			refresh, stop := context.WithTimeout(ctx, 30*time.Second)
+			defer stop()
+			c, err := resource.DecodeObject(item.Connector, nil)
+			if err != nil {
+				return
+			}
+			cred, err := resource.DecodeObject(item.Credential, nil)
+			if err != nil {
+				return
+			}
+			if _, err = s.refresh(refresh, c, cred); err != nil && ctx.Err() == nil {
+				slog.WarnContext(ctx, "Connector OAuth 自动刷新失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
+			}
+		})
+	}
+	workers.Wait()
+}
 func (s *Service) Run(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
 		cleanup, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_ = sqlc.New(s.Store.Pool).CleanupOAuthRequests(cleanup)
 		cancel()
+		s.refreshCredentials(ctx)
 		select {
 		case <-ctx.Done():
 			return

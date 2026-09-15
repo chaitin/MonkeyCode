@@ -118,32 +118,35 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 		resource.Fail(w, err)
 		return
 	}
-	headers, cred, err := s.headers(ctx, c, cred)
+	out, err := s.testConnection(ctx, c, cred, u.ID, admin)
 	if err != nil {
 		resource.Fail(w, err)
 		return
+	}
+	resource.JSON(w, 200, out)
+}
+func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, user string, admin bool) (resource.Object, error) {
+	headers, cred, err := s.headers(ctx, c, cred)
+	if err != nil {
+		return nil, err
 	}
 	tools, discoveryErr := discover(ctx, c.String("url"), headers)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
-		return
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	current, err := s.lockConnector(ctx, tx, c.String("id"), u.ID, admin)
+	current, err := s.lockConnector(ctx, tx, c.String("id"), user, admin)
 	if err != nil {
-		resource.Fail(w, err)
-		return
+		return nil, err
 	}
 	if current.Int("config_revision") != c.Int("config_revision") {
-		resource.Fail(w, resource.Conflict)
-		return
+		return nil, resource.Conflict
 	}
 	if cred != nil {
 		fresh, err := resource.DecodeObject(sqlc.New(tx).LockCredential(ctx, cred.String("id")))
 		if err != nil || fresh.Int("revision") != cred.Int("revision") || credentialStatus(current, fresh) != "authorized" {
-			resource.Fail(w, resource.Conflict)
-			return
+			return nil, resource.Conflict
 		}
 	}
 	queries := sqlc.New(tx)
@@ -166,7 +169,13 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 				break
 			}
 			schema, _ := json.Marshal(tool.InputSchema)
-			_, err = queries.UpsertTool(ctx, sqlc.UpsertToolParams{ConnectorID: c.String("id"), CredentialID: cred.String("id"), Name: tool.Name, Description: tool.Description, InputSchema: schema, ConfigRevision: c.Int("config_revision"), Enabled: c.String("ownership_type") == "user"})
+			_, err = queries.UpsertTool(ctx, sqlc.UpsertToolParams{
+				ConnectorID: c.String("id"), CredentialID: cred.String("id"),
+				Name: tool.Name, Description: tool.Description, InputSchema: schema,
+				ConfigRevision: c.Int("config_revision"),
+				Enabled:        c.String("ownership_type") == "user" || c.String("authorization_mode") == "independent",
+				EnableExisting: c.String("ownership_type") == "user",
+			})
 		}
 	}
 	if err == nil {
@@ -180,12 +189,10 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		resource.Fail(w, err)
-		return
+		return nil, err
 	}
 	if discoveryErr != nil {
-		resource.Fail(w, &resource.Error{Status: 502, Code: "upstream_error", Message: message})
-		return
+		return nil, &resource.Error{Status: 502, Code: "upstream_error", Message: message}
 	}
-	resource.JSON(w, 200, resource.Object{"credential_id": cred.String("id"), "connection_status": status, "tool_count": len(tools)})
+	return resource.Object{"credential_id": cred.String("id"), "connection_status": status, "tool_count": len(tools)}, nil
 }

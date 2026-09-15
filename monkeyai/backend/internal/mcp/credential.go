@@ -356,19 +356,27 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		err = resource.Audit(ctx, tx, u.ID, "connector_credential", id, "save")
 	}
 	if err == nil {
-		var views []resource.Object
-		views, err = credentialViews(ctx, tx, c, out)
-		if err == nil {
-			out = views[0]
-		}
-	}
-	if err == nil {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
+	if in.Headers != nil {
+		check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		defer cancel()
+		_, _ = s.testConnection(check, c, out, u.ID, admin)
+		out, err = s.Credential(check, s.Store.Pool, c, u.ID, id)
+	}
+	var views []resource.Object
+	if err == nil {
+		views, err = credentialViews(ctx, s.Store.Pool, c, out)
+	}
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	out = views[0]
 	resource.ETag(w, out)
 	w.Header().Set("Cache-Control", "private, no-store")
 	status := 200

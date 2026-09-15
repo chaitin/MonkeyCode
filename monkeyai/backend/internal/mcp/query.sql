@@ -79,7 +79,7 @@ ON CONFLICT (connector_id, credential_id, name)
         description = EXCLUDED.description,
         input_schema = EXCLUDED.input_schema,
         config_revision = EXCLUDED.config_revision,
-        enabled = mcp_tools.enabled OR EXCLUDED.enabled,
+        enabled = mcp_tools.enabled OR sqlc.arg(enable_existing)::boolean,
         discovered_at = now(),
         updated_at = now(),
         deleted_at = NULL;
@@ -185,6 +185,19 @@ RETURNING to_jsonb(connector_credentials);
 
 -- name: RevokeCredential :exec
 UPDATE connector_credentials SET revoked_at = now(), revision = revision + 1, updated_at = now() WHERE id = $1;
+
+-- name: ListExpiringCredentials :many
+SELECT to_jsonb(c) AS connector, to_jsonb(cr) AS credential
+FROM connector_credentials cr
+JOIN connectors c ON c.id = cr.connector_id
+WHERE c.deleted_at IS NULL AND c.enabled AND c.authorization_method = 'oauth'
+    AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    AND cr.oauth_refresh_token <> ''
+    AND (cr.oauth_access_token = '' OR cr.oauth_expires_at <= now() + interval '30 seconds')
+    AND (cr.user_id IS NULL OR EXISTS (
+        SELECT 1 FROM users u WHERE u.id = cr.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+    ))
+ORDER BY cr.oauth_expires_at NULLS FIRST, cr.id;
 
 -- name: RefreshCredential :one
 UPDATE connector_credentials SET oauth_access_token = $2, oauth_refresh_token = $3,

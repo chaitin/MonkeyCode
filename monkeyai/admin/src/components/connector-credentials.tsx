@@ -132,20 +132,24 @@ export function ConnectorCredentials({
         setNotice(
           t("resources.credentialSaved", { defaultValue: "凭证已保存。" })
         )
-        try {
-          await api(path + `/credentials/${result.credential_id}/test`, {
-            method: "POST",
-          })
-        } catch (e) {
-          if (!cancelled)
-            setError(e instanceof Error ? e.message : "连接测试失败")
-        }
         const updated = await api<{ items: Credential[] }>(
           path + "/credentials"
         )
         if (!cancelled) {
           setCredentials(updated.items)
           setName(updated.items[0]?.name ?? "")
+          const saved = updated.items.find(
+            (item) => item.id === result.credential_id
+          )
+          if (saved?.connection_status === "error") {
+            setError(saved.last_error ?? "连接测试失败")
+          } else if (saved?.connection_status === "connected") {
+            setNotice(
+              t("resources.credentialTestPassed", {
+                defaultValue: "凭证已保存，连接测试成功。",
+              })
+            )
+          }
         }
         await onChange()
       } catch (e) {
@@ -196,8 +200,18 @@ export function ConnectorCredentials({
       setNotice(
         t("resources.credentialSaved", { defaultValue: "凭证已保存。" })
       )
-      if (data.http_headers) await test(saved.id)
-      else await reload()
+      if (data.http_headers) {
+        if (saved.connection_status === "error") {
+          setError(saved.last_error ?? "连接测试失败")
+        } else if (saved.connection_status === "connected") {
+          setNotice(
+            t("resources.credentialTestPassed", {
+              defaultValue: "凭证已保存，连接测试成功。",
+            })
+          )
+        }
+      }
+      await reload()
     })
   }
   const authorize = () => {
