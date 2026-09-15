@@ -158,7 +158,7 @@ Accept: application/json, text/event-stream
 
 专家工具允许/排除列表用于生成专家资源清单，由 Agent 按清单挂载工具。代理校验用户的连接和凭证访问权及实时工具启停状态；请求中没有专家身份上下文，专家清单的过滤不构成代理授权边界。
 
-用户自定义 MCP（`ownership_type: user`）成功执行连接测试后，发现的工具自动启用，可直接从 Agent 目录和 MCP 代理读取及调用。系统 MCP 的新工具仍需管理员启用；重复发现保留其启停与积分配置。
+用户自定义 MCP（`ownership_type: user`）及独立认证 MCP（`authorization_mode: independent`）成功发现的新工具自动启用，用户认证完成后可直接从凭证工具接口、Agent 目录和 MCP `tools/list` 读取。系统 MCP 的集中认证及免认证新工具仍需管理员启用；重复发现保留系统工具已有的启停与积分配置，包括管理员明确禁用的工具。
 
 入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
 
@@ -170,7 +170,7 @@ Accept: application/json, text/event-stream
 
 OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 `{MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，其中 `id` 为 Connector 实例 ID。非 OAuth 连接返回空字符串。创建后将此完整地址登记到第三方 OAuth 应用；每个 Connector 使用自己的地址。
 
-`POST /api/admin/v1/connectors/{id}/oauth/authorizations`（集中认证）或 `POST /api/v1/connectors/{id}/oauth/authorizations`（独立认证）请求体为 `{"name":"凭证名称"}`，生成带 state 和 PKCE 的授权 URL，`redirect_uri` 与 `callback_url` 一致。浏览器回调无需登录凭据，服务端核验路径 id、state、事务有效期、发起人权限和配置版本，单次消费后交换 Token，并按集中或独立认证上下文保存。成功页面提示返回 MonkeyAI，发起端通过授权事务状态接口查询结果。
+`POST /api/admin/v1/connectors/{id}/oauth/authorizations`（集中认证）或 `POST /api/v1/connectors/{id}/oauth/authorizations`（独立认证）请求体为 `{"name":"凭证名称"}`，生成带 state 和 PKCE 的授权 URL，`redirect_uri` 与 `callback_url` 一致。浏览器回调无需登录凭据，服务端核验路径 id、state、事务有效期、发起人权限和配置版本，单次消费后交换 Token，并按集中或独立认证上下文保存。保存凭证后服务端自动测试 MCP 连接并更新工具列表，完成测试尝试后授权状态才变为 `succeeded`。成功页面提示返回 MonkeyAI，发起端通过授权事务状态接口查询结果；连接测试失败不撤销已保存的认证，凭证的 `connection_status` 和 `last_error` 记录测试结果。
 
 原有 OAuth 应用需将统一的 `/oauth/connectors/callback` 更新为各 MCP 的专属地址，再重新发起授权。
 
@@ -179,11 +179,11 @@ OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 
 
 独立认证连接目录返回当前用户的 `credentials`，每份包含名称、认证状态、测试状态、工具目录和以 `/mcp` 开头的专属凭证网关。连接本身不合并目录，也不返回隐式网关。凭证不包含上游账户身份，名称由用户填写，不获取 `sub` 或 UserInfo。
 
-- 添加 Header：`POST /api/v1/connectors/{id}/credentials`，提交 `name` 和 `http_headers`，返回 `201` 和凭证 ETag。保存后单独 `POST .../credentials/{credential_id}/test`；失败保留已保存凭证。
-- 改名/替换：`PATCH .../credentials/{credential_id}`，携带凭证 `If-Match`。未提交 Header 时保留原值，提交时整组替换并失效原目录。Header 值只写不读。
+- 添加 Header：`POST /api/v1/connectors/{id}/credentials`，提交 `name` 和 `http_headers`，返回 `201` 和凭证 ETag。服务端在保存后自动测试连接并发现工具，响应包含最新测试状态；失败保留已保存凭证，可通过 `POST .../credentials/{credential_id}/test` 重试。
+- 改名/替换：`PATCH .../credentials/{credential_id}`，携带凭证 `If-Match`。未提交 Header 时保留原值，提交时整组替换、失效原目录，并自动重新测试和发现工具。仅改名不触发测试。Header 值只写不读。
 - 重新授权：`POST .../credentials/{credential_id}/oauth/authorizations`，携带凭证 `If-Match`；只替换此 ID。添加 OAuth 每次成功产生新 ID，不按用户或 Token 去重。
-- 查询授权：`GET /api/v1/connector-authorizations/{id}`，状态为 `pending/processing/succeeded/failed/expired`；成功返回 `credential_id`，随后测试并同步工具目录。只有发起人可以查询。
-- 撤销：`DELETE .../credentials/{credential_id}`，携带凭证 `If-Match`；后续调用及旧回调不能恢复该凭证。自动刷新不改变人工 revision。
+- 查询授权：`GET /api/v1/connector-authorizations/{id}`，状态为 `pending/processing/succeeded/failed/expired`；成功返回 `credential_id`，此时服务端已完成自动连接测试尝试，可直接读取凭证测试状态和工具目录。只有发起人可以查询。
+- 撤销：`DELETE .../credentials/{credential_id}`，携带凭证 `If-Match`；后续调用及旧回调不能恢复该凭证。OAuth 后台在启动时和每 15 秒检查一次，提前 30 秒使用 Refresh Token 自动续期；调用前仍检查有效期。并发刷新复用同一结果，刷新令牌轮换会保存新值，未返回新值时保留原值，自动刷新不改变人工 revision 或工具目录。上游明确返回 `invalid_grant` 时要求重新授权，临时故障保留凭证并在后续扫描重试。
 
 集中凭证使用同样的管理端路径 `/api/admin/v1`，每个连接最多一份未撤销凭证。管理员从 `/connectors/{id}/tool-contexts` 选择系统连接的具体工具上下文，不能代用户编辑独立凭证或发起测试。
 

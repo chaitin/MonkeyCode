@@ -313,6 +313,45 @@ func (q *Queries) ListCredentials(ctx context.Context, arg ListCredentialsParams
 	return items, nil
 }
 
+const listExpiringCredentials = `-- name: ListExpiringCredentials :many
+SELECT to_jsonb(c) AS connector, to_jsonb(cr) AS credential
+FROM connector_credentials cr
+JOIN connectors c ON c.id = cr.connector_id
+WHERE c.deleted_at IS NULL AND c.enabled AND c.authorization_method = 'oauth'
+    AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    AND cr.oauth_refresh_token <> ''
+    AND (cr.oauth_access_token = '' OR cr.oauth_expires_at <= now() + interval '30 seconds')
+    AND (cr.user_id IS NULL OR EXISTS (
+        SELECT 1 FROM users u WHERE u.id = cr.user_id AND u.status = 'active' AND u.deleted_at IS NULL
+    ))
+ORDER BY cr.oauth_expires_at NULLS FIRST, cr.id
+`
+
+type ListExpiringCredentialsRow struct {
+	Connector  []byte
+	Credential []byte
+}
+
+func (q *Queries) ListExpiringCredentials(ctx context.Context) ([]ListExpiringCredentialsRow, error) {
+	rows, err := q.db.Query(ctx, listExpiringCredentials)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpiringCredentialsRow{}
+	for rows.Next() {
+		var i ListExpiringCredentialsRow
+		if err := rows.Scan(&i.Connector, &i.Credential); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listToolContexts = `-- name: ListToolContexts :many
 SELECT to_jsonb(c) FROM connector_credentials c
 WHERE connector_id = $1 AND revoked_at IS NULL ORDER BY user_id, created_at, id
@@ -607,7 +646,7 @@ ON CONFLICT (connector_id, credential_id, name)
         description = EXCLUDED.description,
         input_schema = EXCLUDED.input_schema,
         config_revision = EXCLUDED.config_revision,
-        enabled = mcp_tools.enabled OR EXCLUDED.enabled,
+        enabled = mcp_tools.enabled OR $8::boolean,
         discovered_at = now(),
         updated_at = now(),
         deleted_at = NULL
@@ -621,6 +660,7 @@ type UpsertToolParams struct {
 	InputSchema    []byte
 	ConfigRevision int64
 	Enabled        bool
+	EnableExisting bool
 }
 
 func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) (pgconn.CommandTag, error) {
@@ -632,6 +672,7 @@ func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) (pgconn.
 		arg.InputSchema,
 		arg.ConfigRevision,
 		arg.Enabled,
+		arg.EnableExisting,
 	)
 }
 

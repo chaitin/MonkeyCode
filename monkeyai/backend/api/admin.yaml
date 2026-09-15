@@ -3694,6 +3694,7 @@ paths:
   /api/admin/v1/connector-authorizations/{id}:
     get:
       summary: 查询本人发起的授权事务状态
+      description: 保存凭证后自动测试连接并发现工具，测试尝试完成后返回 succeeded 和 credential_id；测试失败不影响授权成功，结果记录在凭证测试状态中。
       responses:
         '200':
           description: 查询本人发起的授权事务状态
@@ -3769,7 +3770,8 @@ paths:
         '502':
           $ref: '#/components/responses/ResourceError502'
     post:
-      summary: 新增 HTTP Header 凭证，保存后单独测试
+      summary: 新增 HTTP Header 凭证并自动测试连接
+      description: 保存后由服务端自动发现工具并返回最新测试状态；测试失败仍保留凭证，可通过测试接口重试。
       responses:
         '201':
           description: 成功；不返回凭证秘密。
@@ -3854,6 +3856,7 @@ paths:
           $ref: '#/components/responses/ResourceError502'
     patch:
       summary: 改名或整组替换 Header
+      description: 替换 Header 后自动测试连接并更新工具目录；仅改名不触发测试。
       responses:
         '200':
           description: 成功；不返回凭证秘密。

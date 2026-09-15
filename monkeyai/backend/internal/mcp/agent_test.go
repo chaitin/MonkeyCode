@@ -173,7 +173,9 @@ func TestCredentialIsolation(t *testing.T) {
 	}
 	for _, cred := range []resource.Object{a, b} {
 		cp := path + "/credentials/" + cred.String("id")
-		f.call("POST", cp+"/test", nil, "owner", "", 200)
+		if cred.String("connection_status") != "connected" || cred["last_checked_at"] == nil {
+			t.Fatal("保存 Header 后未自动测试连接")
+		}
 		f.call("GET", cp, nil, "other", "", 404)
 		f.call("PATCH", cp, resource.Object{"name": "越权"}, "other", etag(cred), 404)
 	}
@@ -190,10 +192,6 @@ func TestCredentialIsolation(t *testing.T) {
 	}
 	f.call("PATCH", ap, resource.Object{"name": "旧版本"}, "owner", etag(a), 412)
 	changed := f.call("PATCH", ap, resource.Object{"http_headers": resource.Object{"X-Account": "C"}}, "owner", etag(renamed), 200)
-	if len(f.call("GET", ap+"/tools", nil, "owner", "", 200)["items"].([]any)) != 0 {
-		t.Fatal("换 Header 未使目录失效")
-	}
-	f.call("POST", ap+"/test", nil, "owner", "", 200)
 	restored := f.call("GET", ap+"/tools", nil, "owner", "", 200)["items"].([]any)[0].(map[string]any)
 	if restored["id"] != ta["id"] || restored["description"] != "C" {
 		t.Fatal("重新发现未复用工具 ID")
@@ -227,7 +225,13 @@ func TestHeaderValidation(t *testing.T) {
 func TestDiscoveryConcurrentEdit(t *testing.T) {
 	f := setup(t)
 	started, release := make(chan struct{}), make(chan struct{})
-	remote := mcpRemote(t, func() { close(started); <-release })
+	var lists atomic.Int32
+	remote := mcpRemote(t, func() {
+		if lists.Add(1) == 2 {
+			close(started)
+			<-release
+		}
+	})
 	c := f.call("POST", "/agent/connectors", resource.Object{"name": "发现竞争", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "http_header"}, "owner", "", 201)
 	path := "/agent/connectors/" + c.String("id")
 	a := f.call("POST", path+"/credentials", resource.Object{"name": "A", "http_headers": resource.Object{"X-Account": "A"}}, "owner", "", 201)
@@ -238,13 +242,15 @@ func TestDiscoveryConcurrentEdit(t *testing.T) {
 	f.call("PATCH", ap, resource.Object{"http_headers": resource.Object{"X-Account": "B"}}, "owner", etag(a), 200)
 	close(release)
 	<-done
-	if len(f.call("GET", ap+"/tools", nil, "owner", "", 200)["items"].([]any)) != 0 {
+	tools := f.call("GET", ap+"/tools", nil, "owner", "", 200)["items"].([]any)
+	if len(tools) != 1 || tools[0].(map[string]any)["description"] != "B" {
 		t.Fatal("旧发现结果覆盖新凭证")
 	}
 }
 func TestOAuthMultipleCredentials(t *testing.T) {
 	f := setup(t)
 	var exchanges atomic.Int32
+	remote := mcpRemote(t, nil)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/token" {
 			t.Error("不应请求用户信息接口")
@@ -260,7 +266,7 @@ func TestOAuthMultipleCredentials(t *testing.T) {
 		io.WriteString(w, `{"access_token":"oauth-secret","refresh_token":"refresh-secret","expires_in":3600}`)
 	}))
 	defer oauth.Close()
-	c := f.call("POST", "/agent/connectors", resource.Object{"name": "OAuth", "url": oauth.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauth.URL + "/authorize", "token_url": oauth.URL + "/token", "client_id": "test"}, "oauth_client_secret": "client-secret"}, "owner", "", 201)
+	c := f.call("POST", "/agent/connectors", resource.Object{"name": "OAuth", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": oauth.URL + "/authorize", "token_url": oauth.URL + "/token", "client_id": "test"}, "oauth_client_secret": "client-secret"}, "owner", "", 201)
 	path := "/agent/connectors/" + c.String("id")
 	begin := func(cp, rev string) resource.Object {
 		return f.call("POST", cp+"/oauth/authorizations", resource.Object{"name": "相同账户"}, "owner", rev, 200)
@@ -282,6 +288,13 @@ func TestOAuthMultipleCredentials(t *testing.T) {
 	if ca.String("credential_id") == cb.String("credential_id") || ca.String("status") != "succeeded" {
 		t.Fatal("同用户授权被覆盖")
 	}
+	for _, status := range []resource.Object{ca, cb} {
+		cp := path + "/credentials/" + status.String("credential_id")
+		cred := f.call("GET", cp, nil, "owner", "", 200)
+		if cred.String("connection_status") != "connected" || len(f.call("GET", cp+"/tools", nil, "owner", "", 200)["items"].([]any)) != 1 {
+			t.Fatal("OAuth 授权后未自动保存凭证工具目录")
+		}
+	}
 	callback(a, 400)
 	if exchanges.Load() != 2 {
 		t.Fatal("重复回调再次交换 Token")
@@ -291,6 +304,9 @@ func TestOAuthMultipleCredentials(t *testing.T) {
 	cred := f.call("GET", ap, nil, "owner", "", 200)
 	x, y := begin(ap, etag(cred)), begin(ap, etag(cred))
 	callback(x, 200)
+	if len(f.call("GET", ap+"/tools", nil, "owner", "", 200)["items"].([]any)) != 1 {
+		t.Fatal("重新授权后未自动恢复工具目录")
+	}
 	callback(y, 412)
 	if status(x).String("credential_id") != ca.String("credential_id") || status(y).String("status") != "failed" {
 		t.Fatal("重新授权未绑定指定凭证版本")
