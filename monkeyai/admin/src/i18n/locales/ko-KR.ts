@@ -811,13 +811,13 @@ export const koKR = {
           "이메일로 전송된 인증 코드를 사용한 로그인을 허용합니다.",
         allowRegistration: "새 계정 등록 허용",
         allowRegistrationDescription:
-          "활성화된 OAuth / OIDC 로그인 제공자를 통해 신규 사용자의 일반 계정을 자동으로 생성합니다.",
+          "새 사용자가 활성화된 이메일 인증 코드 또는 OAuth / OIDC 로그인으로 일반 계정을 자동 생성할 수 있습니다. 별도의 이메일 가입도 지원합니다.",
         enableRegistrationDialogTitle: "새 계정 등록을 허용할까요?",
         enableRegistrationDialogDescription:
-          "신규 사용자가 OAuth / OIDC 인증에 성공하면 일반 계정이 자동으로 생성됩니다.",
+          "새 사용자가 활성화된 이메일 인증 코드 또는 OAuth / OIDC로 인증하면 별도 가입 없이 일반 계정을 자동 생성하고 로그인할 수 있습니다.",
         disableRegistrationDialogTitle: "새 계정 등록을 중지할까요?",
         disableRegistrationDialogDescription:
-          "기존 멤버만 OAuth / OIDC로 로그인할 수 있습니다. 기존 계정에는 영향을 주지 않습니다.",
+          "비활성화하면 기존 계정만 이메일 인증 코드 또는 OAuth / OIDC로 로그인할 수 있습니다. 기존 계정에는 영향을 주지 않습니다.",
         confirmEnableRegistration: "등록 허용",
         confirmDisableRegistration: "등록 중지",
       },
@@ -831,7 +831,8 @@ export const koKR = {
         provider: "제공자",
         name: "표시 이름",
         namePlaceholder: "예: 회사 GitHub",
-        baizhiyunScopes: "기본 권한 범위: auth_certification openid phone user email",
+        baizhiyunScopes:
+          "기본 권한 범위: auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",

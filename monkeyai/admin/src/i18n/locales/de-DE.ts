@@ -852,14 +852,14 @@ export const deDE = {
           "Die Anmeldung mit einem per E-Mail gesendeten Bestätigungscode erlauben.",
         allowRegistration: "Registrierung neuer Konten erlauben",
         allowRegistrationDescription:
-          "Neue Benutzer können über aktivierte OAuth-/OIDC-Anbieter automatisch ein Standardkonto erstellen.",
+          "Neue Nutzer können über aktivierte Anmeldemethoden mit E-Mail-Code oder OAuth / OIDC automatisch ein reguläres Konto erstellen. Eine separate E-Mail-Registrierung ist ebenfalls möglich.",
         enableRegistrationDialogTitle: "Registrierung neuer Konten aktivieren?",
         enableRegistrationDialogDescription:
-          "Nach erfolgreicher OAuth-/OIDC-Authentifizierung wird für neue Benutzer automatisch ein Standardkonto erstellt.",
+          "Neue Nutzer können einen E-Mail-Code bestätigen oder sich über einen aktivierten OAuth- / OIDC-Anbieter authentifizieren, um ohne separate Registrierung ein reguläres Konto zu erstellen und sich anzumelden.",
         disableRegistrationDialogTitle:
           "Registrierung neuer Konten deaktivieren?",
         disableRegistrationDialogDescription:
-          "Nur bestehende Mitglieder können sich über OAuth / OIDC anmelden. Bestehende Konten bleiben unverändert.",
+          "Nur bestehende Konten können sich mit E-Mail-Code oder OAuth / OIDC anmelden. Bestehende Konten bleiben unverändert.",
         confirmEnableRegistration: "Registrierung aktivieren",
         confirmDisableRegistration: "Registrierung deaktivieren",
       },

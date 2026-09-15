@@ -841,13 +841,13 @@ export const es419 = {
           "Permite iniciar sesión con un código de verificación enviado por correo.",
         allowRegistration: "Permitir registro de cuentas nuevas",
         allowRegistrationDescription:
-          "Permite que los usuarios nuevos creen una cuenta estándar mediante proveedores OAuth / OIDC habilitados.",
+          "Permitir que los usuarios nuevos creen una cuenta estándar automáticamente mediante métodos habilitados de inicio de sesión con código de correo o OAuth / OIDC. También se admite el registro por correo por separado.",
         enableRegistrationDialogTitle: "¿Permitir el registro de cuentas?",
         enableRegistrationDialogDescription:
-          "Se creará automáticamente una cuenta estándar para los usuarios nuevos después de autenticarse con OAuth / OIDC.",
+          "Los usuarios nuevos pueden verificar un código de correo o autenticarse mediante un proveedor OAuth / OIDC habilitado para crear una cuenta estándar e iniciar sesión sin registrarse por separado.",
         disableRegistrationDialogTitle: "¿Desactivar el registro de cuentas?",
         disableRegistrationDialogDescription:
-          "Solo los miembros existentes podrán iniciar sesión mediante OAuth / OIDC. Las cuentas existentes no se ven afectadas.",
+          "Solo las cuentas existentes podrán iniciar sesión con un código de correo u OAuth / OIDC. Las cuentas existentes no se verán afectadas.",
         confirmEnableRegistration: "Permitir registro",
         confirmDisableRegistration: "Desactivar registro",
       },

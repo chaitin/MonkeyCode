@@ -843,14 +843,14 @@ export const frFR = {
           "Autorisez la connexion avec un code de vérification envoyé par e-mail.",
         allowRegistration: "Autoriser les nouvelles inscriptions",
         allowRegistrationDescription:
-          "Autoriser les nouveaux utilisateurs à créer un compte standard via les fournisseurs OAuth / OIDC activés.",
+          "Autoriser la création automatique d’un compte standard via les méthodes de connexion activées par code e-mail ou OAuth / OIDC. L’inscription séparée par e-mail reste disponible.",
         enableRegistrationDialogTitle: "Autoriser les nouvelles inscriptions ?",
         enableRegistrationDialogDescription:
-          "Un compte standard sera automatiquement créé pour les nouveaux utilisateurs après une authentification OAuth / OIDC réussie.",
+          "Les nouveaux utilisateurs peuvent valider un code e-mail ou s’authentifier via un fournisseur OAuth / OIDC activé pour créer un compte standard et se connecter sans inscription séparée.",
         disableRegistrationDialogTitle:
           "Désactiver les nouvelles inscriptions ?",
         disableRegistrationDialogDescription:
-          "Seuls les membres existants pourront se connecter via OAuth / OIDC. Les comptes existants ne sont pas affectés.",
+          "Seuls les comptes existants pourront se connecter par code e-mail ou OAuth / OIDC. Les comptes existants ne sont pas affectés.",
         confirmEnableRegistration: "Autoriser les inscriptions",
         confirmDisableRegistration: "Désactiver les inscriptions",
       },

@@ -380,6 +380,11 @@ WHERE
     lower(email) = lower($1)
     AND deleted_at IS NULL;
 
+-- name: CreateEmailUser :exec
+INSERT INTO users (name, email, ROLE)
+    VALUES ($1, $2, 'user')
+ON CONFLICT (lower(email)) WHERE deleted_at IS NULL DO NOTHING;
+
 -- name: CreateIdentityUser :one
 INSERT INTO users (name, email, avatar_url, ROLE, last_login_at)
     VALUES (sqlc.arg(name), sqlc.arg(email), NULLIF (sqlc.arg(avatar_url)::text, ''),

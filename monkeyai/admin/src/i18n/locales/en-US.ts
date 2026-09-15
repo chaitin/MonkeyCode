@@ -1069,13 +1069,13 @@ export const enUS = {
           "Allow members to sign in with a verification code sent by email.",
         allowRegistration: "Allow new account registration",
         allowRegistrationDescription:
-          "Allow new users to sign up by email or create a regular account through enabled OAuth / OIDC providers.",
+          "Allow new users to automatically create a regular account through enabled email code or OAuth / OIDC sign-in methods. Separate email registration is also available.",
         enableRegistrationDialogTitle: "Enable new account registration?",
         enableRegistrationDialogDescription:
-          "New users can sign up by email or receive a regular account after successful OAuth / OIDC authentication.",
+          "New users can verify an email code or authenticate through an enabled OAuth / OIDC provider to create a regular account and sign in without registering separately.",
         disableRegistrationDialogTitle: "Disable new account registration?",
         disableRegistrationDialogDescription:
-          "Only existing members will be able to sign in through OAuth / OIDC. Existing accounts are not affected.",
+          "Only existing accounts can sign in with an email code or OAuth / OIDC. Existing accounts are not affected.",
         confirmEnableRegistration: "Enable registration",
         confirmDisableRegistration: "Disable registration",
       },

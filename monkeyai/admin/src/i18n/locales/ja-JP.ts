@@ -819,13 +819,13 @@ export const jaJP = {
           "メールで送信された認証コードでのログインを許可します。",
         allowRegistration: "新規アカウント登録を許可",
         allowRegistrationDescription:
-          "有効な OAuth / OIDC ログイン方法を通じて、新規ユーザーの一般アカウントを自動作成します。",
+          "有効なメール認証コードまたは OAuth / OIDC のログイン方法で、新しい一般アカウントを自動作成できます。個別のメール登録も可能です。",
         enableRegistrationDialogTitle: "新規アカウント登録を有効にしますか？",
         enableRegistrationDialogDescription:
-          "新規ユーザーが OAuth / OIDC 認証に成功すると、一般アカウントが自動作成されます。",
+          "有効なメール認証コードまたは OAuth / OIDC で認証すると、一般アカウントが自動作成され、個別の登録なしでログインできます。",
         disableRegistrationDialogTitle: "新規アカウント登録を無効にしますか？",
         disableRegistrationDialogDescription:
-          "OAuth / OIDC でログインできるのは追加済みのメンバーのみになります。既存のアカウントには影響しません。",
+          "無効にすると、既存のアカウントのみがメール認証コードまたは OAuth / OIDC でログインできます。既存のアカウントへの影響はありません。",
         confirmEnableRegistration: "有効にする",
         confirmDisableRegistration: "無効にする",
       },
