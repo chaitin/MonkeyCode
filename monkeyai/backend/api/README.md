@@ -23,7 +23,7 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 模型列表中的 `model_gateway.base_url` 为代理 `/v1` 地址，`authentication` 固定为 `api_key`。专家清单、资源 resolve、技能包下载以及连接器工具和认证接口沿用原路径与权限规则。
 
-模型列表每项的 `id` 为平台内部模型 UUID，`model` 为数据库 `models.model_id` 中配置的真实上游模型名称。调用模型代理时，请求体的 `model` 参数使用列表项的 `id`，由代理定位配置、检查权限并转换为上游模型名称。
+模型列表每项的 `id` 为平台内部模型 UUID，`model` 为 `model_id@id` 格式，由数据库 `models.model_id` 中配置的上游模型名称与内部 UUID 拼接。调用模型代理时，请求体的 `model` 参数使用列表项的 `model`，由代理精确定位配置、检查权限并转换为上游模型名称；代理仍支持直接使用内部 UUID 或原始模型名称。
 
 ## 用户模型与分享
 

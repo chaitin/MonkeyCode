@@ -158,7 +158,9 @@ WITH RECURSIVE user_groups(group_id) AS (
 SELECT m.*
 FROM models m
 JOIN users u ON u.id = sqlc.arg(user_id)
-WHERE (m.id::text = sqlc.arg(requested_model)::text OR m.model_id = sqlc.arg(requested_model)::text)
+WHERE (m.model_id || '@' || m.id::text = sqlc.arg(requested_model)::text
+        OR m.id::text = sqlc.arg(requested_model)::text
+        OR m.model_id = sqlc.arg(requested_model)::text)
     AND m.enabled AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR sqlc.arg(system_access)::boolean)
     AND (
@@ -171,7 +173,8 @@ WHERE (m.id::text = sqlc.arg(requested_model)::text OR m.model_id = sqlc.arg(req
                     OR rag.user_id = sqlc.arg(user_id) OR rag.group_id IN (SELECT group_id FROM user_groups))
         )
     )
-ORDER BY (m.id::text = sqlc.arg(requested_model)::text) DESC, m.created_at, m.id
+ORDER BY (m.model_id || '@' || m.id::text = sqlc.arg(requested_model)::text) DESC,
+    (m.id::text = sqlc.arg(requested_model)::text) DESC, m.created_at, m.id
 LIMIT 1;
 
 -- name: ListGroups :many

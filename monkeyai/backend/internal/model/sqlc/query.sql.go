@@ -573,7 +573,9 @@ WITH RECURSIVE user_groups(group_id) AS (
 SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at
 FROM models m
 JOIN users u ON u.id = $1
-WHERE (m.id::text = $2::text OR m.model_id = $2::text)
+WHERE (m.model_id || '@' || m.id::text = $2::text
+        OR m.id::text = $2::text
+        OR m.model_id = $2::text)
     AND m.enabled AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR $3::boolean)
     AND (
@@ -586,7 +588,8 @@ WHERE (m.id::text = $2::text OR m.model_id = $2::text)
                     OR rag.user_id = $1 OR rag.group_id IN (SELECT group_id FROM user_groups))
         )
     )
-ORDER BY (m.id::text = $2::text) DESC, m.created_at, m.id
+ORDER BY (m.model_id || '@' || m.id::text = $2::text) DESC,
+    (m.id::text = $2::text) DESC, m.created_at, m.id
 LIMIT 1
 `
 
