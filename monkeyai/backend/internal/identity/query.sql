@@ -205,7 +205,8 @@ SELECT
     u.role,
     u.status,
     u.joined_at,
-    u.last_login_at
+    u.last_login_at,
+    t.access_expires_at
 FROM
     oauth_tokens t
     JOIN users u ON u.id = t.user_id
@@ -215,6 +216,14 @@ WHERE
     AND t.access_expires_at > now()
     AND u.status = 'active'
     AND u.deleted_at IS NULL;
+
+-- name: GetAccessCredential :one
+SELECT t.access_expires_at, t.user_id
+FROM oauth_tokens t
+JOIN users u ON u.id = t.user_id
+WHERE t.access_token_hash = $1
+    AND t.revoked_at IS NULL AND t.access_expires_at > now()
+    AND u.status = 'active' AND u.deleted_at IS NULL;
 
 -- name: RevokeBrowserSession :execresult
 UPDATE

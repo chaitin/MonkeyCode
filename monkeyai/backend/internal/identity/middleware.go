@@ -3,8 +3,12 @@ package identity
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type userContextKey struct{}
@@ -61,12 +65,22 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "invalid_token", "缺少 Bearer access token")
 			return
 		}
-		user, err := s.userByAccessToken(r.Context(), tokenHash(strings.TrimSpace(authorization[7:])))
-		if err != nil {
+		reference := tokenHash(strings.TrimSpace(authorization[7:]))
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		row, err := sqlc.New(s.db).GetTokenUser(ctx, reference)
+		cancel()
+		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusUnauthorized, "invalid_token", "access token 无效或已过期")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, user)))
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "认证服务暂不可用")
+			return
+		}
+		user := User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
+		ctx = context.WithValue(r.Context(), userContextKey{}, user)
+		ctx = context.WithValue(ctx, credentialKey{}, AccessCredential{UserID: row.ID, Reference: reference, ExpiresAt: row.AccessExpiresAt})
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

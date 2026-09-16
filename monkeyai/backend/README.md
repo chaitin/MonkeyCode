@@ -144,6 +144,20 @@ go run ./cmd/server
 
 服务提供 `/healthz` 存活检查和 `/readyz` 数据库及 RustFS Bucket 就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
 
+## 端点桥接
+
+`/api/v1/endpoints` 提供当前用户的端点管理，`/api/v1/endpoints/connect` 使用原生客户端 OAuth Bearer 升级为 WebSocket；不接受 Cookie、调用密钥或 URL token。完整协议见 [单进程端点桥接设计](../design/endpoint-bridge-design.md)，HTTP 契约见 `api/agent.yaml`。
+
+只支持一个后端进程：PostgreSQL 保存端点资料，在线连接、队列与路由仅在内存中；不引入 Redis。发布须先停止旧进程再启动新进程，禁止双进程滚动接入。进程重启不恢复在线状态和消息，客户端重新握手并查询业务状态；超时或断线的请求结果未知，不自动重发。
+
+生产使用 WSS，后端端口只对可信入口开放。非空 Origin 必须匹配 `MONKEYAI_PUBLIC_URL`，原生客户端可以省略。Nginx 和 Vite 已对桥接入口启用 Upgrade，代理空闲超时需大于心跳及等待窗口，默认 90 秒。应用退出时主动关闭桥接连接并使 `/readyz` 返回不可用。
+
+`MONKEYAI_ENDPOINT_MAX_CONNECTIONS`（或 `-endpoint-max-connections`）默认 1000，包含等待 hello 的连接；每连接业务队列最多 64 条/2 MiB，需按内存预算下调连接数。用户最多 20 个 active 端点，离线仍计入。停用端点不是撤销设备登录授权；持有有效账号凭据可显式恢复。
+
+access token 刷新后旧连接凭据失效，客户端应通过统一 OAuth 管理器轮换并重新连接。服务端每 30 秒复验一次，超时 5 秒；已知到期时间直接限制路由，数据库撤销或用户停用最多约 35 秒收敛。桥接不定义会话控制、文件操作等 Agent 业务方法。
+
+纯协议测试运行 `go test ./internal/endpoint/...`；设置隔离的 `MONKEYAI_TEST_DATABASE_URL` 后，同一命令还覆盖真实数据库与 WebSocket，并可加 `-race` 验证并发路径。
+
 ## 资源功能验证
 
 `go test ./...` 和 `go vet ./...` 运行常规检查。真实 PostgreSQL / RustFS 集成验证需要：

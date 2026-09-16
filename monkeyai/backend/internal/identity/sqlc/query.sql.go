@@ -399,6 +399,27 @@ func (q *Queries) FailEmailCode(ctx context.Context, arg FailEmailCodeParams) er
 	return err
 }
 
+const getAccessCredential = `-- name: GetAccessCredential :one
+SELECT t.access_expires_at, t.user_id
+FROM oauth_tokens t
+JOIN users u ON u.id = t.user_id
+WHERE t.access_token_hash = $1
+    AND t.revoked_at IS NULL AND t.access_expires_at > now()
+    AND u.status = 'active' AND u.deleted_at IS NULL
+`
+
+type GetAccessCredentialRow struct {
+	AccessExpiresAt time.Time
+	UserID          string
+}
+
+func (q *Queries) GetAccessCredential(ctx context.Context, accessTokenHash string) (GetAccessCredentialRow, error) {
+	row := q.db.QueryRow(ctx, getAccessCredential, accessTokenHash)
+	var i GetAccessCredentialRow
+	err := row.Scan(&i.AccessExpiresAt, &i.UserID)
+	return i, err
+}
+
 const getAuthorizationCode = `-- name: GetAuthorizationCode :one
 SELECT
     id,
@@ -688,7 +709,8 @@ SELECT
     u.role,
     u.status,
     u.joined_at,
-    u.last_login_at
+    u.last_login_at,
+    t.access_expires_at
 FROM
     oauth_tokens t
     JOIN users u ON u.id = t.user_id
@@ -701,14 +723,15 @@ WHERE
 `
 
 type GetTokenUserRow struct {
-	ID          string
-	Name        string
-	Email       string
-	AvatarUrl   string
-	Role        string
-	Status      string
-	JoinedAt    time.Time
-	LastLoginAt *time.Time
+	ID              string
+	Name            string
+	Email           string
+	AvatarUrl       string
+	Role            string
+	Status          string
+	JoinedAt        time.Time
+	LastLoginAt     *time.Time
+	AccessExpiresAt time.Time
 }
 
 func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (GetTokenUserRow, error) {
@@ -723,6 +746,7 @@ func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (Get
 		&i.Status,
 		&i.JoinedAt,
 		&i.LastLoginAt,
+		&i.AccessExpiresAt,
 	)
 	return i, err
 }

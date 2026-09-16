@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -14,8 +15,9 @@ import (
 
 type applicationHandler struct {
 	http.Handler
-	billing *billing.Service
-	proxy   *proxy.Proxy
+	billing   *billing.Service
+	proxy     *proxy.Proxy
+	endpoints *endpoint.Service
 }
 type modelBilling struct{ service *billing.Service }
 
