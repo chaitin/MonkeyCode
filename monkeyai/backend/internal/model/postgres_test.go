@@ -83,7 +83,10 @@ func TestResolveModelName(t *testing.T) {
 	exec(`UPDATE models SET deleted_at=now() WHERE id=$1`, deleted.ID)
 	uuidName := create(resource.ID(), "user")
 	create(shared.ID, "user")
-	create(shared.ModelID, "system")
+	duplicate := create(shared.ModelID, "system")
+	atName := create("provider/model@version", "user")
+	collision := create(shared.ModelID+"@"+shared.ID, "user")
+	exec(`UPDATE models SET created_at=created_at - interval '1 day' WHERE id=$1`, collision.ID)
 	groupModel := create("group-model", "system")
 	parent, child := resource.ID(), resource.ID()
 	exec(`INSERT INTO groups(id,name,parent_id) VALUES($1,'父组',NULL),($2,'子组',$1)`, parent, child)
@@ -94,6 +97,15 @@ func TestResolveModelName(t *testing.T) {
 		name, user, requested, want string
 	}{
 		{"模型名", user, shared.ModelID, shared.ID},
+		{"下发标识", user, shared.ModelID + "@" + shared.ID, shared.ID},
+		{"同名模型精确选择", owner, duplicate.ModelID + "@" + duplicate.ID, duplicate.ID},
+		{"下发标识优先于模型名", owner, shared.ModelID + "@" + shared.ID, shared.ID},
+		{"含分隔符的模型名", owner, atName.ModelID, atName.ID},
+		{"含分隔符的下发标识", owner, atName.ModelID + "@" + atName.ID, atName.ID},
+		{"下发标识名称不匹配", owner, "wrong-name@" + shared.ID, ""},
+		{"下发标识未授权", user, private.ModelID + "@" + private.ID, ""},
+		{"下发标识已停用", admin, disabled.ModelID + "@" + disabled.ID, ""},
+		{"下发标识已删除", admin, deleted.ModelID + "@" + deleted.ID, ""},
 		{"主键", user, shared.ID, shared.ID},
 		{"主键优先", owner, shared.ID, shared.ID},
 		{"同名稳定选择", owner, shared.ModelID, shared.ID},
@@ -128,7 +140,7 @@ func TestResolveModelName(t *testing.T) {
 	}
 	for _, entry := range models {
 		item, err := repo.Resolve(ctx, user, entry.Model)
-		if err != nil || item.ID != entry.ID || item.ModelID != entry.Model {
+		if err != nil || item.ID != entry.ID || item.ModelID+"@"+item.ID != entry.Model {
 			t.Fatalf("下发模型无法解析: %+v, %v", entry, err)
 		}
 	}

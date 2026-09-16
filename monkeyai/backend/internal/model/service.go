@@ -119,7 +119,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			OwnershipType:       item.OwnershipType,
 			User:                item.User,
 			ID:                  item.ID,
-			Model:               item.ModelID,
+			Model:               item.ModelID + "@" + item.ID,
 			DisplayName:         item.DisplayName,
 			Protocol:            item.Protocol,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,

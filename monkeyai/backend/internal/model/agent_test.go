@@ -39,7 +39,7 @@ func TestAgentModelsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(first.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if first.Code != http.StatusOK || len(body.Models) != 1 || body.Models[0].ID != "model-1" || body.Models[0].Model != "upstream-name" || body.Gateway.BaseURL != "https://monkeyai.example.com/v1" || body.Gateway.Authentication != "api_key" {
+	if first.Code != http.StatusOK || len(body.Models) != 1 || body.Models[0].ID != "model-1" || body.Models[0].Model != "upstream-name@model-1" || body.Gateway.BaseURL != "https://monkeyai.example.com/v1" || body.Gateway.Authentication != "api_key" {
 		t.Fatalf("模型目录无效: %d %s", first.Code, first.Body.String())
 	}
 	for _, key := range []string{"upstream-secret", "https://upstream.example.com/v1", `"owner_user_id"`, `"settings"`, `"rules"`, `"skills"`, `"experts"`, `"connectors"`} {
