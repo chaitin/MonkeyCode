@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -39,6 +40,7 @@ type App struct {
 	shutdownTimeout time.Duration
 	billing         *billing.Service
 	proxy           *proxy.Proxy
+	endpoints       *endpoint.Service
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -73,6 +75,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		},
 		billing:         handler.(*applicationHandler).billing,
 		proxy:           handler.(*applicationHandler).proxy,
+		endpoints:       handler.(*applicationHandler).endpoints,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -145,6 +148,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
+	endpoints := endpoint.NewService(endpoint.NewPostgres(pool), endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
+	endpoints.RegisterAgent(agent)
 	identities.RegisterAgent(agent)
 	keys.RegisterAgent(agent)
 	models.RegisterAgent(agent)
@@ -177,8 +182,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 			return audit.Actor{}
 		}
 	})(identities.AuthRouter())
-	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy}, nil
+	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, endpoints: endpoints}, nil
 }
 
 type modelResolver struct {
@@ -205,7 +210,9 @@ func (a *App) Run(ctx context.Context) error {
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
-	defer func() { stopWorker(); <-workerDone }()
+	observeDone := make(chan struct{})
+	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
+	defer func() { stopWorker(); <-workerDone; <-observeDone }()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
@@ -231,6 +238,11 @@ func (a *App) Run(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()
+	bridgeCtx, bridgeCancel := context.WithTimeout(shutdownCtx, 10*time.Second)
+	if err := a.endpoints.Shutdown(bridgeCtx); err != nil {
+		runErrors = append(runErrors, fmt.Errorf("关闭端点桥接: %w", err))
+	}
+	bridgeCancel()
 	for _, server := range a.servers {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			runErrors = append(runErrors, fmt.Errorf("关闭 %s: %w", server.Addr, err))
@@ -248,11 +260,15 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 type readiness struct {
-	pool    *pgxpool.Pool
-	storage resource.Storage
+	pool      *pgxpool.Pool
+	storage   resource.Storage
+	endpoints *endpoint.Service
 }
 
 func (r readiness) Ping(ctx context.Context) error {
+	if r.endpoints != nil && !r.endpoints.Ready() {
+		return errors.New("端点桥接正在停止")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := r.pool.Ping(ctx); err != nil {

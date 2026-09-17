@@ -137,6 +137,7 @@ func TestResourceIntegration(t *testing.T) {
 	for _, name := range []string{"a", "b"} {
 		invokeKeys[name] = must("POST", "/api/v1/api-keys", resource.Object{"name": "MCP 测试", "scopes": []string{"mcp:invoke"}}, name, "").String("api_key")
 	}
+	t.Run("端点桥接路由", func(t *testing.T) { testEndpointBridge(t, handler) })
 	t.Run("用户模型与批量分享", func(t *testing.T) { testModelSharing(t, pool, handler, users) })
 	t.Run("独立资源目录", func(t *testing.T) {
 		for _, kind := range []string{"settings", "models", "rules", "skills", "experts", "connectors"} {
@@ -1256,12 +1257,15 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	})
 
 	// 在已有业务数据的测试库验证完整回滚，再重新初始化。
-	down, err := os.ReadFile("../../migrations/000001_initial_create_schema.down.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Exec(ctx, string(down)); err != nil {
-		t.Fatal(err)
+	for i := len(migrations) - 1; i >= 0; i-- {
+		path := strings.TrimSuffix(migrations[i], ".up.sql") + ".down.sql"
+		down, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(down)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var remaining int
 	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM pg_class WHERE relnamespace=current_schema()::regnamespace)+(SELECT count(*) FROM pg_proc WHERE pronamespace=current_schema()::regnamespace)`).Scan(&remaining); err != nil || remaining != 0 {

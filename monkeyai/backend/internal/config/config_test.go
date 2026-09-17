@@ -99,6 +99,25 @@ func TestLoadPublicURL(t *testing.T) {
 	}
 }
 
+func TestEndpointConnections(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
+	for _, value := range []string{"0", "-1", "many"} {
+		t.Setenv("MONKEYAI_ENDPOINT_MAX_CONNECTIONS", value)
+		if _, err := Load(nil); err == nil {
+			t.Fatalf("接受了连接上限 %q", value)
+		}
+	}
+	t.Setenv("MONKEYAI_ENDPOINT_MAX_CONNECTIONS", "25")
+	cfg, err := Load(nil)
+	if err != nil || cfg.EndpointMaxConnections != 25 {
+		t.Fatalf("配置未生效: %+v %v", cfg, err)
+	}
+	cfg, err = Load([]string{"-endpoint-max-connections=10"})
+	if err != nil || cfg.EndpointMaxConnections != 10 {
+		t.Fatalf("命令行未覆盖: %+v %v", cfg, err)
+	}
+}
+
 func TestLoadRejectsIncompleteInitialAdmin(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://localhost/monkeyai")
 	t.Setenv("MONKEYAI_PUBLIC_URL", "http://localhost:8080")

@@ -7,6 +7,112 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/endpoints:
+    get:
+      summary: 分页读取当前用户端点
+      description: 包含已停用端点；online 仅代表当前单进程连接。响应不缓存。
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: 端点分页
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, page_size]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Endpoint'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  page_size: {type: integer}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+  /api/v1/endpoints/connect:
+    get:
+      summary: 建立原生客户端端点桥接 WebSocket
+      description: >-
+        仅接受 OAuth Bearer access token，不接受 Cookie 或 URL token。
+        非空 Origin 必须匹配 MONKEYAI_PUBLIC_URL；生产使用 WSS。
+        Upgrade 后 5 秒内发送 hello，服务端依次发送 welcome、directory.snapshot。
+        使用协议主版本 1，UTF-8 JSON 文本消息最大 256 KiB（含分片累计），禁用压缩。
+        request/response/event 信封及关闭码详见 design/endpoint-bridge-design.md。
+        4003 需恢复 OAuth 凭据，4001/4002 不自动重连；断线不得自动重发业务消息。
+      responses:
+        '101': {description: WebSocket 升级成功}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '429':
+          description: 当前用户建连过于频繁，遵循 Retry-After 退避
+          headers:
+            Retry-After: {schema: {type: integer}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceError'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+  /api/v1/endpoints/{machine_id}:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    get:
+      summary: 读取当前用户的单个端点
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+    patch:
+      summary: 修改端点别名
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [alias]
+              properties:
+                alias:
+                  type: [string, 'null']
+                  description: null 清除别名；非空白文本最多 128 UTF-8 字节，拒绝控制字符
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+  /api/v1/endpoints/{machine_id}/revoke:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    post:
+      summary: 停用端点并断开连接
+      description: 幂等，不接受请求体。不等于撤销设备登录授权，持有有效账号凭据仍可显式恢复。
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+  /api/v1/endpoints/{machine_id}/restore:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    post:
+      summary: 恢复已停用端点
+      description: 幂等，不接受请求体。不主动建立连接；active 端点最多 20 个，离线也计入。
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409':
+          description: active 端点达到上限，错误码 endpoint_limit_exceeded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceError'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
   /oauth/connectors/{id}/callback:
     get:
       summary: 处理指定 MCP 的 OAuth 回调
@@ -2540,6 +2646,12 @@ components:
       bearerFormat: OAuth 2.0 access token
       description: Agent 登录授权流程签发的短期 access token。
   parameters:
+    EndpointMachine:
+      name: machine_id
+      in: path
+      required: true
+      description: 规范小写、带连字符的 UUIDv4，仅限当前用户端点
+      schema: {type: string, format: uuid}
     ResourceID:
       name: id
       in: path
@@ -2583,6 +2695,18 @@ components:
         type: string
         const: private, no-cache
   responses:
+    EndpointResult:
+      description: 当前端点资料，时间为 Unix 毫秒
+      headers:
+        Cache-Control: {schema: {type: string, const: 'private, no-store'}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Endpoint'}
+    EndpointUnavailable:
+      description: 认证或存储暂不可用、连接数超限，或服务正在停止
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ResourceError'}
     NotModified:
       description: 当前接口内容未变化，无响应体。
       headers:
@@ -2669,6 +2793,25 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    Endpoint:
+      type: object
+      required: [machine_id, device_name, alias, display_name, platform, os_version, arch, client_version, protocol_version, status, online, created_at, updated_at, last_seen_at, revoked_at]
+      properties:
+        machine_id: {type: string, format: uuid}
+        device_name: {type: string}
+        alias: {type: [string, 'null']}
+        display_name: {type: string}
+        platform: {type: string, enum: [macos, windows, linux, ios, android]}
+        os_version: {type: string}
+        arch: {type: string}
+        client_version: {type: string}
+        protocol_version: {type: integer, const: 1}
+        status: {type: string, enum: [active, revoked]}
+        online: {type: boolean}
+        created_at: {type: integer, format: int64}
+        updated_at: {type: integer, format: int64}
+        last_seen_at: {type: [integer, 'null'], format: int64}
+        revoked_at: {type: [integer, 'null'], format: int64}
     UserRuleInput:
       type: object
       properties:

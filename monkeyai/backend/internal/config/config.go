@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,11 +25,12 @@ type Database struct {
 type Config struct {
 	HTTP
 	Database
-	PublicURL            string
-	InitialAdminName     string
-	InitialAdminEmail    string
-	InitialAdminPassword string
-	LogLevel             slog.Level
+	PublicURL              string
+	EndpointMaxConnections int
+	InitialAdminName       string
+	InitialAdminEmail      string
+	InitialAdminPassword   string
+	LogLevel               slog.Level
 }
 
 func Load(args []string) (Config, error) {
@@ -55,18 +57,24 @@ func Load(args []string) (Config, error) {
 		logLevel = slog.LevelInfo.String()
 	}
 
+	endpointMax, err := strconv.Atoi(envOr("MONKEYAI_ENDPOINT_MAX_CONNECTIONS", "1000"))
+	if err != nil {
+		return Config{}, fmt.Errorf("解析端点连接上限: %w", err)
+	}
 	cfg := Config{
-		Addr:                 addr,
-		PprofAddr:            pprofAddr,
-		ShutdownTimeout:      shutdownTimeout,
-		URL:                  os.Getenv("MONKEYAI_DATABASE_URL"),
-		PublicURL:            envOr("MONKEYAI_PUBLIC_URL", "http://localhost:8080"),
-		InitialAdminName:     envOr("MONKEYAI_INITIAL_ADMIN_NAME", "MonkeyAI Admin"),
-		InitialAdminEmail:    strings.TrimSpace(os.Getenv("MONKEYAI_INITIAL_ADMIN_EMAIL")),
-		InitialAdminPassword: os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
+		Addr:                   addr,
+		EndpointMaxConnections: endpointMax,
+		PprofAddr:              pprofAddr,
+		ShutdownTimeout:        shutdownTimeout,
+		URL:                    os.Getenv("MONKEYAI_DATABASE_URL"),
+		PublicURL:              envOr("MONKEYAI_PUBLIC_URL", "http://localhost:8080"),
+		InitialAdminName:       envOr("MONKEYAI_INITIAL_ADMIN_NAME", "MonkeyAI Admin"),
+		InitialAdminEmail:      strings.TrimSpace(os.Getenv("MONKEYAI_INITIAL_ADMIN_EMAIL")),
+		InitialAdminPassword:   os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
 	}
 
 	flags := flag.NewFlagSet("monkeyai-server", flag.ContinueOnError)
+	flags.IntVar(&cfg.EndpointMaxConnections, "endpoint-max-connections", cfg.EndpointMaxConnections, "端点连接总上限（含等待握手）")
 	flags.StringVar(&cfg.Addr, "http-addr", cfg.Addr, "HTTP 监听地址")
 	flags.StringVar(&cfg.PprofAddr, "pprof-addr", cfg.PprofAddr, "pprof 监听地址")
 	flags.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "优雅退出超时时间")
@@ -105,6 +113,9 @@ func Load(args []string) (Config, error) {
 	}
 	if cfg.InitialAdminPassword != "" && len(cfg.InitialAdminPassword) < 12 {
 		return Config{}, errors.New("首次管理员密码不能少于 12 个字符")
+	}
+	if cfg.EndpointMaxConnections < 1 {
+		return Config{}, errors.New("端点连接上限必须大于 0")
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, errors.New("优雅退出超时时间必须大于 0")

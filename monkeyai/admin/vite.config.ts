@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
+      "^/api/v1/endpoints/connect$": { target: backend, ws: true },
       "/api": backend,
       "/oauth": backend,
       "/mcp": backend,
