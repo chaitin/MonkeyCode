@@ -898,6 +898,19 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     setIsComposing(false)
   }
 
+  const autoResizeTaskInput = React.useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    // field-sizing:content 在全角（CJK）字符场景下会导致光标渲染位置偏移，
+    // 这里改为按 scrollHeight 手动同步高度。
+    textarea.style.height = "auto"
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [])
+
+  React.useEffect(() => {
+    autoResizeTaskInput()
+  }, [autoResizeTaskInput, content])
+
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
   const contentTooLong = contentLength > MAX_TASK_CONTENT_LENGTH
@@ -1089,7 +1102,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       <InputGroup orientation="vertical">
         <InputGroupTextarea
           ref={textareaRef}
-          className="min-h-8 min-w-0 w-full max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content] disabled:opacity-80"
+          className="min-h-8 min-w-0 w-full max-h-36 resize-none overflow-y-auto text-sm break-all disabled:opacity-80"
           placeholder={inputPlaceholder}
           value={content}
           disabled={!canEditContent}
