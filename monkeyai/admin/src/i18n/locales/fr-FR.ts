@@ -54,9 +54,14 @@ export const frFR = {
     subtitle: "Connectez-vous à votre compte administrateur MonkeyAI",
     email: "Adresse e-mail",
     password: "Mot de passe",
+    showPassword: "Afficher le mot de passe",
+    hidePassword: "Masquer le mot de passe",
+    noMethodsTitle: "Aucune méthode de connexion disponible",
+    noMethods:
+      "Contactez votre administrateur pour activer au moins une méthode de connexion.",
     forgotPassword: "Mot de passe oublié ?",
     submit: "Se connecter",
-    continueWith: "Ou continuer avec",
+    otherLoginMethods: "Autres méthodes de connexion",
     loginWith: "Se connecter avec {{provider}}",
     oauthAdminRequired:
       "Ce compte OAuth n’est pas associé à un administrateur actif",

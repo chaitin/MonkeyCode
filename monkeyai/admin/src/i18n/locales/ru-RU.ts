@@ -54,9 +54,14 @@ export const ruRU = {
     subtitle: "Войдите в свою учётную запись администратора MonkeyAI",
     email: "Электронная почта",
     password: "Пароль",
+    showPassword: "Показать пароль",
+    hidePassword: "Скрыть пароль",
+    noMethodsTitle: "Нет доступных способов входа",
+    noMethods:
+      "Обратитесь к администратору, чтобы включить хотя бы один способ входа.",
     forgotPassword: "Забыли пароль?",
     submit: "Войти",
-    continueWith: "Или продолжить с помощью",
+    otherLoginMethods: "Другие способы входа",
     loginWith: "Войти через {{provider}}",
     oauthAdminRequired:
       "Эта учётная запись OAuth не связана с активным администратором",

@@ -54,9 +54,14 @@ export const deDE = {
     subtitle: "Melden Sie sich bei Ihrem MonkeyAI-Administratorkonto an",
     email: "E-Mail-Adresse",
     password: "Passwort",
+    showPassword: "Passwort anzeigen",
+    hidePassword: "Passwort ausblenden",
+    noMethodsTitle: "Keine Anmeldemethode verfügbar",
+    noMethods:
+      "Wenden Sie sich an Ihren Administrator, um mindestens eine Anmeldemethode zu aktivieren.",
     forgotPassword: "Passwort vergessen?",
     submit: "Anmelden",
-    continueWith: "Oder fortfahren mit",
+    otherLoginMethods: "Andere Anmeldemethoden",
     loginWith: "Mit {{provider}} anmelden",
     oauthAdminRequired:
       "Dieses OAuth-Konto ist keinem aktiven Administrator zugeordnet",

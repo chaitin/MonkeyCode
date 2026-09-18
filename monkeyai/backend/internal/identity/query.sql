@@ -421,7 +421,7 @@ DELETE FROM email_codes WHERE expires_at < now();
 -- name: EmailDeliveryLimited :one
 SELECT (count(*) FILTER (WHERE email = sqlc.arg(email)) >= 10
  OR count(*) FILTER (WHERE ip_hash = sqlc.arg(ip_hash)) >= 30
- OR count(*) FILTER (WHERE email = sqlc.arg(email) AND created_at > now() - interval '1 minute') > 0)::boolean AS limited
+ OR count(*) FILTER (WHERE email = sqlc.arg(email) AND created_at > now() - interval '30 seconds') > 0)::boolean AS limited
 FROM email_code_deliveries;
 
 -- name: RecordEmailDelivery :exec

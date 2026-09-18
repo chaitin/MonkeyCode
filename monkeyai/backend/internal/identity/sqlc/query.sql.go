@@ -369,7 +369,7 @@ func (q *Queries) DeleteEmailCode(ctx context.Context, arg DeleteEmailCodeParams
 const emailDeliveryLimited = `-- name: EmailDeliveryLimited :one
 SELECT (count(*) FILTER (WHERE email = $1) >= 10
  OR count(*) FILTER (WHERE ip_hash = $2) >= 30
- OR count(*) FILTER (WHERE email = $1 AND created_at > now() - interval '1 minute') > 0)::boolean AS limited
+ OR count(*) FILTER (WHERE email = $1 AND created_at > now() - interval '30 seconds') > 0)::boolean AS limited
 FROM email_code_deliveries
 `
 

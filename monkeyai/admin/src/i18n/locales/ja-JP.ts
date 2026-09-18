@@ -54,9 +54,14 @@ export const jaJP = {
     subtitle: "MonkeyAI 管理者アカウントにログイン",
     email: "メールアドレス",
     password: "パスワード",
+    showPassword: "パスワードを表示",
+    hidePassword: "パスワードを非表示",
+    noMethodsTitle: "利用可能なログイン方法がありません",
+    noMethods:
+      "管理者に連絡して、少なくとも1つのログイン方法を有効にしてください。",
     forgotPassword: "パスワードをお忘れですか？",
     submit: "ログイン",
-    continueWith: "または次の方法で続行",
+    otherLoginMethods: "その他のログイン方法",
     loginWith: "{{provider}} でログイン",
     oauthAdminRequired:
       "この OAuth アカウントは有効な管理者に関連付けられていません",

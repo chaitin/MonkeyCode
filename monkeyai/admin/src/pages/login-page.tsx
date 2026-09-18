@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Navigate, useLocation, useNavigate } from "react-router-dom"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { LanguageToggle } from "@/components/language-toggle"
 import { LoginForm, type LoginProvider } from "@/components/login-form"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -16,18 +17,16 @@ const oauthErrorKeys: Record<string, string> = {
 
 export function LoginPage() {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const { isLoading, refresh, user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [oauthSubmitting, setOauthSubmitting] = useState("")
   const [providers, setProviders] = useState<LoginProvider[]>([])
-  const [error, setError] = useState("")
+  const shownOauthError = useRef("")
   const destination =
     (location.state as { from?: string } | null)?.from ?? DEFAULT_CONSOLE_PATH
   const oauthError = new URLSearchParams(location.search).get("oauth_error")
-  const visibleError =
-    error ||
-    (oauthError ? t(oauthErrorKeys[oauthError] ?? "login.oauthFailed") : "")
 
   useEffect(() => {
     const controller = new AbortController()
@@ -45,6 +44,15 @@ export function LoginPage() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (!oauthError || shownOauthError.current === oauthError) return
+    shownOauthError.current = oauthError
+    showToast({
+      status: "error",
+      title: t(oauthErrorKeys[oauthError] ?? "login.oauthFailed"),
+    })
+  }, [oauthError, showToast, t])
+
   if (!isLoading && user?.role === "admin") {
     return <Navigate to={destination} replace />
   }
@@ -56,7 +64,6 @@ export function LoginPage() {
 
   const startOAuthLogin = (provider: LoginProvider) => {
     setOauthSubmitting(provider.id)
-    setError("")
     window.location.assign(
       `/api/auth/v1/oauth/${encodeURIComponent(provider.id)}/admin-start`
     )
@@ -64,13 +71,12 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-muted p-4">
-      <div className="absolute end-4 top-4 flex items-center gap-2">
-        <LanguageToggle />
-        <ThemeToggle />
-      </div>
-      <div className="w-full max-w-sm md:max-w-4xl">
+      <div className="relative w-full max-w-sm md:max-w-4xl">
+        <div className="absolute end-0 bottom-full z-10 mb-2 flex items-center gap-1 [&>button:hover]:bg-foreground/5!">
+          <LanguageToggle variant="ghost" />
+          <ThemeToggle variant="ghost" />
+        </div>
         <LoginForm
-          error={visibleError}
           oauthSubmitting={oauthSubmitting}
           providers={providers}
           onOAuthLogin={startOAuthLogin}

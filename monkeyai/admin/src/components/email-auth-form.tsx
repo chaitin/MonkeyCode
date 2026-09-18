@@ -1,9 +1,18 @@
+import {
+  AlertCircleIcon,
+  EyeOffIcon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { useAppToast } from "@/components/animated-toast-provider"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
 import type { AuthUser } from "@/lib/auth-context"
 
@@ -19,24 +28,27 @@ export function EmailAuthForm({
   disabled = false,
   hasProviders = false,
   onAuthenticated,
+  onLoginMethodsChange,
 }: {
   admin?: boolean
   disabled?: boolean
   hasProviders?: boolean
   onAuthenticated: (user: AuthUser) => Promise<void> | void
+  onLoginMethodsChange?: (available: boolean) => void
 }) {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [methods, setMethods] = useState<Methods | null>(null)
   const [mode, setMode] = useState<Mode>("password")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState("")
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [sending, setSending] = useState(false)
   const [remaining, setRemaining] = useState(0)
-  const [error, setError] = useState("")
-  const [message, setMessage] = useState("")
+  const [methodsError, setMethodsError] = useState("")
 
   useEffect(() => {
     const controller = new AbortController()
@@ -44,12 +56,18 @@ export function EmailAuthForm({
       .then((value) => {
         setMethods(value)
         setMode(value.password_enabled ? "password" : "login")
+        onLoginMethodsChange?.(
+          value.password_enabled || value.email_code_enabled
+        )
       })
       .catch((reason: Error) => {
-        if (reason.name !== "AbortError") setError(reason.message)
+        if (reason.name !== "AbortError") {
+          setMethodsError(reason.message)
+          showToast({ status: "error", title: reason.message })
+        }
       })
     return () => controller.abort()
-  }, [])
+  }, [onLoginMethodsChange, showToast])
 
   useEffect(() => {
     if (remaining <= 0) return
@@ -61,14 +79,11 @@ export function EmailAuthForm({
     setMode(next)
     setCode("")
     setPassword("")
-    setError("")
-    setMessage("")
+    setShowPassword(false)
   }
   const sendCode = async () => {
     if (sending || busy || remaining > 0) return
     setSending(true)
-    setError("")
-    setMessage("")
     try {
       const result = await api<{ retry_after: number }>(
         "/api/auth/v1/email/code",
@@ -78,14 +93,16 @@ export function EmailAuthForm({
         }
       )
       setRemaining(result.retry_after)
-      setMessage(
-        t(
+      showToast({
+        status: "success",
+        title: t("login.sendCode", "发送验证码"),
+        description: t(
           "login.codeSent",
           "如果该邮箱符合条件，验证码将发送至邮箱，请检查收件箱。"
-        )
-      )
+        ),
+      })
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setSending(false)
     }
@@ -93,8 +110,6 @@ export function EmailAuthForm({
   const submit = async () => {
     if (busy || sending) return
     setBusy(true)
-    setError("")
-    setMessage("")
     const path =
       mode === "password"
         ? admin
@@ -114,12 +129,19 @@ export function EmailAuthForm({
       })
       if (mode === "reset") {
         changeMode("password")
-        setMessage(t("login.passwordReset", "密码已重置，请使用新密码登录。"))
+        showToast({
+          status: "success",
+          title: t("login.resetPassword", "重置密码"),
+          description: t(
+            "login.passwordReset",
+            "密码已重置，请使用新密码登录。"
+          ),
+        })
       } else {
         await onAuthenticated(user)
       }
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setBusy(false)
     }
@@ -136,13 +158,19 @@ export function EmailAuthForm({
 
   return (
     <div className="space-y-4">
-      {!methods && !error && (
+      {!methods && !methodsError && (
         <p role="status">{t("login.loadingMethods", "正在加载登录方式…")}</p>
       )}
       {methods && !canLogin && !hasProviders && (
-        <p role="status">
-          {t("login.noMethods", "当前没有可用的登录方式，请联系管理员。")}
-        </p>
+        <Alert variant="destructive">
+          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} />
+          <AlertTitle>
+            {t("login.noMethodsTitle", "没有可用的登录方式")}
+          </AlertTitle>
+          <AlertDescription>
+            {t("login.noMethods", "请联系管理员启用至少一种登录方式。")}
+          </AlertDescription>
+        </Alert>
       )}
       {canLogin && (
         <form
@@ -154,6 +182,31 @@ export function EmailAuthForm({
         >
           <fieldset disabled={locked} className="space-y-4">
             <legend className="sr-only">{title}</legend>
+            {methods &&
+              ((methods.password_enabled && methods.email_code_enabled) ||
+                mode === "register" ||
+                mode === "reset") && (
+                <Tabs
+                  value={mode === "password" || mode === "login" ? mode : ""}
+                  onValueChange={(value) =>
+                    changeMode(value as "password" | "login")
+                  }
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full auto-cols-fr grid-flow-col">
+                    {methods.password_enabled && (
+                      <TabsTrigger value="password">
+                        {t("login.passwordLogin", "密码登录")}
+                      </TabsTrigger>
+                    )}
+                    {methods.email_code_enabled && (
+                      <TabsTrigger value="login">
+                        {t("login.codeLogin", "验证码登录")}
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+                </Tabs>
+              )}
             {mode === "register" && (
               <Field>
                 <FieldLabel htmlFor="auth-name">
@@ -181,7 +234,6 @@ export function EmailAuthForm({
                 onChange={(event) => {
                   setEmail(event.target.value)
                   setCode("")
-                  setMessage("")
                 }}
               />
             </Field>
@@ -190,10 +242,10 @@ export function EmailAuthForm({
                 <FieldLabel htmlFor="auth-code">
                   {t("login.code", "邮箱验证码")}
                 </FieldLabel>
-                <div className="flex gap-2">
+                <div className="relative">
                   <Input
                     id="auth-code"
-                    className="min-w-0"
+                    className="pe-24"
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     pattern="[0-9]{6}"
@@ -202,19 +254,23 @@ export function EmailAuthForm({
                     value={code}
                     onChange={(event) => setCode(event.target.value)}
                   />
-                  <Button
-                    variant="outline"
-                    type="button"
-                    disabled={remaining > 0 || !email.trim()}
-                    aria-busy={sending}
-                    onClick={() => void sendCode()}
-                  >
-                    {remaining > 0
-                      ? `${remaining}s`
-                      : sending
-                        ? t("login.sendingCode", "发送中…")
-                        : t("login.sendCode", "发送验证码")}
-                  </Button>
+                  <div className="absolute inset-y-0 end-1 flex items-center">
+                    <Button
+                      variant="link"
+                      size="sm"
+                      type="button"
+                      className="h-7 px-2 text-xs"
+                      disabled={remaining > 0 || !email.trim()}
+                      aria-busy={sending}
+                      onClick={() => void sendCode()}
+                    >
+                      {remaining > 0
+                        ? `${remaining}s`
+                        : sending
+                          ? t("login.sendingCode", "发送中…")
+                          : t("login.sendCode", "发送验证码")}
+                    </Button>
+                  </div>
                 </div>
               </Field>
             )}
@@ -225,18 +281,41 @@ export function EmailAuthForm({
                     ? t("login.newPassword", "新密码（至少 12 个字符）")
                     : t("login.password")}
                 </FieldLabel>
-                <Input
-                  id="auth-password"
-                  type="password"
-                  autoComplete={
-                    mode === "password" ? "current-password" : "new-password"
-                  }
-                  required
-                  minLength={mode === "password" ? undefined : 12}
-                  maxLength={1024}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
+                <div className="relative">
+                  <Input
+                    id="auth-password"
+                    type={showPassword ? "text" : "password"}
+                    className="pe-10"
+                    autoComplete={
+                      mode === "password" ? "current-password" : "new-password"
+                    }
+                    required
+                    minLength={mode === "password" ? undefined : 12}
+                    maxLength={1024}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                  <div className="absolute inset-y-0 end-0.5 flex items-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label={
+                        showPassword
+                          ? t("login.hidePassword", "隐藏密码")
+                          : t("login.showPassword", "显示密码")
+                      }
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((visible) => !visible)}
+                    >
+                      <HugeiconsIcon
+                        icon={showPassword ? EyeOffIcon : ViewIcon}
+                        strokeWidth={2}
+                      />
+                    </Button>
+                  </div>
+                </div>
                 {mode === "register" && (
                   <p className="text-sm text-muted-foreground">
                     {t("login.passwordHint", "密码至少 12 个字符。")}
@@ -247,61 +326,19 @@ export function EmailAuthForm({
             <Button type="submit" size="lg" className="w-full" aria-busy={busy}>
               {busy ? `${title}…` : title}
             </Button>
-            <div className="flex flex-wrap justify-center gap-2">
-              {methods?.password_enabled && mode !== "password" && (
+            {!admin && methods?.registration_enabled && mode !== "register" && (
+              <div className="flex flex-wrap justify-center gap-2">
                 <Button
                   type="button"
                   variant="link"
-                  onClick={() => changeMode("password")}
+                  onClick={() => changeMode("register")}
                 >
-                  {t("login.passwordLogin", "密码登录")}
+                  {t("login.register", "邮箱注册")}
                 </Button>
-              )}
-              {methods?.email_code_enabled && mode !== "login" && (
-                <Button
-                  type="button"
-                  variant="link"
-                  onClick={() => changeMode("login")}
-                >
-                  {t("login.codeLogin", "验证码登录")}
-                </Button>
-              )}
-              {!admin &&
-                methods?.registration_enabled &&
-                mode !== "register" && (
-                  <Button
-                    type="button"
-                    variant="link"
-                    onClick={() => changeMode("register")}
-                  >
-                    {t("login.register", "邮箱注册")}
-                  </Button>
-                )}
-              {methods?.password_enabled && mode !== "reset" && (
-                <Button
-                  type="button"
-                  variant="link"
-                  onClick={() => changeMode("reset")}
-                >
-                  {t("login.forgotPassword")}
-                </Button>
-              )}
-            </div>
+              </div>
+            )}
           </fieldset>
         </form>
-      )}
-      {error && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {error}
-        </p>
-      )}
-      {message && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {message}
-        </p>
       )}
     </div>
   )

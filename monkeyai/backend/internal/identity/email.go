@@ -119,7 +119,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 	}
 	err = s.reserveCode(r.Context(), input, code, tokenHash(ip))
 	if errors.Is(err, errCodeLimited) {
-		w.Header().Set("Retry-After", "60")
+		w.Header().Set("Retry-After", "30")
 		writeError(w, 429, "rate_limited", "发送过于频繁，请稍后重试")
 		return
 	}
@@ -151,7 +151,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, 200, map[string]any{"message": "如果该邮箱符合条件，验证码将发送至邮箱", "retry_after": 60})
+	writeJSON(w, 200, map[string]any{"message": "如果该邮箱符合条件，验证码将发送至邮箱", "retry_after": 30})
 }
 
 var errCodeLimited = errors.New("验证码发送过于频繁")

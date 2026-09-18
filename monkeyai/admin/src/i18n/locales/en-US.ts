@@ -169,7 +169,9 @@ export const enUS = {
     register: "Sign up with email",
     resetPassword: "Reset password",
     loadingMethods: "Loading sign-in methods…",
-    noMethods: "No sign-in methods are available. Contact your administrator.",
+    noMethodsTitle: "No sign-in methods available",
+    noMethods:
+      "Contact your administrator to enable at least one sign-in method.",
     name: "Name",
     code: "Email verification code",
     sendingCode: "Sending…",
@@ -183,9 +185,11 @@ export const enUS = {
     subtitle: "Sign in to your MonkeyAI admin account",
     email: "Email",
     password: "Password",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
     forgotPassword: "Forgot your password?",
     submit: "Sign in",
-    continueWith: "Or continue with",
+    otherLoginMethods: "Other sign-in methods",
     loginWith: "Sign in with {{provider}}",
     oauthAdminRequired:
       "This OAuth account is not linked to an active administrator",

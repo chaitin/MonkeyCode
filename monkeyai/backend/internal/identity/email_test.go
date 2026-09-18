@@ -112,13 +112,22 @@ func TestEmailAuthentication(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	authCall(t, s, "/email/code", emailInput{Email: "USER@EXAMPLE.COM", Purpose: "register"}, 200)
+	sent := authCall(t, s, "/email/code", emailInput{Email: "USER@EXAMPLE.COM", Purpose: "register"}, 200)
+	var sentResponse struct {
+		RetryAfter int `json:"retry_after"`
+	}
+	if err := json.NewDecoder(sent.Body).Decode(&sentResponse); err != nil || sentResponse.RetryAfter != 30 {
+		t.Fatalf("验证码重试时间错误: %+v %v", sentResponse, err)
+	}
 	code := sender.code
 	var hash string
 	if err := pool.QueryRow(ctx, "SELECT code_hash FROM email_codes").Scan(&hash); err != nil || hash == code {
 		t.Fatalf("验证码未正确散列: %v", err)
 	}
-	authCall(t, s, "/email/code", emailInput{Email: "user@example.com", Purpose: "login"}, 429)
+	limited := authCall(t, s, "/email/code", emailInput{Email: "user@example.com", Purpose: "login"}, 429)
+	if got := limited.Header().Get("Retry-After"); got != "30" {
+		t.Fatalf("验证码限流响应头错误: %q", got)
+	}
 	authCall(t, s, "/email/register", emailInput{Email: "user@example.com", Code: code, Name: "普通用户", Password: "long-password-123"}, 200)
 	authCall(t, s, "/email/register", emailInput{Email: "user@example.com", Code: code, Name: "重放", Password: "long-password-123"}, 400)
 	login := authCall(t, s, "/login", emailInput{Email: "USER@EXAMPLE.COM", Password: "long-password-123"}, 200)

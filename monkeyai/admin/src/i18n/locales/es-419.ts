@@ -54,9 +54,14 @@ export const es419 = {
     subtitle: "Inicia sesión en tu cuenta de administrador de MonkeyAI",
     email: "Correo electrónico",
     password: "Contraseña",
+    showPassword: "Mostrar contraseña",
+    hidePassword: "Ocultar contraseña",
+    noMethodsTitle: "No hay métodos de inicio de sesión disponibles",
+    noMethods:
+      "Contacta a tu administrador para habilitar al menos un método de inicio de sesión.",
     forgotPassword: "¿Olvidaste tu contraseña?",
     submit: "Iniciar sesión",
-    continueWith: "O continúa con",
+    otherLoginMethods: "Otros métodos de inicio de sesión",
     loginWith: "Iniciar sesión con {{provider}}",
     oauthAdminRequired:
       "Esta cuenta de OAuth no está vinculada a un administrador activo",

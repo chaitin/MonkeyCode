@@ -1,21 +1,14 @@
 import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
-import { useTranslation } from "react-i18next"
-
-import { cn } from "@/lib/utils"
+import { cn } from "cn"
 import { HugeiconsIcon } from "@hugeicons/react"
-import {
-  ArrowRight01Icon,
-  MoreHorizontalCircle01Icon,
-} from "@hugeicons/core-free-icons"
+import { ArrowRight01Icon, MoreHorizontalCircle01Icon } from "@hugeicons/core-free-icons"
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
-  const { t } = useTranslation()
-
   return (
     <nav
-      aria-label={t("common.breadcrumb")}
+      aria-label="breadcrumb"
       data-slot="breadcrumb"
       className={cn(className)}
       {...props}
@@ -93,11 +86,7 @@ function BreadcrumbSeparator({
       {...props}
     >
       {children ?? (
-        <HugeiconsIcon
-          icon={ArrowRight01Icon}
-          strokeWidth={2}
-          className="rtl:rotate-180"
-        />
+        <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="rtl:rotate-180" />
       )}
     </li>
   )
@@ -107,8 +96,6 @@ function BreadcrumbEllipsis({
   className,
   ...props
 }: React.ComponentProps<"span">) {
-  const { t } = useTranslation()
-
   return (
     <span
       data-slot="breadcrumb-ellipsis"
@@ -121,7 +108,7 @@ function BreadcrumbEllipsis({
       {...props}
     >
       <HugeiconsIcon icon={MoreHorizontalCircle01Icon} strokeWidth={2} />
-      <span className="sr-only">{t("common.more")}</span>
+      <span className="sr-only">More</span>
     </span>
   )
 }
