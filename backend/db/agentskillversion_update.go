@@ -94,6 +94,80 @@ func (_u *AgentSkillVersionUpdate) ClearParsedMeta() *AgentSkillVersionUpdate {
 	return _u
 }
 
+// SetGuardStatus sets the "guard_status" field.
+func (_u *AgentSkillVersionUpdate) SetGuardStatus(v string) *AgentSkillVersionUpdate {
+	_u.mutation.SetGuardStatus(v)
+	return _u
+}
+
+// SetNillableGuardStatus sets the "guard_status" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdate) SetNillableGuardStatus(v *string) *AgentSkillVersionUpdate {
+	if v != nil {
+		_u.SetGuardStatus(*v)
+	}
+	return _u
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (_u *AgentSkillVersionUpdate) SetGuardTaskID(v string) *AgentSkillVersionUpdate {
+	_u.mutation.SetGuardTaskID(v)
+	return _u
+}
+
+// SetNillableGuardTaskID sets the "guard_task_id" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdate) SetNillableGuardTaskID(v *string) *AgentSkillVersionUpdate {
+	if v != nil {
+		_u.SetGuardTaskID(*v)
+	}
+	return _u
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (_u *AgentSkillVersionUpdate) ClearGuardTaskID() *AgentSkillVersionUpdate {
+	_u.mutation.ClearGuardTaskID()
+	return _u
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (_u *AgentSkillVersionUpdate) SetGuardDeadline(v time.Time) *AgentSkillVersionUpdate {
+	_u.mutation.SetGuardDeadline(v)
+	return _u
+}
+
+// SetNillableGuardDeadline sets the "guard_deadline" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdate) SetNillableGuardDeadline(v *time.Time) *AgentSkillVersionUpdate {
+	if v != nil {
+		_u.SetGuardDeadline(*v)
+	}
+	return _u
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (_u *AgentSkillVersionUpdate) ClearGuardDeadline() *AgentSkillVersionUpdate {
+	_u.mutation.ClearGuardDeadline()
+	return _u
+}
+
+// SetGuardError sets the "guard_error" field.
+func (_u *AgentSkillVersionUpdate) SetGuardError(v string) *AgentSkillVersionUpdate {
+	_u.mutation.SetGuardError(v)
+	return _u
+}
+
+// SetNillableGuardError sets the "guard_error" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdate) SetNillableGuardError(v *string) *AgentSkillVersionUpdate {
+	if v != nil {
+		_u.SetGuardError(*v)
+	}
+	return _u
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (_u *AgentSkillVersionUpdate) ClearGuardError() *AgentSkillVersionUpdate {
+	_u.mutation.ClearGuardError()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentSkillVersionUpdate) SetCreatedAt(v time.Time) *AgentSkillVersionUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -169,6 +243,21 @@ func (_u *AgentSkillVersionUpdate) check() error {
 			return &ValidationError{Name: "s3_key", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.s3_key": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GuardStatus(); ok {
+		if err := agentskillversion.GuardStatusValidator(v); err != nil {
+			return &ValidationError{Name: "guard_status", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuardTaskID(); ok {
+		if err := agentskillversion.GuardTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "guard_task_id", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuardError(); ok {
+		if err := agentskillversion.GuardErrorValidator(v); err != nil {
+			return &ValidationError{Name: "guard_error", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_error": %w`, err)}
+		}
+	}
 	if _u.mutation.SkillCleared() && len(_u.mutation.SkillIDs()) > 0 {
 		return errors.New(`db: clearing a required unique edge "AgentSkillVersion.skill"`)
 	}
@@ -204,6 +293,27 @@ func (_u *AgentSkillVersionUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if _u.mutation.ParsedMetaCleared() {
 		_spec.ClearField(agentskillversion.FieldParsedMeta, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.GuardStatus(); ok {
+		_spec.SetField(agentskillversion.FieldGuardStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuardTaskID(); ok {
+		_spec.SetField(agentskillversion.FieldGuardTaskID, field.TypeString, value)
+	}
+	if _u.mutation.GuardTaskIDCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardTaskID, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuardDeadline(); ok {
+		_spec.SetField(agentskillversion.FieldGuardDeadline, field.TypeTime, value)
+	}
+	if _u.mutation.GuardDeadlineCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardDeadline, field.TypeTime)
+	}
+	if value, ok := _u.mutation.GuardError(); ok {
+		_spec.SetField(agentskillversion.FieldGuardError, field.TypeString, value)
+	}
+	if _u.mutation.GuardErrorCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardError, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentskillversion.FieldCreatedAt, field.TypeTime, value)
@@ -321,6 +431,80 @@ func (_u *AgentSkillVersionUpdateOne) ClearParsedMeta() *AgentSkillVersionUpdate
 	return _u
 }
 
+// SetGuardStatus sets the "guard_status" field.
+func (_u *AgentSkillVersionUpdateOne) SetGuardStatus(v string) *AgentSkillVersionUpdateOne {
+	_u.mutation.SetGuardStatus(v)
+	return _u
+}
+
+// SetNillableGuardStatus sets the "guard_status" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdateOne) SetNillableGuardStatus(v *string) *AgentSkillVersionUpdateOne {
+	if v != nil {
+		_u.SetGuardStatus(*v)
+	}
+	return _u
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (_u *AgentSkillVersionUpdateOne) SetGuardTaskID(v string) *AgentSkillVersionUpdateOne {
+	_u.mutation.SetGuardTaskID(v)
+	return _u
+}
+
+// SetNillableGuardTaskID sets the "guard_task_id" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdateOne) SetNillableGuardTaskID(v *string) *AgentSkillVersionUpdateOne {
+	if v != nil {
+		_u.SetGuardTaskID(*v)
+	}
+	return _u
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (_u *AgentSkillVersionUpdateOne) ClearGuardTaskID() *AgentSkillVersionUpdateOne {
+	_u.mutation.ClearGuardTaskID()
+	return _u
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (_u *AgentSkillVersionUpdateOne) SetGuardDeadline(v time.Time) *AgentSkillVersionUpdateOne {
+	_u.mutation.SetGuardDeadline(v)
+	return _u
+}
+
+// SetNillableGuardDeadline sets the "guard_deadline" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdateOne) SetNillableGuardDeadline(v *time.Time) *AgentSkillVersionUpdateOne {
+	if v != nil {
+		_u.SetGuardDeadline(*v)
+	}
+	return _u
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (_u *AgentSkillVersionUpdateOne) ClearGuardDeadline() *AgentSkillVersionUpdateOne {
+	_u.mutation.ClearGuardDeadline()
+	return _u
+}
+
+// SetGuardError sets the "guard_error" field.
+func (_u *AgentSkillVersionUpdateOne) SetGuardError(v string) *AgentSkillVersionUpdateOne {
+	_u.mutation.SetGuardError(v)
+	return _u
+}
+
+// SetNillableGuardError sets the "guard_error" field if the given value is not nil.
+func (_u *AgentSkillVersionUpdateOne) SetNillableGuardError(v *string) *AgentSkillVersionUpdateOne {
+	if v != nil {
+		_u.SetGuardError(*v)
+	}
+	return _u
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (_u *AgentSkillVersionUpdateOne) ClearGuardError() *AgentSkillVersionUpdateOne {
+	_u.mutation.ClearGuardError()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentSkillVersionUpdateOne) SetCreatedAt(v time.Time) *AgentSkillVersionUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -409,6 +593,21 @@ func (_u *AgentSkillVersionUpdateOne) check() error {
 			return &ValidationError{Name: "s3_key", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.s3_key": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GuardStatus(); ok {
+		if err := agentskillversion.GuardStatusValidator(v); err != nil {
+			return &ValidationError{Name: "guard_status", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuardTaskID(); ok {
+		if err := agentskillversion.GuardTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "guard_task_id", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuardError(); ok {
+		if err := agentskillversion.GuardErrorValidator(v); err != nil {
+			return &ValidationError{Name: "guard_error", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_error": %w`, err)}
+		}
+	}
 	if _u.mutation.SkillCleared() && len(_u.mutation.SkillIDs()) > 0 {
 		return errors.New(`db: clearing a required unique edge "AgentSkillVersion.skill"`)
 	}
@@ -461,6 +660,27 @@ func (_u *AgentSkillVersionUpdateOne) sqlSave(ctx context.Context) (_node *Agent
 	}
 	if _u.mutation.ParsedMetaCleared() {
 		_spec.ClearField(agentskillversion.FieldParsedMeta, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.GuardStatus(); ok {
+		_spec.SetField(agentskillversion.FieldGuardStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuardTaskID(); ok {
+		_spec.SetField(agentskillversion.FieldGuardTaskID, field.TypeString, value)
+	}
+	if _u.mutation.GuardTaskIDCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardTaskID, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuardDeadline(); ok {
+		_spec.SetField(agentskillversion.FieldGuardDeadline, field.TypeTime, value)
+	}
+	if _u.mutation.GuardDeadlineCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardDeadline, field.TypeTime)
+	}
+	if value, ok := _u.mutation.GuardError(); ok {
+		_spec.SetField(agentskillversion.FieldGuardError, field.TypeString, value)
+	}
+	if _u.mutation.GuardErrorCleared() {
+		_spec.ClearField(agentskillversion.FieldGuardError, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentskillversion.FieldCreatedAt, field.TypeTime, value)
