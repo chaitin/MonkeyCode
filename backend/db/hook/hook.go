@@ -141,6 +141,18 @@ func (f AuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AuditMutation", m)
 }
 
+// The EndpointFunc type is an adapter to allow the use of ordinary
+// function as Endpoint mutator.
+type EndpointFunc func(context.Context, *db.EndpointMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EndpointFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.EndpointMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.EndpointMutation", m)
+}
+
 // The GitBotFunc type is an adapter to allow the use of ordinary
 // function as GitBot mutator.
 type GitBotFunc func(context.Context, *db.GitBotMutation) (db.Value, error)
