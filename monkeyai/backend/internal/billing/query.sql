@@ -24,7 +24,7 @@ FROM
 WHERE
     g.deleted_at IS NULL
 ORDER BY
-    g.name,
+    g.created_at,
     g.id;
 
 -- name: ListUserQuotas :many
@@ -50,33 +50,46 @@ WITH RECURSIVE ancestors AS (
     WHERE
         g.deleted_at IS NULL
         AND a.depth < 100
+),
+memberships AS (
+    SELECT
+        gu.user_id,
+        g.id,
+        g.created_at,
+        COALESCE(q.credits_per_cycle, sqlc.arg(root_credits)::numeric) AS credits,
+        COALESCE(q.ancestor::text, sqlc.arg(root_group)::text) AS source
+    FROM
+        group_users gu
+        JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+            SELECT b.credits_per_cycle, a.ancestor
+            FROM ancestors a
+                JOIN billing_quotas b ON b.group_id = a.ancestor AND b.deleted_at IS NULL
+            WHERE a.child = g.id
+            ORDER BY a.depth
+            LIMIT 1
+        ) q ON TRUE
+    WHERE gu.removed_at IS NULL
 )
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
-	'group_id', COALESCE(u.billing_group_id::text, sqlc.arg(root_group)::text)::text, 'credits',
-	q.credits_per_cycle::text, 'effective_credits', COALESCE(q.credits_per_cycle, g.credits_per_cycle,
-	sqlc.arg(root_credits)::numeric)::text, 'inherited_from', CASE WHEN q.id IS NOT NULL THEN
-            u.id::text
-        ELSE
-            COALESCE(g.ancestor::text, sqlc.arg(root_group)::text)::text
-        END, 'external_user_id', wb.external_user_id)
+        'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
+        'credits', q.credits_per_cycle::text,
+        'effective_credits', COALESCE(q.credits_per_cycle, g.credits, sqlc.arg(root_credits)::numeric)::text,
+        'inherited_from', CASE WHEN q.id IS NOT NULL THEN u.id::text
+            ELSE COALESCE(g.source, sqlc.arg(root_group)::text) END,
+        'external_user_id', wb.external_user_id)
 FROM
     users u
     LEFT JOIN billing_quotas q ON q.user_id = u.id
         AND q.deleted_at IS NULL
     LEFT JOIN LATERAL (
-        SELECT
-            b.credits_per_cycle,
-            a.ancestor
-        FROM
-            ancestors a
-            JOIN billing_quotas b ON b.group_id = a.ancestor
-                AND b.deleted_at IS NULL
-        WHERE
-            a.child = u.billing_group_id
-        ORDER BY
-            a.depth
-        LIMIT 1) g ON TRUE
+        SELECT m.credits, m.source
+        FROM memberships m
+        WHERE m.user_id = u.id
+        ORDER BY m.credits DESC, m.created_at, m.id
+        LIMIT 1
+    ) g ON TRUE
     LEFT JOIN wallet_user_bindings wb ON wb.user_id = u.id
 WHERE
     u.deleted_at IS NULL
@@ -488,73 +501,53 @@ WHERE
 FOR UPDATE;
 
 -- name: EffectiveQuota :one
-WITH RECURSIVE CHAIN AS (
+WITH RECURSIVE chain AS (
     SELECT
+        g.id AS member_id,
         g.id,
         g.parent_id,
-        0 depth
-    FROM
-        users u
-        JOIN GROUPS g ON g.id = u.billing_group_id
-    WHERE
-        u.id = sqlc.arg(id)
-        AND g.deleted_at IS NULL
+        g.created_at,
+        0 AS depth
+    FROM group_users gu
+        JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = sqlc.arg(id) AND gu.removed_at IS NULL
     UNION ALL
-    SELECT
-        g.id,
-        g.parent_id,
-        c.depth + 1
-    FROM
-        GROUPS g
-        JOIN CHAIN c ON g.id = c.parent_id
-    WHERE
-        g.deleted_at IS NULL
-        AND c.depth < 100
+    SELECT c.member_id, g.id, g.parent_id, c.created_at, c.depth + 1
+    FROM chain c
+        JOIN groups g ON g.id = c.parent_id
+    WHERE g.deleted_at IS NULL AND c.depth < 100
+),
+root AS (
+    SELECT COALESCE((SELECT (value ->> 'root_credits')::numeric FROM settings WHERE key = 'billing'), 15000) AS credits
 ),
 choices AS (
-    SELECT
-        credits_per_cycle,
-        -1 depth,
-        user_id::text SOURCE
-    FROM
-        billing_quotas
-    WHERE
-        user_id = sqlc.arg(id)
-        AND deleted_at IS NULL
-    UNION ALL
-    SELECT
-        q.credits_per_cycle,
-        c.depth,
-        c.id::text
-    FROM
-        CHAIN c
-        JOIN billing_quotas q ON q.group_id = c.id
-            AND q.deleted_at IS NULL
-        UNION ALL
-        SELECT
-            COALESCE((value ->> 'root_credits')::numeric, 15000),
-            101,
-            sqlc.arg(root_group)::text
-        FROM
-            settings
-    WHERE
-        KEY = 'billing'
+    SELECT c.id, c.created_at,
+        COALESCE(q.credits_per_cycle, root.credits) AS credits,
+        COALESCE(q.source, sqlc.arg(root_group)::text) AS source
+    FROM chain c
+        CROSS JOIN root
+        LEFT JOIN LATERAL (
+            SELECT b.credits_per_cycle, a.id::text AS source
+            FROM chain a
+                JOIN billing_quotas b ON b.group_id = a.id AND b.deleted_at IS NULL
+            WHERE a.member_id = c.id
+            ORDER BY a.depth
+            LIMIT 1
+        ) q ON TRUE
+    WHERE c.depth = 0
 )
 SELECT
-    COALESCE((
-        SELECT
-            credits_per_cycle::text
-        FROM choices ORDER BY depth LIMIT 1), '15000')::text AS credits,
-    COALESCE((
-        SELECT
-            id::text
-        FROM CHAIN
-    WHERE
-        depth = 0), '')::text AS group_id,
-    COALESCE((
-        SELECT
-            SOURCE
-        FROM choices ORDER BY depth LIMIT 1), sqlc.arg(root_group)::text)::text AS source;
+    COALESCE(q.credits_per_cycle, g.credits, root.credits)::text AS credits,
+    COALESCE(g.id::text, '')::text AS group_id,
+    CASE WHEN q.id IS NOT NULL THEN sqlc.arg(id)::text
+        ELSE COALESCE(g.source, sqlc.arg(root_group)::text) END::text AS source
+FROM root
+    LEFT JOIN billing_quotas q ON q.user_id = sqlc.arg(id) AND q.deleted_at IS NULL
+    LEFT JOIN LATERAL (
+        SELECT id, credits, source FROM choices
+        ORDER BY credits DESC, created_at, id
+        LIMIT 1
+    ) g ON TRUE;
 
 -- name: LockUser :one
 SELECT

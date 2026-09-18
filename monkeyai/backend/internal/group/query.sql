@@ -161,17 +161,6 @@ SELECT
             parent_id = $1
             AND deleted_at IS NULL);
 
--- name: HasBillingUsers :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            users
-        WHERE
-            billing_group_id = $1
-            AND deleted_at IS NULL);
-
 -- name: DeleteGroup :execresult
 UPDATE
     GROUPS

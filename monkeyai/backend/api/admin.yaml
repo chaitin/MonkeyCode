@@ -933,6 +933,7 @@ paths:
   /api/admin/v1/billing/quotas:
     get:
       summary: 读取真实分组、成员额度与继承来源
+      description: 成员直接所属分组与成员管理一致。个人自定义额度优先；否则取各所属分组沿父级解析出的有效额度最大值，无分组时继承团队默认额度。
       responses:
         '200':
           description: 请求成功
@@ -974,9 +975,12 @@ paths:
                           type: string
                         status:
                           type: string
-                        group_id:
-                          type: string
-                          description: 计费分组 UUID；无指定归属时为 team。
+                        group_ids:
+                          type: array
+                          description: 成员直接所属的有效分组 UUID，与成员管理一致；无分组时为空数组。
+                          items:
+                            type: string
+                            format: uuid
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
@@ -985,7 +989,7 @@ paths:
                           $ref: '#/components/schemas/CreditAmount'
                         inherited_from:
                           type: string
-                          format: uuid
+                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID 或 team。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1046,9 +1050,12 @@ paths:
                           type: string
                         status:
                           type: string
-                        group_id:
-                          type: string
-                          description: 计费分组 UUID；无指定归属时为 team。
+                        group_ids:
+                          type: array
+                          description: 成员直接所属的有效分组 UUID，与成员管理一致；无分组时为空数组。
+                          items:
+                            type: string
+                            format: uuid
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
@@ -1057,7 +1064,7 @@ paths:
                           $ref: '#/components/schemas/CreditAmount'
                         inherited_from:
                           type: string
-                          format: uuid
+                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID 或 team。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1676,7 +1683,7 @@ paths:
           $ref: "#/components/responses/ResourceError500"
     delete:
       summary: 删除分组
-      description: 有子分组或成员计费归属引用时返回 409。软删除分组、移除直接成员关系并清除本组资源授权，保留成员账号。
+      description: 有子分组时返回 409。软删除分组、移除直接成员关系并清除本组资源授权，保留成员账号；额度自动按其余所属分组重新计算，不改变当期账户。
       responses:
         "204":
           description: 已删除，无响应体。
@@ -1703,7 +1710,7 @@ paths:
           format: uuid
     put:
       summary: 替换分组直接成员
-      description: 仅调整直接成员关系，不改变用户角色或子分组成员。空数组清空直接成员，重复 ID 自动去重。所有数据库分组均通过显式成员关系管理。
+      description: 调整直接成员关系，不改变用户角色或子分组成员。空数组清空直接成员，重复 ID 自动去重。成员额度随分组关系继承，多个分组取最高有效额度，个人自定义额度优先；变更不重发当期额度。
       requestBody:
         required: true
         content:
@@ -1729,41 +1736,6 @@ paths:
           $ref: "#/components/responses/ResourceError409"
         "500":
           $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/users/{userID}/billing-group:
-    parameters:
-    - in: path
-      name: userID
-      schema:
-        type: string
-        format: uuid
-      required: true
-    put:
-      summary: 修改单一计费归属分组，null 恢复角色默认分组
-      responses:
-        '204':
-          description: 更新成功
-        '400':
-          description: 参数不合法
-        '401':
-          description: 未登录
-        '403':
-          description: 权限不足
-        '409':
-          description: 修订号、幂等键或交易状态冲突
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                group_id:
-                  type:
-                  - string
-                  - 'null'
-                  format: uuid
-              required:
-              - group_id
   /api/admin/v1/models:
     get:
       summary: 查询模型

@@ -31,6 +31,7 @@ import {
   cycleNames,
   dateTime,
   validCredits,
+  userQuota,
   type AccountDetails,
   type BillingSettings,
   type Policy,
@@ -183,41 +184,46 @@ export function BillingSettingsPage() {
     Object.entries(pricing).some(
       ([key, value]) => value !== settings.policy[key as keyof Policy]
     )
-  const userRow = (user: QuotaUser, inherited: string) => (
-    <div
-      key={user.id}
-      className="flex min-h-10 flex-wrap items-center gap-2 rounded-md py-1 ps-6 hover:bg-muted/50"
-    >
-      <button
-        className="min-w-0 flex-1 text-start text-sm hover:underline"
-        onClick={() => setAccountUser(user)}
+  const userRow = (user: QuotaUser) => {
+    const quota = userQuota(user, quotas!.groups, changes)
+    return (
+      <div
+        key={user.id}
+        className="flex min-h-10 flex-wrap items-center gap-2 rounded-md py-1 ps-6 hover:bg-muted/50"
       >
-        <span>{user.name}</span>
-        <span className="ms-2 text-xs text-muted-foreground">{user.email}</span>
-      </button>
-      {user.status === "disabled" && <Badge variant="secondary">已停用</Badge>}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() =>
-          openQuota({
-            id: user.id,
-            name: user.name,
-            type: "user",
-            own: own("user", user.id, user.credits),
-            inherited,
-          })
-        }
-      >
-        <span className="tabular-nums">
-          {format(own("user", user.id, user.credits) ?? inherited)}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {own("user", user.id, user.credits) === null ? "继承" : "自定义"}
-        </span>
-      </Button>
-    </div>
-  )
+        <button
+          className="min-w-0 flex-1 text-start text-sm hover:underline"
+          onClick={() => setAccountUser(user)}
+        >
+          <span>{user.name}</span>
+          <span className="ms-2 text-xs text-muted-foreground">
+            {user.email}
+          </span>
+        </button>
+        {user.status === "disabled" && (
+          <Badge variant="secondary">已停用</Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            openQuota({
+              id: user.id,
+              name: user.name,
+              type: "user",
+              own: quota.own,
+              inherited: quota.inherited,
+            })
+          }
+        >
+          <span className="tabular-nums">{format(quota.effective)}</span>
+          <span className="text-xs text-muted-foreground">
+            {quota.own === null ? "继承" : "自定义"}
+          </span>
+        </Button>
+      </div>
+    )
+  }
   const renderGroup = (
     g: QuotaGroup,
     inherited: string,
@@ -261,8 +267,12 @@ export function BillingSettingsPage() {
           .filter((c) => c.parent_id === g.id)
           .map((c) => renderGroup(c, effective, depth + 1))}
         {quotas.users
-          .filter((u) => u.group_id === g.id)
-          .map((u) => userRow(u, effective))}
+          .filter((u) =>
+            g.parent_id === null
+              ? u.group_ids.length === 0
+              : u.group_ids.includes(g.id)
+          )
+          .map(userRow)}
       </details>
     )
   }
@@ -310,7 +320,7 @@ export function BillingSettingsPage() {
         <CardHeader>
           <CardTitle>{t("pages.billingSettings.groupQuota.title")}</CardTitle>
           <CardDescription>
-            分组提供成员默认额度，成员独立消费；点击成员查看当前余额。
+            成员自动继承所属分组的额度，多组取最高值，个人自定义额度优先；每人独立消费，不共享余额。
           </CardDescription>
           <CardAction>
             <Button
@@ -339,7 +349,7 @@ export function BillingSettingsPage() {
                     .toLowerCase()
                     .includes(query.toLowerCase())
                 )
-                .map((u) => userRow(u, u.effective_credits))
+                .map(userRow)
             : quotas.groups
                 .filter((g) => !g.parent_id)
                 .map((g) => renderGroup(g, "15000"))}
@@ -598,7 +608,6 @@ export function BillingSettingsPage() {
       {accountUser && (
         <AccountDialog
           user={accountUser}
-          groups={quotas.groups}
           onClose={() => setAccountUser(null)}
           onChanged={() => {
             void api<Quotas>("/api/admin/v1/billing/quotas")
@@ -613,12 +622,10 @@ export function BillingSettingsPage() {
 
 function AccountDialog({
   user,
-  groups,
   onClose,
   onChanged,
 }: {
   user: QuotaUser
-  groups: QuotaGroup[]
   onClose: () => void
   onChanged: () => void
 }) {
@@ -628,7 +635,6 @@ function AccountDialog({
   const [delta, setDelta] = useState("")
   const [reason, setReason] = useState("")
   const [external, setExternal] = useState(user.external_user_id ?? "")
-  const [group, setGroup] = useState(user.group_id)
   const running = useRef(false)
   const load = useCallback(
     () =>
@@ -640,7 +646,7 @@ function AccountDialog({
   useEffect(() => {
     void load().catch((e: Error) => setError(e.message))
   }, [load])
-  const run = async (kind: "adjust" | "wallet" | "group") => {
+  const run = async (kind: "adjust" | "wallet") => {
     if (running.current) return
     running.current = true
     setBusy(true)
@@ -662,11 +668,6 @@ function AccountDialog({
         await api(`/api/admin/v1/billing/accounts/${user.id}/wallet`, {
           method: "PUT",
           body: JSON.stringify({ external_user_id: external }),
-        })
-      if (kind === "group")
-        await api(`/api/admin/v1/users/${user.id}/billing-group`, {
-          method: "PUT",
-          body: JSON.stringify({ group_id: group }),
         })
       await load()
       onChanged()
@@ -718,33 +719,12 @@ function AccountDialog({
               {dateTime(data.account.period_start_at)} —{" "}
               {dateTime(data.account.period_end_at)}
             </p>
-            <Field>
-              <FieldLabel htmlFor="billing-group">计费归属分组</FieldLabel>
-              <div className="flex gap-2">
-                <select
-                  className={selectClass}
-                  id="billing-group"
-                  value={group}
-                  onChange={(e) => setGroup(e.target.value)}
-                >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void run("group")}
-                >
-                  保存归属
-                </Button>
-              </div>
-              <FieldDescription>
-                只影响下周期继承的额度，资源授权关系独立管理。
-              </FieldDescription>
-            </Field>
+            <p className="text-xs text-muted-foreground">
+              额度随所属分组自动继承，多组取最高值，个人自定义额度优先。
+              <Link to="/console/settings/members" className="ms-1 underline">
+                管理成员分组
+              </Link>
+            </p>
             <form
               className="space-y-3 border-t pt-4"
               onSubmit={(e) => {

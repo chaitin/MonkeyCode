@@ -700,3 +700,5 @@ CREATE TABLE endpoints (
     UNIQUE (user_id, machine_id),
     CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))
 );
+
+ALTER TABLE users DROP COLUMN billing_group_id;
