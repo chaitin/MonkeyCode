@@ -151,6 +151,8 @@ interface MarkdownProps {
   fileLinkEnvid?: string
   /** Opens workspace file links in the current task context. */
   onWorkspaceFileClick?: (path: string) => void
+  /** Resolves image sources for context-specific content such as repository READMEs. */
+  resolveImageUrl?: (src: string) => string | undefined
   className?: string
 }
 
@@ -220,7 +222,7 @@ function resolveWorkspaceFileLink(href: string | undefined, envid: string | unde
   }
 }
 
-export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, fileLinkEnvid, onWorkspaceFileClick, className }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, fileLinkEnvid, onWorkspaceFileClick, resolveImageUrl, className }: MarkdownProps) {
   const location = useLocation()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
@@ -255,9 +257,23 @@ export const Markdown = memo(function Markdown({ children, allowHtml = false, al
         </a>
       )
     },
+    img({ src, alt, ...props }) {
+      const resolvedSrc = resolveImageUrl ? resolveImageUrl(src ?? "") : src
+      if (!resolvedSrc) return alt ? <span>{alt}</span> : null
+
+      return (
+        <img
+          {...props}
+          src={resolvedSrc}
+          alt={alt ?? ""}
+          loading="lazy"
+          decoding="async"
+        />
+      )
+    },
     p: MarkdownParagraph,
     pre: ({ children }) => <MarkdownCodeBlock isDark={isDark}>{children}</MarkdownCodeBlock>,
-  }), [allowInternalLink, fileLinkEnvid, isDark, location.pathname, onWorkspaceFileClick])
+  }), [allowInternalLink, fileLinkEnvid, isDark, location.pathname, onWorkspaceFileClick, resolveImageUrl])
 
   return (
     <div className={cn("markdown-body pb-2", isDark ? "markdown-body-dark" : "markdown-body-light", className)}>
