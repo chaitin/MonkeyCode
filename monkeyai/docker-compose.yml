@@ -92,6 +92,8 @@ services:
     image: ${ADMIN_IMAGE:-monkeyai-admin:local}
     build:
       context: ./admin
+      args:
+        NGINX_ACME_IMAGE: ${NGINX_ACME_IMAGE:-chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.6-acme0.4.1-r1}
     restart: unless-stopped
     init: true
     environment:

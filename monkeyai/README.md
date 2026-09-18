@@ -19,7 +19,7 @@ docker compose up --build
 
 Admin 镜像包含 Nginx 官方 ACME 模块，自动申请、续期并动态加载证书。功能默认关闭；Go 后端不参与证书管理。启用前，将域名解析到部署服务器，确保公网 TCP 80、443 可达，容器能够解析并访问 CA 的 HTTPS 接口。如果域名配置了 AAAA 记录，其 IPv6 入口也必须能完成验证。
 
-镜像固定 Nginx 1.30.4 和 ACME 0.4.1，校验官方源码的 SHA-256 后构建动态模块。构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于构建阶段。
+Admin 复用独立的 Nginx ACME 基础镜像，固定 Nginx 1.31.6（Debian）和 ACME 0.4.1，不再在每次业务构建时编译模块。`admin/Dockerfile.nginx-acme` 固定官方镜像摘要并校验源码的 SHA-256，构建时应用 `admin/patches/acme-renewal-retry.patch`，修复订单失败后可能延迟 24 小时才重试的问题；升级模块时应检查上游是否已合入该修复。Rust 和 C 编译工具仅存在于基础镜像的构建阶段。
 
 在 `.env` 中配置：
 
@@ -63,7 +63,7 @@ docker compose logs -f admin
 
 签发失败时先查看 `docker compose logs admin`，核对 A/AAAA 解析、80 端口转发、CAA 是否允许所选 CA、CA 网络连通性和数据卷权限。临时网络或 CA 服务错误会按退避策略自动重试；账户或订单被 CA 判定无效时，修复问题后执行 `docker compose restart admin` 重新尝试。已有证书继续使用，但到期后客户端会拒绝过期证书，需及时处理日志中的错误。
 
-本地集成验证需要 Docker、Python 3.9+ 和 OpenSSL，测试使用独立网络、临时数据卷和本地 Pebble CA，不请求公网 CA；结束后清理测试容器、网络及数据卷：
+本地集成验证需要 Docker、Python 3.9+ 和 OpenSSL，以及已发布的 Nginx ACME 基础镜像（或按下文构建本地基础镜像，并通过 `--build-arg NGINX_ACME_IMAGE=nginx-acme:local` 指定）。测试使用独立网络、临时数据卷和本地 Pebble CA，不请求公网 CA；结束后清理测试容器、网络及数据卷：
 
 ```bash
 docker build -t monkeyai-admin:acme-test ./admin
@@ -73,6 +73,31 @@ python3 admin/test/acme.py --image monkeyai-admin:acme-test
 测试覆盖开关和配置校验、空卷首次签发、CA 不可用时重建复用、自动续期、续期失败重试、代理协议头及流式连接。它不代替实际部署域名的公网 DNS、端口和 OAuth 提供方联调。
 
 ## 构建和推送镜像
+
+### Nginx ACME 基础镜像
+
+首次使用前需单独构建并发布基础镜像，之后仅在升级 Nginx、ACME、系统依赖或补丁时重建；常规 `make image`、`make push` 和 Compose 构建不会触发模块编译。默认镜像为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.6-acme0.4.1-r1`，标签包含 Nginx、ACME 版本及基础镜像修订号。
+
+```bash
+# 发布基础镜像（需先登录仓库，并使用支持对应架构的 builder）
+make push-nginx-acme PLATFORM=linux/amd64,linux/arm64
+
+# 业务镜像直接复用已发布的基础镜像
+make image-admin
+```
+
+仅本地验证时，无需推送；使用同一 Docker daemon 的 `docker` 驱动 builder，并指定其支持的平台（以下以 ARM64 为例，AMD64 主机改为 `linux/amd64`）：
+
+```bash
+make image-nginx-acme PLATFORM=linux/arm64 NGINX_ACME_IMAGE=nginx-acme:local
+make image-admin PLATFORM=linux/arm64 NGINX_ACME_IMAGE=nginx-acme:local
+# Compose 也支持覆盖基础镜像
+NGINX_ACME_IMAGE=nginx-acme:local docker compose build admin
+```
+
+直接执行 `docker build` 时使用 `--build-arg NGINX_ACME_IMAGE=<镜像名>` 覆盖。`docker-container` 或远程 builder 需使用仓库中可拉取的基础镜像，不能直接复用本机 `--load` 的镜像。升级基础镜像时应发布新标签，并同步更新 Dockerfile、Makefile 和 Compose 中的默认值；动态模块不能跨 Nginx 版本或 Alpine/Debian 系统混用。
+
+### 业务镜像
 
 Makefile 默认构建 `linux/amd64` 镜像，使用当前 Git 短提交号作为标签，并沿用 MonkeyCode 的镜像仓库：
 

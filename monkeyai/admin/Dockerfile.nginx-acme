@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.7
+
+FROM nginx:1.31.6@sha256:f6ee2eff6bc131ec351c3c70e95c146fa12b2eb4426954e5279bbda36740667e AS nginx-base
+
+FROM nginx-base AS acme-builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates cargo libclang-dev libssl-dev pkgconf make gcc libc6-dev libpcre2-dev zlib1g-dev patch \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+ADD --checksum=sha256:974ed5298a5e398e008704ed5db284e655fc270c596493dbccada452448fc9f1 https://nginx.org/download/nginx-1.31.6.tar.gz /tmp/nginx.tar.gz
+ADD --checksum=sha256:b4f99f971bd0bebc89b2037f3afeaa3281004fe434de558df87d69cab2be1f22 https://codeload.github.com/nginx/nginx-acme/tar.gz/refs/tags/v0.4.1 /tmp/acme.tar.gz
+COPY patches/acme-renewal-retry.patch /tmp/acme-renewal-retry.patch
+RUN tar -xzf /tmp/nginx.tar.gz \
+    && tar -xzf /tmp/acme.tar.gz \
+    && cd nginx-1.31.6 \
+    && ./configure --with-compat --with-http_ssl_module \
+    && cd ../nginx-acme-0.4.1 \
+    && patch -p1 < /tmp/acme-renewal-retry.patch
+
+WORKDIR /build/nginx-acme-0.4.1
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    NGINX_BUILD_DIR=/build/nginx-1.31.6/objs cargo build --locked --release
+
+FROM nginx-base
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libgcc-s1 libssl3t64 wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/nginx/acme \
+    && chown nginx:nginx /var/lib/nginx/acme \
+    && chmod 700 /var/lib/nginx/acme
+
+COPY --from=acme-builder /build/nginx-acme-0.4.1/target/release/libnginx_acme.so /usr/lib/nginx/modules/ngx_http_acme_module.so
+COPY --from=acme-builder /build/nginx-acme-0.4.1/LICENSE /usr/share/licenses/nginx-acme/LICENSE
+RUN nginx -t -g 'load_module /usr/lib/nginx/modules/ngx_http_acme_module.so;'
