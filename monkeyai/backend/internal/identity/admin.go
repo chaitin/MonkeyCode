@@ -9,7 +9,6 @@ import (
 )
 
 func (s *Service) RegisterAdmin(router chi.Router) {
-	router.Put("/users/{userID}/billing-group", s.billingGroup)
 	router.Get("/me", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := UserFromContext(r.Context())
 		writeJSON(w, http.StatusOK, user)

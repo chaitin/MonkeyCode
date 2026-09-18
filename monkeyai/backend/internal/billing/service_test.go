@@ -320,7 +320,7 @@ func TestQuotaInheritanceAndNoRefill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE users SET billing_group_id=$2 WHERE id=$1`, user, g)
+	_, err = s.pool.Exec(ctx, `INSERT INTO group_users(user_id,group_id,assigned_by_user_id) VALUES($1,$2,$1)`, user, g)
 	if err != nil {
 		t.Fatal(err)
 	}

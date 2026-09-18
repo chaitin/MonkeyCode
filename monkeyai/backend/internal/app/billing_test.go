@@ -137,12 +137,20 @@ func TestBillingIntegration(t *testing.T) {
 	}
 	must("PATCH", "/api/admin/v1/groups/"+top.String("id"), resource.Object{"name": "研发组"}, "")
 	must("PUT", "/api/admin/v1/groups/"+top.String("id")+"/members", resource.Object{"member_ids": []string{user}}, "")
-	must("PUT", "/api/admin/v1/users/"+user+"/billing-group", resource.Object{"group_id": top.String("id")}, "")
-	if code, _, _ := call("DELETE", "/api/admin/v1/groups/"+top.String("id"), nil, "", ""); code != 409 {
-		t.Fatalf("计费归属引用应阻止删除: %d", code)
+	updated = must("PUT", "/api/admin/v1/billing/quotas", resource.Object{"revision": updated.Int("revision"), "changes": []resource.Object{{"subject_type": "group", "id": top.String("id"), "credits": "50000"}}}, "")
+	member := resource.Object(updated["users"].([]any)[0].(map[string]any))
+	if member.String("effective_credits") != "50000.000000" || len(member["group_ids"].([]any)) != 1 || member["group_ids"].([]any)[0] != top.String("id") {
+		t.Fatalf("分组成员应自动继承额度: %v", member)
 	}
-	must("PUT", "/api/admin/v1/users/"+user+"/billing-group", resource.Object{"group_id": nil}, "")
+	if code, _, _ := call("PUT", "/api/admin/v1/users/"+user+"/billing-group", resource.Object{"group_id": top.String("id")}, "", ""); code != 404 {
+		t.Fatalf("不应再注册独立计费归属接口: %d", code)
+	}
 	must("DELETE", "/api/admin/v1/groups/"+top.String("id"), nil, "")
+	updated = must("GET", "/api/admin/v1/billing/quotas", nil, "")
+	member = resource.Object(updated["users"].([]any)[0].(map[string]any))
+	if member.String("effective_credits") != "12345" || len(member["group_ids"].([]any)) != 0 {
+		t.Fatalf("删除分组后应恢复团队额度: %v", member)
+	}
 	hash := sha256.Sum256([]byte("billing-oauth-test"))
 	if _, err = pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'test',$2,'billing-refresh',now()+interval '1 hour',now()+interval '2 hours')`, user, hex.EncodeToString(hash[:])); err != nil {
 		t.Fatal(err)

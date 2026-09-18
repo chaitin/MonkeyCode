@@ -233,15 +233,6 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 	if children {
 		return conflict("请先移动或删除子分组")
 	}
-	var assigned bool
-	assigned, err = sqlc.New(tx).HasBillingUsers(ctx, new(id))
-	if err != nil {
-		return err
-	}
-
-	if assigned {
-		return conflict("请先迁移成员的计费归属")
-	}
 	if _, err = sqlc.New(tx).DeleteGroup(ctx, id); err != nil {
 		return err
 	}

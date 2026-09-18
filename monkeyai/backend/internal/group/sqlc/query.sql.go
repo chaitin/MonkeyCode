@@ -120,25 +120,6 @@ func (q *Queries) GetGroup(ctx context.Context, id string) (GetGroupRow, error) 
 	return i, err
 }
 
-const hasBillingUsers = `-- name: HasBillingUsers :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            users
-        WHERE
-            billing_group_id = $1
-            AND deleted_at IS NULL)
-`
-
-func (q *Queries) HasBillingUsers(ctx context.Context, billingGroupID *string) (bool, error) {
-	row := q.db.QueryRow(ctx, hasBillingUsers, billingGroupID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const hasChildren = `-- name: HasChildren :one
 SELECT
     EXISTS (

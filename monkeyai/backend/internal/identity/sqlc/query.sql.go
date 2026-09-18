@@ -575,22 +575,6 @@ func (q *Queries) GetEmailCode(ctx context.Context, arg GetEmailCodeParams) (Get
 	return i, err
 }
 
-const getGroup = `-- name: GetGroup :one
-SELECT
-    id
-FROM
-    GROUPS
-WHERE
-    id = $1
-    AND deleted_at IS NULL
-`
-
-func (q *Queries) GetGroup(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, getGroup, id)
-	err := row.Scan(&id)
-	return id, err
-}
-
 const getIdentityUser = `-- name: GetIdentityUser :one
 SELECT
     u.id,
@@ -897,24 +881,6 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
-const lockBillingGroup = `-- name: LockBillingGroup :one
-SELECT
-    billing_group_id
-FROM
-    users
-WHERE
-    id = $1
-    AND deleted_at IS NULL
-FOR UPDATE
-`
-
-func (q *Queries) LockBillingGroup(ctx context.Context, id string) (*string, error) {
-	row := q.db.QueryRow(ctx, lockBillingGroup, id)
-	var billing_group_id *string
-	err := row.Scan(&billing_group_id)
-	return billing_group_id, err
-}
-
 const lockEmailDelivery = `-- name: LockEmailDelivery :exec
 SELECT pg_advisory_xact_lock(741210)
 `
@@ -922,15 +888,6 @@ SELECT pg_advisory_xact_lock(741210)
 func (q *Queries) LockEmailDelivery(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockEmailDelivery)
 	return err
-}
-
-const lockGroups = `-- name: LockGroups :execresult
-SELECT
-    pg_advisory_xact_lock(741209)
-`
-
-func (q *Queries) LockGroups(ctx context.Context) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, lockGroups)
 }
 
 const lockInitialAdmin = `-- name: LockInitialAdmin :execresult
@@ -1162,25 +1119,6 @@ func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]Sea
 		return nil, err
 	}
 	return items, nil
-}
-
-const setBillingGroup = `-- name: SetBillingGroup :execresult
-UPDATE
-    users
-SET
-    billing_group_id = $2,
-    updated_at = now()
-WHERE
-    id = $1
-`
-
-type SetBillingGroupParams struct {
-	ID             string
-	BillingGroupID *string
-}
-
-func (q *Queries) SetBillingGroup(ctx context.Context, arg SetBillingGroupParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, setBillingGroup, arg.ID, arg.BillingGroupID)
 }
 
 const touchLogin = `-- name: TouchLogin :execresult
