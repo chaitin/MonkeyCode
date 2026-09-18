@@ -22,6 +22,8 @@ test("钱包弹窗提供中英文资源", () => {
   assert.equal(en.walletDialog.nav.earn, "My credits");
   assert.equal(cn.walletDialog.earn.checkinAction, "签到领 100 积分");
   assert.equal(en.walletDialog.earn.checkinAction, "Check in for 100 credits");
+  assert.match(cn.walletDialog.invite.description, /奖励上限 10 人，即 5 万积分/);
+  assert.match(en.walletDialog.invite.description, /reward cap: 10 people, 50,000 credits in total/);
   assert.equal(cn.walletDialog.recharge.confirm, "确认充值");
   assert.equal(en.walletDialog.recharge.confirm, "Confirm recharge");
 });
