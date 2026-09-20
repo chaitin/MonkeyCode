@@ -4862,9 +4862,14 @@ components:
         cycle_effective_at:
           type: string
           format: date-time
+          description: 新刷新规则的下一自然边界；保存时不重置当期余额，切换时才发放新周期额度。
         cycle_anchor:
           type: string
           format: date-time
+        cycle_transition_start:
+          type: string
+          format: date-time
+          description: 待切换期间保留的当前账户起点，直到 cycle_effective_at 均沿用此账户。
         input_credits_per_million_tokens:
           $ref: '#/components/schemas/CreditAmount'
         cached_input_credits_per_million_tokens:

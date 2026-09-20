@@ -165,7 +165,7 @@ export function BillingSettingsPage() {
               ? "百智云连接配置已保存，无需重启。"
               : "百智云连接配置已保存，无需重启；请保存计费方式以启用远程计费。"
             : section === "cycle"
-              ? "刷新设置已保存，请查看下次刷新时间。"
+              ? `刷新设置已保存，将于 ${dateTime(result.next_refresh_at)} 刷新，当前余额不变。`
               : "设置已保存，对新调用生效。"
         )
       }
@@ -373,14 +373,13 @@ export function BillingSettingsPage() {
         <CardHeader>
           <CardTitle>{t("pages.billingSettings.quotaRefresh.title")}</CardTitle>
           <CardDescription>
-            按上海时区在自然周期开始时刷新，余额不结转。
+            按上海时区在自然周期开始时刷新，余额不结转。修改后于新周期的下一自然边界刷新，保存时不重置余额。
           </CardDescription>
           <CardAction>
             <Button
               disabled={
-                cycle ===
-                  (settings.policy.pending_cycle ??
-                    settings.policy.quota_refresh_cycle) || !!busy
+                (!settings.policy.pending_cycle &&
+                  cycle === settings.policy.quota_refresh_cycle) || !!busy
               }
               onClick={() => void save("cycle")}
             >
@@ -409,7 +408,8 @@ export function BillingSettingsPage() {
           </p>
           {settings.policy.pending_cycle && (
             <p className="text-sm">
-              将在 {dateTime(settings.policy.cycle_effective_at)} 切换为
+              当前周期规则为{cycleNames[settings.policy.quota_refresh_cycle]}刷新，将在{" "}
+              {dateTime(settings.policy.cycle_effective_at)} 刷新并切换为
               {cycleNames[settings.policy.pending_cycle]}刷新。
             </p>
           )}

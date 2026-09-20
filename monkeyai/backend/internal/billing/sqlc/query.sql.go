@@ -2124,6 +2124,23 @@ func (q *Queries) TrySettlementLock(ctx context.Context, hashtextextended string
 	return pg_try_advisory_lock, err
 }
 
+const updatePeriodEnd = `-- name: UpdatePeriodEnd :exec
+UPDATE credit_accounts
+SET period_end_at = $1, updated_at = now()
+WHERE period_start_at = $2
+    AND period_end_at <> $1
+`
+
+type UpdatePeriodEndParams struct {
+	PeriodEndAt   time.Time
+	PeriodStartAt time.Time
+}
+
+func (q *Queries) UpdatePeriodEnd(ctx context.Context, arg UpdatePeriodEndParams) error {
+	_, err := q.db.Exec(ctx, updatePeriodEnd, arg.PeriodEndAt, arg.PeriodStartAt)
+	return err
+}
+
 const upsertModelCall = `-- name: UpsertModelCall :execresult
 INSERT INTO model_calls (id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
     output_tokens, cache_hit, error_code, started_at, completed_at)

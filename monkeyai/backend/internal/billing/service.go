@@ -36,6 +36,7 @@ type Policy struct {
 	PendingCycle     string     `json:"pending_cycle,omitempty"`
 	CycleEffectiveAt *time.Time `json:"cycle_effective_at,omitempty"`
 	CycleAnchor      *time.Time `json:"cycle_anchor,omitempty"`
+	TransitionStart  *time.Time `json:"cycle_transition_start,omitempty"`
 	Revision         int64      `json:"revision"`
 }
 
@@ -47,9 +48,14 @@ func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	n := now.In(zone)
 	cycle := p.Cycle
 	anchor := p.CycleAnchor
-	if p.CycleEffectiveAt != nil && !now.Before(*p.CycleEffectiveAt) {
-		cycle = p.PendingCycle
-		anchor = p.CycleEffectiveAt
+	if p.CycleEffectiveAt != nil {
+		if !now.Before(*p.CycleEffectiveAt) {
+			cycle = p.PendingCycle
+			anchor = p.CycleEffectiveAt
+		} else if p.TransitionStart != nil {
+			// 切换前沿用原账户，只调整到期时间，避免跨过旧边界时重复发放。
+			return p.TransitionStart.UTC(), p.CycleEffectiveAt.UTC()
+		}
 	}
 	start := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, zone)
 	var end time.Time
@@ -67,6 +73,33 @@ func (p Policy) period(now time.Time) (time.Time, time.Time) {
 		start = anchor.In(zone)
 	}
 	return start.UTC(), end.UTC()
+}
+
+func (p *Policy) activateCycle(now time.Time) {
+	if p.CycleEffectiveAt != nil && !now.Before(*p.CycleEffectiveAt) {
+		p.Cycle = p.PendingCycle
+		p.CycleAnchor = p.CycleEffectiveAt
+		p.PendingCycle = ""
+		p.CycleEffectiveAt = nil
+		p.TransitionStart = nil
+	}
+}
+
+func (p *Policy) scheduleCycle(cycle string, now time.Time) {
+	p.activateCycle(now)
+	start, _ := p.period(now)
+	currentStart, _ := (Policy{Cycle: p.Cycle, CycleAnchor: p.CycleAnchor}).period(now)
+	// 跨过旧自然边界后，改回原规则也不能立即换账户，否则会重复发放。
+	if cycle == p.Cycle && start.Equal(currentStart) {
+		p.PendingCycle = ""
+		p.CycleEffectiveAt = nil
+		p.TransitionStart = nil
+		return
+	}
+	_, end := (Policy{Cycle: cycle}).period(now)
+	p.PendingCycle = cycle
+	p.CycleEffectiveAt = &end
+	p.TransitionStart = &start
 }
 
 type Service struct {
@@ -112,12 +145,7 @@ func (s *Service) policy(ctx context.Context, q resource.Queryer, lock bool) (Po
 		return p, fmt.Errorf("读取计费策略: %w", err)
 	}
 	p.Revision = record.Revision
-	if p.CycleEffectiveAt != nil && !s.now().Before(*p.CycleEffectiveAt) {
-		p.Cycle = p.PendingCycle
-		p.CycleAnchor = p.CycleEffectiveAt
-		p.PendingCycle = ""
-		p.CycleEffectiveAt = nil
-	}
+	p.activateCycle(s.now())
 	return p, nil
 }
 func (s *Service) Policy(ctx context.Context) (Policy, error) { return s.policy(ctx, s.pool, false) }
