@@ -263,7 +263,7 @@ export function MembersAndGroupsPage() {
   ]
 
   return (
-    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-4rem)] md:min-h-0 md:flex-none md:overflow-hidden">
+    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
       {error && (
         <p
           className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"

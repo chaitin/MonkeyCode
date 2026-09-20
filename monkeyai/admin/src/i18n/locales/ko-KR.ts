@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const koKR = {
   audit: {
     ...enUS.audit,
-    since: "시작 시간",
-    until: "종료 시간 (미포함)",
-    invalidRange: "시작 시간은 종료 시간보다 빨라야 합니다",
+    since: "시작 날짜",
+    until: "종료 날짜",
+    invalidRange: "시작 날짜는 종료 날짜보다 늦을 수 없습니다",
     details: "감사 상세 정보",
     target: "대상 ID",
     userAgent: "사용자 에이전트",
@@ -737,14 +737,11 @@ export const koKR = {
       description: "관리자 작업과 주요 활동 기록을 확인합니다.",
       tableTitle: "감사 로그",
       filters: {
-        operatorSearchPlaceholder: "작업자 검색",
-        ipSearchPlaceholder: "소스 IP 검색",
-        requestParamsSearchPlaceholder: "요청 매개변수 검색",
+        operatorSearchPlaceholder: "작업자",
+        ipSearchPlaceholder: "소스 IP",
         search: "검색",
         actionType: "작업 유형",
         result: "실행 결과",
-        allActions: "모든 작업",
-        allResults: "모든 결과",
       },
       columns: {
         time: "시간",
@@ -753,7 +750,9 @@ export const koKR = {
         requestParams: "요청 매개변수",
         ipAddress: "소스 IP",
         result: "결과",
+        operations: "작업",
       },
+      details: "상세",
       categories: {
         model: "모델",
         member: "멤버",

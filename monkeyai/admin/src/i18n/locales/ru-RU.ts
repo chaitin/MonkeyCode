@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const ruRU = {
   audit: {
     ...enUS.audit,
-    since: "Начало",
-    until: "Конец (не включительно)",
-    invalidRange: "Начало должно предшествовать концу",
+    since: "Дата начала",
+    until: "Дата окончания",
+    invalidRange: "Дата начала не может быть позже даты окончания",
     details: "Подробности аудита",
     target: "ID объекта",
     userAgent: "User-Agent",
@@ -761,14 +761,11 @@ export const ruRU = {
       description: "Просматривайте действия администраторов и важные события.",
       tableTitle: "Журнал аудита",
       filters: {
-        operatorSearchPlaceholder: "Поиск оператора",
-        ipSearchPlaceholder: "Поиск исходного IP",
-        requestParamsSearchPlaceholder: "Поиск параметров запроса",
+        operatorSearchPlaceholder: "Оператор",
+        ipSearchPlaceholder: "Исходный IP",
         search: "Найти",
         actionType: "Тип действия",
         result: "Результат",
-        allActions: "Все действия",
-        allResults: "Все результаты",
       },
       columns: {
         time: "Время",
@@ -777,7 +774,9 @@ export const ruRU = {
         requestParams: "Параметры запроса",
         ipAddress: "Исходный IP",
         result: "Результат",
+        operations: "Действия",
       },
+      details: "Подробнее",
       categories: {
         model: "Модели",
         member: "Участники",

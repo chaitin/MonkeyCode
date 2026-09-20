@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const deDE = {
   audit: {
     ...enUS.audit,
-    since: "Von",
-    until: "Bis (exklusiv)",
-    invalidRange: "Der Beginn muss vor dem Ende liegen",
+    since: "Startdatum",
+    until: "Enddatum",
+    invalidRange: "Das Startdatum darf nicht nach dem Enddatum liegen",
     details: "Audit-Details",
     target: "Ziel-ID",
     userAgent: "User-Agent",
@@ -774,14 +774,11 @@ export const deDE = {
         "Prüfen Sie administrative Aktionen und wichtige Aktivitäten.",
       tableTitle: "Audit-Protokoll",
       filters: {
-        operatorSearchPlaceholder: "Bediener suchen",
-        ipSearchPlaceholder: "Quell-IP suchen",
-        requestParamsSearchPlaceholder: "Anfrageparameter suchen",
+        operatorSearchPlaceholder: "Bediener",
+        ipSearchPlaceholder: "Quell-IP",
         search: "Suchen",
         actionType: "Aktionstyp",
         result: "Ergebnis",
-        allActions: "Alle Aktionen",
-        allResults: "Alle Ergebnisse",
       },
       columns: {
         time: "Zeitpunkt",
@@ -790,7 +787,9 @@ export const deDE = {
         requestParams: "Anfrageparameter",
         ipAddress: "Quell-IP",
         result: "Ergebnis",
+        operations: "Aktionen",
       },
+      details: "Details",
       categories: {
         model: "Modelle",
         member: "Mitglieder",

@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const zhTW = {
   audit: {
     ...enUS.audit,
-    since: "開始時間",
-    until: "結束時間（不含）",
-    invalidRange: "開始時間必須早於結束時間",
+    since: "開始日期",
+    until: "結束日期",
+    invalidRange: "開始日期不能晚於結束日期",
     details: "稽核詳情",
     target: "目標 ID",
     userAgent: "用戶端",
@@ -703,14 +703,11 @@ export const zhTW = {
       description: "查看後台管理操作和重要行為記錄。",
       tableTitle: "稽核日誌",
       filters: {
-        operatorSearchPlaceholder: "搜尋操作者",
-        ipSearchPlaceholder: "搜尋來源 IP",
-        requestParamsSearchPlaceholder: "搜尋請求參數",
+        operatorSearchPlaceholder: "操作者",
+        ipSearchPlaceholder: "來源 IP",
         search: "搜尋",
         actionType: "操作類型",
-        result: "執行結果",
-        allActions: "全部操作",
-        allResults: "全部結果",
+        result: "結果",
       },
       columns: {
         time: "時間",
@@ -719,7 +716,9 @@ export const zhTW = {
         requestParams: "請求參數",
         ipAddress: "來源 IP",
         result: "結果",
+        operations: "操作",
       },
+      details: "詳情",
       categories: {
         model: "模型",
         member: "成員",

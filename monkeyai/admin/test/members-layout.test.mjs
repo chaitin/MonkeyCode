@@ -31,6 +31,8 @@ test("members page keeps the original split cards and compact member list", asyn
     "utf8"
   )
 
+  assert.match(source, /md:h-\[calc\(100svh-5rem\)\]/)
+  assert.doesNotMatch(source, /md:h-\[calc\(100svh-4rem\)\]/)
   assert.match(
     source,
     /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/

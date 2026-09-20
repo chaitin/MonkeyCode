@@ -3,9 +3,10 @@ import { enUS } from "./en-US.ts"
 export const frFR = {
   audit: {
     ...enUS.audit,
-    since: "Début",
-    until: "Fin (exclue)",
-    invalidRange: "Le début doit précéder la fin",
+    since: "Date de début",
+    until: "Date de fin",
+    invalidRange:
+      "La date de début ne peut pas être postérieure à la date de fin",
     details: "Détails de l’audit",
     target: "ID de la cible",
     userAgent: "Agent utilisateur",
@@ -765,14 +766,11 @@ export const frFR = {
         "Consultez les actions administratives et les activités importantes.",
       tableTitle: "Journal d’audit",
       filters: {
-        operatorSearchPlaceholder: "Rechercher un opérateur",
-        ipSearchPlaceholder: "Rechercher une IP source",
-        requestParamsSearchPlaceholder: "Rechercher des paramètres de requête",
+        operatorSearchPlaceholder: "Opérateur",
+        ipSearchPlaceholder: "IP source",
         search: "Rechercher",
         actionType: "Type d’action",
         result: "Résultat",
-        allActions: "Toutes les actions",
-        allResults: "Tous les résultats",
       },
       columns: {
         time: "Date et heure",
@@ -781,7 +779,9 @@ export const frFR = {
         requestParams: "Paramètres de la requête",
         ipAddress: "IP source",
         result: "Résultat",
+        operations: "Actions",
       },
+      details: "Détails",
       categories: {
         model: "Modèles",
         member: "Membres",

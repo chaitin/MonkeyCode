@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const ar = {
   audit: {
     ...enUS.audit,
-    since: "من",
-    until: "حتى (غير شامل)",
-    invalidRange: "يجب أن يسبق وقت البدء وقت الانتهاء",
+    since: "تاريخ البدء",
+    until: "تاريخ الانتهاء",
+    invalidRange: "لا يمكن أن يكون تاريخ البدء بعد تاريخ الانتهاء",
     details: "تفاصيل التدقيق",
     target: "معرّف الهدف",
     userAgent: "وكيل المستخدم",
@@ -735,14 +735,11 @@ export const ar = {
       description: "راجع إجراءات الإدارة والأنشطة المهمة.",
       tableTitle: "سجل التدقيق",
       filters: {
-        operatorSearchPlaceholder: "البحث عن المشغّل",
-        ipSearchPlaceholder: "البحث عن عنوان IP المصدر",
-        requestParamsSearchPlaceholder: "البحث في معلمات الطلب",
+        operatorSearchPlaceholder: "المشغّل",
+        ipSearchPlaceholder: "عنوان IP المصدر",
         search: "بحث",
         actionType: "نوع الإجراء",
         result: "النتيجة",
-        allActions: "كل الإجراءات",
-        allResults: "كل النتائج",
       },
       columns: {
         time: "الوقت",
@@ -751,7 +748,9 @@ export const ar = {
         requestParams: "معلمات الطلب",
         ipAddress: "عنوان IP المصدر",
         result: "النتيجة",
+        operations: "الإجراءات",
       },
+      details: "التفاصيل",
       categories: {
         model: "النماذج",
         member: "الأعضاء",

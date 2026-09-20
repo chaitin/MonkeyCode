@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const jaJP = {
   audit: {
     ...enUS.audit,
-    since: "開始日時",
-    until: "終了日時（含まない）",
-    invalidRange: "開始日時は終了日時より前にしてください",
+    since: "開始日",
+    until: "終了日",
+    invalidRange: "開始日は終了日より後にできません",
     details: "監査の詳細",
     target: "対象 ID",
     userAgent: "ユーザーエージェント",
@@ -747,14 +747,11 @@ export const jaJP = {
       description: "管理操作と重要なアクティビティを確認します。",
       tableTitle: "監査ログ",
       filters: {
-        operatorSearchPlaceholder: "操作者を検索",
-        ipSearchPlaceholder: "送信元 IP を検索",
-        requestParamsSearchPlaceholder: "リクエストパラメータを検索",
+        operatorSearchPlaceholder: "操作者",
+        ipSearchPlaceholder: "送信元 IP",
         search: "検索",
         actionType: "操作タイプ",
         result: "実行結果",
-        allActions: "すべての操作",
-        allResults: "すべての結果",
       },
       columns: {
         time: "日時",
@@ -763,7 +760,9 @@ export const jaJP = {
         requestParams: "リクエストパラメータ",
         ipAddress: "送信元 IP",
         result: "結果",
+        operations: "操作",
       },
+      details: "詳細",
       categories: {
         model: "モデル",
         member: "メンバー",

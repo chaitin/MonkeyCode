@@ -3,9 +3,9 @@ import { enUS } from "./en-US.ts"
 export const es419 = {
   audit: {
     ...enUS.audit,
-    since: "Desde",
-    until: "Hasta (exclusivo)",
-    invalidRange: "El inicio debe ser anterior al final",
+    since: "Fecha de inicio",
+    until: "Fecha de fin",
+    invalidRange: "La fecha de inicio no puede ser posterior a la fecha de fin",
     details: "Detalles de auditoría",
     target: "ID del destino",
     userAgent: "Agente de usuario",
@@ -763,14 +763,11 @@ export const es419 = {
         "Consulta las acciones administrativas y la actividad importante.",
       tableTitle: "Registro de auditoría",
       filters: {
-        operatorSearchPlaceholder: "Buscar operador",
-        ipSearchPlaceholder: "Buscar IP de origen",
-        requestParamsSearchPlaceholder: "Buscar parámetros de solicitud",
+        operatorSearchPlaceholder: "Operador",
+        ipSearchPlaceholder: "IP de origen",
         search: "Buscar",
         actionType: "Tipo de acción",
         result: "Resultado",
-        allActions: "Todas las acciones",
-        allResults: "Todos los resultados",
       },
       columns: {
         time: "Fecha y hora",
@@ -779,7 +776,9 @@ export const es419 = {
         requestParams: "Parámetros de solicitud",
         ipAddress: "IP de origen",
         result: "Resultado",
+        operations: "Acciones",
       },
+      details: "Detalles",
       categories: {
         model: "Modelos",
         member: "Miembros",

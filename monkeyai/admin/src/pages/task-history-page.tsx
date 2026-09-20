@@ -2,39 +2,20 @@ import { useMemo, useState, type FormEvent } from "react"
 import {
   ArrowLeft02Icon,
   ArrowRight01Icon,
-  Calendar03Icon,
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
-import {
-  ar,
-  de,
-  enUS,
-  es,
-  fr,
-  ja,
-  ko,
-  ru,
-  zhCN,
-  zhTW,
-  type Locale,
-} from "date-fns/locale"
 import { useTranslation } from "react-i18next"
 
 import { useStatistics } from "@/hooks/use-statistics"
 import { StatisticsFeedback } from "@/components/statistics-feedback"
+import { DatePickerField } from "@/components/date-picker-field"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -85,85 +66,6 @@ const EMPTY_FILTERS: TaskHistoryFilters = {
   endTime: undefined,
 }
 
-const DATE_LOCALES: Record<string, Locale> = {
-  ar,
-  de,
-  en: enUS,
-  es,
-  fr,
-  ja,
-  ko,
-  ru,
-  zh: zhCN,
-  "zh-CN": zhCN,
-  "zh-TW": zhTW,
-}
-
-type DatePickerFieldProps = {
-  id: string
-  label: string
-  placeholder: string
-  locale: string
-  calendarLocale: Locale
-  value: Date | undefined
-  onChange: (value: Date | undefined) => void
-  disabled?: React.ComponentProps<typeof Calendar>["disabled"]
-}
-
-function DatePickerField({
-  id,
-  label,
-  placeholder,
-  locale,
-  calendarLocale,
-  value,
-  onChange,
-  disabled,
-}: DatePickerFieldProps) {
-  const [open, setOpen] = useState(false)
-  const formatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }),
-    [locale]
-  )
-
-  return (
-    <Field className="sm:w-48">
-      <FieldLabel htmlFor={id} className="sr-only">
-        {label}
-      </FieldLabel>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              id={id}
-              type="button"
-              variant="outline"
-              className="w-full justify-start px-2.5 font-normal"
-            />
-          }
-        >
-          <HugeiconsIcon icon={Calendar03Icon} data-icon="inline-start" />
-          {value ? formatter.format(value) : placeholder}
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={value}
-            defaultMonth={value}
-            onSelect={(date) => {
-              onChange(date)
-              if (date) setOpen(false)
-            }}
-            disabled={disabled}
-            locale={calendarLocale}
-            captionLayout="dropdown"
-          />
-        </PopoverContent>
-      </Popover>
-    </Field>
-  )
-}
-
 export function TaskHistoryPage() {
   const { i18n, t } = useTranslation()
   const [filterInput, setFilterInput] =
@@ -172,8 +74,6 @@ export function TaskHistoryPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const language = locale.split("-")[0]
-  const calendarLocale = DATE_LOCALES[locale] ?? DATE_LOCALES[language] ?? enUS
 
   const query = new URLSearchParams({
     task: filters.taskName,
@@ -275,7 +175,6 @@ export function TaskHistoryPage() {
                 label={t("pages.taskHistory.filters.startTime")}
                 placeholder={t("pages.taskHistory.filters.startTime")}
                 locale={locale}
-                calendarLocale={calendarLocale}
                 value={filterInput.startTime}
                 onChange={(value) =>
                   setFilterInput((current) => ({
@@ -294,7 +193,6 @@ export function TaskHistoryPage() {
                 label={t("pages.taskHistory.filters.endTime")}
                 placeholder={t("pages.taskHistory.filters.endTime")}
                 locale={locale}
-                calendarLocale={calendarLocale}
                 value={filterInput.endTime}
                 onChange={(value) =>
                   setFilterInput((current) => ({

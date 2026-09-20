@@ -1,8 +1,8 @@
 export const zhCN = {
   audit: {
-    since: "开始时间",
-    until: "结束时间（不含）",
-    invalidRange: "开始时间必须早于结束时间",
+    since: "开始日期",
+    until: "结束日期",
+    invalidRange: "开始日期不能晚于结束日期",
     details: "审计详情",
     target: "目标 ID",
     userAgent: "客户端",
@@ -940,14 +940,11 @@ export const zhCN = {
       description: "查看后台管理操作和关键行为记录。",
       tableTitle: "审计日志",
       filters: {
-        operatorSearchPlaceholder: "搜索操作者",
-        ipSearchPlaceholder: "搜索来源 IP",
-        requestParamsSearchPlaceholder: "搜索请求参数",
+        operatorSearchPlaceholder: "操作者",
+        ipSearchPlaceholder: "来源 IP",
         search: "搜索",
         actionType: "操作类型",
-        result: "执行结果",
-        allActions: "全部操作",
-        allResults: "全部结果",
+        result: "结果",
       },
       columns: {
         time: "时间",
@@ -956,7 +953,9 @@ export const zhCN = {
         requestParams: "请求参数",
         ipAddress: "来源 IP",
         result: "结果",
+        operations: "操作",
       },
+      details: "详情",
       categories: {
         model: "模型",
         member: "成员",

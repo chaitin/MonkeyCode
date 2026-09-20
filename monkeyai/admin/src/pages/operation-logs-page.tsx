@@ -1,36 +1,38 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import {
-  ArrowLeft02Icon,
+  ArrowLeft01Icon,
   ArrowRight01Icon,
   Search02Icon,
+  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { DatePickerField } from "@/components/date-picker-field"
 import { api } from "@/lib/api"
+import { endOfLocalDay, startOfLocalDay } from "@/lib/date-range"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -73,12 +75,11 @@ type AuditPage = {
   page: number
   page_size: number
 }
-type CategoryFilter = "all" | LogCategory
-type ResultFilter = "all" | LogResult
-const DEFAULT_PAGE_SIZE = 20
+type CategoryFilter = LogCategory | null
+type ResultFilter = LogResult | null
+const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
-const CATEGORY_FILTERS: CategoryFilter[] = [
-  "all",
+const CATEGORY_FILTERS: LogCategory[] = [
   "model",
   "identity",
   "resource",
@@ -86,23 +87,21 @@ const CATEGORY_FILTERS: CategoryFilter[] = [
   "security",
   "settings",
 ]
-const RESULT_FILTERS: ResultFilter[] = ["all", "success", "failed"]
+const RESULT_FILTERS: LogResult[] = ["success", "failed"]
 
 export function OperationLogsPage() {
   const { i18n, t } = useTranslation()
   const [operatorInput, setOperatorInput] = useState("")
   const [ipInput, setIpInput] = useState("")
-  const [requestParamsInput, setRequestParamsInput] = useState("")
-  const [categoryInput, setCategoryInput] = useState<CategoryFilter>("all")
-  const [resultInput, setResultInput] = useState<ResultFilter>("all")
+  const [categoryInput, setCategoryInput] = useState<CategoryFilter>(null)
+  const [resultInput, setResultInput] = useState<ResultFilter>(null)
   const [operatorQuery, setOperatorQuery] = useState("")
   const [ipQuery, setIpQuery] = useState("")
-  const [requestParamsQuery, setRequestParamsQuery] = useState("")
-  const [category, setCategory] = useState<CategoryFilter>("all")
-  const [result, setResult] = useState<ResultFilter>("all")
+  const [category, setCategory] = useState<CategoryFilter>(null)
+  const [result, setResult] = useState<ResultFilter>(null)
   const [revision, setRevision] = useState(0)
-  const [sinceInput, setSinceInput] = useState("")
-  const [untilInput, setUntilInput] = useState("")
+  const [sinceInput, setSinceInput] = useState<Date>()
+  const [untilInput, setUntilInput] = useState<Date>()
   const [since, setSince] = useState("")
   const [until, setUntil] = useState("")
   const [invalidRange, setInvalidRange] = useState(false)
@@ -115,14 +114,9 @@ export function OperationLogsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
-  const categoryLabel = (value: CategoryFilter) =>
-    value === "all"
-      ? t("pages.operationLogs.filters.allActions")
-      : t(`audit.categories.${value}`)
-  const resultLabel = (value: ResultFilter) =>
-    value === "all"
-      ? t("pages.operationLogs.filters.allResults")
-      : t(`pages.operationLogs.results.${value}`)
+  const categoryLabel = (value: LogCategory) => t(`audit.categories.${value}`)
+  const resultLabel = (value: LogResult) =>
+    t(`pages.operationLogs.results.${value}`)
 
   const query = new URLSearchParams({
     page: String(page),
@@ -131,9 +125,8 @@ export function OperationLogsPage() {
   for (const [key, value] of Object.entries({
     actor: operatorQuery,
     ip: ipQuery,
-    params: requestParamsQuery,
-    category: category === "all" ? "" : category,
-    result: result === "all" ? "" : result,
+    category: category ?? "",
+    result: result ?? "",
     since,
     until,
   })) {
@@ -169,14 +162,15 @@ export function OperationLogsPage() {
   const lastVisible =
     visibleLogs.length === 0 ? 0 : pageStart + visibleLogs.length
   const actionLabel = (log: AuditLog) =>
-    `${t(`audit.actions.${log.action}`, { defaultValue: log.action })} · ${t(`audit.targets.${log.target_type}`, { defaultValue: log.target_type ?? categoryLabel(log.category) })}`
+    `${t(`audit.targets.${log.target_type}`, { defaultValue: log.target_type ?? categoryLabel(log.category) })} - ${t(`audit.actions.${log.action}`, { defaultValue: log.action })}`
   const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const dateFormatter = useMemo(
     () =>
-      new Intl.DateTimeFormat(i18n.language, {
+      new Intl.DateTimeFormat(locale, {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -185,25 +179,13 @@ export function OperationLogsPage() {
         second: "2-digit",
         hour12: false,
       }),
-    [i18n.language]
+    [locale]
   )
 
-  const updateCategory = (value: string) => {
-    setCategoryInput(value as CategoryFilter)
-  }
-
-  const updateResult = (value: string) => {
-    setResultInput(value as ResultFilter)
-  }
-
   const applySearch = () => {
-    const start = sinceInput ? new Date(sinceInput) : undefined
-    const end = untilInput ? new Date(untilInput) : undefined
-    if (
-      (start && !Number.isFinite(start.getTime())) ||
-      (end && !Number.isFinite(end.getTime())) ||
-      (start && end && start >= end)
-    ) {
+    const start = sinceInput ? startOfLocalDay(sinceInput) : undefined
+    const end = untilInput ? endOfLocalDay(untilInput) : undefined
+    if (start && end && start > end) {
       setInvalidRange(true)
       return
     }
@@ -213,7 +195,6 @@ export function OperationLogsPage() {
     setRevision((value) => value + 1)
     setOperatorQuery(operatorInput)
     setIpQuery(ipInput)
-    setRequestParamsQuery(requestParamsInput)
     setCategory(categoryInput)
     setResult(resultInput)
     setPage(1)
@@ -227,12 +208,12 @@ export function OperationLogsPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-0">
-      <Card>
-        <CardContent className="gap-4 px-0">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+      <Card className="min-h-0 flex-1">
+        <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <div className="flex flex-wrap items-center gap-2 px-(--card-spacing)">
             <Input
-              className="w-48"
+              className="w-32"
               value={operatorInput}
               onChange={(event) => setOperatorInput(event.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -244,66 +225,94 @@ export function OperationLogsPage() {
               )}
             />
             <Input
-              className="w-48"
+              className="w-32"
               value={ipInput}
               onChange={(event) => setIpInput(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               placeholder={t("pages.operationLogs.filters.ipSearchPlaceholder")}
               aria-label={t("pages.operationLogs.filters.ipSearchPlaceholder")}
             />
-            <Input
-              className="w-48"
-              value={requestParamsInput}
-              onChange={(event) => setRequestParamsInput(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder={t(
-                "pages.operationLogs.filters.requestParamsSearchPlaceholder"
-              )}
-              aria-label={t(
-                "pages.operationLogs.filters.requestParamsSearchPlaceholder"
-              )}
+            <DatePickerField
+              id="audit-start-date"
+              className="w-32 sm:w-32"
+              label={t("audit.since")}
+              placeholder={t("audit.since")}
+              locale={locale}
+              value={sinceInput}
+              onChange={setSinceInput}
+              disabled={untilInput ? { after: untilInput } : undefined}
+            />
+            <DatePickerField
+              id="audit-end-date"
+              className="w-32 sm:w-32"
+              label={t("audit.until")}
+              placeholder={t("audit.until")}
+              locale={locale}
+              value={untilInput}
+              onChange={setUntilInput}
+              disabled={sinceInput ? { before: sinceInput } : undefined}
             />
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>
-                {categoryLabel(categoryInput)}
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    className={cn(!categoryInput && "text-muted-foreground")}
+                  />
+                }
+              >
+                {categoryInput
+                  ? categoryLabel(categoryInput)
+                  : t("pages.operationLogs.filters.actionType")}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>
                     {t("pages.operationLogs.filters.actionType")}
                   </DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={categoryInput}
-                    onValueChange={updateCategory}
-                  >
-                    {CATEGORY_FILTERS.map((value) => (
-                      <DropdownMenuRadioItem key={value} value={value}>
-                        {categoryLabel(value)}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                  {CATEGORY_FILTERS.map((value) => (
+                    <DropdownMenuCheckboxItem
+                      key={value}
+                      checked={categoryInput === value}
+                      onCheckedChange={(checked) =>
+                        setCategoryInput(checked ? value : null)
+                      }
+                    >
+                      {categoryLabel(value)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>
-                {resultLabel(resultInput)}
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    className={cn(!resultInput && "text-muted-foreground")}
+                  />
+                }
+              >
+                {resultInput
+                  ? resultLabel(resultInput)
+                  : t("pages.operationLogs.filters.result")}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>
                     {t("pages.operationLogs.filters.result")}
                   </DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={resultInput}
-                    onValueChange={updateResult}
-                  >
-                    {RESULT_FILTERS.map((value) => (
-                      <DropdownMenuRadioItem key={value} value={value}>
-                        {resultLabel(value)}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                  {RESULT_FILTERS.map((value) => (
+                    <DropdownMenuCheckboxItem
+                      key={value}
+                      checked={resultInput === value}
+                      onCheckedChange={(checked) =>
+                        setResultInput(checked ? value : null)
+                      }
+                    >
+                      {resultLabel(value)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -311,36 +320,6 @@ export function OperationLogsPage() {
               <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
               {t("pages.operationLogs.filters.search")}
             </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 px-(--card-spacing)">
-            <label className="flex items-center gap-2 text-sm">
-              {t("audit.since")}
-              <Input
-                type="datetime-local"
-                className="w-auto"
-                value={sinceInput}
-                onChange={(event) => setSinceInput(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                aria-invalid={invalidRange}
-                aria-describedby={
-                  invalidRange ? "audit-range-error" : undefined
-                }
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              {t("audit.until")}
-              <Input
-                type="datetime-local"
-                className="w-auto"
-                value={untilInput}
-                onChange={(event) => setUntilInput(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                aria-invalid={invalidRange}
-                aria-describedby={
-                  invalidRange ? "audit-range-error" : undefined
-                }
-              />
-            </label>
             {invalidRange && (
               <p
                 id="audit-range-error"
@@ -365,158 +344,165 @@ export function OperationLogsPage() {
               </Button>
             </div>
           )}
-          <Table
-            className="min-w-4xl"
-            aria-label={t("pages.operationLogs.tableTitle")}
-            aria-busy={loading}
+          <ScrollArea
+            horizontal
+            className="min-h-0 flex-1 [&_[data-slot=table-container]]:overflow-visible"
           >
-            <TableHeader>
-              <TableRow>
-                <TableHead className="ps-(--card-spacing)">
-                  {t("pages.operationLogs.columns.time")}
-                </TableHead>
-                <TableHead>
-                  {t("pages.operationLogs.columns.operator")}
-                </TableHead>
-                <TableHead>{t("pages.operationLogs.columns.action")}</TableHead>
-                <TableHead>
-                  {t("pages.operationLogs.columns.requestParams")}
-                </TableHead>
-                <TableHead>
-                  {t("pages.operationLogs.columns.ipAddress")}
-                </TableHead>
-                <TableHead className="pe-(--card-spacing)">
-                  {t("pages.operationLogs.columns.result")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visibleLogs.length > 0 ? (
-                visibleLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                      {dateFormatter.format(new Date(log.occurred_at))}
-                    </TableCell>
-                    <TableCell>
-                      <div
-                        className="flex max-w-52 items-center gap-3"
-                        title={log.actor_email ?? undefined}
-                      >
-                        <Avatar className="size-6">
-                          <AvatarFallback>
-                            {log.actor_name.slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="truncate font-medium">
-                          {log.actor_name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span>{actionLabel(log)}</span>
-                      {log.target_id && (
-                        <div
-                          className="max-w-52 truncate font-mono text-xs text-muted-foreground"
-                          title={log.target_id}
+            <Table
+              className="min-w-4xl"
+              aria-label={t("pages.operationLogs.tableTitle")}
+              aria-busy={loading}
+            >
+              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                <TableRow>
+                  <TableHead className="ps-(--card-spacing)">
+                    {t("pages.operationLogs.columns.time")}
+                  </TableHead>
+                  <TableHead>
+                    {t("pages.operationLogs.columns.result")}
+                  </TableHead>
+                  <TableHead>
+                    {t("pages.operationLogs.columns.operator")}
+                  </TableHead>
+                  <TableHead>
+                    {t("pages.operationLogs.columns.action")}
+                  </TableHead>
+                  <TableHead>
+                    {t("pages.operationLogs.columns.ipAddress")}
+                  </TableHead>
+                  <TableHead className="pe-(--card-spacing)">
+                    {t("pages.operationLogs.columns.operations")}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleLogs.length > 0 ? (
+                  visibleLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                        {dateFormatter.format(new Date(log.occurred_at))}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            log.result === "success"
+                              ? "secondary"
+                              : "destructive"
+                          }
                         >
-                          {log.target_id}
+                          {resultLabel(log.result)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div
+                          className="flex max-w-52 items-center gap-3"
+                          title={log.actor_email ?? undefined}
+                        >
+                          <HugeiconsIcon
+                            icon={User02Icon}
+                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate font-medium">
+                            {log.actor_name}
+                          </span>
                         </div>
+                      </TableCell>
+                      <TableCell>{actionLabel(log)}</TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {log.source_ip || "—"}
+                      </TableCell>
+                      <TableCell className="pe-(--card-spacing)">
+                        <Dialog>
+                          <DialogTrigger
+                            render={
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                type="button"
+                              />
+                            }
+                          >
+                            {t("pages.operationLogs.details")}
+                          </DialogTrigger>
+                          <DialogContent
+                            className="sm:max-w-2xl"
+                            closeLabel={t("common.close")}
+                          >
+                            <DialogHeader>
+                              <DialogTitle>{t("audit.details")}</DialogTitle>
+                            </DialogHeader>
+                            <div className="max-h-[65vh] space-y-3 overflow-auto">
+                              <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+                                {[
+                                  [
+                                    t("pages.operationLogs.columns.time"),
+                                    dateFormatter.format(
+                                      new Date(log.occurred_at)
+                                    ),
+                                  ],
+                                  [
+                                    t("pages.operationLogs.columns.operator"),
+                                    log.actor_email
+                                      ? `${log.actor_name} (${log.actor_email})`
+                                      : log.actor_name,
+                                  ],
+                                  [
+                                    t("pages.operationLogs.columns.action"),
+                                    actionLabel(log),
+                                  ],
+                                  [t("audit.target"), log.target_id],
+                                  [
+                                    t("pages.operationLogs.columns.ipAddress"),
+                                    log.source_ip,
+                                  ],
+                                  [t("audit.userAgent"), log.user_agent],
+                                  [t("audit.requestId"), log.request_id],
+                                  [
+                                    t("pages.operationLogs.columns.result"),
+                                    resultLabel(log.result),
+                                  ],
+                                  [t("audit.error"), log.error_message],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="contents">
+                                    <dt className="text-muted-foreground">
+                                      {label}
+                                    </dt>
+                                    <dd className="break-all">
+                                      {value || "—"}
+                                    </dd>
+                                  </div>
+                                ))}
+                              </dl>
+                              <pre className="rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
+                                {JSON.stringify(log.request_params, null, 2)}
+                              </pre>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="h-40 text-center text-muted-foreground"
+                    >
+                      {loading ? (
+                        <span role="status">{t("resources.loading")}</span>
+                      ) : error ? (
+                        "—"
+                      ) : (
+                        t("pages.operationLogs.empty")
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Dialog>
-                        <DialogTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="max-w-80 justify-start font-mono text-xs"
-                            />
-                          }
-                          aria-label={t("audit.details")}
-                        >
-                          <span className="truncate">
-                            {JSON.stringify(log.request_params)}
-                          </span>
-                        </DialogTrigger>
-                        <DialogContent
-                          className="sm:max-w-2xl"
-                          closeLabel={t("common.close")}
-                        >
-                          <DialogHeader>
-                            <DialogTitle>{t("audit.details")}</DialogTitle>
-                            <DialogDescription>
-                              {dateFormatter.format(new Date(log.occurred_at))}{" "}
-                              · {log.actor_name} · {actionLabel(log)}
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="max-h-[65vh] space-y-3 overflow-auto">
-                            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                              {[
-                                [t("audit.target"), log.target_id],
-                                [
-                                  t("pages.operationLogs.columns.operator"),
-                                  log.actor_email,
-                                ],
-                                [
-                                  t("pages.operationLogs.columns.ipAddress"),
-                                  log.source_ip,
-                                ],
-                                [t("audit.userAgent"), log.user_agent],
-                                [t("audit.requestId"), log.request_id],
-                                [
-                                  t("pages.operationLogs.columns.result"),
-                                  resultLabel(log.result),
-                                ],
-                                [t("audit.error"), log.error_message],
-                              ].map(([label, value]) => (
-                                <div key={label} className="contents">
-                                  <dt className="text-muted-foreground">
-                                    {label}
-                                  </dt>
-                                  <dd className="break-all">{value || "—"}</dd>
-                                </div>
-                              ))}
-                            </dl>
-                            <pre className="rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
-                              {JSON.stringify(log.request_params, null, 2)}
-                            </pre>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">
-                      {log.source_ip || "—"}
-                    </TableCell>
-                    <TableCell className="pe-(--card-spacing)">
-                      <Badge
-                        variant={
-                          log.result === "success" ? "secondary" : "destructive"
-                        }
-                      >
-                        {resultLabel(log.result)}
-                      </Badge>
-                    </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="h-40 text-center text-muted-foreground"
-                  >
-                    {loading ? (
-                      <span role="status">{t("resources.loading")}</span>
-                    ) : error ? (
-                      "—"
-                    ) : (
-                      t("pages.operationLogs.empty")
-                    )}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          </ScrollArea>
           <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
             <div className="flex flex-wrap items-center gap-3">
               <Select
@@ -569,7 +555,7 @@ export function OperationLogsPage() {
                 aria-label={t("pages.operationLogs.pagination.previous")}
               >
                 <HugeiconsIcon
-                  icon={ArrowLeft02Icon}
+                  icon={ArrowLeft01Icon}
                   className="rtl:rotate-180"
                 />
               </Button>

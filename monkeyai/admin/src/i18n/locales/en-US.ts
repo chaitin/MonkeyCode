@@ -1,8 +1,8 @@
 export const enUS = {
   audit: {
-    since: "From",
-    until: "Until (exclusive)",
-    invalidRange: "Start time must be before end time",
+    since: "Start date",
+    until: "End date",
+    invalidRange: "Start date cannot be after end date",
     details: "Audit details",
     target: "Target ID",
     userAgent: "User agent",
@@ -1001,14 +1001,11 @@ export const enUS = {
       description: "Review administrative actions and important activity.",
       tableTitle: "Audit log",
       filters: {
-        operatorSearchPlaceholder: "Search operator",
-        ipSearchPlaceholder: "Search source IP",
-        requestParamsSearchPlaceholder: "Search request parameters",
+        operatorSearchPlaceholder: "Operator",
+        ipSearchPlaceholder: "Source IP",
         search: "Search",
         actionType: "Action type",
         result: "Result",
-        allActions: "All actions",
-        allResults: "All results",
       },
       columns: {
         time: "Time",
@@ -1017,7 +1014,9 @@ export const enUS = {
         requestParams: "Request parameters",
         ipAddress: "Source IP",
         result: "Result",
+        operations: "Actions",
       },
+      details: "Details",
       categories: {
         model: "Models",
         member: "Members",
