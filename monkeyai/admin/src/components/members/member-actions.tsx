@@ -25,14 +25,16 @@ export function MemberActions({
   user,
   savingID,
   currentUserID,
-  treeRowHovered,
+  treeActionsVisible,
+  onMenuOpenChange,
   onToggleStatus,
   onToggleRole,
 }: {
   user: MemberActionUser
   savingID: string
   currentUserID?: string
-  treeRowHovered?: boolean
+  treeActionsVisible?: boolean
+  onMenuOpenChange?: (open: boolean) => void
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
 }) {
@@ -41,17 +43,24 @@ export function MemberActions({
   const isCurrentUser = user.id === currentUserID
 
   return (
-    <DropdownMenu onOpenChange={setOpen}>
+    <DropdownMenu
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        onMenuOpenChange?.(nextOpen)
+      }}
+    >
       <DropdownMenuTrigger
         render={
           <Button
             type="button"
             variant="ghost"
-            size={treeRowHovered !== undefined ? "icon-xs" : "icon-sm"}
+            size={treeActionsVisible !== undefined ? "icon-xs" : "icon-sm"}
             className={cn(
-              treeRowHovered !== undefined &&
-                "opacity-0 transition-[opacity,background-color] duration-150 ease-in-out focus-visible:opacity-100 motion-reduce:transition-none",
-              (treeRowHovered || open) && "opacity-100"
+              "cursor-pointer hover:bg-foreground/5 aria-expanded:bg-foreground/5 dark:hover:bg-foreground/5",
+              treeActionsVisible !== undefined &&
+                "pointer-events-none opacity-0 transition-none focus-visible:pointer-events-auto focus-visible:opacity-100",
+              (treeActionsVisible || open) &&
+                "pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"
             )}
             disabled={savingID === user.id}
             aria-label={t("pages.membersAndGroups.memberActions", {
@@ -62,7 +71,7 @@ export function MemberActions({
       >
         <HugeiconsIcon
           icon={MoreHorizontalIcon}
-          className={treeRowHovered !== undefined ? "size-3" : undefined}
+          className={treeActionsVisible !== undefined ? "size-4" : undefined}
           strokeWidth={2}
         />
       </DropdownMenuTrigger>

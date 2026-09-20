@@ -1,6 +1,7 @@
 import {
   AlertCircleIcon,
   EyeOffIcon,
+  Loading03Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -256,7 +257,7 @@ export function EmailAuthForm({
                   />
                   <div className="absolute inset-y-0 end-1 flex items-center">
                     <Button
-                      variant="link"
+                      variant="ghost"
                       size="sm"
                       type="button"
                       className="h-7 px-2 text-xs"
@@ -323,8 +324,22 @@ export function EmailAuthForm({
                 )}
               </Field>
             )}
-            <Button type="submit" size="lg" className="w-full" aria-busy={busy}>
-              {busy ? `${title}…` : title}
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              disabled={locked}
+              aria-busy={busy}
+            >
+              {busy && (
+                <HugeiconsIcon
+                  icon={Loading03Icon}
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              )}
+              {title}
             </Button>
             {!admin && methods?.registration_enabled && mode !== "register" && (
               <div className="flex flex-wrap justify-center gap-2">

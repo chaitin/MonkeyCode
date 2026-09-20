@@ -31,7 +31,7 @@ test("members page keeps the original split cards and compact member list", asyn
     "utf8"
   )
 
-  assert.match(source, /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,2fr\)\]/)
+  assert.match(source, /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/)
   assert.match(source, /pages\.membersAndGroups\.groupsTitle/)
   assert.match(source, /<ItemGroup/)
   assert.match(source, /<Item\s+key=\{user\.id\}[\s\S]*?variant="outline"/)
@@ -55,6 +55,38 @@ test("members page keeps the original split cards and compact member list", asyn
   assert.doesNotMatch(source, /groupMemberIDs\(/)
   assert.match(source, /\.sort\(compareMembers\)/)
   assert.doesNotMatch(source, /<Table/)
+})
+
+test("both members panels scroll inside shadcn Scroll Areas", async () => {
+  const page = await readFile(
+    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const panels = page.split("{activeGroupAction &&")[0]
+  assert.match(
+    page,
+    /import \{ ScrollArea \} from "@\/components\/ui\/scroll-area"/
+  )
+  assert.equal(
+    (
+      panels.match(
+        /<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">/g
+      ) ?? []
+    ).length,
+    2
+  )
+  assert.equal((panels.match(/<\/ScrollArea>/g) ?? []).length, 2)
+  assert.match(panels, /<ul\s+className="flex flex-col gap-1 pe-2"/)
+  assert.match(panels, /<ItemGroup className="gap-2 pe-3">/)
+  assert.doesNotMatch(panels, /<CardContent[^>]*overflow-y-auto/)
+
+  const component = await readFile(
+    new URL("../src/components/ui/scroll-area.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(component, /@base-ui\/react\/scroll-area/)
+  assert.match(component, /<ScrollAreaPrimitive.Viewport/)
+  assert.match(component, /<ScrollAreaPrimitive.Scrollbar/)
 })
 
 test("add member button opens one dialog with tabs for single and bulk forms", async () => {
@@ -178,6 +210,18 @@ test("ungrouped members appear as the last virtual tree group", async () => {
   )
   const virtualGroup = tree.split("{isRoot ? (")[1]
   assert.ok(virtualGroup)
+  assert.match(
+    tree,
+    /<span className="min-w-0 flex-1 truncate text-start">\{group.name\}<\/span>/
+  )
+  assert.equal(
+    (
+      tree.match(
+        /className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal/g
+      ) ?? []
+    ).length,
+    2
+  )
   assert.ok(tree.indexOf("{children.map((child)") < tree.indexOf("{isRoot ? ("))
   assert.match(virtualGroup, /<Collapsible\s+open=\{ungroupedExpanded\}/)
   assert.match(virtualGroup, /onOpenChange=\{setUngroupedExpanded\}/)
@@ -193,7 +237,7 @@ test("ungrouped members appear as the last virtual tree group", async () => {
   )
   assert.match(
     virtualGroup,
-    /<span className="grid min-h-8 min-w-8 shrink-0 place-items-center px-1 text-xs text-muted-foreground tabular-nums"/
+    /<span className="flex h-8 shrink-0 items-center justify-center px-1 text-xs text-muted-foreground tabular-nums"/
   )
   assert.doesNotMatch(virtualGroup, /<DropdownMenu/)
   assert.doesNotMatch(tree, /isRoot && directMembers\.length > 0 &&/)
@@ -205,65 +249,89 @@ test("group rows swap the count for actions in the same slot on hover", async ()
     "utf8"
   )
   const actionSlot = tree
-    .split(
-      '<div className="group/row-actions grid min-h-8 min-w-8 shrink-0 place-items-center">'
-    )[1]
+    .split('"relative flex h-8 shrink-0 items-center justify-center"')[1]
     .split("</DropdownMenu>")[0]
   assert.match(actionSlot, /\{count\}/)
   assert.match(actionSlot, /<DropdownMenu onOpenChange=\{setMenuOpen\}>/)
   assert.match(actionSlot, /size="icon-xs"/)
-  assert.match(actionSlot, /col-start-1 row-start-1 cursor-pointer/)
-  assert.match(actionSlot, /icon=\{MoreHorizontalIcon\}\s+className="size-3"/)
-  assert.match(actionSlot, /\(hovered \|\| menuOpen\) && "opacity-0"/)
-  assert.match(actionSlot, /\(hovered \|\| menuOpen\) && "opacity-100"/)
+  assert.match(actionSlot, /showActions && "w-6"/)
+  assert.match(actionSlot, /onFocusCapture=/)
+  assert.match(actionSlot, /pointer-events-none absolute inset-0 m-auto/)
+  assert.match(actionSlot, /icon=\{MoreHorizontalIcon\}\s+className="size-4"/)
+  assert.match(actionSlot, /showActions && "opacity-0"/)
   assert.match(
     actionSlot,
-    /group-has-\[:focus-visible\]\/row-actions:opacity-0/
+    /showActions &&\s*"pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"/
   )
-  assert.match(actionSlot, /transition-opacity duration-150 ease-in-out/)
-  assert.match(
-    actionSlot,
-    /transition-\[opacity,background-color\] duration-150 ease-in-out/
+  assert.match(actionSlot, /opacity-0 transition-none hover:bg-foreground\/5/)
+  assert.match(actionSlot, /aria-expanded:bg-foreground\/5/)
+  assert.match(actionSlot, /dark:hover:bg-foreground\/5/)
+  assert.equal(
+    (actionSlot.match(/transition-opacity duration-100 ease-out/g) ?? [])
+      .length,
+    1
   )
   assert.equal(
     (actionSlot.match(/motion-reduce:transition-none/g) ?? []).length,
-    2
+    1
   )
   assert.match(actionSlot, /focus-visible:opacity-100/)
   assert.doesNotMatch(actionSlot, /hover:none|group-hover\/group-row/)
   assert.equal((tree.match(/onPointerEnter=/g) ?? []).length, 3)
   assert.equal((tree.match(/onPointerLeave=/g) ?? []).length, 3)
+  assert.equal((tree.match(/bg-foreground\/5/g) ?? []).length, 6)
   assert.equal(
-    (tree.match(/bg-foreground\/8 dark:bg-foreground\/10/g) ?? []).length,
-    3
+    (tree.match(/\(hovered \|\| menuOpen\) && "bg-foreground\/5"/g) ?? [])
+      .length,
+    2
   )
+  assert.match(tree, /ungroupedHovered && "bg-foreground\/5"/)
+  assert.equal(
+    (
+      tree.match(
+        /"group\/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors"/g
+      ) ?? []
+    ).length,
+    2
+  )
+  assert.doesNotMatch(tree, /bg-foreground\/8|dark:bg-foreground\/10/)
   const memberRow = tree.split("function GroupTreeMemberRow(")[1]
-  assert.match(memberRow, /treeRowHovered=\{hovered\}/)
   assert.match(
     memberRow,
-    /className="flex size-8 shrink-0 items-center justify-center"/
+    /"flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-2 text-sm transition-colors"/
   )
+  assert.match(memberRow, /treeActionsVisible=\{showActions\}/)
+  assert.match(memberRow, /onMenuOpenChange=\{setMenuOpen\}/)
+  assert.match(memberRow, /showActions \? "w-6" : "w-0"/)
+  assert.doesNotMatch(memberRow, /transition-\[width\]/)
   const memberActions = await readFile(
     new URL("../src/components/members/member-actions.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(memberActions, /treeRowHovered !== undefined/)
+  assert.match(memberActions, /treeActionsVisible !== undefined/)
   assert.match(
     memberActions,
-    /size=\{treeRowHovered !== undefined \? "icon-xs" : "icon-sm"\}/
-  )
-  assert.match(memberActions, /"opacity-0 transition-/)
-  assert.match(
-    memberActions,
-    /className=\{treeRowHovered !== undefined \? "size-3" : undefined\}/
+    /"cursor-pointer hover:bg-foreground\/5 aria-expanded:bg-foreground\/5 dark:hover:bg-foreground\/5"/
   )
   assert.match(
     memberActions,
-    /transition-\[opacity,background-color\] duration-150 ease-in-out/
+    /size=\{treeActionsVisible !== undefined \? "icon-xs" : "icon-sm"\}/
   )
+  assert.match(
+    memberActions,
+    /treeActionsVisible !== undefined &&\s*"pointer-events-none opacity-0 transition-none focus-visible:pointer-events-auto focus-visible:opacity-100"/
+  )
+  assert.match(
+    memberActions,
+    /className=\{treeActionsVisible !== undefined \? "size-4" : undefined\}/
+  )
+  assert.match(memberActions, /transition-opacity duration-100 ease-out/)
   assert.match(memberActions, /motion-reduce:transition-none/)
-  assert.match(memberActions, /\(treeRowHovered \|\| open\) && "opacity-100"/)
-  assert.match(memberActions, /<DropdownMenu onOpenChange=\{setOpen\}>/)
+  assert.match(
+    memberActions,
+    /\(treeActionsVisible \|\| open\) &&\s*"pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"/
+  )
+  assert.match(memberActions, /onMenuOpenChange\?\.\(nextOpen\)/)
 })
 
 test("tree and list share the same member action menu", async () => {

@@ -81,7 +81,9 @@ export function GroupTreeItem({
   const [expanded, setExpanded] = useState(true)
   const [ungroupedExpanded, setUngroupedExpanded] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [actionsFocused, setActionsFocused] = useState(false)
   const [hovered, setHovered] = useState(false)
+  const showActions = hovered || menuOpen || actionsFocused
   const [ungroupedHovered, setUngroupedHovered] = useState(false)
   const children = groups
     .filter((child) => child.parent_id === group.id)
@@ -106,7 +108,7 @@ export function GroupTreeItem({
         className="size-4 shrink-0 text-yellow-600 dark:text-yellow-400"
         strokeWidth={2}
       />
-      <span className="truncate">{group.name}</span>
+      <span className="min-w-0 flex-1 truncate text-start">{group.name}</span>
     </>
   )
   const triggerButton = (
@@ -114,7 +116,7 @@ export function GroupTreeItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="min-w-0 flex-1 justify-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
     />
   )
@@ -136,8 +138,8 @@ export function GroupTreeItem({
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <div
           className={cn(
-            "group/group-row flex items-center rounded-md transition-colors",
-            hovered && "bg-foreground/8 dark:bg-foreground/10"
+            "group/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors",
+            (hovered || menuOpen) && "bg-foreground/5"
           )}
           onPointerEnter={() => setHovered(true)}
           onPointerLeave={() => setHovered(false)}
@@ -154,11 +156,20 @@ export function GroupTreeItem({
               {label}
             </span>
           )}
-          <div className="group/row-actions grid min-h-8 min-w-8 shrink-0 place-items-center">
+          <div
+            className={cn(
+              "relative flex h-8 shrink-0 items-center justify-center",
+              showActions && "w-6"
+            )}
+            onFocusCapture={(event) =>
+              setActionsFocused(event.target.matches(":focus-visible"))
+            }
+            onBlurCapture={() => setActionsFocused(false)}
+          >
             <span
               className={cn(
-                "pointer-events-none col-start-1 row-start-1 px-1 text-xs text-muted-foreground tabular-nums transition-opacity duration-150 ease-in-out group-has-[:focus-visible]/row-actions:opacity-0 motion-reduce:transition-none",
-                (hovered || menuOpen) && "opacity-0"
+                "pointer-events-none px-1 text-xs text-muted-foreground tabular-nums",
+                showActions && "opacity-0"
               )}
             >
               {count}
@@ -171,8 +182,9 @@ export function GroupTreeItem({
                     variant="ghost"
                     size="icon-xs"
                     className={cn(
-                      "col-start-1 row-start-1 cursor-pointer opacity-0 transition-[opacity,background-color] duration-150 ease-in-out focus-visible:opacity-100 motion-reduce:transition-none",
-                      (hovered || menuOpen) && "opacity-100"
+                      "pointer-events-none absolute inset-0 m-auto cursor-pointer opacity-0 transition-none hover:bg-foreground/5 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:bg-foreground/5 dark:hover:bg-foreground/5",
+                      showActions &&
+                        "pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"
                     )}
                     aria-label={`${group.name} · ${t("pages.membersAndGroups.groupActions")}`}
                   />
@@ -180,7 +192,7 @@ export function GroupTreeItem({
               >
                 <HugeiconsIcon
                   icon={MoreHorizontalIcon}
-                  className="size-3"
+                  className="size-4"
                   strokeWidth={2}
                 />
               </DropdownMenuTrigger>
@@ -245,9 +257,8 @@ export function GroupTreeItem({
                   >
                     <div
                       className={cn(
-                        "group/group-row flex items-center rounded-md transition-colors",
-                        ungroupedHovered &&
-                          "bg-foreground/8 dark:bg-foreground/10"
+                        "group/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors",
+                        ungroupedHovered && "bg-foreground/5"
                       )}
                       onPointerEnter={() => setUngroupedHovered(true)}
                       onPointerLeave={() => setUngroupedHovered(false)}
@@ -259,7 +270,7 @@ export function GroupTreeItem({
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="min-w-0 flex-1 justify-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+                              className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
                               style={{
                                 paddingInlineStart: `${(level + 1) * 1.25 + 0.5}rem`,
                               }}
@@ -292,7 +303,7 @@ export function GroupTreeItem({
                           </span>
                         </span>
                       )}
-                      <span className="grid min-h-8 min-w-8 shrink-0 place-items-center px-1 text-xs text-muted-foreground tabular-nums">
+                      <span className="flex h-8 shrink-0 items-center justify-center px-1 text-xs text-muted-foreground tabular-nums">
                         {directMembers.length}
                       </span>
                     </div>
@@ -329,6 +340,9 @@ function GroupTreeMemberRow({
   level: number
 }) {
   const [hovered, setHovered] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [actionsFocused, setActionsFocused] = useState(false)
+  const showActions = hovered || menuOpen || actionsFocused
 
   return (
     <li
@@ -336,8 +350,8 @@ function GroupTreeMemberRow({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       className={cn(
-        "flex min-w-0 items-center gap-2 rounded-md text-sm transition-colors",
-        hovered && "bg-foreground/8 dark:bg-foreground/10",
+        "flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-2 text-sm transition-colors",
+        (hovered || menuOpen) && "bg-foreground/5",
         member.status === "disabled" && "text-muted-foreground"
       )}
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
@@ -351,12 +365,22 @@ function GroupTreeMemberRow({
       <span className="min-w-0 flex-1 truncate" title={member.email}>
         {member.name}
       </span>
-      <div className="flex size-8 shrink-0 items-center justify-center">
+      <div
+        className={cn(
+          "flex h-8 shrink-0 items-center justify-center overflow-visible",
+          showActions ? "w-6" : "w-0"
+        )}
+        onFocusCapture={(event) =>
+          setActionsFocused(event.target.matches(":focus-visible"))
+        }
+        onBlurCapture={() => setActionsFocused(false)}
+      >
         <MemberActions
           user={member}
           savingID={savingID}
           currentUserID={currentUserID}
-          treeRowHovered={hovered}
+          treeActionsVisible={showActions}
+          onMenuOpenChange={setMenuOpen}
           onToggleStatus={onToggleStatus}
           onToggleRole={onToggleRole}
         />

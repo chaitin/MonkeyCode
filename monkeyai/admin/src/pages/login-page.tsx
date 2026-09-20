@@ -72,7 +72,7 @@ export function LoginPage() {
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-muted p-4">
       <div className="relative w-full max-w-sm md:max-w-4xl">
-        <div className="absolute end-0 bottom-full z-10 mb-2 flex items-center gap-1 [&>button:hover]:bg-foreground/5!">
+        <div className="absolute end-0 bottom-full z-10 mb-2 flex items-center gap-1 [&>button:hover]:bg-foreground/5! [&>button[aria-expanded=true]]:bg-foreground/5!">
           <LanguageToggle variant="ghost" />
           <ThemeToggle variant="ghost" />
         </div>
