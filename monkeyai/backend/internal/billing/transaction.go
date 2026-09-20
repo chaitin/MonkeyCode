@@ -190,7 +190,8 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		}
 		reserve = Amount(quotaAmount(reserve, true) * 10000)
 	}
-	if a.Available < reserve {
+	// 零头余额允许完成一次付费调用；完整冻结预留额，阻止并发继续透支。
+	if reserve > 0 && a.Available <= 0 {
 		return Reservation{}, insufficient
 	}
 	var walletUser, team, biz string
