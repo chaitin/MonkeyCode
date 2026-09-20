@@ -62,6 +62,23 @@ export const jaJP = {
     forgotPassword: "パスワードをお忘れですか？",
     submit: "ログイン",
     otherLoginMethods: "その他のログイン方法",
+    marqueeCapabilities: [
+      "モデル",
+      "スキル",
+      "エキスパート",
+      "ツール",
+      "コネクター",
+      "ナレッジベース",
+    ],
+    marqueeSkills: [
+      "コードレビュー",
+      "文書検索",
+      "データ分析",
+      "ウェブ検索",
+      "要約",
+      "コード生成",
+      "質疑応答",
+    ],
     loginWith: "{{provider}} でログイン",
     oauthAdminRequired:
       "この OAuth アカウントは有効な管理者に関連付けられていません",

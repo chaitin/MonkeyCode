@@ -190,6 +190,23 @@ export const enUS = {
     forgotPassword: "Forgot your password?",
     submit: "Sign in",
     otherLoginMethods: "Other sign-in methods",
+    marqueeCapabilities: [
+      "Models",
+      "Skills",
+      "Experts",
+      "Tools",
+      "Connectors",
+      "Knowledge Bases",
+    ],
+    marqueeSkills: [
+      "Code Review",
+      "Document Search",
+      "Data Analysis",
+      "Web Search",
+      "Summarization",
+      "Code Generation",
+      "Q&A",
+    ],
     loginWith: "Sign in with {{provider}}",
     oauthAdminRequired:
       "This OAuth account is not linked to an active administrator",

@@ -62,6 +62,23 @@ export const deDE = {
     forgotPassword: "Passwort vergessen?",
     submit: "Anmelden",
     otherLoginMethods: "Andere Anmeldemethoden",
+    marqueeCapabilities: [
+      "Modelle",
+      "Skills",
+      "Experten",
+      "Werkzeuge",
+      "Konnektoren",
+      "Wissensdatenbanken",
+    ],
+    marqueeSkills: [
+      "Code-Review",
+      "Dokumentensuche",
+      "Datenanalyse",
+      "Websuche",
+      "Zusammenfassung",
+      "Codegenerierung",
+      "Fragen und Antworten",
+    ],
     loginWith: "Mit {{provider}} anmelden",
     oauthAdminRequired:
       "Dieses OAuth-Konto ist keinem aktiven Administrator zugeordnet",

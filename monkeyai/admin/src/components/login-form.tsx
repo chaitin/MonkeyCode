@@ -3,6 +3,7 @@ import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { LoginMarquees } from "@/components/login-marquees"
 import { ShaderBackground } from "@/components/motion/shader-background"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -111,6 +112,7 @@ export function LoginForm({
               swirl={0.35}
               speed={0.35}
             />
+            <LoginMarquees />
           </div>
         </CardContent>
       </Card>

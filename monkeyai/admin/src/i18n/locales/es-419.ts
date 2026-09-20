@@ -62,6 +62,23 @@ export const es419 = {
     forgotPassword: "¿Olvidaste tu contraseña?",
     submit: "Iniciar sesión",
     otherLoginMethods: "Otros métodos de inicio de sesión",
+    marqueeCapabilities: [
+      "Modelos",
+      "Habilidades",
+      "Expertos",
+      "Herramientas",
+      "Conectores",
+      "Bases de conocimiento",
+    ],
+    marqueeSkills: [
+      "Revisión de código",
+      "Búsqueda de documentos",
+      "Análisis de datos",
+      "Búsqueda web",
+      "Resumen de contenido",
+      "Generación de código",
+      "Preguntas y respuestas",
+    ],
     loginWith: "Iniciar sesión con {{provider}}",
     oauthAdminRequired:
       "Esta cuenta de OAuth no está vinculada a un administrador activo",

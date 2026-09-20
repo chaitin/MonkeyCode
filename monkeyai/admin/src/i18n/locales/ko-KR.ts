@@ -61,6 +61,23 @@ export const koKR = {
     forgotPassword: "비밀번호를 잊으셨나요?",
     submit: "로그인",
     otherLoginMethods: "다른 로그인 방법",
+    marqueeCapabilities: [
+      "모델",
+      "스킬",
+      "전문가",
+      "도구",
+      "커넥터",
+      "지식 베이스",
+    ],
+    marqueeSkills: [
+      "코드 검토",
+      "문서 검색",
+      "데이터 분석",
+      "웹 검색",
+      "내용 요약",
+      "코드 생성",
+      "지식 질의응답",
+    ],
     loginWith: "{{provider}}로 로그인",
     oauthAdminRequired:
       "이 OAuth 계정은 활성 관리자 계정에 연결되어 있지 않습니다",

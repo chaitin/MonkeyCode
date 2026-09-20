@@ -62,6 +62,23 @@ export const frFR = {
     forgotPassword: "Mot de passe oublié ?",
     submit: "Se connecter",
     otherLoginMethods: "Autres méthodes de connexion",
+    marqueeCapabilities: [
+      "Modèles",
+      "Compétences",
+      "Experts",
+      "Outils",
+      "Connecteurs",
+      "Bases de connaissances",
+    ],
+    marqueeSkills: [
+      "Revue de code",
+      "Recherche documentaire",
+      "Analyse de données",
+      "Recherche web",
+      "Résumé",
+      "Génération de code",
+      "Questions-réponses",
+    ],
     loginWith: "Se connecter avec {{provider}}",
     oauthAdminRequired:
       "Ce compte OAuth n’est pas associé à un administrateur actif",
