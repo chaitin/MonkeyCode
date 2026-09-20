@@ -89,6 +89,18 @@ type VirtualMachine struct {
 	ExternalIP    string               `json:"external_ip"`
 	CreatedAt     int64                `json:"created_at"`
 	Version       string               `json:"version"`
+
+	// Processes 最近一次进程快照（纯传输字段，业务处理在内部扩展层）
+	Processes            []Process `json:"processes,omitempty"`
+	ProcessesCollectedAt int64     `json:"processes_collected_at,omitempty"`
+}
+
+// Process agent 上报的单个进程信息
+type Process struct {
+	PID       int32  `json:"pid"`
+	ExePath   string `json:"exepath"`
+	Cmdline   string `json:"cmdline"`
+	StartTime int64  `json:"start_time"`
 }
 
 // ConditionStatus 条件状态
