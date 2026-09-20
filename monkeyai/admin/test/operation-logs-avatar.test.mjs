@@ -97,7 +97,8 @@ test("operation log actors use the same blue user icon as tree members", async (
   )
   assert.doesNotMatch(source, /<Avatar|AvatarFallback|actor_name\.slice/)
   assert.match(source, /title=\{log\.actor_email \?\? undefined\}/)
-  assert.match(source, /\{log\.actor_name\}/)
+  assert.match(source, /<span className="truncate">\s*\{log\.actor_name\}/)
+  assert.doesNotMatch(source, /<span className="truncate font-medium">/)
 })
 
 test("operation log action uses target-action order without a second ID line", async () => {
@@ -117,24 +118,30 @@ test("operation log action uses target-action order without a second ID line", a
   assert.match(source, /\[t\("audit\.target"\), log\.target_id\]/)
 })
 
-test("operation log result appears before the operator", async () => {
+test("operation log operator appears before the result with regular text", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
   const header = source.split("<TableHeader")[1].split("</TableHeader>")[0]
   assert.ok(
-    header.indexOf('columns.result")') < header.indexOf('columns.operator")')
+    header.indexOf('columns.operator")') < header.indexOf('columns.result")')
   )
 
   const row = source
     .split("visibleLogs.map((log) => (")[1]
     .split("</TableRow>")[0]
-  assert.ok(row.indexOf("log.result ===") < row.indexOf("log.actor_name"))
+  assert.ok(row.indexOf("log.actor_name") < row.indexOf("log.result ==="))
   assert.match(
     row,
-    /<TableCell className="font-mono text-muted-foreground">\s*\{log\.source_ip \|\| "—"\}/
+    /<TableCell className="font-mono">\s*\{log\.source_ip \|\| "—"\}/
   )
+  assert.match(
+    row,
+    /<TableCell className="ps-\(--card-spacing\)">\s*\{dateFormatter\.format/
+  )
+  assert.doesNotMatch(row, /ps-\(--card-spacing\) text-muted-foreground/)
+  assert.doesNotMatch(row, /font-mono text-muted-foreground/)
 })
 
 test("operation log details are opened from the last actions column", async () => {
@@ -150,13 +157,16 @@ test("operation log details are opened from the last actions column", async () =
   )
   assert.match(
     header,
-    /<TableHead className="pe-\(--card-spacing\)">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
+    /<TableHead className="w-px pe-\(--card-spacing\) whitespace-nowrap">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
   )
 
   const row = source
     .split("visibleLogs.map((log) => (")[1]
     .split("</TableRow>")[0]
-  assert.match(row, /<TableCell className="pe-\(--card-spacing\)">\s*<Dialog>/)
+  assert.match(
+    row,
+    /<TableCell className="w-px pe-\(--card-spacing\) whitespace-nowrap">\s*<Dialog>/
+  )
   assert.match(
     row,
     /<Button\s+variant="outline"\s+size="xs"\s+type="button"\s*\/>/

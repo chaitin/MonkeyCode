@@ -359,10 +359,10 @@ export function OperationLogsPage() {
                     {t("pages.operationLogs.columns.time")}
                   </TableHead>
                   <TableHead>
-                    {t("pages.operationLogs.columns.result")}
+                    {t("pages.operationLogs.columns.operator")}
                   </TableHead>
                   <TableHead>
-                    {t("pages.operationLogs.columns.operator")}
+                    {t("pages.operationLogs.columns.result")}
                   </TableHead>
                   <TableHead>
                     {t("pages.operationLogs.columns.action")}
@@ -370,7 +370,7 @@ export function OperationLogsPage() {
                   <TableHead>
                     {t("pages.operationLogs.columns.ipAddress")}
                   </TableHead>
-                  <TableHead className="pe-(--card-spacing)">
+                  <TableHead className="w-px pe-(--card-spacing) whitespace-nowrap">
                     {t("pages.operationLogs.columns.operations")}
                   </TableHead>
                 </TableRow>
@@ -379,19 +379,8 @@ export function OperationLogsPage() {
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-(--card-spacing)">
                         {dateFormatter.format(new Date(log.occurred_at))}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            log.result === "success"
-                              ? "secondary"
-                              : "destructive"
-                          }
-                        >
-                          {resultLabel(log.result)}
-                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div
@@ -404,16 +393,25 @@ export function OperationLogsPage() {
                             strokeWidth={2}
                             aria-hidden="true"
                           />
-                          <span className="truncate font-medium">
-                            {log.actor_name}
-                          </span>
+                          <span className="truncate">{log.actor_name}</span>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            log.result === "success"
+                              ? "secondary"
+                              : "destructive"
+                          }
+                        >
+                          {resultLabel(log.result)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>{actionLabel(log)}</TableCell>
-                      <TableCell className="font-mono text-muted-foreground">
+                      <TableCell className="font-mono">
                         {log.source_ip || "—"}
                       </TableCell>
-                      <TableCell className="pe-(--card-spacing)">
+                      <TableCell className="w-px pe-(--card-spacing) whitespace-nowrap">
                         <Dialog>
                           <DialogTrigger
                             render={
