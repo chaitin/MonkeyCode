@@ -14,14 +14,16 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=3, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=4, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
-连接直接保存配置，专家直接关联连接；同一用户可以为同一连接创建多份凭证，每个连接最多保留一份未撤销的集中凭证。工具的组合外键防止跨连接引用凭证。计费账户从初始化起校验余额与冻结金额，流水触发器禁止修改和删除。
+连接直接保存配置，专家直接关联连接；同一用户可以为同一连接创建多份凭证，每个连接最多保留一份未撤销的集中凭证。工具的组合外键防止跨连接引用凭证。计费账户校验冻结金额非负，允许调用结算后余额为负，流水触发器禁止修改和删除。
 
 `migrations` 仍是结构定义的唯一来源。修改后在 `backend` 运行 `make generate` 更新 sqlc schema 与生成文件，再运行 `make check`；数据库集成测试验证有业务数据时的 `down → up`。迁移文件名和 up/down 配对由 `go test ./migrations` 检查。
 
 新增迁移 `000003_group_quota_inheritance` 移除 `users.billing_group_id`，额度直接使用 `group_users`：个人自定义优先，多组取最高有效额度，无组继承团队。已有成员无需手工对齐；现有账户、余额与历史分组快照不修改。升级前备份，前后端需同步发布；down 仅恢复旧字段结构，不能恢复已移除的独立归属数据。
+
+新增迁移 `000004_credit_account_overdraft` 允许余额为负及冻结额超过余额，仅保留冻结额非负约束。付费调用在可用积分（余额减冻结额）大于零时获准执行，完整预留费用，按实际用量结算；零或负可用积分不再接收新的付费调用，免费调用不受影响。百智云钱包自身的预扣限制不变。回滚前需结清负余额并释放超额冻结，否则回滚会失败，不会截断余额或改写历史流水。
 
 本次单版重置是重新部署的特定安排。后续正式发布后的 schema 变更正常追加六位递增迁移版本，已发布迁移不再改写。字符串统一使用 `text`，候选值使用 `CHECK`。

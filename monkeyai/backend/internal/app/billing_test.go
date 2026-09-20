@@ -218,9 +218,32 @@ func TestBillingIntegration(t *testing.T) {
 		t.Helper()
 		return must("GET", accountPath, nil, "")["account"].(map[string]any)["version"]
 	}
-	must("POST", accountPath+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证额度限制", "version": accountVersion()}, "")
-	if code, _, _ := call("POST", "/v1/chat/completions", body, key, ""); code != 402 || requests.Load() != 1 {
-		t.Fatalf("余额不足仍调用上游: %d %d", code, requests.Load())
+	must("POST", accountPath+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证零头可用", "version": accountVersion()}, "")
+	code, out, headers = call("POST", "/v1/chat/completions", body, key, "small-balance")
+	if code != 200 || requests.Load() != 2 {
+		t.Fatalf("剩余正积分应允许调用: %d %v %d", code, out, requests.Load())
+	}
+	overdraftCtx, overdraftCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer overdraftCancel()
+	if err = handler.(*applicationHandler).proxy.Wait(overdraftCtx); err != nil {
+		t.Fatal(err)
+	}
+	overdraftTransaction := headers.Get("X-Billing-Transaction-ID")
+	detail = must("GET", "/api/admin/v1/billing/transactions/"+overdraftTransaction, nil, "")
+	if detail.String("status") != "settled" || detail.String("amount") != "1.480000" {
+		t.Fatalf("扣负交易应正常结算: %v", detail)
+	}
+	account := resource.Object(must("GET", accountPath, nil, "")["account"].(map[string]any))
+	if account.String("balance") != "-0.48" || account.String("available") != "-0.48" || account.String("frozen") != "0" {
+		t.Fatalf("应展示真实负余额: %v", account)
+	}
+	if code, _, _ := call("POST", "/v1/chat/completions", body, key, ""); code != 402 || requests.Load() != 2 {
+		t.Fatalf("负余额不应继续调用上游: %d %d", code, requests.Load())
+	}
+	must("POST", "/api/admin/v1/billing/transactions/"+overdraftTransaction+"/refund", resource.Object{"reason": "验证负余额退款"}, "")
+	account = resource.Object(must("GET", accountPath, nil, "")["account"].(map[string]any))
+	if account.String("balance") != "1" {
+		t.Fatalf("退款应恢复负余额: %v", account)
 	}
 	must("GET", "/api/admin/v1/billing/entries?user=计费&category=model&page_size=1", nil, "")
 	reconciliation := must("GET", "/api/admin/v1/billing/reconciliation", nil, "")

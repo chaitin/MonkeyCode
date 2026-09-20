@@ -291,11 +291,11 @@ func TestConcurrentReservations(t *testing.T) {
 	for err := range failures {
 		t.Error(err)
 	}
-	if len(ids) != 2 {
-		t.Fatalf("应该只有两笔获准执行，实际 %d", len(ids))
+	if len(ids) != 3 {
+		t.Fatalf("应允许第三笔用完零头，之后不再透支，实际 %d", len(ids))
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Frozen != amountText("8") || a.Available != amountText("2") {
+	if err != nil || a.Frozen != amountText("12") || a.Available != amountText("-2") {
 		t.Fatal(a, err)
 	}
 	for id := range ids {

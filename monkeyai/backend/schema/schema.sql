@@ -702,3 +702,7 @@ CREATE TABLE endpoints (
 );
 
 ALTER TABLE users DROP COLUMN billing_group_id;
+
+ALTER TABLE credit_accounts
+    DROP CONSTRAINT credit_accounts_amount_check,
+    ADD CONSTRAINT credit_accounts_amount_check CHECK (frozen >= 0);
