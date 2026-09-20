@@ -326,6 +326,36 @@ ORDER BY
     e.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
+-- name: CountUserEntries :one
+SELECT count(*)
+FROM credit_ledger_entries e
+WHERE e.user_id = sqlc.arg(user_id)
+    AND e.entry_type IN ('charge', 'refund')
+    AND (sqlc.arg(content_query)::text = '' OR e.item_name ILIKE '%' || sqlc.arg(content_query)::text || '%')
+    AND (sqlc.arg(category)::text = '' OR e.category = sqlc.arg(category)::text)
+    AND (sqlc.arg(mode)::text = '' OR e.mode = sqlc.arg(mode)::text)
+    AND (sqlc.arg(entry_type)::text = '' OR e.entry_type = sqlc.arg(entry_type)::text)
+    AND (sqlc.narg(from_time)::timestamptz IS NULL OR e.occurred_at >= sqlc.narg(from_time))
+    AND (sqlc.narg(until_time)::timestamptz IS NULL OR e.occurred_at < sqlc.narg(until_time));
+
+-- name: ListUserEntries :many
+SELECT jsonb_build_object(
+    'id', e.id, 'transaction_id', e.transaction_id,
+    'entry_type', e.entry_type, 'category', e.category, 'item_name', e.item_name,
+    'credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
+    'mode', e.mode, 'occurred_at', e.occurred_at)
+FROM credit_ledger_entries e
+WHERE e.user_id = sqlc.arg(user_id)
+    AND e.entry_type IN ('charge', 'refund')
+    AND (sqlc.arg(content_query)::text = '' OR e.item_name ILIKE '%' || sqlc.arg(content_query)::text || '%')
+    AND (sqlc.arg(category)::text = '' OR e.category = sqlc.arg(category)::text)
+    AND (sqlc.arg(mode)::text = '' OR e.mode = sqlc.arg(mode)::text)
+    AND (sqlc.arg(entry_type)::text = '' OR e.entry_type = sqlc.arg(entry_type)::text)
+    AND (sqlc.narg(from_time)::timestamptz IS NULL OR e.occurred_at >= sqlc.narg(from_time))
+    AND (sqlc.narg(until_time)::timestamptz IS NULL OR e.occurred_at < sqlc.narg(until_time))
+ORDER BY e.occurred_at DESC, e.id DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
 -- name: SummarizeEntries :one
 SELECT
     jsonb_build_object('charges', COALESCE(- sum(credit_delta) FILTER (WHERE entry_type = 'charge'),

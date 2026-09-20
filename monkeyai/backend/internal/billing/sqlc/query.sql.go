@@ -385,6 +385,44 @@ func (q *Queries) CountPendingTransactions(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countUserEntries = `-- name: CountUserEntries :one
+SELECT count(*)
+FROM credit_ledger_entries e
+WHERE e.user_id = $1
+    AND e.entry_type IN ('charge', 'refund')
+    AND ($2::text = '' OR e.item_name ILIKE '%' || $2::text || '%')
+    AND ($3::text = '' OR e.category = $3::text)
+    AND ($4::text = '' OR e.mode = $4::text)
+    AND ($5::text = '' OR e.entry_type = $5::text)
+    AND ($6::timestamptz IS NULL OR e.occurred_at >= $6)
+    AND ($7::timestamptz IS NULL OR e.occurred_at < $7)
+`
+
+type CountUserEntriesParams struct {
+	UserID       string
+	ContentQuery string
+	Category     string
+	Mode         string
+	EntryType    string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+}
+
+func (q *Queries) CountUserEntries(ctx context.Context, arg CountUserEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserEntries,
+		arg.UserID,
+		arg.ContentQuery,
+		arg.Category,
+		arg.Mode,
+		arg.EntryType,
+		arg.FromTime,
+		arg.UntilTime,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO credit_accounts (user_id, balance, QUOTA, group_id, period_start_at, period_end_at, last_refreshed_at)
     VALUES ($1, $2, $2, NULLIF
@@ -983,6 +1021,67 @@ ORDER BY
 
 func (q *Queries) ListGroupQuotas(ctx context.Context) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listGroupQuotas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserEntries = `-- name: ListUserEntries :many
+SELECT jsonb_build_object(
+    'id', e.id, 'transaction_id', e.transaction_id,
+    'entry_type', e.entry_type, 'category', e.category, 'item_name', e.item_name,
+    'credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
+    'mode', e.mode, 'occurred_at', e.occurred_at)
+FROM credit_ledger_entries e
+WHERE e.user_id = $1
+    AND e.entry_type IN ('charge', 'refund')
+    AND ($2::text = '' OR e.item_name ILIKE '%' || $2::text || '%')
+    AND ($3::text = '' OR e.category = $3::text)
+    AND ($4::text = '' OR e.mode = $4::text)
+    AND ($5::text = '' OR e.entry_type = $5::text)
+    AND ($6::timestamptz IS NULL OR e.occurred_at >= $6)
+    AND ($7::timestamptz IS NULL OR e.occurred_at < $7)
+ORDER BY e.occurred_at DESC, e.id DESC
+LIMIT $9 OFFSET $8
+`
+
+type ListUserEntriesParams struct {
+	UserID       string
+	ContentQuery string
+	Category     string
+	Mode         string
+	EntryType    string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+	Offset       int32
+	Limit        int32
+}
+
+func (q *Queries) ListUserEntries(ctx context.Context, arg ListUserEntriesParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listUserEntries,
+		arg.UserID,
+		arg.ContentQuery,
+		arg.Category,
+		arg.Mode,
+		arg.EntryType,
+		arg.FromTime,
+		arg.UntilTime,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
