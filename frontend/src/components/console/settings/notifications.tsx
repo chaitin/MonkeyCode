@@ -595,10 +595,10 @@ export default function Notifications() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleSettings.notifications.remove.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleSettings.notifications.remove.description", { name: channelToDelete?.name })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleSettings.notifications.remove.description", { name: channelToDelete?.name })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setChannelToDelete(null)} disabled={deleting}>
               {t("consoleSettings.notifications.actions.cancel")}
@@ -624,10 +624,10 @@ export default function Notifications() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t("consoleSettings.notifications.wechatUnbind.title")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("consoleSettings.notifications.wechatUnbind.description")}
-                </AlertDialogDescription>
               </AlertDialogHeader>
+              <AlertDialogDescription>
+                {t("consoleSettings.notifications.wechatUnbind.description")}
+              </AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={unbindingWechatMp}>
                   {t("consoleSettings.notifications.actions.cancel")}

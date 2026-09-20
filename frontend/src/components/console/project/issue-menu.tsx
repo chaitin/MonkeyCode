@@ -114,10 +114,10 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleProject.issue.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleProject.issue.delete.description", { title: issue.title || t("consoleProject.issue.untitled") })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleProject.issue.delete.description", { title: issue.title || t("consoleProject.issue.untitled") })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>{t("consoleProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

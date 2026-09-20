@@ -891,17 +891,17 @@ export function OtherSettingsPage() {
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.otherSettings.skillTags.deleteDialogTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.otherSettings.skillTags.deleteDialogDescription", {
-                tag: tagPendingDeletion?.name ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.otherSettings.skillTags.deleteDialogDescription", {
+              tag: tagPendingDeletion?.name ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>
               {t("pages.otherSettings.skillTags.cancel")}
@@ -1956,7 +1956,7 @@ export function OtherSettingsPage() {
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t(
@@ -1965,14 +1965,14 @@ export function OtherSettingsPage() {
                   : "pages.otherSettings.loginMethods.disableRegistrationDialogTitle"
               )}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                registrationPendingValue
-                  ? "pages.otherSettings.loginMethods.enableRegistrationDialogDescription"
-                  : "pages.otherSettings.loginMethods.disableRegistrationDialogDescription"
-              )}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t(
+              registrationPendingValue
+                ? "pages.otherSettings.loginMethods.enableRegistrationDialogDescription"
+                : "pages.otherSettings.loginMethods.disableRegistrationDialogDescription"
+            )}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>
               {t("pages.otherSettings.email.cancel")}

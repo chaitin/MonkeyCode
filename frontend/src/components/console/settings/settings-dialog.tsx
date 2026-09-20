@@ -186,14 +186,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 ? t("consoleSettings.githubApp.successTitle")
                 : t("consoleSettings.githubApp.failedTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {result?.type === "success"
-                ? result.accountLogin
-                  ? t("consoleSettings.githubApp.linkedAccount", { account: result.accountLogin })
-                  : t("consoleSettings.githubApp.successDescription")
-                : t("consoleSettings.githubApp.failedDescription", { reason: result?.reason, message: result?.message })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {result?.type === "success"
+              ? result.accountLogin
+                ? t("consoleSettings.githubApp.linkedAccount", { account: result.accountLogin })
+                : t("consoleSettings.githubApp.successDescription")
+              : t("consoleSettings.githubApp.failedDescription", { reason: result?.reason, message: result?.message })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogAction onClick={dismiss}>{t("consoleSettings.dialog.ok")}</AlertDialogAction>
           </AlertDialogFooter>

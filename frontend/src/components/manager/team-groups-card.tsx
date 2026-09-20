@@ -340,10 +340,10 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("managerGroups.dialogs.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("managerGroups.dialogs.delete.description", { name: deletingGroupName })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("managerGroups.dialogs.delete.description", { name: deletingGroupName })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelDelete} disabled={deleting}>
               {t("managerShell.common.cancel")}

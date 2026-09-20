@@ -402,10 +402,10 @@ export default function VmsPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{t("consoleSettings.vms.remove.title")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("consoleSettings.vms.remove.description", { name: formatVmName(vmToDelete) })}
-              </AlertDialogDescription>
             </AlertDialogHeader>
+            <AlertDialogDescription>
+              {t("consoleSettings.vms.remove.description", { name: formatVmName(vmToDelete) })}
+            </AlertDialogDescription>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => {
                 setDeleteDialogOpen(false)

@@ -170,10 +170,10 @@ export default function Models() {
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("consoleSettings.models.remove.title")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("consoleSettings.models.remove.description", { name: getModelDisplayNameForModel(model) || t("consoleSettings.models.fallback.unknownModel") })}
-                        </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <AlertDialogDescription>
+                        {t("consoleSettings.models.remove.description", { name: getModelDisplayNameForModel(model) || t("consoleSettings.models.fallback.unknownModel") })}
+                      </AlertDialogDescription>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{t("consoleSettings.models.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction

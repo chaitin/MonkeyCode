@@ -500,10 +500,10 @@ export default function FileManagerPage() {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>{t("consoleFiles.dialog.deleteTitle")}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {t("consoleFiles.dialog.deleteDescription", { path: normalizePath(currentPath + '/' + file.name) })}
-                                </AlertDialogDescription>
                               </AlertDialogHeader>
+                              <AlertDialogDescription>
+                                {t("consoleFiles.dialog.deleteDescription", { path: normalizePath(currentPath + '/' + file.name) })}
+                              </AlertDialogDescription>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>{t("consoleFiles.actions.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction onClick={() => handleDeleteFile(file)}>{t("consoleFiles.actions.confirmDelete")}</AlertDialogAction>

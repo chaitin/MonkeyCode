@@ -418,10 +418,10 @@ export default function TeamManagerHosts() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>{t("managerHosts.dialogs.remove.title")}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {t("managerHosts.dialogs.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
-                            </AlertDialogDescription>
                           </AlertDialogHeader>
+                          <AlertDialogDescription>
+                            {t("managerHosts.dialogs.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
+                          </AlertDialogDescription>
                           <AlertDialogFooter>
                             <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteHost(host.id!)} disabled={removingHost}>

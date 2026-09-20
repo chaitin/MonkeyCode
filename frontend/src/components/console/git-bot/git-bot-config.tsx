@@ -207,10 +207,10 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("consoleGitBot.config.deleteTitle")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("consoleGitBot.config.deleteDescription", { name: bot.name || t("consoleGitBot.common.unknown") })}
-                        </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <AlertDialogDescription>
+                        {t("consoleGitBot.config.deleteDescription", { name: bot.name || t("consoleGitBot.common.unknown") })}
+                      </AlertDialogDescription>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{t("consoleGitBot.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => handleDelete(bot)}>

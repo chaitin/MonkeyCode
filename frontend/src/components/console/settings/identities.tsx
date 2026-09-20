@@ -401,10 +401,10 @@ export default function Identities() {
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>{t("consoleSettings.identities.delete.title")}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t("consoleSettings.identities.delete.description", { name: identity.username })}
-                    </AlertDialogDescription>
                   </AlertDialogHeader>
+                  <AlertDialogDescription>
+                    {t("consoleSettings.identities.delete.description", { name: identity.username })}
+                  </AlertDialogDescription>
                   <AlertDialogFooter>
                     <AlertDialogCancel>{t("consoleSettings.identities.actions.cancel")}</AlertDialogCancel>
                     <AlertDialogAction

@@ -100,14 +100,14 @@ export function SiteRegionPrompt() {
               targetRegion: targetRegionLabel,
             })}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("siteRegionPrompt.description", {
-              lng: targetLanguage,
-              currentRegion: currentRegionLabel,
-              targetRegion: targetRegionLabel,
-            })}
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          {t("siteRegionPrompt.description", {
+            lng: targetLanguage,
+            currentRegion: currentRegionLabel,
+            targetRegion: targetRegionLabel,
+          })}
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleStay}>
             {t("siteRegionPrompt.actions.stay", {

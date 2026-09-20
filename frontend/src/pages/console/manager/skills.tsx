@@ -243,10 +243,10 @@ export default function TeamManagerSkills() {
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>{t("managerSkills.dialogs.delete.title")}</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {t("managerSkills.dialogs.delete.description", { name: skill.name })}
-                              </AlertDialogDescription>
                             </AlertDialogHeader>
+                            <AlertDialogDescription>
+                              {t("managerSkills.dialogs.delete.description", { name: skill.name })}
+                            </AlertDialogDescription>
                             <AlertDialogFooter>
                               <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                               <AlertDialogAction onClick={() => handleDelete(skill.id)}>

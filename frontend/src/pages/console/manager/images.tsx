@@ -182,12 +182,12 @@ export default function TeamManagerImages() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>{t("managerImages.delete.title")}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {t("managerImages.delete.description", {
-                                name: image.remark || getImageShortName(image.name || ''),
-                              })}
-                            </AlertDialogDescription>
                           </AlertDialogHeader>
+                          <AlertDialogDescription>
+                            {t("managerImages.delete.description", {
+                              name: image.remark || getImageShortName(image.name || ''),
+                            })}
+                          </AlertDialogDescription>
                           <AlertDialogFooter>
                             <AlertDialogCancel>{t("managerImages.actions.cancel")}</AlertDialogCancel>
                             <AlertDialogAction

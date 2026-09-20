@@ -382,10 +382,10 @@ export default function ToolsAndMcp() {
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>{t("consoleSettings.mcp.delete.title")}</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {t("consoleSettings.mcp.delete.description", { name })}
-                          </AlertDialogDescription>
                         </AlertDialogHeader>
+                        <AlertDialogDescription>
+                          {t("consoleSettings.mcp.delete.description", { name })}
+                        </AlertDialogDescription>
                         <AlertDialogFooter>
                           <AlertDialogCancel disabled={deleting}>{t("consoleSettings.mcp.actions.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={onDelete} disabled={deleting}>

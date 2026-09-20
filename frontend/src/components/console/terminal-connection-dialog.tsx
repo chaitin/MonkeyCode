@@ -117,10 +117,10 @@ export default function TerminalConnectionDialog({
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("consoleVm.connection.closeTitle")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("consoleVm.connection.closeDescription", { id: connection.id })}
-                        </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <AlertDialogDescription>
+                        {t("consoleVm.connection.closeDescription", { id: connection.id })}
+                      </AlertDialogDescription>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{t("consoleVm.common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction

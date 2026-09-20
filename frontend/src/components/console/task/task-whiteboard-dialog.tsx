@@ -164,10 +164,10 @@ export function TaskWhiteboardDialog({
         <AlertDialogContent onKeyDown={resetDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.whiteboard.clearTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("taskDetail.whiteboard.clearDescription")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("taskDetail.whiteboard.clearDescription")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={resetDialogNavigation.cancelRef} disabled={submitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button

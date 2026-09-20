@@ -234,12 +234,12 @@ export default function TeamManagerModels() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle>{t("managerModels.remove.title")}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {t("managerModels.remove.description", {
-                                name: getModelDisplayNameForModel(model) || t("managerModels.fallback.unknownModel"),
-                              })}
-                            </AlertDialogDescription>
                           </AlertDialogHeader>
+                          <AlertDialogDescription>
+                            {t("managerModels.remove.description", {
+                              name: getModelDisplayNameForModel(model) || t("managerModels.fallback.unknownModel"),
+                            })}
+                          </AlertDialogDescription>
                           <AlertDialogFooter>
                             <AlertDialogCancel>{t("managerModels.actions.cancel")}</AlertDialogCancel>
                             <AlertDialogAction

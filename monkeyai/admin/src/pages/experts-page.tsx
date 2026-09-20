@@ -798,17 +798,17 @@ export function ExpertsPage() {
           if (!open) setPendingDeletion(null)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.experts.deleteTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.experts.deleteDescription", {
-                expert: pendingDeletion?.name ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.experts.deleteDescription", {
+              expert: pendingDeletion?.name ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("pages.experts.cancel")}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={deleteExpert}>

@@ -378,12 +378,12 @@ export default function TeamManagerManager() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("managerAdmins.dialogs.resetPassword.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isOfflineEdition
-                ? t("managerAdmins.dialogs.resetPassword.offlineDescription", { email: resettingPasswordUser.email })
-                : t("managerAdmins.dialogs.resetPassword.onlineDescription", { email: resettingPasswordUser.email })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {isOfflineEdition
+              ? t("managerAdmins.dialogs.resetPassword.offlineDescription", { email: resettingPasswordUser.email })
+              : t("managerAdmins.dialogs.resetPassword.onlineDescription", { email: resettingPasswordUser.email })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>
               {t("managerShell.common.cancel")}
@@ -399,10 +399,10 @@ export default function TeamManagerManager() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("managerAdmins.dialogs.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("managerAdmins.dialogs.delete.description", { email: deletingManager?.user?.email })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("managerAdmins.dialogs.delete.description", { email: deletingManager?.user?.email })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
               {t("managerShell.common.cancel")}

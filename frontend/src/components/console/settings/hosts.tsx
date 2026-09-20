@@ -218,10 +218,10 @@ export default function Hosts() {
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("consoleSettings.hosts.remove.title")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("consoleSettings.hosts.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
-                        </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <AlertDialogDescription>
+                        {t("consoleSettings.hosts.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
+                      </AlertDialogDescription>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{t("consoleSettings.hosts.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction

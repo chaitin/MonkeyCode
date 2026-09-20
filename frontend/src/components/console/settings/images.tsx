@@ -159,10 +159,10 @@ export default function Images() {
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("consoleSettings.images.delete.title")}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {t("consoleSettings.images.delete.description", { name: image.remark || getImageShortName(image.name || '') })}
-                        </AlertDialogDescription>
                       </AlertDialogHeader>
+                      <AlertDialogDescription>
+                        {t("consoleSettings.images.delete.description", { name: image.remark || getImageShortName(image.name || '') })}
+                      </AlertDialogDescription>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{t("consoleSettings.images.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction

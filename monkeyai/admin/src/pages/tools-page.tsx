@@ -1121,17 +1121,17 @@ export function ToolsPage() {
           if (!open) setServerPendingDeletion(null)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.tools.deleteDialogTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.tools.deleteDialogDescription", {
-                tool: serverPendingDeletion?.name ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.tools.deleteDialogDescription", {
+              tool: serverPendingDeletion?.name ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("pages.tools.cancel")}</AlertDialogCancel>
             <AlertDialogAction

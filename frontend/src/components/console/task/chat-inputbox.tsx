@@ -1322,10 +1322,10 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         <AlertDialogContent onKeyDown={slashCommandDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.chat.slashCommand.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("taskDetail.chat.slashCommand.description")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("taskDetail.chat.slashCommand.description")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={slashCommandDialogNavigation.cancelRef}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction ref={slashCommandDialogNavigation.confirmRef} onClick={handleConfirmSlashCommand}>

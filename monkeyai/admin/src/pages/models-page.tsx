@@ -793,17 +793,17 @@ export function ModelsPage() {
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.models.deleteDialogTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.models.deleteDialogDescription", {
-                model: modelPendingDeletion?.displayName ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.models.deleteDialogDescription", {
+              model: modelPendingDeletion?.displayName ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("pages.models.cancel")}</AlertDialogCancel>
             <AlertDialogAction

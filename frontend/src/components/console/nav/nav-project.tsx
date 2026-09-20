@@ -410,18 +410,20 @@ export default function NavProject() {
           </SidebarMenu>
       )}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
-        <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
-          <AlertDialogHeader
+        <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("navProject.deleteTask.title")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div
             role="region"
             tabIndex={0}
             aria-label={t("navProject.deleteTask.title")}
             className="min-h-0 overflow-y-auto overscroll-contain outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset"
           >
-            <AlertDialogTitle>{t("navProject.deleteTask.title")}</AlertDialogTitle>
             <AlertDialogDescription className="break-words [overflow-wrap:anywhere]">
               {t("navProject.deleteTask.description", { task: getTaskDisplayName(taskToDelete) })}
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
@@ -439,18 +441,20 @@ export default function NavProject() {
         </AlertDialogContent>
       </AlertDialog>
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
-        <AlertDialogContent onKeyDown={stopTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
-          <AlertDialogHeader
+        <AlertDialogContent onKeyDown={stopTaskDialogNavigation.onKeyDown} className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("navProject.stopTask.title")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div
             role="region"
             tabIndex={0}
             aria-label={t("navProject.stopTask.title")}
             className="min-h-0 overflow-y-auto overscroll-contain outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset"
           >
-            <AlertDialogTitle>{t("navProject.stopTask.title")}</AlertDialogTitle>
             <AlertDialogDescription className="break-words [overflow-wrap:anywhere]">
               {t("navProject.stopTask.description", { task: getTaskDisplayName(taskToStop) })}
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel ref={stopTaskDialogNavigation.cancelRef} disabled={stopping}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

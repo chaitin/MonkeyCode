@@ -598,10 +598,10 @@ export default function NavBalance({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("navBalance.logout.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("navBalance.logout.description")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("navBalance.logout.description")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("navBalance.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleLogout}>

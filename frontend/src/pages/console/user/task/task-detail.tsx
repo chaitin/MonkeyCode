@@ -1571,12 +1571,12 @@ export default function TaskDetailPage() {
         <AlertDialogContent onKeyDown={modelSwitchDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.page.dialogs.switchModel.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("taskDetail.page.dialogs.switchModel.description", {
-                model: pendingSwitchModel ? getModelOptionDisplayName(pendingSwitchModel) : t("taskDetail.page.dialogs.switchModel.selectedModel"),
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("taskDetail.page.dialogs.switchModel.description", {
+              model: pendingSwitchModel ? getModelOptionDisplayName(pendingSwitchModel) : t("taskDetail.page.dialogs.switchModel.selectedModel"),
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={modelSwitchDialogNavigation.cancelRef} disabled={modelSwitchSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
@@ -1603,10 +1603,10 @@ export default function TaskDetailPage() {
         <AlertDialogContent onKeyDown={resetContextDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.page.dialogs.resetContext.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("taskDetail.page.dialogs.resetContext.description")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("taskDetail.page.dialogs.resetContext.description")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={resetContextDialogNavigation.cancelRef} disabled={resetContextSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
@@ -1637,12 +1637,12 @@ export default function TaskDetailPage() {
                 ? t("taskDetail.page.dialogs.restartAgent.clearTitle")
                 : t("taskDetail.page.dialogs.restartAgent.title")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {restartAgentClearContext
-                ? t("taskDetail.page.dialogs.restartAgent.clearDescription")
-                : t("taskDetail.page.dialogs.restartAgent.description")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {restartAgentClearContext
+              ? t("taskDetail.page.dialogs.restartAgent.clearDescription")
+              : t("taskDetail.page.dialogs.restartAgent.description")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={restartAgentDialogNavigation.cancelRef} disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button

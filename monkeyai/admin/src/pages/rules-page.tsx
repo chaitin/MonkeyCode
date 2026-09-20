@@ -460,17 +460,17 @@ export function RulesPage() {
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.rules.deleteDialogTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.rules.deleteDialogDescription", {
-                rule: rulePendingDeletion?.name ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.rules.deleteDialogDescription", {
+              rule: rulePendingDeletion?.name ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("pages.rules.cancel")}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDeleteRule}>

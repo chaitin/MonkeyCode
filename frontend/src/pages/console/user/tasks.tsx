@@ -281,10 +281,10 @@ export default function TasksPage() {
         <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleTasks.dialog.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleTasks.dialog.delete.description", { taskName: getTaskDisplayName(taskToDelete) })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleTasks.dialog.delete.description", { taskName: getTaskDisplayName(taskToDelete) })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
@@ -305,10 +305,10 @@ export default function TasksPage() {
         <AlertDialogContent onKeyDown={stopTaskDialogNavigation.onKeyDown}>
             <AlertDialogHeader>
               <AlertDialogTitle>{t("consoleTasks.dialog.stop.title")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("consoleTasks.dialog.stop.description", { taskName: getTaskDisplayName(taskToStop) })}
-              </AlertDialogDescription>
             </AlertDialogHeader>
+            <AlertDialogDescription>
+              {t("consoleTasks.dialog.stop.description", { taskName: getTaskDisplayName(taskToStop) })}
+            </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={stopTaskDialogNavigation.cancelRef} disabled={stopping}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

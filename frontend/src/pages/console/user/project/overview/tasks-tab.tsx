@@ -291,10 +291,10 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
         <AlertDialogContent onKeyDown={deleteTaskDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("projectOverview.tasks.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("projectOverview.tasks.delete.description", { task: getTaskDisplayName(taskToDelete) })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("projectOverview.tasks.delete.description", { task: getTaskDisplayName(taskToDelete) })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={deleteTaskDialogNavigation.cancelRef} disabled={deleting}>{t("projectOverview.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

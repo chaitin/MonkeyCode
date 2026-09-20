@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -44,12 +45,12 @@ export function GroupActionDialog({
   onSaved: (group: MemberGroup | null) => void
 }) {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [name, setName] = useState(action === "rename" ? group.name : "")
   const [memberIDs, setMemberIDs] = useState(group.member_ids)
   const [query, setQuery] = useState("")
   const [parentID, setParentID] = useState("")
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
   const excluded = descendantIDs(groups, group.id)
   const targets = groups.filter(
     (candidate) =>
@@ -80,7 +81,6 @@ export function GroupActionDialog({
     event.preventDefault()
     if (saving) return
     setSaving(true)
-    setError("")
     try {
       const path = `/api/admin/v1/groups/${group.id}`
       let updated: MemberGroup | null = null
@@ -109,9 +109,16 @@ export function GroupActionDialog({
           ),
         })
       }
+      showToast({
+        status: "success",
+        title: t(`pages.membersAndGroups.${titleKey}`),
+        description: t("pages.membersAndGroups.actionSucceeded", {
+          target: updated?.name ?? group.name,
+        }),
+      })
       onSaved(updated)
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setSaving(false)
     }
@@ -142,11 +149,6 @@ export function GroupActionDialog({
               })}
             </DialogDescription>
           </DialogHeader>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
           {(action === "add-subgroup" || action === "rename") && (
             <Field>
               <FieldLabel htmlFor="group-name">

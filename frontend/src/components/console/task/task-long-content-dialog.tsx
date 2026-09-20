@@ -43,10 +43,10 @@ export function TaskLongContentDialog({
       <AlertDialogContent onKeyDown={dialogNavigation.onKeyDown}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("taskDetail.chat.longContent.title")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("taskDetail.chat.longContent.description", { count: characterCount })}
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          {t("taskDetail.chat.longContent.description", { count: characterCount })}
+        </AlertDialogDescription>
         <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
           <div className="break-all">{t("taskDetail.chat.longContent.filename", { filename })}</div>
           <div className="text-xs text-muted-foreground">

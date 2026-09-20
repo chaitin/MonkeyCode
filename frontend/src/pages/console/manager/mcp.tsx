@@ -389,10 +389,10 @@ function ServerItem({
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>{t("managerMcp.delete.title")}</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {t("managerMcp.delete.description", { name: server.name || t("managerMcp.fallback.unnamedServer") })}
-                          </AlertDialogDescription>
                         </AlertDialogHeader>
+                        <AlertDialogDescription>
+                          {t("managerMcp.delete.description", { name: server.name || t("managerMcp.fallback.unnamedServer") })}
+                        </AlertDialogDescription>
                         <AlertDialogFooter>
                           <AlertDialogCancel disabled={deleting}>{t("managerShell.common.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={onDelete} disabled={deleting}>

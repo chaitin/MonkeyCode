@@ -221,10 +221,10 @@ const ProjectInfo = ({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleProject.delete.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleProject.delete.description", { name: deletingProject?.name || "" })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleProject.delete.description", { name: deletingProject?.name || "" })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteLoading}>{t("consoleProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

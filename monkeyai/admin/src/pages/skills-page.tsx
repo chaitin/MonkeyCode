@@ -759,17 +759,17 @@ export function SkillsPage() {
           }
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t("pages.skills.deleteDialogTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("pages.skills.deleteDialogDescription", {
-                skill: skillPendingDeletion?.name ?? "",
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("pages.skills.deleteDialogDescription", {
+              skill: skillPendingDeletion?.name ?? "",
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("pages.skills.cancel")}</AlertDialogCancel>
             <AlertDialogAction

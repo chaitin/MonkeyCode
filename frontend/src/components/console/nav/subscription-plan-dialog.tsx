@@ -568,22 +568,22 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   ? t("subscriptionPlan.confirm.renewTitle")
                   : t("subscriptionPlan.confirm.subscribeTitle")}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmingPlanCard
-                ? isConfirmingStripeUpgrade
-                  ? t("subscriptionPlan.confirm.upgradeDescription", {
-                      plan: confirmingPlanCard.name,
-                      period: selectedPeriodCountLabel,
-                    })
-                  : t("subscriptionPlan.confirm.description", {
-                      action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
-                      plan: confirmingPlanCard.name,
-                      period: selectedPeriodCountLabel,
-                      total: selectedOrderTotalLabel,
-                    })
-                : ""}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {confirmingPlanCard
+              ? isConfirmingStripeUpgrade
+                ? t("subscriptionPlan.confirm.upgradeDescription", {
+                    plan: confirmingPlanCard.name,
+                    period: selectedPeriodCountLabel,
+                  })
+                : t("subscriptionPlan.confirm.description", {
+                    action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
+                    plan: confirmingPlanCard.name,
+                    period: selectedPeriodCountLabel,
+                    total: selectedOrderTotalLabel,
+                  })
+              : ""}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>{t("subscriptionPlan.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction

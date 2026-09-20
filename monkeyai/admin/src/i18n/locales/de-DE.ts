@@ -540,10 +540,62 @@ export const deDE = {
       description:
         "Verwalten Sie Mitglieder, Gruppen und deren Zugriff auf Ressourcen.",
       groupsTitle: "Gruppen",
+      ungroupedMembers: "Mitglieder ohne Gruppe",
+      bulk: {
+        addMember: "Mitglied hinzufügen",
+        addOne: "Ein Mitglied hinzufügen",
+        addMany: "Mehrere Mitglieder hinzufügen",
+        title: "Mehrere Mitglieder hinzufügen",
+        singlePassword: "Anfangspasswort",
+        cancel: "Abbrechen",
+        createOne: "Erstellen",
+        creating: "Wird erstellt…",
+        description:
+          "Eine E-Mail-Adresse pro Zeile. Der Name entspricht zunächst der E-Mail-Adresse; die Rolle gilt für alle.",
+        role: "Rolle",
+        member: "Mitglied",
+        administrator: "Administrator",
+        emails: "E-Mail-Adressen",
+        placeholder: "alice@example.com\nbob@example.com",
+        limit: "Bis zu {{count}} Mitglieder pro Vorgang.",
+        empty: "Geben Sie mindestens eine E-Mail-Adresse ein.",
+        tooMany:
+          "Maximal {{count}} Mitglieder pro Vorgang. Teilen Sie die Liste auf.",
+        memberList: "Mitgliederliste",
+        previous: "Zurück",
+        adminPasswordHint:
+          "Legen Sie für jeden Administrator ein eigenes Passwort mit mindestens 12 Zeichen fest.",
+        email: "E-Mail-Adresse",
+        name: "Name",
+        password: "Anfangspasswort für {{email}}",
+        passwordPlaceholder: "Anfangspasswort (mindestens 12 Zeichen)",
+        errors: {
+          invalidEmail: "Ungültige E-Mail-Adresse",
+          duplicateEmail: "E-Mail-Adresse in dieser Liste doppelt",
+          existingEmail: "Diese E-Mail-Adresse existiert bereits",
+          missingName: "Name ist erforderlich",
+          passwordTooShort:
+            "Administratorpasswort muss mindestens 12 Zeichen haben",
+          duplicatePassword:
+            "Verwenden Sie für jeden Administrator ein anderes Anfangspasswort",
+        },
+        progress: "{{completed}} von {{total}} werden hinzugefügt…",
+        result:
+          "{{succeeded}} hinzugefügt; {{failed}} erfordern eine Korrektur.",
+        successResult: "{{count}} Mitglieder erfolgreich hinzugefügt.",
+        singleSuccess: "Mitglied erfolgreich hinzugefügt.",
+        next: "Weiter",
+        create: "{{count}} Mitglieder hinzufügen",
+      },
       groupsDescription:
         "Organisieren Sie Mitglieder in Gruppen und verwalten Sie Zugriffsrechte.",
       membersTitle: "Mitglieder",
       memberActions: "Aktionen für {{member}}",
+      confirmMemberAction:
+        "Aktion „{{action}}“ für {{member}} ({{email}}) bestätigen?",
+      adminPasswordHint:
+        "Das Initialpasswort muss mindestens 12 Zeichen lang sein.",
+      actionSucceeded: "Aktion abgeschlossen: {{target}}",
       enableMember: "Aktivieren",
       disableMember: "Deaktivieren",
       memberDisabled: "Deaktiviert",

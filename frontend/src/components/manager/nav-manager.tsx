@@ -170,10 +170,10 @@ export default function NavManager() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t("managerShell.account.logout.confirmTitle")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("managerShell.account.logout.confirmDescription")}
-                </AlertDialogDescription>
               </AlertDialogHeader>
+              <AlertDialogDescription>
+                {t("managerShell.account.logout.confirmDescription")}
+              </AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction onClick={handleLogout}>

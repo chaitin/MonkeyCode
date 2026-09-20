@@ -265,8 +265,8 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
         <AlertDialogContent onKeyDown={closeDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.terminal.closeTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("taskDetail.terminal.closeDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>{t("taskDetail.terminal.closeDescription")}</AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={closeDialogNavigation.cancelRef} onClick={() => setCloseDialogOpen(false)}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction ref={closeDialogNavigation.confirmRef} onClick={() => sessionToClose && handleDeleteSession(sessionToClose)}>

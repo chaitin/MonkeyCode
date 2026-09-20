@@ -321,10 +321,10 @@ export default function TerminalPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleTerminal.alerts.disconnectedTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleTerminal.alerts.disconnectedDescription")}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleTerminal.alerts.disconnectedDescription")}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogAction
               onClick={() => {

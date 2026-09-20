@@ -330,10 +330,10 @@ export function VmPortForwardDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("consoleVm.port.recycleTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("consoleVm.port.recycleDescription", { port: portToDelete?.port })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("consoleVm.port.recycleDescription", { port: portToDelete?.port })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => {
               setDeleteDialogOpen(false)

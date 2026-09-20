@@ -1048,12 +1048,12 @@ export function KnowledgeBasesPage() {
               <AlertDialogTitle>
                 {t("pages.knowledgeBases.deleteContentTitle")}
               </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("pages.knowledgeBases.deleteContentDescription", {
-                  content: contentPendingDeletion?.name ?? "",
-                })}
-              </AlertDialogDescription>
             </AlertDialogHeader>
+            <AlertDialogDescription>
+              {t("pages.knowledgeBases.deleteContentDescription", {
+                content: contentPendingDeletion?.name ?? "",
+              })}
+            </AlertDialogDescription>
             <AlertDialogFooter>
               <AlertDialogCancel>
                 {t("pages.knowledgeBases.cancel")}
@@ -1443,12 +1443,12 @@ export function KnowledgeBasesPage() {
               <AlertDialogTitle>
                 {t("pages.knowledgeBases.deleteDialogTitle")}
               </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("pages.knowledgeBases.deleteDialogDescription", {
-                  knowledgeBase: knowledgeBasePendingDeletion?.name ?? "",
-                })}
-              </AlertDialogDescription>
             </AlertDialogHeader>
+            <AlertDialogDescription>
+              {t("pages.knowledgeBases.deleteDialogDescription", {
+                knowledgeBase: knowledgeBasePendingDeletion?.name ?? "",
+              })}
+            </AlertDialogDescription>
             <AlertDialogFooter>
               <AlertDialogCancel>
                 {t("pages.knowledgeBases.cancel")}

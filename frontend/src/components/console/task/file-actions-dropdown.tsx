@@ -186,10 +186,10 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         <AlertDialogContent onClick={(e) => e.stopPropagation()} onKeyDown={deleteDialogNavigation.onKeyDown}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("taskDetail.fileActions.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("taskDetail.fileActions.deleteDescription", { fileType, displayPath })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("taskDetail.fileActions.deleteDescription", { fileType, displayPath })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={deleteDialogNavigation.cancelRef}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction ref={deleteDialogNavigation.confirmRef} onClick={handleDelete}>{t("taskDetail.fileActions.confirmDelete")}</AlertDialogAction>

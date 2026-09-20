@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Add01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
+import { Add01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useAppToast } from "@/components/animated-toast-provider"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,15 +31,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Item,
   ItemActions,
@@ -43,31 +54,35 @@ import {
 } from "@/components/ui/item"
 import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
+import { compareMembers } from "@/lib/member-sorting"
+import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
+import { MemberAvatar } from "@/components/members/member-avatar"
 import { GroupTreeItem } from "@/components/members/group-tree"
+import {
+  MemberActions,
+  type MemberActionUser,
+} from "@/components/members/member-actions"
 import {
   type ActiveGroupAction,
   ROOT_GROUP_ID,
-  groupMemberIDs,
+  directGroupsByMember,
   type MemberGroup,
 } from "@/lib/member-groups"
 
-type User = {
-  id: string
-  name: string
-  email: string
-  avatar_url?: string
-  role: "admin" | "user"
-  status: "active" | "disabled"
+type User = MemberActionUser & {
   joined_at: string
   last_login_at?: string
 }
 
+type MemberAction =
+  "enableMember" | "disableMember" | "makeAdministrator" | "removeAdministrator"
+
 export function MembersAndGroupsPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
-  const [selectedGroupID, setSelectedGroupID] = useState(ROOT_GROUP_ID)
   const [teamName, setTeamName] = useState("Monkey AI")
   const [groups, setGroups] = useState<MemberGroup[]>([])
   const [activeGroupAction, setActiveGroupAction] =
@@ -77,8 +92,13 @@ export function MembersAndGroupsPage() {
   const [error, setError] = useState("")
   const [savingID, setSavingID] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
+  const [createMode, setCreateMode] = useState<"single" | "bulk">("single")
   const [creating, setCreating] = useState(false)
-  const [roleTarget, setRoleTarget] = useState<User | null>(null)
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [pendingMemberAction, setPendingMemberAction] = useState<{
+    user: MemberActionUser
+    action: MemberAction
+  } | null>(null)
   const [rolePassword, setRolePassword] = useState("")
   const [newUser, setNewUser] = useState({
     name: "",
@@ -87,7 +107,7 @@ export function MembersAndGroupsPage() {
     password: "",
   })
 
-  const load = () => {
+  useEffect(() => {
     Promise.all([
       api<{ users: User[] }>("/api/admin/v1/users"),
       api<{ groups: MemberGroup[] }>("/api/admin/v1/groups"),
@@ -103,20 +123,21 @@ export function MembersAndGroupsPage() {
             .workspace_name || "Monkey AI"
         )
       })
-      .catch((reason: Error) => setError(reason.message))
+      .catch((reason: Error) => {
+        setError(reason.message)
+        showToast({ status: "error", title: reason.message })
+      })
       .finally(() => setLoading(false))
-  }
-
-  useEffect(load, [])
+  }, [showToast])
 
   const updateUser = async (
-    user: User,
-    patch: Partial<Pick<User, "name" | "role" | "status">> & {
+    user: MemberActionUser,
+    patch: Partial<Pick<MemberActionUser, "name" | "role" | "status">> & {
       password?: string
-    }
+    },
+    action: MemberAction
   ) => {
     setSavingID(user.id)
-    setError("")
     try {
       const updated = await api<User>(`/api/admin/v1/users/${user.id}`, {
         method: "PATCH",
@@ -130,26 +151,66 @@ export function MembersAndGroupsPage() {
       setUsers((current) =>
         current.map((item) => (item.id === updated.id ? updated : item))
       )
+      showToast({
+        status: "success",
+        title: t(`pages.membersAndGroups.${action}`),
+        description: t("pages.membersAndGroups.actionSucceeded", {
+          target: user.name,
+        }),
+      })
       return true
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
       return false
     } finally {
       setSavingID("")
     }
   }
 
+  const toggleUserStatus = (user: MemberActionUser) => {
+    setPendingMemberAction({
+      user,
+      action: user.status === "disabled" ? "enableMember" : "disableMember",
+    })
+  }
+
+  const toggleUserRole = (user: MemberActionUser) => {
+    setRolePassword("")
+    setPendingMemberAction({
+      user,
+      action:
+        user.role === "admin" ? "removeAdministrator" : "makeAdministrator",
+    })
+  }
+
+  const confirmMemberAction = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!pendingMemberAction || savingID) return
+    const { user, action } = pendingMemberAction
+    if (action === "makeAdministrator" && rolePassword.length < 12) return
+    const patch: Parameters<typeof updateUser>[1] =
+      action === "makeAdministrator"
+        ? { role: "admin", password: rolePassword }
+        : action === "removeAdministrator"
+          ? { role: "user" }
+          : { status: action === "enableMember" ? "active" : "disabled" }
+    if (await updateUser(user, patch, action)) {
+      setPendingMemberAction(null)
+      setRolePassword("")
+    }
+  }
+
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
-    const memberIDs = groupMemberIDs(groups, users, selectedGroupID)
-    return users.filter(
-      (user) =>
-        memberIDs.has(user.id) &&
-        (!normalizedQuery ||
+    return users
+      .filter(
+        (user) =>
+          !normalizedQuery ||
           user.name.toLocaleLowerCase().includes(normalizedQuery) ||
-          user.email.toLocaleLowerCase().includes(normalizedQuery))
-    )
-  }, [groups, query, selectedGroupID, users])
+          user.email.toLocaleLowerCase().includes(normalizedQuery)
+      )
+      .sort(compareMembers)
+  }, [query, users])
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -162,28 +223,30 @@ export function MembersAndGroupsPage() {
       })
       setUsers((current) => [created, ...current])
       setNewUser({ name: "", email: "", role: "user", password: "" })
+      showToast({
+        status: "success",
+        title: t("pages.membersAndGroups.bulk.singleSuccess"),
+      })
       setCreateOpen(false)
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setCreating(false)
     }
   }
 
-  const promoteUser = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!roleTarget || rolePassword.length < 12) return
-    if (
-      await updateUser(roleTarget, {
-        role: "admin",
-        password: rolePassword,
-      })
-    ) {
-      setRoleTarget(null)
-      setRolePassword("")
-    }
-  }
-
+  const nameCollator = useMemo(
+    () =>
+      new Intl.Collator(i18n.resolvedLanguage ?? i18n.language, {
+        sensitivity: "base",
+        numeric: true,
+      }),
+    [i18n.language, i18n.resolvedLanguage]
+  )
+  const groupsByMember = useMemo(
+    () => directGroupsByMember(groups, nameCollator),
+    [groups, nameCollator]
+  )
   const dateFormatter = new Intl.DateTimeFormat(
     i18n.resolvedLanguage ?? i18n.language,
     { dateStyle: "medium" }
@@ -204,6 +267,14 @@ export function MembersAndGroupsPage() {
 
   return (
     <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-4rem)] md:min-h-0 md:flex-none md:overflow-hidden">
+      {error && (
+        <p
+          className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
       <div className="grid flex-1 gap-4 md:min-h-0 md:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
         <Card className="min-h-64 md:min-h-0">
           <CardHeader>
@@ -222,9 +293,12 @@ export function MembersAndGroupsPage() {
                     group={group}
                     groups={displayGroups}
                     users={users}
-                    selectedID={selectedGroupID}
-                    onSelect={setSelectedGroupID}
+                    nameCollator={nameCollator}
+                    savingID={savingID}
+                    currentUserID={currentUser?.id}
                     onAction={setActiveGroupAction}
+                    onToggleStatus={toggleUserStatus}
+                    onToggleRole={toggleUserRole}
                   />
                 ))}
             </ul>
@@ -248,22 +322,20 @@ export function MembersAndGroupsPage() {
                 type="button"
                 size="sm"
                 className="cursor-pointer"
-                onClick={() => setCreateOpen(true)}
+                aria-label={t("pages.membersAndGroups.bulk.addMember")}
+                onClick={() => {
+                  setCreateMode("single")
+                  setCreateOpen(true)
+                }}
               >
                 <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-                <span className="hidden lg:inline">添加成员</span>
+                <span className="hidden lg:inline">
+                  {t("pages.membersAndGroups.bulk.addMember")}
+                </span>
               </Button>
             </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1 overflow-y-auto">
-            {error && (
-              <p
-                className="mb-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                role="alert"
-              >
-                {error}
-              </p>
-            )}
             {loading && (
               <p
                 role="status"
@@ -276,29 +348,42 @@ export function MembersAndGroupsPage() {
               {visibleUsers.map((user) => {
                 const isDisabled = user.status === "disabled"
                 const joinedAt = new Date(user.joined_at)
-                const isCurrentUser = user.id === currentUser?.id
 
                 return (
                   <Item
                     key={user.id}
                     role="listitem"
                     size="sm"
-                    variant={isDisabled ? "muted" : "outline"}
+                    variant="outline"
                     aria-busy={savingID === user.id}
                   >
                     <ItemMedia>
-                      <Avatar size="lg">
-                        <AvatarImage src={user.avatar_url} alt={user.name} />
-                        <AvatarFallback>{user.name.slice(0, 2)}</AvatarFallback>
-                      </Avatar>
+                      <MemberAvatar
+                        role={user.role}
+                        status={user.status}
+                        size="lg"
+                      />
                     </ItemMedia>
                     <ItemContent className="min-w-0">
                       <ItemTitle className="max-w-full min-w-0">
                         <span className="truncate font-medium">
                           {user.name}
                         </span>
+                        {user.role === "admin" && (
+                          <Badge
+                            variant="outline"
+                            className="border-green-500/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
+                          >
+                            {t(
+                              "pages.membersAndGroups.groupNames.administrators"
+                            )}
+                          </Badge>
+                        )}
                         {isDisabled && (
-                          <Badge variant="outline">
+                          <Badge
+                            variant="outline"
+                            className="border-red-500/40 text-red-700 dark:border-red-400/40 dark:text-red-400"
+                          >
                             {t("pages.membersAndGroups.memberDisabled")}
                           </Badge>
                         )}
@@ -308,65 +393,16 @@ export function MembersAndGroupsPage() {
                       </ItemDescription>
                     </ItemContent>
                     <ItemActions className="ms-auto shrink-0">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              disabled={savingID === user.id}
-                              aria-label={t(
-                                "pages.membersAndGroups.memberActions",
-                                { member: user.name }
-                              )}
-                            />
-                          }
-                        >
-                          <HugeiconsIcon
-                            icon={MoreHorizontalIcon}
-                            strokeWidth={2}
-                          />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              disabled={isCurrentUser}
-                              onClick={() =>
-                                void updateUser(user, {
-                                  status: isDisabled ? "active" : "disabled",
-                                })
-                              }
-                            >
-                              {t(
-                                isDisabled
-                                  ? "pages.membersAndGroups.enableMember"
-                                  : "pages.membersAndGroups.disableMember"
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={isCurrentUser}
-                              onClick={() => {
-                                if (user.role === "admin") {
-                                  void updateUser(user, { role: "user" })
-                                  return
-                                }
-                                setRolePassword("")
-                                setRoleTarget(user)
-                              }}
-                            >
-                              {t(
-                                user.role === "admin"
-                                  ? "pages.membersAndGroups.removeAdministrator"
-                                  : "pages.membersAndGroups.makeAdministrator"
-                              )}
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <MemberActions
+                        user={user}
+                        savingID={savingID}
+                        currentUserID={currentUser?.id}
+                        onToggleStatus={toggleUserStatus}
+                        onToggleRole={toggleUserRole}
+                      />
                     </ItemActions>
                     <ItemSeparator className="my-0" />
-                    <ItemFooter className="text-xs text-muted-foreground">
+                    <ItemFooter className="min-w-0 flex-wrap text-xs text-muted-foreground">
                       <span>
                         {t("pages.membersAndGroups.joinedAt", {
                           date: dateFormatter.format(joinedAt),
@@ -375,13 +411,27 @@ export function MembersAndGroupsPage() {
                           year: joinedAt.getFullYear(),
                         })}
                       </span>
-                      <Badge variant="outline">
-                        {user.role === "admin"
-                          ? t(
-                              "pages.membersAndGroups.groupNames.administrators"
-                            )
-                          : t("pages.membersAndGroups.membersTitle")}
-                      </Badge>
+                      <div className="ms-auto flex min-w-0 flex-wrap justify-end gap-1">
+                        {(groupsByMember.get(user.id) ?? []).map((group) => (
+                          <Badge
+                            key={group.id}
+                            variant="outline"
+                            className="max-w-full"
+                          >
+                            <span
+                              className="min-w-0 truncate"
+                              title={group.name}
+                            >
+                              {group.name}
+                            </span>
+                          </Badge>
+                        ))}
+                        {!groupsByMember.has(user.id) && (
+                          <Badge variant="outline">
+                            {t("pages.membersAndGroups.ungroupedMembers")}
+                          </Badge>
+                        )}
+                      </div>
                     </ItemFooter>
                   </Item>
                 )
@@ -412,17 +462,12 @@ export function MembersAndGroupsPage() {
                     )
                   : [...current, updated]
               )
-              setSelectedGroupID(updated.id)
             } else {
               setGroups((current) =>
                 current.filter(
                   (group) => group.id !== activeGroupAction.group.id
                 )
               )
-              if (selectedGroupID === activeGroupAction.group.id)
-                setSelectedGroupID(
-                  activeGroupAction.group.parent_id ?? ROOT_GROUP_ID
-                )
             }
             setError("")
             setActiveGroupAction(null)
@@ -430,161 +475,254 @@ export function MembersAndGroupsPage() {
         />
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <form className="flex flex-col gap-6" onSubmit={createUser}>
-            <DialogHeader>
-              <DialogTitle>添加成员</DialogTitle>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (open || (!creating && !batchSaving)) setCreateOpen(open)
+        }}
+      >
+        <DialogContent
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+          closeLabel={t("common.close")}
+          showCloseButton={!creating && !batchSaving}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {t("pages.membersAndGroups.bulk.addMember")}
+            </DialogTitle>
+            {createMode === "bulk" && (
               <DialogDescription>
-                普通成员通过 OAuth 绑定该邮箱；管理员使用设置的密码登录后台。
+                {t("pages.membersAndGroups.bulk.description")}
               </DialogDescription>
-            </DialogHeader>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="new-user-name">姓名</FieldLabel>
-                <Input
-                  id="new-user-name"
-                  value={newUser.name}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-user-email">邮箱</FieldLabel>
-                <Input
-                  id="new-user-email"
-                  type="email"
-                  value={newUser.email}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-user-role">角色</FieldLabel>
-                <select
-                  id="new-user-role"
-                  value={newUser.role}
-                  onChange={(event) =>
-                    setNewUser((current) => ({
-                      ...current,
-                      role: event.target.value as User["role"],
-                      password:
-                        event.target.value === "admin" ? current.password : "",
-                    }))
-                  }
-                  className="h-9 cursor-pointer rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="user">成员</option>
-                  <option value="admin">管理员</option>
-                </select>
-              </Field>
-              {newUser.role === "admin" && (
-                <Field>
-                  <FieldLabel htmlFor="new-user-password">初始密码</FieldLabel>
-                  <Input
-                    id="new-user-password"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={12}
-                    value={newUser.password}
-                    onChange={(event) =>
-                      setNewUser((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
+            )}
+          </DialogHeader>
+          <Tabs
+            value={createMode}
+            onValueChange={(value) => {
+              if (!creating && !batchSaving)
+                setCreateMode(value as "single" | "bulk")
+            }}
+          >
+            <TabsList
+              className="w-full"
+              aria-label={t("pages.membersAndGroups.bulk.addMember")}
+            >
+              <TabsTrigger value="single" disabled={creating || batchSaving}>
+                {t("pages.membersAndGroups.bulk.addOne")}
+              </TabsTrigger>
+              <TabsTrigger value="bulk" disabled={creating || batchSaving}>
+                {t("pages.membersAndGroups.bulk.addMany")}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="single" keepMounted className="pt-3">
+              <form className="flex flex-col gap-6" onSubmit={createUser}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="new-user-name">
+                      {t("pages.membersAndGroups.bulk.name")}
+                    </FieldLabel>
+                    <Input
+                      id="new-user-name"
+                      value={newUser.name}
+                      onChange={(event) =>
+                        setNewUser((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="new-user-email">
+                      {t("pages.membersAndGroups.bulk.email")}
+                    </FieldLabel>
+                    <Input
+                      id="new-user-email"
+                      type="email"
+                      value={newUser.email}
+                      onChange={(event) =>
+                        setNewUser((current) => ({
+                          ...current,
+                          email: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="new-user-role">
+                      {t("pages.membersAndGroups.bulk.role")}
+                    </FieldLabel>
+                    <Select
+                      items={{
+                        user: t("pages.membersAndGroups.bulk.member"),
+                        admin: t("pages.membersAndGroups.bulk.administrator"),
+                      }}
+                      value={newUser.role}
+                      onValueChange={(value) => {
+                        if (value === null) return
+                        setNewUser((current) => ({
+                          ...current,
+                          role: value as User["role"],
+                          password: value === "admin" ? current.password : "",
+                        }))
+                      }}
+                    >
+                      <SelectTrigger id="new-user-role" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectItem value="user">
+                          {t("pages.membersAndGroups.bulk.member")}
+                        </SelectItem>
+                        <SelectItem value="admin">
+                          {t("pages.membersAndGroups.bulk.administrator")}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  {newUser.role === "admin" && (
+                    <Field>
+                      <FieldLabel htmlFor="new-user-password">
+                        {t("pages.membersAndGroups.bulk.singlePassword")}
+                      </FieldLabel>
+                      <Input
+                        id="new-user-password"
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={12}
+                        value={newUser.password}
+                        onChange={(event) =>
+                          setNewUser((current) => ({
+                            ...current,
+                            password: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    </Field>
+                  )}
+                </FieldGroup>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCreateOpen(false)}
+                  >
+                    {t("pages.membersAndGroups.bulk.cancel")}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      creating ||
+                      !newUser.name.trim() ||
+                      !newUser.email.trim() ||
+                      (newUser.role === "admin" && newUser.password.length < 12)
                     }
-                    required
-                  />
-                </Field>
+                  >
+                    {t(
+                      creating
+                        ? "pages.membersAndGroups.bulk.creating"
+                        : "pages.membersAndGroups.bulk.createOne"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+            <TabsContent value="bulk" keepMounted className="pt-3">
+              {createOpen && (
+                <BulkAddMembersForm
+                  existingEmails={users.map((user) => user.email)}
+                  saving={batchSaving}
+                  onSavingChange={setBatchSaving}
+                  onCreated={(created) =>
+                    setUsers((current) => [...created, ...current])
+                  }
+                  onClose={() => setCreateOpen(false)}
+                />
               )}
-            </FieldGroup>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateOpen(false)}
-              >
-                取消
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  creating ||
-                  !newUser.name.trim() ||
-                  !newUser.email.trim() ||
-                  (newUser.role === "admin" && newUser.password.length < 12)
-                }
-              >
-                {creating ? "正在创建…" : "创建"}
-              </Button>
-            </DialogFooter>
-          </form>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={roleTarget !== null}
+      <AlertDialog
+        open={pendingMemberAction !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setRoleTarget(null)
+          if (!open && !savingID) {
+            setPendingMemberAction(null)
             setRolePassword("")
           }
         }}
       >
-        <DialogContent>
-          <form className="flex flex-col gap-6" onSubmit={promoteUser}>
-            <DialogHeader>
-              <DialogTitle>设为管理员</DialogTitle>
-              <DialogDescription>
-                为 {roleTarget?.email} 设置管理后台初始密码。
-              </DialogDescription>
-            </DialogHeader>
-            <Field>
-              <FieldLabel htmlFor="promote-user-password">初始密码</FieldLabel>
-              <Input
-                id="promote-user-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                value={rolePassword}
-                onChange={(event) => setRolePassword(event.target.value)}
-                required
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">至少 12 个字符</p>
-            </Field>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRoleTarget(null)}
-              >
-                取消
-              </Button>
-              <Button
+        <AlertDialogContent>
+          <form className="flex flex-col gap-6" onSubmit={confirmMemberAction}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingMemberAction &&
+                  t(`pages.membersAndGroups.${pendingMemberAction.action}`)}
+              </AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogDescription>
+              {pendingMemberAction &&
+                t("pages.membersAndGroups.confirmMemberAction", {
+                  action: t(
+                    `pages.membersAndGroups.${pendingMemberAction.action}`
+                  ),
+                  member: pendingMemberAction.user.name,
+                  email: pendingMemberAction.user.email,
+                })}
+            </AlertDialogDescription>
+            {pendingMemberAction?.action === "makeAdministrator" && (
+              <Field>
+                <FieldLabel htmlFor="promote-user-password">
+                  {t("pages.membersAndGroups.bulk.singlePassword")}
+                </FieldLabel>
+                <Input
+                  id="promote-user-password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  value={rolePassword}
+                  onChange={(event) => setRolePassword(event.target.value)}
+                  required
+                  autoFocus
+                  disabled={Boolean(savingID)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("pages.membersAndGroups.adminPasswordHint")}
+                </p>
+              </Field>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button" disabled={Boolean(savingID)}>
+                {t("pages.membersAndGroups.cancelAction")}
+              </AlertDialogCancel>
+              <AlertDialogAction
                 type="submit"
+                variant={
+                  pendingMemberAction?.action === "disableMember" ||
+                  pendingMemberAction?.action === "removeAdministrator"
+                    ? "destructive"
+                    : "default"
+                }
                 disabled={
-                  !roleTarget ||
-                  rolePassword.length < 12 ||
-                  savingID === roleTarget.id
+                  !pendingMemberAction ||
+                  Boolean(savingID) ||
+                  (pendingMemberAction.action === "makeAdministrator" &&
+                    rolePassword.length < 12)
                 }
               >
-                确认
-              </Button>
-            </DialogFooter>
+                {savingID
+                  ? t("common.saving")
+                  : pendingMemberAction &&
+                    t(`pages.membersAndGroups.${pendingMemberAction.action}`)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

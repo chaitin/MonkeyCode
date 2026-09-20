@@ -539,12 +539,12 @@ export default function TeamNotifications() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("managerNotifications.dialog.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("managerNotifications.dialog.deleteDescription", {
-                name: channelToDelete?.name ?? t("managerNotifications.fallback.unnamed"),
-              })}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("managerNotifications.dialog.deleteDescription", {
+              name: channelToDelete?.name ?? t("managerNotifications.fallback.unnamed"),
+            })}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setChannelToDelete(null)} disabled={deleting}>
               {t("managerNotifications.actions.cancel")}
