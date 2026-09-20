@@ -136,19 +136,12 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 			resource.Fail(w, resource.Invalid("刷新周期无效"))
 			return
 		}
-		_, end := p.period(s.now())
-		if p.CycleEffectiveAt != nil && !s.now().Before(*p.CycleEffectiveAt) {
-			p.Cycle = p.PendingCycle
-			p.CycleAnchor = p.CycleEffectiveAt
-			p.PendingCycle = ""
-			p.CycleEffectiveAt = nil
-		}
-		if cycle != p.Cycle {
-			p.PendingCycle = cycle
-			p.CycleEffectiveAt = &end
-		} else {
-			p.PendingCycle = ""
-			p.CycleEffectiveAt = nil
+		now := s.now()
+		p.scheduleCycle(cycle, now)
+		start, end := p.period(now)
+		if err = sqlc.New(tx).UpdatePeriodEnd(r.Context(), sqlc.UpdatePeriodEndParams{PeriodStartAt: start, PeriodEndAt: end}); err != nil {
+			resource.Fail(w, err)
+			return
 		}
 	case "mode":
 		if json.Unmarshal(in["charging_mode"], &p.Mode) != nil || !slices.Contains([]string{"local", "remote"}, p.Mode) || json.Unmarshal(in["enabled"], &p.Enabled) != nil {

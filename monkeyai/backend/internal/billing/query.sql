@@ -177,6 +177,12 @@ SET
 WHERE
     KEY = 'billing';
 
+-- name: UpdatePeriodEnd :exec
+UPDATE credit_accounts
+SET period_end_at = sqlc.arg(period_end_at), updated_at = now()
+WHERE period_start_at = sqlc.arg(period_start_at)
+    AND period_end_at <> sqlc.arg(period_end_at);
+
 -- name: AccountHistory :many
 SELECT
     jsonb_build_object('id', id, 'period_start_at', period_start_at, 'period_end_at', period_end_at,
