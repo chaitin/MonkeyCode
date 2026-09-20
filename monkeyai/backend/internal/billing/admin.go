@@ -48,17 +48,6 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Post("/billing/transactions/{id}/resolve", s.resolve)
 	r.Post("/billing/transactions/{id}/refund", s.refund)
 }
-func (s *Service) RegisterAgent(r chi.Router) {
-	r.Get("/billing/account", func(w http.ResponseWriter, r *http.Request) {
-		u, _ := identity.UserFromContext(r.Context())
-		a, err := s.Account(r.Context(), u.ID)
-		if err != nil {
-			resource.Fail(w, err)
-			return
-		}
-		resource.JSON(w, 200, a)
-	})
-}
 func (s *Service) settings(w http.ResponseWriter, r *http.Request) {
 	p, err := s.Policy(r.Context())
 	if err != nil {

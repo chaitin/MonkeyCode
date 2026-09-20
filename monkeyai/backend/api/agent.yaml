@@ -627,7 +627,8 @@ paths:
                 $ref: "#/components/schemas/EmailAuthError"
   /api/v1/billing/account:
     get:
-      summary: 查询当前用户周期余额和冻结额
+      summary: 查询当前用户积分状态
+      description: 使用 Bearer access token 确定用户，返回当前周期额度、余额、冻结积分及可用积分（余额减冻结积分）；周期到期后按最新额度创建新账户。余额和可用积分可能为负数，不应截断为零。
       responses:
         '200':
           description: 请求成功
@@ -643,6 +644,72 @@ paths:
           description: 权限不足
         '409':
           description: 修订号、幂等键或交易状态冲突
+  /api/v1/billing/entries:
+    get:
+      summary: 分页查询当前用户积分消耗历史
+      description: 仅返回当前 Bearer access token 所属用户的扣费和退款记录，不包含额度发放、重置或管理员调整；默认查询所有周期，按发生时间、记录 ID 倒序排列。用户身份由服务端确定，不支持指定其他用户或分组，不返回内部元数据。
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          default: 1
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - in: query
+        name: content
+        description: 按消费项目名称模糊搜索。
+        schema:
+          type: string
+          maxLength: 200
+      - in: query
+        name: category
+        schema:
+          type: string
+          enum: [model, tool, other]
+      - in: query
+        name: mode
+        schema:
+          type: string
+          enum: [local, remote]
+      - in: query
+        name: entry_type
+        description: 不指定时同时返回扣费和退款。
+        schema:
+          type: string
+          enum: [charge, refund]
+      - in: query
+        name: from
+        description: 起始时间（含），须携带时区。
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        description: 结束时间（不含），须携带时区，且晚于起始时间。
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: 请求成功；无记录时 items 为 []。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditEntriesResponse'
+        '400':
+          description: 搜索条件、时间范围或流水类型不合法
+        '401':
+          description: 缺少、无效或已过期的 access token
+        '500':
+          $ref: '#/components/responses/ResourceError500'
   /mcp/connectors/{id}:
     parameters:
     - in: path
@@ -3032,6 +3099,52 @@ components:
       - quota
       - period_start_at
       - period_end_at
+    CreditEntriesResponse:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditConsumptionEntry'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+    CreditConsumptionEntry:
+      type: object
+      additionalProperties: false
+      required: [id, transaction_id, entry_type, category, item_name, credit_delta, balance_after, mode, occurred_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaction_id:
+          type: [string, 'null']
+          format: uuid
+        entry_type:
+          type: string
+          enum: [charge, refund]
+        category:
+          type: string
+          enum: [model, tool, other]
+        item_name:
+          type: string
+        credit_delta:
+          $ref: '#/components/schemas/CreditAmount'
+          description: 本条积分变动，扣费为负、退款为正。
+        balance_after:
+          $ref: '#/components/schemas/CreditAmount'
+          description: 本条发生后对应周期账户的余额，可能为负数。
+        mode:
+          type: string
+          enum: [local, remote]
+        occurred_at:
+          type: string
+          format: date-time
     UserSummary:
       type: object
       required:
