@@ -577,7 +577,16 @@ export const jaJP = {
       memberActions: "{{member}} のメンバー操作",
       confirmMemberAction:
         "{{member}}（{{email}}）に「{{action}}」を実行しますか？",
-      adminPasswordHint: "初期パスワードは 12 文字以上で入力してください。",
+      resetPassword: "パスワードをリセット",
+      confirmResetPassword:
+        "{{member}}（{{email}}）のパスワードをリセットしますか？既存のログインセッションは無効になります。",
+      resetPasswordResult:
+        "{{member}} の新しいパスワードは今回のみ表示されます。閉じる前にコピーし、本人に安全な方法で伝えてください。",
+      generatedPassword: "新しいパスワード",
+      copyPassword: "パスワードをコピー",
+      passwordCopied: "パスワードをコピーしました",
+      passwordCopyFailed:
+        "コピーできませんでした。パスワードを選択して手動でコピーしてください。",
       actionSucceeded: "操作が完了しました：{{target}}",
       enableMember: "有効にする",
       disableMember: "無効にする",

@@ -31,7 +31,10 @@ test("members page keeps the original split cards and compact member list", asyn
     "utf8"
   )
 
-  assert.match(source, /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/)
+  assert.match(
+    source,
+    /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/
+  )
   assert.match(source, /pages\.membersAndGroups\.groupsTitle/)
   assert.match(source, /<ItemGroup/)
   assert.match(source, /<Item\s+key=\{user\.id\}[\s\S]*?variant="outline"/)
@@ -67,17 +70,20 @@ test("both members panels scroll inside shadcn Scroll Areas", async () => {
     page,
     /import \{ ScrollArea \} from "@\/components\/ui\/scroll-area"/
   )
-  assert.equal(
-    (
-      panels.match(
-        /<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">/g
-      ) ?? []
-    ).length,
-    2
+  assert.equal((panels.match(/<ScrollArea className=/g) ?? []).length, 2)
+  assert.match(
+    panels,
+    /<ScrollArea className="-ms-1 -me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
+  )
+  assert.match(
+    panels,
+    /<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">/
   )
   assert.equal((panels.match(/<\/ScrollArea>/g) ?? []).length, 2)
-  assert.match(panels, /<ul\s+className="flex flex-col gap-1 pe-2"/)
-  assert.match(panels, /<ItemGroup className="gap-2 pe-3">/)
+  assert.match(panels, /<ul\s+className="flex flex-col gap-1"/)
+  assert.match(panels, /<ItemGroup className="gap-2">/)
+  assert.doesNotMatch(panels, /<ul\s+className="[^"]*\bpe-2\b/)
+  assert.doesNotMatch(panels, /<ItemGroup className="[^"]*\bpe-3\b/)
   assert.doesNotMatch(panels, /<CardContent[^>]*overflow-y-auto/)
 
   const component = await readFile(
@@ -184,9 +190,11 @@ test("member actions require confirmation and report results with toasts", async
     /<form className="flex flex-col gap-6" onSubmit=\{confirmMemberAction\}>/
   )
   assert.match(
-    source,
-    /pendingMemberAction\?\.action === "makeAdministrator" &&/
+    memberAction,
+    /action === "makeAdministrator"\s*\? \{ role: "admin" \}/
   )
+  assert.doesNotMatch(source, /rolePassword|promote-user-password/)
+  assert.doesNotMatch(memberAction, /password/)
   assert.match(memberAction, /await updateUser\(user, patch, action\)/)
   assert.match(
     memberAction,
@@ -201,6 +209,29 @@ test("member actions require confirmation and report results with toasts", async
   assert.match(dialog, /status: "success"[\s\S]*?onSaved\(updated\)/)
   assert.match(dialog, /catch \(reason\) \{\s*showToast\(\{ status: "error"/)
   assert.doesNotMatch(dialog, /role="alert"|setError\(/)
+})
+
+test("only the team root starts expanded", async () => {
+  const tree = await readFile(
+    new URL("../src/components/members/group-tree.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(
+    tree,
+    /const \[expanded, setExpanded\] = useState\(group\.id === ROOT_GROUP_ID\)/
+  )
+  assert.match(
+    tree,
+    /const \[ungroupedExpanded, setUngroupedExpanded\] = useState\(false\)/
+  )
+  assert.match(
+    tree,
+    /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/
+  )
+  assert.match(
+    tree,
+    /open=\{ungroupedExpanded\}\s+onOpenChange=\{setUngroupedExpanded\}/
+  )
 })
 
 test("ungrouped members appear as the last virtual tree group", async () => {
@@ -289,7 +320,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   assert.equal(
     (
       tree.match(
-        /"group\/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors"/g
+        /"group\/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors"/g
       ) ?? []
     ).length,
     2
@@ -298,7 +329,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   const memberRow = tree.split("function GroupTreeMemberRow(")[1]
   assert.match(
     memberRow,
-    /"flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-2 text-sm transition-colors"/
+    /"flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-1 text-sm transition-colors"/
   )
   assert.match(memberRow, /treeActionsVisible=\{showActions\}/)
   assert.match(memberRow, /onMenuOpenChange=\{setMenuOpen\}/)

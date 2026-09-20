@@ -828,7 +828,16 @@ export const enUS = {
       memberActions: "Actions for {{member}}",
       confirmMemberAction:
         "Are you sure you want to {{action}} {{member}} ({{email}})?",
-      adminPasswordHint: "Initial password must be at least 12 characters.",
+      resetPassword: "Reset password",
+      confirmResetPassword:
+        "Reset the password for {{member}} ({{email}})? Existing sessions will be revoked.",
+      resetPasswordResult:
+        "This new password for {{member}} is shown only once. Copy it and share it securely with them before closing this dialog.",
+      generatedPassword: "New password",
+      copyPassword: "Copy password",
+      passwordCopied: "Password copied",
+      passwordCopyFailed:
+        "Couldn't copy the password. Select and copy it manually.",
       actionSucceeded: "Operation completed: {{target}}",
       enableMember: "Enable",
       disableMember: "Disable",

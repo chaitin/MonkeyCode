@@ -68,7 +68,7 @@ function ModelTrendCard({
   } satisfies ChartConfig
 
   return (
-    <Card size="sm">
+    <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardAction>

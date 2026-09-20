@@ -540,7 +540,15 @@ export const zhTW = {
       memberActions: "{{member}} 的成員操作",
       confirmMemberAction:
         "確定要對 {{member}}（{{email}}）執行「{{action}}」嗎？",
-      adminPasswordHint: "初始密碼至少 12 個字元。",
+      resetPassword: "重設密碼",
+      confirmResetPassword:
+        "確定重設 {{member}}（{{email}}）的密碼嗎？舊的登入工作階段將失效。",
+      resetPasswordResult:
+        "{{member}} 的新密碼僅顯示這一次，請立即複製並安全地交給本人。關閉後無法再次查看。",
+      generatedPassword: "新密碼",
+      copyPassword: "複製密碼",
+      passwordCopied: "密碼已複製",
+      passwordCopyFailed: "複製失敗，請手動選取密碼。",
       actionSucceeded: "操作成功：{{target}}",
       enableMember: "啟用",
       disableMember: "停用",

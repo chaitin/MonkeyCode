@@ -62,6 +62,7 @@ type Props = {
   onAction: (action: ActiveGroupAction) => void
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
+  onResetPassword: (user: MemberActionUser) => void
   level?: number
 }
 
@@ -75,11 +76,12 @@ export function GroupTreeItem({
   onAction,
   onToggleStatus,
   onToggleRole,
+  onResetPassword,
   level = 0,
 }: Props) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(true)
-  const [ungroupedExpanded, setUngroupedExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(group.id === ROOT_GROUP_ID)
+  const [ungroupedExpanded, setUngroupedExpanded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsFocused, setActionsFocused] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -130,6 +132,7 @@ export function GroupTreeItem({
       currentUserID={currentUserID}
       onToggleStatus={onToggleStatus}
       onToggleRole={onToggleRole}
+      onResetPassword={onResetPassword}
     />
   ))
 
@@ -138,7 +141,7 @@ export function GroupTreeItem({
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <div
           className={cn(
-            "group/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors",
+            "group/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors",
             (hovered || menuOpen) && "bg-foreground/5"
           )}
           onPointerEnter={() => setHovered(true)}
@@ -246,6 +249,7 @@ export function GroupTreeItem({
                   onAction={onAction}
                   onToggleStatus={onToggleStatus}
                   onToggleRole={onToggleRole}
+                  onResetPassword={onResetPassword}
                   level={level + 1}
                 />
               ))}
@@ -257,7 +261,7 @@ export function GroupTreeItem({
                   >
                     <div
                       className={cn(
-                        "group/group-row flex cursor-pointer items-center rounded-md pe-2 transition-colors",
+                        "group/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors",
                         ungroupedHovered && "bg-foreground/5"
                       )}
                       onPointerEnter={() => setUngroupedHovered(true)}
@@ -332,9 +336,14 @@ function GroupTreeMemberRow({
   currentUserID,
   onToggleStatus,
   onToggleRole,
+  onResetPassword,
 }: Pick<
   Props,
-  "savingID" | "currentUserID" | "onToggleStatus" | "onToggleRole"
+  | "savingID"
+  | "currentUserID"
+  | "onToggleStatus"
+  | "onToggleRole"
+  | "onResetPassword"
 > & {
   member: MemberActionUser
   level: number
@@ -350,7 +359,7 @@ function GroupTreeMemberRow({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       className={cn(
-        "flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-2 text-sm transition-colors",
+        "flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-1 text-sm transition-colors",
         (hovered || menuOpen) && "bg-foreground/5",
         member.status === "disabled" && "text-muted-foreground"
       )}
@@ -383,6 +392,7 @@ function GroupTreeMemberRow({
           onMenuOpenChange={setMenuOpen}
           onToggleStatus={onToggleStatus}
           onToggleRole={onToggleRole}
+          onResetPassword={onResetPassword}
         />
       </div>
     </li>

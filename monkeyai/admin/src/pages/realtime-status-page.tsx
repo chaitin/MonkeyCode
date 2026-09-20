@@ -100,7 +100,7 @@ function RealtimeMetricCard({
   valueLabel: string
 }) {
   return (
-    <Card size="sm">
+    <Card>
       <CardHeader>
         <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
         <CardAction>

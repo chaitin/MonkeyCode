@@ -593,8 +593,16 @@ export const deDE = {
       memberActions: "Aktionen für {{member}}",
       confirmMemberAction:
         "Aktion „{{action}}“ für {{member}} ({{email}}) bestätigen?",
-      adminPasswordHint:
-        "Das Initialpasswort muss mindestens 12 Zeichen lang sein.",
+      resetPassword: "Passwort zurücksetzen",
+      confirmResetPassword:
+        "Das Passwort für {{member}} ({{email}}) zurücksetzen? Bestehende Sitzungen werden widerrufen.",
+      resetPasswordResult:
+        "Das neue Passwort für {{member}} wird nur einmal angezeigt. Kopieren Sie es vor dem Schließen und geben Sie es sicher an die Person weiter.",
+      generatedPassword: "Neues Passwort",
+      copyPassword: "Passwort kopieren",
+      passwordCopied: "Passwort kopiert",
+      passwordCopyFailed:
+        "Kopieren fehlgeschlagen. Wählen Sie das Passwort aus und kopieren Sie es manuell.",
       actionSucceeded: "Aktion abgeschlossen: {{target}}",
       enableMember: "Aktivieren",
       disableMember: "Deaktivieren",

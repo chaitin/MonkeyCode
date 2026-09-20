@@ -60,6 +60,7 @@ import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
 import { MemberAvatar } from "@/components/members/member-avatar"
 import { GroupTreeItem } from "@/components/members/group-tree"
+import { ResetMemberPasswordDialog } from "@/components/members/reset-member-password-dialog"
 import {
   MemberActions,
   type MemberActionUser,
@@ -100,7 +101,8 @@ export function MembersAndGroupsPage() {
     user: MemberActionUser
     action: MemberAction
   } | null>(null)
-  const [rolePassword, setRolePassword] = useState("")
+  const [passwordResetUser, setPasswordResetUser] =
+    useState<MemberActionUser | null>(null)
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -133,9 +135,7 @@ export function MembersAndGroupsPage() {
 
   const updateUser = async (
     user: MemberActionUser,
-    patch: Partial<Pick<MemberActionUser, "name" | "role" | "status">> & {
-      password?: string
-    },
+    patch: Partial<Pick<MemberActionUser, "name" | "role" | "status">>,
     action: MemberAction
   ) => {
     setSavingID(user.id)
@@ -146,7 +146,6 @@ export function MembersAndGroupsPage() {
           name: patch.name ?? user.name,
           role: patch.role ?? user.role,
           status: patch.status ?? user.status,
-          password: patch.password,
         }),
       })
       setUsers((current) =>
@@ -176,7 +175,6 @@ export function MembersAndGroupsPage() {
   }
 
   const toggleUserRole = (user: MemberActionUser) => {
-    setRolePassword("")
     setPendingMemberAction({
       user,
       action:
@@ -188,16 +186,14 @@ export function MembersAndGroupsPage() {
     event.preventDefault()
     if (!pendingMemberAction || savingID) return
     const { user, action } = pendingMemberAction
-    if (action === "makeAdministrator" && rolePassword.length < 12) return
     const patch: Parameters<typeof updateUser>[1] =
       action === "makeAdministrator"
-        ? { role: "admin", password: rolePassword }
+        ? { role: "admin" }
         : action === "removeAdministrator"
           ? { role: "user" }
           : { status: action === "enableMember" ? "active" : "disabled" }
     if (await updateUser(user, patch, action)) {
       setPendingMemberAction(null)
-      setRolePassword("")
     }
   }
 
@@ -282,9 +278,9 @@ export function MembersAndGroupsPage() {
             <CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="min-h-0 flex-1">
-            <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
+            <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
               <ul
-                className="flex flex-col gap-1 pe-2"
+                className="flex flex-col gap-1"
                 aria-label={t("pages.membersAndGroups.groupsTitle")}
               >
                 {displayGroups
@@ -301,6 +297,7 @@ export function MembersAndGroupsPage() {
                       onAction={setActiveGroupAction}
                       onToggleStatus={toggleUserStatus}
                       onToggleRole={toggleUserRole}
+                      onResetPassword={setPasswordResetUser}
                     />
                   ))}
               </ul>
@@ -348,7 +345,7 @@ export function MembersAndGroupsPage() {
                   {t("common.loading")}
                 </p>
               )}
-              <ItemGroup className="gap-2 pe-3">
+              <ItemGroup className="gap-2">
                 {visibleUsers.map((user) => {
                   const isDisabled = user.status === "disabled"
                   const joinedAt = new Date(user.joined_at)
@@ -403,6 +400,7 @@ export function MembersAndGroupsPage() {
                           currentUserID={currentUser?.id}
                           onToggleStatus={toggleUserStatus}
                           onToggleRole={toggleUserRole}
+                          onResetPassword={setPasswordResetUser}
                         />
                       </ItemActions>
                       <ItemSeparator className="my-0" />
@@ -450,6 +448,14 @@ export function MembersAndGroupsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {passwordResetUser && (
+        <ResetMemberPasswordDialog
+          key={passwordResetUser.id}
+          user={passwordResetUser}
+          onClose={() => setPasswordResetUser(null)}
+        />
+      )}
 
       {activeGroupAction && (
         <GroupActionDialog
@@ -657,7 +663,6 @@ export function MembersAndGroupsPage() {
         onOpenChange={(open) => {
           if (!open && !savingID) {
             setPendingMemberAction(null)
-            setRolePassword("")
           }
         }}
       >
@@ -679,27 +684,6 @@ export function MembersAndGroupsPage() {
                   email: pendingMemberAction.user.email,
                 })}
             </AlertDialogDescription>
-            {pendingMemberAction?.action === "makeAdministrator" && (
-              <Field>
-                <FieldLabel htmlFor="promote-user-password">
-                  {t("pages.membersAndGroups.bulk.singlePassword")}
-                </FieldLabel>
-                <Input
-                  id="promote-user-password"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={12}
-                  value={rolePassword}
-                  onChange={(event) => setRolePassword(event.target.value)}
-                  required
-                  autoFocus
-                  disabled={Boolean(savingID)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("pages.membersAndGroups.adminPasswordHint")}
-                </p>
-              </Field>
-            )}
             <AlertDialogFooter>
               <AlertDialogCancel type="button" disabled={Boolean(savingID)}>
                 {t("pages.membersAndGroups.cancelAction")}
@@ -712,12 +696,7 @@ export function MembersAndGroupsPage() {
                     ? "destructive"
                     : "default"
                 }
-                disabled={
-                  !pendingMemberAction ||
-                  Boolean(savingID) ||
-                  (pendingMemberAction.action === "makeAdministrator" &&
-                    rolePassword.length < 12)
-                }
+                disabled={!pendingMemberAction || Boolean(savingID)}
               >
                 {savingID
                   ? t("common.saving")

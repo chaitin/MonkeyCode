@@ -960,6 +960,23 @@ func (q *Queries) ResetPassword(ctx context.Context, arg ResetPasswordParams) (s
 	return id, err
 }
 
+const resetUserPassword = `-- name: ResetUserPassword :one
+UPDATE users SET password_hash = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL RETURNING id
+`
+
+type ResetUserPasswordParams struct {
+	ID           string
+	PasswordHash *string
+}
+
+func (q *Queries) ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) (string, error) {
+	row := q.db.QueryRow(ctx, resetUserPassword, arg.ID, arg.PasswordHash)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const revokeBrowserSession = `-- name: RevokeBrowserSession :execresult
 UPDATE
     browser_sessions

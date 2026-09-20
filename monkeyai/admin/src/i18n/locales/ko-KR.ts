@@ -569,7 +569,16 @@ export const koKR = {
       memberActions: "{{member}} 구성원 작업",
       confirmMemberAction:
         "{{member}} ({{email}})에 대해 ‘{{action}}’ 작업을 진행할까요?",
-      adminPasswordHint: "초기 비밀번호는 12자 이상이어야 합니다.",
+      resetPassword: "비밀번호 재설정",
+      confirmResetPassword:
+        "{{member}} ({{email}})의 비밀번호를 재설정하시겠습니까? 기존 로그인 세션은 무효화됩니다.",
+      resetPasswordResult:
+        "{{member}}의 새 비밀번호는 이번 한 번만 표시됩니다. 닫기 전에 복사해 본인에게 안전하게 전달하세요.",
+      generatedPassword: "새 비밀번호",
+      copyPassword: "비밀번호 복사",
+      passwordCopied: "비밀번호를 복사했습니다",
+      passwordCopyFailed:
+        "복사하지 못했습니다. 비밀번호를 직접 선택하여 복사하세요.",
       actionSucceeded: "작업 완료: {{target}}",
       enableMember: "활성화",
       disableMember: "비활성화",

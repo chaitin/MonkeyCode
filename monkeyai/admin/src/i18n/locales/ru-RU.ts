@@ -583,8 +583,16 @@ export const ruRU = {
       memberActions: "Действия для {{member}}",
       confirmMemberAction:
         "Подтвердить действие «{{action}}» для {{member}} ({{email}})?",
-      adminPasswordHint:
-        "Начальный пароль должен содержать не менее 12 символов.",
+      resetPassword: "Сбросить пароль",
+      confirmResetPassword:
+        "Сбросить пароль для {{member}} ({{email}})? Текущие сеансы будут отозваны.",
+      resetPasswordResult:
+        "Новый пароль для {{member}} показывается только один раз. Скопируйте его и безопасно передайте пользователю до закрытия окна.",
+      generatedPassword: "Новый пароль",
+      copyPassword: "Скопировать пароль",
+      passwordCopied: "Пароль скопирован",
+      passwordCopyFailed:
+        "Не удалось скопировать пароль. Выделите и скопируйте его вручную.",
       actionSucceeded: "Действие выполнено: {{target}}",
       enableMember: "Включить",
       disableMember: "Отключить",

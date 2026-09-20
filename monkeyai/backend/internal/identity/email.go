@@ -225,6 +225,19 @@ func (s *Service) resetPassword(w http.ResponseWriter, r *http.Request) {
 	s.completeEmail(w, r, "reset")
 }
 
+func revokePasswordAccess(ctx context.Context, q *sqlc.Queries, userID, email string) error {
+	if err := q.RevokeUserSessions(ctx, userID); err != nil {
+		return err
+	}
+	if err := q.RevokeUserTokens(ctx, userID); err != nil {
+		return err
+	}
+	if err := q.RevokeUserCodes(ctx, userID); err != nil {
+		return err
+	}
+	return q.DeleteEmailCode(ctx, sqlc.DeleteEmailCodeParams{Email: email, Purpose: "login"})
+}
+
 func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose string) {
 	input, ok := readEmailInput(w, r)
 	if !ok {
@@ -281,16 +294,7 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		}
 		id, resetErr := q.ResetPassword(ctx, sqlc.ResetPasswordParams{Email: input.Email, PasswordHash: &hash})
 		if resetErr == nil {
-			resetErr = q.RevokeUserSessions(ctx, id)
-		}
-		if resetErr == nil {
-			resetErr = q.RevokeUserTokens(ctx, id)
-		}
-		if resetErr == nil {
-			resetErr = q.RevokeUserCodes(ctx, id)
-		}
-		if resetErr == nil {
-			resetErr = q.DeleteEmailCode(ctx, sqlc.DeleteEmailCodeParams{Email: input.Email, Purpose: "login"})
+			resetErr = revokePasswordAccess(ctx, q, id, input.Email)
 		}
 		if resetErr != nil {
 			writeError(w, 400, "reset_failed", "密码重置失败，请重新获取验证码")

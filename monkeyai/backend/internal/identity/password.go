@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -20,9 +21,32 @@ import (
 )
 
 const (
-	passwordIterations = 600_000
-	dummyPasswordHash  = "$pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	passwordIterations      = 600_000
+	dummyPasswordHash       = "$pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	passwordAlphabet        = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	generatedPasswordLength = 16
 )
+
+func generatePassword() (string, error) {
+	for {
+		password := make([]byte, generatedPasswordLength)
+		var digit, upper, lower bool
+		for i := range password {
+			index, err := rand.Int(rand.Reader, big.NewInt(int64(len(passwordAlphabet))))
+			if err != nil {
+				return "", err
+			}
+			character := passwordAlphabet[index.Int64()]
+			password[i] = character
+			digit = digit || character >= '0' && character <= '9'
+			upper = upper || character >= 'A' && character <= 'Z'
+			lower = lower || character >= 'a' && character <= 'z'
+		}
+		if digit && upper && lower {
+			return string(password), nil
+		}
+	}
+}
 
 func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password string) error {
 	tx, err := s.db.Begin(ctx)

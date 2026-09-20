@@ -567,7 +567,15 @@ export const ar = {
       memberActions: "إجراءات العضو {{member}}",
       confirmMemberAction:
         "هل تريد تنفيذ «{{action}}» للعضو {{member}} ({{email}})؟",
-      adminPasswordHint: "يجب ألا تقل كلمة المرور الأولية عن 12 حرفًا.",
+      resetPassword: "إعادة تعيين كلمة المرور",
+      confirmResetPassword:
+        "هل تريد إعادة تعيين كلمة مرور {{member}} ({{email}})؟ سيتم إبطال جلسات تسجيل الدخول الحالية.",
+      resetPasswordResult:
+        "ستُعرض كلمة المرور الجديدة لـ {{member}} مرة واحدة فقط. انسخها وشاركها معه بأمان قبل إغلاق هذه النافذة.",
+      generatedPassword: "كلمة المرور الجديدة",
+      copyPassword: "نسخ كلمة المرور",
+      passwordCopied: "تم نسخ كلمة المرور",
+      passwordCopyFailed: "تعذر النسخ. حدد كلمة المرور وانسخها يدويًا.",
       actionSucceeded: "اكتمل الإجراء: {{target}}",
       enableMember: "تفعيل",
       disableMember: "تعطيل",

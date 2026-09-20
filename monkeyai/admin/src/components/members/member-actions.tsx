@@ -29,6 +29,7 @@ export function MemberActions({
   onMenuOpenChange,
   onToggleStatus,
   onToggleRole,
+  onResetPassword,
 }: {
   user: MemberActionUser
   savingID: string
@@ -37,6 +38,7 @@ export function MemberActions({
   onMenuOpenChange?: (open: boolean) => void
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
+  onResetPassword: (user: MemberActionUser) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -77,6 +79,9 @@ export function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => onResetPassword(user)}>
+            {t("pages.membersAndGroups.resetPassword")}
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCurrentUser}
             onClick={() => onToggleStatus(user)}

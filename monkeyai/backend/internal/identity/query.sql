@@ -447,6 +447,10 @@ DELETE FROM email_codes WHERE email = $1 AND purpose = $2;
 UPDATE users SET password_hash = $2, updated_at = now()
 WHERE lower(email) = $1 AND deleted_at IS NULL AND status = 'active' RETURNING id;
 
+-- name: ResetUserPassword :one
+UPDATE users SET password_hash = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL RETURNING id;
+
 -- name: RevokeUserSessions :exec
 UPDATE browser_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
 

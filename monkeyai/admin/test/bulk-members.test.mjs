@@ -130,11 +130,7 @@ test("bulk dialog labels and errors exist in all supported languages", () => {
     zhTW,
   ]) {
     const members = locale.pages.membersAndGroups
-    for (const key of [
-      "confirmMemberAction",
-      "adminPasswordHint",
-      "actionSucceeded",
-    ]) {
+    for (const key of ["confirmMemberAction", "actionSucceeded"]) {
       assert.ok(typeof members[key] === "string" && members[key].trim())
     }
     for (const placeholder of ["action", "member", "email"]) {

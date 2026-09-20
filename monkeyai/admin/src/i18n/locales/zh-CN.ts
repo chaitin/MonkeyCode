@@ -777,7 +777,15 @@ export const zhCN = {
       membersTitle: "成员",
       memberActions: "{{member}}的成员操作",
       confirmMemberAction: "确定要{{action}} {{member}}（{{email}}）吗？",
-      adminPasswordHint: "初始密码至少 12 个字符。",
+      resetPassword: "重置密码",
+      confirmResetPassword:
+        "确定重置 {{member}}（{{email}}）的密码吗？旧登录会话将失效。",
+      resetPasswordResult:
+        "{{member}} 的新密码只显示这一次，请立即复制并安全交给本人。关闭后无法再次查看。",
+      generatedPassword: "新密码",
+      copyPassword: "复制密码",
+      passwordCopied: "密码已复制",
+      passwordCopyFailed: "复制失败，请手动选择密码。",
       actionSucceeded: "操作成功：{{target}}",
       enableMember: "启用",
       disableMember: "禁用",

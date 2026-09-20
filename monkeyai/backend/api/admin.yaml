@@ -1599,6 +1599,46 @@ paths:
                   type: string
               required:
               - reason
+  /api/admin/v1/users/{userID}/reset-password:
+    parameters:
+      - in: path
+        name: userID
+        required: true
+        description: 成员 UUID。
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: 管理员重置成员密码
+      description: 生成包含数字及大小写字母的 16 位随机密码，替换指定成员的密码并撤销旧会话、OAuth token、授权码与未使用的登录和重置验证码。被停用的成员仍保持停用。密码明文只在本次响应返回，客户端不得缓存或记录。
+      responses:
+        "200":
+          description: 密码已重置，仅本次响应包含新密码。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [password]
+                properties:
+                  password:
+                    type: string
+                    minLength: 16
+                    maxLength: 16
+                    pattern: "^[A-Za-z0-9]{16}$"
+                    description: 仅本次返回的随机密码。
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/groups:
     get:
       summary: 查询成员分组

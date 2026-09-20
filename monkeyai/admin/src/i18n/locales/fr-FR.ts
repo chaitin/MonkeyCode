@@ -586,8 +586,16 @@ export const frFR = {
       memberActions: "Actions pour {{member}}",
       confirmMemberAction:
         "Confirmer « {{action}} » pour {{member}} ({{email}}) ?",
-      adminPasswordHint:
-        "Le mot de passe initial doit contenir au moins 12 caractères.",
+      resetPassword: "Réinitialiser le mot de passe",
+      confirmResetPassword:
+        "Réinitialiser le mot de passe de {{member}} ({{email}}) ? Les sessions existantes seront révoquées.",
+      resetPasswordResult:
+        "Le nouveau mot de passe de {{member}} n'est affiché qu'une seule fois. Copiez-le et transmettez-le en toute sécurité avant de fermer cette fenêtre.",
+      generatedPassword: "Nouveau mot de passe",
+      copyPassword: "Copier le mot de passe",
+      passwordCopied: "Mot de passe copié",
+      passwordCopyFailed:
+        "Copie impossible. Sélectionnez le mot de passe et copiez-le manuellement.",
       actionSucceeded: "Opération terminée : {{target}}",
       enableMember: "Activer",
       disableMember: "Désactiver",

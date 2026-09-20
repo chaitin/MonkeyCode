@@ -587,8 +587,16 @@ export const es419 = {
       memberActions: "Acciones para {{member}}",
       confirmMemberAction:
         "¿Confirmas «{{action}}» para {{member}} ({{email}})?",
-      adminPasswordHint:
-        "La contraseña inicial debe tener al menos 12 caracteres.",
+      resetPassword: "Restablecer contraseña",
+      confirmResetPassword:
+        "¿Restablecer la contraseña de {{member}} ({{email}})? Se revocarán las sesiones existentes.",
+      resetPasswordResult:
+        "La nueva contraseña de {{member}} solo se muestra una vez. Cópiala y compártela de forma segura antes de cerrar este cuadro.",
+      generatedPassword: "Nueva contraseña",
+      copyPassword: "Copiar contraseña",
+      passwordCopied: "Contraseña copiada",
+      passwordCopyFailed:
+        "No se pudo copiar. Selecciona la contraseña y cópiala manualmente.",
       actionSucceeded: "Acción completada: {{target}}",
       enableMember: "Habilitar",
       disableMember: "Deshabilitar",
