@@ -47,6 +47,9 @@ export default function ManagerConsolePage() {
     "/manager/skills": [
       { label: t("managerShell.nav.skills"), href: "/manager/skills" },
     ],
+    "/manager/rules": [
+      { label: t("managerShell.nav.rules"), href: "/manager/rules" },
+    ],
     "/manager/mcp": [
       { label: t("managerShell.nav.mcp"), href: "/manager/mcp" },
     ],

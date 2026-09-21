@@ -3485,6 +3485,7 @@ type AgentRuleMutation struct {
 	extension_rule_id    *string
 	extension_version    *string
 	is_deleted           *bool
+	enabled              *bool
 	created_at           *time.Time
 	updated_at           *time.Time
 	clearedFields        map[string]struct{}
@@ -4025,6 +4026,42 @@ func (m *AgentRuleMutation) ResetIsDeleted() {
 	m.is_deleted = nil
 }
 
+// SetEnabled sets the "enabled" field.
+func (m *AgentRuleMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *AgentRuleMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the AgentRule entity.
+// If the AgentRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuleMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *AgentRuleMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *AgentRuleMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -4185,7 +4222,7 @@ func (m *AgentRuleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuleMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.name != nil {
 		fields = append(fields, agentrule.FieldName)
 	}
@@ -4215,6 +4252,9 @@ func (m *AgentRuleMutation) Fields() []string {
 	}
 	if m.is_deleted != nil {
 		fields = append(fields, agentrule.FieldIsDeleted)
+	}
+	if m.enabled != nil {
+		fields = append(fields, agentrule.FieldEnabled)
 	}
 	if m.created_at != nil {
 		fields = append(fields, agentrule.FieldCreatedAt)
@@ -4250,6 +4290,8 @@ func (m *AgentRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.ExtensionVersion()
 	case agentrule.FieldIsDeleted:
 		return m.IsDeleted()
+	case agentrule.FieldEnabled:
+		return m.Enabled()
 	case agentrule.FieldCreatedAt:
 		return m.CreatedAt()
 	case agentrule.FieldUpdatedAt:
@@ -4283,6 +4325,8 @@ func (m *AgentRuleMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldExtensionVersion(ctx)
 	case agentrule.FieldIsDeleted:
 		return m.OldIsDeleted(ctx)
+	case agentrule.FieldEnabled:
+		return m.OldEnabled(ctx)
 	case agentrule.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case agentrule.FieldUpdatedAt:
@@ -4365,6 +4409,13 @@ func (m *AgentRuleMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsDeleted(v)
+		return nil
+	case agentrule.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
 		return nil
 	case agentrule.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -4491,6 +4542,9 @@ func (m *AgentRuleMutation) ResetField(name string) error {
 		return nil
 	case agentrule.FieldIsDeleted:
 		m.ResetIsDeleted()
+		return nil
+	case agentrule.FieldEnabled:
+		m.ResetEnabled()
 		return nil
 	case agentrule.FieldCreatedAt:
 		m.ResetCreatedAt()

@@ -22,9 +22,10 @@ import (
 // Repo is the read-only surface used by the task dispatch path and by the
 // public listing endpoints. All methods are safe to call concurrently.
 type Repo interface {
-	// ListActiveRules returns every non-deleted rule whose active version
-	// row exists. Used by getCodingConfigs. Rule content comes straight from
-	// the DB; there is no S3 indirection for rules.
+	// ListActiveRules returns every non-deleted, enabled rule whose active
+	// version row exists. Used by getCodingConfigs. Disabled rules stay in
+	// /manager but are not injected into later Create-path tasks. Rule
+	// content comes straight from the DB; there is no S3 indirection.
 	ListActiveRules(ctx context.Context) ([]*RuleWithVersion, error)
 
 	// ListActiveSkills returns the union of {userSelectedIDs} and
@@ -81,12 +82,19 @@ func NewRepo(client *db.Client) Repo {
 
 // ---- rules ----
 
+func activeGlobalRulePredicates() []predicate.AgentRule {
+	return []predicate.AgentRule{
+		agentrule.IsDeletedEQ(false),
+		agentrule.EnabledEQ(true),
+		agentrule.ActiveVersionIDNotNil(),
+		agentrule.ScopeTypeEQ(agentrule.ScopeTypeGlobal),
+		agentrule.ScopeIDEQ("global"),
+	}
+}
+
 func (r *repoImpl) ListActiveRules(ctx context.Context) ([]*RuleWithVersion, error) {
 	rules, err := r.db.AgentRule.Query().
-		Where(
-			agentrule.IsDeletedEQ(false),
-			agentrule.ActiveVersionIDNotNil(),
-		).
+		Where(activeGlobalRulePredicates()...).
 		Order(db.Asc(agentrule.FieldName)).
 		All(ctx)
 	if err != nil {

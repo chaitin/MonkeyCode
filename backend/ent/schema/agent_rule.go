@@ -37,6 +37,10 @@ func (AgentRule) Fields() []ent.Field {
 		field.String("extension_rule_id").Optional().Nillable(),
 		field.String("extension_version").Optional().Nillable(),
 		field.Bool("is_deleted").Default(false),
+		// enabled is the admin start/stop switch for enterprise global rules.
+		// Default true; false keeps the row for /manager but skips Create-path
+		// injection so later tasks no longer receive the rule.
+		field.Bool("enabled").Default(true),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
