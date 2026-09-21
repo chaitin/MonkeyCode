@@ -5079,6 +5079,9 @@ components:
       properties:
         known:
           type: boolean
+        stream:
+          type: boolean
+          description: 是否为流式调用；历史记录可能缺失。
         result:
           enum:
           - succeeded
@@ -5088,6 +5091,15 @@ components:
           type: string
         error_code:
           type: string
+        terminal_event:
+          type: string
+          description: 代理观察到的流终止事件或非流式响应状态。
+        initial_error_code:
+          type: string
+          description: 自动对账前的原始异常原因。
+        reconciled:
+          type: boolean
+          description: 是否已通过上游查询自动补全用量。
         input_tokens:
           type: integer
           minimum: 0

@@ -176,8 +176,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		body, err = billRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
 		if err != nil {
-			pc := &proxyContext{reservation: reservation}
-			p.finish(r.Context(), pc, Call{Known: true, Result: "failed", ErrorCode: "invalid_request"})
+			pc := &proxyContext{reservation: reservation, stream: meta.Stream}
+			p.finish(r.Context(), pc, Call{Known: true, Stream: meta.Stream, Result: "failed", ErrorCode: "invalid_request"})
 			billingError(w, err)
 			return
 		}
@@ -258,7 +258,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 
 func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
-		p.finish(r.Context(), pc, Call{Result: "failed", ErrorCode: "upstream_connection_failed"})
+		p.finish(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"})
 	}
 	p.logger.ErrorContext(r.Context(), "模型上游请求失败", "path", r.URL.Path, "error", err)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

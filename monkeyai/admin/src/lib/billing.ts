@@ -140,7 +140,12 @@ export type Transaction = {
     cached_input_tokens: number
     output_tokens: number
     known: boolean
+    stream?: boolean
     result: string
+    error_code?: string
+    terminal_event?: string
+    initial_error_code?: string
+    reconciled?: boolean
   }
   entries?: Entry[]
   wallet_records?: {

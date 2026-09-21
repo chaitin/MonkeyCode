@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
@@ -20,6 +22,54 @@ type applicationHandler struct {
 	endpoints *endpoint.Service
 }
 type modelBilling struct{ service *billing.Service }
+
+type reconciliationModels interface {
+	Get(context.Context, string) (model.Model, error)
+}
+
+type modelUsageReconciler struct {
+	models    reconciliationModels
+	responses *proxy.ResponseReconciler
+}
+
+func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.ReconciliationRequest) (billing.ReconciliationResult, error) {
+	item, err := r.models.Get(ctx, request.ResourceID)
+	if errors.Is(err, model.ErrNotFound) {
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+	}
+	if err != nil {
+		return billing.ReconciliationResult{}, err
+	}
+	result, err := r.responses.Reconcile(ctx, proxy.Target{
+		ModelID:       item.ID,
+		UpstreamModel: item.ModelID,
+		Protocol:      string(item.Protocol),
+		BaseURL:       item.BaseURL,
+		APIKey:        item.APIKey,
+	}, request.RequestID)
+	if err != nil {
+		return billing.ReconciliationResult{}, err
+	}
+	switch result.State {
+	case proxy.ResponseReconciliationPending:
+		return billing.ReconciliationResult{State: billing.ReconciliationPending}, nil
+	case proxy.ResponseReconciliationUnsupported:
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+	case proxy.ResponseReconciliationResolved:
+		if result.Call.InputTokens > math.MaxInt64 || result.Call.CachedInputTokens > math.MaxInt64 || result.Call.OutputTokens > math.MaxInt64 || result.Call.CachedInputTokens > result.Call.InputTokens {
+			return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+		}
+		return billing.ReconciliationResult{
+			State: billing.ReconciliationResolved,
+			Usage: billing.Usage{
+				Input: int64(result.Call.InputTokens), Cached: int64(result.Call.CachedInputTokens), Output: int64(result.Call.OutputTokens),
+				Known: true, Result: result.Call.Result, RequestID: result.Call.RequestID,
+			},
+		}, nil
+	default:
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+	}
+}
 
 func (b modelBilling) Begin(ctx context.Context, t proxy.Target, r proxy.BillingRequest) (proxy.Reservation, error) {
 	var data map[string]json.RawMessage
@@ -60,7 +110,12 @@ func (b modelBilling) Finish(ctx context.Context, id string, c proxy.Call) error
 	if c.InputTokens > math.MaxInt64 || c.CachedInputTokens > math.MaxInt64 || c.OutputTokens > math.MaxInt64 {
 		return b.service.Finish(ctx, id, billing.Usage{Result: "failed", ErrorCode: "invalid_usage"})
 	}
-	return b.service.Finish(ctx, id, billing.Usage{Input: int64(c.InputTokens), Cached: int64(c.CachedInputTokens), Output: int64(c.OutputTokens), Known: c.Known, Result: c.Result, ErrorCode: c.ErrorCode, RequestID: c.RequestID})
+	stream := c.Stream
+	return b.service.Finish(ctx, id, billing.Usage{
+		Input: int64(c.InputTokens), Cached: int64(c.CachedInputTokens), Output: int64(c.OutputTokens),
+		Known: c.Known, Stream: &stream, Result: c.Result, ErrorCode: c.ErrorCode,
+		RequestID: c.RequestID, TerminalEvent: c.TerminalEvent,
+	})
 }
 
 type toolBilling struct{ service *billing.Service }

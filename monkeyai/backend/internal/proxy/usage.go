@@ -18,8 +18,10 @@ type Call struct {
 	SessionID         string
 	RequestID         string
 	Known             bool
+	Stream            bool
 	Result            string
 	ErrorCode         string
+	TerminalEvent     string
 	InputTokens       uint64
 	OutputTokens      uint64
 	CachedInputTokens uint64
@@ -36,6 +38,8 @@ type usageResult struct {
 	CacheCreationInputTokens uint64
 	Known                    bool
 	Result                   string
+	ErrorCode                string
+	TerminalEvent            string
 }
 
 func (r usageResult) totalTokens() uint64 {
@@ -83,7 +87,7 @@ func (p *Proxy) modifyResponse(response *http.Response) error {
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		if pc, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext); ok {
-			p.finish(response.Request.Context(), pc, Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Result: "failed", ErrorCode: "upstream_http_error"})
+			p.finish(response.Request.Context(), pc, Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Stream: pc.stream, Result: "failed", ErrorCode: "upstream_http_error"})
 		}
 		return nil
 	}
@@ -125,7 +129,9 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 		UserID:    target.UserID,
 		SessionID: target.SessionID,
 		RequestID: result.ResponseID,
-		Known:     result.Known, Result: result.Result,
+		Known:     result.Known, Stream: proxyCtx.stream, Result: result.Result,
+		ErrorCode:         result.ErrorCode,
+		TerminalEvent:     result.TerminalEvent,
 		InputTokens:       result.InputTokens + result.CacheReadInputTokens + result.CacheCreationInputTokens,
 		OutputTokens:      result.OutputTokens,
 		CachedInputTokens: result.CacheReadInputTokens + result.CachedTokens,
@@ -135,8 +141,18 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 	if call.Result == "" {
 		call.Result = "succeeded"
 	}
-	if !call.Known {
+	if !call.Known && call.ErrorCode == "" {
 		call.ErrorCode = "usage_unknown"
+	}
+	if !call.Known {
+		p.logger.WarnContext(ctx, "模型用量无法确定",
+			"transaction_id", proxyCtx.reservation.ID,
+			"model_id", target.ModelID,
+			"stream", proxyCtx.stream,
+			"response_id", result.ResponseID,
+			"terminal_event", result.TerminalEvent,
+			"reason", call.ErrorCode,
+		)
 	}
 	p.finish(ctx, proxyCtx, call)
 	if p.recorder == nil || !result.hasTokens() {
@@ -162,38 +178,64 @@ func (c *usageCapture) handleShadow() {
 
 func (c *usageCapture) handleStream() usageResult {
 	var result usageResult
-	var inputKnown, outputKnown bool
+	var inputKnown, outputKnown, terminal, usageSeen bool
 	decoder := newSSEDecoder(c.reader)
-	logger := c.logger.With("path", c.ctx.path)
+	transactionID := ""
+	if c.ctx.proxyCtx != nil {
+		transactionID = c.ctx.proxyCtx.reservation.ID
+	}
+	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	for decoder.Next() {
 		event := decoder.Event()
 		switch event.Type {
-		case "response.completed", "response.failed", "response.incomplete":
+		case "response.created", "response.in_progress", "response.completed", "response.failed", "response.incomplete":
+			isTerminal := event.Type == "response.completed" || event.Type == "response.failed" || event.Type == "response.incomplete"
+			if isTerminal {
+				terminal = true
+				result.TerminalEvent = event.Type
+			}
 			if event.Type != "response.completed" {
-				result.Result = "failed"
+				if isTerminal {
+					result.Result = "failed"
+				}
 			}
 			response, err := parseOpenAIResponseEvent(event.Data)
 			if err != nil {
-				logger.WarnContext(c.ctx.ctx, "解析 Responses 流式用量失败", "error", err)
+				logger.WarnContext(c.ctx.ctx, "解析 Responses 流式事件失败", "event", event.Type, "error", err)
+				if isTerminal {
+					result.ErrorCode = "usage_parse_failed"
+				}
+				continue
+			}
+			if response.ID != "" {
+				result.ResponseID = response.ID
+			}
+			if !isTerminal {
 				continue
 			}
 			if response.Usage == nil {
 				continue
 			}
+			usageSeen = true
 			result.Known = response.Usage.inputKnown && response.Usage.outputKnown
 			result.InputTokens = response.Usage.InputTokens
 			result.OutputTokens = response.Usage.OutputTokens
-			result.ResponseID = response.ID
 			result.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
 		case "", "done":
+			if event.Type == "done" {
+				terminal = true
+				result.TerminalEvent = "done"
+			}
 			response, err := parseChatCompletion(event.Data)
 			if err != nil {
 				logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 流式用量失败", "error", err)
+				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
 			if response.Usage == nil {
 				continue
 			}
+			usageSeen = true
 			result.Known = response.Usage.complete
 			result.InputTokens = response.Usage.PromptTokens
 			result.OutputTokens = response.Usage.CompletionTokens
@@ -203,12 +245,14 @@ func (c *usageCapture) handleStream() usageResult {
 			response, err := parseAnthropicResponse(event.Data)
 			if err != nil {
 				logger.WarnContext(c.ctx.ctx, "解析 Anthropic message_start 用量失败", "error", err)
+				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
 			result.ResponseID = response.Message.ID
 			if response.Message.Usage == nil {
 				continue
 			}
+			usageSeen = true
 			inputKnown = response.Message.Usage.inputKnown
 			result.CacheCreationInputTokens = response.Message.Usage.CacheCreationInputTokens
 			result.InputTokens = response.Message.Usage.InputTokens
@@ -217,11 +261,13 @@ func (c *usageCapture) handleStream() usageResult {
 			response, err := parseAnthropicResponse(event.Data)
 			if err != nil {
 				logger.WarnContext(c.ctx.ctx, "解析 Anthropic message_delta 用量失败", "error", err)
+				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
 			if response.Usage == nil {
 				continue
 			}
+			usageSeen = true
 			if response.Usage.InputTokens > 0 {
 				result.InputTokens = response.Usage.InputTokens
 			}
@@ -231,25 +277,49 @@ func (c *usageCapture) handleStream() usageResult {
 				result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
 			}
 		case "message_stop":
+			terminal = true
+			result.TerminalEvent = event.Type
 			result.Known = inputKnown && outputKnown
 		case "error":
+			terminal = true
 			result.Result = "failed"
 			result.Known = false
+			result.ErrorCode = "upstream_error_event"
+			result.TerminalEvent = event.Type
 		}
 	}
 	if err := decoder.Err(); err != nil {
 		result.Result = "failed"
+		result.ErrorCode = "stream_interrupted"
 		logger.WarnContext(c.ctx.ctx, "读取模型流式响应失败", "error", err)
+	}
+	if result.Known {
+		result.ErrorCode = ""
+	} else if result.ErrorCode == "" {
+		switch {
+		case usageSeen:
+			result.ErrorCode = "usage_incomplete"
+		case terminal:
+			result.ErrorCode = "usage_missing"
+		default:
+			result.ErrorCode = "usage_terminal_event_missing"
+		}
 	}
 	return result
 }
 
 func (c *usageCapture) handleNonStream() usageResult {
 	var result usageResult
-	logger := c.logger.With("path", c.ctx.path)
+	transactionID := ""
+	if c.ctx.proxyCtx != nil {
+		transactionID = c.ctx.proxyCtx.reservation.ID
+	}
+	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	data, err := io.ReadAll(io.LimitReader(c.reader, 32<<20))
 	if err != nil {
 		logger.WarnContext(c.ctx.ctx, "读取模型响应副本失败", "error", err)
+		result.Result = "failed"
+		result.ErrorCode = "usage_read_failed"
 		return result
 	}
 	switch c.ctx.path {
@@ -257,9 +327,16 @@ func (c *usageCapture) handleNonStream() usageResult {
 		response, err := parseOpenAIResponse(data)
 		if err != nil {
 			logger.WarnContext(c.ctx.ctx, "解析 Responses 用量失败", "error", err)
+			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
+		result.ResponseID = response.ID
+		result.TerminalEvent = response.Status
 		if response.Usage == nil {
+			result.ErrorCode = "usage_missing"
+			if response.Status == "failed" || response.Status == "incomplete" {
+				result.Result = "failed"
+			}
 			return result
 		}
 		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
@@ -268,29 +345,33 @@ func (c *usageCapture) handleNonStream() usageResult {
 		}
 		result.InputTokens = response.Usage.InputTokens
 		result.OutputTokens = response.Usage.OutputTokens
-		result.ResponseID = response.ID
 		result.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
 	case "/v1/chat/completions":
 		response, err := parseChatCompletion(data)
 		if err != nil {
 			logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 用量失败", "error", err)
+			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
+		result.ResponseID = response.ID
 		if response.Usage == nil {
+			result.ErrorCode = "usage_missing"
 			return result
 		}
 		result.Known = response.Usage.complete
 		result.InputTokens = response.Usage.PromptTokens
 		result.OutputTokens = response.Usage.CompletionTokens
-		result.ResponseID = response.ID
 		result.CachedTokens = response.Usage.PromptTokensDetails.CachedTokens
 	case "/v1/messages":
 		response, err := parseAnthropicResponse(data)
 		if err != nil {
 			logger.WarnContext(c.ctx.ctx, "解析 Anthropic 用量失败", "error", err)
+			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
+		result.ResponseID = response.ID
 		if response.Usage == nil {
+			result.ErrorCode = "usage_missing"
 			return result
 		}
 		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
@@ -298,7 +379,11 @@ func (c *usageCapture) handleNonStream() usageResult {
 		result.OutputTokens = response.Usage.OutputTokens
 		result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
 		result.CacheCreationInputTokens = response.Usage.CacheCreationInputTokens
-		result.ResponseID = response.ID
+	}
+	if result.Known {
+		result.ErrorCode = ""
+	} else if result.ErrorCode == "" {
+		result.ErrorCode = "usage_incomplete"
 	}
 	return result
 }

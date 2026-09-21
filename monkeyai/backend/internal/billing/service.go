@@ -106,12 +106,20 @@ type Service struct {
 	pool         *pgxpool.Pool
 	now          func() time.Time
 	fallback     *Wallet
+	reconciler   UsageReconciler
 	walletMu     sync.Mutex
 	cachedWallet *Wallet
 }
 
-func NewService(pool *pgxpool.Pool) *Service     { return &Service{pool: pool, now: time.Now} }
-func (s *Service) WithWallet(w *Wallet) *Service { s.fallback = w; return s }
+func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool, now: time.Now} }
+func (s *Service) WithWallet(w *Wallet) *Service {
+	s.fallback = w
+	return s
+}
+func (s *Service) WithUsageReconciler(r UsageReconciler) *Service {
+	s.reconciler = r
+	return s
+}
 func (s *Service) Initialize(ctx context.Context) error {
 	p := defaultPolicy()
 	b, _ := json.Marshal(p)

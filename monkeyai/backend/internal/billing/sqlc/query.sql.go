@@ -1651,6 +1651,15 @@ func (q *Queries) ReleaseFrozenBalance(ctx context.Context, id string) (pgconn.C
 	return q.db.Exec(ctx, releaseFrozenBalance, id)
 }
 
+const releaseReconciliationLock = `-- name: ReleaseReconciliationLock :execresult
+SELECT
+    pg_advisory_unlock(hashtextextended($1, 42))
+`
+
+func (q *Queries) ReleaseReconciliationLock(ctx context.Context, hashtextextended string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, releaseReconciliationLock, hashtextextended)
+}
+
 const releaseSettlementLock = `-- name: ReleaseSettlementLock :execresult
 SELECT
     pg_advisory_unlock(hashtextextended($1, 41))
@@ -1748,6 +1757,7 @@ SET
     next_retry_at = now() + make_interval(secs => LEAST (3600, 30 * power(2, LEAST (attempts, 7)))::int)
 WHERE
     id = $1
+    AND status IN ('settling', 'unknown')
 `
 
 func (q *Queries) ScheduleRetry(ctx context.Context, id string) (pgconn.CommandTag, error) {
@@ -1949,6 +1959,21 @@ WHERE
 
 func (q *Queries) StartTransaction(ctx context.Context, id string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, startTransaction, id)
+}
+
+const stopReconciliation = `-- name: StopReconciliation :execresult
+UPDATE
+    billing_transactions
+SET
+    next_retry_at = NULL,
+    updated_at = now()
+WHERE
+    id = $1
+    AND status = 'unknown'
+`
+
+func (q *Queries) StopReconciliation(ctx context.Context, id string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, stopReconciliation, id)
 }
 
 const subjectExists = `-- name: SubjectExists :one
@@ -2177,6 +2202,71 @@ func (q *Queries) TransactionWalletRecords(ctx context.Context, transactionID st
 	return items, nil
 }
 
+const transactionsToReconcile = `-- name: TransactionsToReconcile :many
+SELECT
+    id,
+    resource_id,
+    request_id,
+    USAGE,
+    error_code,
+    attempts
+FROM
+    billing_transactions
+WHERE
+    status = 'unknown'
+    AND category = 'model'
+    AND request_id <> ''
+    AND next_retry_at IS NOT NULL
+    AND next_retry_at <= now()
+    AND (error_code = 'usage_unknown'
+        OR error_code = 'usage_missing'
+        OR error_code = 'usage_incomplete'
+        OR error_code = 'usage_parse_failed'
+        OR error_code = 'usage_read_failed'
+        OR error_code = 'usage_terminal_event_missing'
+        OR error_code = 'stream_interrupted'
+        OR error_code = 'upstream_error_event')
+ORDER BY
+    started_at
+LIMIT 100
+`
+
+type TransactionsToReconcileRow struct {
+	ID         string
+	ResourceID string
+	RequestID  string
+	Usage      []byte
+	ErrorCode  string
+	Attempts   int32
+}
+
+func (q *Queries) TransactionsToReconcile(ctx context.Context) ([]TransactionsToReconcileRow, error) {
+	rows, err := q.db.Query(ctx, transactionsToReconcile)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TransactionsToReconcileRow{}
+	for rows.Next() {
+		var i TransactionsToReconcileRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ResourceID,
+			&i.RequestID,
+			&i.Usage,
+			&i.ErrorCode,
+			&i.Attempts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transactionsToRetry = `-- name: TransactionsToRetry :many
 SELECT
     id
@@ -2209,6 +2299,18 @@ func (q *Queries) TransactionsToRetry(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const tryReconciliationLock = `-- name: TryReconciliationLock :one
+SELECT
+    pg_try_advisory_lock(hashtextextended($1, 42))
+`
+
+func (q *Queries) TryReconciliationLock(ctx context.Context, hashtextextended string) (bool, error) {
+	row := q.db.QueryRow(ctx, tryReconciliationLock, hashtextextended)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
 }
 
 const trySettlementLock = `-- name: TrySettlementLock :one
