@@ -34,7 +34,7 @@ type InternalHook interface {
 	OnVmReady(ctx context.Context, vmID string) error
 	// OnVmConditionFailed VM 条件失败回调（如任务状态转换）
 	OnVmConditionFailed(ctx context.Context, vmID string) error
-	// OnVirtualMachineInfo VM 信息上报后的可选回调（内部项目用于进程快照入库与违例匹配）
+	// OnVirtualMachineInfo VM 信息上报后的可选回调
 	OnVirtualMachineInfo(ctx context.Context, vm *taskflow.VirtualMachine) error
 }
 

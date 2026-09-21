@@ -162,7 +162,6 @@ func (h *InternalHostHandler) ReportVirtualMachine(c *web.Context, vm taskflow.V
 		h.logger.ErrorContext(ctx, "upsert virtual machine failed", "error", err)
 		return err
 	}
-	// 可选扩展点：内部项目在此处理进程快照入库与违例匹配（开源版无 hook，直接跳过）
 	if h.internalHook != nil {
 		if err := h.internalHook.OnVirtualMachineInfo(ctx, &vm); err != nil {
 			h.logger.WarnContext(ctx, "internal hook OnVirtualMachineInfo failed", "error", err, "vm_id", vm.ID)
