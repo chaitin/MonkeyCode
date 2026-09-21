@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
@@ -58,10 +63,20 @@ func NewProjectHandler(i *do.Injector) (*ProjectHandler, error) {
 	gt.Use(auth.Auth(), targetActive.TargetActive())
 	gt.GET("", web.BindHandler(h.GetProjectTree))
 	gt.GET("/blob", web.BindHandler(h.GetProjectBlob))
+	gt.GET("/media", web.BindHandler(h.GetProjectMedia))
 	gt.GET("/logs", web.BindHandler(h.GetProjectLogs))
 	gt.GET("/archive", web.BindHandler(h.GetProjectArchive))
 
 	return h, nil
+}
+
+const maxProjectMediaSize = 10 << 20 // 10 MiB
+
+var allowedProjectMediaTypes = map[string]struct{}{
+	"image/gif":  {},
+	"image/jpeg": {},
+	"image/png":  {},
+	"image/webp": {},
 }
 
 // List 项目列表
@@ -392,6 +407,79 @@ func (h *ProjectHandler) GetProjectBlob(c *web.Context, req domain.GetProjectBlo
 		return err
 	}
 	return c.Success(resp)
+}
+
+// GetProjectMedia 获取可安全内联展示的项目图片
+//
+//	@Summary		获取项目图片
+//	@Description	获取项目中的栅格图片原始内容，用于 README 等页面内联展示
+//	@Tags			【用户】项目管理
+//	@Produce		image/png,image/jpeg,image/gif,image/webp
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id		path		string	true	"项目ID"
+//	@Param			path	query		string	true	"图片路径"
+//	@Param			ref		query		string	false	"分支"
+//	@Success		200		{file}		"成功"
+//	@Failure		400		{string}	string	"无效路径"
+//	@Failure		401		{string}	string	"未授权"
+//	@Failure		413		{string}	string	"图片过大"
+//	@Failure		415		{string}	string	"不支持的媒体类型"
+//	@Router			/api/v1/users/projects/{id}/tree/media [get]
+func (h *ProjectHandler) GetProjectMedia(c *web.Context, req domain.GetProjectBlobReq) error {
+	cleanPath, ok := cleanRepositoryMediaPath(req.Path)
+	if !ok {
+		return c.String(http.StatusBadRequest, "invalid media path")
+	}
+	req.Path = cleanPath
+	req.MaxSize = maxProjectMediaSize
+
+	user := middleware.GetUser(c)
+	resp, err := h.usecase.GetProjectBlob(c.Request().Context(), user.ID, &req)
+	if err != nil {
+		return err
+	}
+
+	if resp.Size > maxProjectMediaSize || len(resp.Content) > maxProjectMediaSize {
+		return c.String(http.StatusRequestEntityTooLarge, "media file is too large")
+	}
+
+	contentType := http.DetectContentType(resp.Content)
+	if _, ok := allowedProjectMediaTypes[contentType]; !ok {
+		return c.String(http.StatusUnsupportedMediaType, "unsupported media type")
+	}
+
+	headers := c.Response().Header()
+	headers.Set("Cache-Control", "private, no-cache")
+	headers.Set("X-Content-Type-Options", "nosniff")
+	if resp.Sha != "" {
+		etag := strconv.Quote(resp.Sha)
+		headers.Set("ETag", etag)
+		if requestETagMatches(c.Request().Header.Get("If-None-Match"), etag) {
+			return c.NoContent(http.StatusNotModified)
+		}
+	}
+
+	headers.Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": path.Base(req.Path)}))
+	headers.Set("Content-Length", strconv.Itoa(len(resp.Content)))
+	return c.Blob(http.StatusOK, contentType, resp.Content)
+}
+
+func cleanRepositoryMediaPath(raw string) (string, bool) {
+	cleaned := path.Clean(strings.TrimLeft(strings.TrimSpace(raw), "/"))
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	return cleaned, true
+}
+
+func requestETagMatches(header, etag string) bool {
+	for value := range strings.SplitSeq(header, ",") {
+		value = strings.TrimSpace(value)
+		if value == "*" || value == etag || strings.TrimPrefix(value, "W/") == etag {
+			return true
+		}
+	}
+	return false
 }
 
 // GetProjectLogs 获取项目提交日志
