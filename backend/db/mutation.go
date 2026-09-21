@@ -8244,19 +8244,23 @@ func (m *AgentSkillRepoMutation) ResetEdge(name string) error {
 // AgentSkillVersionMutation represents an operation that mutates the AgentSkillVersion nodes in the graph.
 type AgentSkillVersionMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	version       *string
-	s3_key        *string
-	parsed_meta   *types.SkillParsedMeta
-	created_at    *time.Time
-	clearedFields map[string]struct{}
-	skill         *uuid.UUID
-	clearedskill  bool
-	done          bool
-	oldValue      func(context.Context) (*AgentSkillVersion, error)
-	predicates    []predicate.AgentSkillVersion
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	version        *string
+	s3_key         *string
+	parsed_meta    *types.SkillParsedMeta
+	guard_status   *string
+	guard_task_id  *string
+	guard_deadline *time.Time
+	guard_error    *string
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	skill          *uuid.UUID
+	clearedskill   bool
+	done           bool
+	oldValue       func(context.Context) (*AgentSkillVersion, error)
+	predicates     []predicate.AgentSkillVersion
 }
 
 var _ ent.Mutation = (*AgentSkillVersionMutation)(nil)
@@ -8520,6 +8524,189 @@ func (m *AgentSkillVersionMutation) ResetParsedMeta() {
 	delete(m.clearedFields, agentskillversion.FieldParsedMeta)
 }
 
+// SetGuardStatus sets the "guard_status" field.
+func (m *AgentSkillVersionMutation) SetGuardStatus(s string) {
+	m.guard_status = &s
+}
+
+// GuardStatus returns the value of the "guard_status" field in the mutation.
+func (m *AgentSkillVersionMutation) GuardStatus() (r string, exists bool) {
+	v := m.guard_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuardStatus returns the old "guard_status" field's value of the AgentSkillVersion entity.
+// If the AgentSkillVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSkillVersionMutation) OldGuardStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuardStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuardStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuardStatus: %w", err)
+	}
+	return oldValue.GuardStatus, nil
+}
+
+// ResetGuardStatus resets all changes to the "guard_status" field.
+func (m *AgentSkillVersionMutation) ResetGuardStatus() {
+	m.guard_status = nil
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (m *AgentSkillVersionMutation) SetGuardTaskID(s string) {
+	m.guard_task_id = &s
+}
+
+// GuardTaskID returns the value of the "guard_task_id" field in the mutation.
+func (m *AgentSkillVersionMutation) GuardTaskID() (r string, exists bool) {
+	v := m.guard_task_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuardTaskID returns the old "guard_task_id" field's value of the AgentSkillVersion entity.
+// If the AgentSkillVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSkillVersionMutation) OldGuardTaskID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuardTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuardTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuardTaskID: %w", err)
+	}
+	return oldValue.GuardTaskID, nil
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (m *AgentSkillVersionMutation) ClearGuardTaskID() {
+	m.guard_task_id = nil
+	m.clearedFields[agentskillversion.FieldGuardTaskID] = struct{}{}
+}
+
+// GuardTaskIDCleared returns if the "guard_task_id" field was cleared in this mutation.
+func (m *AgentSkillVersionMutation) GuardTaskIDCleared() bool {
+	_, ok := m.clearedFields[agentskillversion.FieldGuardTaskID]
+	return ok
+}
+
+// ResetGuardTaskID resets all changes to the "guard_task_id" field.
+func (m *AgentSkillVersionMutation) ResetGuardTaskID() {
+	m.guard_task_id = nil
+	delete(m.clearedFields, agentskillversion.FieldGuardTaskID)
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (m *AgentSkillVersionMutation) SetGuardDeadline(t time.Time) {
+	m.guard_deadline = &t
+}
+
+// GuardDeadline returns the value of the "guard_deadline" field in the mutation.
+func (m *AgentSkillVersionMutation) GuardDeadline() (r time.Time, exists bool) {
+	v := m.guard_deadline
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuardDeadline returns the old "guard_deadline" field's value of the AgentSkillVersion entity.
+// If the AgentSkillVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSkillVersionMutation) OldGuardDeadline(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuardDeadline is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuardDeadline requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuardDeadline: %w", err)
+	}
+	return oldValue.GuardDeadline, nil
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (m *AgentSkillVersionMutation) ClearGuardDeadline() {
+	m.guard_deadline = nil
+	m.clearedFields[agentskillversion.FieldGuardDeadline] = struct{}{}
+}
+
+// GuardDeadlineCleared returns if the "guard_deadline" field was cleared in this mutation.
+func (m *AgentSkillVersionMutation) GuardDeadlineCleared() bool {
+	_, ok := m.clearedFields[agentskillversion.FieldGuardDeadline]
+	return ok
+}
+
+// ResetGuardDeadline resets all changes to the "guard_deadline" field.
+func (m *AgentSkillVersionMutation) ResetGuardDeadline() {
+	m.guard_deadline = nil
+	delete(m.clearedFields, agentskillversion.FieldGuardDeadline)
+}
+
+// SetGuardError sets the "guard_error" field.
+func (m *AgentSkillVersionMutation) SetGuardError(s string) {
+	m.guard_error = &s
+}
+
+// GuardError returns the value of the "guard_error" field in the mutation.
+func (m *AgentSkillVersionMutation) GuardError() (r string, exists bool) {
+	v := m.guard_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuardError returns the old "guard_error" field's value of the AgentSkillVersion entity.
+// If the AgentSkillVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSkillVersionMutation) OldGuardError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuardError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuardError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuardError: %w", err)
+	}
+	return oldValue.GuardError, nil
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (m *AgentSkillVersionMutation) ClearGuardError() {
+	m.guard_error = nil
+	m.clearedFields[agentskillversion.FieldGuardError] = struct{}{}
+}
+
+// GuardErrorCleared returns if the "guard_error" field was cleared in this mutation.
+func (m *AgentSkillVersionMutation) GuardErrorCleared() bool {
+	_, ok := m.clearedFields[agentskillversion.FieldGuardError]
+	return ok
+}
+
+// ResetGuardError resets all changes to the "guard_error" field.
+func (m *AgentSkillVersionMutation) ResetGuardError() {
+	m.guard_error = nil
+	delete(m.clearedFields, agentskillversion.FieldGuardError)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *AgentSkillVersionMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -8630,7 +8817,7 @@ func (m *AgentSkillVersionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentSkillVersionMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 9)
 	if m.skill != nil {
 		fields = append(fields, agentskillversion.FieldResourceID)
 	}
@@ -8642,6 +8829,18 @@ func (m *AgentSkillVersionMutation) Fields() []string {
 	}
 	if m.parsed_meta != nil {
 		fields = append(fields, agentskillversion.FieldParsedMeta)
+	}
+	if m.guard_status != nil {
+		fields = append(fields, agentskillversion.FieldGuardStatus)
+	}
+	if m.guard_task_id != nil {
+		fields = append(fields, agentskillversion.FieldGuardTaskID)
+	}
+	if m.guard_deadline != nil {
+		fields = append(fields, agentskillversion.FieldGuardDeadline)
+	}
+	if m.guard_error != nil {
+		fields = append(fields, agentskillversion.FieldGuardError)
 	}
 	if m.created_at != nil {
 		fields = append(fields, agentskillversion.FieldCreatedAt)
@@ -8662,6 +8861,14 @@ func (m *AgentSkillVersionMutation) Field(name string) (ent.Value, bool) {
 		return m.S3Key()
 	case agentskillversion.FieldParsedMeta:
 		return m.ParsedMeta()
+	case agentskillversion.FieldGuardStatus:
+		return m.GuardStatus()
+	case agentskillversion.FieldGuardTaskID:
+		return m.GuardTaskID()
+	case agentskillversion.FieldGuardDeadline:
+		return m.GuardDeadline()
+	case agentskillversion.FieldGuardError:
+		return m.GuardError()
 	case agentskillversion.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -8681,6 +8888,14 @@ func (m *AgentSkillVersionMutation) OldField(ctx context.Context, name string) (
 		return m.OldS3Key(ctx)
 	case agentskillversion.FieldParsedMeta:
 		return m.OldParsedMeta(ctx)
+	case agentskillversion.FieldGuardStatus:
+		return m.OldGuardStatus(ctx)
+	case agentskillversion.FieldGuardTaskID:
+		return m.OldGuardTaskID(ctx)
+	case agentskillversion.FieldGuardDeadline:
+		return m.OldGuardDeadline(ctx)
+	case agentskillversion.FieldGuardError:
+		return m.OldGuardError(ctx)
 	case agentskillversion.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -8719,6 +8934,34 @@ func (m *AgentSkillVersionMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetParsedMeta(v)
+		return nil
+	case agentskillversion.FieldGuardStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuardStatus(v)
+		return nil
+	case agentskillversion.FieldGuardTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuardTaskID(v)
+		return nil
+	case agentskillversion.FieldGuardDeadline:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuardDeadline(v)
+		return nil
+	case agentskillversion.FieldGuardError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuardError(v)
 		return nil
 	case agentskillversion.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -8760,6 +9003,15 @@ func (m *AgentSkillVersionMutation) ClearedFields() []string {
 	if m.FieldCleared(agentskillversion.FieldParsedMeta) {
 		fields = append(fields, agentskillversion.FieldParsedMeta)
 	}
+	if m.FieldCleared(agentskillversion.FieldGuardTaskID) {
+		fields = append(fields, agentskillversion.FieldGuardTaskID)
+	}
+	if m.FieldCleared(agentskillversion.FieldGuardDeadline) {
+		fields = append(fields, agentskillversion.FieldGuardDeadline)
+	}
+	if m.FieldCleared(agentskillversion.FieldGuardError) {
+		fields = append(fields, agentskillversion.FieldGuardError)
+	}
 	return fields
 }
 
@@ -8776,6 +9028,15 @@ func (m *AgentSkillVersionMutation) ClearField(name string) error {
 	switch name {
 	case agentskillversion.FieldParsedMeta:
 		m.ClearParsedMeta()
+		return nil
+	case agentskillversion.FieldGuardTaskID:
+		m.ClearGuardTaskID()
+		return nil
+	case agentskillversion.FieldGuardDeadline:
+		m.ClearGuardDeadline()
+		return nil
+	case agentskillversion.FieldGuardError:
+		m.ClearGuardError()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSkillVersion nullable field %s", name)
@@ -8796,6 +9057,18 @@ func (m *AgentSkillVersionMutation) ResetField(name string) error {
 		return nil
 	case agentskillversion.FieldParsedMeta:
 		m.ResetParsedMeta()
+		return nil
+	case agentskillversion.FieldGuardStatus:
+		m.ResetGuardStatus()
+		return nil
+	case agentskillversion.FieldGuardTaskID:
+		m.ResetGuardTaskID()
+		return nil
+	case agentskillversion.FieldGuardDeadline:
+		m.ResetGuardDeadline()
+		return nil
+	case agentskillversion.FieldGuardError:
+		m.ResetGuardError()
 		return nil
 	case agentskillversion.FieldCreatedAt:
 		m.ResetCreatedAt()

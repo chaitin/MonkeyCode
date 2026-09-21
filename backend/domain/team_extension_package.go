@@ -12,6 +12,22 @@ type TeamExtensionPackageUsecase interface {
 	Import(ctx context.Context, teamUser *TeamUser, req *ImportTeamExtensionPackageReq) (*ImportTeamExtensionPackageResp, error)
 }
 
+// ExtensionPackageStageFinalizer imports the non-Skill resources from a
+// temporarily staged extension package after its single package-level scan
+// has passed. Finalize is idempotent so recovery may safely retry it after a
+// process restart.
+type ExtensionPackageStageFinalizer interface {
+	Finalize(ctx context.Context, stageKey string, teamID, userID uuid.UUID, packageID, version string) (*ExtensionPackageStageResult, error)
+	Discard(ctx context.Context, stageKey string) error
+}
+
+type ExtensionPackageStageResult struct {
+	CreatedRules  int
+	UpdatedRules  int
+	CreatedImages int
+	UpdatedImages int
+}
+
 type TeamExtensionPackageRepo interface {
 	ImportResources(ctx context.Context, teamID, userID uuid.UUID, req *TeamExtensionImport) (*TeamExtensionImportResult, error)
 	ListImageArchives(ctx context.Context, teamID uuid.UUID) ([]*db.TeamExtensionImageArchive, error)
