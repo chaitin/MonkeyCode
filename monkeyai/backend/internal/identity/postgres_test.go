@@ -65,18 +65,17 @@ func TestOAuthUserRegistration(t *testing.T) {
 	}
 
 	for _, test := range []struct {
-		name     string
-		settings string
-		want     error
+		name                    string
+		autoRegistrationEnabled bool
+		want                    error
 	}{
-		{name: "enabled", settings: `{"registration_enabled":true}`},
-		{name: "disabled", settings: `{"registration_enabled":false}`, want: ErrRegistrationDisabled},
-		{name: "unset", settings: `{}`, want: ErrRegistrationDisabled},
+		{name: "enabled", autoRegistrationEnabled: true},
+		{name: "disabled", want: ErrRegistrationDisabled},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			service := NewService(pool, authenticationStub{value: json.RawMessage(test.settings)}, "http://localhost")
+			service := NewService(pool, nil, "http://localhost")
 			profile := upstreamProfile{Provider: "oidc", Issuer: "https://issuer.example.com", Subject: test.name, Email: test.name + "@example.com", Name: test.name}
-			user, err := service.upsertIdentity(ctx, profile, false)
+			user, err := service.upsertIdentity(ctx, profile, false, test.autoRegistrationEnabled)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("注册结果 = %v, want %v", err, test.want)
 			}
@@ -96,8 +95,7 @@ func TestOAuthUserRegistration(t *testing.T) {
 			if users != 1 || identities != 1 || user.Role != "user" || user.Status != "active" {
 				t.Fatalf("自动创建用户或绑定身份失败: users=%d identities=%d role=%s status=%s", users, identities, user.Role, user.Status)
 			}
-			service.settings = authenticationStub{value: json.RawMessage(`{"registration_enabled":false}`)}
-			again, err := service.upsertIdentity(ctx, profile, false)
+			again, err := service.upsertIdentity(ctx, profile, false, false)
 			if err != nil || again.ID != user.ID {
 				t.Fatalf("关闭注册后已有用户重复登录失败: err=%v id=%s", err, again.ID)
 			}
@@ -113,12 +111,12 @@ func TestOAuthAdminClientLogin(t *testing.T) {
 			name = "promoted_identity"
 		}
 		t.Run(name, func(t *testing.T) {
-			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "http://localhost")
+			s := NewService(pool, nil, "http://localhost")
 			profile := upstreamProfile{Provider: "oidc", Issuer: "https://issuer.example.com", Subject: name, Email: name + "@example.com", Name: name}
 			var user User
 			var err error
 			if bound {
-				user, err = s.upsertIdentity(t.Context(), profile, false)
+				user, err = s.upsertIdentity(t.Context(), profile, false, true)
 			} else {
 				user, err = s.insertUser(t.Context(), name, profile.Email, "user", "")
 			}
@@ -128,9 +126,8 @@ func TestOAuthAdminClientLogin(t *testing.T) {
 			if _, err := s.updateUser(t.Context(), user.ID, user.Name, "admin", "active", ""); err != nil {
 				t.Fatal(err)
 			}
-			s.settings = authenticationStub{json.RawMessage(`{"registration_enabled":false}`)}
 			for _, adminOnly := range []bool{false, true} {
-				loggedIn, err := s.upsertIdentity(t.Context(), profile, adminOnly)
+				loggedIn, err := s.upsertIdentity(t.Context(), profile, adminOnly, false)
 				if err != nil || loggedIn.ID != user.ID || loggedIn.Role != "admin" {
 					t.Fatalf("管理员 OAuth 登录失败: adminOnly=%t user=%+v err=%v", adminOnly, loggedIn, err)
 				}
@@ -142,7 +139,7 @@ func TestOAuthAdminClientLogin(t *testing.T) {
 			if _, err := s.updateUser(t.Context(), user.ID, user.Name, "admin", "disabled", ""); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.upsertIdentity(t.Context(), profile, false); !errors.Is(err, ErrUserDisabled) {
+			if _, err := s.upsertIdentity(t.Context(), profile, false, false); !errors.Is(err, ErrUserDisabled) {
 				t.Fatalf("停用管理员登录结果=%v", err)
 			}
 		})

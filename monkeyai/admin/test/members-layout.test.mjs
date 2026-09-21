@@ -224,56 +224,34 @@ test("only the team root starts expanded", async () => {
   )
   assert.match(
     tree,
-    /const \[ungroupedExpanded, setUngroupedExpanded\] = useState\(false\)/
-  )
-  assert.match(
-    tree,
     /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/
   )
-  assert.match(
-    tree,
-    /open=\{ungroupedExpanded\}\s+onOpenChange=\{setUngroupedExpanded\}/
-  )
+  assert.match(tree, /const \[expanded, setExpanded\] = useState\(false\)/)
 })
 
-test("ungrouped members appear as the last virtual tree group", async () => {
-  const tree = await readFile(
-    new URL("../src/components/members/group-tree.tsx", import.meta.url),
-    "utf8"
+test("ungrouped members appear beside the team root with a gray folder", async () => {
+  const [page, tree] = await Promise.all([
+    readFile(
+      new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../src/components/members/group-tree.tsx", import.meta.url),
+      "utf8"
+    ),
+  ])
+  const treeList = page
+    .split('aria-label={t("pages.membersAndGroups.groupsTitle")}')[1]
+    .split("</ul>")[0]
+  assert.ok(
+    treeList.indexOf("<GroupTreeItem") < treeList.indexOf("<UngroupedTreeItem")
   )
-  const virtualGroup = tree.split("{isRoot ? (")[1]
-  assert.ok(virtualGroup)
-  assert.match(
-    tree,
-    /<span className="min-w-0 flex-1 truncate text-start">\{group.name\}<\/span>/
-  )
-  assert.equal(
-    (
-      tree.match(
-        /className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal/g
-      ) ?? []
-    ).length,
-    2
-  )
-  assert.ok(tree.indexOf("{children.map((child)") < tree.indexOf("{isRoot ? ("))
-  assert.match(virtualGroup, /<Collapsible\s+open=\{ungroupedExpanded\}/)
-  assert.match(virtualGroup, /onOpenChange=\{setUngroupedExpanded\}/)
-  assert.match(
-    virtualGroup,
-    /directMembers\.length > 0 \? \(\s*<CollapsibleTrigger/
-  )
-  assert.match(virtualGroup, /ungroupedExpanded \? Folder02Icon : FolderIcon/)
-  assert.match(virtualGroup, /\{directMembers\.length\}/)
-  assert.match(
-    virtualGroup,
-    /<ul className="flex flex-col gap-1">\{memberRows\}<\/ul>/
-  )
-  assert.match(
-    virtualGroup,
-    /<span className="flex h-8 shrink-0 items-center justify-center px-1 text-xs text-muted-foreground tabular-nums"/
-  )
-  assert.doesNotMatch(virtualGroup, /<DropdownMenu/)
-  assert.doesNotMatch(tree, /isRoot && directMembers\.length > 0 &&/)
+  assert.match(tree, /export function UngroupedTreeItem/)
+  assert.match(tree, /ungroupedMemberIDs\(groups, users\)/)
+  assert.match(tree, /pages\.membersAndGroups\.ungroupedMembers/)
+  assert.match(tree, /className="size-4 shrink-0 text-muted-foreground"/)
+  assert.match(tree, /level=\{1\}/)
+  assert.match(tree, /\{!isRoot && memberRows\}/)
 })
 
 test("group rows swap the count for actions in the same slot on hover", async () => {
@@ -318,7 +296,6 @@ test("group rows swap the count for actions in the same slot on hover", async ()
       .length,
     2
   )
-  assert.match(tree, /ungroupedHovered && "bg-foreground\/5"/)
   assert.equal(
     (
       tree.match(
@@ -387,7 +364,7 @@ test("tree and list share the same member action menu", async () => {
         /\.sort\(\(a, b\) => compareByName\(a, b, nameCollator\)\)/g
       ) ?? []
     ).length,
-    2
+    3
   )
   assert.match(tree, /<MemberActions/)
   const avatar = await readFile(

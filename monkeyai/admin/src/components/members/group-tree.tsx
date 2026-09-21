@@ -38,6 +38,7 @@ import {
   ROOT_GROUP_ID,
   groupMemberIDs,
   directMemberIDs,
+  ungroupedMemberIDs,
   compareByName,
   type MemberGroup,
 } from "@/lib/member-groups"
@@ -81,16 +82,14 @@ export function GroupTreeItem({
 }: Props) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(group.id === ROOT_GROUP_ID)
-  const [ungroupedExpanded, setUngroupedExpanded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsFocused, setActionsFocused] = useState(false)
   const [hovered, setHovered] = useState(false)
   const showActions = hovered || menuOpen || actionsFocused
-  const [ungroupedHovered, setUngroupedHovered] = useState(false)
   const children = groups
     .filter((child) => child.parent_id === group.id)
     .sort((a, b) => compareByName(a, b, nameCollator))
-  const directIDs = directMemberIDs(groups, users, group.id)
+  const directIDs = directMemberIDs(groups, group.id)
   const directMembers = users
     .filter((user) => directIDs.has(user.id))
     .sort((a, b) => compareByName(a, b, nameCollator))
@@ -253,74 +252,105 @@ export function GroupTreeItem({
                   level={level + 1}
                 />
               ))}
-              {isRoot ? (
-                <li>
-                  <Collapsible
-                    open={ungroupedExpanded}
-                    onOpenChange={setUngroupedExpanded}
-                  >
-                    <div
-                      className={cn(
-                        "group/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors",
-                        ungroupedHovered && "bg-foreground/5"
-                      )}
-                      onPointerEnter={() => setUngroupedHovered(true)}
-                      onPointerLeave={() => setUngroupedHovered(false)}
-                    >
-                      {directMembers.length > 0 ? (
-                        <CollapsibleTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
-                              style={{
-                                paddingInlineStart: `${(level + 1) * 1.25 + 0.5}rem`,
-                              }}
-                            />
-                          }
-                        >
-                          <HugeiconsIcon
-                            icon={ungroupedExpanded ? Folder02Icon : FolderIcon}
-                            className="size-4 shrink-0 text-yellow-600 dark:text-yellow-400"
-                            strokeWidth={2}
-                          />
-                          <span className="truncate">
-                            {t("pages.membersAndGroups.ungroupedMembers")}
-                          </span>
-                        </CollapsibleTrigger>
-                      ) : (
-                        <span
-                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-sm"
-                          style={{
-                            paddingInlineStart: `${(level + 1) * 1.25 + 0.5}rem`,
-                          }}
-                        >
-                          <HugeiconsIcon
-                            icon={FolderIcon}
-                            className="size-4 shrink-0 text-yellow-600 dark:text-yellow-400"
-                            strokeWidth={2}
-                          />
-                          <span className="truncate">
-                            {t("pages.membersAndGroups.ungroupedMembers")}
-                          </span>
-                        </span>
-                      )}
-                      <span className="flex h-8 shrink-0 items-center justify-center px-1 text-xs text-muted-foreground tabular-nums">
-                        {directMembers.length}
-                      </span>
-                    </div>
-                    {directMembers.length > 0 && (
-                      <CollapsibleContent>
-                        <ul className="flex flex-col gap-1">{memberRows}</ul>
-                      </CollapsibleContent>
-                    )}
-                  </Collapsible>
-                </li>
-              ) : (
-                memberRows
-              )}
+              {!isRoot && memberRows}
+            </ul>
+          </CollapsibleContent>
+        )}
+      </Collapsible>
+    </li>
+  )
+}
+
+export function UngroupedTreeItem({
+  groups,
+  users,
+  nameCollator,
+  savingID,
+  currentUserID,
+  onToggleStatus,
+  onToggleRole,
+  onResetPassword,
+}: Pick<
+  Props,
+  | "groups"
+  | "users"
+  | "nameCollator"
+  | "savingID"
+  | "currentUserID"
+  | "onToggleStatus"
+  | "onToggleRole"
+  | "onResetPassword"
+>) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const memberIDs = ungroupedMemberIDs(groups, users)
+  const members = users
+    .filter((user) => memberIDs.has(user.id))
+    .sort((a, b) => compareByName(a, b, nameCollator))
+
+  return (
+    <li>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <div
+          className={cn(
+            "group/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors",
+            hovered && "bg-foreground/5"
+          )}
+          onPointerEnter={() => setHovered(true)}
+          onPointerLeave={() => setHovered(false)}
+        >
+          {members.length > 0 ? (
+            <CollapsibleTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+                />
+              }
+            >
+              <HugeiconsIcon
+                icon={expanded ? Folder02Icon : FolderIcon}
+                className="size-4 shrink-0 text-muted-foreground"
+                strokeWidth={2}
+              />
+              <span className="min-w-0 flex-1 truncate text-start">
+                {t("pages.membersAndGroups.ungroupedMembers")}
+              </span>
+            </CollapsibleTrigger>
+          ) : (
+            <span className="flex min-w-0 flex-1 items-center gap-2 py-1.5 ps-2 text-sm">
+              <HugeiconsIcon
+                icon={FolderIcon}
+                className="size-4 shrink-0 text-muted-foreground"
+                strokeWidth={2}
+              />
+              <span className="min-w-0 flex-1 truncate text-start">
+                {t("pages.membersAndGroups.ungroupedMembers")}
+              </span>
+            </span>
+          )}
+          <span className="flex h-8 shrink-0 items-center justify-center px-1 text-xs text-muted-foreground tabular-nums">
+            {members.length}
+          </span>
+        </div>
+        {members.length > 0 && (
+          <CollapsibleContent>
+            <ul className="flex flex-col gap-1">
+              {members.map((member) => (
+                <GroupTreeMemberRow
+                  key={member.id}
+                  member={member}
+                  level={1}
+                  savingID={savingID}
+                  currentUserID={currentUserID}
+                  onToggleStatus={onToggleStatus}
+                  onToggleRole={onToggleRole}
+                  onResetPassword={onResetPassword}
+                />
+              ))}
             </ul>
           </CollapsibleContent>
         )}

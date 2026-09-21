@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
 import type {
   AuthorizationSelection,
@@ -113,10 +115,12 @@ export function useResources<T>(
   path: string,
   convert: (row: ResourceRow) => T
 ) {
+  const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [items, setItems] = useState<T[]>([])
-  const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(false)
+  const [revision, setRevision] = useState(0)
   const lock = useRef(false)
   const reload = useCallback(async () => {
     const result = await listResources(base + path)
@@ -129,7 +133,20 @@ export function useResources<T>(
         if (!cancelled) setItems(result.items.map(convert))
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message)
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : String(e)
+          showToast({
+            status: "error",
+            title: message,
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => {
+                setLoading(true)
+                setRevision((value) => value + 1)
+              },
+            },
+          })
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -137,30 +154,37 @@ export function useResources<T>(
     return () => {
       cancelled = true
     }
-  }, [path, convert])
-  const run = async (action: () => Promise<void>) => {
+  }, [path, convert, revision, showToast, t])
+  const run = async (action: () => Promise<void>, successMessage?: string) => {
     if (lock.current) return false
     lock.current = true
     setPending(true)
-    setError("")
     try {
       await action()
       await reload()
+      if (successMessage) {
+        showToast({ status: "success", title: successMessage })
+      }
       return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : "操作失败")
+      showToast({
+        status: "error",
+        title: e instanceof Error ? e.message : "操作失败",
+      })
       return false
     } finally {
       lock.current = false
       setPending(false)
     }
   }
-  return { items, reload, run, error, loading, pending }
+  return { items, reload, run, error: "", loading, pending }
 }
 export function useSubjects() {
+  const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
   const [members, setMembers] = useState<AuthorizationMember[]>([])
-  const [error, setError] = useState("")
+  const [revision, setRevision] = useState(0)
   useEffect(() => {
     let cancelled = false
     api<{
@@ -181,15 +205,25 @@ export function useSubjects() {
         setMembers(data.users.map((u) => ({ ...u, groupId: "" })))
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message)
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : String(e)
+          showToast({
+            status: "error",
+            title: message,
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => setRevision((value) => value + 1),
+            },
+          })
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [revision, showToast, t])
   const flat = (nodes: AuthorizationGroupNode[]): AuthorizationGroupNode[] =>
     nodes.flatMap((n) => [n, ...flat(n.children ?? [])])
-  return { groups, members, flatGroups: flat(groups), error }
+  return { groups, members, flatGroups: flat(groups), error: "" }
 }
 
 export async function listResources(

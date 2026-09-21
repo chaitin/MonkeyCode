@@ -8,6 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { DatePickerField } from "@/components/date-picker-field"
 import { api } from "@/lib/api"
 import { endOfLocalDay, startOfLocalDay } from "@/lib/date-range"
@@ -91,6 +92,7 @@ const RESULT_FILTERS: LogResult[] = ["success", "failed"]
 
 export function OperationLogsPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const [operatorInput, setOperatorInput] = useState("")
   const [ipInput, setIpInput] = useState("")
   const [categoryInput, setCategoryInput] = useState<CategoryFilter>(null)
@@ -140,15 +142,21 @@ export function OperationLogsPage() {
         if (!controller.signal.aborted) setLoaded({ path, revision, data })
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setLoaded({
-            path,
-            revision,
-            error: error instanceof Error ? error.message : String(error),
+        if (!controller.signal.aborted) {
+          const message = error instanceof Error ? error.message : String(error)
+          setLoaded({ path, revision, error: message })
+          showToast({
+            status: "error",
+            title: message,
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => setRevision((value) => value + 1),
+            },
           })
+        }
       })
     return () => controller.abort()
-  }, [path, revision])
+  }, [path, revision, showToast, t])
   const current =
     loaded?.path === path && loaded.revision === revision ? loaded : undefined
   const loading = !current
@@ -331,11 +339,7 @@ export function OperationLogsPage() {
             )}
           </div>
           {error && (
-            <div
-              role="alert"
-              className="flex items-center gap-3 px-(--card-spacing) text-sm text-destructive"
-            >
-              {error}
+            <div className="px-(--card-spacing)">
               <Button
                 variant="outline"
                 onClick={() => setRevision((value) => value + 1)}

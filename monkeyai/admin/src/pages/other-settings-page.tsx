@@ -2,9 +2,12 @@ import { useEffect, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
   Edit02Icon,
+  Route02Icon,
   MailSend02Icon,
   MoreHorizontalIcon,
   PlusSignIcon,
+  PowerIcon,
+  PowerOffIcon,
   TagsIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -20,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,7 +31,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -51,19 +54,21 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Item,
   ItemActions,
   ItemContent,
   ItemDescription,
+  ItemFooter,
   ItemGroup,
   ItemMedia,
   ItemTitle,
@@ -76,7 +81,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
@@ -136,7 +140,17 @@ type OAuthConnection = {
   issuerUrl?: string
   scopes?: string[]
   enabled: boolean
+  autoRegistrationEnabled: boolean
 }
+
+type OAuthPendingAction = {
+  connection: OAuthConnection
+  action: "enable" | "disable" | "delete"
+}
+
+type AutoRegistrationPendingAction =
+  | { type: "email"; enabled: boolean }
+  | { type: "oauth"; enabled: boolean; connection: OAuthConnection }
 
 function readOAuthConnections(
   value: Record<string, unknown>
@@ -159,6 +173,7 @@ function readOAuthConnections(
         ? connection.scopes.map(String)
         : undefined,
       enabled: Boolean(connection.enabled),
+      autoRegistrationEnabled: connection.auto_registration_enabled !== false,
     }
   })
 }
@@ -166,6 +181,7 @@ function readOAuthConnections(
 type LoginMethodSettings = {
   passwordEnabled: boolean
   emailCodeEnabled: boolean
+  emailCodeAutoRegistrationEnabled: boolean
 }
 
 type EmailSettings = {
@@ -213,6 +229,7 @@ const INITIAL_OAUTH_CONNECTIONS: OAuthConnection[] = []
 const INITIAL_LOGIN_METHOD_SETTINGS: LoginMethodSettings = {
   passwordEnabled: true,
   emailCodeEnabled: false,
+  emailCodeAutoRegistrationEnabled: false,
 }
 
 const INITIAL_EMAIL_SETTINGS: EmailSettings = {
@@ -234,37 +251,48 @@ const INITIAL_KNOWLEDGE_BASE_SETTINGS: KnowledgeBaseSettings = {
 
 export function OtherSettingsPage() {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const { tags: skillTags, addTag, deleteTag, renameTag } = useSkillTags()
   const [teamName, setTeamName] = useState("Monkey AI")
   const [savedTeamName, setSavedTeamName] = useState("Monkey AI")
   const [toolName, setToolName] = useState("MonkeyAI")
   const [savedToolName, setSavedToolName] = useState("MonkeyAI")
-  const [brandInfoSaved, setBrandInfoSaved] = useState(false)
-  const [settingsError, setSettingsError] = useState("")
   const [oauthConnections, setOauthConnections] = useState(
     INITIAL_OAUTH_CONNECTIONS
   )
   const [oauthDialogOpen, setOauthDialogOpen] = useState(false)
+  const [oauthCallbackDialogOpen, setOauthCallbackDialogOpen] = useState(false)
+  const [oauthCallbackURL, setOauthCallbackURL] = useState(
+    () => `${window.location.origin}/api/auth/v1/oauth/callback`
+  )
+  const [editingOauthID, setEditingOauthID] = useState<string | null>(null)
   const [oauthProvider, setOauthProvider] = useState<OAuthProvider>("github")
   const [oauthSaving, setOauthSaving] = useState(false)
+  const [oauthPendingAction, setOauthPendingAction] =
+    useState<OAuthPendingAction | null>(null)
+  const [oauthActionSaving, setOauthActionSaving] = useState(false)
   const [loginMethodSettings, setLoginMethodSettings] = useState(
     INITIAL_LOGIN_METHOD_SETTINGS
   )
   const [loginMethodSaving, setLoginMethodSaving] = useState<
     keyof LoginMethodSettings | null
   >(null)
-  const [registrationEnabled, setRegistrationEnabled] = useState(false)
   const [emailSettings, setEmailSettings] = useState(INITIAL_EMAIL_SETTINGS)
   const [savedEmailSettings, setSavedEmailSettings] = useState(
     INITIAL_EMAIL_SETTINGS
   )
+  const [emailConfigured, setEmailConfigured] = useState(false)
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
-  const [registrationPendingValue, setRegistrationPendingValue] = useState<
+  const [autoRegistrationPending, setAutoRegistrationPending] =
+    useState<AutoRegistrationPendingAction | null>(null)
+  const [autoRegistrationSaving, setAutoRegistrationSaving] = useState(false)
+  const [emailCodePendingValue, setEmailCodePendingValue] = useState<
+    boolean | null
+  >(null)
+  const [passwordPendingValue, setPasswordPendingValue] = useState<
     boolean | null
   >(null)
   const [testSending, setTestSending] = useState(false)
-  const [testError, setTestError] = useState("")
-  const [testSentTo, setTestSentTo] = useState<string | null>(null)
   const [knowledgeBaseSettings, setKnowledgeBaseSettings] = useState(
     INITIAL_KNOWLEDGE_BASE_SETTINGS
   )
@@ -285,6 +313,25 @@ export function OtherSettingsPage() {
     teamName !== savedTeamName || toolName !== savedToolName
   const emailSettingsDirty =
     JSON.stringify(emailSettings) !== JSON.stringify(savedEmailSettings)
+  const emailConfigurationVisible = emailConfigured
+  const editingOauthConnection = editingOauthID
+    ? oauthConnections.find((connection) => connection.id === editingOauthID)
+    : undefined
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api<{ issuer: string }>("/.well-known/oauth-authorization-server", {
+      signal: controller.signal,
+    })
+      .then(({ issuer }) => {
+        const publicURL = issuer.replace(/\/+$/, "")
+        if (publicURL) {
+          setOauthCallbackURL(`${publicURL}/api/auth/v1/oauth/callback`)
+        }
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     api<{
@@ -316,8 +363,12 @@ export function OtherSettingsPage() {
                 typeof setting.value.email_code_enabled === "boolean"
                   ? setting.value.email_code_enabled
                   : INITIAL_LOGIN_METHOD_SETTINGS.emailCodeEnabled,
+              emailCodeAutoRegistrationEnabled:
+                typeof setting.value.email_code_auto_registration_enabled ===
+                "boolean"
+                  ? setting.value.email_code_auto_registration_enabled
+                  : INITIAL_LOGIN_METHOD_SETTINGS.emailCodeAutoRegistrationEnabled,
             })
-            setRegistrationEnabled(Boolean(setting.value.registration_enabled))
           }
           if (setting.key === "email") {
             const applyEmail = (): EmailSettings => ({
@@ -333,14 +384,16 @@ export function OtherSettingsPage() {
             })
             setEmailSettings(applyEmail)
             setSavedEmailSettings(applyEmail)
+            setEmailConfigured(true)
           }
         }
       })
-      .catch((reason: Error) => setSettingsError(reason.message))
-  }, [])
+      .catch((reason: Error) =>
+        showToast({ status: "error", title: reason.message })
+      )
+  }, [showToast])
 
   const saveSetting = async (key: string, value: Record<string, unknown>) => {
-    setSettingsError("")
     try {
       return await api<{ value: Record<string, unknown> }>(
         `/api/admin/v1/settings/${key}`,
@@ -350,20 +403,20 @@ export function OtherSettingsPage() {
         }
       )
     } catch (reason) {
-      setSettingsError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
       return false
     }
   }
 
   const saveAuthentication = async (
     connections: (Omit<OAuthConnection, "id"> & { id?: string })[],
-    allowRegistration = registrationEnabled,
     loginMethods = loginMethodSettings
   ) => {
     const saved = await saveSetting("authentication", {
-      registration_enabled: allowRegistration,
       password_enabled: loginMethods.passwordEnabled,
       email_code_enabled: loginMethods.emailCodeEnabled,
+      email_code_auto_registration_enabled:
+        loginMethods.emailCodeAutoRegistrationEnabled,
       oauth_connections: connections.map((connection) => ({
         id: connection.id,
         provider: connection.provider,
@@ -373,10 +426,15 @@ export function OtherSettingsPage() {
         issuer_url: connection.issuerUrl ?? null,
         scopes: connection.scopes,
         enabled: connection.enabled,
+        auto_registration_enabled: connection.autoRegistrationEnabled,
       })),
     })
     if (!saved) return false
     setOauthConnections(readOAuthConnections(saved.value))
+    showToast({
+      status: "success",
+      title: t("resources.operationCompleted"),
+    })
     return true
   }
 
@@ -389,21 +447,36 @@ export function OtherSettingsPage() {
     label: t(option.labelKey),
   }))
 
-  const getProviderName = (provider: OAuthProvider) => {
-    const item = OAUTH_PROVIDERS.find(
-      (candidate) => candidate.value === provider
-    )
-    return item ? t(item.labelKey) : provider
-  }
-
   const handleOauthDialogOpenChange = (open: boolean) => {
     setOauthDialogOpen(open)
     if (!open) {
+      setEditingOauthID(null)
       setOauthProvider("github")
     }
   }
 
-  const handleAddOauth = async (event: FormEvent<HTMLFormElement>) => {
+  const openOauthEditDialog = (connection: OAuthConnection) => {
+    setEditingOauthID(connection.id)
+    setOauthProvider(connection.provider)
+    setOauthDialogOpen(true)
+  }
+
+  const copyOauthCallbackURL = async () => {
+    try {
+      await navigator.clipboard.writeText(oauthCallbackURL)
+      showToast({
+        status: "success",
+        title: t("pages.otherSettings.oauth.callbackCopied"),
+      })
+    } catch {
+      showToast({
+        status: "error",
+        title: t("pages.otherSettings.oauth.callbackCopyFailed"),
+      })
+    }
+  }
+
+  const handleOauthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (oauthSaving) return
 
@@ -417,26 +490,35 @@ export function OtherSettingsPage() {
     if (
       !name ||
       !clientId ||
-      !clientSecret ||
+      (!clientSecret && !editingOauthConnection) ||
       ((oauthProvider === "oidc" || oauthProvider === "baizhiyun") &&
         !issuerUrl)
     ) {
       return
     }
 
+    const nextConnection = {
+      id: editingOauthConnection?.id,
+      provider: oauthProvider,
+      name,
+      clientId,
+      clientSecret,
+      issuerUrl: issuerUrl || undefined,
+      scopes: editingOauthConnection?.scopes,
+      enabled: editingOauthConnection?.enabled ?? true,
+      autoRegistrationEnabled:
+        editingOauthConnection?.autoRegistrationEnabled ?? true,
+    }
+    const connections = editingOauthConnection
+      ? oauthConnections.map((connection) =>
+          connection.id === editingOauthConnection.id
+            ? nextConnection
+            : connection
+        )
+      : [...oauthConnections, nextConnection]
+
     setOauthSaving(true)
     try {
-      const connections = [
-        ...oauthConnections,
-        {
-          provider: oauthProvider,
-          name,
-          clientId,
-          clientSecret,
-          issuerUrl: issuerUrl || undefined,
-          enabled: true,
-        },
-      ]
       if (await saveAuthentication(connections)) {
         form.reset()
         handleOauthDialogOpenChange(false)
@@ -450,14 +532,32 @@ export function OtherSettingsPage() {
     const connections = oauthConnections.map((connection) =>
       connection.id === id ? { ...connection, enabled } : connection
     )
-    await saveAuthentication(connections)
+    return saveAuthentication(connections)
   }
 
   const removeOauthConnection = async (id: string) => {
     const connections = oauthConnections.filter(
       (connection) => connection.id !== id
     )
-    await saveAuthentication(connections)
+    return saveAuthentication(connections)
+  }
+
+  const confirmOauthAction = async () => {
+    if (!oauthPendingAction || oauthActionSaving) return
+
+    setOauthActionSaving(true)
+    try {
+      const { connection, action } = oauthPendingAction
+      const saved =
+        action === "delete"
+          ? await removeOauthConnection(connection.id)
+          : await setOauthEnabled(connection.id, action === "enable")
+      if (saved) {
+        setOauthPendingAction(null)
+      }
+    } finally {
+      setOauthActionSaving(false)
+    }
   }
 
   const setLoginMethodEnabled = async (
@@ -467,17 +567,46 @@ export function OtherSettingsPage() {
     const nextSettings = { ...loginMethodSettings, [key]: enabled }
     setLoginMethodSaving(key)
     try {
-      if (
-        await saveAuthentication(
-          oauthConnections,
-          registrationEnabled,
-          nextSettings
-        )
-      ) {
+      const saved = await saveAuthentication(oauthConnections, nextSettings)
+      if (saved) {
         setLoginMethodSettings(nextSettings)
       }
+      return saved
     } finally {
       setLoginMethodSaving(null)
+    }
+  }
+
+  const confirmAutoRegistration = async () => {
+    if (!autoRegistrationPending || autoRegistrationSaving) return
+
+    setAutoRegistrationSaving(true)
+    try {
+      if (autoRegistrationPending.type === "email") {
+        const nextSettings = {
+          ...loginMethodSettings,
+          emailCodeAutoRegistrationEnabled: autoRegistrationPending.enabled,
+        }
+        if (await saveAuthentication(oauthConnections, nextSettings)) {
+          setLoginMethodSettings(nextSettings)
+          setAutoRegistrationPending(null)
+        }
+        return
+      }
+
+      const connections = oauthConnections.map((connection) =>
+        connection.id === autoRegistrationPending.connection.id
+          ? {
+              ...connection,
+              autoRegistrationEnabled: autoRegistrationPending.enabled,
+            }
+          : connection
+      )
+      if (await saveAuthentication(connections)) {
+        setAutoRegistrationPending(null)
+      }
+    } finally {
+      setAutoRegistrationSaving(false)
     }
   }
 
@@ -491,10 +620,6 @@ export function OtherSettingsPage() {
   const handleEmailDialogOpenChange = (open: boolean) => {
     setEmailDialogOpen(open)
     setEmailSettings(savedEmailSettings)
-
-    if (open) {
-      setTestSentTo(null)
-    }
   }
 
   const handleEmailSettingsSubmit = async (
@@ -512,7 +637,12 @@ export function OtherSettingsPage() {
     })
     if (saved) {
       setSavedEmailSettings(emailSettings)
+      setEmailConfigured(true)
       setEmailDialogOpen(false)
+      showToast({
+        status: "success",
+        title: t("pages.otherSettings.email.saved"),
+      })
     }
   }
 
@@ -627,16 +757,17 @@ export function OtherSettingsPage() {
 
     if (testSending) return
     setTestSending(true)
-    setTestSentTo(null)
-    setTestError("")
     try {
       await api("/api/admin/v1/settings/email/test", {
         method: "POST",
         body: JSON.stringify({ recipient }),
       })
-      setTestSentTo(recipient)
+      showToast({
+        status: "success",
+        title: t("pages.otherSettings.email.testSent", { email: recipient }),
+      })
     } catch (reason) {
-      setTestError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setTestSending(false)
     }
@@ -661,16 +792,21 @@ export function OtherSettingsPage() {
 
   const handleTagSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const saved = editingTagId
+    const result = editingTagId
       ? await renameTag(editingTagId, tagName)
       : await addTag(tagName)
 
-    if (!saved) {
+    if (result === "conflict") {
       setTagError(t("pages.otherSettings.skillTags.duplicate"))
       return
     }
+    if (result === "failed") return
 
     handleTagDialogOpenChange(false)
+    showToast({
+      status: "success",
+      title: t("pages.otherSettings.skillTags.saved"),
+    })
   }
 
   const tagPendingDeletion = skillTags.find(
@@ -679,46 +815,34 @@ export function OtherSettingsPage() {
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      {settingsError && (
-        <p
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {settingsError}
-        </p>
-      )}
       <Card>
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.brandInfo.title")}</CardTitle>
           <CardDescription>
             {t("pages.otherSettings.brandInfo.description")}
           </CardDescription>
-          {(brandInfoDirty || brandInfoSaved) && (
-            <CardAction className="flex items-center gap-2" aria-live="polite">
-              {brandInfoSaved && (
-                <Badge variant="secondary">
-                  {t("pages.otherSettings.brandInfo.saved")}
-                </Badge>
-              )}
-              {brandInfoDirty && (
-                <Button
-                  type="button"
-                  disabled={!teamName.trim() || !toolName.trim()}
-                  onClick={async () => {
-                    const saved = await saveSetting("branding", {
-                      workspace_name: teamName.trim(),
-                      product_name: toolName.trim(),
+          {brandInfoDirty && (
+            <CardAction>
+              <Button
+                type="button"
+                disabled={!teamName.trim() || !toolName.trim()}
+                onClick={async () => {
+                  const saved = await saveSetting("branding", {
+                    workspace_name: teamName.trim(),
+                    product_name: toolName.trim(),
+                  })
+                  if (saved) {
+                    setSavedTeamName(teamName)
+                    setSavedToolName(toolName)
+                    showToast({
+                      status: "success",
+                      title: t("pages.otherSettings.brandInfo.saved"),
                     })
-                    if (saved) {
-                      setSavedTeamName(teamName)
-                      setSavedToolName(toolName)
-                      setBrandInfoSaved(true)
-                    }
-                  }}
-                >
-                  {t("pages.otherSettings.brandInfo.save")}
-                </Button>
-              )}
+                  }
+                }}
+              >
+                {t("pages.otherSettings.brandInfo.save")}
+              </Button>
             </CardAction>
           )}
         </CardHeader>
@@ -731,10 +855,7 @@ export function OtherSettingsPage() {
               <Input
                 id="team-name"
                 value={teamName}
-                onChange={(event) => {
-                  setTeamName(event.target.value)
-                  setBrandInfoSaved(false)
-                }}
+                onChange={(event) => setTeamName(event.target.value)}
               />
             </Field>
             <Field>
@@ -744,17 +865,14 @@ export function OtherSettingsPage() {
               <Input
                 id="tool-name"
                 value={toolName}
-                onChange={(event) => {
-                  setToolName(event.target.value)
-                  setBrandInfoSaved(false)
-                }}
+                onChange={(event) => setToolName(event.target.value)}
               />
             </Field>
           </FieldGroup>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="order-3">
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.skillTags.title")}</CardTitle>
           <CardDescription>
@@ -769,10 +887,10 @@ export function OtherSettingsPage() {
         </CardHeader>
         <CardContent>
           {skillTags.length > 0 ? (
-            <ItemGroup className="flex flex-row flex-wrap gap-2">
+            <ItemGroup className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-2">
               {skillTags.map((tag) => (
                 <Item
-                  className="w-full sm:w-52"
+                  className="w-full"
                   key={tag.id}
                   size="sm"
                   variant="outline"
@@ -908,11 +1026,16 @@ export function OtherSettingsPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => {
+              onClick={async (event) => {
+                event.preventDefault()
                 if (tagPendingDeletionId) {
-                  deleteTag(tagPendingDeletionId)
+                  if (!(await deleteTag(tagPendingDeletionId))) return
                 }
                 setTagPendingDeletionId(null)
+                showToast({
+                  status: "success",
+                  title: t("pages.otherSettings.skillTags.deleted"),
+                })
               }}
             >
               {t("pages.otherSettings.skillTags.delete")}
@@ -921,7 +1044,7 @@ export function OtherSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card>
+      <Card className="order-4">
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.knowledgeBase.title")}</CardTitle>
           <CardDescription>
@@ -1452,7 +1575,7 @@ export function OtherSettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="order-1">
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.loginMethods.title")}</CardTitle>
           <CardDescription>
@@ -1471,14 +1594,19 @@ export function OtherSettingsPage() {
                 className="sm:max-w-lg"
                 closeLabel={t("common.close")}
               >
-                <form className="flex flex-col gap-6" onSubmit={handleAddOauth}>
+                <form
+                  key={editingOauthID ?? "new"}
+                  className="flex flex-col gap-6"
+                  onSubmit={handleOauthSubmit}
+                >
                   <DialogHeader>
                     <DialogTitle>
-                      {t("pages.otherSettings.oauth.dialogTitle")}
+                      {t(
+                        editingOauthConnection
+                          ? "pages.otherSettings.oauth.editDialogTitle"
+                          : "pages.otherSettings.oauth.dialogTitle"
+                      )}
                     </DialogTitle>
-                    <DialogDescription>
-                      {t("pages.otherSettings.oauth.dialogDescription")}
-                    </DialogDescription>
                   </DialogHeader>
                   <FieldGroup>
                     <Field>
@@ -1515,6 +1643,7 @@ export function OtherSettingsPage() {
                       <Input
                         id="oauth-name"
                         name="name"
+                        defaultValue={editingOauthConnection?.name}
                         placeholder={t(
                           "pages.otherSettings.oauth.namePlaceholder"
                         )}
@@ -1531,6 +1660,7 @@ export function OtherSettingsPage() {
                           id="oauth-issuer-url"
                           name="issuerUrl"
                           type="url"
+                          defaultValue={editingOauthConnection?.issuerUrl}
                           placeholder="https://id.example.com"
                           required
                         />
@@ -1540,7 +1670,12 @@ export function OtherSettingsPage() {
                       <FieldLabel htmlFor="oauth-client-id">
                         {t("pages.otherSettings.oauth.clientId")}
                       </FieldLabel>
-                      <Input id="oauth-client-id" name="clientId" required />
+                      <Input
+                        id="oauth-client-id"
+                        name="clientId"
+                        defaultValue={editingOauthConnection?.clientId}
+                        required
+                      />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="oauth-client-secret">
@@ -1550,11 +1685,15 @@ export function OtherSettingsPage() {
                         id="oauth-client-secret"
                         name="clientSecret"
                         type="password"
-                        required
+                        placeholder={
+                          editingOauthConnection
+                            ? t(
+                                "pages.otherSettings.oauth.secretUpdatePlaceholder"
+                              )
+                            : undefined
+                        }
+                        required={!editingOauthConnection}
                       />
-                      <FieldDescription>
-                        {t("pages.otherSettings.oauth.secretDescription")}
-                      </FieldDescription>
                     </Field>
                     {oauthProvider === "baizhiyun" && (
                       <FieldDescription>
@@ -1580,8 +1719,16 @@ export function OtherSettingsPage() {
                       aria-busy={oauthSaving}
                     >
                       {oauthSaving
-                        ? `${t("pages.otherSettings.oauth.addConnection")}…`
-                        : t("pages.otherSettings.oauth.addConnection")}
+                        ? `${t(
+                            editingOauthConnection
+                              ? "pages.otherSettings.oauth.updateConnection"
+                              : "pages.otherSettings.oauth.addConnection"
+                          )}…`
+                        : t(
+                            editingOauthConnection
+                              ? "pages.otherSettings.oauth.updateConnection"
+                              : "pages.otherSettings.oauth.addConnection"
+                          )}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1589,124 +1736,240 @@ export function OtherSettingsPage() {
             </Dialog>
           </CardAction>
         </CardHeader>
-        <CardContent className="gap-6">
-          <FieldGroup className="gap-4">
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>
-                  {t("pages.otherSettings.loginMethods.allowRegistration")}
-                </FieldTitle>
-                <FieldDescription>
-                  {t(
-                    "pages.otherSettings.loginMethods.allowRegistrationDescription"
-                  )}
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                checked={registrationEnabled}
-                onCheckedChange={setRegistrationPendingValue}
-                aria-label={t(
-                  "pages.otherSettings.loginMethods.allowRegistration"
-                )}
-              />
-            </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>
+        <CardContent>
+          <ItemGroup>
+            <Item variant="outline">
+              <ItemContent>
+                <ItemTitle>
                   {t("pages.otherSettings.loginMethods.password")}
-                </FieldTitle>
-                <FieldDescription>
-                  {t("pages.otherSettings.loginMethods.passwordDescription")}
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                checked={loginMethodSettings.passwordEnabled}
-                disabled={loginMethodSaving !== null}
-                onCheckedChange={(enabled) =>
-                  void setLoginMethodEnabled("passwordEnabled", enabled)
-                }
-                aria-label={t("pages.otherSettings.loginMethods.password")}
-                aria-busy={loginMethodSaving === "passwordEnabled"}
-              />
-            </Field>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>
-                  {t("pages.otherSettings.loginMethods.emailCode")}
-                </FieldTitle>
-                <FieldDescription>
-                  {t("pages.otherSettings.loginMethods.emailCodeDescription")}
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                checked={loginMethodSettings.emailCodeEnabled}
-                disabled={loginMethodSaving !== null}
-                onCheckedChange={(enabled) =>
-                  void setLoginMethodEnabled("emailCodeEnabled", enabled)
-                }
-                aria-label={t("pages.otherSettings.loginMethods.emailCode")}
-                aria-busy={loginMethodSaving === "emailCodeEnabled"}
-              />
-            </Field>
-          </FieldGroup>
-
-          <Separator />
-
-          <div className="flex flex-col gap-3">
-            {oauthConnections.map((connection) => (
-              <div
-                key={connection.id}
-                className="flex flex-wrap items-center gap-4 rounded-lg border p-4"
-              >
-                <Badge variant="outline">
-                  {getProviderName(connection.provider)}
-                </Badge>
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <p className="font-medium">{connection.name}</p>
-                  <p className="truncate text-sm text-muted-foreground">
-                    {t("pages.otherSettings.oauth.clientIdValue", {
-                      clientId: connection.clientId,
-                    })}
-                  </p>
-                  {connection.issuerUrl && (
-                    <p className="truncate text-sm text-muted-foreground">
-                      {connection.issuerUrl}
-                    </p>
-                  )}
-                </div>
+                </ItemTitle>
+              </ItemContent>
+              <ItemActions>
                 <Switch
-                  checked={connection.enabled}
-                  onCheckedChange={(enabled) =>
-                    void setOauthEnabled(connection.id, enabled)
-                  }
-                  aria-label={t("pages.otherSettings.oauth.toggle", {
-                    name: connection.name,
-                  })}
+                  checked={loginMethodSettings.passwordEnabled}
+                  disabled={loginMethodSaving !== null}
+                  onCheckedChange={setPasswordPendingValue}
+                  aria-label={t("pages.otherSettings.loginMethods.password")}
+                  aria-busy={loginMethodSaving === "passwordEnabled"}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="cursor-pointer text-destructive"
-                  aria-label={`删除 ${connection.name}`}
-                  onClick={() => void removeOauthConnection(connection.id)}
-                >
-                  <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-                </Button>
-              </div>
+              </ItemActions>
+            </Item>
+            {oauthConnections.map((connection) => (
+              <Item key={connection.id} variant="outline">
+                <ItemContent>
+                  <ItemTitle>
+                    {connection.name}
+                    <Badge
+                      variant="outline"
+                      className={
+                        connection.enabled
+                          ? "border-green-500/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
+                          : "border-red-500/40 text-red-700 dark:border-red-400/40 dark:text-red-400"
+                      }
+                    >
+                      {t(
+                        connection.enabled
+                          ? "pages.otherSettings.oauth.enabled"
+                          : "pages.otherSettings.oauth.disabled"
+                      )}
+                    </Badge>
+                  </ItemTitle>
+                </ItemContent>
+                <ItemActions>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="cursor-pointer"
+                          aria-label={t("common.more")}
+                        />
+                      }
+                    >
+                      <HugeiconsIcon
+                        icon={MoreHorizontalIcon}
+                        strokeWidth={2}
+                      />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            setOauthPendingAction({
+                              connection,
+                              action: connection.enabled ? "disable" : "enable",
+                            })
+                          }
+                        >
+                          <HugeiconsIcon
+                            icon={connection.enabled ? PowerOffIcon : PowerIcon}
+                            strokeWidth={2}
+                          />
+                          {t(
+                            connection.enabled
+                              ? "pages.otherSettings.oauth.disable"
+                              : "pages.otherSettings.oauth.enable"
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => openOauthEditDialog(connection)}
+                        >
+                          <HugeiconsIcon icon={Edit02Icon} strokeWidth={2} />
+                          {t("pages.otherSettings.oauth.edit")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setOauthCallbackDialogOpen(true)}
+                        >
+                          <HugeiconsIcon icon={Route02Icon} strokeWidth={2} />
+                          {t("pages.otherSettings.oauth.viewCallback")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() =>
+                            setOauthPendingAction({
+                              connection,
+                              action: "delete",
+                            })
+                          }
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                          {t("pages.otherSettings.oauth.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </ItemActions>
+                <ItemFooter>
+                  <Item size="sm" variant="outline">
+                    <ItemContent>
+                      <ItemTitle>
+                        {t(
+                          "pages.otherSettings.loginMethods.autoRegisterMissingUsers"
+                        )}
+                      </ItemTitle>
+                    </ItemContent>
+                    <ItemActions>
+                      <Switch
+                        checked={connection.autoRegistrationEnabled}
+                        disabled={autoRegistrationSaving}
+                        onCheckedChange={(enabled) =>
+                          setAutoRegistrationPending({
+                            type: "oauth",
+                            connection,
+                            enabled,
+                          })
+                        }
+                        aria-label={t(
+                          "pages.otherSettings.loginMethods.autoRegisterMissingUsers"
+                        )}
+                        aria-busy={
+                          autoRegistrationSaving &&
+                          autoRegistrationPending?.type === "oauth" &&
+                          autoRegistrationPending.connection.id ===
+                            connection.id
+                        }
+                      />
+                    </ItemActions>
+                  </Item>
+                </ItemFooter>
+              </Item>
             ))}
-          </div>
+          </ItemGroup>
         </CardContent>
-        <CardFooter className="border-t">
-          <p className="text-sm text-muted-foreground">
-            {t("pages.otherSettings.oauth.connectionCount", {
-              count: oauthConnections.length,
-            })}
-          </p>
-        </CardFooter>
       </Card>
 
-      <Card>
+      <AlertDialog
+        open={oauthPendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !oauthActionSaving) {
+            setOauthPendingAction(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {oauthPendingAction &&
+                t(
+                  `pages.otherSettings.oauth.${oauthPendingAction.action}DialogTitle`,
+                  { name: oauthPendingAction.connection.name }
+                )}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {oauthPendingAction &&
+              t(
+                `pages.otherSettings.oauth.${oauthPendingAction.action}DialogDescription`,
+                { name: oauthPendingAction.connection.name }
+              )}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={oauthActionSaving}>
+              {t("pages.otherSettings.oauth.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={
+                oauthPendingAction?.action === "delete"
+                  ? "destructive"
+                  : "default"
+              }
+              disabled={oauthActionSaving}
+              aria-busy={oauthActionSaving}
+              onClick={confirmOauthAction}
+            >
+              {oauthPendingAction &&
+                t(
+                  `pages.otherSettings.oauth.confirm${oauthPendingAction.action[0].toUpperCase()}${oauthPendingAction.action.slice(1)}`
+                )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={oauthCallbackDialogOpen}
+        onOpenChange={setOauthCallbackDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("pages.otherSettings.oauth.callbackDialogTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="oauth-callback-url">
+              {t("pages.otherSettings.oauth.callbackURL")}
+            </FieldLabel>
+            <Input
+              id="oauth-callback-url"
+              className="font-mono"
+              value={oauthCallbackURL}
+              readOnly
+              spellCheck={false}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </Field>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void copyOauthCallbackURL()}
+            >
+              {t("pages.otherSettings.oauth.copyCallback")}
+            </Button>
+            <DialogClose render={<Button type="button" />}>
+              {t("common.close")}
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card className="order-2">
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.email.title")}</CardTitle>
           <CardDescription>
@@ -1728,38 +1991,8 @@ export function OtherSettingsPage() {
                   <DialogTitle>
                     {t("pages.otherSettings.email.dialogTitle")}
                   </DialogTitle>
-                  <DialogDescription>
-                    {t("pages.otherSettings.email.dialogDescription")}
-                  </DialogDescription>
                 </DialogHeader>
                 <FieldGroup className="grid gap-4 md:grid-cols-2">
-                  <Field>
-                    <FieldLabel htmlFor="sender-name">
-                      {t("pages.otherSettings.email.senderName")}
-                    </FieldLabel>
-                    <Input
-                      id="sender-name"
-                      value={emailSettings.senderName}
-                      onChange={(event) =>
-                        updateEmailSetting("senderName", event.target.value)
-                      }
-                      required
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="sender-email">
-                      {t("pages.otherSettings.email.senderEmail")}
-                    </FieldLabel>
-                    <Input
-                      id="sender-email"
-                      type="email"
-                      value={emailSettings.senderEmail}
-                      onChange={(event) =>
-                        updateEmailSetting("senderEmail", event.target.value)
-                      }
-                      required
-                    />
-                  </Field>
                   <Field>
                     <FieldLabel htmlFor="smtp-host">
                       {t("pages.otherSettings.email.smtpHost")}
@@ -1818,32 +2051,59 @@ export function OtherSettingsPage() {
                       }
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="smtp-encryption">
+                  <FieldSet className="md:col-span-2">
+                    <FieldLegend variant="label">
                       {t("pages.otherSettings.email.encryption")}
-                    </FieldLabel>
-                    <Select
-                      items={encryptionItems}
+                    </FieldLegend>
+                    <RadioGroup
+                      className="grid grid-cols-3 gap-3"
                       value={emailSettings.encryption}
-                      onValueChange={(value) => {
-                        if (value !== null) {
-                          updateEmailSetting("encryption", value as Encryption)
-                        }
-                      }}
+                      onValueChange={(value) =>
+                        updateEmailSetting("encryption", value as Encryption)
+                      }
+                      aria-label={t("pages.otherSettings.email.encryption")}
                     >
-                      <SelectTrigger id="smtp-encryption" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          {encryptionItems.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>
-                              {item.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                      {encryptionItems.map((item) => (
+                        <FieldLabel
+                          key={item.value}
+                          htmlFor={`smtp-encryption-${item.value}`}
+                          className="h-9 w-full cursor-pointer rounded-md border border-input px-2.5 font-normal shadow-xs transition-[color,box-shadow] hover:bg-muted/50 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 dark:bg-input/30"
+                        >
+                          <RadioGroupItem
+                            id={`smtp-encryption-${item.value}`}
+                            value={item.value}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </FieldLabel>
+                      ))}
+                    </RadioGroup>
+                  </FieldSet>
+                  <Field>
+                    <FieldLabel htmlFor="sender-name">
+                      {t("pages.otherSettings.email.senderName")}
+                    </FieldLabel>
+                    <Input
+                      id="sender-name"
+                      value={emailSettings.senderName}
+                      onChange={(event) =>
+                        updateEmailSetting("senderName", event.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="sender-email">
+                      {t("pages.otherSettings.email.senderEmail")}
+                    </FieldLabel>
+                    <Input
+                      id="sender-email"
+                      type="email"
+                      value={emailSettings.senderEmail}
+                      onChange={(event) =>
+                        updateEmailSetting("senderEmail", event.target.value)
+                      }
+                      required
+                    />
                   </Field>
                 </FieldGroup>
 
@@ -1869,23 +2129,11 @@ export function OtherSettingsPage() {
                   {t("pages.otherSettings.email.sendingConfiguration")}
                 </ItemTitle>
                 <ItemDescription>
-                  <bdi>{savedEmailSettings.senderName}</bdi>
-                  <span aria-hidden="true"> · </span>
-                  <bdi>{savedEmailSettings.senderEmail}</bdi>
-                  <span aria-hidden="true"> · </span>
-                  <bdi>
-                    {savedEmailSettings.smtpHost}:{savedEmailSettings.smtpPort}
-                  </bdi>
-                  <span aria-hidden="true"> · </span>
-                  <bdi>
-                    {
-                      encryptionItems.find(
-                        (item) => item.value === savedEmailSettings.encryption
-                      )?.label
-                    }
-                  </bdi>
-                  <span aria-hidden="true"> · </span>
-                  <bdi>{savedEmailSettings.smtpUsername}</bdi>
+                  {emailConfigurationVisible ? (
+                    <bdi>{savedEmailSettings.senderEmail}</bdi>
+                  ) : (
+                    t("pages.otherSettings.email.notConfigured")
+                  )}
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
@@ -1898,61 +2146,101 @@ export function OtherSettingsPage() {
                 </Button>
               </ItemActions>
             </Item>
-            <Item
-              render={<form onSubmit={handleTestEmail} />}
-              variant="outline"
-            >
-              <ItemContent>
-                <Field>
-                  <FieldLabel className="sr-only" htmlFor="test-recipient">
-                    {t("pages.otherSettings.email.testRecipient")}
-                  </FieldLabel>
-                  <Input
-                    id="test-recipient"
-                    name="recipient"
-                    type="email"
-                    placeholder="admin@example.com"
-                    required
-                  />
-                  {testError && (
-                    <p role="alert" className="text-sm text-destructive">
-                      {testError}
-                    </p>
-                  )}
-                  {testSentTo && (
-                    <FieldDescription aria-live="polite">
-                      {t("pages.otherSettings.email.testSent", {
-                        email: testSentTo,
-                      })}
-                    </FieldDescription>
-                  )}
-                </Field>
-              </ItemContent>
-              <ItemActions>
-                <Button
-                  type="submit"
-                  disabled={testSending}
-                  aria-busy={testSending}
+            {emailConfigurationVisible && (
+              <>
+                <Item variant="outline">
+                  <ItemContent>
+                    <ItemTitle>
+                      {t("pages.otherSettings.loginMethods.emailCode")}
+                    </ItemTitle>
+                  </ItemContent>
+                  <ItemActions>
+                    <Switch
+                      checked={loginMethodSettings.emailCodeEnabled}
+                      disabled={loginMethodSaving !== null}
+                      onCheckedChange={setEmailCodePendingValue}
+                      aria-label={t(
+                        "pages.otherSettings.loginMethods.emailCode"
+                      )}
+                      aria-busy={loginMethodSaving === "emailCodeEnabled"}
+                    />
+                  </ItemActions>
+                </Item>
+                <Item variant="outline">
+                  <ItemContent>
+                    <ItemTitle>
+                      {t(
+                        "pages.otherSettings.loginMethods.autoRegisterMissingUsers"
+                      )}
+                    </ItemTitle>
+                  </ItemContent>
+                  <ItemActions>
+                    <Switch
+                      checked={
+                        loginMethodSettings.emailCodeAutoRegistrationEnabled
+                      }
+                      disabled={autoRegistrationSaving}
+                      onCheckedChange={(enabled) =>
+                        setAutoRegistrationPending({
+                          type: "email",
+                          enabled,
+                        })
+                      }
+                      aria-label={t(
+                        "pages.otherSettings.loginMethods.autoRegisterMissingUsers"
+                      )}
+                      aria-busy={
+                        autoRegistrationSaving &&
+                        autoRegistrationPending?.type === "email"
+                      }
+                    />
+                  </ItemActions>
+                </Item>
+                <Item
+                  render={<form onSubmit={handleTestEmail} />}
+                  variant="outline"
                 >
-                  <HugeiconsIcon
-                    icon={MailSend02Icon}
-                    data-icon="inline-start"
-                  />
-                  {testSending
-                    ? t("login.sendingCode", "发送中…")
-                    : t("pages.otherSettings.email.sendTest")}
-                </Button>
-              </ItemActions>
-            </Item>
+                  <ItemContent>
+                    <Field>
+                      <FieldLabel className="sr-only" htmlFor="test-recipient">
+                        {t("pages.otherSettings.email.testRecipient")}
+                      </FieldLabel>
+                      <Input
+                        id="test-recipient"
+                        name="recipient"
+                        type="email"
+                        placeholder="admin@example.com"
+                        required
+                      />
+                    </Field>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      type="submit"
+                      disabled={testSending}
+                      aria-busy={testSending}
+                    >
+                      <HugeiconsIcon
+                        icon={MailSend02Icon}
+                        data-icon="inline-start"
+                      />
+                      {testSending
+                        ? t("login.sendingCode", "发送中…")
+                        : t("pages.otherSettings.email.sendTest")}
+                    </Button>
+                  </ItemActions>
+                </Item>
+              </>
+            )}
           </ItemGroup>
         </CardContent>
       </Card>
 
       <AlertDialog
-        open={registrationPendingValue !== null}
+        open={passwordPendingValue !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setRegistrationPendingValue(null)
+          if (!open && loginMethodSaving === null) {
+            setPasswordPendingValue(null)
           }
         }}
       >
@@ -1960,45 +2248,162 @@ export function OtherSettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t(
-                registrationPendingValue
-                  ? "pages.otherSettings.loginMethods.enableRegistrationDialogTitle"
-                  : "pages.otherSettings.loginMethods.disableRegistrationDialogTitle"
+                passwordPendingValue
+                  ? "pages.otherSettings.loginMethods.enablePasswordDialogTitle"
+                  : "pages.otherSettings.loginMethods.disablePasswordDialogTitle"
               )}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
             {t(
-              registrationPendingValue
-                ? "pages.otherSettings.loginMethods.enableRegistrationDialogDescription"
-                : "pages.otherSettings.loginMethods.disableRegistrationDialogDescription"
+              passwordPendingValue
+                ? "pages.otherSettings.loginMethods.enablePasswordDialogDescription"
+                : "pages.otherSettings.loginMethods.disablePasswordDialogDescription"
             )}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>
+            <AlertDialogCancel disabled={loginMethodSaving !== null}>
               {t("pages.otherSettings.email.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
+              disabled={loginMethodSaving !== null}
+              aria-busy={loginMethodSaving === "passwordEnabled"}
               onClick={async () => {
-                if (registrationPendingValue === null) {
+                if (passwordPendingValue === null) {
                   return
                 }
 
-                const registrationEnabled = registrationPendingValue
                 if (
-                  await saveAuthentication(
-                    oauthConnections,
-                    registrationEnabled
+                  await setLoginMethodEnabled(
+                    "passwordEnabled",
+                    passwordPendingValue
                   )
                 ) {
-                  setRegistrationEnabled(registrationEnabled)
-                  setRegistrationPendingValue(null)
+                  setPasswordPendingValue(null)
                 }
               }}
             >
               {t(
-                registrationPendingValue
-                  ? "pages.otherSettings.loginMethods.confirmEnableRegistration"
-                  : "pages.otherSettings.loginMethods.confirmDisableRegistration"
+                passwordPendingValue
+                  ? "pages.otherSettings.loginMethods.confirmEnablePassword"
+                  : "pages.otherSettings.loginMethods.confirmDisablePassword"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={emailCodePendingValue !== null}
+        onOpenChange={(open) => {
+          if (!open && loginMethodSaving === null) {
+            setEmailCodePendingValue(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t(
+                emailCodePendingValue
+                  ? "pages.otherSettings.loginMethods.enableEmailCodeDialogTitle"
+                  : "pages.otherSettings.loginMethods.disableEmailCodeDialogTitle"
+              )}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t(
+              emailCodePendingValue
+                ? "pages.otherSettings.loginMethods.enableEmailCodeDialogDescription"
+                : "pages.otherSettings.loginMethods.disableEmailCodeDialogDescription"
+            )}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loginMethodSaving !== null}>
+              {t("pages.otherSettings.email.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={loginMethodSaving !== null}
+              aria-busy={loginMethodSaving === "emailCodeEnabled"}
+              onClick={async () => {
+                if (emailCodePendingValue === null) {
+                  return
+                }
+
+                if (
+                  await setLoginMethodEnabled(
+                    "emailCodeEnabled",
+                    emailCodePendingValue
+                  )
+                ) {
+                  setEmailCodePendingValue(null)
+                }
+              }}
+            >
+              {t(
+                emailCodePendingValue
+                  ? "pages.otherSettings.loginMethods.confirmEnableEmailCode"
+                  : "pages.otherSettings.loginMethods.confirmDisableEmailCode"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={autoRegistrationPending !== null}
+        onOpenChange={(open) => {
+          if (!open && !autoRegistrationSaving) {
+            setAutoRegistrationPending(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {autoRegistrationPending &&
+                t(
+                  autoRegistrationPending.type === "email"
+                    ? autoRegistrationPending.enabled
+                      ? "pages.otherSettings.loginMethods.enableEmailAutoRegistrationDialogTitle"
+                      : "pages.otherSettings.loginMethods.disableEmailAutoRegistrationDialogTitle"
+                    : autoRegistrationPending.enabled
+                      ? "pages.otherSettings.loginMethods.enableOauthAutoRegistrationDialogTitle"
+                      : "pages.otherSettings.loginMethods.disableOauthAutoRegistrationDialogTitle",
+                  autoRegistrationPending.type === "oauth"
+                    ? { name: autoRegistrationPending.connection.name }
+                    : undefined
+                )}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {autoRegistrationPending &&
+              t(
+                autoRegistrationPending.type === "email"
+                  ? autoRegistrationPending.enabled
+                    ? "pages.otherSettings.loginMethods.enableEmailAutoRegistrationDialogDescription"
+                    : "pages.otherSettings.loginMethods.disableEmailAutoRegistrationDialogDescription"
+                  : autoRegistrationPending.enabled
+                    ? "pages.otherSettings.loginMethods.enableOauthAutoRegistrationDialogDescription"
+                    : "pages.otherSettings.loginMethods.disableOauthAutoRegistrationDialogDescription",
+                autoRegistrationPending.type === "oauth"
+                  ? { name: autoRegistrationPending.connection.name }
+                  : undefined
+              )}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={autoRegistrationSaving}>
+              {t("pages.otherSettings.email.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={autoRegistrationSaving}
+              aria-busy={autoRegistrationSaving}
+              onClick={confirmAutoRegistration}
+            >
+              {t(
+                autoRegistrationPending?.enabled
+                  ? "pages.otherSettings.loginMethods.confirmEnableAutoRegistration"
+                  : "pages.otherSettings.loginMethods.confirmDisableAutoRegistration"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

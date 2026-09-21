@@ -29,7 +29,12 @@ export function groupMemberIDs(
   id: string
 ): Set<string> {
   if (id === ROOT_GROUP_ID) {
-    return new Set(users.map((user) => user.id))
+    const existingUserIDs = new Set(users.map((user) => user.id))
+    return new Set(
+      groups
+        .flatMap((group) => group.member_ids)
+        .filter((userID) => existingUserIDs.has(userID))
+    )
   }
   const ids = descendantIDs(groups, id)
   return new Set(
@@ -41,16 +46,19 @@ export function groupMemberIDs(
 
 export function directMemberIDs(
   groups: MemberGroup[],
-  users: Array<{ id: string }>,
   id: string
 ): Set<string> {
-  if (id === ROOT_GROUP_ID) {
-    const assigned = new Set(groups.flatMap((group) => group.member_ids))
-    return new Set(
-      users.filter((user) => !assigned.has(user.id)).map((user) => user.id)
-    )
-  }
   return new Set(groups.find((group) => group.id === id)?.member_ids ?? [])
+}
+
+export function ungroupedMemberIDs(
+  groups: MemberGroup[],
+  users: Array<{ id: string }>
+): Set<string> {
+  const assigned = new Set(groups.flatMap((group) => group.member_ids))
+  return new Set(
+    users.filter((user) => !assigned.has(user.id)).map((user) => user.id)
+  )
 }
 
 export function compareByName(

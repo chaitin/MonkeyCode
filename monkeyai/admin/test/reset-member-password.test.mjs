@@ -41,7 +41,7 @@ test("all member menus open the one-time password reset dialog", async () => {
   assert.match(tree, /onResetPassword=\{onResetPassword\}/)
   assert.equal(
     (page.match(/onResetPassword=\{setPasswordResetUser\}/g) ?? []).length,
-    2
+    3
   )
   assert.match(
     page,

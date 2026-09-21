@@ -13,22 +13,26 @@ import (
 )
 
 type OAuthConnection struct {
-	ID               string   `json:"id"`
-	Provider         string   `json:"provider"`
-	Name             string   `json:"name"`
-	ClientID         string   `json:"client_id"`
-	ClientSecret     string   `json:"client_secret"`
-	IssuerURL        string   `json:"issuer_url,omitempty"`
-	AuthorizationURL string   `json:"authorization_url,omitempty"`
-	TokenURL         string   `json:"token_url,omitempty"`
-	UserInfoURL      string   `json:"userinfo_url,omitempty"`
-	Scopes           []string `json:"scopes,omitempty"`
-	Enabled          bool     `json:"enabled"`
+	ID                      string   `json:"id"`
+	Provider                string   `json:"provider"`
+	Name                    string   `json:"name"`
+	ClientID                string   `json:"client_id"`
+	ClientSecret            string   `json:"client_secret"`
+	IssuerURL               string   `json:"issuer_url,omitempty"`
+	AuthorizationURL        string   `json:"authorization_url,omitempty"`
+	TokenURL                string   `json:"token_url,omitempty"`
+	UserInfoURL             string   `json:"userinfo_url,omitempty"`
+	Scopes                  []string `json:"scopes,omitempty"`
+	Enabled                 bool     `json:"enabled"`
+	AutoRegistrationEnabled *bool    `json:"auto_registration_enabled,omitempty"`
+}
+
+func (c OAuthConnection) autoRegistrationEnabled() bool {
+	return c.AutoRegistrationEnabled == nil || *c.AutoRegistrationEnabled
 }
 
 type authenticationSettings struct {
-	RegistrationEnabled bool              `json:"registration_enabled"`
-	OAuthConnections    []OAuthConnection `json:"oauth_connections"`
+	OAuthConnections []OAuthConnection `json:"oauth_connections"`
 }
 
 type providerMetadata struct {
@@ -63,15 +67,6 @@ func (s *Service) connections(ctx context.Context) ([]OAuthConnection, error) {
 		}
 	}
 	return connections, nil
-}
-
-func (s *Service) registrationEnabled(ctx context.Context) bool {
-	value, err := s.settings.GetValue(ctx, "authentication")
-	if err != nil {
-		return false
-	}
-	var settings authenticationSettings
-	return json.Unmarshal(value, &settings) == nil && settings.RegistrationEnabled
 }
 
 func (s *Service) connection(ctx context.Context, id string) (OAuthConnection, error) {

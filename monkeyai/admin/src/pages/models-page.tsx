@@ -10,6 +10,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
 import {
   AlertDialog,
@@ -174,10 +175,11 @@ function flattenGroupTree(
 
 export function ModelsPage() {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
   const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
   const [members, setMembers] = useState<AuthorizationMember[]>([])
-  const [error, setError] = useState("")
+  const [loadRevision, setLoadRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [activeModelType, setActiveModelType] = useState<ModelType>("system")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -217,12 +219,21 @@ export function ModelsPage() {
         )
       })
       .catch((reason: Error) => {
-        if (active) setError(reason.message)
+        if (active) {
+          showToast({
+            status: "error",
+            title: reason.message,
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => setLoadRevision((value) => value + 1),
+            },
+          })
+        }
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [loadRevision, showToast, t])
 
   const resetModelOptions = () => {
     setProtocol("openai_chat_completions")
@@ -252,7 +263,6 @@ export function ModelsPage() {
   }
 
   const setModelEnabled = async (modelId: string, enabled: boolean) => {
-    setError("")
     try {
       const updated = await api<ApiModel>(
         `/api/admin/v1/models/${modelId}/enabled`,
@@ -263,8 +273,12 @@ export function ModelsPage() {
           model.id === modelId ? fromApiModel(updated) : model
         )
       )
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     }
   }
 
@@ -273,7 +287,6 @@ export function ModelsPage() {
       return
     }
 
-    setError("")
     try {
       await api<void>(`/api/admin/v1/models/${modelPendingDeletion.id}`, {
         method: "DELETE",
@@ -282,8 +295,12 @@ export function ModelsPage() {
         currentModels.filter((model) => model.id !== modelPendingDeletion.id)
       )
       setModelPendingDeletion(null)
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     }
   }
 
@@ -319,7 +336,6 @@ export function ModelsPage() {
     }
 
     setSaving(true)
-    setError("")
     try {
       const payload = {
         model_id: modelId,
@@ -357,8 +373,12 @@ export function ModelsPage() {
       )
       form.reset()
       handleDialogOpenChange(false)
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
     } catch (reason) {
-      setError((reason as Error).message)
+      showToast({ status: "error", title: (reason as Error).message })
     } finally {
       setSaving(false)
     }
@@ -366,14 +386,6 @@ export function ModelsPage() {
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      {error && (
-        <p
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
-        </p>
-      )}
       <Tabs
         className="gap-4"
         value={activeModelType}

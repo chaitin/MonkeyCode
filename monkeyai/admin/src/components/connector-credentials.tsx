@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { api } from "@/lib/api"
+import { useAppToast } from "@/components/animated-toast-provider"
+import { ApiError, api } from "@/lib/api"
 import { base, match, type Credential } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ export function ConnectorCredentials({
   onChange: () => Promise<void>
 }) {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [name, setName] = useState("")
   const [replaceHeaders, setReplaceHeaders] = useState(false)
@@ -39,9 +41,10 @@ export function ConnectorCredentials({
     null
   )
   const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
   const [pending, setPending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadRevision, setLoadRevision] = useState(0)
   const lock = useRef(false)
   const path = base + `/connectors/${connector.id}`
   const credential = credentials[0]
@@ -58,7 +61,21 @@ export function ConnectorCredentials({
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message)
+        if (!cancelled) {
+          setLoadFailed(true)
+          showToast({
+            status: "error",
+            title: e instanceof Error ? e.message : String(e),
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => {
+                setLoading(true)
+                setLoadFailed(false)
+                setLoadRevision((value) => value + 1)
+              },
+            },
+          })
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -66,11 +83,12 @@ export function ConnectorCredentials({
     return () => {
       cancelled = true
     }
-  }, [path])
+  }, [loadRevision, path, showToast, t])
   const reload = async () => {
     const result = await api<{ items: Credential[] }>(path + "/credentials")
     setCredentials(result.items)
     setName(result.items[0]?.name ?? "")
+    setLoadFailed(false)
     await onChange()
   }
   const run = async (action: () => Promise<void>) => {
@@ -78,11 +96,14 @@ export function ConnectorCredentials({
     lock.current = true
     setPending(true)
     setError("")
-    setNotice("")
     try {
       await action()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "操作失败")
+      if (e instanceof ApiError) {
+        showToast({ status: "error", title: e.message })
+      } else {
+        setError(e instanceof Error ? e.message : "操作失败")
+      }
     } finally {
       lock.current = false
       setPending(false)
@@ -91,16 +112,12 @@ export function ConnectorCredentials({
   const test = async (id: string) => {
     try {
       await api(path + `/credentials/${id}/test`, { method: "POST" })
-      setNotice(
-        t("resources.credentialTestPassed", {
+      showToast({
+        status: "success",
+        title: t("resources.credentialTestPassed", {
           defaultValue: "凭证已保存，连接测试成功。",
-        })
-      )
-    } catch (e) {
-      setNotice(
-        t("resources.credentialSaved", { defaultValue: "凭证已保存。" })
-      )
-      throw e
+        }),
+      })
     } finally {
       await reload()
     }
@@ -122,16 +139,14 @@ export function ConnectorCredentials({
         }
         setRequest(null)
         if (result.status !== "succeeded" || !result.credential_id) {
-          setError(
-            t("resources.authorizationFailed", {
+          showToast({
+            status: "error",
+            title: t("resources.authorizationFailed", {
               defaultValue: "授权未完成或已过期，请重新发起。",
-            })
-          )
+            }),
+          })
           return
         }
-        setNotice(
-          t("resources.credentialSaved", { defaultValue: "凭证已保存。" })
-        )
         const updated = await api<{ items: Credential[] }>(
           path + "/credentials"
         )
@@ -142,19 +157,29 @@ export function ConnectorCredentials({
             (item) => item.id === result.credential_id
           )
           if (saved?.connection_status === "error") {
-            setError(saved.last_error ?? "连接测试失败")
-          } else if (saved?.connection_status === "connected") {
-            setNotice(
-              t("resources.credentialTestPassed", {
-                defaultValue: "凭证已保存，连接测试成功。",
-              })
-            )
+            showToast({
+              status: "error",
+              title: saved.last_error ?? "连接测试失败",
+              description: t("resources.credentialSaved"),
+            })
+          } else {
+            showToast({
+              status: "success",
+              title: t(
+                saved?.connection_status === "connected"
+                  ? "resources.credentialTestPassed"
+                  : "resources.credentialSaved"
+              ),
+            })
           }
         }
         await onChange()
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "查询授权失败")
+          showToast({
+            status: "error",
+            title: e instanceof Error ? e.message : "查询授权失败",
+          })
           setRequest(null)
         }
       }
@@ -164,7 +189,7 @@ export function ConnectorCredentials({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [request, path, onChange, t])
+  }, [request, path, onChange, showToast, t])
   const save = (event: FormEvent) => {
     event.preventDefault()
     void run(async () => {
@@ -197,19 +222,21 @@ export function ConnectorCredentials({
       setCredentials([saved])
       setReplaceHeaders(false)
       setHeaders([{ key: "Authorization", value: "" }])
-      setNotice(
-        t("resources.credentialSaved", { defaultValue: "凭证已保存。" })
-      )
-      if (data.http_headers) {
-        if (saved.connection_status === "error") {
-          setError(saved.last_error ?? "连接测试失败")
-        } else if (saved.connection_status === "connected") {
-          setNotice(
-            t("resources.credentialTestPassed", {
-              defaultValue: "凭证已保存，连接测试成功。",
-            })
-          )
-        }
+      if (data.http_headers && saved.connection_status === "error") {
+        showToast({
+          status: "error",
+          title: saved.last_error ?? "连接测试失败",
+          description: t("resources.credentialSaved"),
+        })
+      } else {
+        showToast({
+          status: "success",
+          title: t(
+            data.http_headers && saved.connection_status === "connected"
+              ? "resources.credentialTestPassed"
+              : "resources.credentialSaved"
+          ),
+        })
       }
       await reload()
     })
@@ -264,10 +291,18 @@ export function ConnectorCredentials({
           </DialogDescription>
         </DialogHeader>
         <ResourceNotice error={error} pending={pending} loading={loading} />
-        {notice && (
-          <p role="status" className="text-sm">
-            {notice}
-          </p>
+        {loadFailed && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setLoading(true)
+              setLoadFailed(false)
+              setLoadRevision((value) => value + 1)
+            }}
+          >
+            {t("statistics.retry")}
+          </Button>
         )}
         {connector.callbackURL && (
           <Field>
@@ -453,6 +488,10 @@ export function ConnectorCredentials({
                       })
                       setReplaceHeaders(false)
                       await reload()
+                      showToast({
+                        status: "success",
+                        title: t("resources.operationCompleted"),
+                      })
                     })
                   }
                 >

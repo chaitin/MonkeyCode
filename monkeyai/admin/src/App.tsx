@@ -78,10 +78,13 @@ function PageLoading() {
 
 export function App() {
   const { i18n, t } = useTranslation()
+  const location = useLocation()
 
   useEffect(() => {
-    document.title = t("app.documentTitle")
-  }, [t])
+    if (location.pathname !== LOGIN_PATH) {
+      document.title = t("app.documentTitle")
+    }
+  }, [location.pathname, t])
 
   return (
     <DirectionProvider direction={i18n.dir()}>

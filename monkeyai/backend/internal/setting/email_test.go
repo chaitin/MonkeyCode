@@ -142,7 +142,7 @@ func TestDefaultAuthenticationAndEmailSecret(t *testing.T) {
 	if !strings.Contains(string(store.records["email"].Value), "secret") {
 		t.Fatal("空密码覆盖了原密码")
 	}
-	for _, value := range []string{`{"password_enabled":"false"}`, `{"email_code_enabled":null}`} {
+	for _, value := range []string{`{"password_enabled":"false"}`, `{"email_code_enabled":null}`, `{"email_code_auto_registration_enabled":1}`} {
 		if _, err := s.Put(t.Context(), "authentication", json.RawMessage(value), 1, "admin"); err == nil {
 			t.Fatal("接受了错误的开关类型")
 		}

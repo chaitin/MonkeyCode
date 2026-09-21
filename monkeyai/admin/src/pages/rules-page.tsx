@@ -170,7 +170,7 @@ export function RulesPage() {
         editingRule?.revision
       )
       handleDialogOpenChange(false)
-    })
+    }, t("resources.operationCompleted"))
   }
   const handleDeleteRule = async () => {
     if (!rulePendingDeletion) return
@@ -180,7 +180,7 @@ export function RulesPage() {
         headers: match(rulePendingDeletion.revision),
       })
       setRulePendingDeletion(null)
-    })
+    }, t("resources.operationCompleted"))
   }
 
   return (

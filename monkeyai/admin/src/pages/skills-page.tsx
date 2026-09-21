@@ -298,7 +298,7 @@ export function SkillsPage() {
         headers: match(item.revision),
         body: JSON.stringify({ enabled }),
       })
-    })
+    }, t("resources.operationCompleted"))
   }
   const handleSubmitSkill = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -320,7 +320,7 @@ export function SkillsPage() {
         item.revision
       )
       handleDialogOpenChange(false)
-    })
+    }, t("resources.operationCompleted"))
   }
   const handleDeleteSkill = async () => {
     if (!skillPendingDeletion) return
@@ -330,7 +330,7 @@ export function SkillsPage() {
         headers: match(skillPendingDeletion.revision),
       })
       setSkillPendingDeletion(null)
-    })
+    }, t("resources.operationCompleted"))
   }
 
   return (

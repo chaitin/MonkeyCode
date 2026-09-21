@@ -50,8 +50,8 @@ export const ar = {
     system: "حسب النظام",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "سجّل الدخول إلى حساب مسؤول MonkeyAI الخاص بك",
+    adminPanelSubtitle: "سجّل الدخول إلى لوحة إدارة {{teamName}}",
+    adminPanelDocumentTitle: "لوحة إدارة {{toolName}} - {{teamName}}",
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
     showPassword: "إظهار كلمة المرور",
@@ -788,7 +788,7 @@ export const ar = {
       description: "اضبط الهوية البصرية وOAuth وإمكانات المنصة الأخرى.",
       brandInfo: {
         title: "معلومات العلامة التجارية",
-        description: "خصّص اسم الفريق واسم الأداة الظاهرين في MonkeyAI.",
+        description: "يُستخدم لتعديل معلومات العلامة التجارية للمنتج.",
         teamName: "اسم الفريق",
         toolName: "اسم الأداة",
         save: "حفظ",
@@ -796,7 +796,7 @@ export const ar = {
       },
       skillTags: {
         title: "إدارة الوسوم",
-        description: "إدارة الوسوم المحددة على الخادم للمهارات وقواعد المعرفة.",
+        description: "تنظيم موارد النظام وإدارتها بصورة موحدة.",
         add: "إضافة وسم",
         addDialogTitle: "إضافة وسم",
         editDialogTitle: "تعديل الوسم",
@@ -813,12 +813,13 @@ export const ar = {
         deleteDialogTitle: "حذف الوسم؟",
         deleteDialogDescription:
           "هل تريد حذف «{{tag}}»؟ ستتم إزالته من المهارات وقواعد المعرفة المرتبطة.",
+        saved: "تم حفظ الوسم.",
+        deleted: "تم حذف الوسم.",
         empty: "لم يتم إعداد أي وسوم.",
       },
       knowledgeBase: {
         title: "إعدادات قاعدة المعرفة",
-        description:
-          "اضبط تحليل المستندات ونماذج التضمين وإعادة الترتيب وتحسين المحتوى لقاعدة المعرفة.",
+        description: "إدارة معالجة محتوى المعرفة واسترجاعه.",
         embeddingModel: "نموذج التضمين",
         rerankerModel: "نموذج إعادة الترتيب",
         documentParsingEngine: {
@@ -876,32 +877,53 @@ export const ar = {
       },
       loginMethods: {
         title: "طرق تسجيل الدخول",
-        description: "اضبط طرق تسجيل الدخول المتاحة للأعضاء.",
-        password: "السماح بتسجيل الدخول بكلمة المرور",
-        passwordDescription:
-          "السماح للأعضاء بتسجيل الدخول بالبريد الإلكتروني وكلمة المرور.",
-        emailCode: "السماح بتسجيل الدخول برمز البريد الإلكتروني",
-        emailCodeDescription:
-          "السماح بتسجيل الدخول باستخدام رمز تحقق يُرسل عبر البريد الإلكتروني.",
-        allowRegistration: "السماح بإنشاء حسابات جديدة",
-        allowRegistrationDescription:
-          "السماح للمستخدمين الجدد بإنشاء حساب عادي تلقائيًا عبر طرق تسجيل الدخول المفعّلة باستخدام رمز البريد الإلكتروني أو OAuth / OIDC. يتوفر أيضًا التسجيل المنفصل بالبريد الإلكتروني.",
-        enableRegistrationDialogTitle: "السماح بإنشاء حسابات جديدة؟",
-        enableRegistrationDialogDescription:
-          "يمكن للمستخدمين الجدد التحقق من رمز البريد الإلكتروني أو المصادقة عبر موفّر OAuth / OIDC مفعّل لإنشاء حساب عادي وتسجيل الدخول دون تسجيل منفصل.",
-        disableRegistrationDialogTitle: "إيقاف إنشاء حسابات جديدة؟",
-        disableRegistrationDialogDescription:
-          "بعد التعطيل، يمكن للحسابات الحالية فقط تسجيل الدخول باستخدام رمز البريد الإلكتروني أو OAuth / OIDC. لن تتأثر الحسابات الحالية.",
-        confirmEnableRegistration: "السماح بالتسجيل",
-        confirmDisableRegistration: "إيقاف التسجيل",
+        description: "اضبط طرق المصادقة التي يدعمها النظام.",
+        password: "تسجيل الدخول بكلمة المرور",
+        enablePasswordDialogTitle: "تمكين تسجيل الدخول بكلمة المرور؟",
+        enablePasswordDialogDescription:
+          "سيتمكن الأعضاء من تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور.",
+        disablePasswordDialogTitle: "تعطيل تسجيل الدخول بكلمة المرور؟",
+        disablePasswordDialogDescription:
+          "لن يتمكن الأعضاء من تسجيل الدخول بكلمة المرور. لن تتأثر طرق تسجيل الدخول الأخرى.",
+        confirmEnablePassword: "تمكين",
+        confirmDisablePassword: "تعطيل",
+        emailCode: "تسجيل الدخول برمز التحقق عبر البريد الإلكتروني",
+        autoRegisterMissingUsers:
+          "التسجيل تلقائيًا إذا لم يكن المستخدم موجودًا",
+        enableEmailCodeDialogTitle:
+          "تمكين تسجيل الدخول برمز التحقق عبر البريد الإلكتروني؟",
+        enableEmailCodeDialogDescription:
+          "سيتمكن الأعضاء من تسجيل الدخول برمز تحقق يُرسل عبر البريد الإلكتروني. تأكد من عمل إعدادات إرسال البريد.",
+        disableEmailCodeDialogTitle:
+          "تعطيل تسجيل الدخول برمز التحقق عبر البريد الإلكتروني؟",
+        disableEmailCodeDialogDescription:
+          "لن يتمكن الأعضاء من تسجيل الدخول برمز التحقق عبر البريد الإلكتروني. لن تتأثر طرق تسجيل الدخول الأخرى.",
+        confirmEnableEmailCode: "تمكين",
+        confirmDisableEmailCode: "تعطيل",
+        enableEmailAutoRegistrationDialogTitle:
+          "تمكين التسجيل التلقائي عند الدخول برمز البريد الإلكتروني؟",
+        enableEmailAutoRegistrationDialogDescription:
+          "عند تسجيل الدخول برمز البريد الإلكتروني وعدم وجود حساب، سيُنشأ حساب عادي تلقائيًا.",
+        disableEmailAutoRegistrationDialogTitle:
+          "تعطيل التسجيل التلقائي عند الدخول برمز البريد الإلكتروني؟",
+        disableEmailAutoRegistrationDialogDescription:
+          "لن يتمكن المستخدمون الذين لا يملكون حسابًا من الدخول برمز البريد الإلكتروني. لن تتأثر الحسابات الحالية.",
+        enableOauthAutoRegistrationDialogTitle:
+          "تمكين التسجيل التلقائي لـ {{name}}؟",
+        enableOauthAutoRegistrationDialogDescription:
+          "عند تسجيل الدخول عبر {{name}} وعدم وجود حساب، سيُنشأ حساب عادي تلقائيًا.",
+        disableOauthAutoRegistrationDialogTitle:
+          "تعطيل التسجيل التلقائي لـ {{name}}؟",
+        disableOauthAutoRegistrationDialogDescription:
+          "لن يتمكن المستخدمون الذين لا يملكون حسابًا من الدخول عبر {{name}}. لن تتأثر الحسابات الحالية.",
+        confirmEnableAutoRegistration: "تمكين",
+        confirmDisableAutoRegistration: "تعطيل",
       },
       oauth: {
         title: "تسجيل الدخول عبر جهة خارجية",
         description: "اضبط موفري OAuth أو OIDC الذين يمكن للأعضاء استخدامهم.",
         add: "إضافة طريقة تسجيل دخول",
         dialogTitle: "إضافة تسجيل دخول خارجي",
-        dialogDescription:
-          "أدخل بيانات العميل الصادرة عن الموفر. يمكنك إضافة عدة إعدادات.",
         provider: "الموفر",
         name: "اسم العرض",
         namePlaceholder: "مثال: GitHub للشركة",
@@ -910,12 +932,36 @@ export const ar = {
         issuerUrl: "عنوان URL للمُصدر",
         clientId: "معرّف العميل",
         clientSecret: "سر العميل",
-        secretDescription: "يُرسل السر عند الحفظ فقط ولن يظهر كاملاً مرة أخرى.",
         cancel: "إلغاء",
         addConnection: "إضافة الإعداد",
-        clientIdValue: "معرّف العميل: {{clientId}}",
+        edit: "تعديل",
+        viewCallback: "عرض عنوان الاستدعاء",
+        callbackDialogTitle: "عنوان استدعاء SSO",
+        callbackURL: "عنوان الاستدعاء",
+        copyCallback: "نسخ",
+        callbackCopied: "تم نسخ عنوان الاستدعاء",
+        callbackCopyFailed: "تعذر نسخ عنوان الاستدعاء",
+        enable: "تمكين",
+        disable: "تعطيل",
+        delete: "حذف",
+        enabled: "مُمكّن",
+        disabled: "مُعطّل",
+        editDialogTitle: "تعديل تسجيل الدخول الخارجي",
+        updateConnection: "حفظ التغييرات",
+        secretUpdatePlaceholder: "اتركه فارغًا للاحتفاظ بالسر الحالي.",
+        enableDialogTitle: "تمكين «{{name}}»؟",
+        enableDialogDescription:
+          "سيتمكن الأعضاء من استخدام طريقة تسجيل الدخول الخارجية هذه.",
+        disableDialogTitle: "تعطيل «{{name}}»؟",
+        disableDialogDescription:
+          "لن يتمكن الأعضاء من استخدام طريقة تسجيل الدخول هذه. لن تتأثر الحسابات الحالية.",
+        deleteDialogTitle: "حذف «{{name}}»؟",
+        deleteDialogDescription:
+          "سيتم حذف إعداد تسجيل الدخول هذا نهائيًا، ولا يمكن التراجع عن هذا الإجراء.",
+        confirmEnable: "تمكين",
+        confirmDisable: "تعطيل",
+        confirmDelete: "حذف",
         toggle: "تمكين أو تعطيل {{name}}",
-        connectionCount: "تم إعداد {{count}} من طرق تسجيل الدخول الخارجية",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -927,11 +973,11 @@ export const ar = {
       },
       email: {
         title: "إعدادات البريد الإلكتروني",
-        description: "إعداد خدمة إرسال رسائل البريد الإلكتروني للنظام.",
+        description: "اضبط خدمات البريد الإلكتروني للنظام والميزات ذات الصلة.",
         configure: "تهيئة",
         dialogTitle: "تهيئة البريد الإلكتروني",
-        dialogDescription: "اضبط هوية المرسل وخدمة إرسال SMTP.",
         sendingConfiguration: "إعدادات الإرسال",
+        notConfigured: "لم تتم تهيئته بعد",
         senderName: "اسم المرسل",
         senderEmail: "بريد المرسل",
         smtpHost: "مضيف SMTP",

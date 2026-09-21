@@ -16,13 +16,13 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
-          <SkillTagsProvider>
-            <TooltipProvider>
-              <AnimatedToastProvider>
+          <AnimatedToastProvider>
+            <SkillTagsProvider>
+              <TooltipProvider>
                 <App />
-              </AnimatedToastProvider>
-            </TooltipProvider>
-          </SkillTagsProvider>
+              </TooltipProvider>
+            </SkillTagsProvider>
+          </AnimatedToastProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>

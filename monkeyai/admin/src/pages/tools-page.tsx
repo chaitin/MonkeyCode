@@ -226,7 +226,7 @@ export function ToolsPage() {
         headers: match(server.revision),
         body: JSON.stringify({ enabled: !server.enabled }),
       })
-    })
+    }, t("resources.operationCompleted"))
   }
   const resetDraft = () => {
     setEditingServerId(null)
@@ -312,7 +312,7 @@ export function ToolsPage() {
         oauthClientMode === "dynamic"
       )
         handleDialogOpenChange(false)
-    })
+    }, t("resources.operationCompleted"))
   }
   const handleDeleteServer = async () => {
     if (!serverPendingDeletion) return
@@ -322,13 +322,13 @@ export function ToolsPage() {
         headers: match(serverPendingDeletion.revision),
       })
       setServerPendingDeletion(null)
-    })
+    }, t("resources.operationCompleted"))
   }
   const handleTestConnection = async (id: string) => {
     setTestingServerId(id)
     await remote.run(async () => {
       await api(base + `/connectors/${id}/test`, { method: "POST" })
-    })
+    }, t("resources.operationCompleted"))
     setTestingServerId(null)
   }
   const loadTools = async (server: McpServer, credential = "") => {
@@ -392,7 +392,7 @@ export function ToolsPage() {
         })
       }
       setViewingServerId(null)
-    })
+    }, t("resources.operationCompleted"))
   }
 
   return (

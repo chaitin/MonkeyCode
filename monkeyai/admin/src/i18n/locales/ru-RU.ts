@@ -50,8 +50,9 @@ export const ruRU = {
     system: "Системная",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "Войдите в свою учётную запись администратора MonkeyAI",
+    adminPanelSubtitle: "Войдите в панель администратора {{teamName}}",
+    adminPanelDocumentTitle:
+      "Панель администратора {{toolName}} - {{teamName}}",
     email: "Электронная почта",
     password: "Пароль",
     showPassword: "Показать пароль",
@@ -815,8 +816,7 @@ export const ruRU = {
         "Настройте фирменное оформление, OAuth и другие функции платформы.",
       brandInfo: {
         title: "Информация о бренде",
-        description:
-          "Настройте названия команды и инструмента, отображаемые в MonkeyAI.",
+        description: "Используется для изменения информации о бренде продукта.",
         teamName: "Название команды",
         toolName: "Название инструмента",
         save: "Сохранить",
@@ -825,7 +825,7 @@ export const ruRU = {
       skillTags: {
         title: "Управление тегами",
         description:
-          "Управляйте заданными на сервере тегами для навыков и баз знаний.",
+          "Единообразно организуйте системные ресурсы и управляйте ими.",
         add: "Добавить тег",
         addDialogTitle: "Добавить тег",
         editDialogTitle: "Изменить тег",
@@ -842,12 +842,13 @@ export const ruRU = {
         deleteDialogTitle: "Удалить тег?",
         deleteDialogDescription:
           "Удалить «{{tag}}»? Он будет удалён из связанных навыков и баз знаний.",
+        saved: "Тег сохранён.",
+        deleted: "Тег удалён.",
         empty: "Теги ещё не настроены.",
       },
       knowledgeBase: {
         title: "Настройки базы знаний",
-        description:
-          "Настройте обработку документов, а также модели эмбеддингов, реранжирования и улучшения контента базы знаний.",
+        description: "Управляйте обработкой и поиском содержимого базы знаний.",
         embeddingModel: "Модель эмбеддингов",
         rerankerModel: "Модель реранжирования",
         documentParsingEngine: {
@@ -910,25 +911,46 @@ export const ruRU = {
       },
       loginMethods: {
         title: "Способы входа",
-        description: "Настройте доступные участникам способы входа.",
-        password: "Разрешить вход по паролю",
-        passwordDescription:
-          "Разрешить участникам входить с адресом электронной почты и паролем.",
-        emailCode: "Разрешить вход по коду из письма",
-        emailCodeDescription:
-          "Разрешить вход по коду подтверждения, отправленному на электронную почту.",
-        allowRegistration: "Разрешить регистрацию новых аккаунтов",
-        allowRegistrationDescription:
-          "Разрешить новым пользователям автоматически создавать обычную учётную запись через включённые способы входа по коду из письма или OAuth / OIDC. Отдельная регистрация по электронной почте также доступна.",
-        enableRegistrationDialogTitle: "Разрешить регистрацию новых аккаунтов?",
-        enableRegistrationDialogDescription:
-          "Новые пользователи могут подтвердить код из письма или пройти аутентификацию через включённый OAuth / OIDC, чтобы автоматически создать обычную учётную запись и войти без отдельной регистрации.",
-        disableRegistrationDialogTitle:
-          "Запретить регистрацию новых аккаунтов?",
-        disableRegistrationDialogDescription:
-          "После отключения вход по коду из письма или OAuth / OIDC будет доступен только существующим учётным записям. Существующие учётные записи не изменятся.",
-        confirmEnableRegistration: "Разрешить регистрацию",
-        confirmDisableRegistration: "Запретить регистрацию",
+        description:
+          "Настройте поддерживаемые системой способы аутентификации.",
+        password: "Вход по паролю",
+        enablePasswordDialogTitle: "Включить вход по паролю?",
+        enablePasswordDialogDescription:
+          "Пользователи смогут входить с адресом электронной почты и паролем.",
+        disablePasswordDialogTitle: "Отключить вход по паролю?",
+        disablePasswordDialogDescription:
+          "Пользователи больше не смогут входить по паролю. Другие способы входа не изменятся.",
+        confirmEnablePassword: "Включить",
+        confirmDisablePassword: "Отключить",
+        emailCode: "Вход по коду из письма",
+        autoRegisterMissingUsers:
+          "Автоматически регистрировать, если пользователь не существует",
+        enableEmailCodeDialogTitle: "Включить вход по коду из письма?",
+        enableEmailCodeDialogDescription:
+          "Пользователи смогут входить по коду подтверждения из письма. Убедитесь, что отправка почты настроена правильно.",
+        disableEmailCodeDialogTitle: "Отключить вход по коду из письма?",
+        disableEmailCodeDialogDescription:
+          "Пользователи больше не смогут входить по коду из письма. Другие способы входа не изменятся.",
+        confirmEnableEmailCode: "Включить",
+        confirmDisableEmailCode: "Отключить",
+        enableEmailAutoRegistrationDialogTitle:
+          "Включить автоматическую регистрацию при входе по коду из письма?",
+        enableEmailAutoRegistrationDialogDescription:
+          "Если пользователь входит по коду из письма и учётной записи нет, она будет создана автоматически.",
+        disableEmailAutoRegistrationDialogTitle:
+          "Отключить автоматическую регистрацию при входе по коду из письма?",
+        disableEmailAutoRegistrationDialogDescription:
+          "Пользователи без учётной записи больше не смогут войти по коду из письма. Существующие учётные записи не изменятся.",
+        enableOauthAutoRegistrationDialogTitle:
+          "Включить автоматическую регистрацию для {{name}}?",
+        enableOauthAutoRegistrationDialogDescription:
+          "Если пользователь входит через {{name}} и учётной записи нет, она будет создана автоматически.",
+        disableOauthAutoRegistrationDialogTitle:
+          "Отключить автоматическую регистрацию для {{name}}?",
+        disableOauthAutoRegistrationDialogDescription:
+          "Пользователи без учётной записи больше не смогут войти через {{name}}. Существующие учётные записи не изменятся.",
+        confirmEnableAutoRegistration: "Включить",
+        confirmDisableAutoRegistration: "Отключить",
       },
       oauth: {
         title: "Вход через сторонние сервисы",
@@ -936,8 +958,6 @@ export const ruRU = {
           "Настройте поставщиков OAuth или OIDC для входа участников.",
         add: "Добавить способ входа",
         dialogTitle: "Добавить сторонний вход",
-        dialogDescription:
-          "Введите данные клиента от поставщика. Можно добавить несколько конфигураций.",
         provider: "Поставщик",
         name: "Отображаемое имя",
         namePlaceholder: "Например: Корпоративный GitHub",
@@ -946,13 +966,37 @@ export const ruRU = {
         issuerUrl: "URL издателя",
         clientId: "Client ID",
         clientSecret: "Client Secret",
-        secretDescription:
-          "Секрет передаётся только при сохранении и больше не показывается полностью.",
         cancel: "Отмена",
         addConnection: "Добавить конфигурацию",
-        clientIdValue: "Client ID: {{clientId}}",
+        edit: "Изменить",
+        viewCallback: "Показать callback URL",
+        callbackDialogTitle: "Callback URL для SSO",
+        callbackURL: "Callback URL",
+        copyCallback: "Копировать",
+        callbackCopied: "Callback URL скопирован",
+        callbackCopyFailed: "Не удалось скопировать callback URL",
+        enable: "Включить",
+        disable: "Отключить",
+        delete: "Удалить",
+        enabled: "Включено",
+        disabled: "Отключено",
+        editDialogTitle: "Изменить сторонний вход",
+        updateConnection: "Сохранить изменения",
+        secretUpdatePlaceholder:
+          "Оставьте пустым, чтобы сохранить текущий секрет.",
+        enableDialogTitle: "Включить «{{name}}»?",
+        enableDialogDescription:
+          "Пользователи смогут использовать этот способ стороннего входа.",
+        disableDialogTitle: "Отключить «{{name}}»?",
+        disableDialogDescription:
+          "Пользователи больше не смогут использовать этот способ входа. Существующие аккаунты не изменятся.",
+        deleteDialogTitle: "Удалить «{{name}}»?",
+        deleteDialogDescription:
+          "Эта конфигурация входа будет удалена без возможности восстановления.",
+        confirmEnable: "Включить",
+        confirmDisable: "Отключить",
+        confirmDelete: "Удалить",
         toggle: "Включить или отключить {{name}}",
-        connectionCount: "Настроено способов стороннего входа: {{count}}",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -964,11 +1008,11 @@ export const ruRU = {
       },
       email: {
         title: "Настройки электронной почты",
-        description: "Настройте отправку системных писем.",
+        description: "Настройте системные почтовые службы и связанные функции.",
         configure: "Настроить",
         dialogTitle: "Настроить электронную почту",
-        dialogDescription: "Настройте данные отправителя и SMTP-сервис.",
         sendingConfiguration: "Настройки отправки",
+        notConfigured: "Ещё не настроено",
         senderName: "Имя отправителя",
         senderEmail: "Адрес отправителя",
         smtpHost: "SMTP-сервер",

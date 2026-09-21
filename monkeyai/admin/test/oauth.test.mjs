@@ -4,7 +4,7 @@ import test from "node:test"
 import { runInNewContext } from "node:vm"
 import ts from "typescript"
 
-test("login method switches remain visible and persist with authentication settings", async () => {
+test("login method switches persist with authentication settings", async () => {
   const source = await readFile(
     new URL("../src/pages/other-settings-page.tsx", import.meta.url),
     "utf8"
@@ -14,6 +14,109 @@ test("login method switches remain visible and persist with authentication setti
   assert.match(source, /pages\.otherSettings\.loginMethods\.emailCode/)
   assert.match(source, /password_enabled: loginMethods\.passwordEnabled/)
   assert.match(source, /email_code_enabled: loginMethods\.emailCodeEnabled/)
+  assert.match(
+    source,
+    /email_code_auto_registration_enabled:\s*loginMethods\.emailCodeAutoRegistrationEnabled/
+  )
+  assert.doesNotMatch(source, /\bregistration_enabled\b/)
+})
+
+test("third-party sign-in uses items, an action menu, and confirmations", async () => {
+  const source = await readFile(
+    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const list = source
+    .split("{oauthConnections.map((connection) => (")[1]
+    .split("</ItemGroup>")[0]
+
+  assert.match(list, /<Item key=\{connection\.id\} variant="outline">/)
+  assert.match(list, /<ItemContent>/)
+  assert.match(list, /<ItemActions>/)
+  assert.doesNotMatch(list, /<ItemMedia>|<ItemDescription>/)
+  assert.match(
+    list,
+    /<Badge\s+variant="outline"\s+className=\{[\s\S]*?border-green-500\/40[\s\S]*?border-red-500\/40 text-red-700/
+  )
+  assert.doesNotMatch(source, /getProviderName/)
+  assert.match(list, /icon=\{MoreHorizontalIcon\}/)
+  assert.match(list, /openOauthEditDialog\(connection\)/)
+  assert.match(list, /setOauthCallbackDialogOpen\(true\)/)
+  assert.match(list, /oauth\.viewCallback/)
+  assert.match(list, /icon=\{Route02Icon\}/)
+  assert.ok(
+    list.indexOf("openOauthEditDialog(connection)") <
+      list.indexOf("setOauthCallbackDialogOpen(true)")
+  )
+  assert.match(list, /action: connection\.enabled \? "disable" : "enable"/)
+  assert.ok(
+    list.indexOf('action: connection.enabled ? "disable" : "enable"') <
+      list.indexOf("openOauthEditDialog(connection)")
+  )
+  assert.match(
+    list,
+    /icon=\{\s*connection\.enabled \? PowerOffIcon : PowerIcon\s*\}/
+  )
+  assert.match(list, /action: "delete"/)
+  assert.match(
+    list,
+    /<ItemFooter>\s*<Item size="sm" variant="outline">[\s\S]*?loginMethods\.autoRegisterMissingUsers[\s\S]*?<Switch[\s\S]*?checked=\{connection\.autoRegistrationEnabled\}[\s\S]*?type: "oauth"/
+  )
+  assert.doesNotMatch(list, /<div\s+key=\{connection\.id\}/)
+  assert.match(
+    source,
+    /auto_registration_enabled: connection\.autoRegistrationEnabled/
+  )
+  assert.match(
+    source,
+    /autoRegistrationEnabled:\s*connection\.auto_registration_enabled !== false/
+  )
+  assert.match(
+    source,
+    /autoRegistrationEnabled:\s*editingOauthConnection\?\.autoRegistrationEnabled \?\? true/
+  )
+
+  assert.match(source, /open=\{oauthPendingAction !== null\}/)
+  assert.match(
+    source,
+    /<AlertDialogAction[\s\S]*?onClick=\{confirmOauthAction\}/
+  )
+  assert.match(source, /action === "delete"[\s\S]*?removeOauthConnection/)
+  assert.match(source, /setOauthEnabled\(connection\.id, action === "enable"\)/)
+  assert.match(source, /setOauthPendingAction\(null\)/)
+
+  assert.match(source, /setEditingOauthID\(connection\.id\)/)
+  assert.match(source, /defaultValue=\{editingOauthConnection\?\.name\}/)
+  assert.match(source, /defaultValue=\{editingOauthConnection\?\.clientId\}/)
+  assert.match(source, /required=\{!editingOauthConnection\}/)
+  assert.match(source, /placeholder=\{[\s\S]*?secretUpdatePlaceholder/)
+  assert.doesNotMatch(
+    source,
+    /oauth\.(dialogDescription|secretDescription)|secretUpdateDescription/
+  )
+
+  assert.match(
+    source,
+    /useState\(\s*\(\) => `\$\{window\.location\.origin\}\/api\/auth\/v1\/oauth\/callback`\s*\)/
+  )
+  assert.match(source, /"\/\.well-known\/oauth-authorization-server"/)
+  assert.match(
+    source,
+    /setOauthCallbackURL\(`\$\{publicURL\}\/api\/auth\/v1\/oauth\/callback`\)/
+  )
+  assert.match(source, /open=\{oauthCallbackDialogOpen\}/)
+  assert.match(source, /oauth\.callbackDialogTitle/)
+  assert.match(source, /value=\{oauthCallbackURL\}/)
+  assert.match(source, /navigator\.clipboard\.writeText\(oauthCallbackURL\)/)
+  assert.match(source, /oauth\.callbackCopied/)
+  assert.match(source, /oauth\.callbackCopyFailed/)
+  const callbackDialog = source
+    .split("open={oauthCallbackDialogOpen}")[1]
+    .split("<Card>")[0]
+  assert.match(
+    callbackDialog,
+    /<DialogFooter>[\s\S]*?<Button[\s\S]*?variant="outline"[\s\S]*?oauth\.copyCallback[\s\S]*?<DialogClose render=\{<Button type="button" \/>\}>[\s\S]*?common\.close/
+  )
 })
 
 test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版本同步", async (t) => {

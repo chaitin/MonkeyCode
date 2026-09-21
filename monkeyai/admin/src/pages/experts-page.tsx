@@ -10,6 +10,7 @@ import {
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { ResourceNotice } from "@/components/resource-notice"
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import {
@@ -280,13 +281,14 @@ function ExpertAssociationSelect({
 
 export function ExpertsPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const remote = useResources("/experts", toExpert)
   const experts = remote.items
   const subjects = useSubjects()
   const [options, setOptions] = useState<
     Record<AssociationKey, AssociationOption[]>
   >({ knowledgeBaseIds: [], toolIds: [], ruleIds: [], skillIds: [] })
-  const [optionError, setOptionError] = useState("")
+  const [optionRevision, setOptionRevision] = useState(0)
 
   const [query, setQuery] = useState("")
   const [editorOpen, setEditorOpen] = useState(false)
@@ -318,15 +320,23 @@ export function ExpertsPage() {
           skillIds: map(skills.items),
           toolIds: map(connectors.items),
         })
-        setOptionError("")
       })
       .catch((e) => {
-        if (!cancelled) setOptionError(e.message)
+        if (!cancelled) {
+          showToast({
+            status: "error",
+            title: e instanceof Error ? e.message : String(e),
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => setOptionRevision((value) => value + 1),
+            },
+          })
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [editorOpen])
+  }, [editorOpen, optionRevision, showToast, t])
   const filteredExperts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase(i18n.language)
     if (!normalizedQuery) return experts
@@ -412,7 +422,7 @@ export function ExpertsPage() {
         editingExpert?.revision
       )
       setEditorOpen(false)
-    })
+    }, t("resources.operationCompleted"))
   }
   const setExpertEnabled = async (id: string, enabled: boolean) => {
     const item = experts.find((e) => e.id === id)
@@ -423,7 +433,7 @@ export function ExpertsPage() {
         headers: match(item.revision),
         body: JSON.stringify({ enabled }),
       })
-    })
+    }, t("resources.operationCompleted"))
   }
   const duplicateExpert = async (expert: Expert) => {
     await remote.run(async () => {
@@ -433,7 +443,7 @@ export function ExpertsPage() {
           name: expert.name + t("pages.experts.copySuffix"),
         }),
       })
-    })
+    }, t("resources.operationCompleted"))
   }
   const deleteExpert = async () => {
     if (!pendingDeletion) return
@@ -443,13 +453,13 @@ export function ExpertsPage() {
         headers: match(pendingDeletion.revision),
       })
       setPendingDeletion(null)
-    })
+    }, t("resources.operationCompleted"))
   }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-0">
       <ResourceNotice
-        error={remote.error || subjects.error || optionError}
+        error={remote.error || subjects.error}
         loading={remote.loading}
         pending={remote.pending}
       />
@@ -774,7 +784,7 @@ export function ExpertsPage() {
               </Field>
             </FieldGroup>
             <ResourceNotice
-              error={remote.error || subjects.error || optionError}
+              error={remote.error || subjects.error}
               loading={false}
               pending={remote.pending}
             />

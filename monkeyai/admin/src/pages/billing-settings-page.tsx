@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -52,6 +53,7 @@ type Target = {
 
 export function BillingSettingsPage() {
   const { t, i18n } = useTranslation()
+  const { showToast } = useAppToast()
   const [settings, setSettings] = useState<BillingSettings | null>(null)
   const [quotas, setQuotas] = useState<Quotas | null>(null)
   const [pricing, setPricing] = useState<Pick<
@@ -65,8 +67,7 @@ export function BillingSettingsPage() {
   const [enabled, setEnabled] = useState(false)
   const [changes, setChanges] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState("")
-  const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
+  const [loadFailed, setLoadFailed] = useState(false)
   const [walletVersion, setWalletVersion] = useState(0)
   const [query, setQuery] = useState("")
   const [target, setTarget] = useState<Target | null>(null)
@@ -94,13 +95,25 @@ export function BillingSettingsPage() {
         setMode(s.policy.charging_mode)
         setEnabled(s.policy.enabled)
         setChanges({})
+        setLoadFailed(false)
         setWalletVersion((value) => value + 1)
       }),
     []
   )
+  const handleLoadFailure = useCallback(
+    (error: Error) => {
+      setLoadFailed(true)
+      showToast({ status: "error", title: error.message })
+    },
+    [showToast]
+  )
+  const retryLoad = () => {
+    setLoadFailed(false)
+    void load().catch(handleLoadFailure)
+  }
   useEffect(() => {
-    void load().catch((e: Error) => setError(e.message))
-  }, [load])
+    void load().catch(handleLoadFailure)
+  }, [handleLoadFailure, load])
   const format = (value: string) => credits(value, i18n.language)
   const own = (type: string, id: string, value: string | null) =>
     Object.hasOwn(changes, `${type}:${id}`) ? changes[`${type}:${id}`] : value
@@ -115,8 +128,6 @@ export function BillingSettingsPage() {
   ): Promise<boolean> => {
     if (!settings || !quotas || !pricing) return false
     setBusy(section)
-    setError("")
-    setNotice("")
     try {
       if (section === "quotas") {
         const result = await api<Quotas>("/api/admin/v1/billing/quotas", {
@@ -135,9 +146,10 @@ export function BillingSettingsPage() {
           ...settings,
           policy: { ...settings.policy, revision: result.revision },
         })
-        setNotice(
-          `周期额度已保存，将在 ${dateTime(result.effective_at)} 后的新周期生效。`
-        )
+        showToast({
+          status: "success",
+          title: `周期额度已保存，将在 ${dateTime(result.effective_at)} 后的新周期生效。`,
+        })
       } else {
         const values =
           section === "wallet"
@@ -159,18 +171,21 @@ export function BillingSettingsPage() {
         )
         setSettings(result)
         setQuotas({ ...quotas, revision: result.policy.revision })
-        setNotice(
-          section === "wallet"
-            ? result.policy.charging_mode === "remote" && result.policy.enabled
-              ? "百智云连接配置已保存，无需重启。"
-              : "百智云连接配置已保存，无需重启；请保存计费方式以启用远程计费。"
-            : section === "cycle"
-              ? `刷新设置已保存，将于 ${dateTime(result.next_refresh_at)} 刷新，当前余额不变。`
-              : "设置已保存，对新调用生效。"
-        )
+        showToast({
+          status: "success",
+          title:
+            section === "wallet"
+              ? result.policy.charging_mode === "remote" &&
+                result.policy.enabled
+                ? "百智云连接配置已保存，无需重启。"
+                : "百智云连接配置已保存，无需重启；请保存计费方式以启用远程计费。"
+              : section === "cycle"
+                ? `刷新设置已保存，将于 ${dateTime(result.next_refresh_at)} 刷新，当前余额不变。`
+                : "设置已保存，对新调用生效。",
+        })
       }
     } catch (e) {
-      setError((e as Error).message)
+      showToast({ status: "error", title: (e as Error).message })
       if (section === "wallet") throw e
       return false
     } finally {
@@ -279,14 +294,12 @@ export function BillingSettingsPage() {
   if (!settings || !quotas || !pricing)
     return (
       <div className="p-4" role="status">
-        {error || "正在读取计费设置…"}
-        {error && (
-          <Button
-            className="ms-3"
-            onClick={() => void load().catch((e: Error) => setError(e.message))}
-          >
+        {loadFailed ? (
+          <Button variant="outline" onClick={retryLoad}>
             重试
           </Button>
+        ) : (
+          "正在读取计费设置…"
         )}
       </div>
     )
@@ -297,25 +310,6 @@ export function BillingSettingsPage() {
   ] as const
   return (
     <section className="grid flex-1 content-start gap-4 p-4 pt-0 xl:grid-cols-2">
-      {(error || notice) && (
-        <div
-          className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm xl:col-span-2 ${error ? "border-destructive/30 text-destructive" : "text-muted-foreground"}`}
-          role={error ? "alert" : "status"}
-        >
-          {error || notice}
-          {error && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                void load().catch((e: Error) => setError(e.message))
-              }
-            >
-              重新加载（放弃草稿）
-            </Button>
-          )}
-        </div>
-      )}
       <Card className="xl:row-span-3">
         <CardHeader>
           <CardTitle>{t("pages.billingSettings.groupQuota.title")}</CardTitle>
@@ -379,7 +373,8 @@ export function BillingSettingsPage() {
             <Button
               disabled={
                 (!settings.policy.pending_cycle &&
-                  cycle === settings.policy.quota_refresh_cycle) || !!busy
+                  cycle === settings.policy.quota_refresh_cycle) ||
+                !!busy
               }
               onClick={() => void save("cycle")}
             >
@@ -408,8 +403,9 @@ export function BillingSettingsPage() {
           </p>
           {settings.policy.pending_cycle && (
             <p className="text-sm">
-              当前周期规则为{cycleNames[settings.policy.quota_refresh_cycle]}刷新，将在{" "}
-              {dateTime(settings.policy.cycle_effective_at)} 刷新并切换为
+              当前周期规则为{cycleNames[settings.policy.quota_refresh_cycle]}
+              刷新，将在 {dateTime(settings.policy.cycle_effective_at)}{" "}
+              刷新并切换为
               {cycleNames[settings.policy.pending_cycle]}刷新。
             </p>
           )}
@@ -612,7 +608,9 @@ export function BillingSettingsPage() {
           onChanged={() => {
             void api<Quotas>("/api/admin/v1/billing/quotas")
               .then(setQuotas)
-              .catch((e: Error) => setError(e.message))
+              .catch((e: Error) =>
+                showToast({ status: "error", title: e.message })
+              )
           }}
         />
       )}
@@ -629,8 +627,10 @@ function AccountDialog({
   onClose: () => void
   onChanged: () => void
 }) {
+  const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [data, setData] = useState<AccountDetails | null>(null)
-  const [error, setError] = useState("")
+  const [loadFailed, setLoadFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [delta, setDelta] = useState("")
   const [reason, setReason] = useState("")
@@ -639,18 +639,26 @@ function AccountDialog({
   const load = useCallback(
     () =>
       api<AccountDetails>(`/api/admin/v1/billing/accounts/${user.id}`).then(
-        setData
+        (value) => {
+          setData(value)
+          setLoadFailed(false)
+        }
       ),
     [user.id]
   )
+  const loadAccount = useCallback(() => {
+    void load().catch((error: Error) => {
+      setLoadFailed(true)
+      showToast({ status: "error", title: error.message })
+    })
+  }, [load, showToast])
   useEffect(() => {
-    void load().catch((e: Error) => setError(e.message))
-  }, [load])
+    loadAccount()
+  }, [loadAccount])
   const run = async (kind: "adjust" | "wallet") => {
     if (running.current) return
     running.current = true
     setBusy(true)
-    setError("")
     try {
       if (kind === "adjust") {
         await api(`/api/admin/v1/billing/accounts/${user.id}/adjustments`, {
@@ -671,10 +679,16 @@ function AccountDialog({
         })
       await load()
       onChanged()
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
     } catch (e) {
-      setError((e as Error).message)
+      showToast({ status: "error", title: (e as Error).message })
       if (e instanceof ApiError && (e.status === 409 || e.status === 412)) {
-        await load().catch((error: Error) => setError(error.message))
+        await load().catch((error: Error) =>
+          showToast({ status: "error", title: error.message })
+        )
       }
     } finally {
       running.current = false
@@ -693,14 +707,14 @@ function AccountDialog({
           <DialogTitle>{user.name} 的积分账户</DialogTitle>
           <DialogDescription>{user.email}</DialogDescription>
         </DialogHeader>
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
+        {loadFailed && (
+          <Button type="button" variant="outline" onClick={loadAccount}>
+            重试
+          </Button>
         )}
-        {!data ? (
+        {!data && !loadFailed ? (
           <p role="status">正在读取账户…</p>
-        ) : (
+        ) : data ? (
           <div className="space-y-5">
             <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/50 p-4">
               {[
@@ -821,7 +835,7 @@ function AccountDialog({
               </div>
             </details>
           </div>
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   )

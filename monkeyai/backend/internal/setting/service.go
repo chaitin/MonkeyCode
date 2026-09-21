@@ -237,18 +237,19 @@ func validate(key string, value map[string]json.RawMessage) error {
 			return errors.New("workspace_name 和 product_name 不能为空")
 		}
 	case "authentication":
-		for _, key := range []string{"password_enabled", "email_code_enabled", "registration_enabled"} {
+		for _, key := range []string{"password_enabled", "email_code_enabled", "email_code_auto_registration_enabled"} {
 			if raw, ok := value[key]; ok && string(raw) != "true" && string(raw) != "false" {
 				return fmt.Errorf("%s 必须为布尔值", key)
 			}
 		}
 		var connections []struct {
-			ID           string `json:"id"`
-			Provider     string `json:"provider"`
-			Name         string `json:"name"`
-			ClientID     string `json:"client_id"`
-			ClientSecret string `json:"client_secret"`
-			IssuerURL    string `json:"issuer_url"`
+			ID                      string `json:"id"`
+			Provider                string `json:"provider"`
+			Name                    string `json:"name"`
+			ClientID                string `json:"client_id"`
+			ClientSecret            string `json:"client_secret"`
+			IssuerURL               string `json:"issuer_url"`
+			AutoRegistrationEnabled *bool  `json:"auto_registration_enabled"`
 		}
 		if raw, ok := value["oauth_connections"]; ok && json.Unmarshal(raw, &connections) != nil {
 			return errors.New("oauth_connections 格式无效")

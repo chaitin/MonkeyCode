@@ -51,8 +51,10 @@ export const frFR = {
     system: "Système",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "Connectez-vous à votre compte administrateur MonkeyAI",
+    adminPanelSubtitle:
+      "Connectez-vous au panneau d’administration de {{teamName}}",
+    adminPanelDocumentTitle:
+      "Panneau d’administration {{toolName}} - {{teamName}}",
     email: "Adresse e-mail",
     password: "Mot de passe",
     showPassword: "Afficher le mot de passe",
@@ -820,8 +822,7 @@ export const frFR = {
         "Configurez l’identité visuelle, OAuth et les autres fonctions de la plateforme.",
       brandInfo: {
         title: "Informations de marque",
-        description:
-          "Personnalisez les noms de l’équipe et de l’outil affichés dans MonkeyAI.",
+        description: "Permet de modifier l’identité de marque du produit.",
         teamName: "Nom de l’équipe",
         toolName: "Nom de l’outil",
         save: "Enregistrer",
@@ -830,7 +831,7 @@ export const frFR = {
       skillTags: {
         title: "Gestion des étiquettes",
         description:
-          "Gérez les étiquettes définies côté serveur pour les compétences et les bases de connaissances.",
+          "Organisez et gérez les ressources du système de manière cohérente.",
         add: "Ajouter une étiquette",
         addDialogTitle: "Ajouter une étiquette",
         editDialogTitle: "Modifier l’étiquette",
@@ -847,12 +848,14 @@ export const frFR = {
         deleteDialogTitle: "Supprimer l’étiquette ?",
         deleteDialogDescription:
           "Supprimer « {{tag}} » ? Elle sera retirée des compétences et bases de connaissances associées.",
+        saved: "Étiquette enregistrée.",
+        deleted: "Étiquette supprimée.",
         empty: "Aucune étiquette n’est configurée.",
       },
       knowledgeBase: {
         title: "Paramètres de la base de connaissances",
         description:
-          "Configurez l’analyse des documents ainsi que les modèles d’embedding, de reranking et d’enrichissement du contenu de la base de connaissances.",
+          "Gérez le traitement et la recherche du contenu de connaissance.",
         embeddingModel: "Modèle d’embedding",
         rerankerModel: "Modèle de reranking",
         documentParsingEngine: {
@@ -914,25 +917,48 @@ export const frFR = {
       },
       loginMethods: {
         title: "Méthodes de connexion",
-        description: "Configurez les méthodes de connexion des membres.",
-        password: "Autoriser la connexion par mot de passe",
-        passwordDescription:
-          "Autorisez les membres à se connecter avec leur e-mail et leur mot de passe.",
-        emailCode: "Autoriser la connexion par code reçu par e-mail",
-        emailCodeDescription:
-          "Autorisez la connexion avec un code de vérification envoyé par e-mail.",
-        allowRegistration: "Autoriser les nouvelles inscriptions",
-        allowRegistrationDescription:
-          "Autoriser la création automatique d’un compte standard via les méthodes de connexion activées par code e-mail ou OAuth / OIDC. L’inscription séparée par e-mail reste disponible.",
-        enableRegistrationDialogTitle: "Autoriser les nouvelles inscriptions ?",
-        enableRegistrationDialogDescription:
-          "Les nouveaux utilisateurs peuvent valider un code e-mail ou s’authentifier via un fournisseur OAuth / OIDC activé pour créer un compte standard et se connecter sans inscription séparée.",
-        disableRegistrationDialogTitle:
-          "Désactiver les nouvelles inscriptions ?",
-        disableRegistrationDialogDescription:
-          "Seuls les comptes existants pourront se connecter par code e-mail ou OAuth / OIDC. Les comptes existants ne sont pas affectés.",
-        confirmEnableRegistration: "Autoriser les inscriptions",
-        confirmDisableRegistration: "Désactiver les inscriptions",
+        description:
+          "Configurez les méthodes d’authentification prises en charge par le système.",
+        password: "Connexion par mot de passe",
+        enablePasswordDialogTitle: "Activer la connexion par mot de passe ?",
+        enablePasswordDialogDescription:
+          "Les membres pourront se connecter avec leur adresse e-mail et leur mot de passe.",
+        disablePasswordDialogTitle:
+          "Désactiver la connexion par mot de passe ?",
+        disablePasswordDialogDescription:
+          "Les membres ne pourront plus se connecter avec un mot de passe. Les autres méthodes ne sont pas affectées.",
+        confirmEnablePassword: "Activer",
+        confirmDisablePassword: "Désactiver",
+        emailCode: "Connexion par code de vérification reçu par e-mail",
+        autoRegisterMissingUsers:
+          "Inscrire automatiquement si l’utilisateur n’existe pas",
+        enableEmailCodeDialogTitle: "Activer la connexion par code e-mail ?",
+        enableEmailCodeDialogDescription:
+          "Les membres pourront se connecter avec un code de vérification envoyé par e-mail. Vérifiez que la configuration d’envoi fonctionne.",
+        disableEmailCodeDialogTitle:
+          "Désactiver la connexion par code e-mail ?",
+        disableEmailCodeDialogDescription:
+          "Les membres ne pourront plus se connecter avec un code reçu par e-mail. Les autres méthodes de connexion ne sont pas affectées.",
+        confirmEnableEmailCode: "Activer",
+        confirmDisableEmailCode: "Désactiver",
+        enableEmailAutoRegistrationDialogTitle:
+          "Activer l’inscription automatique avec un code e-mail ?",
+        enableEmailAutoRegistrationDialogDescription:
+          "Si un utilisateur se connecte avec un code e-mail sans avoir de compte, un compte standard sera créé automatiquement.",
+        disableEmailAutoRegistrationDialogTitle:
+          "Désactiver l’inscription automatique avec un code e-mail ?",
+        disableEmailAutoRegistrationDialogDescription:
+          "Les utilisateurs sans compte ne pourront plus se connecter avec un code e-mail. Les comptes existants ne sont pas affectés.",
+        enableOauthAutoRegistrationDialogTitle:
+          "Activer l’inscription automatique pour {{name}} ?",
+        enableOauthAutoRegistrationDialogDescription:
+          "Si un utilisateur se connecte via {{name}} sans avoir de compte, un compte standard sera créé automatiquement.",
+        disableOauthAutoRegistrationDialogTitle:
+          "Désactiver l’inscription automatique pour {{name}} ?",
+        disableOauthAutoRegistrationDialogDescription:
+          "Les utilisateurs sans compte ne pourront plus se connecter via {{name}}. Les comptes existants ne sont pas affectés.",
+        confirmEnableAutoRegistration: "Activer",
+        confirmDisableAutoRegistration: "Désactiver",
       },
       oauth: {
         title: "Connexion tierce",
@@ -940,8 +966,6 @@ export const frFR = {
           "Configurez les fournisseurs OAuth ou OIDC utilisables par les membres.",
         add: "Ajouter une méthode",
         dialogTitle: "Ajouter une connexion tierce",
-        dialogDescription:
-          "Saisissez les identifiants fournis. Plusieurs configurations sont possibles.",
         provider: "Fournisseur",
         name: "Nom affiché",
         namePlaceholder: "Par exemple : GitHub Entreprise",
@@ -950,13 +974,37 @@ export const frFR = {
         issuerUrl: "URL de l’émetteur",
         clientId: "ID client",
         clientSecret: "Secret client",
-        secretDescription:
-          "Le secret est transmis à l’enregistrement et ne sera plus affiché en entier.",
         cancel: "Annuler",
         addConnection: "Ajouter la configuration",
-        clientIdValue: "ID client : {{clientId}}",
+        edit: "Modifier",
+        viewCallback: "Voir le callback",
+        callbackDialogTitle: "URL de callback SSO",
+        callbackURL: "URL de callback",
+        copyCallback: "Copier",
+        callbackCopied: "URL de callback copiée",
+        callbackCopyFailed: "Échec de la copie de l’URL de callback",
+        enable: "Activer",
+        disable: "Désactiver",
+        delete: "Supprimer",
+        enabled: "Activé",
+        disabled: "Désactivé",
+        editDialogTitle: "Modifier la connexion tierce",
+        updateConnection: "Enregistrer les modifications",
+        secretUpdatePlaceholder:
+          "Laissez vide pour conserver le secret actuel.",
+        enableDialogTitle: "Activer « {{name}} » ?",
+        enableDialogDescription:
+          "Les membres pourront utiliser cette méthode de connexion tierce.",
+        disableDialogTitle: "Désactiver « {{name}} » ?",
+        disableDialogDescription:
+          "Les membres ne pourront plus utiliser cette méthode de connexion. Les comptes existants ne sont pas affectés.",
+        deleteDialogTitle: "Supprimer « {{name}} » ?",
+        deleteDialogDescription:
+          "Cette configuration de connexion sera définitivement supprimée. Cette action est irréversible.",
+        confirmEnable: "Activer",
+        confirmDisable: "Désactiver",
+        confirmDelete: "Supprimer",
         toggle: "Activer ou désactiver {{name}}",
-        connectionCount: "{{count}} méthodes de connexion tierces configurées",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -968,12 +1016,12 @@ export const frFR = {
       },
       email: {
         title: "Paramètres des e-mails",
-        description: "Configurer l’envoi des e-mails système.",
+        description:
+          "Configurez les services de messagerie du système et les fonctionnalités associées.",
         configure: "Configurer",
         dialogTitle: "Configurer les e-mails",
-        dialogDescription:
-          "Configurez l’identité de l’expéditeur et le service SMTP.",
         sendingConfiguration: "Configuration de l’envoi",
+        notConfigured: "Pas encore configuré",
         senderName: "Nom de l’expéditeur",
         senderEmail: "E-mail de l’expéditeur",
         smtpHost: "Hôte SMTP",

@@ -101,18 +101,38 @@ func authCall(t *testing.T, s *Service, path string, body any, want int) *httpte
 	return rec
 }
 
+func TestEmailAutoRegistrationDefaultDisabled(t *testing.T) {
+	s := NewService(nil, authenticationStub{json.RawMessage(`{}`)}, "")
+	methods, err := s.loginMethods(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if methods.EmailCodeAutoRegistrationEnabled {
+		t.Fatal("未配置时邮箱验证码自动注册应默认关闭")
+	}
+}
+
 func TestEmailAuthentication(t *testing.T) {
 	pool := emailDatabase(t)
 	sender := &mailStub{}
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
+	s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 	ctx := t.Context()
+	authCall(t, s, "/email/code", emailInput{Email: "new@example.com", Purpose: "register"}, 400)
+	authCall(t, s, "/email/register", emailInput{Email: "new@example.com"}, 404)
 	clearLimit := func() {
 		t.Helper()
 		if _, err := pool.Exec(ctx, "DELETE FROM email_code_deliveries"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	sent := authCall(t, s, "/email/code", emailInput{Email: "USER@EXAMPLE.COM", Purpose: "register"}, 200)
+	passwordHash, err := hashPassword("long-password-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.insertUser(ctx, "普通用户", "user@example.com", "user", passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	sent := authCall(t, s, "/email/code", emailInput{Email: "USER@EXAMPLE.COM", Purpose: "login"}, 200)
 	var sentResponse struct {
 		RetryAfter int `json:"retry_after"`
 	}
@@ -128,19 +148,14 @@ func TestEmailAuthentication(t *testing.T) {
 	if got := limited.Header().Get("Retry-After"); got != "30" {
 		t.Fatalf("验证码限流响应头错误: %q", got)
 	}
-	authCall(t, s, "/email/register", emailInput{Email: "user@example.com", Code: code, Name: "普通用户", Password: "long-password-123"}, 200)
-	authCall(t, s, "/email/register", emailInput{Email: "user@example.com", Code: code, Name: "重放", Password: "long-password-123"}, 400)
+	authCall(t, s, "/admin/email/login", emailInput{Email: "user@example.com", Code: code}, 401)
+	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: code}, 200)
+	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: code}, 400)
 	login := authCall(t, s, "/login", emailInput{Email: "USER@EXAMPLE.COM", Password: "long-password-123"}, 200)
 	if len(login.Result().Cookies()) != 1 {
 		t.Fatal("未创建会话")
 	}
 	authCall(t, s, "/admin/login", emailInput{Email: "user@example.com", Password: "long-password-123"}, 401)
-	clearLimit()
-	authCall(t, s, "/email/code", emailInput{Email: "user@example.com", Purpose: "login"}, 200)
-	code = sender.code
-	authCall(t, s, "/admin/email/login", emailInput{Email: "user@example.com", Code: code}, 401)
-	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: code}, 200)
-	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: code}, 400)
 
 	var userID string
 	if err := pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'user@example.com'").Scan(&userID); err != nil {
@@ -201,17 +216,16 @@ func TestEmailAuthentication(t *testing.T) {
 	sender.fail = false
 	clearLimit()
 	calls := sender.calls
-	s.settings = authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"registration_enabled":false}`)}
+	s.settings = authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"email_code_auto_registration_enabled":false}`)}
 	authCall(t, s, "/email/code", emailInput{Email: "missing@example.com", Purpose: "login"}, 200)
 	if sender.calls != calls {
 		t.Fatal("未知账号收到登录邮件")
 	}
 	// 关掉入口后，已有验证码也不能继续认证。
-	s.settings = authenticationStub{json.RawMessage(`{"password_enabled":false,"email_code_enabled":false,"registration_enabled":false}`)}
+	s.settings = authenticationStub{json.RawMessage(`{"password_enabled":false,"email_code_enabled":false,"email_code_auto_registration_enabled":false}`)}
 	authCall(t, s, "/login", emailInput{Email: "user@example.com", Password: "new-password-123"}, 403)
 	authCall(t, s, "/admin/login", emailInput{Email: "admin@example.com", Password: "password"}, 403)
 	authCall(t, s, "/email/login", emailInput{Email: "user@example.com", Code: "123456"}, 403)
-	authCall(t, s, "/email/register", emailInput{Email: "new@example.com", Code: "123456", Name: "用户", Password: "new-password-123"}, 403)
 	authCall(t, s, "/email/reset-password", emailInput{Email: "user@example.com", Code: "123456", Password: "new-password-123"}, 403)
 }
 
@@ -239,7 +253,7 @@ func TestEmailAutoRegistration(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			pool := emailDatabase(t)
 			sender := &mailStub{}
-			methods := loginMethods{EmailCodeEnabled: true, RegistrationEnabled: !test.closed}
+			methods := loginMethods{EmailCodeEnabled: true, EmailCodeAutoRegistrationEnabled: !test.closed}
 			s := NewService(pool, nil, "http://localhost").WithEmailSender(sender)
 			setMethods := func() {
 				t.Helper()
@@ -283,7 +297,7 @@ func TestEmailAutoRegistration(t *testing.T) {
 			if test.createAfter {
 				createUser()
 			}
-			methods.RegistrationEnabled = methods.RegistrationEnabled && !test.closeAfter
+			methods.EmailCodeAutoRegistrationEnabled = methods.EmailCodeAutoRegistrationEnabled && !test.closeAfter
 			methods.EmailCodeEnabled = !test.disableAfter
 			setMethods()
 			path := "/email/login"
@@ -343,7 +357,7 @@ func TestEmailAutoRegistration(t *testing.T) {
 func TestConcurrentEmailAutoRegistration(t *testing.T) {
 	pool := emailDatabase(t)
 	sender := &mailStub{}
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"email_code_enabled":true,"registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
+	s := NewService(pool, authenticationStub{json.RawMessage(`{"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 	input := emailInput{Email: "new@example.com", Purpose: "login"}
 	authCall(t, s, "/email/code", input, 200)
 	input.Code = sender.code

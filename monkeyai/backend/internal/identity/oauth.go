@@ -24,6 +24,7 @@ func (s *Service) AuthRouter() http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	})
+	router.Get("/branding", s.branding)
 	router.Get("/clients", s.clients)
 	router.Get("/providers", s.providers)
 	router.Post("/admin/login", s.passwordLogin)
@@ -32,7 +33,6 @@ func (s *Service) AuthRouter() http.Handler {
 	router.Post("/email/code", s.sendCode)
 	router.Post("/email/login", s.emailLogin)
 	router.Post("/admin/email/login", s.emailLogin)
-	router.Post("/email/register", s.registerEmail)
 	router.Post("/email/reset-password", s.resetPassword)
 	router.Get("/session", s.session)
 	router.Post("/logout", s.logout)
@@ -249,7 +249,7 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	adminLogin := state.Purpose == loginPurposeAdmin
-	user, err := s.upsertIdentity(r.Context(), profile, adminLogin)
+	user, err := s.upsertIdentity(r.Context(), profile, adminLogin, connection.autoRegistrationEnabled())
 	if err != nil {
 		code := "user_unavailable"
 		switch {

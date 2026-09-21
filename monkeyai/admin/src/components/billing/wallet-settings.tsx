@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { ApiError } from "@/lib/api"
 import { dateTime, type WalletInfo } from "@/lib/billing"
 
 const certificates = [
@@ -91,7 +92,7 @@ export function WalletSettings({
         setFiles({})
       }
     } catch (e) {
-      setError((e as Error).message)
+      if (!(e instanceof ApiError)) setError((e as Error).message)
     } finally {
       setSaving(false)
     }

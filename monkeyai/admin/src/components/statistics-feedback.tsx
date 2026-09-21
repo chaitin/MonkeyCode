@@ -16,11 +16,7 @@ export function StatisticsFeedback({
   const { t } = useTranslation()
   if (error)
     return (
-      <div
-        role="alert"
-        className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 p-4 text-sm"
-      >
-        <span>{error}</span>
+      <div className="flex justify-end rounded-lg border p-4">
         <Button variant="outline" onClick={reload}>
           {t("statistics.retry")}
         </Button>

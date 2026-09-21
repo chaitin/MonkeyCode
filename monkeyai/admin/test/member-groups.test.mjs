@@ -17,6 +17,7 @@ import {
   directMemberIDs,
   directGroupsByMember,
   groupMemberIDs,
+  ungroupedMemberIDs,
 } from "../src/lib/member-groups.ts"
 
 const groups = [
@@ -46,9 +47,10 @@ test("父分组成员包含后代且跨组去重，移动后更新继承", () =>
   ])
 })
 
-test("虚拟团队根节点包含全部用户，空数据库也可显示成员", () => {
-  assert.equal(groupMemberIDs([], users, ROOT_GROUP_ID).size, 3)
-  assert.equal(groupMemberIDs(groups, users, ROOT_GROUP_ID).size, 3)
+test("团队根节点只统计已分组成员，并跨分组去重", () => {
+  const withUngrouped = [...users, { id: "d", role: "user" }]
+  assert.equal(groupMemberIDs([], withUngrouped, ROOT_GROUP_ID).size, 0)
+  assert.equal(groupMemberIDs(groups, withUngrouped, ROOT_GROUP_ID).size, 3)
   assert.deepEqual([...groupMemberIDs(groups, users, "other")], ["c"])
   assert.equal(groupMemberIDs(groups, users, "missing").size, 0)
 })
@@ -71,22 +73,17 @@ test("分组成员仅由关联决定，不根据角色和顶层位置自动加�
   ])
 })
 
-test("树节点只列直接成员，团队根节点只列未分组成员", () => {
+test("树节点区分真实分组直属成员与未分组成员", () => {
   const withUngrouped = [...users, { id: "d", role: "user" }]
-  assert.deepEqual([...directMemberIDs(groups, withUngrouped, "parent")], ["a"])
+  assert.deepEqual([...directMemberIDs(groups, "parent")], ["a"])
+  assert.deepEqual([...directMemberIDs(groups, "child")].sort(), ["a", "b"])
+  assert.deepEqual([...directMemberIDs(groups, ROOT_GROUP_ID)], [])
+  assert.deepEqual([...directMemberIDs(groups, "missing")], [])
+  assert.deepEqual([...ungroupedMemberIDs(groups, withUngrouped)], ["d"])
   assert.deepEqual(
-    [...directMemberIDs(groups, withUngrouped, "child")].sort(),
-    ["a", "b"]
-  )
-  assert.deepEqual(
-    [...directMemberIDs(groups, withUngrouped, ROOT_GROUP_ID)],
-    ["d"]
-  )
-  assert.deepEqual(
-    [...directMemberIDs([], withUngrouped, ROOT_GROUP_ID)],
+    [...ungroupedMemberIDs([], withUngrouped)],
     ["a", "b", "c", "d"]
   )
-  assert.deepEqual([...directMemberIDs(groups, withUngrouped, "missing")], [])
 })
 
 test("同层分组和成员按当前语言的名称排序，同名时按 ID 稳定排序", () => {

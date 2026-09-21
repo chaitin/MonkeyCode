@@ -239,7 +239,7 @@ flowchart LR
 
 | JSON 路径 | JSON 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
-| `value.registration_enabled` | `boolean` | 是 | `false` | 是否允许客户端用户通过 OAuth 自助注册。 |
+| `value.email_code_auto_registration_enabled` | `boolean` | 否 | `false` | 邮箱验证码登录遇到不存在的用户时是否自动创建普通账号。 |
 | `value.oauth_connections` | `array` | 是 | 空数组 | 管理后台和客户端用户共用的 OAuth/OIDC 连接列表；管理后台只接受关联到启用状态管理员的身份。 |
 | `value.oauth_connections[].id` | `string` | 是 | 自动生成 | OAuth 连接 UUID，用于管理列表中的连接项。 |
 | `value.oauth_connections[].provider` | `string` | 是 | 无 | 提供方：`github`、`google`、`microsoft`、`gitlab`、`oidc`。 |
@@ -248,6 +248,7 @@ flowchart LR
 | `value.oauth_connections[].client_secret` | `string` | 是 | 无 | OAuth Client Secret，明文保存。 |
 | `value.oauth_connections[].issuer_url` | `string` | 否 | `null` | OIDC Issuer URL；非 OIDC 连接可为空。 |
 | `value.oauth_connections[].enabled` | `boolean` | 是 | `true` | 是否允许用户使用该连接登录。 |
+| `value.oauth_connections[].auto_registration_enabled` | `boolean` | 否 | `true` | 用户通过此连接登录且不存在时是否自动创建普通账号。 |
 
 ### 6.4 `email` 配置域
 

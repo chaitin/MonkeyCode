@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -58,6 +59,7 @@ const categoryNames: Record<string, string> = {
 
 export function BillingDetailsPage() {
   const { t, i18n } = useTranslation()
+  const { showToast } = useAppToast()
   const [params, setParams] = useSearchParams()
   const [draft, setDraft] = useState(() => Object.fromEntries(params))
   const [entries, setEntries] = useState<Entries | null>(null)
@@ -68,7 +70,7 @@ export function BillingDetailsPage() {
     net_consumption: string
   } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [loadFailed, setLoadFailed] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const view = params.get("view") ?? "entries"
@@ -103,7 +105,10 @@ export function BillingDetailsPage() {
           )
     void request
       .catch((e: Error) => {
-        if (!cancelled) setError(e.message)
+        if (!cancelled) {
+          setLoadFailed(true)
+          showToast({ status: "error", title: e.message })
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -111,25 +116,25 @@ export function BillingDetailsPage() {
     return () => {
       cancelled = true
     }
-  }, [query, view, refresh])
+  }, [query, view, refresh, showToast])
   const navigate = (change: Record<string, string>) => {
     const next = new URLSearchParams(params)
     Object.entries(change).forEach(([key, value]) =>
       value ? next.set(key, value) : next.delete(key)
     )
-    setError("")
+    setLoadFailed(false)
     setLoading(true)
     setParams(next)
     setRefresh((v) => v + 1)
   }
   const reload = () => {
-    setError("")
+    setLoadFailed(false)
     setLoading(true)
     setRefresh((v) => v + 1)
   }
   const search = (e: FormEvent) => {
     e.preventDefault()
-    setError("")
+    setLoadFailed(false)
     setLoading(true)
     setParams({ ...draft, page: "1", view: "entries" })
     setRefresh((v) => v + 1)
@@ -160,13 +165,9 @@ export function BillingDetailsPage() {
           {loading ? "读取中…" : "刷新"}
         </Button>
       </div>
-      {error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
-        >
-          {error}
-          <Button variant="ghost" size="sm" onClick={reload}>
+      {loadFailed && (
+        <div>
+          <Button variant="outline" onClick={reload}>
             重试
           </Button>
         </div>
@@ -516,8 +517,11 @@ function TransactionDialog({
   onClose: () => void
   onChanged: () => void
 }) {
+  const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const [data, setData] = useState<Transaction | null>(null)
-  const [error, setError] = useState("")
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadRevision, setLoadRevision] = useState(0)
   const [busy, setBusy] = useState(false)
   const [reason, setReason] = useState("")
   const [result, setResult] = useState("failed")
@@ -530,18 +534,23 @@ function TransactionDialog({
     let alive = true
     void api<Transaction>(`/api/admin/v1/billing/transactions/${id}`)
       .then((v) => {
-        if (alive) setData(v)
+        if (alive) {
+          setData(v)
+          setLoadFailed(false)
+        }
       })
       .catch((e: Error) => {
-        if (alive) setError(e.message)
+        if (alive) {
+          setLoadFailed(true)
+          showToast({ status: "error", title: e.message })
+        }
       })
     return () => {
       alive = false
     }
-  }, [id])
+  }, [id, loadRevision, showToast])
   const act = async (action: string) => {
     setBusy(true)
-    setError("")
     try {
       const body =
         action === "resolve"
@@ -564,8 +573,12 @@ function TransactionDialog({
         await api<Transaction>(`/api/admin/v1/billing/transactions/${id}`)
       )
       onChanged()
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
     } catch (e) {
-      setError((e as Error).message)
+      showToast({ status: "error", title: (e as Error).message })
     } finally {
       setBusy(false)
     }
@@ -581,13 +594,21 @@ function TransactionDialog({
         <DialogHeader>
           <DialogTitle>计费交易详情</DialogTitle>
           <DialogDescription>
-            {data ? `${data.user_name} · ${data.item_name}` : "正在读取交易…"}
+            {data
+              ? `${data.user_name} · ${data.item_name}`
+              : loadFailed
+                ? ""
+                : "正在读取交易…"}
           </DialogDescription>
         </DialogHeader>
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
+        {loadFailed && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setLoadRevision((value) => value + 1)}
+          >
+            重试
+          </Button>
         )}
         {data && (
           <div className="space-y-5">

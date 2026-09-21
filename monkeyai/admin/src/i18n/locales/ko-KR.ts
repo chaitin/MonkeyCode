@@ -50,8 +50,8 @@ export const koKR = {
     system: "시스템 설정",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "MonkeyAI 관리자 계정에 로그인하세요",
+    adminPanelSubtitle: "{{teamName}} 관리자 패널에 로그인",
+    adminPanelDocumentTitle: "{{toolName}} 관리자 패널 - {{teamName}}",
     email: "이메일",
     password: "비밀번호",
     showPassword: "비밀번호 표시",
@@ -790,7 +790,7 @@ export const koKR = {
       description: "브랜드 정보, OAuth 및 기타 플랫폼 기능을 설정합니다.",
       brandInfo: {
         title: "브랜드 정보",
-        description: "MonkeyAI에 표시되는 팀 이름과 도구 이름을 설정합니다.",
+        description: "제품의 브랜드 정보를 수정하는 데 사용합니다.",
         teamName: "팀 이름",
         toolName: "도구 이름",
         save: "저장",
@@ -798,8 +798,7 @@ export const koKR = {
       },
       skillTags: {
         title: "태그 관리",
-        description:
-          "스킬과 지식 베이스에서 사용할 수 있는 서버 정의 태그를 관리합니다.",
+        description: "시스템 리소스를 일관되게 구성하고 관리합니다.",
         add: "태그 추가",
         addDialogTitle: "태그 추가",
         editDialogTitle: "태그 수정",
@@ -816,12 +815,13 @@ export const koKR = {
         deleteDialogTitle: "태그를 삭제할까요?",
         deleteDialogDescription:
           "‘{{tag}}’ 태그를 삭제할까요? 연결된 스킬과 지식 베이스에서도 제거됩니다.",
+        saved: "태그가 저장되었습니다.",
+        deleted: "태그가 삭제되었습니다.",
         empty: "설정된 태그가 없습니다.",
       },
       knowledgeBase: {
         title: "지식 베이스 설정",
-        description:
-          "지식 베이스의 문서 파싱과 임베딩, 리랭커, 콘텐츠 강화 모델을 설정합니다.",
+        description: "지식 콘텐츠의 처리 및 검색 방식을 관리합니다.",
         embeddingModel: "임베딩 모델",
         rerankerModel: "리랭커 모델",
         documentParsingEngine: {
@@ -879,32 +879,51 @@ export const koKR = {
       },
       loginMethods: {
         title: "로그인 방식",
-        description: "멤버가 MonkeyAI에 로그인할 수 있는 방식을 설정합니다.",
-        password: "비밀번호 로그인 허용",
-        passwordDescription:
-          "이메일 주소와 비밀번호를 사용한 로그인을 허용합니다.",
-        emailCode: "이메일 인증 코드 로그인 허용",
-        emailCodeDescription:
-          "이메일로 전송된 인증 코드를 사용한 로그인을 허용합니다.",
-        allowRegistration: "새 계정 등록 허용",
-        allowRegistrationDescription:
-          "새 사용자가 활성화된 이메일 인증 코드 또는 OAuth / OIDC 로그인으로 일반 계정을 자동 생성할 수 있습니다. 별도의 이메일 가입도 지원합니다.",
-        enableRegistrationDialogTitle: "새 계정 등록을 허용할까요?",
-        enableRegistrationDialogDescription:
-          "새 사용자가 활성화된 이메일 인증 코드 또는 OAuth / OIDC로 인증하면 별도 가입 없이 일반 계정을 자동 생성하고 로그인할 수 있습니다.",
-        disableRegistrationDialogTitle: "새 계정 등록을 중지할까요?",
-        disableRegistrationDialogDescription:
-          "비활성화하면 기존 계정만 이메일 인증 코드 또는 OAuth / OIDC로 로그인할 수 있습니다. 기존 계정에는 영향을 주지 않습니다.",
-        confirmEnableRegistration: "등록 허용",
-        confirmDisableRegistration: "등록 중지",
+        description: "시스템에서 지원하는 인증 방식을 설정합니다.",
+        password: "비밀번호 로그인",
+        enablePasswordDialogTitle: "비밀번호 로그인을 활성화할까요?",
+        enablePasswordDialogDescription:
+          "구성원이 이메일 주소와 비밀번호로 로그인할 수 있게 됩니다.",
+        disablePasswordDialogTitle: "비밀번호 로그인을 비활성화할까요?",
+        disablePasswordDialogDescription:
+          "구성원이 비밀번호로 로그인할 수 없게 됩니다. 다른 로그인 방식에는 영향을 주지 않습니다.",
+        confirmEnablePassword: "활성화",
+        confirmDisablePassword: "비활성화",
+        emailCode: "이메일 인증 코드 로그인",
+        autoRegisterMissingUsers: "사용자가 존재하지 않으면 자동 등록",
+        enableEmailCodeDialogTitle: "이메일 인증 코드 로그인을 활성화할까요?",
+        enableEmailCodeDialogDescription:
+          "활성화하면 구성원은 이메일로 받은 인증 코드로 로그인할 수 있습니다. 이메일 발송 설정이 정상인지 확인하세요.",
+        disableEmailCodeDialogTitle:
+          "이메일 인증 코드 로그인을 비활성화할까요?",
+        disableEmailCodeDialogDescription:
+          "비활성화하면 구성원은 이메일 인증 코드로 로그인할 수 없습니다. 다른 로그인 방식에는 영향을 주지 않습니다.",
+        confirmEnableEmailCode: "활성화",
+        confirmDisableEmailCode: "비활성화",
+        enableEmailAutoRegistrationDialogTitle:
+          "이메일 인증 코드 자동 등록을 활성화할까요?",
+        enableEmailAutoRegistrationDialogDescription:
+          "이메일 인증 코드로 로그인한 사용자의 계정이 없으면 일반 계정을 자동으로 생성합니다.",
+        disableEmailAutoRegistrationDialogTitle:
+          "이메일 인증 코드 자동 등록을 비활성화할까요?",
+        disableEmailAutoRegistrationDialogDescription:
+          "계정이 없는 사용자는 이메일 인증 코드로 로그인할 수 없게 됩니다. 기존 계정에는 영향을 주지 않습니다.",
+        enableOauthAutoRegistrationDialogTitle:
+          "{{name}} 자동 등록을 활성화할까요?",
+        enableOauthAutoRegistrationDialogDescription:
+          "{{name}}로 로그인한 사용자의 계정이 없으면 일반 계정을 자동으로 생성합니다.",
+        disableOauthAutoRegistrationDialogTitle:
+          "{{name}} 자동 등록을 비활성화할까요?",
+        disableOauthAutoRegistrationDialogDescription:
+          "계정이 없는 사용자는 {{name}}로 로그인할 수 없게 됩니다. 기존 계정에는 영향을 주지 않습니다.",
+        confirmEnableAutoRegistration: "활성화",
+        confirmDisableAutoRegistration: "비활성화",
       },
       oauth: {
         title: "타사 로그인",
         description: "멤버가 사용할 OAuth 또는 OIDC 제공자를 설정합니다.",
         add: "로그인 방식 추가",
         dialogTitle: "타사 로그인 추가",
-        dialogDescription:
-          "제공자가 발급한 클라이언트 정보를 입력합니다. 여러 개를 추가할 수 있습니다.",
         provider: "제공자",
         name: "표시 이름",
         namePlaceholder: "예: 회사 GitHub",
@@ -913,13 +932,36 @@ export const koKR = {
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",
-        secretDescription:
-          "시크릿은 저장 시에만 제출되며 다시 전체 표시되지 않습니다.",
         cancel: "취소",
         addConnection: "설정 추가",
-        clientIdValue: "Client ID: {{clientId}}",
+        edit: "수정",
+        viewCallback: "콜백 보기",
+        callbackDialogTitle: "SSO 콜백 URL",
+        callbackURL: "콜백 URL",
+        copyCallback: "복사",
+        callbackCopied: "콜백 URL을 복사했습니다",
+        callbackCopyFailed: "콜백 URL을 복사하지 못했습니다",
+        enable: "활성화",
+        disable: "비활성화",
+        delete: "삭제",
+        enabled: "활성화됨",
+        disabled: "비활성화됨",
+        editDialogTitle: "타사 로그인 수정",
+        updateConnection: "변경 사항 저장",
+        secretUpdatePlaceholder: "비워 두면 현재 보안 비밀을 유지합니다.",
+        enableDialogTitle: "“{{name}}”을(를) 활성화할까요?",
+        enableDialogDescription:
+          "구성원이 이 타사 로그인 방식을 사용할 수 있게 됩니다.",
+        disableDialogTitle: "“{{name}}”을(를) 비활성화할까요?",
+        disableDialogDescription:
+          "구성원이 이 타사 로그인 방식을 더 이상 사용할 수 없습니다. 기존 계정에는 영향이 없습니다.",
+        deleteDialogTitle: "“{{name}}”을(를) 삭제할까요?",
+        deleteDialogDescription:
+          "이 타사 로그인 설정이 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.",
+        confirmEnable: "활성화",
+        confirmDisable: "비활성화",
+        confirmDelete: "삭제",
         toggle: "{{name}} 활성화 또는 비활성화",
-        connectionCount: "타사 로그인 방식 {{count}}개 설정됨",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -931,11 +973,11 @@ export const koKR = {
       },
       email: {
         title: "이메일 설정",
-        description: "시스템 메일 발송 서비스를 설정합니다.",
+        description: "시스템 이메일 서비스와 관련 기능을 설정합니다.",
         configure: "설정",
         dialogTitle: "이메일 설정",
-        dialogDescription: "보낸 사람 정보 및 SMTP 발신 서비스를 설정합니다.",
         sendingConfiguration: "발신 설정",
+        notConfigured: "아직 설정되지 않음",
         senderName: "보낸 사람 이름",
         senderEmail: "보낸 사람 이메일",
         smtpHost: "SMTP 호스트",

@@ -50,8 +50,8 @@ export const jaJP = {
     system: "システム設定",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "MonkeyAI 管理者アカウントにログイン",
+    adminPanelSubtitle: "{{teamName}} の管理パネルにログイン",
+    adminPanelDocumentTitle: "{{toolName}} 管理パネル - {{teamName}}",
     email: "メールアドレス",
     password: "パスワード",
     showPassword: "パスワードを表示",
@@ -801,7 +801,7 @@ export const jaJP = {
         "ブランド情報、OAuth、その他のプラットフォーム機能を設定します。",
       brandInfo: {
         title: "ブランド情報",
-        description: "MonkeyAI に表示するチーム名とツール名を設定します。",
+        description: "製品のブランド情報を変更するために使用します。",
         teamName: "チーム名",
         toolName: "ツール名",
         save: "保存",
@@ -809,8 +809,7 @@ export const jaJP = {
       },
       skillTags: {
         title: "タグ管理",
-        description:
-          "スキルとナレッジベースで使用できるサーバー定義タグを管理します。",
+        description: "システムリソースを一貫して整理・管理します。",
         add: "タグを追加",
         addDialogTitle: "タグを追加",
         editDialogTitle: "タグを編集",
@@ -827,12 +826,13 @@ export const jaJP = {
         deleteDialogTitle: "タグを削除しますか？",
         deleteDialogDescription:
           "「{{tag}}」を削除しますか？関連するスキルとナレッジベースからも削除されます。",
+        saved: "タグを保存しました。",
+        deleted: "タグを削除しました。",
         empty: "タグはまだ設定されていません。",
       },
       knowledgeBase: {
         title: "ナレッジベース設定",
-        description:
-          "ナレッジベースの文書解析、埋め込み、リランカー、コンテンツ強化モデルを設定します。",
+        description: "ナレッジコンテンツの処理と検索を管理します。",
         embeddingModel: "埋め込みモデル",
         rerankerModel: "リランカーモデル",
         documentParsingEngine: {
@@ -890,32 +890,52 @@ export const jaJP = {
       },
       loginMethods: {
         title: "ログイン方法",
-        description: "メンバーが MonkeyAI にログインする方法を設定します。",
-        password: "パスワードでのログインを許可",
-        passwordDescription:
-          "メールアドレスとパスワードでのログインを許可します。",
-        emailCode: "メール認証コードでのログインを許可",
-        emailCodeDescription:
-          "メールで送信された認証コードでのログインを許可します。",
-        allowRegistration: "新規アカウント登録を許可",
-        allowRegistrationDescription:
-          "有効なメール認証コードまたは OAuth / OIDC のログイン方法で、新しい一般アカウントを自動作成できます。個別のメール登録も可能です。",
-        enableRegistrationDialogTitle: "新規アカウント登録を有効にしますか？",
-        enableRegistrationDialogDescription:
-          "有効なメール認証コードまたは OAuth / OIDC で認証すると、一般アカウントが自動作成され、個別の登録なしでログインできます。",
-        disableRegistrationDialogTitle: "新規アカウント登録を無効にしますか？",
-        disableRegistrationDialogDescription:
-          "無効にすると、既存のアカウントのみがメール認証コードまたは OAuth / OIDC でログインできます。既存のアカウントへの影響はありません。",
-        confirmEnableRegistration: "有効にする",
-        confirmDisableRegistration: "無効にする",
+        description: "システムが対応する認証方法を設定します。",
+        password: "パスワードログイン",
+        enablePasswordDialogTitle: "パスワードログインを有効にしますか？",
+        enablePasswordDialogDescription:
+          "メンバーはメールアドレスとパスワードでログインできるようになります。",
+        disablePasswordDialogTitle: "パスワードログインを無効にしますか？",
+        disablePasswordDialogDescription:
+          "メンバーはパスワードでログインできなくなります。他のログイン方法には影響しません。",
+        confirmEnablePassword: "有効にする",
+        confirmDisablePassword: "無効にする",
+        emailCode: "メール認証コードログイン",
+        autoRegisterMissingUsers: "ユーザーが存在しない場合は自動登録",
+        enableEmailCodeDialogTitle:
+          "メール認証コードログインを有効にしますか？",
+        enableEmailCodeDialogDescription:
+          "有効にすると、メンバーはメールで受信した認証コードでログインできます。メール送信設定が利用できることを確認してください。",
+        disableEmailCodeDialogTitle:
+          "メール認証コードログインを無効にしますか？",
+        disableEmailCodeDialogDescription:
+          "無効にすると、メンバーはメール認証コードでログインできなくなります。他のログイン方法には影響しません。",
+        confirmEnableEmailCode: "有効にする",
+        confirmDisableEmailCode: "無効にする",
+        enableEmailAutoRegistrationDialogTitle:
+          "メール認証コードの自動登録を有効にしますか？",
+        enableEmailAutoRegistrationDialogDescription:
+          "メール認証コードでログインしたユーザーのアカウントが存在しない場合、一般アカウントを自動作成します。",
+        disableEmailAutoRegistrationDialogTitle:
+          "メール認証コードの自動登録を無効にしますか？",
+        disableEmailAutoRegistrationDialogDescription:
+          "アカウントがないユーザーはメール認証コードでログインできなくなります。既存のアカウントには影響しません。",
+        enableOauthAutoRegistrationDialogTitle:
+          "{{name}} の自動登録を有効にしますか？",
+        enableOauthAutoRegistrationDialogDescription:
+          "{{name}} でログインしたユーザーのアカウントが存在しない場合、一般アカウントを自動作成します。",
+        disableOauthAutoRegistrationDialogTitle:
+          "{{name}} の自動登録を無効にしますか？",
+        disableOauthAutoRegistrationDialogDescription:
+          "アカウントがないユーザーは {{name}} でログインできなくなります。既存のアカウントには影響しません。",
+        confirmEnableAutoRegistration: "有効にする",
+        confirmDisableAutoRegistration: "無効にする",
       },
       oauth: {
         title: "外部サービスログイン",
         description: "メンバーが利用できる OAuth または OIDC を設定します。",
         add: "ログイン方法を追加",
         dialogTitle: "外部サービスログインを追加",
-        dialogDescription:
-          "プロバイダーのクライアント情報を入力します。複数追加できます。",
         provider: "プロバイダー",
         name: "表示名",
         namePlaceholder: "例：会社 GitHub",
@@ -924,13 +944,36 @@ export const jaJP = {
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client Secret",
-        secretDescription:
-          "シークレットは保存時のみ送信され、再表示されません。",
         cancel: "キャンセル",
         addConnection: "設定を追加",
-        clientIdValue: "Client ID：{{clientId}}",
+        edit: "変更",
+        viewCallback: "コールバックを表示",
+        callbackDialogTitle: "SSO コールバック URL",
+        callbackURL: "コールバック URL",
+        copyCallback: "コピー",
+        callbackCopied: "コールバック URL をコピーしました",
+        callbackCopyFailed: "コールバック URL をコピーできませんでした",
+        enable: "有効にする",
+        disable: "無効にする",
+        delete: "削除",
+        enabled: "有効",
+        disabled: "無効",
+        editDialogTitle: "外部ログインを変更",
+        updateConnection: "変更を保存",
+        secretUpdatePlaceholder: "空欄の場合は現在のシークレットを保持します。",
+        enableDialogTitle: "「{{name}}」を有効にしますか？",
+        enableDialogDescription:
+          "メンバーはこの外部ログイン方法を使用できるようになります。",
+        disableDialogTitle: "「{{name}}」を無効にしますか？",
+        disableDialogDescription:
+          "メンバーはこの外部ログイン方法を使用できなくなります。既存のアカウントには影響しません。",
+        deleteDialogTitle: "「{{name}}」を削除しますか？",
+        deleteDialogDescription:
+          "この外部ログイン設定は完全に削除されます。この操作は元に戻せません。",
+        confirmEnable: "有効にする",
+        confirmDisable: "無効にする",
+        confirmDelete: "削除",
         toggle: "{{name}} を有効または無効にする",
-        connectionCount: "外部ログインを {{count}} 件設定済み",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -942,11 +985,11 @@ export const jaJP = {
       },
       email: {
         title: "メール設定",
-        description: "システムメールの送信サービスを設定します。",
+        description: "システムのメールサービスと関連機能を設定します。",
         configure: "設定",
         dialogTitle: "メール設定",
-        dialogDescription: "送信者情報と SMTP 送信サービスを設定します。",
         sendingConfiguration: "送信設定",
+        notConfigured: "未設定",
         senderName: "送信者名",
         senderEmail: "送信元メールアドレス",
         smtpHost: "SMTP ホスト",

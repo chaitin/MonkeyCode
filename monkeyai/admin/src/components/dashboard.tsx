@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { AppSidebar } from "@/components/app-sidebar"
 import { LanguageToggle } from "@/components/language-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -28,14 +29,22 @@ import {
 
 export function Dashboard() {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const { logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
 
   const handleLogout = async () => {
-    await logout()
-    navigate(LOGIN_PATH, { replace: true })
+    try {
+      await logout()
+      navigate(LOGIN_PATH, { replace: true })
+    } catch (error) {
+      showToast({
+        status: "error",
+        title: error instanceof Error ? error.message : "退出登录失败",
+      })
+    }
   }
 
   return (

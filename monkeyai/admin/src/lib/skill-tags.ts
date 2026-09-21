@@ -5,11 +5,13 @@ export type SkillTag = {
   name: string
 }
 
+export type SkillTagMutationResult = "saved" | "conflict" | "failed"
+
 export type SkillTagsContextValue = {
   tags: SkillTag[]
-  addTag: (name: string) => Promise<boolean>
-  renameTag: (id: string, name: string) => Promise<boolean>
-  deleteTag: (id: string) => Promise<void>
+  addTag: (name: string) => Promise<SkillTagMutationResult>
+  renameTag: (id: string, name: string) => Promise<SkillTagMutationResult>
+  deleteTag: (id: string) => Promise<boolean>
 }
 
 export const INITIAL_SKILL_TAGS: SkillTag[] = [

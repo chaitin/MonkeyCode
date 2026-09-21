@@ -115,7 +115,7 @@ func TestOAuthIDs(t *testing.T) {
 	if !strings.Contains(stored, "github-secret") || !strings.Contains(stored, "gitlab-secret") {
 		t.Fatal("使用服务端标识更新时应保留原有密钥")
 	}
-	for _, raw := range []string{`[null]`, `[{"id":3}]`, `[{"id":null}]`} {
+	for _, raw := range []string{`[null]`, `[{"id":3}]`, `[{"id":null}]`, `[{"id":"github","provider":"github","name":"GitHub","client_id":"client","client_secret":"secret","auto_registration_enabled":"true"}]`} {
 		if _, err := service.Put(t.Context(), "authentication", json.RawMessage(`{"oauth_connections":`+raw+`}`), 1, "user"); err == nil {
 			t.Fatalf("无效连接应被拒绝: %s", raw)
 		}

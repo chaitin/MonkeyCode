@@ -172,13 +172,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmailAuthError"
+  /api/auth/v1/branding:
+    get:
+      summary: 读取公开品牌信息
+      description: 返回登录页展示所需的团队名称和工具名称；未配置或配置不可用时返回默认值，不包含其他设置。
+      security: []
+      responses:
+        "200":
+          description: 公开品牌信息
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - workspace_name
+                  - product_name
+                properties:
+                  workspace_name:
+                    type: string
+                    description: 团队名称。
+                  product_name:
+                    type: string
+                    description: 工具名称。
   /api/auth/v1/email/code:
     post:
       summary: 发送邮箱验证码
-      description: login 受 email_code_enabled 控制；register 需要开放注册并至少启用一种邮箱登录方式；reset 受
-        password_enabled 控制。每邮箱每分钟最多 1 次、每小时最多 10 次，每连接来源 IP 每小时最多 30
-        次；失败发送也计入限额。开启 registration_enabled 时，新邮箱可获取 login 验证码；
-        未开放注册的未知邮箱、停用或不符合用途的账号返回相同成功响应但不发送邮件。
+      description: login 受 email_code_enabled 控制；reset 受 password_enabled 控制。每邮箱每分钟最多 1 次、每小时最多 10 次，每连接来源 IP 每小时最多 30
+        次；失败发送也计入限额。开启 email_code_auto_registration_enabled 时，新邮箱可获取 login 验证码；
+        未开启自动注册的未知邮箱、停用或不符合用途的账号返回相同成功响应但不发送邮件。
       security: []
       requestBody:
         required: true
@@ -199,7 +220,6 @@ paths:
                   type: string
                   enum:
                     - login
-                    - register
                     - reset
       responses:
         "200":
@@ -455,7 +475,7 @@ paths:
       summary: 使用邮箱验证码登录客户端
       description: 需要开启 email_code_enabled，使用 login
         用途验证码。允许启用状态的普通用户和管理员，成功建立浏览器会话；验证码最多允许 5 次错误尝试。
-        开启 registration_enabled 时，新邮箱验证成功后自动创建无密码的普通账号并登录，无需姓名、密码或单独注册；
+        开启 email_code_auto_registration_enabled 时，新邮箱验证成功后自动创建无密码的普通账号并登录；
         默认姓名为邮箱。提交验证码时重新检查开关，已有停用账号不能自动创建或登录。
       security: []
       requestBody:
@@ -470,96 +490,6 @@ paths:
               properties:
                 email: *a1
                 code: *a2
-      responses:
-        "200":
-          description: 操作成功
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthUser"
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-              description: monkeyai_session 会话 Cookie，默认有效期 7 天。
-        "400":
-          description: 请求无效，或验证码无效、过期、超过错误次数限制
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "401":
-          description: 邮箱密码不匹配或账号不符合登录入口角色
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "403":
-          description: 对应登录方式或注册开关关闭
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "409":
-          description: 邮箱已存在，注册冲突
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "429":
-          description: 验证码发送过于频繁
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-          headers:
-            Retry-After:
-              schema:
-                type: integer
-                const: 60
-        "500":
-          description: 认证操作失败
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "502":
-          description: 邮件发送失败
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-        "503":
-          description: 认证配置或邮件服务不可用
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmailAuthError"
-  /api/auth/v1/email/register:
-    post:
-      summary: 自助邮箱注册
-      description: 需要开放注册且至少启用一种邮箱登录方式，使用 register
-        用途验证码。仅创建普通用户，不覆盖已有账号；成功建立浏览器会话，可继续客户端 PKCE 授权。
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - email
-                - code
-                - name
-                - password
-              properties:
-                email: *a1
-                code: *a2
-                name:
-                  type: string
-                  minLength: 1
-                  maxLength: 200
-                password: *a3
       responses:
         "200":
           description: 操作成功
@@ -3008,7 +2938,7 @@ components:
       required:
         - password_enabled
         - email_code_enabled
-        - registration_enabled
+        - email_code_auto_registration_enabled
       properties:
         password_enabled:
           type: boolean
@@ -3016,9 +2946,9 @@ components:
         email_code_enabled:
           type: boolean
           description: 验证码登录开关，默认 false。
-        registration_enabled:
+        email_code_auto_registration_enabled:
           type: boolean
-          description: 新账号注册开关，默认 false；开启后允许邮箱验证码登录时自动创建普通账号，也允许邮箱注册和 OAuth / OIDC 自动注册。
+          description: 邮箱验证码自动注册开关，默认 false；开启后新邮箱通过验证码登录时自动创建普通账号。
     EmailAuthUser:
       type: object
       required:
@@ -3449,9 +3379,9 @@ components:
     AuthenticationSettings:
       type: object
       properties:
-        registration_enabled:
+        email_code_auto_registration_enabled:
           type: boolean
-          description: 是否允许新用户注册，包括邮箱验证码首次登录时自动创建普通账号。
+          description: 邮箱验证码登录遇到不存在的用户时是否自动创建普通账号；未配置时默认 false。
         password_enabled:
           type: boolean
           description: 是否允许密码登录。
@@ -3505,6 +3435,10 @@ components:
         enabled:
           type: boolean
           description: 此登录连接是否启用。
+        auto_registration_enabled:
+          type: boolean
+          default: true
+          description: 通过此连接登录且用户不存在时是否自动创建普通账号；未配置时默认 true。
       additionalProperties: true
     EmailSettings:
       type: object

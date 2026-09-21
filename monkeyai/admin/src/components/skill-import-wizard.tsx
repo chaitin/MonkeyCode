@@ -11,6 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import type { SkillTag } from "@/lib/skill-tags"
@@ -104,6 +105,7 @@ export function SkillImportWizard({
   onImport: (values: SkillImportValue[]) => Promise<void>
 }) {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const subjects = useSubjects()
   const [importing, setImporting] = useState(false)
   const [step, setStep] = useState<WizardStep>("source")
@@ -349,9 +351,16 @@ export function SkillImportWizard({
         setCandidates((current) => current.filter((c) => c.id !== candidate.id))
         setSelectedIds((current) => current.filter((id) => id !== candidate.id))
       }
+      showToast({
+        status: "success",
+        title: t("resources.operationCompleted"),
+      })
       onComplete()
     } catch (error) {
-      setSourceError(error instanceof Error ? error.message : "导入失败")
+      showToast({
+        status: "error",
+        title: error instanceof Error ? error.message : "导入失败",
+      })
     } finally {
       setImporting(false)
     }

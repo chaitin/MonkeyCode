@@ -1,7 +1,6 @@
 package identity
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -136,13 +135,23 @@ func TestBaizhiyunOIDC(t *testing.T) {
 	}
 }
 
+func TestOAuthConnectionAutoRegistrationDefault(t *testing.T) {
+	disabled := false
+	if !((OAuthConnection{}).autoRegistrationEnabled()) {
+		t.Fatal("未配置时 SSO 应默认开启自动注册")
+	}
+	if (OAuthConnection{AutoRegistrationEnabled: &disabled}).autoRegistrationEnabled() {
+		t.Fatal("显式关闭时 SSO 不应自动注册")
+	}
+}
+
 func TestBaizhiyunIdentityRegistration(t *testing.T) {
 	for _, email := range []string{"", "user@example.com"} {
 		t.Run(email, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "")
+			s := NewService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: email}
-			first, err := s.upsertIdentity(t.Context(), profile, false)
+			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +162,7 @@ func TestBaizhiyunIdentityRegistration(t *testing.T) {
 			if first.Email != wantEmail {
 				t.Fatalf("注册邮箱错误: got=%q want=%q", first.Email, wantEmail)
 			}
-			again, err := s.upsertIdentity(t.Context(), profile, false)
+			again, err := s.upsertIdentity(t.Context(), profile, false, false)
 			if err != nil || first.ID != again.ID || again.Email != wantEmail {
 				t.Fatalf("重复登录未复用身份: %+v %v", again, err)
 			}
@@ -180,9 +189,9 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":true}`)}, "")
+			s := NewService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: tc.initialEmail}
-			first, err := s.upsertIdentity(t.Context(), profile, false)
+			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -202,9 +211,8 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			s.settings = authenticationStub{json.RawMessage(`{"registration_enabled":false}`)}
 			for range 2 {
-				again, err := s.upsertIdentity(t.Context(), profile, false)
+				again, err := s.upsertIdentity(t.Context(), profile, false, false)
 				if err != nil || again.ID != first.ID || again.Email != tc.wantEmail || again.Role != "user" {
 					t.Fatalf("邮箱补齐改变了用户身份或邮箱错误: user=%+v err=%v", again, err)
 				}
@@ -220,7 +228,7 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 
 func TestBaizhiyunEmailBinding(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"registration_enabled":false}`)}, "")
+	s := NewService(pool, nil, "")
 	for _, role := range []string{"user", "admin"} {
 		t.Run(role, func(t *testing.T) {
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: role, Name: "百智云用户", Email: role + "@example.com"}
@@ -229,18 +237,18 @@ func TestBaizhiyunEmailBinding(t *testing.T) {
 				t.Fatal(err)
 			}
 			if role == "user" {
-				if _, err := s.upsertIdentity(t.Context(), profile, true); !errors.Is(err, ErrAdminRoleRequired) {
+				if _, err := s.upsertIdentity(t.Context(), profile, true, false); !errors.Is(err, ErrAdminRoleRequired) {
 					t.Fatalf("普通用户不应通过管理后台登录: %v", err)
 				}
 			}
-			again, err := s.upsertIdentity(t.Context(), profile, role == "admin")
+			again, err := s.upsertIdentity(t.Context(), profile, role == "admin", false)
 			if err != nil || again.ID != owner.ID || again.Role != role || again.Email != owner.Email {
 				t.Fatalf("未复用同邮箱账号: user=%+v err=%v", again, err)
 			}
 			if _, err := s.updateUser(t.Context(), owner.ID, owner.Name, role, "disabled", ""); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.upsertIdentity(t.Context(), profile, false); !errors.Is(err, ErrUserDisabled) {
+			if _, err := s.upsertIdentity(t.Context(), profile, false, false); !errors.Is(err, ErrUserDisabled) {
 				t.Fatalf("停用用户不应通过邮箱关联登录: %v", err)
 			}
 		})

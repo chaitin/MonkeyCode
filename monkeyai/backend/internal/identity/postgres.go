@@ -235,7 +235,7 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 	return user, tx.Commit(ctx)
 }
 
-func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, adminOnly bool) (User, error) {
+func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, adminOnly, autoRegistrationEnabled bool) (User, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return User{}, err
@@ -303,7 +303,7 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, a
 		if adminOnly {
 			return User{}, ErrAdminRoleRequired
 		}
-		if !s.registrationEnabled(ctx) {
+		if !autoRegistrationEnabled {
 			return User{}, ErrRegistrationDisabled
 		}
 		var row sqlc.CreateIdentityUserRow

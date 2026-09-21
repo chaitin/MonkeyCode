@@ -59,7 +59,10 @@ import { compareMembers } from "@/lib/member-sorting"
 import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
 import { MemberAvatar } from "@/components/members/member-avatar"
-import { GroupTreeItem } from "@/components/members/group-tree"
+import {
+  GroupTreeItem,
+  UngroupedTreeItem,
+} from "@/components/members/group-tree"
 import { ResetMemberPasswordDialog } from "@/components/members/reset-member-password-dialog"
 import {
   MemberActions,
@@ -90,8 +93,8 @@ export function MembersAndGroupsPage() {
   const [activeGroupAction, setActiveGroupAction] =
     useState<ActiveGroupAction | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadRevision, setLoadRevision] = useState(0)
   const [query, setQuery] = useState("")
-  const [error, setError] = useState("")
   const [savingID, setSavingID] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single")
@@ -127,11 +130,20 @@ export function MembersAndGroupsPage() {
         )
       })
       .catch((reason: Error) => {
-        setError(reason.message)
-        showToast({ status: "error", title: reason.message })
+        showToast({
+          status: "error",
+          title: reason.message,
+          action: {
+            label: t("statistics.retry"),
+            onClick: () => {
+              setLoading(true)
+              setLoadRevision((value) => value + 1)
+            },
+          },
+        })
       })
       .finally(() => setLoading(false))
-  }, [showToast])
+  }, [loadRevision, showToast, t])
 
   const updateUser = async (
     user: MemberActionUser,
@@ -212,7 +224,6 @@ export function MembersAndGroupsPage() {
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setCreating(true)
-    setError("")
     try {
       const created = await api<User>("/api/admin/v1/users", {
         method: "POST",
@@ -264,14 +275,6 @@ export function MembersAndGroupsPage() {
 
   return (
     <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
-      {error && (
-        <p
-          className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
-        </p>
-      )}
       <div className="grid flex-1 gap-4 md:min-h-0 md:grid-cols-[minmax(14rem,1fr)_minmax(0,1.5fr)]">
         <Card className="min-h-64 md:min-h-0">
           <CardHeader>
@@ -300,6 +303,16 @@ export function MembersAndGroupsPage() {
                       onResetPassword={setPasswordResetUser}
                     />
                   ))}
+                <UngroupedTreeItem
+                  groups={groups}
+                  users={users}
+                  nameCollator={nameCollator}
+                  savingID={savingID}
+                  currentUserID={currentUser?.id}
+                  onToggleStatus={toggleUserStatus}
+                  onToggleRole={toggleUserRole}
+                  onResetPassword={setPasswordResetUser}
+                />
               </ul>
             </ScrollArea>
           </CardContent>
@@ -480,7 +493,6 @@ export function MembersAndGroupsPage() {
                 )
               )
             }
-            setError("")
             setActiveGroupAction(null)
           }}
         />

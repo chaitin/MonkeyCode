@@ -1,4 +1,4 @@
-import { LockKeyIcon } from "@hugeicons/core-free-icons"
+import { Loading03Icon, LockKeyIcon } from "@hugeicons/core-free-icons"
 import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -22,6 +22,8 @@ export type LoginProvider = {
 type LoginFormProps = React.ComponentProps<"div"> & {
   oauthSubmitting: string
   providers: LoginProvider[]
+  teamName: string
+  toolName: string
   onAuthenticated: (user: AuthUser) => Promise<void>
   onOAuthLogin: (provider: LoginProvider) => void
 }
@@ -29,6 +31,8 @@ type LoginFormProps = React.ComponentProps<"div"> & {
 export function LoginForm({
   oauthSubmitting,
   providers,
+  teamName,
+  toolName,
   onAuthenticated,
   onOAuthLogin,
   className,
@@ -49,9 +53,9 @@ export function LoginForm({
                   alt=""
                   className="mb-1 size-16 rounded-2xl object-cover shadow-sm"
                 />
-                <h1 className="text-2xl font-bold">{t("login.title")}</h1>
+                <h1 className="text-2xl font-bold">{toolName}</h1>
                 <p className="text-balance text-muted-foreground">
-                  {t("login.subtitle")}
+                  {t("login.adminPanelSubtitle", { teamName })}
                 </p>
               </div>
               <EmailAuthForm
@@ -88,14 +92,19 @@ export function LoginForm({
                       >
                         <HugeiconsIcon
                           aria-hidden="true"
-                          icon={LockKeyIcon}
+                          icon={
+                            oauthSubmitting === provider.id
+                              ? Loading03Icon
+                              : LockKeyIcon
+                          }
+                          className={
+                            oauthSubmitting === provider.id
+                              ? "animate-spin motion-reduce:animate-none"
+                              : undefined
+                          }
                           strokeWidth={2}
                         />
-                        <span className="truncate">
-                          {oauthSubmitting === provider.id
-                            ? `${provider.name}…`
-                            : provider.name}
-                        </span>
+                        <span className="truncate">{provider.name}</span>
                       </Button>
                     ))}
                   </Field>

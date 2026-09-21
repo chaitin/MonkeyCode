@@ -110,6 +110,7 @@ export const enUS = {
     denyTools: "Denied tools, comma separated",
     loading: "Loading…",
     saving: "Saving…",
+    operationCompleted: "Operation completed.",
     availableScope: "Available to",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
@@ -181,8 +182,8 @@ export const enUS = {
     passwordLogin: "Password sign-in",
     codeLogin: "Code sign-in",
 
-    title: "Monkey AI",
-    subtitle: "Sign in to your MonkeyAI admin account",
+    adminPanelSubtitle: "Sign in to the {{teamName}} admin panel",
+    adminPanelDocumentTitle: "{{toolName}} Admin Panel - {{teamName}}",
     email: "Email",
     password: "Password",
     showPassword: "Show password",
@@ -1058,7 +1059,7 @@ export const enUS = {
         "Configure branding, OAuth, and other platform capabilities.",
       brandInfo: {
         title: "Brand information",
-        description: "Customize the team and tool names displayed in MonkeyAI.",
+        description: "Used to modify the product's branding.",
         teamName: "Team name",
         toolName: "Tool name",
         save: "Save",
@@ -1066,8 +1067,7 @@ export const enUS = {
       },
       skillTags: {
         title: "Tag management",
-        description:
-          "Maintain the server-defined tags available to skills and knowledge bases.",
+        description: "Organize and manage system resources consistently.",
         add: "Add tag",
         addDialogTitle: "Add tag",
         editDialogTitle: "Edit tag",
@@ -1084,12 +1084,13 @@ export const enUS = {
         deleteDialogTitle: "Delete tag?",
         deleteDialogDescription:
           "Delete “{{tag}}”? It will be removed from associated skills and knowledge bases.",
+        saved: "Tag saved.",
+        deleted: "Tag deleted.",
         empty: "No tags have been configured.",
       },
       knowledgeBase: {
         title: "Knowledge base settings",
-        description:
-          "Configure document parsing and the embedding, reranker, and content enhancement models for your knowledge base.",
+        description: "Manage how knowledge content is processed and retrieved.",
         embeddingModel: "Embedding model",
         rerankerModel: "Reranker model",
         documentParsingEngine: {
@@ -1148,24 +1149,46 @@ export const enUS = {
       },
       loginMethods: {
         title: "Sign-in methods",
-        description: "Configure how members can sign in to MonkeyAI.",
-        password: "Allow password sign-in",
-        passwordDescription:
-          "Allow members to sign in with an email address and password.",
-        emailCode: "Allow email verification code sign-in",
-        emailCodeDescription:
-          "Allow members to sign in with a verification code sent by email.",
-        allowRegistration: "Allow new account registration",
-        allowRegistrationDescription:
-          "Allow new users to automatically create a regular account through enabled email code or OAuth / OIDC sign-in methods. Separate email registration is also available.",
-        enableRegistrationDialogTitle: "Enable new account registration?",
-        enableRegistrationDialogDescription:
-          "New users can verify an email code or authenticate through an enabled OAuth / OIDC provider to create a regular account and sign in without registering separately.",
-        disableRegistrationDialogTitle: "Disable new account registration?",
-        disableRegistrationDialogDescription:
-          "Only existing accounts can sign in with an email code or OAuth / OIDC. Existing accounts are not affected.",
-        confirmEnableRegistration: "Enable registration",
-        confirmDisableRegistration: "Disable registration",
+        description:
+          "Configure authentication methods supported by the system.",
+        password: "Password sign-in",
+        enablePasswordDialogTitle: "Enable password sign-in?",
+        enablePasswordDialogDescription:
+          "Members will be able to sign in with their email address and password.",
+        disablePasswordDialogTitle: "Disable password sign-in?",
+        disablePasswordDialogDescription:
+          "Members will no longer be able to sign in with a password. Other sign-in methods are not affected.",
+        confirmEnablePassword: "Enable",
+        confirmDisablePassword: "Disable",
+        emailCode: "Email verification code sign-in",
+        autoRegisterMissingUsers:
+          "Automatically register when the user does not exist",
+        enableEmailCodeDialogTitle: "Enable email verification code sign-in?",
+        enableEmailCodeDialogDescription:
+          "Members will be able to sign in with a verification code sent by email. Make sure the email sending configuration works.",
+        disableEmailCodeDialogTitle: "Disable email verification code sign-in?",
+        disableEmailCodeDialogDescription:
+          "Members will no longer be able to sign in with an email verification code. Other sign-in methods are not affected.",
+        confirmEnableEmailCode: "Enable",
+        confirmDisableEmailCode: "Disable",
+        enableEmailAutoRegistrationDialogTitle:
+          "Enable automatic registration for email code sign-in?",
+        enableEmailAutoRegistrationDialogDescription:
+          "When a user signs in with an email verification code and no account exists, a regular account will be created automatically.",
+        disableEmailAutoRegistrationDialogTitle:
+          "Disable automatic registration for email code sign-in?",
+        disableEmailAutoRegistrationDialogDescription:
+          "Users without an account will no longer be able to sign in with an email verification code. Existing accounts are not affected.",
+        enableOauthAutoRegistrationDialogTitle:
+          "Enable automatic registration for {{name}}?",
+        enableOauthAutoRegistrationDialogDescription:
+          "When a user signs in through {{name}} and no account exists, a regular account will be created automatically.",
+        disableOauthAutoRegistrationDialogTitle:
+          "Disable automatic registration for {{name}}?",
+        disableOauthAutoRegistrationDialogDescription:
+          "Users without an account will no longer be able to sign in through {{name}}. Existing accounts are not affected.",
+        confirmEnableAutoRegistration: "Enable",
+        confirmDisableAutoRegistration: "Disable",
       },
       oauth: {
         title: "Third-party sign-in",
@@ -1173,8 +1196,6 @@ export const enUS = {
           "Configure OAuth or OIDC providers that members can use to sign in.",
         add: "Add sign-in method",
         dialogTitle: "Add third-party sign-in",
-        dialogDescription:
-          "Enter client credentials issued by the provider. You can add multiple configurations.",
         provider: "Provider",
         name: "Display name",
         namePlaceholder: "For example: Company GitHub",
@@ -1183,13 +1204,36 @@ export const enUS = {
         issuerUrl: "Issuer URL",
         clientId: "Client ID",
         clientSecret: "Client secret",
-        secretDescription:
-          "The secret is submitted only when saved and will not be shown in full again.",
         cancel: "Cancel",
         addConnection: "Add configuration",
-        clientIdValue: "Client ID: {{clientId}}",
+        edit: "Edit",
+        viewCallback: "View callback",
+        callbackDialogTitle: "SSO callback URL",
+        callbackURL: "Callback URL",
+        copyCallback: "Copy",
+        callbackCopied: "Callback URL copied",
+        callbackCopyFailed: "Failed to copy callback URL",
+        enable: "Enable",
+        disable: "Disable",
+        delete: "Delete",
+        enabled: "Enabled",
+        disabled: "Disabled",
+        editDialogTitle: "Edit third-party sign-in",
+        updateConnection: "Save changes",
+        secretUpdatePlaceholder: "Leave blank to keep the current secret.",
+        enableDialogTitle: "Enable “{{name}}”?",
+        enableDialogDescription:
+          "Members will be able to use this third-party sign-in method.",
+        disableDialogTitle: "Disable “{{name}}”?",
+        disableDialogDescription:
+          "Members will no longer be able to use this third-party sign-in method. Existing accounts are not affected.",
+        deleteDialogTitle: "Delete “{{name}}”?",
+        deleteDialogDescription:
+          "This third-party sign-in configuration will be permanently deleted. This action cannot be undone.",
+        confirmEnable: "Enable",
+        confirmDisable: "Disable",
+        confirmDelete: "Delete",
         toggle: "Enable or disable {{name}}",
-        connectionCount: "{{count}} third-party sign-in methods configured",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -1201,12 +1245,11 @@ export const enUS = {
       },
       email: {
         title: "Email settings",
-        description: "Configure outgoing system mail.",
+        description: "Configure system email services and related features.",
         configure: "Configure",
         dialogTitle: "Configure email settings",
-        dialogDescription:
-          "Configure the sender identity and outgoing SMTP service.",
         sendingConfiguration: "Sending configuration",
+        notConfigured: "Not configured yet",
         senderName: "Sender name",
         senderEmail: "Sender email",
         smtpHost: "SMTP host",

@@ -50,8 +50,10 @@ export const deDE = {
     system: "System",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "Melden Sie sich bei Ihrem MonkeyAI-Administratorkonto an",
+    adminPanelSubtitle:
+      "Melden Sie sich beim Administrationsbereich von {{teamName}} an",
+    adminPanelDocumentTitle:
+      "{{toolName}}-Administrationsbereich - {{teamName}}",
     email: "E-Mail-Adresse",
     password: "Passwort",
     showPassword: "Passwort anzeigen",
@@ -828,8 +830,7 @@ export const deDE = {
         "Konfigurieren Sie Branding, OAuth und weitere Plattformfunktionen.",
       brandInfo: {
         title: "Markeninformationen",
-        description:
-          "Passen Sie den in MonkeyAI angezeigten Team- und Werkzeugnamen an.",
+        description: "Dient zum Ändern der Markeninformationen des Produkts.",
         teamName: "Teamname",
         toolName: "Werkzeugname",
         save: "Speichern",
@@ -838,7 +839,7 @@ export const deDE = {
       skillTags: {
         title: "Tag-Verwaltung",
         description:
-          "Verwalten Sie serverseitig definierte Tags für Skills und Wissensdatenbanken.",
+          "Organisieren und verwalten Sie Systemressourcen einheitlich.",
         add: "Tag hinzufügen",
         addDialogTitle: "Tag hinzufügen",
         editDialogTitle: "Tag bearbeiten",
@@ -855,12 +856,14 @@ export const deDE = {
         deleteDialogTitle: "Tag löschen?",
         deleteDialogDescription:
           "„{{tag}}“ löschen? Der Tag wird aus verknüpften Skills und Wissensdatenbanken entfernt.",
+        saved: "Tag gespeichert.",
+        deleted: "Tag gelöscht.",
         empty: "Es wurden noch keine Tags konfiguriert.",
       },
       knowledgeBase: {
         title: "Wissensdatenbank-Einstellungen",
         description:
-          "Konfigurieren Sie die Dokumentenanalyse sowie die Embedding-, Reranker- und Inhaltsverbesserungsmodelle der Wissensdatenbank.",
+          "Verwalten Sie die Verarbeitung und den Abruf von Wissensinhalten.",
         embeddingModel: "Embedding-Modell",
         rerankerModel: "Reranker-Modell",
         documentParsingEngine: {
@@ -924,25 +927,46 @@ export const deDE = {
       },
       loginMethods: {
         title: "Anmeldemethoden",
-        description: "Konfigurieren Sie die Anmeldemethoden für Mitglieder.",
-        password: "Anmeldung mit Passwort erlauben",
-        passwordDescription:
-          "Mitgliedern die Anmeldung mit E-Mail-Adresse und Passwort erlauben.",
-        emailCode: "Anmeldung mit E-Mail-Code erlauben",
-        emailCodeDescription:
-          "Die Anmeldung mit einem per E-Mail gesendeten Bestätigungscode erlauben.",
-        allowRegistration: "Registrierung neuer Konten erlauben",
-        allowRegistrationDescription:
-          "Neue Nutzer können über aktivierte Anmeldemethoden mit E-Mail-Code oder OAuth / OIDC automatisch ein reguläres Konto erstellen. Eine separate E-Mail-Registrierung ist ebenfalls möglich.",
-        enableRegistrationDialogTitle: "Registrierung neuer Konten aktivieren?",
-        enableRegistrationDialogDescription:
-          "Neue Nutzer können einen E-Mail-Code bestätigen oder sich über einen aktivierten OAuth- / OIDC-Anbieter authentifizieren, um ohne separate Registrierung ein reguläres Konto zu erstellen und sich anzumelden.",
-        disableRegistrationDialogTitle:
-          "Registrierung neuer Konten deaktivieren?",
-        disableRegistrationDialogDescription:
-          "Nur bestehende Konten können sich mit E-Mail-Code oder OAuth / OIDC anmelden. Bestehende Konten bleiben unverändert.",
-        confirmEnableRegistration: "Registrierung aktivieren",
-        confirmDisableRegistration: "Registrierung deaktivieren",
+        description:
+          "Konfigurieren Sie die vom System unterstützten Authentifizierungsmethoden.",
+        password: "Anmeldung mit Passwort",
+        enablePasswordDialogTitle: "Passwort-Anmeldung aktivieren?",
+        enablePasswordDialogDescription:
+          "Mitglieder können sich mit ihrer E-Mail-Adresse und ihrem Passwort anmelden.",
+        disablePasswordDialogTitle: "Passwort-Anmeldung deaktivieren?",
+        disablePasswordDialogDescription:
+          "Mitglieder können sich nicht mehr mit einem Passwort anmelden. Andere Anmeldemethoden sind nicht betroffen.",
+        confirmEnablePassword: "Aktivieren",
+        confirmDisablePassword: "Deaktivieren",
+        emailCode: "Anmeldung mit E-Mail-Bestätigungscode",
+        autoRegisterMissingUsers:
+          "Automatisch registrieren, wenn der Benutzer nicht existiert",
+        enableEmailCodeDialogTitle: "Anmeldung mit E-Mail-Code aktivieren?",
+        enableEmailCodeDialogDescription:
+          "Mitglieder können sich mit einem per E-Mail gesendeten Bestätigungscode anmelden. Stellen Sie sicher, dass der E-Mail-Versand funktioniert.",
+        disableEmailCodeDialogTitle: "Anmeldung mit E-Mail-Code deaktivieren?",
+        disableEmailCodeDialogDescription:
+          "Mitglieder können sich nicht mehr mit einem E-Mail-Code anmelden. Andere Anmeldemethoden sind nicht betroffen.",
+        confirmEnableEmailCode: "Aktivieren",
+        confirmDisableEmailCode: "Deaktivieren",
+        enableEmailAutoRegistrationDialogTitle:
+          "Automatische Registrierung bei E-Mail-Code-Anmeldung aktivieren?",
+        enableEmailAutoRegistrationDialogDescription:
+          "Wenn bei der Anmeldung mit E-Mail-Code kein Konto vorhanden ist, wird automatisch ein reguläres Konto erstellt.",
+        disableEmailAutoRegistrationDialogTitle:
+          "Automatische Registrierung bei E-Mail-Code-Anmeldung deaktivieren?",
+        disableEmailAutoRegistrationDialogDescription:
+          "Benutzer ohne Konto können sich nicht mehr mit einem E-Mail-Code anmelden. Bestehende Konten bleiben unverändert.",
+        enableOauthAutoRegistrationDialogTitle:
+          "Automatische Registrierung für {{name}} aktivieren?",
+        enableOauthAutoRegistrationDialogDescription:
+          "Wenn bei der Anmeldung über {{name}} kein Konto vorhanden ist, wird automatisch ein reguläres Konto erstellt.",
+        disableOauthAutoRegistrationDialogTitle:
+          "Automatische Registrierung für {{name}} deaktivieren?",
+        disableOauthAutoRegistrationDialogDescription:
+          "Benutzer ohne Konto können sich nicht mehr über {{name}} anmelden. Bestehende Konten bleiben unverändert.",
+        confirmEnableAutoRegistration: "Aktivieren",
+        confirmDisableAutoRegistration: "Deaktivieren",
       },
       oauth: {
         title: "Drittanbieter-Anmeldung",
@@ -950,8 +974,6 @@ export const deDE = {
           "Konfigurieren Sie OAuth- oder OIDC-Anbieter für die Anmeldung.",
         add: "Anmeldemethode hinzufügen",
         dialogTitle: "Drittanbieter-Anmeldung hinzufügen",
-        dialogDescription:
-          "Geben Sie die Client-Zugangsdaten ein. Mehrere Konfigurationen sind möglich.",
         provider: "Anbieter",
         name: "Anzeigename",
         namePlaceholder: "Zum Beispiel: Firmen-GitHub",
@@ -960,13 +982,37 @@ export const deDE = {
         issuerUrl: "Issuer-URL",
         clientId: "Client-ID",
         clientSecret: "Client-Secret",
-        secretDescription:
-          "Das Secret wird nur beim Speichern übertragen und danach nicht vollständig angezeigt.",
         cancel: "Abbrechen",
         addConnection: "Konfiguration hinzufügen",
-        clientIdValue: "Client-ID: {{clientId}}",
+        edit: "Bearbeiten",
+        viewCallback: "Callback anzeigen",
+        callbackDialogTitle: "SSO-Callback-URL",
+        callbackURL: "Callback-URL",
+        copyCallback: "Kopieren",
+        callbackCopied: "Callback-URL kopiert",
+        callbackCopyFailed: "Callback-URL konnte nicht kopiert werden",
+        enable: "Aktivieren",
+        disable: "Deaktivieren",
+        delete: "Löschen",
+        enabled: "Aktiviert",
+        disabled: "Deaktiviert",
+        editDialogTitle: "Drittanbieter-Anmeldung bearbeiten",
+        updateConnection: "Änderungen speichern",
+        secretUpdatePlaceholder:
+          "Leer lassen, um das aktuelle Secret beizubehalten.",
+        enableDialogTitle: "„{{name}}“ aktivieren?",
+        enableDialogDescription:
+          "Mitglieder können diese Drittanbieter-Anmeldung anschließend verwenden.",
+        disableDialogTitle: "„{{name}}“ deaktivieren?",
+        disableDialogDescription:
+          "Mitglieder können diese Drittanbieter-Anmeldung nicht mehr verwenden. Bestehende Konten sind nicht betroffen.",
+        deleteDialogTitle: "„{{name}}“ löschen?",
+        deleteDialogDescription:
+          "Diese Drittanbieter-Anmeldung wird dauerhaft gelöscht. Die Aktion kann nicht rückgängig gemacht werden.",
+        confirmEnable: "Aktivieren",
+        confirmDisable: "Deaktivieren",
+        confirmDelete: "Löschen",
         toggle: "{{name}} aktivieren oder deaktivieren",
-        connectionCount: "{{count}} Drittanbieter-Anmeldemethoden konfiguriert",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -978,12 +1024,12 @@ export const deDE = {
       },
       email: {
         title: "E-Mail-Einstellungen",
-        description: "Konfigurieren Sie den Versand von System-E-Mails.",
+        description:
+          "Konfigurieren Sie die System-E-Mail-Dienste und zugehörige Funktionen.",
         configure: "Konfigurieren",
         dialogTitle: "E-Mail-Einstellungen konfigurieren",
-        dialogDescription:
-          "Konfigurieren Sie Absenderidentität und SMTP-Versand.",
         sendingConfiguration: "Versandkonfiguration",
+        notConfigured: "Noch nicht konfiguriert",
         senderName: "Absendername",
         senderEmail: "Absenderadresse",
         smtpHost: "SMTP-Host",

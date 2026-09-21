@@ -98,18 +98,18 @@ OAuth access token 用于 Agent API；模型代理只接受具有 `model:invoke`
 
 ## 8. 邮箱认证与 SMTP
 
-管理端与客户端通过 `GET /api/auth/v1/methods` 获取公开开关。`password_enabled` 默认开启，`email_code_enabled`、`registration_enabled` 默认关闭；开关在服务端认证入口再次校验。管理员入口仅接受启用状态的管理员，客户端登录入口接受启用状态的普通用户和管理员。
+管理端与客户端通过 `GET /api/auth/v1/methods` 获取公开开关。`password_enabled` 默认开启，`email_code_enabled` 和 `email_code_auto_registration_enabled` 默认关闭；每条 OAuth/OIDC 连接的 `auto_registration_enabled` 默认开启。开关在服务端认证入口再次校验。管理员入口仅接受启用状态的管理员且不会自动注册，客户端登录入口接受启用状态的普通用户和管理员。
 
 | 接口 | 用途 |
 | --- | --- |
+| `GET /api/auth/v1/branding` | 公开读取登录页使用的团队名称和工具名称，未配置时返回默认值 |
 | `POST /api/admin/v1/settings/email/test` | 管理员使用已保存 SMTP 配置向 `recipient` 发送测试邮件 |
 | `POST /api/auth/v1/login` | 普通用户和管理员的客户端密码登录；管理后台使用 `/admin/login` |
-| `POST /api/auth/v1/email/code` | 提交 `email` 与 `purpose`（`login`、`register`、`reset`）发送验证码 |
+| `POST /api/auth/v1/email/code` | 提交 `email` 与 `purpose`（`login`、`reset`）发送验证码 |
 | `POST /api/auth/v1/email/login` | 普通用户和管理员的客户端验证码登录；管理后台使用 `/admin/email/login` |
-| `POST /api/auth/v1/email/register` | 通过注册验证码提交邮箱、姓名和至少 12 字符密码，仅创建普通用户 |
 | `POST /api/auth/v1/email/reset-password` | 通过重置验证码设置至少 12 字符的新密码 |
 
-注册需要开放注册并至少开启一种邮箱登录方式；找回密码需要开启密码登录。开启注册和邮箱验证码登录后，新邮箱可以直接获取登录验证码，验证成功后自动创建无密码的普通账号并建立登录会话，无需单独注册，默认姓名使用邮箱。发送和验证时均检查开关；关闭注册后仅已有账号可登录。自动创建与验证码消费在同一事务中完成，已有账号不被覆盖，停用账号不能借此创建新账号。管理员登录入口仍仅接受已有且启用的管理员，不自动创建账号。密码重置成功后撤销该用户的浏览器会话、OAuth 令牌和未使用授权码，并使已有登录验证码失效。
+开启邮箱验证码登录的自动注册后，新邮箱可以直接获取登录验证码，验证成功后自动创建无密码的普通账号并建立登录会话，默认姓名使用邮箱；此开关默认关闭。发送和验证时均检查开关；关闭后仅已有账号可通过邮箱验证码登录。每条 OAuth/OIDC 连接分别控制自动注册，且默认开启；关闭某条连接的自动注册只阻止不存在的用户通过该连接创建账号，不影响已有账号或其他连接。自动创建与验证码消费在同一事务中完成，已有账号不被覆盖，停用账号不能借此创建新账号。管理员登录入口仍仅接受已有且启用的管理员，不自动创建账号。密码重置成功后撤销该用户的浏览器会话、OAuth 令牌和未使用授权码，并使已有登录验证码失效。
 
 SMTP 配置包含 `sender_name`、`sender_email`、`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_encryption`（`starttls`、`tls`、`none`）。测试邮件和认证邮件共用实时读取的已保存配置。TLS 校验服务器证书，STARTTLS 失败不会降级；单次发送最多等待 15 秒，并响应请求取消。仅在 SMTP 接受 DATA 后显示发送成功；这表示服务器接收投递，不保证已进入收件箱。
 

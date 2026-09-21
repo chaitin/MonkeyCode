@@ -50,8 +50,10 @@ export const es419 = {
     system: "Sistema",
   },
   login: {
-    title: "Monkey AI",
-    subtitle: "Inicia sesión en tu cuenta de administrador de MonkeyAI",
+    adminPanelSubtitle:
+      "Inicia sesión en el panel de administración de {{teamName}}",
+    adminPanelDocumentTitle:
+      "Panel de administración de {{toolName}} - {{teamName}}",
     email: "Correo electrónico",
     password: "Contraseña",
     showPassword: "Mostrar contraseña",
@@ -818,7 +820,7 @@ export const es419 = {
       brandInfo: {
         title: "Información de marca",
         description:
-          "Personaliza los nombres del equipo y de la herramienta que aparecen en MonkeyAI.",
+          "Se utiliza para modificar la identidad de marca del producto.",
         teamName: "Nombre del equipo",
         toolName: "Nombre de la herramienta",
         save: "Guardar",
@@ -827,7 +829,7 @@ export const es419 = {
       skillTags: {
         title: "Administración de etiquetas",
         description:
-          "Administra las etiquetas definidas en el servidor disponibles para habilidades y bases de conocimientos.",
+          "Organiza y administra los recursos del sistema de forma coherente.",
         add: "Agregar etiqueta",
         addDialogTitle: "Agregar etiqueta",
         editDialogTitle: "Editar etiqueta",
@@ -844,12 +846,14 @@ export const es419 = {
         deleteDialogTitle: "¿Eliminar etiqueta?",
         deleteDialogDescription:
           "¿Eliminar “{{tag}}”? Se quitará de las habilidades y bases de conocimientos asociadas.",
+        saved: "Etiqueta guardada.",
+        deleted: "Etiqueta eliminada.",
         empty: "No hay etiquetas configuradas.",
       },
       knowledgeBase: {
         title: "Configuración de la base de conocimientos",
         description:
-          "Configura el análisis de documentos y los modelos de embedding, reranking y mejora de contenido de la base de conocimientos.",
+          "Administra cómo se procesa y recupera el contenido de conocimiento.",
         embeddingModel: "Modelo de embedding",
         rerankerModel: "Modelo de reranking",
         documentParsingEngine: {
@@ -911,32 +915,56 @@ export const es419 = {
       },
       loginMethods: {
         title: "Métodos de inicio de sesión",
-        description: "Configura cómo pueden iniciar sesión los miembros.",
-        password: "Permitir inicio de sesión con contraseña",
-        passwordDescription:
-          "Permite que los miembros inicien sesión con correo y contraseña.",
-        emailCode: "Permitir inicio de sesión con código por correo",
-        emailCodeDescription:
-          "Permite iniciar sesión con un código de verificación enviado por correo.",
-        allowRegistration: "Permitir registro de cuentas nuevas",
-        allowRegistrationDescription:
-          "Permitir que los usuarios nuevos creen una cuenta estándar automáticamente mediante métodos habilitados de inicio de sesión con código de correo o OAuth / OIDC. También se admite el registro por correo por separado.",
-        enableRegistrationDialogTitle: "¿Permitir el registro de cuentas?",
-        enableRegistrationDialogDescription:
-          "Los usuarios nuevos pueden verificar un código de correo o autenticarse mediante un proveedor OAuth / OIDC habilitado para crear una cuenta estándar e iniciar sesión sin registrarse por separado.",
-        disableRegistrationDialogTitle: "¿Desactivar el registro de cuentas?",
-        disableRegistrationDialogDescription:
-          "Solo las cuentas existentes podrán iniciar sesión con un código de correo u OAuth / OIDC. Las cuentas existentes no se verán afectadas.",
-        confirmEnableRegistration: "Permitir registro",
-        confirmDisableRegistration: "Desactivar registro",
+        description:
+          "Configura los métodos de autenticación compatibles con el sistema.",
+        password: "Inicio de sesión con contraseña",
+        enablePasswordDialogTitle:
+          "¿Activar el inicio de sesión con contraseña?",
+        enablePasswordDialogDescription:
+          "Los miembros podrán iniciar sesión con su correo y contraseña.",
+        disablePasswordDialogTitle:
+          "¿Desactivar el inicio de sesión con contraseña?",
+        disablePasswordDialogDescription:
+          "Los miembros ya no podrán iniciar sesión con contraseña. Los demás métodos no se verán afectados.",
+        confirmEnablePassword: "Activar",
+        confirmDisablePassword: "Desactivar",
+        emailCode: "Inicio de sesión con código de verificación por correo",
+        autoRegisterMissingUsers:
+          "Registrar automáticamente si el usuario no existe",
+        enableEmailCodeDialogTitle:
+          "¿Activar el inicio de sesión con código por correo?",
+        enableEmailCodeDialogDescription:
+          "Los miembros podrán iniciar sesión con un código de verificación enviado por correo. Asegúrate de que la configuración de envío funcione.",
+        disableEmailCodeDialogTitle:
+          "¿Desactivar el inicio de sesión con código por correo?",
+        disableEmailCodeDialogDescription:
+          "Los miembros ya no podrán iniciar sesión con un código por correo. Los demás métodos de inicio de sesión no se verán afectados.",
+        confirmEnableEmailCode: "Activar",
+        confirmDisableEmailCode: "Desactivar",
+        enableEmailAutoRegistrationDialogTitle:
+          "¿Activar el registro automático con código por correo?",
+        enableEmailAutoRegistrationDialogDescription:
+          "Si un usuario inicia sesión con un código por correo y no existe una cuenta, se creará automáticamente una cuenta estándar.",
+        disableEmailAutoRegistrationDialogTitle:
+          "¿Desactivar el registro automático con código por correo?",
+        disableEmailAutoRegistrationDialogDescription:
+          "Los usuarios sin cuenta ya no podrán iniciar sesión con un código por correo. Las cuentas existentes no se verán afectadas.",
+        enableOauthAutoRegistrationDialogTitle:
+          "¿Activar el registro automático para {{name}}?",
+        enableOauthAutoRegistrationDialogDescription:
+          "Si un usuario inicia sesión mediante {{name}} y no existe una cuenta, se creará automáticamente una cuenta estándar.",
+        disableOauthAutoRegistrationDialogTitle:
+          "¿Desactivar el registro automático para {{name}}?",
+        disableOauthAutoRegistrationDialogDescription:
+          "Los usuarios sin cuenta ya no podrán iniciar sesión mediante {{name}}. Las cuentas existentes no se verán afectadas.",
+        confirmEnableAutoRegistration: "Activar",
+        confirmDisableAutoRegistration: "Desactivar",
       },
       oauth: {
         title: "Inicio de sesión de terceros",
         description: "Configura proveedores OAuth u OIDC para iniciar sesión.",
         add: "Agregar método",
         dialogTitle: "Agregar inicio de sesión de terceros",
-        dialogDescription:
-          "Ingresa las credenciales del proveedor. Puedes agregar varias configuraciones.",
         provider: "Proveedor",
         name: "Nombre para mostrar",
         namePlaceholder: "Por ejemplo: GitHub de la empresa",
@@ -945,13 +973,37 @@ export const es419 = {
         issuerUrl: "URL del emisor",
         clientId: "ID de cliente",
         clientSecret: "Secreto del cliente",
-        secretDescription:
-          "El secreto solo se envía al guardar y no volverá a mostrarse completo.",
         cancel: "Cancelar",
         addConnection: "Agregar configuración",
-        clientIdValue: "ID de cliente: {{clientId}}",
+        edit: "Editar",
+        viewCallback: "Ver callback",
+        callbackDialogTitle: "URL de callback de SSO",
+        callbackURL: "URL de callback",
+        copyCallback: "Copiar",
+        callbackCopied: "URL de callback copiada",
+        callbackCopyFailed: "No se pudo copiar la URL de callback",
+        enable: "Activar",
+        disable: "Desactivar",
+        delete: "Eliminar",
+        enabled: "Activado",
+        disabled: "Desactivado",
+        editDialogTitle: "Editar inicio de sesión de terceros",
+        updateConnection: "Guardar cambios",
+        secretUpdatePlaceholder:
+          "Déjalo vacío para conservar el secreto actual.",
+        enableDialogTitle: "¿Activar “{{name}}”?",
+        enableDialogDescription:
+          "Los miembros podrán usar este método de inicio de sesión de terceros.",
+        disableDialogTitle: "¿Desactivar “{{name}}”?",
+        disableDialogDescription:
+          "Los miembros ya no podrán usar este método de inicio de sesión. Las cuentas existentes no se verán afectadas.",
+        deleteDialogTitle: "¿Eliminar “{{name}}”?",
+        deleteDialogDescription:
+          "Esta configuración de inicio de sesión se eliminará de forma permanente. La acción no se puede deshacer.",
+        confirmEnable: "Activar",
+        confirmDisable: "Desactivar",
+        confirmDelete: "Eliminar",
         toggle: "Activar o desactivar {{name}}",
-        connectionCount: "{{count}} métodos de terceros configurados",
         providers: {
           github: "GitHub",
           google: "Google",
@@ -963,12 +1015,12 @@ export const es419 = {
       },
       email: {
         title: "Configuración de correo",
-        description: "Configura el envío de correos del sistema.",
+        description:
+          "Configura los servicios de correo del sistema y las funciones relacionadas.",
         configure: "Configurar",
         dialogTitle: "Configurar correo",
-        dialogDescription:
-          "Configura la identidad del remitente y el servicio SMTP.",
         sendingConfiguration: "Configuración de envío",
+        notConfigured: "Aún no configurado",
         senderName: "Nombre del remitente",
         senderEmail: "Correo del remitente",
         smtpHost: "Servidor SMTP",

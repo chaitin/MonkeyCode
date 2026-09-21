@@ -24,9 +24,9 @@ type EmailSender interface {
 func (s *Service) WithEmailSender(sender EmailSender) *Service { s.email = sender; return s }
 
 type loginMethods struct {
-	PasswordEnabled     bool `json:"password_enabled"`
-	EmailCodeEnabled    bool `json:"email_code_enabled"`
-	RegistrationEnabled bool `json:"registration_enabled"`
+	PasswordEnabled                  bool `json:"password_enabled"`
+	EmailCodeEnabled                 bool `json:"email_code_enabled"`
+	EmailCodeAutoRegistrationEnabled bool `json:"email_code_auto_registration_enabled"`
 }
 
 func (s *Service) loginMethods(ctx context.Context) (loginMethods, error) {
@@ -58,8 +58,6 @@ func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose str
 	switch purpose {
 	case "login":
 		allowed = methods.EmailCodeEnabled
-	case "register":
-		allowed = methods.RegistrationEnabled && (methods.PasswordEnabled || methods.EmailCodeEnabled)
 	case "reset":
 		allowed = methods.PasswordEnabled
 	}
@@ -74,7 +72,6 @@ type emailInput struct {
 	Email    string `json:"email"`
 	Code     string `json:"code"`
 	Purpose  string `json:"purpose"`
-	Name     string `json:"name"`
 	Password string `json:"password"`
 }
 
@@ -82,8 +79,7 @@ func readEmailInput(w http.ResponseWriter, r *http.Request) (emailInput, bool) {
 	var input emailInput
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	input.Name = strings.TrimSpace(input.Name)
-	if err != nil || !validEmail(input.Email) || len(input.Email) > 254 || len(input.Password) > 1024 || len(input.Name) > 200 {
+	if err != nil || !validEmail(input.Email) || len(input.Email) > 254 || len(input.Password) > 1024 {
 		writeError(w, 400, "invalid_request", "请求格式或邮箱无效")
 		return input, false
 	}
@@ -95,7 +91,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if input.Purpose != "login" && input.Purpose != "register" && input.Purpose != "reset" {
+	if input.Purpose != "login" && input.Purpose != "reset" {
 		writeError(w, 400, "invalid_request", "验证码用途无效")
 		return
 	}
@@ -130,9 +126,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 	// 对不符合用途的账号返回相同结果，避免泄露账号状态。
 	user, lookupErr := sqlc.New(s.db).GetUserByEmail(r.Context(), input.Email)
 	eligible := lookupErr == nil && user.Status == "active"
-	if input.Purpose == "register" {
-		eligible = errors.Is(lookupErr, pgx.ErrNoRows)
-	} else if input.Purpose == "login" && methods.RegistrationEnabled && errors.Is(lookupErr, pgx.ErrNoRows) {
+	if input.Purpose == "login" && methods.EmailCodeAutoRegistrationEnabled && errors.Is(lookupErr, pgx.ErrNoRows) {
 		eligible = true
 	}
 	if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
@@ -140,7 +134,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if eligible {
-		labels := map[string]string{"login": "登录", "register": "注册", "reset": "重置密码"}
+		labels := map[string]string{"login": "登录", "reset": "重置密码"}
 		err = s.email.Send(r.Context(), input.Email, "MonkeyAI "+labels[input.Purpose]+"验证码", fmt.Sprintf("你的%s验证码为：%s\n\n验证码 10 分钟内有效，仅可使用一次。如非本人操作，请忽略此邮件。", labels[input.Purpose], code))
 		if err != nil {
 			writeError(w, 502, "email_failed", "邮件发送失败，请稍后重试或联系管理员")
@@ -218,9 +212,6 @@ func consumeEmailCode(ctx context.Context, tx pgx.Tx, input emailInput) error {
 }
 
 func (s *Service) emailLogin(w http.ResponseWriter, r *http.Request) { s.completeEmail(w, r, "login") }
-func (s *Service) registerEmail(w http.ResponseWriter, r *http.Request) {
-	s.completeEmail(w, r, "register")
-}
 func (s *Service) resetPassword(w http.ResponseWriter, r *http.Request) {
 	s.completeEmail(w, r, "reset")
 }
@@ -252,8 +243,8 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		writeError(w, 400, "invalid_request", "请输入六位数字验证码")
 		return
 	}
-	if purpose == "reset" && len(input.Password) < 12 || purpose == "register" && (input.Name == "" || len(input.Password) < 12) {
-		writeError(w, 400, "invalid_request", "姓名不能为空，密码至少 12 个字符")
+	if purpose == "reset" && len(input.Password) < 12 {
+		writeError(w, 400, "invalid_request", "密码至少需要 12 个字符")
 		return
 	}
 	ctx := r.Context()
@@ -274,18 +265,6 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 	q := sqlc.New(tx)
 	var user User
 	switch purpose {
-	case "register":
-		hash, hashErr := hashPassword(input.Password)
-		if hashErr != nil {
-			writeError(w, 500, "server_error", "注册失败")
-			return
-		}
-		row, createErr := q.CreateUser(ctx, sqlc.CreateUserParams{Name: input.Name, Email: input.Email, Role: "user", PasswordHash: &hash})
-		if createErr != nil {
-			writeError(w, 409, "registration_failed", "注册失败，该邮箱可能已被使用")
-			return
-		}
-		user = User{ID: row.ID, Name: row.Name, Email: row.Email, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt}
 	case "reset":
 		hash, hashErr := hashPassword(input.Password)
 		if hashErr != nil {
@@ -303,7 +282,7 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 	default:
 		row, lookupErr := q.GetUserByEmail(ctx, input.Email)
 		admin := strings.HasPrefix(r.URL.Path, "/admin/") || strings.Contains(r.URL.Path, "/v1/admin/")
-		if errors.Is(lookupErr, pgx.ErrNoRows) && methods.RegistrationEnabled && !admin {
+		if errors.Is(lookupErr, pgx.ErrNoRows) && methods.EmailCodeAutoRegistrationEnabled && !admin {
 			if err := q.CreateEmailUser(ctx, sqlc.CreateEmailUserParams{Name: input.Email, Email: input.Email}); err != nil {
 				writeError(w, 500, "server_error", "创建账号失败")
 				return

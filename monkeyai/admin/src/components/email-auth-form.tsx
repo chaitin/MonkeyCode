@@ -20,9 +20,9 @@ import type { AuthUser } from "@/lib/auth-context"
 type Methods = {
   password_enabled: boolean
   email_code_enabled: boolean
-  registration_enabled: boolean
+  email_code_auto_registration_enabled: boolean
 }
-type Mode = "password" | "login" | "register" | "reset"
+type Mode = "password" | "login" | "reset"
 
 export function EmailAuthForm({
   admin = false,
@@ -40,11 +40,11 @@ export function EmailAuthForm({
   const { t } = useTranslation()
   const { showToast } = useAppToast()
   const [methods, setMethods] = useState<Methods | null>(null)
+  const [methodsRevision, setMethodsRevision] = useState(0)
   const [mode, setMode] = useState<Mode>("password")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [name, setName] = useState("")
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [sending, setSending] = useState(false)
@@ -64,11 +64,21 @@ export function EmailAuthForm({
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") {
           setMethodsError(reason.message)
-          showToast({ status: "error", title: reason.message })
+          showToast({
+            status: "error",
+            title: reason.message,
+            action: {
+              label: t("statistics.retry"),
+              onClick: () => {
+                setMethodsError("")
+                setMethodsRevision((value) => value + 1)
+              },
+            },
+          })
         }
       })
     return () => controller.abort()
-  }, [onLoginMethodsChange, showToast])
+  }, [methodsRevision, onLoginMethodsChange, showToast, t])
 
   useEffect(() => {
     if (remaining <= 0) return
@@ -120,13 +130,11 @@ export function EmailAuthForm({
           ? admin
             ? "admin/email/login"
             : "email/login"
-          : mode === "register"
-            ? "email/register"
-            : "email/reset-password"
+          : "email/reset-password"
     try {
       const user = await api<AuthUser>(`/api/auth/v1/${path}`, {
         method: "POST",
-        body: JSON.stringify({ email, password, name, code }),
+        body: JSON.stringify({ email, password, code }),
       })
       if (mode === "reset") {
         changeMode("password")
@@ -151,16 +159,24 @@ export function EmailAuthForm({
   const canLogin = methods?.password_enabled || methods?.email_code_enabled
   const needsPassword = mode !== "login"
   const title =
-    mode === "register"
-      ? t("login.register", "邮箱注册")
-      : mode === "reset"
-        ? t("login.resetPassword", "重置密码")
-        : t("login.submit")
+    mode === "reset" ? t("login.resetPassword", "重置密码") : t("login.submit")
 
   return (
     <div className="space-y-4">
       {!methods && !methodsError && (
         <p role="status">{t("login.loadingMethods", "正在加载登录方式…")}</p>
+      )}
+      {!methods && methodsError && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setMethodsError("")
+            setMethodsRevision((value) => value + 1)
+          }}
+        >
+          {t("statistics.retry")}
+        </Button>
       )}
       {methods && !canLogin && !hasProviders && (
         <Alert variant="destructive">
@@ -185,7 +201,6 @@ export function EmailAuthForm({
             <legend className="sr-only">{title}</legend>
             {methods &&
               ((methods.password_enabled && methods.email_code_enabled) ||
-                mode === "register" ||
                 mode === "reset") && (
                 <Tabs
                   value={mode === "password" || mode === "login" ? mode : ""}
@@ -208,21 +223,6 @@ export function EmailAuthForm({
                   </TabsList>
                 </Tabs>
               )}
-            {mode === "register" && (
-              <Field>
-                <FieldLabel htmlFor="auth-name">
-                  {t("login.name", "姓名")}
-                </FieldLabel>
-                <Input
-                  id="auth-name"
-                  autoComplete="name"
-                  required
-                  maxLength={200}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </Field>
-            )}
             <Field>
               <FieldLabel htmlFor="auth-email">{t("login.email")}</FieldLabel>
               <Input
@@ -265,11 +265,17 @@ export function EmailAuthForm({
                       aria-busy={sending}
                       onClick={() => void sendCode()}
                     >
+                      {sending && (
+                        <HugeiconsIcon
+                          icon={Loading03Icon}
+                          className="animate-spin motion-reduce:animate-none"
+                          strokeWidth={2}
+                          aria-hidden="true"
+                        />
+                      )}
                       {remaining > 0
                         ? `${remaining}s`
-                        : sending
-                          ? t("login.sendingCode", "发送中…")
-                          : t("login.sendCode", "发送验证码")}
+                        : t("login.sendCode", "发送验证码")}
                     </Button>
                   </div>
                 </div>
@@ -317,11 +323,6 @@ export function EmailAuthForm({
                     </Button>
                   </div>
                 </div>
-                {mode === "register" && (
-                  <p className="text-sm text-muted-foreground">
-                    {t("login.passwordHint", "密码至少 12 个字符。")}
-                  </p>
-                )}
               </Field>
             )}
             <Button
@@ -341,17 +342,6 @@ export function EmailAuthForm({
               )}
               {title}
             </Button>
-            {!admin && methods?.registration_enabled && mode !== "register" && (
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button
-                  type="button"
-                  variant="link"
-                  onClick={() => changeMode("register")}
-                >
-                  {t("login.register", "邮箱注册")}
-                </Button>
-              </div>
-            )}
           </fieldset>
         </form>
       )}
