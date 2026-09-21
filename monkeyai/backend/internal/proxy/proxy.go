@@ -252,6 +252,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 		r.Out.Header.Set("X-Api-Key", ctx.target.APIKey)
 	}
 	r.SetXForwarded()
+	r.Out.Header.Del("X-Forwarded-For")
 	r.Out.Host = ctx.upstream.Host
 }
 
