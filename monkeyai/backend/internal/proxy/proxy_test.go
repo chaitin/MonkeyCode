@@ -15,12 +15,13 @@ import (
 )
 
 func TestProxyForwardsRequest(t *testing.T) {
-	var gotPath, gotQuery, gotAuthorization, gotAPIKey, gotBody string
+	var gotPath, gotQuery, gotAuthorization, gotAPIKey, gotXForwardedFor, gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery
 		gotAuthorization = r.Header.Get("Authorization")
 		gotAPIKey = r.Header.Get("X-Api-Key")
+		gotXForwardedFor = r.Header.Get("X-Forwarded-For")
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -41,6 +42,7 @@ func TestProxyForwardsRequest(t *testing.T) {
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
 	recorder := httptest.NewRecorder()
 
 	proxy.ServeHTTP(recorder, req)
@@ -59,6 +61,9 @@ func TestProxyForwardsRequest(t *testing.T) {
 	}
 	if gotAuthorization != "Bearer upstream-secret" || gotAPIKey != "upstream-secret" {
 		t.Fatalf("upstream credentials = authorization:%q x-api-key:%q", gotAuthorization, gotAPIKey)
+	}
+	if gotXForwardedFor != "" {
+		t.Fatalf("upstream x-forwarded-for = %q", gotXForwardedFor)
 	}
 	if gotBody != body {
 		t.Fatalf("upstream body = %q", gotBody)
