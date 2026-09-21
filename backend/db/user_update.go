@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/endpoint"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
@@ -489,6 +490,21 @@ func (_u *UserUpdate) AddMcpUpstreams(v ...*MCPUpstream) *UserUpdate {
 	return _u.AddMcpUpstreamIDs(ids...)
 }
 
+// AddEndpointIDs adds the "endpoints" edge to the Endpoint entity by IDs.
+func (_u *UserUpdate) AddEndpointIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddEndpointIDs(ids...)
+	return _u
+}
+
+// AddEndpoints adds the "endpoints" edges to the Endpoint entity.
+func (_u *UserUpdate) AddEndpoints(v ...*Endpoint) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddEndpointIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -915,6 +931,27 @@ func (_u *UserUpdate) RemoveMcpUpstreams(v ...*MCPUpstream) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveMcpUpstreamIDs(ids...)
+}
+
+// ClearEndpoints clears all "endpoints" edges to the Endpoint entity.
+func (_u *UserUpdate) ClearEndpoints() *UserUpdate {
+	_u.mutation.ClearEndpoints()
+	return _u
+}
+
+// RemoveEndpointIDs removes the "endpoints" edge to Endpoint entities by IDs.
+func (_u *UserUpdate) RemoveEndpointIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveEndpointIDs(ids...)
+	return _u
+}
+
+// RemoveEndpoints removes "endpoints" edges to Endpoint entities.
+func (_u *UserUpdate) RemoveEndpoints(v ...*Endpoint) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveEndpointIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -1953,6 +1990,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.EndpointsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedEndpointsIDs(); len(nodes) > 0 && !_u.mutation.EndpointsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.EndpointsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2548,6 +2630,21 @@ func (_u *UserUpdateOne) AddMcpUpstreams(v ...*MCPUpstream) *UserUpdateOne {
 	return _u.AddMcpUpstreamIDs(ids...)
 }
 
+// AddEndpointIDs adds the "endpoints" edge to the Endpoint entity by IDs.
+func (_u *UserUpdateOne) AddEndpointIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddEndpointIDs(ids...)
+	return _u
+}
+
+// AddEndpoints adds the "endpoints" edges to the Endpoint entity.
+func (_u *UserUpdateOne) AddEndpoints(v ...*Endpoint) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddEndpointIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -2974,6 +3071,27 @@ func (_u *UserUpdateOne) RemoveMcpUpstreams(v ...*MCPUpstream) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveMcpUpstreamIDs(ids...)
+}
+
+// ClearEndpoints clears all "endpoints" edges to the Endpoint entity.
+func (_u *UserUpdateOne) ClearEndpoints() *UserUpdateOne {
+	_u.mutation.ClearEndpoints()
+	return _u
+}
+
+// RemoveEndpointIDs removes the "endpoints" edge to Endpoint entities by IDs.
+func (_u *UserUpdateOne) RemoveEndpointIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveEndpointIDs(ids...)
+	return _u
+}
+
+// RemoveEndpoints removes "endpoints" edges to Endpoint entities.
+func (_u *UserUpdateOne) RemoveEndpoints(v ...*Endpoint) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveEndpointIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -4035,6 +4153,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.EndpointsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedEndpointsIDs(); len(nodes) > 0 && !_u.mutation.EndpointsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.EndpointsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.EndpointsTable,
+			Columns: []string{user.EndpointsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(endpoint.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
