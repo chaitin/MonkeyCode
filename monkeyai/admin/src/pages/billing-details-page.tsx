@@ -365,7 +365,8 @@ export function BillingDetailsPage() {
       {view === "pending" && (
         <>
           <p className="text-sm text-muted-foreground">
-            这里只重试扣费确认；结果未知的业务调用不会自动重新执行。百智云历史余额以钱包侧记录为准。
+            系统会自动重试扣费确认，并对带上游响应 ID 的 Responses
+            异常查询真实用量；不会重新执行模型调用，证据不足时仍需人工核查。百智云历史余额以钱包侧记录为准。
           </p>
           {!!pending?.differences.length && (
             <div
@@ -613,6 +614,34 @@ function TransactionDialog({
               <dd className="break-all">{data.session_id || "未关联会话"}</dd>
               <dt className="text-muted-foreground">原始计价</dt>
               <dd>{credits(data.raw_amount)} 积分</dd>
+              {data.request_id && (
+                <>
+                  <dt className="text-muted-foreground">上游响应 ID</dt>
+                  <dd className="font-mono text-xs break-all">
+                    {data.request_id}
+                  </dd>
+                </>
+              )}
+              {data.usage?.stream !== undefined && (
+                <>
+                  <dt className="text-muted-foreground">响应方式</dt>
+                  <dd>{data.usage.stream ? "流式" : "非流式"}</dd>
+                </>
+              )}
+              {data.usage?.terminal_event && (
+                <>
+                  <dt className="text-muted-foreground">终止事件</dt>
+                  <dd className="font-mono text-xs break-all">
+                    {data.usage.terminal_event}
+                  </dd>
+                </>
+              )}
+              {data.usage?.reconciled && (
+                <>
+                  <dt className="text-muted-foreground">用量来源</dt>
+                  <dd>上游自动对账</dd>
+                </>
+              )}
             </dl>
             {data.usage && data.category === "model" && (
               <Table>
@@ -656,6 +685,11 @@ function TransactionDialog({
             {data.error_code && (
               <p className="rounded-md border p-3 text-sm">
                 处理原因：{data.error_code}
+              </p>
+            )}
+            {data.usage?.initial_error_code && (
+              <p className="rounded-md border p-3 text-sm">
+                自动对账前原因：{data.usage.initial_error_code}
               </p>
             )}
             {data.wallet_records?.map((w) => (

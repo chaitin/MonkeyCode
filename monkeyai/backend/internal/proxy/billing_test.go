@@ -56,3 +56,42 @@ func TestIncompleteUsageIsNotFreeUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestResponsesStreamPreservesReconciliationEvidence(t *testing.T) {
+	body := "event: response.created\ndata: {\"response\":{\"id\":\"resp_reconcile\",\"status\":\"in_progress\"}}\n\n" +
+		"event: response.failed\ndata: {\"response\":{\"id\":\"resp_reconcile\",\"status\":\"failed\"}}\n\n"
+	got := newUsageCaptureForTest("/v1/responses", true, body).handleStream()
+	if got.Known || got.Result != "failed" || got.ResponseID != "resp_reconcile" {
+		t.Fatalf("失败事件证据不完整: %+v", got)
+	}
+	if got.ErrorCode != "usage_missing" || got.TerminalEvent != "response.failed" {
+		t.Fatalf("失败原因不准确: %+v", got)
+	}
+}
+
+func TestResponsesStreamClassifiesUnknownUsage(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		code string
+	}{
+		{
+			name: "缺少终止事件",
+			body: "event: response.created\ndata: {\"response\":{\"id\":\"resp_started\"}}\n\n",
+			code: "usage_terminal_event_missing",
+		},
+		{
+			name: "上游错误事件",
+			body: "event: error\ndata: {\"type\":\"error\",\"message\":\"failed\"}\n\n",
+			code: "upstream_error_event",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := newUsageCaptureForTest("/v1/responses", true, test.body).handleStream()
+			if got.Known || got.ErrorCode != test.code {
+				t.Fatalf("未知用量分类错误: %+v", got)
+			}
+		})
+	}
+}

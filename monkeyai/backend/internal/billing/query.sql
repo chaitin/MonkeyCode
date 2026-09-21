@@ -879,6 +879,14 @@ SELECT
 SELECT
     pg_advisory_unlock(hashtextextended($1, 41));
 
+-- name: TryReconciliationLock :one
+SELECT
+    pg_try_advisory_lock(hashtextextended($1, 42));
+
+-- name: ReleaseReconciliationLock :execresult
+SELECT
+    pg_advisory_unlock(hashtextextended($1, 42));
+
 -- name: SettlementStatus :one
 SELECT
     MODE,
@@ -959,7 +967,46 @@ SET
     attempts = attempts + 1,
     next_retry_at = now() + make_interval(secs => LEAST (3600, 30 * power(2, LEAST (attempts, 7)))::int)
 WHERE
-    id = $1;
+    id = $1
+    AND status IN ('settling', 'unknown');
+
+-- name: TransactionsToReconcile :many
+SELECT
+    id,
+    resource_id,
+    request_id,
+    USAGE,
+    error_code,
+    attempts
+FROM
+    billing_transactions
+WHERE
+    status = 'unknown'
+    AND category = 'model'
+    AND request_id <> ''
+    AND next_retry_at IS NOT NULL
+    AND next_retry_at <= now()
+    AND (error_code = 'usage_unknown'
+        OR error_code = 'usage_missing'
+        OR error_code = 'usage_incomplete'
+        OR error_code = 'usage_parse_failed'
+        OR error_code = 'usage_read_failed'
+        OR error_code = 'usage_terminal_event_missing'
+        OR error_code = 'stream_interrupted'
+        OR error_code = 'upstream_error_event')
+ORDER BY
+    started_at
+LIMIT 100;
+
+-- name: StopReconciliation :execresult
+UPDATE
+    billing_transactions
+SET
+    next_retry_at = NULL,
+    updated_at = now()
+WHERE
+    id = $1
+    AND status = 'unknown';
 
 -- name: ActiveUsersWithoutAccount :many
 SELECT

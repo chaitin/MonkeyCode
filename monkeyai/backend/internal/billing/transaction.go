@@ -23,13 +23,17 @@ type Reservation struct {
 	OutputLimit int64
 }
 type Usage struct {
-	Input     int64  `json:"input_tokens"`
-	Cached    int64  `json:"cached_input_tokens"`
-	Output    int64  `json:"output_tokens"`
-	Known     bool   `json:"known"`
-	Result    string `json:"result"`
-	RequestID string `json:"request_id,omitempty"`
-	ErrorCode string `json:"error_code,omitempty"`
+	Input            int64  `json:"input_tokens"`
+	Cached           int64  `json:"cached_input_tokens"`
+	Output           int64  `json:"output_tokens"`
+	Known            bool   `json:"known"`
+	Stream           *bool  `json:"stream,omitempty"`
+	Result           string `json:"result"`
+	RequestID        string `json:"request_id,omitempty"`
+	ErrorCode        string `json:"error_code,omitempty"`
+	TerminalEvent    string `json:"terminal_event,omitempty"`
+	InitialErrorCode string `json:"initial_error_code,omitempty"`
+	Reconciled       bool   `json:"reconciled,omitempty"`
 }
 
 func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
@@ -466,7 +470,7 @@ func (s *Service) recover(ctx context.Context) error {
 			_, _ = sqlc.New(s.pool).ScheduleRetry(ctx, id)
 		}
 	}
-	return nil
+	return s.reconcileUnknown(ctx)
 }
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)

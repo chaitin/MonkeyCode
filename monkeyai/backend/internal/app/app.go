@@ -104,6 +104,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	identities.WithAccountPreserver(charges)
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
+	charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, responses: proxy.NewResponseReconciler()})
 	models := model.NewService(modelRepo).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
 	storage, err := resource.NewS3(ctx)
 	if err != nil {

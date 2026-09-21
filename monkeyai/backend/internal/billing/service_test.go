@@ -478,6 +478,64 @@ func TestMissingUsageKeepsReservation(t *testing.T) {
 	}
 }
 
+type usageReconcilerStub struct {
+	requests []ReconciliationRequest
+	result   ReconciliationResult
+	err      error
+}
+
+func (s *usageReconcilerStub) Reconcile(_ context.Context, request ReconciliationRequest) (ReconciliationResult, error) {
+	s.requests = append(s.requests, request)
+	return s.result, s.err
+}
+
+func TestUnknownUsageIsAutomaticallyReconciled(t *testing.T) {
+	s, user, model := fixture(t)
+	ctx := t.Context()
+	reconciler := &usageReconcilerStub{result: ReconciliationResult{
+		State: ReconciliationResolved,
+		Usage: Usage{Known: true, Result: "succeeded", RequestID: "resp_test", Input: 10000, Cached: 4000, Output: 2000},
+	}}
+	s.WithUsageReconciler(reconciler)
+	r, err := s.Begin(ctx, Request{UserID: user, ResourceID: model, Category: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Start(ctx, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	stream := true
+	if err = s.Finish(ctx, r.ID, Usage{
+		Known: false, Stream: &stream, Result: "failed", RequestID: "resp_test",
+		ErrorCode: "usage_missing", TerminalEvent: "response.failed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(reconciler.requests) != 1 || reconciler.requests[0].TransactionID != r.ID || reconciler.requests[0].RequestID != "resp_test" {
+		t.Fatalf("对账请求不正确: %+v", reconciler.requests)
+	}
+
+	var state string
+	var raw []byte
+	if err = s.pool.QueryRow(ctx, `SELECT status, usage FROM billing_transactions WHERE id=$1`, r.ID).Scan(&state, &raw); err != nil {
+		t.Fatal(err)
+	}
+	var usage Usage
+	if err = json.Unmarshal(raw, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if state != "settled" || !usage.Reconciled || usage.InitialErrorCode != "usage_missing" || usage.Stream == nil || !*usage.Stream || usage.TerminalEvent != "response.failed" {
+		t.Fatalf("自动对账证据不完整: state=%s usage=%+v", state, usage)
+	}
+	a, err := s.Account(ctx, user)
+	if err != nil || a.Balance != amountText("14998.52") || a.Frozen != 0 {
+		t.Fatal(a, err)
+	}
+}
+
 func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
