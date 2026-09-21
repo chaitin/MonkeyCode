@@ -54,6 +54,7 @@ type InternalHostHandler struct {
 	tokenProvider  *gituc.TokenProvider
 	idleRefresher  vmidle.VMIdleRefresher
 	internalToken  string
+	internalHook   domain.InternalHook
 }
 
 type taskLogStoreRepo interface {
@@ -100,6 +101,10 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
 		idleRefresher:  do.MustInvoke[vmidle.VMIdleRefresher](i),
 		internalToken:  internalToken,
+	}
+
+	if hook, err := do.Invoke[domain.InternalHook](i); err == nil {
+		h.internalHook = hook
 	}
 
 	g := w.Group("/internal")
@@ -156,6 +161,11 @@ func (h *InternalHostHandler) ReportVirtualMachine(c *web.Context, vm taskflow.V
 	if err := h.repo.UpsertVirtualMachine(ctx, &vm); err != nil {
 		h.logger.ErrorContext(ctx, "upsert virtual machine failed", "error", err)
 		return err
+	}
+	if h.internalHook != nil {
+		if err := h.internalHook.OnVirtualMachineInfo(ctx, &vm); err != nil {
+			h.logger.WarnContext(ctx, "internal hook OnVirtualMachineInfo failed", "error", err, "vm_id", vm.ID)
+		}
 	}
 	return c.Success(nil)
 }

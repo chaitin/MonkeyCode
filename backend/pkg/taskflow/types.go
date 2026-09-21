@@ -89,6 +89,16 @@ type VirtualMachine struct {
 	ExternalIP    string               `json:"external_ip"`
 	CreatedAt     int64                `json:"created_at"`
 	Version       string               `json:"version"`
+
+	Processes            []Process `json:"processes,omitempty"`
+	ProcessesCollectedAt int64     `json:"processes_collected_at,omitempty"`
+}
+
+type Process struct {
+	PID       int32  `json:"pid"`
+	ExePath   string `json:"exepath"`
+	Cmdline   string `json:"cmdline"`
+	StartTime int64  `json:"start_time"`
 }
 
 // ConditionStatus 条件状态

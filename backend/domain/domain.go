@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
 // IDReq 通用 ID 请求
@@ -33,6 +34,8 @@ type InternalHook interface {
 	OnVmReady(ctx context.Context, vmID string) error
 	// OnVmConditionFailed VM 条件失败回调（如任务状态转换）
 	OnVmConditionFailed(ctx context.Context, vmID string) error
+	// OnVirtualMachineInfo VM 信息上报后的可选回调
+	OnVirtualMachineInfo(ctx context.Context, vm *taskflow.VirtualMachine) error
 }
 
 // TaskHook 任务模块回调接口（可选，内部项目通过 WithTaskHook 注入）
