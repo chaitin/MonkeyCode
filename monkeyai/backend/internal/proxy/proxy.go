@@ -124,7 +124,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	credential, ok := extractCredential(r)
+	credential, ok := Credential(r)
 	if !ok {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
@@ -290,7 +290,8 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	return upstream, nil
 }
 
-func extractCredential(req *http.Request) (string, bool) {
+// Credential 保持 X-Api-Key 优先于 Bearer 的模型调用凭据提取规则。
+func Credential(req *http.Request) (string, bool) {
 	credential := strings.TrimSpace(req.Header.Get("X-Api-Key"))
 	if credential != "" {
 		return credential, true

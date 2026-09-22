@@ -25,6 +25,22 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 模型列表每项的 `id` 为平台内部模型 UUID，`model` 为 `model_id@id` 格式，由数据库 `models.model_id` 中配置的上游模型名称与内部 UUID 拼接。调用模型代理时，请求体的 `model` 参数使用列表项的 `model`，由代理精确定位配置、检查权限并转换为上游模型名称；代理仍支持直接使用内部 UUID 或原始模型名称。
 
+## 生图模型网关
+
+模型列表的 `kind` 为 `text` 或 `image`。生图模型返回已开放的 `image_config`（画质 `qualities`、比例 `aspect_ratios`、默认值和操作等能力）与字符串形式的 `image_pricing`。管理员只选择画质、比例及积分；供应商适配器按上游模型在代码中完成参数映射。调用前使用该模型的可用能力校验，并按服务端报价预留积分。
+
+生图使用与文本代理相同的调用密钥，`X-Api-Key` 优先于 `Authorization: Bearer`；必须具备 `model:invoke` 权限。以下接口均以 `/v1/images` 为前缀，不接受 Agent OAuth access token，也**不兼容同路径的 OpenAI Images 同步响应**：
+
+| 接口 | 用途 |
+| --- | --- |
+| `POST /v1/images/inputs` | 上传一张不超过 16 MiB 的 PNG/JPEG/WebP 参考图，返回 24 小时有效的 `file_id` |
+| `POST /v1/images/generations` | 创建生图任务；请求体含 `model`、`prompt`、可选 `quality`/`aspect_ratio`/`count`/`reference_images`；返回 `202` 和本地任务 ID |
+| `POST /v1/images/edits` | 编辑任务；另外要求 `images: [{file_id}]`，可选 `mask`，仅在模型公布 `edit` 操作时可调用 |
+| `GET /v1/images/tasks/{id}` | 查询当前调用密钥所属用户的本地任务状态、用量与图片地址 |
+| `GET /v1/images/outputs/{id}` | 用同一调用密钥下载归档图片；其他用户、过期或不存在时返回 `404` |
+
+生成和编辑支持 `Idempotency-Key`；相同键与相同请求哈希返回同一任务，不会重复扣费，不同请求哈希返回冲突。明确失败或审核拒绝释放冻结积分，部分成功按实际归档张数结算；结果未知保留冻结等待上游查询或人工核查。图片保留 30 天，到期后任务与账单记录继续存在，结果地址不再可用。管理后台的测试表单需要管理员自行填写具备模型权限的调用密钥，测试可能产生上游费用。
+
 ## 用户模型与分享
 
 以下接口均使用 Agent OAuth access token：`Authorization: Bearer <access_token>`，完整契约见 `agent.yaml`。模型代理调用仍使用独立的调用密钥。

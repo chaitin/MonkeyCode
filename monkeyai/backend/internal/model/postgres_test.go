@@ -197,4 +197,29 @@ func TestResolveModelName(t *testing.T) {
 			t.Fatalf("显式用户授权受影响: %v", err)
 		}
 	})
+	t.Run("生图模型配置持久化", func(t *testing.T) {
+		service := NewService(repo).WithKeyAuthenticator(keyAuthenticatorStub{userID: user})
+		input := imageInput()
+		item, err := service.Create(ctx, admin, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := repo.Get(ctx, item.ID)
+		if err != nil || stored.Kind != KindImage || stored.Provider != ProviderOpenAIImages || stored.ImageConfig == nil || stored.ImagePricing == nil {
+			t.Fatalf("生图模型未完整回读: %+v, %v", stored, err)
+		}
+		input.ImageConfig.DefaultQuality = "1K"
+		input.ImagePricing.BaseCreditsPerImage = "12.5"
+		if _, err := service.Update(ctx, item.ID, admin, input); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = repo.Get(ctx, item.ID)
+		if err != nil || stored.ImageConfig.DefaultQuality != "1K" || stored.ImagePricing.BaseCreditsPerImage != "12.5" {
+			t.Fatalf("生图模型未保存修改: %+v, %v", stored, err)
+		}
+		target, err := service.Resolve(ctx, "invoke-key", item.ID)
+		if err != nil || target.Kind != KindImage || target.Provider != ProviderOpenAIImages {
+			t.Fatalf("生图目标未解析: %+v, %v", target, err)
+		}
+	})
 }

@@ -26,6 +26,25 @@ func TestPprofRegistered(t *testing.T) {
 	}
 }
 
+func TestImageProxyRegistered(t *testing.T) {
+	handler := newHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), pingerStub{})
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/v1/images/generations", `{"model":"image@id","prompt":"猫"}`},
+		{http.MethodPost, "/v1/images/edits", `{"model":"image@id","prompt":"修改","images":[{"file_id":"file-id"}]}`},
+		{http.MethodGet, "/v1/images/tasks/job-id", ""},
+		{http.MethodGet, "/v1/images/outputs/output-id", ""},
+		{http.MethodPost, "/v1/images/inputs", ""},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		request.Header.Set("Authorization", "Bearer test")
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s %s status = %d", tc.method, tc.path, recorder.Code)
+		}
+	}
+}
+
 func TestProxyRegistered(t *testing.T) {
 	handler := newHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), pingerStub{})
 	for _, path := range []string{

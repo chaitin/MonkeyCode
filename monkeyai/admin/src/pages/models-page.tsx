@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { GroupSelect } from "@/components/group-select"
+import { ImageGenerationTest } from "@/components/image-generation-test"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import {
@@ -83,8 +84,47 @@ const PROTOCOLS = [
   { value: "anthropic", label: "Anthropic" },
 ] as const
 
-type ModelProtocol = (typeof PROTOCOLS)[number]["value"]
+type ModelProtocol = (typeof PROTOCOLS)[number]["value"] | "image_generation"
+type ModelKind = "text" | "image"
+type ImageProvider =
+  "openai_images" | "openai_responses_image" | "volcengine" | "xai"
 type ModelType = "system" | "user"
+
+const IMAGE_PROVIDERS = [
+  { value: "openai_images", label: "OpenAI GPT Image API" },
+  { value: "openai_responses_image", label: "OpenAI Responses Image" },
+  { value: "volcengine", label: "Seedream" },
+  { value: "xai", label: "Grok Imagine" },
+] as const
+
+type ImageConfig = {
+  qualities: string[]
+  aspect_ratios: string[]
+  default_quality: string
+  default_aspect_ratio: string
+}
+
+type ImageMultiplier = { name: string; multiplier: string }
+type ImagePricing = {
+  base_credits_per_image: string
+  quality_multipliers?: ImageMultiplier[]
+  aspect_ratio_multipliers?: ImageMultiplier[]
+  operation_multipliers?: ImageMultiplier[]
+}
+
+type ImageCapabilities = {
+  qualities: string[]
+  aspect_ratios: string[]
+  allowed_aspect_ratios?: Record<string, string[]>
+  operations: Array<"generate" | "edit">
+  max_images: number
+  max_reference_images: number
+  supports_reference_image: boolean
+  supports_mask: boolean
+}
+
+const decimalCredits = /^(0|[1-9]\d*)(\.\d{1,6})?$/
+const positiveMultiplier = /^(?:[1-9]\d*(?:\.\d{1,6})?|0\.(?=\d*[1-9])\d{1,6})$/
 
 type ModelBase = {
   id: string
@@ -95,6 +135,10 @@ type ModelBase = {
   supportsVision: boolean
   baseUrl: string
   protocol: ModelProtocol
+  kind: ModelKind
+  provider: ImageProvider | "passthrough"
+  imageConfig?: ImageConfig
+  imagePricing?: ImagePricing
   apiKeyConfigured: boolean
   tagIds: string[]
   authorization: AuthorizationSelection
@@ -109,9 +153,13 @@ type ApiModel = {
   model_id: string
   display_name: string
   protocol: ModelProtocol
+  kind: ModelKind
+  provider: ImageProvider | "passthrough"
+  image_config?: ImageConfig
+  image_pricing?: ImagePricing
   base_url: string
   api_key_configured: boolean
-  advanced_config: {
+  advanced_config?: {
     context_window_tokens: number
     max_output_tokens: number
     supports_vision: boolean
@@ -138,11 +186,15 @@ function fromApiModel(model: ApiModel): Model {
     id: model.id,
     modelId: model.model_id,
     displayName: model.display_name,
-    contextSizeK: model.advanced_config.context_window_tokens / 1000,
-    maxOutputTokens: model.advanced_config.max_output_tokens,
-    supportsVision: model.advanced_config.supports_vision,
+    contextSizeK: (model.advanced_config?.context_window_tokens ?? 0) / 1000,
+    maxOutputTokens: model.advanced_config?.max_output_tokens ?? 0,
+    supportsVision: model.advanced_config?.supports_vision ?? false,
     baseUrl: model.base_url,
     protocol: model.protocol,
+    kind: model.kind ?? "text",
+    provider: model.provider ?? "passthrough",
+    imageConfig: model.image_config,
+    imagePricing: model.image_pricing,
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
     tagIds: (model.tags ?? []).map((tag) => tag.id),
@@ -194,9 +246,27 @@ export function ModelsPage() {
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
+  const [modelToTest, setModelToTest] = useState<Model | null>(null)
   const [protocol, setProtocol] = useState<ModelProtocol>(
     "openai_chat_completions"
   )
+  const [kind, setKind] = useState<ModelKind>("text")
+  const [provider, setProvider] = useState<ImageProvider>("openai_images")
+  const [imageModelId, setImageModelId] = useState("")
+  const [imageCapabilities, setImageCapabilities] =
+    useState<ImageCapabilities | null>(null)
+  const [qualities, setQualities] = useState<string[]>([])
+  const [aspectRatios, setAspectRatios] = useState<string[]>([])
+  const [defaultQuality, setDefaultQuality] = useState("")
+  const [defaultAspectRatio, setDefaultAspectRatio] = useState("")
+  const [baseCredits, setBaseCredits] = useState("10")
+  const [qualityMultipliers, setQualityMultipliers] = useState<
+    Record<string, string>
+  >({})
+  const [aspectMultipliers, setAspectMultipliers] = useState<
+    Record<string, string>
+  >({})
+  const [editMultiplier, setEditMultiplier] = useState("1")
   const [supportsVision, setSupportsVision] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
@@ -244,8 +314,47 @@ export function ModelsPage() {
     }
   }, [loadRevision, showToast, t])
 
+  useEffect(() => {
+    if (!dialogOpen || kind !== "image" || !imageModelId.trim()) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      api<ImageCapabilities>(
+        `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}&model_id=${encodeURIComponent(imageModelId.trim())}`
+      )
+        .then((capability) => {
+          if (!active) return
+          setImageCapabilities(capability)
+          setQualities((current) =>
+            current.filter((value) => capability.qualities.includes(value))
+          )
+          setAspectRatios((current) =>
+            current.filter((value) => capability.aspect_ratios.includes(value))
+          )
+        })
+        .catch(() => {
+          if (active) setImageCapabilities(null)
+        })
+    }, 250)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [dialogOpen, kind, provider, imageModelId])
+
   const resetModelOptions = () => {
     setProtocol("openai_chat_completions")
+    setKind("text")
+    setProvider("openai_images")
+    setImageModelId("")
+    setImageCapabilities(null)
+    setQualities([])
+    setAspectRatios([])
+    setDefaultQuality("")
+    setDefaultAspectRatio("")
+    setBaseCredits("10")
+    setQualityMultipliers({})
+    setAspectMultipliers({})
+    setEditMultiplier("1")
     setSupportsVision(false)
     setTagsOpen(false)
     setTagIds([])
@@ -267,6 +376,37 @@ export function ModelsPage() {
 
     setEditingModelId(model.id)
     setProtocol(model.protocol)
+    setKind(model.kind)
+    setProvider(
+      model.provider === "passthrough" ? "openai_images" : model.provider
+    )
+    setImageModelId(model.modelId)
+    setQualities(model.imageConfig?.qualities ?? [])
+    setAspectRatios(model.imageConfig?.aspect_ratios ?? [])
+    setDefaultQuality(model.imageConfig?.default_quality ?? "")
+    setDefaultAspectRatio(model.imageConfig?.default_aspect_ratio ?? "")
+    setBaseCredits(model.imagePricing?.base_credits_per_image ?? "10")
+    setQualityMultipliers(
+      Object.fromEntries(
+        (model.imagePricing?.quality_multipliers ?? []).map((item) => [
+          item.name,
+          item.multiplier,
+        ])
+      )
+    )
+    setAspectMultipliers(
+      Object.fromEntries(
+        (model.imagePricing?.aspect_ratio_multipliers ?? []).map((item) => [
+          item.name,
+          item.multiplier,
+        ])
+      )
+    )
+    setEditMultiplier(
+      model.imagePricing?.operation_multipliers?.find(
+        (item) => item.name === "edit"
+      )?.multiplier ?? "1"
+    )
     setSupportsVision(model.supportsVision)
     setTagIds(model.tagIds)
     setAuthorization(model.authorization)
@@ -331,40 +471,116 @@ export function ModelsPage() {
     if (
       !modelId ||
       !displayName ||
-      !Number.isFinite(contextSizeK) ||
-      contextSizeK <= 0 ||
-      !Number.isFinite(maxOutputTokens) ||
-      maxOutputTokens <= 0 ||
       !baseUrl ||
       (!apiKey && !editingModel?.apiKeyConfigured) ||
-      !Number.isFinite(multiplier) ||
-      multiplier <= 0 ||
       authorization.groupIds.length + authorization.memberIds.length === 0 ||
       editingModel?.type === "user"
-    ) {
+    )
       return
+
+    if (kind === "text") {
+      if (
+        !Number.isFinite(contextSizeK) ||
+        contextSizeK <= 0 ||
+        !Number.isFinite(maxOutputTokens) ||
+        maxOutputTokens <= 0 ||
+        !Number.isFinite(multiplier) ||
+        multiplier <= 0
+      )
+        return
+    } else {
+      if (
+        !imageCapabilities ||
+        qualities.length === 0 ||
+        aspectRatios.length === 0 ||
+        !qualities.includes(defaultQuality) ||
+        !aspectRatios.includes(defaultAspectRatio) ||
+        !decimalCredits.test(baseCredits) ||
+        qualities.some(
+          (quality) =>
+            !imageCapabilities.qualities.includes(quality) ||
+            aspectRatios.some(
+              (ratio) =>
+                !imageCapabilities.aspect_ratios.includes(ratio) ||
+                (imageCapabilities.allowed_aspect_ratios?.[quality] &&
+                  !imageCapabilities.allowed_aspect_ratios[quality].includes(
+                    ratio
+                  ))
+            )
+        ) ||
+        [
+          ...qualities.map((value) => qualityMultipliers[value] ?? "1"),
+          ...aspectRatios.map((value) => aspectMultipliers[value] ?? "1"),
+          editMultiplier,
+        ].some((value) => !positiveMultiplier.test(value))
+      )
+        return
     }
 
     setSaving(true)
     try {
-      const payload = {
+      const common = {
         model_id: modelId,
         display_name: displayName,
-        protocol,
         base_url: baseUrl,
         api_key: apiKey,
-        advanced_config: {
-          context_window_tokens: contextSizeK * 1000,
-          max_output_tokens: maxOutputTokens,
-          supports_vision: supportsVision,
-        },
-        credit_multiplier: multiplier,
         tag_ids: tagIds,
         authorization: {
           group_ids: authorization.groupIds,
           user_ids: authorization.memberIds,
         },
       }
+      const payload =
+        kind === "text"
+          ? {
+              ...common,
+              kind: "text",
+              protocol,
+              advanced_config: {
+                context_window_tokens: contextSizeK * 1000,
+                max_output_tokens: maxOutputTokens,
+                supports_vision: supportsVision,
+              },
+              credit_multiplier: multiplier,
+            }
+          : {
+              ...common,
+              kind: "image",
+              provider,
+              protocol: "image_generation",
+              image_config: {
+                qualities,
+                aspect_ratios: aspectRatios,
+                default_quality: defaultQuality,
+                default_aspect_ratio: defaultAspectRatio,
+              },
+              image_pricing: {
+                base_credits_per_image: baseCredits,
+                quality_multipliers: qualities
+                  .filter(
+                    (name) =>
+                      qualityMultipliers[name] &&
+                      qualityMultipliers[name] !== "1"
+                  )
+                  .map((name) => ({
+                    name,
+                    multiplier: qualityMultipliers[name],
+                  })),
+                aspect_ratio_multipliers: aspectRatios
+                  .filter(
+                    (name) =>
+                      aspectMultipliers[name] && aspectMultipliers[name] !== "1"
+                  )
+                  .map((name) => ({
+                    name,
+                    multiplier: aspectMultipliers[name],
+                  })),
+                operation_multipliers:
+                  editMultiplier === "1"
+                    ? []
+                    : [{ name: "edit", multiplier: editMultiplier }],
+              },
+            }
       const saved = await api<ApiModel>(
         editingModel
           ? `/api/admin/v1/models/${editingModel.id}`
@@ -453,6 +669,10 @@ export function ModelsPage() {
                           id="model-id"
                           name="modelId"
                           defaultValue={editingModel?.modelId}
+                          onChange={(event) => {
+                            setImageModelId(event.target.value)
+                            setImageCapabilities(null)
+                          }}
                           placeholder={t("pages.models.modelIdPlaceholder")}
                           required
                         />
@@ -469,6 +689,82 @@ export function ModelsPage() {
                           required
                         />
                       </Field>
+                    </FieldGroup>
+
+                    <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="model-kind">
+                          {t("pages.models.kind")}
+                        </FieldLabel>
+                        <Select
+                          items={[
+                            {
+                              value: "text",
+                              label: t("pages.models.textKind"),
+                            },
+                            {
+                              value: "image",
+                              label: t("pages.models.imageKind"),
+                            },
+                          ]}
+                          value={kind}
+                          onValueChange={(value) => {
+                            const next = value as ModelKind
+                            setKind(next)
+                            setImageCapabilities(null)
+                            if (next === "text")
+                              setProtocol("openai_chat_completions")
+                          }}
+                        >
+                          <SelectTrigger className="w-full" id="model-kind">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="text">
+                                {t("pages.models.textKind")}
+                              </SelectItem>
+                              <SelectItem value="image">
+                                {t("pages.models.imageKind")}
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      {kind === "image" && (
+                        <Field>
+                          <FieldLabel htmlFor="model-provider">
+                            {t("pages.models.imageProvider")}
+                          </FieldLabel>
+                          <Select
+                            items={IMAGE_PROVIDERS}
+                            value={provider}
+                            onValueChange={(value) => {
+                              setProvider(value as ImageProvider)
+                              setImageCapabilities(null)
+                            }}
+                          >
+                            <SelectTrigger
+                              className="w-full"
+                              id="model-provider"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                {IMAGE_PROVIDERS.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      )}
                     </FieldGroup>
 
                     <Field>
@@ -500,93 +796,325 @@ export function ModelsPage() {
                       />
                     </Field>
 
-                    <FieldGroup className="grid gap-4 sm:grid-cols-4">
-                      <Field>
-                        <FieldLabel htmlFor="model-context-size">
-                          {t("pages.models.contextSize")} (K)
-                        </FieldLabel>
-                        <Input
-                          id="model-context-size"
-                          min="1"
-                          name="contextSizeK"
-                          defaultValue={editingModel?.contextSizeK}
-                          placeholder="128"
-                          step="1"
-                          type="number"
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="model-max-output-tokens">
-                          {t("pages.modelStatistics.metrics.outputTokens")}
-                        </FieldLabel>
-                        <Input
-                          id="model-max-output-tokens"
-                          min="1"
-                          name="maxOutputTokens"
-                          defaultValue={editingModel?.maxOutputTokens}
-                          placeholder="8192"
-                          step="1"
-                          type="number"
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="model-multiplier">
-                          {t("pages.models.multiplier")}
-                        </FieldLabel>
-                        <Input
-                          id="model-multiplier"
-                          min="0.01"
-                          name="multiplier"
-                          defaultValue={
-                            editingModel?.type === "system"
-                              ? editingModel.multiplier
-                              : undefined
-                          }
-                          placeholder="1.0"
-                          step="0.1"
-                          type="number"
-                          required
-                        />
-                      </Field>
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="model-protocol">
-                          {t("pages.models.protocol")}
-                        </FieldLabel>
-                        <Select
-                          items={PROTOCOLS}
-                          value={protocol}
-                          onValueChange={(value) => {
-                            setProtocol(value as ModelProtocol)
-                          }}
-                        >
-                          <SelectTrigger className="w-full" id="model-protocol">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {PROTOCOLS.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </FieldGroup>
+                    {kind === "text" && (
+                      <FieldGroup className="grid gap-4 sm:grid-cols-4">
+                        <Field>
+                          <FieldLabel htmlFor="model-context-size">
+                            {t("pages.models.contextSize")} (K)
+                          </FieldLabel>
+                          <Input
+                            id="model-context-size"
+                            min="1"
+                            name="contextSizeK"
+                            defaultValue={editingModel?.contextSizeK}
+                            placeholder="128"
+                            step="1"
+                            type="number"
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="model-max-output-tokens">
+                            {t("pages.modelStatistics.metrics.outputTokens")}
+                          </FieldLabel>
+                          <Input
+                            id="model-max-output-tokens"
+                            min="1"
+                            name="maxOutputTokens"
+                            defaultValue={editingModel?.maxOutputTokens}
+                            placeholder="8192"
+                            step="1"
+                            type="number"
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="model-multiplier">
+                            {t("pages.models.multiplier")}
+                          </FieldLabel>
+                          <Input
+                            id="model-multiplier"
+                            min="0.01"
+                            name="multiplier"
+                            defaultValue={
+                              editingModel?.type === "system"
+                                ? editingModel.multiplier
+                                : undefined
+                            }
+                            placeholder="1.0"
+                            step="0.1"
+                            type="number"
+                            required
+                          />
+                        </Field>
+                        <Field className="sm:col-span-2">
+                          <FieldLabel htmlFor="model-protocol">
+                            {t("pages.models.protocol")}
+                          </FieldLabel>
+                          <Select
+                            items={PROTOCOLS}
+                            value={protocol}
+                            onValueChange={(value) => {
+                              setProtocol(value as ModelProtocol)
+                            }}
+                          >
+                            <SelectTrigger
+                              className="w-full"
+                              id="model-protocol"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                {PROTOCOLS.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </FieldGroup>
+                    )}
 
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor="model-vision">
-                        {t("pages.models.supportsVision")}
-                      </FieldLabel>
-                      <Switch
-                        checked={supportsVision}
-                        id="model-vision"
-                        onCheckedChange={setSupportsVision}
-                      />
-                    </Field>
+                    {kind === "text" && (
+                      <Field orientation="horizontal">
+                        <FieldLabel htmlFor="model-vision">
+                          {t("pages.models.supportsVision")}
+                        </FieldLabel>
+                        <Switch
+                          checked={supportsVision}
+                          id="model-vision"
+                          onCheckedChange={setSupportsVision}
+                        />
+                      </Field>
+                    )}
+
+                    {kind === "image" && (
+                      <FieldGroup className="gap-4">
+                        {!imageCapabilities && (
+                          <p className="text-sm text-muted-foreground">
+                            {t("pages.models.imageCapabilitiesUnavailable")}
+                          </p>
+                        )}
+                        {imageCapabilities && (
+                          <>
+                            <Field>
+                              <FieldLabel>
+                                {t("pages.models.imageQuality")}
+                              </FieldLabel>
+                              <div className="flex flex-wrap gap-3">
+                                {imageCapabilities.qualities.map((value) => (
+                                  <label
+                                    key={value}
+                                    className="flex items-center gap-2 text-sm"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={qualities.includes(value)}
+                                      onChange={(event) => {
+                                        setQualities((current) =>
+                                          event.target.checked
+                                            ? [...current, value]
+                                            : current.filter(
+                                                (item) => item !== value
+                                              )
+                                        )
+                                        if (
+                                          event.target.checked &&
+                                          !defaultQuality
+                                        )
+                                          setDefaultQuality(value)
+                                        if (
+                                          !event.target.checked &&
+                                          defaultQuality === value
+                                        )
+                                          setDefaultQuality("")
+                                      }}
+                                    />
+                                    {value}
+                                  </label>
+                                ))}
+                              </div>
+                            </Field>
+                            <Field>
+                              <FieldLabel>
+                                {t("pages.models.aspectRatio")}
+                              </FieldLabel>
+                              <div className="flex flex-wrap gap-3">
+                                {imageCapabilities.aspect_ratios.map(
+                                  (value) => (
+                                    <label
+                                      key={value}
+                                      className="flex items-center gap-2 text-sm"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={aspectRatios.includes(value)}
+                                        onChange={(event) => {
+                                          setAspectRatios((current) =>
+                                            event.target.checked
+                                              ? [...current, value]
+                                              : current.filter(
+                                                  (item) => item !== value
+                                                )
+                                          )
+                                          if (
+                                            event.target.checked &&
+                                            !defaultAspectRatio
+                                          )
+                                            setDefaultAspectRatio(value)
+                                          if (
+                                            !event.target.checked &&
+                                            defaultAspectRatio === value
+                                          )
+                                            setDefaultAspectRatio("")
+                                        }}
+                                      />
+                                      {value}
+                                    </label>
+                                  )
+                                )}
+                              </div>
+                            </Field>
+                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                              <Field>
+                                <FieldLabel>
+                                  {t("pages.models.defaultQuality")}
+                                </FieldLabel>
+                                <Select
+                                  items={qualities.map((value) => ({
+                                    value,
+                                    label: value,
+                                  }))}
+                                  value={defaultQuality}
+                                  onValueChange={(value) =>
+                                    setDefaultQuality(value ?? "")
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {qualities.map((value) => (
+                                        <SelectItem key={value} value={value}>
+                                          {value}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field>
+                                <FieldLabel>
+                                  {t("pages.models.defaultAspectRatio")}
+                                </FieldLabel>
+                                <Select
+                                  items={aspectRatios.map((value) => ({
+                                    value,
+                                    label: value,
+                                  }))}
+                                  value={defaultAspectRatio}
+                                  onValueChange={(value) =>
+                                    setDefaultAspectRatio(value ?? "")
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {aspectRatios.map((value) => (
+                                        <SelectItem key={value} value={value}>
+                                          {value}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            </FieldGroup>
+                            <Field>
+                              <FieldLabel htmlFor="model-base-credits">
+                                {t("pages.models.baseCreditsPerImage")}
+                              </FieldLabel>
+                              <Input
+                                id="model-base-credits"
+                                value={baseCredits}
+                                onChange={(event) =>
+                                  setBaseCredits(event.target.value)
+                                }
+                                inputMode="decimal"
+                                required
+                              />
+                            </Field>
+                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                              {qualities.map((value) => (
+                                <Field key={value}>
+                                  <FieldLabel
+                                    htmlFor={`quality-price-${value}`}
+                                  >
+                                    {value}{" "}
+                                    {t("pages.models.qualityMultiplier")}
+                                  </FieldLabel>
+                                  <Input
+                                    id={`quality-price-${value}`}
+                                    value={qualityMultipliers[value] ?? "1"}
+                                    onChange={(event) =>
+                                      setQualityMultipliers((current) => ({
+                                        ...current,
+                                        [value]: event.target.value,
+                                      }))
+                                    }
+                                    inputMode="decimal"
+                                  />
+                                </Field>
+                              ))}
+                              {aspectRatios.map((value) => (
+                                <Field key={value}>
+                                  <FieldLabel htmlFor={`ratio-price-${value}`}>
+                                    {value} {t("pages.models.aspectMultiplier")}
+                                  </FieldLabel>
+                                  <Input
+                                    id={`ratio-price-${value}`}
+                                    value={aspectMultipliers[value] ?? "1"}
+                                    onChange={(event) =>
+                                      setAspectMultipliers((current) => ({
+                                        ...current,
+                                        [value]: event.target.value,
+                                      }))
+                                    }
+                                    inputMode="decimal"
+                                  />
+                                </Field>
+                              ))}
+                              {imageCapabilities.operations.includes(
+                                "edit"
+                              ) && (
+                                <Field>
+                                  <FieldLabel htmlFor="edit-price">
+                                    {t("pages.models.editMultiplier")}
+                                  </FieldLabel>
+                                  <Input
+                                    id="edit-price"
+                                    value={editMultiplier}
+                                    onChange={(event) =>
+                                      setEditMultiplier(event.target.value)
+                                    }
+                                    inputMode="decimal"
+                                  />
+                                </Field>
+                              )}
+                            </FieldGroup>
+                          </>
+                        )}
+                      </FieldGroup>
+                    )}
 
                     <Field>
                       <FieldLabel htmlFor="model-tags">
@@ -697,6 +1225,11 @@ export function ModelsPage() {
                             >
                               {model.displayName}
                             </span>
+                            {model.kind === "image" && (
+                              <Badge variant="outline">
+                                {t("pages.models.imageKind")}
+                              </Badge>
+                            )}
                             {!model.enabled && (
                               <Badge variant="outline">
                                 {t("pages.models.disable")}
@@ -753,6 +1286,19 @@ export function ModelsPage() {
                                   />
                                   {t("pages.models.disable")}
                                 </DropdownMenuItem>
+                                {model.kind === "image" &&
+                                  model.enabled &&
+                                  model.imageConfig && (
+                                    <DropdownMenuItem
+                                      onClick={() => setModelToTest(model)}
+                                    >
+                                      <HugeiconsIcon
+                                        icon={PlayIcon}
+                                        strokeWidth={2}
+                                      />
+                                      {t("pages.models.testGeneration")}
+                                    </DropdownMenuItem>
+                                  )}
                                 <DropdownMenuItem
                                   onClick={() => handleEditModel(model)}
                                 >
@@ -783,42 +1329,75 @@ export function ModelsPage() {
                     </CardHeader>
                     <CardContent className="flex flex-col gap-3">
                       <dl className="flex flex-col gap-3">
-                        <div className="flex min-w-0 items-center gap-4">
-                          <dt
-                            className="w-2/5 truncate text-muted-foreground"
-                            title={t("pages.models.contextSize")}
-                          >
-                            {t("pages.models.contextSize")}
-                          </dt>
-                          <dd className="w-3/5 truncate text-end font-medium">
-                            {model.contextSizeK}K
-                          </dd>
-                        </div>
-                        <div className="flex min-w-0 items-center gap-4">
-                          <dt
-                            className="w-2/5 truncate text-muted-foreground"
-                            title={t("pages.models.imageRecognition")}
-                          >
-                            {t("pages.models.imageRecognition")}
-                          </dt>
-                          <dd className="w-3/5 truncate text-end font-medium">
-                            {model.supportsVision
-                              ? t("pages.models.supported")
-                              : t("pages.models.unsupported")}
-                          </dd>
-                        </div>
-                        {model.type === "system" && (
-                          <div className="flex min-w-0 items-center gap-4">
-                            <dt
-                              className="w-2/5 truncate text-muted-foreground"
-                              title={t("pages.models.multiplier")}
-                            >
-                              {t("pages.models.multiplier")}
-                            </dt>
-                            <dd className="w-3/5 truncate text-end font-medium">
-                              {model.multiplier.toFixed(1)}×
-                            </dd>
-                          </div>
+                        {model.kind === "image" ? (
+                          <>
+                            <div className="flex min-w-0 items-center gap-4">
+                              <dt className="w-2/5 truncate text-muted-foreground">
+                                {t("pages.models.imageQuality")}
+                              </dt>
+                              <dd className="w-3/5 truncate text-end font-medium">
+                                {model.imageConfig?.qualities.join(", ") ?? "-"}
+                              </dd>
+                            </div>
+                            <div className="flex min-w-0 items-center gap-4">
+                              <dt className="w-2/5 truncate text-muted-foreground">
+                                {t("pages.models.aspectRatio")}
+                              </dt>
+                              <dd className="w-3/5 truncate text-end font-medium">
+                                {model.imageConfig?.aspect_ratios.join(", ") ??
+                                  "-"}
+                              </dd>
+                            </div>
+                            <div className="flex min-w-0 items-center gap-4">
+                              <dt className="w-2/5 truncate text-muted-foreground">
+                                {t("pages.models.baseCreditsPerImage")}
+                              </dt>
+                              <dd className="w-3/5 truncate text-end font-medium">
+                                {model.imagePricing?.base_credits_per_image ??
+                                  "0"}
+                              </dd>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 items-center gap-4">
+                              <dt
+                                className="w-2/5 truncate text-muted-foreground"
+                                title={t("pages.models.contextSize")}
+                              >
+                                {t("pages.models.contextSize")}
+                              </dt>
+                              <dd className="w-3/5 truncate text-end font-medium">
+                                {model.contextSizeK}K
+                              </dd>
+                            </div>
+                            <div className="flex min-w-0 items-center gap-4">
+                              <dt
+                                className="w-2/5 truncate text-muted-foreground"
+                                title={t("pages.models.imageRecognition")}
+                              >
+                                {t("pages.models.imageRecognition")}
+                              </dt>
+                              <dd className="w-3/5 truncate text-end font-medium">
+                                {model.supportsVision
+                                  ? t("pages.models.supported")
+                                  : t("pages.models.unsupported")}
+                              </dd>
+                            </div>
+                            {model.type === "system" && (
+                              <div className="flex min-w-0 items-center gap-4">
+                                <dt
+                                  className="w-2/5 truncate text-muted-foreground"
+                                  title={t("pages.models.multiplier")}
+                                >
+                                  {t("pages.models.multiplier")}
+                                </dt>
+                                <dd className="w-3/5 truncate text-end font-medium">
+                                  {model.multiplier.toFixed(1)}×
+                                </dd>
+                              </div>
+                            )}
+                          </>
                         )}
                       </dl>
                       <ResourceTagSummary tagIds={model.tagIds} />
@@ -854,6 +1433,19 @@ export function ModelsPage() {
         ))}
       </Tabs>
 
+      {modelToTest?.imageConfig && (
+        <ImageGenerationTest
+          key={modelToTest.id}
+          open={Boolean(modelToTest)}
+          onOpenChange={(open) => {
+            if (!open) setModelToTest(null)
+          }}
+          model={`${modelToTest.modelId}@${modelToTest.id}`}
+          upstreamModel={modelToTest.modelId}
+          provider={modelToTest.provider}
+          options={modelToTest.imageConfig}
+        />
+      )}
       <AlertDialog
         open={modelPendingDeletion !== null}
         onOpenChange={(open) => {

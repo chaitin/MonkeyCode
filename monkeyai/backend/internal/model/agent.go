@@ -19,6 +19,9 @@ func (s *Service) CreateUser(ctx context.Context, userID string, input UserInput
 	if item.APIKey == "" {
 		return Model{}, resource.Invalid("api_key 不能为空")
 	}
+	if err := s.validateImageCapability(item); err != nil {
+		return Model{}, resource.Invalid(err.Error())
+	}
 	item.OwnershipType = "user"
 	item.OwnerUserID = userID
 	item.Enabled = true
@@ -45,6 +48,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 	if err != nil {
 		return Model{}, err
 	}
+	if err := s.validateImageCapability(item); err != nil {
+		return Model{}, resource.Invalid(err.Error())
+	}
 	item.ID = id
 	item.OwnershipType = "user"
 	item.OwnerUserID = userID
@@ -63,8 +69,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 func userModelFromInput(input UserInput) (Model, error) {
 	item, err := modelFromInput(SaveInput{
 		ModelID: input.ModelID, DisplayName: input.DisplayName, Protocol: input.Protocol,
+		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig,
 		BaseURL: input.BaseURL, APIKey: input.APIKey, AdvancedConfig: input.AdvancedConfig,
-		CreditMultiplier: 1, TagIDs: input.TagIDs,
+		ImagePricing: userImagePricing(input.Kind), CreditMultiplier: 1, TagIDs: input.TagIDs,
 	})
 	if err != nil {
 		return Model{}, resource.Invalid(err.Error())

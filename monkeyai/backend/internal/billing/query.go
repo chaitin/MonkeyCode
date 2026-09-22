@@ -214,6 +214,34 @@ func (s *Service) resolve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if record.Category == "image" {
+		job, err := sqlc.New(tx).ImageJobReview(r.Context(), &id)
+		if err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		if in.Usage.Result == "succeeded" {
+			if in.Usage.Images < 1 || in.Usage.Images > int64(job.RequestedImages) || in.Usage.Images != job.ArchivedImages {
+				resource.Fail(w, resource.Invalid("生图核查的张数必须与已归档图片一致"))
+				return
+			}
+		} else if in.Usage.Result != "failed" || in.Usage.Images != 0 || job.ArchivedImages != 0 {
+			resource.Fail(w, resource.Invalid("存在已归档图片时不能按失败退费"))
+			return
+		}
+		count, err := sqlc.New(tx).ResolveImageJob(r.Context(), sqlc.ResolveImageJobParams{
+			Status: in.Usage.Result, GeneratedImages: int32(in.Usage.Images),
+			ErrorCode: in.Usage.ErrorCode, BillingTransactionID: id,
+		})
+		if err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		if count != 1 {
+			resource.Fail(w, fail(409, "image_job_not_unknown", "生图任务状态已变化，请重新核查"))
+			return
+		}
+	}
 	u, _ := identity.UserFromContext(r.Context())
 	in.Usage.Known = true
 	body, _ := json.Marshal(in)

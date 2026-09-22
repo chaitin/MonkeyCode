@@ -135,6 +135,7 @@ export type Transaction = {
     input_tokens: number
     cached_input_tokens: number
     output_tokens: number
+    generated_images?: number
     known: boolean
     stream?: boolean
     result: string

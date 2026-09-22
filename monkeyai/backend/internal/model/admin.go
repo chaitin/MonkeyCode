@@ -30,6 +30,19 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		}
 		modelJSON(w, http.StatusOK, subjects)
 	})
+	router.Get("/models/image-capabilities", func(w http.ResponseWriter, r *http.Request) {
+		cap, err := s.DescribeImage(Provider(r.URL.Query().Get("provider")), r.URL.Query().Get("model_id"))
+		if err != nil {
+			modelError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		modelJSON(w, http.StatusOK, map[string]any{
+			"operations": cap.Operations, "qualities": cap.Qualities,
+			"aspect_ratios": cap.AspectRatios, "allowed_aspect_ratios": cap.AllowedAspectRatios,
+			"max_images": cap.MaxImages, "max_reference_images": cap.MaxReferenceImages,
+			"supports_reference_image": cap.SupportsReference, "supports_mask": cap.SupportsMask,
+		})
+	})
 	router.Post("/models", s.createModel)
 	router.Put("/models/{modelID}", s.updateModel)
 	router.Patch("/models/{modelID}/enabled", s.setModelEnabled)

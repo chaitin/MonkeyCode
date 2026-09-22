@@ -53,6 +53,7 @@ type Pending = {
 const selectClass = "h-9 rounded-md border bg-background px-3 text-sm"
 const categoryNames: Record<string, string> = {
   model: "模型",
+  image: "生图",
   tool: "工具",
   other: "其他",
 }
@@ -525,6 +526,7 @@ function TransactionDialog({
   const [busy, setBusy] = useState(false)
   const [reason, setReason] = useState("")
   const [result, setResult] = useState("failed")
+  const [generatedImages, setGeneratedImages] = useState("0")
   const [counts, setCounts] = useState({
     input_tokens: "0",
     cached_input_tokens: "0",
@@ -557,9 +559,16 @@ function TransactionDialog({
           ? {
               reason,
               usage: {
-                ...Object.fromEntries(
-                  Object.entries(counts).map(([k, v]) => [k, Number(v)])
-                ),
+                ...(data?.category === "model"
+                  ? Object.fromEntries(
+                      Object.entries(counts).map(([k, v]) => [k, Number(v)])
+                    )
+                  : data?.category === "image"
+                    ? {
+                        generated_images:
+                          result === "succeeded" ? Number(generatedImages) : 0,
+                      }
+                    : {}),
                 known: true,
                 result,
               },
@@ -664,6 +673,13 @@ function TransactionDialog({
                 </>
               )}
             </dl>
+            {data.usage && data.category === "image" && (
+              <div className="rounded-md border p-3 text-sm">
+                实际生成 {data.usage.generated_images ?? 0} 张
+                {data.pricing?.image_unit &&
+                  ` · 每张 ${credits(data.pricing.image_unit)} 积分`}
+              </div>
+            )}
             {data.usage && data.category === "model" && (
               <Table>
                 <TableHeader>
@@ -700,7 +716,9 @@ function TransactionDialog({
               <p className="text-xs text-muted-foreground">
                 {data.category === "model"
                   ? `模型倍率：${credits(data.pricing.multiplier)}`
-                  : `每次调用：${credits(data.pricing.tool)} 积分`}
+                  : data.category === "image"
+                    ? `每张图片：${credits(data.pricing.image_unit)} 积分`
+                    : `每次调用：${credits(data.pricing.tool)} 积分`}
               </p>
             )}
             {data.error_code && (
@@ -782,8 +800,29 @@ function TransactionDialog({
                 >
                   <option value="failed">失败或未执行</option>
                   <option value="succeeded">执行成功</option>
-                  <option value="cancelled">已取消</option>
+                  {data.category !== "image" && (
+                    <option value="cancelled">已取消</option>
+                  )}
                 </select>
+                {data.category === "image" && result === "succeeded" && (
+                  <Field>
+                    <FieldLabel htmlFor="generated-images">
+                      已归档图片张数
+                    </FieldLabel>
+                    <Input
+                      id="generated-images"
+                      type="number"
+                      min="1"
+                      max="16"
+                      inputMode="numeric"
+                      value={generatedImages}
+                      onChange={(event) =>
+                        setGeneratedImages(event.target.value)
+                      }
+                      required
+                    />
+                  </Field>
+                )}
                 {data.category === "model" && (
                   <div className="grid grid-cols-3 gap-2">
                     {Object.entries(counts).map(([key, value]) => (
