@@ -230,14 +230,12 @@ func (c *CRUD) Get(ctx context.Context, q Queryer, id string) (Object, error) {
 func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error) {
 	g := []Object{}
 	var err error
-	if c.Def.Kind != "rule" || o.String("ownership_type") != "user" {
-		g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
-		if err != nil {
-			return nil, err
-		}
+	g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
+	if err != nil {
+		return nil, err
 	}
 	o["grants"] = g
-	if c.Def.Kind != "rule" && o.String("ownership_type") == "user" {
+	if o.String("ownership_type") == "user" {
 		users := []any{}
 		for _, grant := range g {
 			if user := grant["user"]; user != nil {
@@ -535,17 +533,28 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false, nil
 	}
-	if kind == "rule" && o.String("ownership_type") == "user" {
-		return owned(o, user), nil
-	}
 	if o.String("ownership_type") == "system" {
 		ok, err := CanUseSystem(ctx, q, user)
 		if err != nil || !ok {
 			return false, err
 		}
 	}
-	if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
-		return true, nil
+	if o.String("ownership_type") == "user" {
+		if o.String("owner_user_id") == user {
+			return true, nil
+		}
+		if kind == "rule" {
+			shared, err := SharedUsers(ctx, q, kind, []string{o.String("id")})
+			if err != nil {
+				return false, err
+			}
+			for _, recipient := range shared[o.String("id")] {
+				if recipient.String("id") == user {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
 	}
 	return Allowed(ctx, q, kind, o.String("id"), user)
 }

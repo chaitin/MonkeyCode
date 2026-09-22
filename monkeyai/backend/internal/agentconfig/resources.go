@@ -71,15 +71,25 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	if err != nil {
 		return c, err
 	}
+	personalRules := []string{}
+	for _, grant := range g {
+		if grant.String("kind") == "rule" && c.rules[grant.String("id")].String("ownership_type") == "user" {
+			personalRules = append(personalRules, grant.String("id"))
+		}
+	}
+	sharedRules, err := resource.SharedUsers(ctx, q, "rule", personalRules)
+	if err != nil {
+		return c, err
+	}
 	for _, o := range g {
 		if o.String("kind") == "rule" {
 			rule := c.rules[o.String("id")]
-			if rule == nil || rule.String("ownership_type") == "user" {
+			if rule == nil || (rule.String("ownership_type") == "user" && !slices.ContainsFunc(sharedRules[o.String("id")], func(shared resource.Object) bool { return shared.String("id") == user })) {
 				continue
 			}
 		}
 		c.grants[o.String("kind")+":"+o.String("id")] = true
-		if o.Bool("required") {
+		if o.Bool("required") && (o.String("kind") != "rule" || c.rules[o.String("id")].String("ownership_type") == "system") {
 			c.required[o.String("id")] = true
 		}
 	}
@@ -107,10 +117,6 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false
 	}
-	if kind == "rule" && o.String("ownership_type") == "user" {
-		return user != "" && o.String("owner_user_id") == user
-	}
-
 	return (o.String("ownership_type") == "user" && o.String("owner_user_id") == user) || c.grants[kind+":"+o.String("id")]
 }
 func ruleDTO(o resource.Object, required bool) resource.Object {
@@ -268,7 +274,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		owners = append(owners, o.String("owner_user_id"))
 		ownerIDs[id] = o.String("owner_user_id")
 		dto["revision"] = o["revision"]
-		if resourceType != "rule" && o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
+		if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 			owned = append(owned, id)
 		}
 		out = append(out, dto)

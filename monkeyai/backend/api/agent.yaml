@@ -1108,7 +1108,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 支持 model、skill、connector、expert；个人规则不支持分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
         1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
@@ -1174,7 +1174,7 @@ paths:
   /api/v1/rules:
     get:
       summary: 读取 Agent 规则
-      description: 仅返回系统授权规则和当前用户创建的个人规则；历史个人规则分享授权不再生效。独立计算版本，每次请求重新检查当前用户身份和资源权限。
+      description: 仅返回系统授权规则、当前用户创建及分享给当前用户的个人规则；共享的个人规则不能强制应用。独立计算版本，每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
       - $ref: '#/components/parameters/AgentPage'
@@ -1227,7 +1227,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 归属固定为当前用户；个人规则仅创建者可用，保留创建、读取、编辑和删除，不支持分享。
+      description: 归属固定为当前用户；个人规则可分享给指定用户使用，但仅创建者可读取详情、编辑、删除及管理分享。
   /api/v1/skills/tags:
     get:
       summary: 列出当前用户可用技能配置的标签
@@ -3359,6 +3359,7 @@ components:
                 type: string
                 enum:
                 - model
+                - rule
                 - skill
                 - connector
                 - expert
@@ -3946,12 +3947,18 @@ components:
     AgentRule:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅规则所有者读取个人规则目录时返回共享用户列表，未共享时为 []；接收者和系统规则不返回。
         ownership_type:
           type: string
           enum:
           - system
           - user
-          description: 独立资源目录返回；个人规则仅创建者可用。
+          description: 独立资源目录返回；个人规则可由创建者分享给指定用户使用。
         user:
           $ref: '#/components/schemas/UserSummary'
           readOnly: true
@@ -4289,6 +4296,12 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 个人规则的共享用户列表；仅所有者及管理端可读取，未共享时为 []。
         id:
           type: string
           format: uuid
@@ -4311,7 +4324,7 @@ components:
         enabled:
           type: boolean
         grants:
-          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
+          description: 系统规则的授权范围；个人规则的指定用户只读共享授权（不可强制应用），仅所有者及管理端可读取。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
