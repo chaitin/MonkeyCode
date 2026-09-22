@@ -240,6 +240,12 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 
 		o["user"] = users[owner]
 	}
+	if c.Def.Kind == "expert" || c.Def.Kind == "connector" {
+		o["tags"], err = Tags(ctx, q, c.Def.Kind, o.String("id"))
+		if err != nil {
+			return nil, err
+		}
+	}
 	if c.Def.Decorate != nil {
 		if err = c.Def.Decorate(ctx, q, o); err != nil {
 			return nil, err
@@ -345,6 +351,11 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 	}
 	if c.Def.Persist != nil {
 		if err = c.Def.Persist(ctx, tx, in); err != nil {
+			return nil, err
+		}
+	}
+	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector") {
+		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, raw); err != nil {
 			return nil, err
 		}
 	}

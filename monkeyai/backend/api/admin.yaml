@@ -5285,6 +5285,9 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 本模型消耗积分时使用的倍率。
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         authorization:
           $ref: "#/components/schemas/Authorization"
         enabled:
@@ -5377,6 +5380,9 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 积分消耗倍率。
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         authorization:
           $ref: "#/components/schemas/Authorization"
     CreateModelInput:
@@ -5708,6 +5714,9 @@ components:
     AgentConnector:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         id:
           type: string
           format: uuid
@@ -5767,6 +5776,9 @@ components:
     AgentExpert:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         id:
           type: string
           format: uuid
@@ -6059,6 +6071,9 @@ components:
     ExpertResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -6122,6 +6137,9 @@ components:
     ExpertInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         prompt:
@@ -6154,6 +6172,9 @@ components:
     ConnectorResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -6233,6 +6254,9 @@ components:
     ConnectorInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         url:

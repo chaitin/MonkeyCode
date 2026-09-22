@@ -245,7 +245,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto = ruleDTO(o, c.required[id])
 		case "skills":
 			dto = skillDTO(o, "")
-			dto["tags"], err = resource.DecodeObjects(sqlc.New(q).ListSkillTags(ctx, id))
+			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
 		case "experts":
 			var manifest resource.Object
 			manifest, err = r.manifest(ctx, q, c, id, user)
@@ -257,6 +257,12 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		}
 		if err != nil {
 			return nil, err
+		}
+		if kind == "experts" || kind == "connectors" {
+			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
+			if err != nil {
+				return nil, err
+			}
 		}
 		dto["ownership_type"] = o["ownership_type"]
 		owners = append(owners, o.String("owner_user_id"))
@@ -286,6 +292,11 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 }
 
 func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind string) {
+	page, size, err := resource.PageParams(req)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
@@ -295,7 +306,26 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 	defer tx.Rollback(req.Context())
 	items, err := r.list(req.Context(), tx, u.ID, kind)
 	if err == nil {
-		err = httpapi.CachedJSON(w, req, map[string]any{kind: items})
+		items = resource.FilterTags(items, resource.QueryTagIDs(req))
+		total := len(items)
+		err = httpapi.CachedJSON(w, req, map[string]any{kind: resource.PageSlice(items, page, size), "total_count": total, "page": page, "page_size": size})
+	}
+	if err != nil {
+		resource.Fail(w, err)
+	}
+}
+
+func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind string) {
+	u, _ := identity.UserFromContext(req.Context())
+	tx, err := r.transaction(req.Context())
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	defer tx.Rollback(req.Context())
+	items, err := r.list(req.Context(), tx, u.ID, kind)
+	if err == nil {
+		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
 	}
 	if err != nil {
 		resource.Fail(w, err)
@@ -308,6 +338,9 @@ func (r *Resources) transaction(ctx context.Context) (pgx.Tx, error) {
 func (r *Resources) RegisterAgent(router chi.Router) {
 	for _, kind := range []string{"rules", "skills", "experts", "connectors"} {
 		router.Get("/"+kind, func(w http.ResponseWriter, req *http.Request) { r.getList(w, req, kind) })
+		if kind != "rules" {
+			router.Get("/"+kind+"/tags", func(w http.ResponseWriter, req *http.Request) { r.getTags(w, req, kind) })
+		}
 	}
 	router.Get("/experts/{id}/manifest", r.getManifest)
 	router.Post("/resources/resolve", r.resolve)

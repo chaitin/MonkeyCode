@@ -27,7 +27,7 @@ func NewService(store *resource.Store, publicURL string) *Service {
 		Kind: "connector", Path: "/connectors",
 		Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) },
 		Fields:     []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"},
-		UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret"},
+		UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
 		Hidden:     []string{"oauth_client_secret", "icon_s3_key"},
 		Validate:   s.validateConnector, Decorate: s.decorateConnector, UserDecorate: userIcon,
 		References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
