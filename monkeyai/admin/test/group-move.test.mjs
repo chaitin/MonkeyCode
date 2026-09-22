@@ -83,11 +83,14 @@ test("拖放只创建待保存操作，点击保存才请求接口", async () =>
   assert.match(drop, /setPendingMove\(\{ payload: dragging, target \}\)/)
   assert.doesNotMatch(drop, /api</)
   assert.match(save, /api<void>\("\/api\/admin\/v1\/groups\/move"/)
-  assert.match(source, /onClick=\{\(\) => void saveMove\(\)\}/)
+  assert.match(
+    source,
+    /void saveMove\(pendingMove\.payload, pendingMove\.target\)/
+  )
   assert.match(source, /setPendingMove\(null\)/)
 })
 
-test("拖拽预览只显示名称，不使用整行或页面的原生快照", async () => {
+test("拖拽预览使用整行的原生快照", async () => {
   const source = await readFile(
     new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
     "utf8"
@@ -95,14 +98,25 @@ test("拖拽预览只显示名称，不使用整行或页面的原生快照", as
   const drag = source
     .split("const startDrag =")[1]
     .split("const dragGroup =")[0]
-  assert.match(drag, /document\.createElement\("div"\)/)
-  assert.match(drag, /preview\.textContent = .*names\[0\]/)
-  assert.match(drag, /setDragImage\(preview, 12, 12\)/)
-  assert.match(drag, /requestAnimationFrame\(\(\) => preview\.remove\(\)\)/)
-  assert.doesNotMatch(drag, /cloneNode|innerHTML/)
+  assert.match(drag, /setDragging\(payload\)/)
+  assert.match(drag, /event\.dataTransfer\.effectAllowed = "move"/)
+  assert.match(
+    drag,
+    /event\.dataTransfer\.setData\("text\/plain", "move-group-members"\)/
+  )
+  assert.doesNotMatch(
+    drag,
+    /setDragImage|createElement\("div"\)|cloneNode|innerHTML/
+  )
+  const tree = await readFile(
+    new URL("../src/components/members/group-tree.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(tree, /classList\.add\(\.\.\.dragPreviewClasses\)/)
+  assert.match(tree, /classList\.remove\(\.\.\.dragPreviewClasses\)/)
 })
 
-test("左侧圆点按住滑过同类行多选，不触发整行原生拖拽", async () => {
+test("多选模式仅显示成员复选框，分组永远不能勾选", async () => {
   const [tree, page] = await Promise.all([
     readFile(
       new URL("../src/components/members/group-tree.tsx", import.meta.url),
@@ -113,31 +127,24 @@ test("左侧圆点按住滑过同类行多选，不触发整行原生拖拽", as
       "utf8"
     ),
   ])
-  assert.match(tree, /role="checkbox"\s+aria-checked=\{selected\}/)
-  assert.match(tree, /size-2\.5 rounded-full border border-input bg-white/)
-  assert.match(tree, /selected && "border-foreground bg-foreground"/)
-  assert.match(
-    tree,
-    /onPointerDown=\{\(event: PointerEvent<HTMLButtonElement>\)/
-  )
-  assert.match(
-    tree,
-    /onGroupSweepEnter\(group\.id, \(event\.buttons & 1\) !== 0\)/
-  )
-  assert.match(tree, /onSweepEnter\(\(event\.buttons & 1\) !== 0\)/)
-  assert.match(page, /window\.addEventListener\("pointerup", finishSweep\)/)
-  assert.match(page, /select: !wasSelected/)
-  assert.match(page, /updateGroupSelection\(current, id, sweep\.select\)/)
-  assert.match(page, /updateMemberSelection\(current, member, sweep\.select\)/)
-  const memberRow = tree.split("function GroupTreeMemberRow(")[1]
-  assert.doesNotMatch(
-    memberRow.split("return (")[1].split("<SelectionDot")[0],
-    /draggable/
-  )
-  assert.match(memberRow, /<span\s+draggable\s+onDragStart=\{onDragStart\}/)
+  const [folder, memberRow] = tree.split("function GroupTreeMemberRow(")
+  assert.match(folder, /multiSelect && \(\s*<Checkbox[\s\S]*disabled/)
+  assert.match(folder, /checked=\{false\}/)
+  assert.match(memberRow, /multiSelect && \(\s*<Checkbox/)
+  assert.match(memberRow, /onCheckedChange=\{onSelect\}/)
+  assert.doesNotMatch(tree, /Sweep|SelectionDot/)
+  assert.match(page, /\[multiSelect, setMultiSelect\] = useState\(false\)/)
+  assert.match(page, /if \(!multiSelect \|\| moving\) return/)
+  assert.match(page, /setMultiSelect\((true|false)|setMultiSelect\(false\)/)
+  assert.match(page, /setSelectedMembers\(\[\]\)/)
+  assert.doesNotMatch(page, /selectedGroupIDs|selectionSweep/)
+  assert.match(memberRow, /draggable=\{!multiSelect\}/)
+  assert.match(memberRow, /onDragStart=\{\(event\) => \{/)
+  assert.match(folder, /draggable=\{!multiSelect\}/)
+  assert.match(folder, /onGroupDragStart\(group, event\)/)
 })
 
-test("从已选中的圆点划过可连续取消选择，未选中则连续选择", () => {
+test("成员勾选可增删和去重，同一用户在不同分组中的来源独立保留", () => {
   assert.deepEqual(updateGroupSelection(["a", "b"], "a", false), ["b"])
   assert.deepEqual(updateGroupSelection(["a"], "b", true), ["a", "b"])
   assert.deepEqual(updateGroupSelection(["a"], "a", true), ["a"])
@@ -152,6 +159,33 @@ test("从已选中的圆点划过可连续取消选择，未选中则连续选�
     second,
   ])
   assert.deepEqual(updateMemberSelection([first], first, true), [first])
+})
+
+test("批量成员可选择共同目标，不能选中任一成员当前所在的分组", () => {
+  const members = [
+    { id: "first", source_group_id: team.id },
+    { id: "second", source_group_id: child.id },
+  ]
+  const payload = { kind: "member", members }
+  assert.equal(canMoveTo(groups, payload, target), true)
+  assert.equal(canMoveTo(groups, payload, root), true)
+  assert.equal(canMoveTo(groups, payload, team), false)
+  assert.equal(canMoveTo(groups, payload, child), false)
+  assert.equal(
+    canMoveTo(groups, { kind: "member", members: [] }, target),
+    false
+  )
+  assert.equal(
+    canMoveTo(
+      groups,
+      {
+        kind: "member",
+        members: [...members, { id: "ungrouped", source_group_id: root.id }],
+      },
+      root
+    ),
+    false
+  )
 })
 
 test("树中移动成员保留来源信息，列表成员不允许无意义地放入根", () => {

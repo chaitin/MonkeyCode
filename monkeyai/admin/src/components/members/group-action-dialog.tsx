@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
+import { GroupSelect } from "@/components/group-select"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -14,12 +15,8 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { api } from "@/lib/api"
-import {
-  descendantIDs,
-  type MemberGroup,
-} from "@/lib/member-groups"
+import { descendantIDs, type MemberGroup } from "@/lib/member-groups"
 import { groupActionKeys, type ActiveGroupAction } from "@/lib/member-groups"
 
 const submitKeys = {
@@ -43,7 +40,7 @@ export function GroupActionDialog({
   onClose: () => void
   onSaved: (group: MemberGroup | null) => void
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const [name, setName] = useState(action === "rename" ? group.name : "")
   const [memberIDs, setMemberIDs] = useState(group.member_ids)
@@ -63,18 +60,6 @@ export function GroupActionDialog({
   const hasChildren = groups.some(
     (candidate) => candidate.parent_id === group.id
   )
-
-  const targetPath = (candidate: MemberGroup) => {
-    const names = [candidate.name]
-    const visited = new Set([candidate.id])
-    let parent = groups.find((item) => item.id === candidate.parent_id)
-    while (parent && !visited.has(parent.id)) {
-      names.unshift(parent.name)
-      visited.add(parent.id)
-      parent = groups.find((item) => item.id === parent?.parent_id)
-    }
-    return names.join(" / ")
-  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -167,9 +152,6 @@ export function GroupActionDialog({
           )}
           {action === "adjust-members" && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                {t("pages.membersAndGroups.directMembersHint")}
-              </p>
               <Field>
                 <FieldLabel htmlFor="group-member-search" className="sr-only">
                   {t("pages.membersAndGroups.searchMembers")}
@@ -229,36 +211,40 @@ export function GroupActionDialog({
           )}
           {action === "move" && (
             <Field>
-              <FieldLabel>
+              <FieldLabel htmlFor="group-parent-select">
                 {t("pages.membersAndGroups.targetParentGroup")}
               </FieldLabel>
               {targets.length ? (
-                <RadioGroup
-                  value={parentID}
-                  onValueChange={setParentID}
+                <GroupSelect
+                  id="group-parent-select"
+                  options={groups.map((candidate) => ({
+                    id: candidate.id,
+                    parentId: candidate.parent_id,
+                    name: candidate.name,
+                    disabled: !targets.some(
+                      (target) => target.id === candidate.id
+                    ),
+                  }))}
+                  value={{ groupIds: parentID ? [parentID] : [], userIds: [] }}
+                  onValueChange={(value) =>
+                    setParentID(value.groupIds[0] ?? "")
+                  }
+                  label={t("pages.membersAndGroups.targetParentGroup")}
+                  placeholder={t("pages.membersAndGroups.targetParentGroup")}
+                  emptyText={t("pages.membersAndGroups.noMoveTargets")}
+                  searchPlaceholder={t(
+                    "pages.membersAndGroups.groupSelection.search"
+                  )}
+                  noResultsText={t(
+                    "pages.membersAndGroups.groupSelection.noMatches"
+                  )}
+                  locale={i18n.resolvedLanguage ?? i18n.language}
                   disabled={saving}
-                  className="max-h-72 overflow-y-auto"
-                  aria-label={t("pages.membersAndGroups.targetParentGroup")}
-                >
-                  {targets.map((candidate) => (
-                    <Field
-                      key={candidate.id}
-                      orientation="horizontal"
-                      className="min-w-0 rounded-md p-2 hover:bg-muted"
-                    >
-                      <RadioGroupItem
-                        id={`group-parent-${candidate.id}`}
-                        value={candidate.id}
-                      />
-                      <FieldLabel
-                        htmlFor={`group-parent-${candidate.id}`}
-                        className="min-w-0 flex-1 cursor-pointer break-words"
-                      >
-                        {targetPath(candidate)}
-                      </FieldLabel>
-                    </Field>
-                  ))}
-                </RadioGroup>
+                  multiple={false}
+                  selectionMode="groups"
+                  defaultExpanded
+                  searchable
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">
                   {t("pages.membersAndGroups.noMoveTargets")}

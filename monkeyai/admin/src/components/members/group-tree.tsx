@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type PointerEvent } from "react"
+import { useState, type DragEvent } from "react"
 import {
   Add01Icon,
   Delete02Icon,
@@ -14,6 +14,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { type MoveMember } from "@/lib/group-move"
 import {
   MemberActions,
@@ -33,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  type GroupAction,
   groupActionKeys,
   type ActiveGroupAction,
   groupMemberIDs,
@@ -42,6 +44,16 @@ import {
 } from "@/lib/member-groups"
 import { memberIconColor } from "@/lib/member-appearance"
 import { cn } from "@/lib/utils"
+
+const allGroupActions: GroupAction[] = [
+  "add-subgroup",
+  "rename",
+  "adjust-members",
+  "move",
+  "delete",
+]
+
+const dragPreviewClasses = ["outline", "outline-1", "outline-border"]
 
 const actionIcons = {
   "add-subgroup": Add01Icon,
@@ -62,14 +74,10 @@ type Props = {
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
   onResetPassword: (user: MemberActionUser) => void
-  selectedGroupIDs: string[]
+  multiSelect: boolean
+  selectionDisabled: boolean
   selectedMemberKeys: string[]
-  onGroupSelect: (id: string) => void
-  onMemberSelect: (member: MoveMember) => void
-  onGroupSweepStart: (id: string, selected: boolean) => void
-  onMemberSweepStart: (member: MoveMember, selected: boolean) => void
-  onGroupSweepEnter: (id: string, pressed: boolean) => void
-  onMemberSweepEnter: (member: MoveMember, pressed: boolean) => void
+  onMemberSelect: (member: MoveMember, checked: boolean) => void
   onGroupDragStart: (group: MemberGroup, event: DragEvent) => void
   onMemberDragStart: (member: MoveMember, event: DragEvent) => void
   onDragEnd: () => void
@@ -89,14 +97,10 @@ export function GroupTreeItem({
   onToggleStatus,
   onToggleRole,
   onResetPassword,
-  selectedGroupIDs,
+  multiSelect,
+  selectionDisabled,
   selectedMemberKeys,
-  onGroupSelect,
   onMemberSelect,
-  onGroupSweepStart,
-  onMemberSweepStart,
-  onGroupSweepEnter,
-  onMemberSweepEnter,
   onGroupDragStart,
   onMemberDragStart,
   onDragEnd,
@@ -123,11 +127,7 @@ export function GroupTreeItem({
   const label = (
     <>
       <HugeiconsIcon
-        icon={
-          (children.length || directMembers.length) && expanded
-            ? Folder02Icon
-            : FolderIcon
-        }
+        icon={expanded ? Folder02Icon : FolderIcon}
         className="size-4 shrink-0 text-yellow-600 dark:text-yellow-400"
         strokeWidth={2}
       />
@@ -154,21 +154,13 @@ export function GroupTreeItem({
       onToggleStatus={onToggleStatus}
       onToggleRole={onToggleRole}
       onResetPassword={onResetPassword}
-      selected={selectedMemberKeys.includes(`${group.id}:${member.id}`)}
-      onSelect={() =>
-        onMemberSelect({ id: member.id, source_group_id: group.id })
+      multiSelect={multiSelect}
+      selectionDisabled={selectionDisabled}
+      selected={
+        multiSelect && selectedMemberKeys.includes(`${group.id}:${member.id}`)
       }
-      onSweepStart={() =>
-        onMemberSweepStart(
-          { id: member.id, source_group_id: group.id },
-          selectedMemberKeys.includes(`${group.id}:${member.id}`)
-        )
-      }
-      onSweepEnter={(pressed) =>
-        onMemberSweepEnter(
-          { id: member.id, source_group_id: group.id },
-          pressed
-        )
+      onSelect={(checked) =>
+        onMemberSelect({ id: member.id, source_group_id: group.id }, checked)
       }
       onDragStart={(event) =>
         onMemberDragStart({ id: member.id, source_group_id: group.id }, event)
@@ -182,18 +174,30 @@ export function GroupTreeItem({
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <div
           className={cn(
-            "group/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors",
+            "group/group-row flex items-center rounded-md pe-1 transition-colors",
+            !multiSelect && "cursor-grab active:cursor-grabbing",
             (hovered || menuOpen) && "bg-foreground/5",
-            selectedGroupIDs.includes(group.id) && "bg-primary/10",
-            dropHovered && "ring-2 ring-primary"
+            dropHovered && "bg-foreground/5 text-foreground/60"
           )}
-          onPointerEnter={(event) => {
-            setHovered(true)
-            if (actions.includes("move")) {
-              onGroupSweepEnter(group.id, (event.buttons & 1) !== 0)
-            }
-          }}
+          onPointerEnter={() => setHovered(true)}
           onPointerLeave={() => setHovered(false)}
+          draggable={!multiSelect}
+          onDragStart={(event) => {
+            if (
+              (event.target as HTMLElement).closest(
+                "[data-slot=dropdown-menu-trigger]"
+              )
+            ) {
+              event.preventDefault()
+              return
+            }
+            event.currentTarget.classList.add(...dragPreviewClasses)
+            onGroupDragStart(group, event)
+          }}
+          onDragEnd={(event) => {
+            event.currentTarget.classList.remove(...dragPreviewClasses)
+            onDragEnd()
+          }}
           onDragOver={(event) => {
             if (canDropOn(group)) {
               event.preventDefault()
@@ -207,44 +211,17 @@ export function GroupTreeItem({
             onDropOn(group, event)
           }}
         >
-          {actions.includes("move") && (
-            <SelectionDot
-              selected={selectedGroupIDs.includes(group.id)}
-              onPress={() =>
-                onGroupSweepStart(group.id, selectedGroupIDs.includes(group.id))
-              }
-              onToggle={() => onGroupSelect(group.id)}
-              label={`${group.name} · ${t("pages.membersAndGroups.moveGroup")}`}
-              className="ms-2"
+          {multiSelect && (
+            <Checkbox
+              checked={false}
+              disabled
+              aria-label={group.name}
+              className="ms-1 shrink-0 border-muted-foreground/30! bg-muted! text-muted-foreground! opacity-100!"
             />
           )}
-          {children.length || directMembers.length ? (
-            <CollapsibleTrigger render={triggerButton}>
-              {label}
-            </CollapsibleTrigger>
-          ) : (
-            <span
-              className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-sm"
-              style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
-            >
-              {label}
-            </span>
-          )}
-          {actions.includes("move") && (
-            <span
-              draggable
-              onDragStart={(event) => onGroupDragStart(group, event)}
-              onDragEnd={onDragEnd}
-              title={t("pages.membersAndGroups.moveGroup")}
-              className="cursor-grab px-1 text-muted-foreground active:cursor-grabbing"
-            >
-              <HugeiconsIcon
-                icon={MoveIcon}
-                className="size-4"
-                strokeWidth={2}
-              />
-            </span>
-          )}
+          <CollapsibleTrigger render={triggerButton}>
+            {label}
+          </CollapsibleTrigger>
           <div
             className={cn(
               "relative flex h-8 shrink-0 items-center justify-center",
@@ -287,11 +264,12 @@ export function GroupTreeItem({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuGroup>
-                  {actions
+                  {allGroupActions
                     .filter((action) => action !== "delete")
                     .map((action) => (
                       <DropdownMenuItem
                         key={action}
+                        disabled={!actions.includes(action)}
                         onClick={() => onAction({ action, group })}
                       >
                         <HugeiconsIcon
@@ -302,15 +280,19 @@ export function GroupTreeItem({
                       </DropdownMenuItem>
                     ))}
                 </DropdownMenuGroup>
-                {actions.includes("delete") && (
+                {allGroupActions.includes("delete") && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuGroup>
                       <DropdownMenuItem
                         variant="destructive"
+                        disabled={!actions.includes("delete")}
                         onClick={() => onAction({ action: "delete", group })}
                       >
-                        <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                        <HugeiconsIcon
+                          icon={actionIcons.delete}
+                          strokeWidth={2}
+                        />
                         {t("pages.membersAndGroups.deleteGroup")}
                       </DropdownMenuItem>
                     </DropdownMenuGroup>
@@ -321,7 +303,7 @@ export function GroupTreeItem({
           </div>
         </div>
         {(children.length > 0 || directMembers.length > 0) && (
-          <CollapsibleContent>
+          <CollapsibleContent className="pt-1">
             <ul className="flex flex-col gap-1">
               {children.map((child) => (
                 <GroupTreeItem
@@ -336,14 +318,10 @@ export function GroupTreeItem({
                   onToggleStatus={onToggleStatus}
                   onToggleRole={onToggleRole}
                   onResetPassword={onResetPassword}
-                  selectedGroupIDs={selectedGroupIDs}
+                  multiSelect={multiSelect}
+                  selectionDisabled={selectionDisabled}
                   selectedMemberKeys={selectedMemberKeys}
-                  onGroupSelect={onGroupSelect}
                   onMemberSelect={onMemberSelect}
-                  onGroupSweepStart={onGroupSweepStart}
-                  onMemberSweepStart={onMemberSweepStart}
-                  onGroupSweepEnter={onGroupSweepEnter}
-                  onMemberSweepEnter={onMemberSweepEnter}
                   onGroupDragStart={onGroupDragStart}
                   onMemberDragStart={onMemberDragStart}
                   onDragEnd={onDragEnd}
@@ -369,10 +347,10 @@ function GroupTreeMemberRow({
   onToggleStatus,
   onToggleRole,
   onResetPassword,
+  multiSelect,
+  selectionDisabled,
   selected,
   onSelect,
-  onSweepStart,
-  onSweepEnter,
   onDragStart,
   onDragEnd,
 }: Pick<
@@ -382,13 +360,13 @@ function GroupTreeMemberRow({
   | "onToggleStatus"
   | "onToggleRole"
   | "onResetPassword"
+  | "multiSelect"
+  | "selectionDisabled"
 > & {
   member: MemberActionUser
   level: number
   selected: boolean
-  onSelect: () => void
-  onSweepStart: () => void
-  onSweepEnter: (pressed: boolean) => void
+  onSelect: (checked: boolean) => void
   onDragStart: (event: DragEvent) => void
   onDragEnd: () => void
 }) {
@@ -400,109 +378,95 @@ function GroupTreeMemberRow({
   return (
     <li
       aria-busy={savingID === member.id}
-      onPointerEnter={(event) => {
-        setHovered(true)
-        onSweepEnter((event.buttons & 1) !== 0)
+      draggable={!multiSelect}
+      onDragStart={(event) => {
+        if (
+          (event.target as HTMLElement).closest(
+            "button, [role=checkbox], [data-slot=dropdown-menu-trigger]"
+          )
+        ) {
+          event.preventDefault()
+          return
+        }
+        event.currentTarget.classList.add(...dragPreviewClasses)
+        onDragStart(event)
       }}
+      onDragEnd={(event) => {
+        event.currentTarget.classList.remove(...dragPreviewClasses)
+        if (!multiSelect) onDragEnd()
+      }}
+      onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
+      onClick={(event) => {
+        if (!multiSelect || selectionDisabled) return
+        if (
+          (event.target as HTMLElement).closest(
+            "button, [role=checkbox], [data-slot=dropdown-menu-trigger]"
+          )
+        ) {
+          return
+        }
+        onSelect(!selected)
+      }}
       className={cn(
-        "flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-1 text-sm transition-colors",
+        "flex min-w-0 items-center gap-2 rounded-md pe-1 text-sm transition-colors",
+        multiSelect ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         (hovered || menuOpen) && "bg-foreground/5",
-        selected && "bg-primary/10",
+        selected && "bg-foreground/5",
         member.status === "disabled" && "text-muted-foreground"
       )}
-      style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
+      style={{
+        paddingInlineStart: multiSelect ? 0 : `${level * 1.25 + 0.5}rem`,
+      }}
     >
-      <SelectionDot
-        selected={selected}
-        onPress={onSweepStart}
-        onToggle={onSelect}
-        label={member.name}
-        className="me-2"
-      />
-      <HugeiconsIcon
-        icon={User02Icon}
-        className={cn("size-4 shrink-0", memberIconColor(member))}
-        strokeWidth={2}
-        aria-hidden="true"
-      />
-      <span
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        className="min-w-0 flex-1 cursor-grab truncate active:cursor-grabbing"
-        title={member.email}
-      >
-        {member.name}
-      </span>
-      <div
-        className={cn(
-          "flex h-8 shrink-0 items-center justify-center overflow-visible",
-          showActions ? "w-6" : "w-0"
-        )}
-        onFocusCapture={(event) =>
-          setActionsFocused(event.target.matches(":focus-visible"))
-        }
-        onBlurCapture={() => setActionsFocused(false)}
-      >
-        <MemberActions
-          user={member}
-          savingID={savingID}
-          currentUserID={currentUserID}
-          treeActionsVisible={showActions}
-          onMenuOpenChange={setMenuOpen}
-          onToggleStatus={onToggleStatus}
-          onToggleRole={onToggleRole}
-          onResetPassword={onResetPassword}
+      {multiSelect && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onSelect}
+          disabled={selectionDisabled}
+          aria-label={member.name}
+          className="ms-1 shrink-0"
         />
+      )}
+      <div
+        className="flex min-w-0 flex-1 items-center gap-2"
+        style={
+          multiSelect
+            ? { paddingInlineStart: `${level * 1.25 + 0.5}rem` }
+            : undefined
+        }
+      >
+        <HugeiconsIcon
+          icon={User02Icon}
+          className={cn("size-4 shrink-0", memberIconColor(member))}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate" title={member.email}>
+          {member.name}
+        </span>
+        <div
+          className={cn(
+            "flex h-8 shrink-0 items-center justify-center overflow-visible",
+            showActions ? "w-6" : "w-0"
+          )}
+          onFocusCapture={(event) =>
+            setActionsFocused(event.target.matches(":focus-visible"))
+          }
+          onBlurCapture={() => setActionsFocused(false)}
+        >
+          <MemberActions
+            user={member}
+            savingID={savingID}
+            currentUserID={currentUserID}
+            treeActionsVisible={showActions}
+            onMenuOpenChange={setMenuOpen}
+            onToggleStatus={onToggleStatus}
+            onToggleRole={onToggleRole}
+            onResetPassword={onResetPassword}
+          />
+        </div>
       </div>
     </li>
-  )
-}
-
-function SelectionDot({
-  selected,
-  label,
-  className,
-  onPress,
-  onToggle,
-}: {
-  selected: boolean
-  label: string
-  className?: string
-  onPress: () => void
-  onToggle: () => void
-}) {
-  const pointerType = useRef("")
-
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={selected}
-      aria-label={label}
-      className={cn(
-        "relative inline-flex size-5 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        className
-      )}
-      onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
-        pointerType.current = event.pointerType
-        if (event.pointerType === "mouse" && event.button === 0) {
-          event.preventDefault()
-          onPress()
-        }
-      }}
-      onClick={(event) => {
-        if (event.detail === 0 || pointerType.current !== "mouse") onToggle()
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-2.5 rounded-full border border-input bg-white transition-colors",
-          selected && "border-foreground bg-foreground"
-        )}
-      />
-    </button>
   )
 }

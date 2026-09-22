@@ -110,7 +110,6 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
     "utf8"
   )
   assert.match(source, /icon=\{Add01Icon\}/)
-  assert.doesNotMatch(source, /<DropdownMenuTrigger/)
   assert.match(source, /setCreateOpen\(true\)/)
   assert.match(source, /open=\{createOpen\}/)
   assert.match(source, /<Tabs\s+value=\{createMode\}/)
@@ -219,7 +218,10 @@ test("the tree root starts expanded without checking its ID", async () => {
     "utf8"
   )
   assert.match(tree, /useState\(group\.parent_id === null\)/)
-  assert.match(tree, /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/)
+  assert.match(
+    tree,
+    /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/
+  )
   assert.doesNotMatch(tree, /ROOT_GROUP_ID|ungroupedExpanded/)
 })
 
@@ -270,7 +272,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   assert.doesNotMatch(actionSlot, /hover:none|group-hover\/group-row/)
   assert.equal((tree.match(/onPointerEnter=/g) ?? []).length, 2)
   assert.equal((tree.match(/onPointerLeave=/g) ?? []).length, 2)
-  assert.equal((tree.match(/bg-foreground\/5/g) ?? []).length, 5)
+  assert.equal((tree.match(/bg-foreground\/5/g) ?? []).length, 7)
   assert.equal(
     (tree.match(/\(hovered \|\| menuOpen\) && "bg-foreground\/5"/g) ?? [])
       .length,
@@ -280,7 +282,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   assert.equal(
     (
       tree.match(
-        /"group\/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors"/g
+        /"group\/group-row flex items-center rounded-md pe-1 transition-colors"/g
       ) ?? []
     ).length,
     1
@@ -289,7 +291,7 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   const memberRow = tree.split("function GroupTreeMemberRow(")[1]
   assert.match(
     memberRow,
-    /"flex min-w-0 cursor-pointer items-center gap-2 rounded-md pe-1 text-sm transition-colors"/
+    /"flex min-w-0 items-center gap-2 rounded-md pe-1 text-sm transition-colors",/
   )
   assert.match(memberRow, /treeActionsVisible=\{showActions\}/)
   assert.match(memberRow, /onMenuOpenChange=\{setMenuOpen\}/)

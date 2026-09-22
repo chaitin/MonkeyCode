@@ -561,6 +561,20 @@ export const deDE = {
         "„{{rule}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "Mehrfachauswahl",
+        exit: "Abbrechen",
+        actions: "Aktionen",
+        moveTitle: "Mitglieder verschieben",
+        moveDescription:
+          "Wählen Sie eine neue übergeordnete Gruppe für die {{count}} ausgewählten Mitglieder.",
+        statusSuccess: "{{count}} Mitglieder erfolgreich {{status}}.",
+        statusFailure:
+          "Stapelvorgang abgeschlossen: {{succeeded}} erfolgreich, {{failed}} fehlgeschlagen.",
+        statusConfirm:
+          "Möchten Sie die {{count}} ausgewählten Mitglieder wirklich {{action}}?",
+        confirm: "Bestätigen",
+      },
       groupSelection: {
         label: "Gruppen",
         placeholder: "Gruppen auswählen (Mehrfachauswahl)",
@@ -569,8 +583,6 @@ export const deDE = {
         empty: "Keine Gruppen verfügbar.",
         clear: "Auswahl löschen",
       },
-      directMembersHint:
-        "Nur direkte Mitgliedschaften werden geändert. Mitglieder von Untergruppen bleiben sichtbar.",
       deleteChildrenHint:
         "Verschieben oder löschen Sie zuerst die Untergruppen.",
       deleteMembersHint:
@@ -651,7 +663,7 @@ export const deDE = {
       remainingCredits: "{{count}} Credits verbleibend",
       joinedAt: "Beigetreten am {{date}}",
       groupActions: "Gruppenaktionen",
-      addSubgroup: "Untergruppe hinzufügen",
+      addSubgroup: "Untergruppe erstellen",
       renameGroup: "Namen ändern",
       adjustMembers: "Mitglieder anpassen",
       moveGroup: "Gruppe verschieben",

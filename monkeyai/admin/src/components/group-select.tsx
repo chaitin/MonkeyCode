@@ -26,6 +26,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   changeGroupSelection,
@@ -211,6 +212,21 @@ export function GroupSelect({
     )
     if (checked && !multiple) handleOpenChange(false)
   }
+  const radioValue =
+    !multiple && value.groupIds.length > 0
+      ? `group:${value.groupIds[0]}`
+      : !multiple && value.userIds.length > 0
+        ? `user:${value.userIds[0]}`
+        : ""
+  const handleRadioValueChange = (nextValue: string) => {
+    const separator = nextValue.indexOf(":")
+    if (separator < 0) return
+    select(
+      nextValue.slice(0, separator) as "group" | "user",
+      nextValue.slice(separator + 1),
+      true
+    )
+  }
   const rowClass = "flex w-full min-w-0 items-center gap-1 rounded-md"
   const checkboxClass =
     "ms-auto shrink-0 data-disabled:border-muted-foreground/30! data-disabled:bg-muted! data-disabled:text-muted-foreground! data-disabled:opacity-100!"
@@ -244,13 +260,22 @@ export function GroupSelect({
             <span className="min-w-0 flex-1 truncate" title={user.name}>
               {user.name}
             </span>
-            <Checkbox
-              id={checkboxID}
-              checked={inheritedSelection || value.userIds.includes(user.id)}
-              disabled={unavailable}
-              className={checkboxClass}
-              onCheckedChange={(checked) => select("user", user.id, checked)}
-            />
+            {multiple ? (
+              <Checkbox
+                id={checkboxID}
+                checked={inheritedSelection || value.userIds.includes(user.id)}
+                disabled={unavailable}
+                className={checkboxClass}
+                onCheckedChange={(checked) => select("user", user.id, checked)}
+              />
+            ) : (
+              <RadioGroupItem
+                id={checkboxID}
+                value={`user:${user.id}`}
+                disabled={unavailable}
+                className="ms-auto"
+              />
+            )}
           </label>
         </div>
       </li>
@@ -329,20 +354,29 @@ export function GroupSelect({
               >
                 {group.name}
               </span>
-              <Checkbox
-                id={checkboxID}
-                checked={
-                  inheritedSelection || value.groupIds.includes(group.id)
-                }
-                indeterminate={
-                  inherited?.partialGroupIds.has(group.id) ?? false
-                }
-                disabled={disabled || group.disabled || inheritedSelection}
-                className={checkboxClass}
-                onCheckedChange={(checked) =>
-                  select("group", group.id, checked)
-                }
-              />
+              {multiple ? (
+                <Checkbox
+                  id={checkboxID}
+                  checked={
+                    inheritedSelection || value.groupIds.includes(group.id)
+                  }
+                  indeterminate={
+                    inherited?.partialGroupIds.has(group.id) ?? false
+                  }
+                  disabled={disabled || group.disabled || inheritedSelection}
+                  className={checkboxClass}
+                  onCheckedChange={(checked) =>
+                    select("group", group.id, checked)
+                  }
+                />
+              ) : (
+                <RadioGroupItem
+                  id={checkboxID}
+                  value={`group:${group.id}`}
+                  disabled={disabled || group.disabled}
+                  className="ms-auto"
+                />
+              )}
             </label>
           ) : (
             <span className="flex h-9 min-w-0 flex-1 cursor-default items-center pe-2 text-popover-foreground">
@@ -417,12 +451,31 @@ export function GroupSelect({
             } as CSSProperties
           }
         >
-          <ul className="space-y-1 pe-2" aria-label={label}>
-            {(children.get(null) ?? []).map((group) =>
-              renderGroup(group, new Set())
-            )}
-            {(members.get(null) ?? []).map((user) => renderUser(user, null, 0))}
-          </ul>
+          {multiple ? (
+            <ul className="space-y-1 pe-2" aria-label={label}>
+              {(children.get(null) ?? []).map((group) =>
+                renderGroup(group, new Set())
+              )}
+              {(members.get(null) ?? []).map((user) =>
+                renderUser(user, null, 0)
+              )}
+            </ul>
+          ) : (
+            <RadioGroup
+              value={radioValue}
+              onValueChange={handleRadioValueChange}
+              className="gap-0"
+            >
+              <ul className="space-y-1 pe-2" aria-label={label}>
+                {(children.get(null) ?? []).map((group) =>
+                  renderGroup(group, new Set())
+                )}
+                {(members.get(null) ?? []).map((user) =>
+                  renderUser(user, null, 0)
+                )}
+              </ul>
+            </RadioGroup>
+          )}
           {visible.groupIds.size === 0 && visible.userIds.size === 0 && (
             <p className="py-6 pe-2 text-center text-sm text-muted-foreground">
               {searching ? noResultsText : emptyText}

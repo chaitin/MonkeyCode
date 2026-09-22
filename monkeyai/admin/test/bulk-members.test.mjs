@@ -190,6 +190,13 @@ test("bulk dialog labels and errors exist in all supported languages", () => {
     zhTW,
   ]) {
     const members = locale.pages.membersAndGroups
+    assert.deepEqual(
+      Object.keys(members.treeSelection),
+      Object.keys(enUS.pages.membersAndGroups.treeSelection)
+    )
+    for (const value of Object.values(members.treeSelection))
+      assert.ok(value.trim())
+    assert.ok(members.treeSelection.moveDescription.includes("{{count}}"))
     for (const key of ["confirmMemberAction", "actionSucceeded"]) {
       assert.ok(typeof members[key] === "string" && members[key].trim())
     }

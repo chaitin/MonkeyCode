@@ -547,6 +547,19 @@ export const jaJP = {
         "「{{rule}}」を削除しますか？この操作は元に戻せません。",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "複数選択",
+        exit: "キャンセル",
+        actions: "操作",
+        moveTitle: "メンバーを移動",
+        moveDescription:
+          "選択した {{count}} 人のメンバーの新しい親グループを選択してください。",
+        statusSuccess: "{{count}} 人のメンバーを{{status}}しました。",
+        statusFailure:
+          "一括操作完了：成功 {{succeeded}} 人、失敗 {{failed}} 人。",
+        statusConfirm: "選択した {{count}} 人のメンバーを{{action}}しますか？",
+        confirm: "確認",
+      },
       groupSelection: {
         label: "グループ",
         placeholder: "グループを選択（複数選択可）",
@@ -555,8 +568,6 @@ export const jaJP = {
         empty: "選択できるグループはありません。",
         clear: "選択をクリア",
       },
-      directMembersHint:
-        "直接所属するメンバーのみ変更します。子グループのメンバーは引き続き表示されます。",
       deleteChildrenHint: "先に子グループを移動または削除してください。",
       deleteMembersHint:
         "メンバーのアカウントは保持されます。このグループの所属情報とリソース権限は削除されます。",
@@ -633,7 +644,7 @@ export const jaJP = {
       remainingCredits: "残り {{count}} クレジット",
       joinedAt: "参加日：{{date}}",
       groupActions: "グループ操作",
-      addSubgroup: "子グループを追加",
+      addSubgroup: "子グループを作成",
       renameGroup: "名前を変更",
       adjustMembers: "メンバーを調整",
       moveGroup: "グループを移動",

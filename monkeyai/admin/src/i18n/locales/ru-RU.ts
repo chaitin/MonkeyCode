@@ -554,6 +554,20 @@ export const ruRU = {
         "Удалить правило «{{rule}}»? Это действие нельзя отменить.",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "Множественный выбор",
+        exit: "Отмена",
+        actions: "Действия",
+        moveTitle: "Переместить участников",
+        moveDescription:
+          "Выберите новую родительскую группу для выбранных участников ({{count}}).",
+        statusSuccess: "Участники ({{count}}) успешно изменены: {{status}}.",
+        statusFailure:
+          "Операция завершена: успешно {{succeeded}}, ошибок {{failed}}.",
+        statusConfirm:
+          "Вы уверены, что хотите {{action}} выбранных участников ({{count}})?",
+        confirm: "Подтвердить",
+      },
       groupSelection: {
         label: "Группы",
         placeholder: "Выберите группы (можно несколько)",
@@ -562,8 +576,6 @@ export const ruRU = {
         empty: "Нет доступных групп.",
         clear: "Очистить выбор",
       },
-      directMembersHint:
-        "Изменяется только прямое членство. Участники подгрупп по-прежнему отображаются здесь.",
       deleteChildrenHint: "Сначала переместите или удалите подгруппы.",
       deleteMembersHint:
         "Аккаунты участников сохранятся. Членство и разрешения на ресурсы этой группы будут удалены.",
@@ -640,7 +652,7 @@ export const ruRU = {
       remainingCredits: "Осталось кредитов: {{count}}",
       joinedAt: "Дата добавления: {{date}}",
       groupActions: "Действия с группой",
-      addSubgroup: "Добавить подгруппу",
+      addSubgroup: "Создать подгруппу",
       renameGroup: "Изменить название",
       adjustMembers: "Изменить состав",
       moveGroup: "Переместить группу",

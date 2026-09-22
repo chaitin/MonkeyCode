@@ -756,6 +756,18 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{rule}}”吗？此操作无法撤销。",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "多选",
+        exit: "取消",
+        actions: "操作",
+        moveTitle: "移动成员",
+        moveDescription: "为选中的 {{count}} 位成员选择新的上级分组。",
+        statusSuccess: "已成功{{status}} {{count}} 位成员。",
+        statusFailure:
+          "批量操作完成：成功 {{succeeded}} 位，失败 {{failed}} 位。",
+        statusConfirm: "确定要{{action}}选中的 {{count}} 位成员吗？",
+        confirm: "确认",
+      },
       groupSelection: {
         label: "分组",
         placeholder: "选择分组（可多选）",
@@ -764,8 +776,6 @@ export const zhCN = {
         empty: "暂无可选分组。",
         clear: "清空选择",
       },
-      directMembersHint:
-        "仅调整直接加入本组的成员；子分组成员仍会显示在本组中。",
       deleteChildrenHint: "请先移动或删除子分组，再删除此分组。",
       deleteMembersHint: "成员账号会保留；本组的成员关系与资源授权将一并移除。",
       title: "成员与分组",
@@ -834,7 +844,7 @@ export const zhCN = {
       remainingCredits: "剩余 {{count}} 积分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "分组操作",
-      addSubgroup: "添加子分组",
+      addSubgroup: "创建子分组",
       renameGroup: "修改名称",
       adjustMembers: "调整成员",
       moveGroup: "移动分组",

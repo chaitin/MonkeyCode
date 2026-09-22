@@ -1,16 +1,29 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type DragEvent,
   type FormEvent,
 } from "react"
-import { Add01Icon } from "@hugeicons/core-free-icons"
+import {
+  Add01Icon,
+  ArrowDown01Icon,
+  MoveIcon,
+  PowerIcon,
+  PowerOffIcon,
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { MoveMembersDialog } from "@/components/members/move-members-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,8 +79,6 @@ import { compareMembers } from "@/lib/member-sorting"
 import {
   canMoveTo,
   memberMoveKey,
-  movableGroupIDs,
-  updateGroupSelection,
   updateMemberSelection,
   type MoveMember,
   type MovePayload,
@@ -102,13 +113,13 @@ export function MembersAndGroupsPage() {
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [groups, setGroups] = useState<MemberGroup[]>([])
-  const [selectedGroupIDs, setSelectedGroupIDs] = useState<string[]>([])
+  const [multiSelect, setMultiSelect] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<MoveMember[]>([])
-  const selectionSweep = useRef<{
-    kind: "group" | "member"
-    key: string
-    select: boolean
-  } | null>(null)
+  const [moveSelection, setMoveSelection] = useState<MoveMember[] | null>(null)
+  const [batchUpdatingStatus, setBatchUpdatingStatus] = useState(false)
+  const [pendingBatchStatus, setPendingBatchStatus] = useState<
+    User["status"] | null
+  >(null)
   const [dragging, setDragging] = useState<MovePayload | null>(null)
   const [pendingMove, setPendingMove] = useState<{
     payload: MovePayload
@@ -138,18 +149,6 @@ export function MembersAndGroupsPage() {
     role: "user" as User["role"],
     password: "",
   })
-
-  useEffect(() => {
-    const finishSweep = () => {
-      selectionSweep.current = null
-    }
-    window.addEventListener("pointerup", finishSweep)
-    window.addEventListener("pointercancel", finishSweep)
-    return () => {
-      window.removeEventListener("pointerup", finishSweep)
-      window.removeEventListener("pointercancel", finishSweep)
-    }
-  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -260,93 +259,86 @@ export function MembersAndGroupsPage() {
       )
 
   const selectedMemberKeys = selectedMembers.map(memberMoveKey)
-  const selectGroup = (id: string) => {
-    setSelectedMembers([])
-    setPendingMove(null)
-    setSelectedGroupIDs((current) =>
-      current.includes(id)
-        ? current.filter((selected) => selected !== id)
-        : [...current, id]
-    )
-  }
-  const selectMember = (member: MoveMember) => {
-    setSelectedGroupIDs([])
-    setPendingMove(null)
-    setSelectedMembers((current) => {
-      const key = memberMoveKey(member)
-      return current.some((selected) => memberMoveKey(selected) === key)
-        ? current.filter((selected) => memberMoveKey(selected) !== key)
-        : [...current, member]
-    })
-  }
-  const startGroupSweep = (id: string, wasSelected: boolean) => {
-    selectionSweep.current = { kind: "group", key: id, select: !wasSelected }
-    selectGroup(id)
-  }
-  const startMemberSweep = (member: MoveMember, wasSelected: boolean) => {
-    selectionSweep.current = {
-      kind: "member",
-      key: memberMoveKey(member),
-      select: !wasSelected,
-    }
-    selectMember(member)
-  }
-  const sweepGroup = (id: string, pressed: boolean) => {
-    const sweep = selectionSweep.current
-    if (!pressed || sweep?.kind !== "group" || sweep.key === id) return
-    setSelectedMembers([])
-    setPendingMove(null)
-    setSelectedGroupIDs((current) =>
-      updateGroupSelection(current, id, sweep.select)
-    )
-  }
-  const sweepMember = (member: MoveMember, pressed: boolean) => {
-    const sweep = selectionSweep.current
-    const key = memberMoveKey(member)
-    if (!pressed || sweep?.kind !== "member" || sweep.key === key) return
-    setSelectedGroupIDs([])
+  const selectMember = (member: MoveMember, checked: boolean) => {
+    if (!multiSelect || moving) return
     setPendingMove(null)
     setSelectedMembers((current) =>
-      updateMemberSelection(current, member, sweep.select)
+      updateMemberSelection(current, member, checked)
     )
   }
+  const updateSelectedStatus = async (status: User["status"]) => {
+    if (moving || batchUpdatingStatus) return
+    const selectedUsers = [
+      ...new Set(selectedMembers.map((member) => member.id)),
+    ]
+      .map((id) => users.find((user) => user.id === id))
+      .filter((user): user is User => user !== undefined)
+    if (!selectedUsers.length) return
+
+    setBatchUpdatingStatus(true)
+    let succeeded = 0
+    const failures: string[] = []
+    for (const user of selectedUsers) {
+      try {
+        const updated = await api<User>(`/api/admin/v1/users/${user.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: user.name, role: user.role, status }),
+        })
+        setUsers((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item))
+        )
+        succeeded += 1
+      } catch (reason) {
+        failures.push(`${user.name}: ${(reason as Error).message}`)
+      }
+    }
+    setSelectedMembers([])
+    setBatchUpdatingStatus(false)
+    setPendingBatchStatus(null)
+    if (failures.length) {
+      showToast({
+        status: "error",
+        title: t("pages.membersAndGroups.treeSelection.statusFailure", {
+          succeeded,
+          failed: failures.length,
+        }),
+        description: failures.join("; "),
+      })
+      return
+    }
+    showToast({
+      status: "success",
+      title: t("pages.membersAndGroups.treeSelection.statusSuccess", {
+        status: t(
+          status === "active"
+            ? "pages.membersAndGroups.enableMember"
+            : "pages.membersAndGroups.disableMember"
+        ),
+        count: succeeded,
+      }),
+    })
+  }
+
+  const confirmSelectedStatus = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!pendingBatchStatus) return
+    await updateSelectedStatus(pendingBatchStatus)
+  }
+
   const startDrag = (payload: MovePayload, event: DragEvent) => {
-    const names =
-      payload.kind === "group"
-        ? payload.ids.map(
-            (id) => groups.find((group) => group.id === id)?.name ?? id
-          )
-        : payload.members.map(
-            (member) =>
-              users.find((user) => user.id === member.id)?.name ?? member.id
-          )
-    const preview = document.createElement("div")
-    preview.className =
-      "pointer-events-none fixed left-0 top-0 z-[9999] max-w-60 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-lg"
-    preview.textContent = `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ""}`
-    document.body.appendChild(preview)
-    event.dataTransfer.setDragImage(preview, 12, 12)
-    requestAnimationFrame(() => preview.remove())
     setDragging(payload)
     setPendingMove(null)
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", "move-group-members")
   }
   const dragGroup = (group: MemberGroup, event: DragEvent) => {
-    const ids = movableGroupIDs(
-      groups,
-      selectedGroupIDs.includes(group.id) ? selectedGroupIDs : [group.id]
-    )
-    setSelectedGroupIDs(ids)
-    setSelectedMembers([])
-    startDrag({ kind: "group", ids }, event)
+    startDrag({ kind: "group", ids: [group.id] }, event)
   }
   const dragMember = (member: MoveMember, event: DragEvent) => {
-    const members = selectedMemberKeys.includes(memberMoveKey(member))
-      ? selectedMembers
-      : [member]
-    setSelectedGroupIDs([])
-    setSelectedMembers(members)
+    const members =
+      multiSelect && selectedMemberKeys.includes(memberMoveKey(member))
+        ? selectedMembers
+        : [member]
     startDrag({ kind: "member", members }, event)
   }
   const dropOn = (target: MemberGroup, event: DragEvent) => {
@@ -355,30 +347,26 @@ export function MembersAndGroupsPage() {
     setPendingMove({ payload: dragging, target })
     setDragging(null)
   }
-  const saveMove = async () => {
-    if (!pendingMove || moving) return
+  const saveMove = async (payload: MovePayload, target: MemberGroup) => {
+    if (moving || !canMoveTo(groups, payload, target)) return
     setMoving(true)
     try {
       await api<void>("/api/admin/v1/groups/move", {
         method: "POST",
         body: JSON.stringify({
-          target_id: pendingMove.target.id,
-          group_ids:
-            pendingMove.payload.kind === "group" ? pendingMove.payload.ids : [],
-          members:
-            pendingMove.payload.kind === "member"
-              ? pendingMove.payload.members
-              : [],
+          target_id: target.id,
+          group_ids: payload.kind === "group" ? payload.ids : [],
+          members: payload.kind === "member" ? payload.members : [],
         }),
       })
-      setSelectedGroupIDs([])
       setSelectedMembers([])
       setPendingMove(null)
+      setMoveSelection(null)
       void reloadGroups()
       showToast({
         status: "success",
         title: t("pages.membersAndGroups.actionSucceeded", {
-          target: pendingMove.target.name,
+          target: target.name,
         }),
       })
     } catch (reason) {
@@ -455,7 +443,9 @@ export function MembersAndGroupsPage() {
             type="button"
             size="sm"
             disabled={moving}
-            onClick={() => void saveMove()}
+            onClick={() =>
+              void saveMove(pendingMove.payload, pendingMove.target)
+            }
           >
             {t("pages.membersAndGroups.saveChanges")}
           </Button>
@@ -466,7 +456,6 @@ export function MembersAndGroupsPage() {
             disabled={moving}
             onClick={() => {
               setPendingMove(null)
-              setSelectedGroupIDs([])
               setSelectedMembers([])
             }}
           >
@@ -478,6 +467,78 @@ export function MembersAndGroupsPage() {
         <Card className="min-h-64 md:min-h-0">
           <CardHeader>
             <CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>
+            <CardAction className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                aria-pressed={multiSelect}
+                disabled={loading || moving || batchUpdatingStatus}
+                onClick={() => {
+                  if (multiSelect) {
+                    setSelectedMembers([])
+                    setPendingMove(null)
+                    setDragging(null)
+                    setMultiSelect(false)
+                  } else {
+                    setMultiSelect(true)
+                  }
+                }}
+              >
+                {t(
+                  `pages.membersAndGroups.treeSelection.${multiSelect ? "exit" : "enter"}`
+                )}
+              </Button>
+              {multiSelect && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          moving ||
+                          batchUpdatingStatus ||
+                          selectedMembers.length === 0
+                        }
+                      />
+                    }
+                  >
+                    {t("pages.membersAndGroups.treeSelection.actions")}
+                    <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        disabled={moving || batchUpdatingStatus}
+                        onClick={() => setPendingBatchStatus("active")}
+                      >
+                        <HugeiconsIcon icon={PowerIcon} strokeWidth={2} />
+                        {t("pages.membersAndGroups.enableMember")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={moving || batchUpdatingStatus}
+                        onClick={() => setPendingBatchStatus("disabled")}
+                      >
+                        <HugeiconsIcon icon={PowerOffIcon} strokeWidth={2} />
+                        {t("pages.membersAndGroups.disableMember")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={moving || batchUpdatingStatus}
+                        onClick={() => {
+                          setPendingMove(null)
+                          setMoveSelection([...selectedMembers])
+                        }}
+                      >
+                        <HugeiconsIcon icon={MoveIcon} strokeWidth={2} />
+                        {t("pages.membersAndGroups.moveAction")}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1">
             <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
@@ -500,14 +561,10 @@ export function MembersAndGroupsPage() {
                       onToggleStatus={toggleUserStatus}
                       onToggleRole={toggleUserRole}
                       onResetPassword={setPasswordResetUser}
-                      selectedGroupIDs={selectedGroupIDs}
+                      multiSelect={multiSelect}
+                      selectionDisabled={moving || batchUpdatingStatus}
                       selectedMemberKeys={selectedMemberKeys}
-                      onGroupSelect={selectGroup}
                       onMemberSelect={selectMember}
-                      onGroupSweepStart={startGroupSweep}
-                      onMemberSweepStart={startMemberSweep}
-                      onGroupSweepEnter={sweepGroup}
-                      onMemberSweepEnter={sweepMember}
                       onGroupDragStart={dragGroup}
                       onMemberDragStart={dragMember}
                       onDragEnd={() => setDragging(null)}
@@ -575,24 +632,18 @@ export function MembersAndGroupsPage() {
                       size="sm"
                       variant="outline"
                       aria-busy={savingID === user.id}
-                      draggable
-                      onDragStart={(event) => {
-                        if (
-                          (event.target as HTMLElement).closest(
-                            "button, [role=checkbox]"
-                          )
-                        ) {
-                          event.preventDefault()
-                          return
-                        }
-                        startDrag(
-                          { kind: "member", members: [{ id: user.id }] },
-                          event
-                        )
-                      }}
-                      onDragEnd={() => setDragging(null)}
                     >
-                      <ItemMedia>
+                      <ItemMedia
+                        className="cursor-grab active:cursor-grabbing"
+                        draggable
+                        onDragStart={(event) =>
+                          startDrag(
+                            { kind: "member", members: [{ id: user.id }] },
+                            event
+                          )
+                        }
+                        onDragEnd={() => setDragging(null)}
+                      >
                         <MemberAvatar
                           role={user.role}
                           status={user.status}
@@ -677,6 +728,18 @@ export function MembersAndGroupsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {moveSelection && (
+        <MoveMembersDialog
+          groups={groups}
+          members={moveSelection}
+          saving={moving}
+          onClose={() => setMoveSelection(null)}
+          onMove={(target) =>
+            saveMove({ kind: "member", members: moveSelection }, target)
+          }
+        />
+      )}
 
       {passwordResetUser && (
         <ResetMemberPasswordDialog
@@ -895,6 +958,59 @@ export function MembersAndGroupsPage() {
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={pendingBatchStatus !== null}
+        onOpenChange={(open) => {
+          if (!open && !batchUpdatingStatus) setPendingBatchStatus(null)
+        }}
+      >
+        <AlertDialogContent>
+          <form
+            className="flex flex-col gap-6"
+            onSubmit={confirmSelectedStatus}
+          >
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingBatchStatus &&
+                  t(
+                    pendingBatchStatus === "active"
+                      ? "pages.membersAndGroups.enableMember"
+                      : "pages.membersAndGroups.disableMember"
+                  )}
+              </AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogDescription>
+              {pendingBatchStatus &&
+                t("pages.membersAndGroups.treeSelection.statusConfirm", {
+                  action: t(
+                    pendingBatchStatus === "active"
+                      ? "pages.membersAndGroups.enableMember"
+                      : "pages.membersAndGroups.disableMember"
+                  ),
+                  count: new Set(selectedMembers.map((member) => member.id))
+                    .size,
+                })}
+            </AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button" disabled={batchUpdatingStatus}>
+                {t("pages.membersAndGroups.cancelAction")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                type="submit"
+                variant={
+                  pendingBatchStatus === "disabled" ? "destructive" : "default"
+                }
+                disabled={batchUpdatingStatus}
+              >
+                {batchUpdatingStatus
+                  ? t("common.saving")
+                  : t("pages.membersAndGroups.treeSelection.confirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={pendingMemberAction !== null}

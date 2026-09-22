@@ -798,6 +798,20 @@ export const enUS = {
         'Delete "{{rule}}"? This action cannot be undone.',
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "Select multiple",
+        exit: "Cancel",
+        actions: "Actions",
+        moveTitle: "Move members",
+        moveDescription:
+          "Choose a new parent group for the {{count}} selected members.",
+        statusSuccess: "Successfully {{status}} {{count}} members.",
+        statusFailure:
+          "Batch operation complete: {{succeeded}} succeeded, {{failed}} failed.",
+        statusConfirm:
+          "Are you sure you want to {{action}} the {{count}} selected members?",
+        confirm: "Confirm",
+      },
       groupSelection: {
         label: "Groups",
         placeholder: "Select groups (multiple allowed)",
@@ -806,8 +820,6 @@ export const enUS = {
         empty: "No groups available.",
         clear: "Clear selection",
       },
-      directMembersHint:
-        "Only direct membership is changed; members of subgroups remain visible here.",
       deleteChildrenHint:
         "Move or delete subgroups before deleting this group.",
       deleteMembersHint:
@@ -885,7 +897,7 @@ export const enUS = {
       remainingCredits: "{{count}} credits remaining",
       joinedAt: "Joined {{date}}",
       groupActions: "Group actions",
-      addSubgroup: "Add subgroup",
+      addSubgroup: "Create subgroup",
       renameGroup: "Rename",
       adjustMembers: "Adjust members",
       moveGroup: "Move group",

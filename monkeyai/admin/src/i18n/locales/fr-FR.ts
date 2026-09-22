@@ -557,6 +557,20 @@ export const frFR = {
         "Supprimer « {{rule}} » ? Cette action est irréversible.",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "Sélection multiple",
+        exit: "Annuler",
+        actions: "Actions",
+        moveTitle: "Déplacer les membres",
+        moveDescription:
+          "Choisissez un nouveau groupe parent pour les {{count}} membres sélectionnés.",
+        statusSuccess: "{{count}} membres {{status}} avec succès.",
+        statusFailure:
+          "Opération groupée terminée : {{succeeded}} réussis, {{failed}} échecs.",
+        statusConfirm:
+          "Voulez-vous vraiment {{action}} les {{count}} membres sélectionnés ?",
+        confirm: "Confirmer",
+      },
       groupSelection: {
         label: "Groupes",
         placeholder: "Sélectionner des groupes (choix multiples)",
@@ -565,8 +579,6 @@ export const frFR = {
         empty: "Aucun groupe disponible.",
         clear: "Effacer la sélection",
       },
-      directMembersHint:
-        "Seules les appartenances directes sont modifiées. Les membres des sous-groupes restent visibles.",
       deleteChildrenHint:
         "Déplacez ou supprimez les sous-groupes avant de supprimer ce groupe.",
       deleteMembersHint:
@@ -645,7 +657,7 @@ export const frFR = {
       remainingCredits: "{{count}} crédits restants",
       joinedAt: "Membre depuis le {{date}}",
       groupActions: "Actions du groupe",
-      addSubgroup: "Ajouter un sous-groupe",
+      addSubgroup: "Créer un sous-groupe",
       renameGroup: "Renommer",
       adjustMembers: "Ajuster les membres",
       moveGroup: "Déplacer le groupe",

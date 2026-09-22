@@ -1,5 +1,12 @@
 import { useState } from "react"
-import { MoreHorizontalIcon } from "@hugeicons/core-free-icons"
+import {
+  MoreHorizontalIcon,
+  PowerIcon,
+  PowerOffIcon,
+  ResetPasswordIcon,
+  UserRoundCogIcon,
+  UserRoundIcon,
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
@@ -79,23 +86,32 @@ export function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => onResetPassword(user)}>
-            {t("pages.membersAndGroups.resetPassword")}
-          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCurrentUser}
             onClick={() => onToggleStatus(user)}
           >
+            <HugeiconsIcon
+              icon={user.status === "disabled" ? PowerIcon : PowerOffIcon}
+              strokeWidth={2}
+            />
             {t(
               user.status === "disabled"
                 ? "pages.membersAndGroups.enableMember"
                 : "pages.membersAndGroups.disableMember"
             )}
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onResetPassword(user)}>
+            <HugeiconsIcon icon={ResetPasswordIcon} strokeWidth={2} />
+            {t("pages.membersAndGroups.resetPassword")}
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCurrentUser}
             onClick={() => onToggleRole(user)}
           >
+            <HugeiconsIcon
+              icon={user.role === "admin" ? UserRoundIcon : UserRoundCogIcon}
+              strokeWidth={2}
+            />
             {t(
               user.role === "admin"
                 ? "pages.membersAndGroups.removeAdministrator"

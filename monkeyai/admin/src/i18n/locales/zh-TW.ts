@@ -518,6 +518,18 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{rule}}」嗎？此操作無法復原。",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "多選",
+        exit: "取消",
+        actions: "操作",
+        moveTitle: "移動成員",
+        moveDescription: "為選取的 {{count}} 位成員選擇新的上層群組。",
+        statusSuccess: "已成功{{status}} {{count}} 位成員。",
+        statusFailure:
+          "批次操作完成：成功 {{succeeded}} 位，失敗 {{failed}} 位。",
+        statusConfirm: "確定要{{action}}選取的 {{count}} 位成員嗎？",
+        confirm: "確認",
+      },
       groupSelection: {
         label: "分組",
         placeholder: "選擇分組（可多選）",
@@ -526,7 +538,6 @@ export const zhTW = {
         empty: "暫無可選分組。",
         clear: "清空選擇",
       },
-      directMembersHint: "僅調整直接加入本組的成員；子分組成員仍會顯示於本組。",
       deleteChildrenHint: "請先移動或刪除子分組，再刪除此分組。",
       deleteMembersHint: "成員帳號會保留；本組的成員關係與資源授權將一併移除。",
       title: "成員與群組",
@@ -596,7 +607,7 @@ export const zhTW = {
       remainingCredits: "剩餘 {{count}} 點積分",
       joinedAt: "{{year}} 年 {{month}} 月 {{day}} 日加入",
       groupActions: "群組操作",
-      addSubgroup: "新增子群組",
+      addSubgroup: "建立子群組",
       renameGroup: "修改名稱",
       adjustMembers: "調整成員",
       moveGroup: "移動群組",

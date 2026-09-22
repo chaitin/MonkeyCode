@@ -558,6 +558,20 @@ export const es419 = {
         '¿Eliminar "{{rule}}"? Esta acción no se puede deshacer.',
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "Selección múltiple",
+        exit: "Cancelar",
+        actions: "Acciones",
+        moveTitle: "Mover miembros",
+        moveDescription:
+          "Elige un nuevo grupo superior para los {{count}} miembros seleccionados.",
+        statusSuccess: "{{count}} miembros {{status}} correctamente.",
+        statusFailure:
+          "Operación por lotes completada: {{succeeded}} correctos, {{failed}} fallidos.",
+        statusConfirm:
+          "¿Seguro que quieres {{action}} los {{count}} miembros seleccionados?",
+        confirm: "Confirmar",
+      },
       groupSelection: {
         label: "Grupos",
         placeholder: "Seleccionar grupos (selección múltiple)",
@@ -566,8 +580,6 @@ export const es419 = {
         empty: "No hay grupos disponibles.",
         clear: "Borrar selección",
       },
-      directMembersHint:
-        "Solo se cambia la membresía directa. Los miembros de subgrupos seguirán visibles.",
       deleteChildrenHint:
         "Mueve o elimina los subgrupos antes de eliminar este grupo.",
       deleteMembersHint:
@@ -645,7 +657,7 @@ export const es419 = {
       remainingCredits: "{{count}} créditos restantes",
       joinedAt: "Se unió el {{date}}",
       groupActions: "Acciones del grupo",
-      addSubgroup: "Agregar subgrupo",
+      addSubgroup: "Crear subgrupo",
       renameGroup: "Cambiar nombre",
       adjustMembers: "Ajustar miembros",
       moveGroup: "Mover grupo",

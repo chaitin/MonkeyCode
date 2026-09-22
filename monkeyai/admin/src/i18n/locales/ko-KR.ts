@@ -540,6 +540,18 @@ export const koKR = {
         '"{{rule}}" 규칙을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "다중 선택",
+        exit: "취소",
+        actions: "작업",
+        moveTitle: "멤버 이동",
+        moveDescription: "선택한 멤버 {{count}}명의 새 상위 그룹을 선택하세요.",
+        statusSuccess: "멤버 {{count}}명을 성공적으로 {{status}}했습니다.",
+        statusFailure:
+          "일괄 작업 완료: 성공 {{succeeded}}명, 실패 {{failed}}명.",
+        statusConfirm: "선택한 멤버 {{count}}명을 정말 {{action}}하시겠습니까?",
+        confirm: "확인",
+      },
       groupSelection: {
         label: "그룹",
         placeholder: "그룹 선택 (여러 개 선택 가능)",
@@ -548,8 +560,6 @@ export const koKR = {
         empty: "선택 가능한 그룹이 없습니다.",
         clear: "선택 지우기",
       },
-      directMembersHint:
-        "직접 소속된 멤버만 변경합니다. 하위 그룹의 멤버는 계속 표시됩니다.",
       deleteChildrenHint:
         "이 그룹을 삭제하기 전에 하위 그룹을 이동하거나 삭제하세요.",
       deleteMembersHint:
@@ -625,7 +635,7 @@ export const koKR = {
       remainingCredits: "잔여 크레딧 {{count}}",
       joinedAt: "가입일: {{date}}",
       groupActions: "그룹 작업",
-      addSubgroup: "하위 그룹 추가",
+      addSubgroup: "하위 그룹 만들기",
       renameGroup: "이름 변경",
       adjustMembers: "구성원 조정",
       moveGroup: "그룹 이동",

@@ -539,6 +539,19 @@ export const ar = {
         "هل تريد حذف قاعدة «{{rule}}»؟ لا يمكن التراجع عن هذا الإجراء.",
     },
     membersAndGroups: {
+      treeSelection: {
+        enter: "تحديد متعدد",
+        exit: "إلغاء",
+        actions: "إجراءات",
+        moveTitle: "نقل الأعضاء",
+        moveDescription:
+          "اختر مجموعة رئيسية جديدة للأعضاء المحددين وعددهم {{count}}.",
+        statusSuccess: "تم {{status}} {{count}} من الأعضاء بنجاح.",
+        statusFailure:
+          "اكتملت العملية المجمعة: نجح {{succeeded}} وفشل {{failed}}.",
+        statusConfirm: "هل تريد {{action}} الأعضاء المحددين وعددهم {{count}}؟",
+        confirm: "تأكيد",
+      },
       groupSelection: {
         label: "المجموعات",
         placeholder: "اختر المجموعات (يمكن اختيار عدة مجموعات)",
@@ -547,8 +560,6 @@ export const ar = {
         empty: "لا توجد مجموعات متاحة.",
         clear: "مسح الاختيار",
       },
-      directMembersHint:
-        "يتغير الانضمام المباشر فقط. يظل أعضاء المجموعات الفرعية ظاهرين هنا.",
       deleteChildrenHint:
         "انقل المجموعات الفرعية أو احذفها قبل حذف هذه المجموعة.",
       deleteMembersHint:
@@ -622,7 +633,7 @@ export const ar = {
       remainingCredits: "{{count}} رصيد متبقٍ",
       joinedAt: "تاريخ الانضمام: {{date}}",
       groupActions: "إجراءات المجموعة",
-      addSubgroup: "إضافة مجموعة فرعية",
+      addSubgroup: "إنشاء مجموعة فرعية",
       renameGroup: "تعديل الاسم",
       adjustMembers: "تعديل الأعضاء",
       moveGroup: "نقل المجموعة",
