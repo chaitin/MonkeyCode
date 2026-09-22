@@ -10,6 +10,7 @@ import type {
 export type Grant = {
   user_id?: string | null
   group_id?: string | null
+  user?: { id: string; name: string; email: string } | null
   usage_requirement: "optional" | "required"
 }
 export type Credential = {

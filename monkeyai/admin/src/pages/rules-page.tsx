@@ -83,6 +83,7 @@ type AgentRule = {
   content: string
   type: RuleType
   creator: string
+  sharedUsers: string[]
   authorization: AuthorizationSelection
   forced: boolean
 }
@@ -95,6 +96,9 @@ function toRule(row: ResourceRow): AgentRule {
     content: row.content,
     type: row.ownership_type,
     creator: row.user.name || row.user.email || row.user.id,
+    sharedUsers: row.grants.flatMap((grant) =>
+      grant.user ? [grant.user.name || grant.user.email || grant.user.id] : []
+    ),
     authorization: selection(row.grants),
     forced: row.grants.some((grant) => grant.usage_requirement === "required"),
   }
@@ -318,7 +322,9 @@ export function RulesPage() {
                           subjects.flatGroups,
                           subjects.members
                         )
-                      : t("pages.rules.creatorOnly")
+                      : rule.sharedUsers.length
+                        ? [rule.creator, ...rule.sharedUsers].join(", ")
+                        : t("pages.rules.creatorOnly")
 
                   return (
                     <Card className="h-full" key={rule.id}>

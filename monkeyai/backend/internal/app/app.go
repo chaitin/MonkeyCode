@@ -157,7 +157,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	rules.RegisterAgent(agent)
 	skills.RegisterAgent(agent)
 	experts.RegisterAgent(agent)
-	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD})
+	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD})
 	settings.RegisterAgent(agent)
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)

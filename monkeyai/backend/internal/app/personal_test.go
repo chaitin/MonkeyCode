@@ -68,7 +68,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 				if o.String("ownership_type") != "user" || o["user"].(map[string]any)["id"] != users[0] || o.Int("revision") < 1 {
 					t.Fatalf("目录缺少个人资源管理信息: %v", o)
 				}
-				if (token != "a" || kind == "rules") && o["shared_users"] != nil {
+				if token != "a" && o["shared_users"] != nil {
 					t.Fatalf("目录不应返回共享用户: %v", o)
 				}
 				return true
@@ -80,7 +80,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("POST", "/rules", "", "", ruleInput, 401)
 	rule := call("POST", "/rules", "a", "", ruleInput, 201)
 	ruleID := rule.String("id")
-	if rule["user"].(map[string]any)["id"] != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
+	if rule["user"].(map[string]any)["id"] != users[0] || rule.String("ownership_type") != "user" || len(rule["grants"].([]any)) != 0 || len(rule["shared_users"].([]any)) != 0 {
 		t.Fatalf("规则归属或授权被请求篡改: %v", rule)
 	}
 	call("POST", "/rules", "a", "", ruleInput, 409)
@@ -95,22 +95,51 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	}
 
 	ruleShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "rule", ID: ruleID}}, UserIDs: []string{users[1]}}
-	call("POST", "/resources/shares", "a", "", ruleShare, 400)
-	call("DELETE", "/resources/shares", "a", "", ruleShare, 400)
+	call("POST", "/resources/shares", "b", "", ruleShare, 404)
 	beforeRules := call("GET", "/rules", "a", "", nil, 200).String("version")
-	if _, err := pool.Exec(t.Context(), `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,$2,'read_only','required',$2),('rule',$1,$3,'read_only','optional',$2)`, ruleID, users[0], users[1]); err != nil {
+	if _, err := pool.Exec(t.Context(), `INSERT INTO resource_access_grants(resource_type,resource_id,all_users,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,true,'read_only','required',$2)`, ruleID, users[0]); err != nil {
 		t.Fatal(err)
 	}
-	if contains("rules", "b", ruleID) || beforeRules != call("GET", "/rules", "a", "", nil, 200).String("version") {
-		t.Fatal("历史规则授权仍影响可见范围或所有者目录")
+	if contains("rules", "b", ruleID) {
+		t.Fatal("历史全员授权不应公开个人规则")
+	}
+	call("POST", "/experts", "b", "", resource.Object{"name": "引用历史规则授权", "prompt": "测试", "rule_ids": []string{ruleID}}, 400)
+	if _, err := pool.Exec(t.Context(), `DELETE FROM resource_access_grants WHERE resource_type='rule' AND resource_id=$1 AND all_users`, ruleID); err != nil {
+		t.Fatal(err)
+	}
+	call("POST", "/resources/shares", "a", "", ruleShare, 204)
+	call("POST", "/resources/shares", "a", "", ruleShare, 204)
+	if _, err := pool.Exec(t.Context(), `UPDATE resource_access_grants SET usage_requirement='required' WHERE resource_type='rule' AND resource_id=$1`, ruleID); err != nil {
+		t.Fatal(err)
+	}
+	if !contains("rules", "b", ruleID) || beforeRules == call("GET", "/rules", "a", "", nil, 200).String("version") {
+		t.Fatal("个人规则共享未更新可见范围或所有者目录")
 	}
 	detail := call("GET", "/rules/"+ruleID, "a", "", nil, 200)
-	if detail["shared_users"] != nil || len(detail["grants"].([]any)) != 0 {
-		t.Fatalf("个人规则仍返回历史分享信息: %v", detail)
+	if len(detail["shared_users"].([]any)) != 1 || len(detail["grants"].([]any)) != 1 {
+		t.Fatalf("个人规则未返回共享信息: %v", detail)
 	}
 	call("GET", "/rules/"+ruleID, "b", "", nil, 404)
+	call("PUT", "/rules/"+ruleID, "b", etag(detail), ruleInput, 404)
+	call("DELETE", "/rules/"+ruleID, "b", etag(detail), nil, 404)
+	shared := call("POST", "/resources/resolve", "b", "", resource.Object{"rule_ids": []string{ruleID}}, 200)
+	if len(shared["rules"].([]any)) != 1 || shared["rules"].([]any)[0].(map[string]any)["required"] != false {
+		t.Fatalf("共享规则不可选用或被强制应用: %v", shared)
+	}
+	for _, raw := range call("POST", "/resources/resolve", "b", "", resource.Object{}, 200)["rules"].([]any) {
+		if raw.(map[string]any)["id"] == ruleID {
+			t.Fatal("共享规则被自动强制应用")
+		}
+	}
+	sharedExpert := call("POST", "/experts", "b", "", resource.Object{"name": "引用共享规则", "prompt": "测试", "rule_ids": []string{ruleID}}, 201)
+	call("DELETE", "/experts/"+sharedExpert.String("id"), "b", etag(sharedExpert), nil, 204)
+	call("DELETE", "/resources/shares", "a", "", ruleShare, 204)
+	if contains("rules", "b", ruleID) {
+		t.Fatal("撤销规则分享后仍下发规则")
+	}
 	call("POST", "/resources/resolve", "b", "", resource.Object{"rule_ids": []string{ruleID}}, 404)
-	call("POST", "/experts", "b", "", resource.Object{"name": "引用历史分享规则", "prompt": "测试", "rule_ids": []string{ruleID}}, 400)
+	call("POST", "/experts", "b", "", resource.Object{"name": "引用撤权规则", "prompt": "测试", "rule_ids": []string{ruleID}}, 400)
+	rule = call("GET", "/rules/"+ruleID, "a", "", nil, 200)
 	selected := call("POST", "/resources/resolve", "a", "", resource.Object{"rule_ids": []string{ruleID}}, 200)
 	found := false
 	for _, raw := range selected["rules"].([]any) {
@@ -118,7 +147,7 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 		if entry.String("id") == ruleID {
 			found = true
 			if entry.Bool("required") {
-				t.Fatal("历史授权将个人规则设为强制")
+				t.Fatal("个人规则被设为强制")
 			}
 		}
 	}
@@ -209,8 +238,8 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
 	invalid := resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[1], resource.ID()}}
 	call("POST", "/resources/shares", "a", "", invalid, 400)
-	invalid = resource.ShareInput{Resources: append(share.Resources, ruleShare.Resources...), UserIDs: share.UserIDs}
-	call("POST", "/resources/shares", "a", "", invalid, 400)
+	invalid = resource.ShareInput{Resources: append(share.Resources, resource.ShareResource{Type: "rule", ID: otherRule.String("id")}), UserIDs: share.UserIDs}
+	call("POST", "/resources/shares", "a", "", invalid, 404)
 	invalid = resource.ShareInput{Resources: append([]resource.ShareResource{{Type: "skill", ID: resource.ID()}}, share.Resources...), UserIDs: share.UserIDs}
 	call("POST", "/resources/shares", "a", "", invalid, 404)
 	if contains("rules", "b", ruleID) || contains("skills", "b", skillID) || contains("experts", "b", expertID) {
@@ -229,6 +258,14 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	}
 	if owner := call("GET", expertPath+"/manifest", "a", "", nil, 200); !owner.Bool("available") || len(owner["rules"].([]any)) != 1 {
 		t.Fatalf("所有者专家不可用: %v", owner)
+	}
+	call("POST", "/resources/shares", "a", "", ruleShare, 204)
+	if available := call("GET", expertPath+"/manifest", "b", "", nil, 200); !available.Bool("available") || len(available["rules"].([]any)) != 1 || available["rules"].([]any)[0].(map[string]any)["required"] != false {
+		t.Fatalf("共享规则未使专家可用: %v", available)
+	}
+	call("DELETE", "/resources/shares", "a", "", ruleShare, 204)
+	if call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
+		t.Fatal("撤销共享规则后专家仍可用")
 	}
 	expert = call("GET", expertPath, "a", "", nil, 200)
 	expert = call("PUT", expertPath, "a", etag(expert), resource.Object{"name": expert["name"], "rule_ids": []string{}}, 200)
@@ -316,11 +353,12 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
 	call("POST", "/resources/shares", "a", "", skillShare, 204)
 	call("PUT", "/skills/"+skillID, "b", etag(savedSkill), resource.Object{"name": "personal", "content": "越权"}, 404)
+	rule = call("GET", "/rules/"+ruleID, "a", "", nil, 200)
 	oldRule := rule
 	ruleInput["content"] = "编辑个人规则"
 	rule = call("PUT", "/rules/"+ruleID, "a", etag(rule), ruleInput, 200)
-	if rule.String("content") != "编辑个人规则" || len(rule["grants"].([]any)) != 0 || rule["shared_users"] != nil {
-		t.Fatalf("个人规则编辑失败或仍返回分享信息: %v", rule)
+	if rule.String("content") != "编辑个人规则" || len(rule["grants"].([]any)) != 0 || len(rule["shared_users"].([]any)) != 0 {
+		t.Fatalf("个人规则编辑失败或意外恢复分享: %v", rule)
 	}
 	call("PUT", "/rules/"+ruleID, "a", etag(oldRule), ruleInput, 412)
 	if beforeRules == call("GET", "/rules", "a", "", nil, 200).String("version") {

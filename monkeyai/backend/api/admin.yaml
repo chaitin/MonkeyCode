@@ -6110,6 +6110,12 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 个人规则已共享的用户；未共享时为 []，系统规则不返回。
         id:
           type: string
           format: uuid
@@ -6132,7 +6138,7 @@ components:
         enabled:
           type: boolean
         grants:
-          description: 系统规则的授权范围及强制性：required 不可关闭，optional 默认开启但可由 Agent 关闭；个人规则固定为空数组，仅创建者可用。
+          description: 系统规则的授权范围及强制性：required 不可关闭，optional 默认开启但可由 Agent 关闭；个人规则可向指定用户共享只读使用权，不可强制应用。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
