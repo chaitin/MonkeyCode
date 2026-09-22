@@ -51,7 +51,7 @@ test("members page keeps the original split cards and compact member list", asyn
     /isDisabled && \(\s*<Badge\s+variant="outline"\s+className="border-red-500\/40 text-red-700 dark:border-red-400\/40 dark:text-red-400"/
   )
   assert.match(source, /groupsByMember\.get\(user\.id\)/)
-  assert.match(source, /pages\.membersAndGroups\.ungroupedMembers/)
+  assert.doesNotMatch(source, /pages\.membersAndGroups\.ungroupedMembers/)
   assert.match(source, /<MemberActions/)
   assert.match(
     source,
@@ -213,45 +213,25 @@ test("member actions require confirmation and report results with toasts", async
   assert.doesNotMatch(dialog, /role="alert"|setError\(/)
 })
 
-test("only the team root starts expanded", async () => {
+test("the tree root starts expanded without checking its ID", async () => {
   const tree = await readFile(
     new URL("../src/components/members/group-tree.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(
-    tree,
-    /const \[expanded, setExpanded\] = useState\(group\.id === ROOT_GROUP_ID\)/
-  )
-  assert.match(
-    tree,
-    /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/
-  )
-  assert.match(tree, /const \[expanded, setExpanded\] = useState\(false\)/)
+  assert.match(tree, /useState\(group\.parent_id === null\)/)
+  assert.match(tree, /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/)
+  assert.doesNotMatch(tree, /ROOT_GROUP_ID|ungroupedExpanded/)
 })
 
-test("ungrouped members appear beside the team root with a gray folder", async () => {
-  const [page, tree] = await Promise.all([
-    readFile(
-      new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
-      "utf8"
-    ),
-    readFile(
-      new URL("../src/components/members/group-tree.tsx", import.meta.url),
-      "utf8"
-    ),
-  ])
-  const treeList = page
-    .split('aria-label={t("pages.membersAndGroups.groupsTitle")}')[1]
-    .split("</ul>")[0]
-  assert.ok(
-    treeList.indexOf("<GroupTreeItem") < treeList.indexOf("<UngroupedTreeItem")
+test("members appear directly under their group without a virtual ungrouped row", async () => {
+  const tree = await readFile(
+    new URL("../src/components/members/group-tree.tsx", import.meta.url),
+    "utf8"
   )
-  assert.match(tree, /export function UngroupedTreeItem/)
-  assert.match(tree, /ungroupedMemberIDs\(groups, users\)/)
-  assert.match(tree, /pages\.membersAndGroups\.ungroupedMembers/)
-  assert.match(tree, /className="size-4 shrink-0 text-muted-foreground"/)
-  assert.match(tree, /level=\{1\}/)
-  assert.match(tree, /\{!isRoot && memberRows\}/)
+  assert.match(tree, /\{memberRows\}/)
+  assert.match(tree, /directMemberIDs\(groups, group\.id\)/)
+  assert.match(tree, /const actions = group\.actions/)
+  assert.doesNotMatch(tree, /ungroupedMembers|isRoot|ungroupedExpanded/)
 })
 
 test("group rows swap the count for actions in the same slot on hover", async () => {
@@ -288,21 +268,22 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   )
   assert.match(actionSlot, /focus-visible:opacity-100/)
   assert.doesNotMatch(actionSlot, /hover:none|group-hover\/group-row/)
-  assert.equal((tree.match(/onPointerEnter=/g) ?? []).length, 3)
-  assert.equal((tree.match(/onPointerLeave=/g) ?? []).length, 3)
-  assert.equal((tree.match(/bg-foreground\/5/g) ?? []).length, 6)
+  assert.equal((tree.match(/onPointerEnter=/g) ?? []).length, 2)
+  assert.equal((tree.match(/onPointerLeave=/g) ?? []).length, 2)
+  assert.equal((tree.match(/bg-foreground\/5/g) ?? []).length, 5)
   assert.equal(
     (tree.match(/\(hovered \|\| menuOpen\) && "bg-foreground\/5"/g) ?? [])
       .length,
     2
   )
+  assert.doesNotMatch(tree, /ungroupedHovered/)
   assert.equal(
     (
       tree.match(
         /"group\/group-row flex cursor-pointer items-center rounded-md pe-1 transition-colors"/g
       ) ?? []
     ).length,
-    2
+    1
   )
   assert.doesNotMatch(tree, /bg-foreground\/8|dark:bg-foreground\/10/)
   const memberRow = tree.split("function GroupTreeMemberRow(")[1]
@@ -364,7 +345,7 @@ test("tree and list share the same member action menu", async () => {
         /\.sort\(\(a, b\) => compareByName\(a, b, nameCollator\)\)/g
       ) ?? []
     ).length,
-    3
+    2
   )
   assert.match(tree, /<MemberActions/)
   const avatar = await readFile(

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -147,7 +148,7 @@ func TestResolveModelName(t *testing.T) {
 	t.Run("全员授权覆盖新增用户并可撤销", func(t *testing.T) {
 		input := validInput()
 		input.ModelID = "all-users-model"
-		input.Authorization = Authorization{AllUsers: true}
+		input.Authorization = Authorization{GroupIDs: []string{rootgroup.ID}}
 		service := NewService(repo)
 		item, err := service.Create(ctx, admin, input)
 		if err != nil {

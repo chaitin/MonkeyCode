@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { api } from "@/lib/api"
 import {
-  ROOT_GROUP_ID,
   descendantIDs,
   type MemberGroup,
 } from "@/lib/member-groups"
@@ -91,7 +90,7 @@ export function GroupActionDialog({
           method: "POST",
           body: JSON.stringify({
             name: name.trim(),
-            parent_id: group.id === ROOT_GROUP_ID ? null : group.id,
+            parent_id: group.id,
           }),
         })
       } else if (action === "adjust-members") {
@@ -105,7 +104,7 @@ export function GroupActionDialog({
           body: JSON.stringify(
             action === "rename"
               ? { name: name.trim() }
-              : { parent_id: parentID === ROOT_GROUP_ID ? null : parentID }
+              : { parent_id: parentID }
           ),
         })
       }

@@ -48,7 +48,7 @@ type Target = {
   type: "group" | "user"
   own: string | null
   inherited: string
-  root?: boolean
+  allowInherit?: boolean
 }
 
 export function BillingSettingsPage() {
@@ -120,7 +120,7 @@ export function BillingSettingsPage() {
   const openQuota = (v: Target) => {
     setTarget(v)
     setQuotaValue(v.own ?? v.inherited)
-    setInherit(v.own === null && !v.root)
+    setInherit(v.own === null && v.allowInherit !== false)
   }
   const save = async (
     section: string,
@@ -267,7 +267,7 @@ export function BillingSettingsPage() {
                   type: "group",
                   own: value,
                   inherited,
-                  root: !g.parent_id,
+                  allowInherit: g.allow_inherit,
                 })
               }}
             >
@@ -282,11 +282,7 @@ export function BillingSettingsPage() {
           .filter((c) => c.parent_id === g.id)
           .map((c) => renderGroup(c, effective, depth + 1))}
         {quotas.users
-          .filter((u) =>
-            g.parent_id === null
-              ? u.group_ids.length === 0
-              : u.group_ids.includes(g.id)
-          )
+          .filter((u) => u.group_ids.includes(g.id))
           .map(userRow)}
       </details>
     )
@@ -559,7 +555,7 @@ export function BillingSettingsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="my-5 space-y-4">
-              {!target?.root && (
+              {target?.allowInherit !== false && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"

@@ -4,7 +4,20 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 )
+
+func TestNormalizeAuthorizationRoot(t *testing.T) {
+	got := normalizeAuthorization(Authorization{GroupIDs: []string{rootgroup.ID, "child"}, UserIDs: []string{"user"}})
+	if !got.AllUsers || len(got.GroupIDs) != 0 || len(got.UserIDs) != 0 {
+		t.Fatalf("根分组应转换为全员授权: %+v", got)
+	}
+	presented := presentModel(Model{Authorization: got}).Authorization
+	if presented.AllUsers || len(presented.GroupIDs) != 1 || presented.GroupIDs[0] != rootgroup.ID {
+		t.Fatalf("全员授权回包应返回根分组: %+v", presented)
+	}
+}
 
 type repositoryStub struct {
 	models []Model

@@ -78,6 +78,7 @@ type Subject struct {
 	ParentID *string `json:"parent_id,omitempty"`
 	Name     string  `json:"name"`
 	Email    string  `json:"email,omitempty"`
+	GroupID  string  `json:"group_id,omitempty"`
 }
 
 type Subjects struct {

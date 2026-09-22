@@ -194,6 +194,11 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	for _, user := range users {
+		if ids, ok := user["group_ids"].([]any); ok && len(ids) == 0 {
+			user["group_ids"] = []string{rootGroup}
+		}
+	}
 	var teamName string
 	teamName, err = sqlc.New(s.pool).WorkspaceName(r.Context())
 
@@ -201,7 +206,10 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	groups = append([]resource.Object{{"id": rootGroup, "parent_id": nil, "name": teamName, "credits": p.RootCredits.String()}}, groups...)
+	for _, group := range groups {
+		group["allow_inherit"] = true
+	}
+	groups = append([]resource.Object{{"id": rootGroup, "parent_id": nil, "name": teamName, "credits": p.RootCredits.String(), "allow_inherit": false}}, groups...)
 	_, end := p.period(s.now())
 	resource.JSON(w, 200, map[string]any{"groups": groups, "users": users, "revision": p.Revision, "effective_at": end})
 }
