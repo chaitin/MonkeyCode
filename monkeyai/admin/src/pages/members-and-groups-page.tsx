@@ -541,6 +541,38 @@ export function MembersAndGroupsPage() {
               <form className="flex flex-col gap-6" onSubmit={createUser}>
                 <FieldGroup>
                   <Field>
+                    <FieldLabel htmlFor="new-user-role">
+                      {t("pages.membersAndGroups.bulk.role")}
+                    </FieldLabel>
+                    <Select
+                      items={{
+                        user: t("pages.membersAndGroups.bulk.member"),
+                        admin: t("pages.membersAndGroups.bulk.administrator"),
+                      }}
+                      value={newUser.role}
+                      onValueChange={(value) => {
+                        if (value === null) return
+                        setNewUser((current) => ({
+                          ...current,
+                          role: value as User["role"],
+                          password: value === "admin" ? current.password : "",
+                        }))
+                      }}
+                    >
+                      <SelectTrigger id="new-user-role" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectItem value="user">
+                          {t("pages.membersAndGroups.bulk.member")}
+                        </SelectItem>
+                        <SelectItem value="admin">
+                          {t("pages.membersAndGroups.bulk.administrator")}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
                     <FieldLabel htmlFor="new-user-name">
                       {t("pages.membersAndGroups.bulk.name")}
                     </FieldLabel>
@@ -572,38 +604,6 @@ export function MembersAndGroupsPage() {
                       }
                       required
                     />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="new-user-role">
-                      {t("pages.membersAndGroups.bulk.role")}
-                    </FieldLabel>
-                    <Select
-                      items={{
-                        user: t("pages.membersAndGroups.bulk.member"),
-                        admin: t("pages.membersAndGroups.bulk.administrator"),
-                      }}
-                      value={newUser.role}
-                      onValueChange={(value) => {
-                        if (value === null) return
-                        setNewUser((current) => ({
-                          ...current,
-                          role: value as User["role"],
-                          password: value === "admin" ? current.password : "",
-                        }))
-                      }}
-                    >
-                      <SelectTrigger id="new-user-role" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectItem value="user">
-                          {t("pages.membersAndGroups.bulk.member")}
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          {t("pages.membersAndGroups.bulk.administrator")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
                   </Field>
                   {newUser.role === "admin" && (
                     <Field>
