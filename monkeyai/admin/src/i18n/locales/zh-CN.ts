@@ -712,9 +712,10 @@ export const zhCN = {
       systemRule: "系统规则",
       userRule: "用户规则",
       creator: "创建者",
-      forcedScope: "强制启用范围",
-      forcedScopePlaceholder: "选择需要强制启用的分组或用户",
-      forcedScopeDescription: "选中的分组和用户将被强制应用此系统规则。",
+      forcedScope: "强制规则",
+      forcedScopePlaceholder: "非强制（默认开启）",
+      forcedScopeDescription:
+        "强制规则不可关闭；非强制规则初始开启，之后由 Agent 管理开关。",
       usageScope: "使用范围",
       creatorOnly: "仅创建者本人",
       cancel: "取消",

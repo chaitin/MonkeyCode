@@ -73,7 +73,7 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `user: {id, name, email}`。`ownership_type` 仅表示资源归属，分享不会改变它；自己的模型和别人分享的模型均为 `user`，通过 `user.id` 与当前用户 ID 的比较区分。管理员在用户侧创建的个人模型同样为 `user`。自己的用户模型返回 `shared_users: [{id, name, email}]`，未分享时为 `[]`；收到分享的用户模型返回 `creator: {id, name, email}`，不展示其他接收人。系统模型不返回这两个字段。分享范围或创建者展示信息变化会影响模型目录 ETag；撤销、删除后的新列表请求和代理调用会重新检查权限。
 
-个人规则通过 `POST /api/v1/rules` 创建，`GET/PUT/DELETE /api/v1/rules/{id}` 仅供创建者维护，修改和删除需要 `If-Match`。个人规则仅创建者可用，分享和撤销接口遇到 `type=rule` 时整批返回 `400`；目录和详情不返回 `shared_users`，详情的 `grants` 固定为 `[]`。历史分享授权不再参与目录、资源解析或个人专家依赖校验，删除规则时一并清理。系统规则的授权与强制范围保持原有语义。
+个人规则通过 `POST /api/v1/rules` 创建，`GET/PUT/DELETE /api/v1/rules/{id}` 仅供创建者维护，修改和删除需要 `If-Match`。个人规则仅创建者可用，分享和撤销接口遇到 `type=rule` 时整批返回 `400`；目录和详情不返回 `shared_users`，详情的 `grants` 固定为 `[]`。历史分享授权不再参与目录、资源解析或个人专家依赖校验，删除规则时一并清理。系统规则以授权记录确定可见范围，`usage_requirement=required` 表示当前用户不可关闭，`optional` 表示可关闭；同一规则在管理界面统一设置强制性，已有按用户分别配置强制性的授权仍可读取。规则目录返回 `required`；Agent 首次见到规则时默认开启，之后自行维护非强制规则的开关状态，授权撤销时不再使用该规则。`/api/v1/resources/resolve` 始终包含强制规则，可选规则由 Agent 在 `rule_ids` 中显式选取（专家引用的规则另行返回）。
 
 技能、规则、工具（Connector）和专家的管理详情及授权接口中，每条 `grants` 保留 `user_id`，并返回只读的 `user: {id, name, email}`；分组、全员授权或已删除用户的 `user` 为 `null`。停用用户仍保留展示信息，便于撤销授权。
 

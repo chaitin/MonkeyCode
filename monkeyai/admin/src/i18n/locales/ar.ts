@@ -494,10 +494,10 @@ export const ar = {
       systemRule: "قاعدة النظام",
       userRule: "قاعدة المستخدم",
       creator: "المنشئ",
-      forcedScope: "نطاق التفعيل الإلزامي",
-      forcedScopePlaceholder: "اختر المجموعات أو المستخدمين",
+      forcedScope: "قاعدة إلزامية",
+      forcedScopePlaceholder: "اختيارية (مفعّلة افتراضيًا)",
       forcedScopeDescription:
-        "سيتم فرض قاعدة النظام هذه على المجموعات والمستخدمين المحددين.",
+        "لا يمكن تعطيل القواعد الإلزامية. تبدأ القواعد الاختيارية مفعّلة، ثم يدير الوكيل حالتها.",
       usageScope: "نطاق الاستخدام",
       creatorOnly: "المنشئ فقط",
       cancel: "إلغاء",

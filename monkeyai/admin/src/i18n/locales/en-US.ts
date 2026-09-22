@@ -753,10 +753,10 @@ export const enUS = {
       systemRule: "System rule",
       userRule: "User rule",
       creator: "Creator",
-      forcedScope: "Forced enablement scope",
-      forcedScopePlaceholder: "Select groups or users",
+      forcedScope: "Mandatory rule",
+      forcedScopePlaceholder: "Optional (on by default)",
       forcedScopeDescription:
-        "This system rule will be enforced for the selected groups and users.",
+        "Mandatory rules cannot be turned off. Optional rules start on; the Agent manages their state afterward.",
       usageScope: "Usage scope",
       creatorOnly: "Creator only",
       cancel: "Cancel",

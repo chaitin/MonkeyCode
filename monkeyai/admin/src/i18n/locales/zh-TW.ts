@@ -474,9 +474,10 @@ export const zhTW = {
       systemRule: "系統規則",
       userRule: "使用者規則",
       creator: "建立者",
-      forcedScope: "強制啟用範圍",
-      forcedScopePlaceholder: "選擇需要強制啟用的群組或使用者",
-      forcedScopeDescription: "所選群組與使用者將被強制套用此系統規則。",
+      forcedScope: "強制規則",
+      forcedScopePlaceholder: "非強制（預設開啟）",
+      forcedScopeDescription:
+        "強制規則不可關閉；非強制規則初始開啟，之後由 Agent 管理開關。",
       usageScope: "使用範圍",
       creatorOnly: "僅建立者本人",
       cancel: "取消",

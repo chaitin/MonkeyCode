@@ -3836,6 +3836,7 @@ components:
           type: string
         required:
           type: boolean
+          description: 系统规则命中的授权为 required 时不可关闭；optional 可由 Agent 关闭。首次获取的规则默认开启，之后非强制规则的开关状态由 Agent 维护。个人规则固定为 false。
       required:
       - id
       - name

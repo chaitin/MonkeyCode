@@ -171,7 +171,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 			issues = append(issues, resource.Object{"code": "rule_missing", "blocking": true})
 			continue
 		}
-		rules = append(rules, ruleDTO(o, false))
+		rules = append(rules, ruleDTO(o, c.required[o.String("id")]))
 	}
 	for _, link := range c.links[expert+":expert_skills"] {
 		o := c.skills[link.String("skill_id")]
