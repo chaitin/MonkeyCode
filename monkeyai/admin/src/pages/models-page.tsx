@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -749,7 +750,7 @@ export function ModelsPage() {
                         )}
                       </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex flex-col gap-3">
                       <dl className="flex flex-col gap-3">
                         <div className="flex min-w-0 items-center gap-4">
                           <dt
@@ -789,6 +790,7 @@ export function ModelsPage() {
                           </div>
                         )}
                       </dl>
+                      <ResourceTagSummary tagIds={model.tagIds} />
                     </CardContent>
                     <CardFooter className="min-w-0 gap-4 border-t">
                       <span
