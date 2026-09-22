@@ -218,7 +218,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	out["version"] = resource.Hash(out)
 	return out, nil
 }
-func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string) ([]resource.Object, error) {
+func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string, filter resource.CatalogFilter) ([]resource.Object, error) {
 	c, err := r.load(ctx, q, user, kind)
 	if err != nil {
 		return nil, err
@@ -242,7 +242,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 	owners := []string{}
 	ownerIDs := map[string]string{}
 	for id, o := range items {
-		if !c.allowed(resourceType, o, user) {
+		if !c.allowed(resourceType, o, user) || !filter.Matches(o.String("ownership_type"), o.String("owner_user_id"), user, o.String("name"), o.String("description")) {
 			continue
 		}
 		var dto resource.Object
@@ -303,6 +303,11 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		resource.Fail(w, err)
 		return
 	}
+	filter, err := resource.ParseCatalogFilter(req)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
@@ -310,7 +315,7 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer tx.Rollback(req.Context())
-	items, err := r.list(req.Context(), tx, u.ID, kind)
+	items, err := r.list(req.Context(), tx, u.ID, kind, filter)
 	if err == nil {
 		items = resource.FilterTags(items, resource.QueryTagIDs(req))
 		total := len(items)
@@ -329,7 +334,7 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer tx.Rollback(req.Context())
-	items, err := r.list(req.Context(), tx, u.ID, kind)
+	items, err := r.list(req.Context(), tx, u.ID, kind, resource.CatalogFilter{})
 	if err == nil {
 		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
 	}
