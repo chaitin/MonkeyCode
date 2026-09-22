@@ -86,6 +86,11 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			userModelError(w, err)
 			return
 		}
+		filter, err := resource.ParseCatalogFilter(r)
+		if err != nil {
+			userModelError(w, err)
+			return
+		}
 		user, _ := identity.UserFromContext(r.Context())
 		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
 		if err != nil {
@@ -93,6 +98,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			return
 		}
 		items = filterModelTags(items, resource.QueryTagIDs(r))
+		items = filterModelCatalog(items, filter, user.ID)
 		if err = httpapi.CachedJSON(w, r, map[string]any{
 			"models":      resource.PageSlice(items, page, size),
 			"total_count": len(items), "page": page, "page_size": size,
@@ -157,6 +163,16 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func filterModelCatalog(items []AgentModel, filter resource.CatalogFilter, user string) []AgentModel {
+	out := make([]AgentModel, 0, len(items))
+	for _, item := range items {
+		if filter.Matches(item.OwnershipType, item.User.ID, user, item.DisplayName, "") {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func filterModelTags(items []AgentModel, ids []string) []AgentModel {

@@ -15,6 +15,31 @@ func TestModelTagInput(t *testing.T) {
 	}
 }
 
+func TestFilterModelCatalog(t *testing.T) {
+	items := []AgentModel{
+		{ID: "team", OwnershipType: "system", User: resource.User{ID: "admin"}, DisplayName: "Team GPT"},
+		{ID: "mine", OwnershipType: "user", User: resource.User{ID: "me"}, DisplayName: "My Claude", Tags: []resource.Object{{"id": "tag"}}},
+		{ID: "shared", OwnershipType: "user", User: resource.User{ID: "other"}, DisplayName: "Shared Claude", Tags: []resource.Object{{"id": "tag"}}},
+	}
+	for _, tc := range []struct {
+		filter resource.CatalogFilter
+		want   string
+	}{
+		{resource.CatalogFilter{Owner: "team"}, "team"},
+		{resource.CatalogFilter{Owner: "mine", Query: "claude"}, "mine"},
+		{resource.CatalogFilter{Owner: "shared", Query: "CLAUDE"}, "shared"},
+	} {
+		got := filterModelCatalog(items, tc.filter, "me")
+		if len(got) != 1 || got[0].ID != tc.want {
+			t.Fatalf("filter=%+v: got %v, want %s", tc.filter, got, tc.want)
+		}
+	}
+	got := filterModelCatalog(filterModelTags(items, []string{"tag"}), resource.CatalogFilter{Owner: "shared"}, "me")
+	if len(got) != 1 || got[0].ID != "shared" || len(resource.PageSlice(got, 2, 1)) != 0 {
+		t.Fatalf("combined filter/pagination: %v", got)
+	}
+}
+
 func TestFilterModelTags(t *testing.T) {
 	items := []AgentModel{
 		{ID: "one", Tags: []resource.Object{{"id": "tag-1", "name": "Tools"}}},

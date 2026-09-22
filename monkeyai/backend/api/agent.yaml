@@ -995,6 +995,8 @@ paths:
       description: 仅包含启用的系统授权模型、自有模型和收到分享的模型，同时返回模型代理地址与鉴权方式。版本只覆盖模型目录和代理信息。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentSearch'
+      - $ref: '#/components/parameters/AgentOwner'
       - $ref: '#/components/parameters/AgentTagID'
       - $ref: '#/components/parameters/AgentTagIDs'
       - $ref: '#/components/parameters/AgentPage'
@@ -1177,6 +1179,8 @@ paths:
       description: 仅返回系统授权规则、当前用户创建及分享给当前用户的个人规则；共享的个人规则不能强制应用。独立计算版本，每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentSearch'
+      - $ref: '#/components/parameters/AgentOwner'
       - $ref: '#/components/parameters/AgentPage'
       - $ref: '#/components/parameters/AgentPageSize'
       responses:
@@ -1244,6 +1248,8 @@ paths:
       description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentSearch'
+      - $ref: '#/components/parameters/AgentOwner'
       - $ref: '#/components/parameters/AgentTagID'
       - $ref: '#/components/parameters/AgentTagIDs'
       - $ref: '#/components/parameters/AgentPage'
@@ -1323,6 +1329,8 @@ paths:
       description: 返回启用的系统授权专家、自有专家及收到分享的个人专家；包含归属与修订号，所有者可查看 shared_users。独立计算版本，每次请求重新检查身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentSearch'
+      - $ref: '#/components/parameters/AgentOwner'
       - $ref: '#/components/parameters/AgentTagID'
       - $ref: '#/components/parameters/AgentTagIDs'
       - $ref: '#/components/parameters/AgentPage'
@@ -1395,6 +1403,8 @@ paths:
       description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentSearch'
+      - $ref: '#/components/parameters/AgentOwner'
       - $ref: '#/components/parameters/AgentTagID'
       - $ref: '#/components/parameters/AgentTagIDs'
       - $ref: '#/components/parameters/AgentPage'
@@ -2829,6 +2839,16 @@ components:
       description: 此接口上一次响应的 ETag；当前用户可见内容未变化时返回 304。
       schema:
         type: string
+    AgentSearch:
+      name: q
+      in: query
+      description: 按名称或描述做不区分大小写的包含匹配；模型与规则没有描述字段，仅匹配名称。与 owner、标签组合后再分页，total_count 为筛选后的总数。
+      schema: {type: string}
+    AgentOwner:
+      name: owner
+      in: query
+      description: 资源归属筛选。team 为系统资源；mine 为本人创建的个人资源；shared 为其他用户分享给当前用户的个人资源。
+      schema: {type: string, enum: [all, team, mine, shared], default: all}
     AgentTagID:
       name: tag_id
       in: query
