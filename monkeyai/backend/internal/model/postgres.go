@@ -53,12 +53,25 @@ func (p *Postgres) Get(ctx context.Context, id string) (Model, error) {
 }
 
 func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
+	if item.Kind == "" {
+		item.Kind = KindText
+	}
+	if item.Provider == "" && item.Kind == KindText {
+		item.Provider = ProviderPassthrough
+	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return Model{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	advanced, err := json.Marshal(item.AdvancedConfig)
+	if err != nil {
+		return Model{}, err
+	}
+	if item.Kind == KindImage {
+		advanced = []byte("{}")
+	}
+	options, config, pricing, err := marshalImageFields(item)
 	if err != nil {
 		return Model{}, err
 	}
@@ -73,6 +86,11 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		ApiKey:           item.APIKey,
 		AdvancedConfig:   advanced,
 		CreditMultiplier: float64(item.CreditMultiplier),
+		Kind:             string(item.Kind),
+		Provider:         string(item.Provider),
+		ProviderOptions:  options,
+		ImageConfig:      config,
+		ImagePricing:     pricing,
 	}))
 	if err != nil {
 		return Model{}, fmt.Errorf("创建模型: %w", err)
@@ -106,6 +124,13 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 	if err != nil {
 		return Model{}, err
 	}
+	if item.Kind == KindImage {
+		advanced = []byte("{}")
+	}
+	options, config, pricing, err := marshalImageFields(item)
+	if err != nil {
+		return Model{}, err
+	}
 	authorization := item.Authorization
 	grantorUserID := item.GrantorUserID
 	item, err = readModel(sqlc.New(tx).UpdateModel(ctx, sqlc.UpdateModelParams{
@@ -117,6 +142,11 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		ApiKey:           item.APIKey,
 		AdvancedConfig:   advanced,
 		CreditMultiplier: float64(item.CreditMultiplier),
+		Kind:             string(item.Kind),
+		Provider:         string(item.Provider),
+		ProviderOptions:  options,
+		ImageConfig:      config,
+		ImagePricing:     pricing,
 		OwnershipType:    ownership,
 		OwnerUserID:      item.OwnerUserID,
 	}))
@@ -245,10 +275,21 @@ func readModel(row sqlc.Model, err error) (Model, error) {
 	}
 	item := Model{ID: row.ID, OwnershipType: row.OwnershipType, OwnerUserID: row.OwnerUserID,
 		ModelID: row.ModelID, DisplayName: row.DisplayName, Protocol: Protocol(row.Protocol),
+		Kind: Kind(row.Kind), Provider: Provider(row.Provider), ProviderOptions: row.ProviderOptions,
 		BaseURL: row.BaseUrl, APIKey: row.ApiKey, APIKeyConfigured: row.ApiKey != "",
 		CreditMultiplier: row.CreditMultiplier, Enabled: row.Enabled, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 	if err := json.Unmarshal(row.AdvancedConfig, &item.AdvancedConfig); err != nil {
 		return Model{}, fmt.Errorf("解析模型高级配置: %w", err)
+	}
+	if len(row.ImageConfig) != 0 {
+		if err := json.Unmarshal(row.ImageConfig, &item.ImageConfig); err != nil {
+			return Model{}, fmt.Errorf("解析生图配置: %w", err)
+		}
+	}
+	if len(row.ImagePricing) != 0 {
+		if err := json.Unmarshal(row.ImagePricing, &item.ImagePricing); err != nil {
+			return Model{}, fmt.Errorf("解析生图积分: %w", err)
+		}
 	}
 	return item, nil
 }

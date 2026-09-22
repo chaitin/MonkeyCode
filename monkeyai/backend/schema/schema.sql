@@ -86,6 +86,11 @@ CREATE TABLE models (
     model_id text NOT NULL,
     display_name text NOT NULL,
     protocol text NOT NULL,
+    kind text NOT NULL DEFAULT 'text',
+    provider text NOT NULL DEFAULT 'passthrough',
+    provider_options jsonb NOT NULL DEFAULT '{}'::jsonb,
+    image_config jsonb,
+    image_pricing jsonb,
     base_url text NOT NULL,
     api_key text NOT NULL,
     advanced_config jsonb NOT NULL,
@@ -96,7 +101,18 @@ CREATE TABLE models (
     deleted_at timestamptz,
     CONSTRAINT models_ownership_type_check CHECK (ownership_type IN ('system', 'user')),
     CONSTRAINT models_protocol_check CHECK (
-        protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic')
+        protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic', 'image_generation')
+    ),
+    CONSTRAINT models_kind_check CHECK (kind IN ('text', 'image')),
+    CONSTRAINT models_provider_options_check CHECK (jsonb_typeof(provider_options) = 'object'),
+    CONSTRAINT models_image_config_check CHECK (image_config IS NULL OR jsonb_typeof(image_config) = 'object'),
+    CONSTRAINT models_image_pricing_check CHECK (image_pricing IS NULL OR jsonb_typeof(image_pricing) = 'object'),
+    CONSTRAINT models_kind_config_check CHECK (
+        (kind = 'text' AND provider = 'passthrough' AND protocol <> 'image_generation'
+            AND image_config IS NULL AND image_pricing IS NULL)
+        OR (kind = 'image' AND provider <> 'passthrough' AND protocol = 'image_generation'
+            AND image_config IS NOT NULL AND image_pricing IS NOT NULL
+            AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
     ),
     CONSTRAINT models_advanced_config_check CHECK (jsonb_typeof(advanced_config) = 'object'),
     CONSTRAINT models_credit_multiplier_check CHECK (credit_multiplier > 0)
@@ -435,7 +451,7 @@ CREATE TABLE billing_transactions (
     user_id uuid NOT NULL REFERENCES users(id),
     account_id uuid NOT NULL REFERENCES credit_accounts(id),
     session_id uuid REFERENCES sessions(id),
-    category text NOT NULL CHECK(category IN ('model','tool')),
+    category text NOT NULL CHECK(category IN ('model','tool','image')),
     resource_id uuid NOT NULL,
     connector_id uuid REFERENCES connectors(id),
     item_name text NOT NULL,
@@ -461,6 +477,85 @@ CREATE TABLE billing_transactions (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK(amount IS NULL OR amount >= 0)
 );
+
+CREATE TABLE image_calls (
+    id uuid PRIMARY KEY REFERENCES billing_transactions(id),
+    user_id uuid NOT NULL REFERENCES users(id),
+    model_id uuid NOT NULL REFERENCES models(id),
+    request_id text,
+    status text NOT NULL CHECK (status IN ('succeeded', 'failed', 'cancelled')),
+    generated_images bigint NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
+    error_code text,
+    started_at timestamptz NOT NULL,
+    completed_at timestamptz
+);
+
+CREATE TABLE image_inputs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    object_key text NOT NULL UNIQUE,
+    mime_type text NOT NULL,
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    byte_size bigint NOT NULL CHECK (byte_size > 0),
+    sha256 text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+);
+
+CREATE TABLE image_jobs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    model_id uuid NOT NULL REFERENCES models(id),
+    billing_transaction_id uuid UNIQUE REFERENCES billing_transactions(id),
+    provider text NOT NULL,
+    operation text NOT NULL CHECK (operation IN ('generate', 'edit')),
+    provider_job_id text,
+    provider_request_id text,
+    status text NOT NULL CHECK (status IN ('created', 'reserved', 'submitted', 'running', 'succeeded', 'failed', 'unknown')),
+    request_hash text NOT NULL,
+    idempotency_key text,
+    requested_images integer NOT NULL CHECK (requested_images > 0),
+    generated_images integer NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
+    quality text NOT NULL,
+    aspect_ratio text NOT NULL,
+    request_config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(request_config) = 'object'),
+    pricing_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(pricing_snapshot) = 'object'),
+    usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage) = 'object'),
+    error_code text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    submitted_at timestamptz,
+    completed_at timestamptz
+);
+
+CREATE TABLE image_job_inputs (
+    job_id uuid NOT NULL REFERENCES image_jobs(id),
+    input_id uuid NOT NULL REFERENCES image_inputs(id),
+    PRIMARY KEY (job_id, input_id)
+);
+
+CREATE TABLE image_outputs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id uuid NOT NULL REFERENCES image_jobs(id),
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    object_key text NOT NULL UNIQUE,
+    UNIQUE (job_id, ordinal),
+    mime_type text NOT NULL,
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    byte_size bigint NOT NULL CHECK (byte_size > 0),
+    sha256 text NOT NULL,
+    seed bigint,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    purged_at timestamptz
+);
+CREATE INDEX image_calls_user_started_idx ON image_calls(user_id, started_at DESC);
+CREATE INDEX image_inputs_user_expires_idx ON image_inputs(user_id, expires_at);
+CREATE INDEX image_inputs_expiration_idx ON image_inputs(expires_at);
+CREATE UNIQUE INDEX image_jobs_idempotency_idx ON image_jobs(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX image_jobs_pending_idx ON image_jobs(status, created_at) WHERE status IN ('created', 'reserved', 'submitted', 'running', 'unknown');
+CREATE INDEX image_outputs_expiration_idx ON image_outputs(expires_at) WHERE purged_at IS NULL;
 
 CREATE TABLE credit_ledger_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -495,7 +590,7 @@ CREATE TABLE credit_ledger_entries (
         entry_type IN ('charge', 'grant', 'refund', 'reset', 'adjustment')
     ),
     CONSTRAINT credit_ledger_entries_category_check CHECK (
-        category IN ('model', 'tool', 'other')
+        category IN ('model', 'tool', 'image', 'other')
     ),
     CONSTRAINT credit_ledger_entries_source_type_check CHECK (
         source_type IS NULL

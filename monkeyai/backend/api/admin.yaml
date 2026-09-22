@@ -1840,6 +1840,32 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/admin/v1/models/image-capabilities:
+    get:
+      summary: 查询生图模型支持的画质、比例和操作
+      parameters:
+        - {name: provider, in: query, required: true, schema: {$ref: '#/components/schemas/ModelProvider'}}
+        - {name: model_id, in: query, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 供应商代码声明的原始能力，供管理员选择开放画质与比例。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [operations, qualities, aspect_ratios, max_images, max_reference_images, supports_reference_image, supports_mask]
+                properties:
+                  operations: {type: array, items: {type: string, enum: [generate, edit]}}
+                  qualities: {type: array, items: {type: string}}
+                  aspect_ratios: {type: array, items: {type: string}}
+                  allowed_aspect_ratios: {type: object}
+                  max_images: {type: integer, minimum: 1}
+                  max_reference_images: {type: integer, minimum: 0}
+                  supports_reference_image: {type: boolean}
+                  supports_mask: {type: boolean}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/admin/v1/models/authorization-subjects:
     get:
       summary: 查询可授权的用户和分组
@@ -5263,10 +5289,10 @@ components:
         - model_id
         - display_name
         - protocol
+        - kind
+        - provider
         - base_url
         - api_key_configured
-        - advanced_config
-        - credit_multiplier
         - authorization
         - enabled
         - created_at
@@ -5292,6 +5318,14 @@ components:
           description: 管理后台和 Agent 展示的模型名称。
         protocol:
           $ref: "#/components/schemas/ModelProtocol"
+        kind:
+          $ref: "#/components/schemas/ModelKind"
+        provider:
+          $ref: "#/components/schemas/ModelProvider"
+        image_config:
+          $ref: "#/components/schemas/ImageConfig"
+        image_pricing:
+          $ref: "#/components/schemas/ImagePricing"
         base_url:
           type: string
           format: uri
@@ -5320,8 +5354,52 @@ components:
           description: 模型最后更新时间。
     ModelProtocol:
       type: string
-      enum: [openai_chat_completions, openai_responses, anthropic]
+      enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
       description: MonkeyAI 与上游服务通信时使用的协议。
+    ModelKind:
+      type: string
+      enum: [text, image]
+      description: 模型对外提供的能力；省略时兼容为 text。
+    ModelProvider:
+      type: string
+      enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+      description: 上游调用路径；text 模型只允许 passthrough。
+    ImageConfig:
+      type: object
+      required: [qualities, aspect_ratios, default_quality, default_aspect_ratio]
+      properties:
+        qualities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string}
+        aspect_ratios:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, pattern: '^[1-9][0-9]*:[1-9][0-9]*$'}
+        default_quality: {type: string}
+        default_aspect_ratio: {type: string}
+    ImageMultiplier:
+      type: object
+      required: [name, multiplier]
+      properties:
+        name: {type: string}
+        multiplier: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
+    ImagePricing:
+      type: object
+      required: [base_credits_per_image]
+      properties:
+        base_credits_per_image: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
+        quality_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/ImageMultiplier'}
+        aspect_ratio_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/ImageMultiplier'}
+        operation_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/ImageMultiplier'}
     AdvancedConfig:
       type: object
       required: [context_window_tokens, max_output_tokens, supports_vision]
@@ -5329,13 +5407,13 @@ components:
         context_window_tokens:
           type: integer
           format: int64
-          minimum: 1
-          description: 模型上下文窗口的最大 Token 数。
+          minimum: 0
+          description: 文本模型必须大于 0；生图模型返回 0。
         max_output_tokens:
           type: integer
           format: int64
-          minimum: 1
-          description: 单次请求允许生成的最大 Token 数。
+          minimum: 0
+          description: 文本模型必须大于 0；生图模型返回 0。
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
@@ -5369,8 +5447,6 @@ components:
         - display_name
         - protocol
         - base_url
-        - advanced_config
-        - credit_multiplier
         - authorization
       properties:
         model_id:
@@ -5383,6 +5459,17 @@ components:
           description: 模型展示名称。
         protocol:
           $ref: "#/components/schemas/ModelProtocol"
+        kind:
+          $ref: "#/components/schemas/ModelKind"
+        provider:
+          $ref: "#/components/schemas/ModelProvider"
+        provider_options:
+          type: object
+          description: 非敏感路由参数，不包含上游密钥或画质比例映射。
+        image_config:
+          $ref: "#/components/schemas/ImageConfig"
+        image_pricing:
+          $ref: "#/components/schemas/ImagePricing"
         base_url:
           type: string
           format: uri

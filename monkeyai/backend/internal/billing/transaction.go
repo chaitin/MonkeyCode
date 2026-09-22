@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
@@ -17,6 +18,8 @@ type Request struct {
 	UserID, ResourceID, ConnectorID, SessionID, Category string
 	IdempotencyKey, RequestHash                          string
 	OutputLimit                                          int64
+	ImageUnitPrice                                       Amount
+	ImageCount                                           int64
 }
 type Reservation struct {
 	ID          string
@@ -26,6 +29,7 @@ type Usage struct {
 	Input            int64  `json:"input_tokens"`
 	Cached           int64  `json:"cached_input_tokens"`
 	Output           int64  `json:"output_tokens"`
+	Images           int64  `json:"generated_images,omitempty"`
 	Known            bool   `json:"known"`
 	Stream           *bool  `json:"stream,omitempty"`
 	Result           string `json:"result"`
@@ -142,6 +146,26 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 				upper.Input = upper.Cached
 			}
 			reserve, err = priceTokens(capacity, 0, limit, upper)
+			if err != nil {
+				return Reservation{}, err
+			}
+		}
+	case "image":
+		if r.ImageCount < 1 || r.ImageCount > 16 || r.ImageUnitPrice < 0 {
+			return Reservation{}, resource.Invalid("生图数量或积分无效")
+		}
+		row, e := sqlc.New(tx).ImagePricingModel(ctx, r.ResourceID)
+		if e != nil {
+			return Reservation{}, e
+		}
+		item, ownership = row.DisplayName, row.OwnershipType
+		if row.OwnershipType == "user" {
+			price = Price{}
+			break
+		}
+		price.ImageUnit = r.ImageUnitPrice
+		if p.Enabled {
+			reserve, err = priceImages(price.ImageUnit, r.ImageCount)
 			if err != nil {
 				return Reservation{}, err
 			}
@@ -282,7 +306,7 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 	if u.Result != "succeeded" && u.Result != "failed" && u.Result != "cancelled" {
 		return resource.Invalid("调用结果无效")
 	}
-	if u.Input < 0 || u.Output < 0 || u.Cached < 0 || u.Cached > u.Input {
+	if u.Input < 0 || u.Output < 0 || u.Cached < 0 || u.Cached > u.Input || u.Images < 0 {
 		return resource.Invalid("Token 用量无效")
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -317,7 +341,9 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 	var amount Amount
 	if category == "model" {
 		amount, err = priceTokens(u.Input, u.Cached, u.Output, p)
-	} else if u.Result == "succeeded" {
+	} else if category == "image" && u.Result == "succeeded" {
+		amount, err = priceImages(p.ImageUnit, u.Images)
+	} else if category == "tool" && u.Result == "succeeded" {
 		amount = p.Tool
 	}
 	if err != nil {
@@ -325,6 +351,9 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 	}
 	actual := amount
 	if mode == "remote" {
+		if amount < 0 || quotaAmount(amount, false) > int64(math.MaxInt64/10000) {
+			return resource.Invalid("生图积分超出可结算范围")
+		}
 		actual = Amount(quotaAmount(amount, false) * 10000)
 	}
 	state := "settling"
@@ -356,6 +385,8 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 	}
 	if category == "model" {
 		_, err = sqlc.New(tx).UpsertModelCall(ctx, sqlc.UpsertModelCallParams{ID: id, InputTokens: int64(u.Input), CachedInputTokens: int64(u.Cached), OutputTokens: int64(u.Output)})
+	} else if category == "image" {
+		_, err = sqlc.New(tx).UpsertImageCall(ctx, sqlc.UpsertImageCallParams{ID: id, GeneratedImages: u.Images})
 	} else {
 		_, err = sqlc.New(tx).UpsertToolCall(ctx, id)
 	}

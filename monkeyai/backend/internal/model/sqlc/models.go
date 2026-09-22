@@ -15,6 +15,11 @@ type Model struct {
 	ModelID          string
 	DisplayName      string
 	Protocol         string
+	Kind             string
+	Provider         string
+	ProviderOptions  []byte
+	ImageConfig      []byte
+	ImagePricing     []byte
 	BaseUrl          string
 	ApiKey           string
 	AdvancedConfig   []byte

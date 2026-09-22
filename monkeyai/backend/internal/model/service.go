@@ -32,9 +32,10 @@ type KeyAuthenticator interface {
 }
 
 type Service struct {
-	repository Repository
-	keys       KeyAuthenticator
-	gatewayURL string
+	repository        Repository
+	keys              KeyAuthenticator
+	gatewayURL        string
+	imageCapabilities func(Provider, string) (ImageCapabilities, error)
 }
 
 func NewService(repository Repository) *Service {
@@ -51,6 +52,39 @@ func (s *Service) WithGatewayURL(url string) *Service {
 	return s
 }
 
+func (s *Service) WithImageCapabilities(describe func(Provider, string) (ImageCapabilities, error)) *Service {
+	s.imageCapabilities = describe
+	return s
+}
+
+func (s *Service) DescribeImage(provider Provider, modelID string) (ImageCapabilities, error) {
+	if s.imageCapabilities == nil || strings.TrimSpace(modelID) == "" {
+		return ImageCapabilities{}, errors.New("生图模型能力不可用")
+	}
+	return s.imageCapabilities(provider, strings.TrimSpace(modelID))
+}
+
+func (s *Service) validateImageCapability(item Model) error {
+	if item.Kind != KindImage || s.imageCapabilities == nil {
+		return nil
+	}
+	cap, err := s.imageCapabilities(item.Provider, item.ModelID)
+	if err != nil {
+		return err
+	}
+	for _, quality := range item.ImageConfig.Qualities {
+		if !slices.Contains(cap.Qualities, quality) {
+			return errors.New("画质档位不被上游模型支持")
+		}
+		for _, ratio := range item.ImageConfig.AspectRatios {
+			if !slices.Contains(cap.AspectRatios, ratio) || (cap.AllowedAspectRatios != nil && !slices.Contains(cap.AllowedAspectRatios[quality], ratio)) {
+				return errors.New("画质与比例组合不被上游模型支持")
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Service) List(ctx context.Context, ownership string) ([]Model, error) {
 	if ownership != "" && ownership != "system" && ownership != "user" {
 		return nil, errors.New("ownership_type 无效")
@@ -65,6 +99,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	}
 	if item.APIKey == "" {
 		return Model{}, errors.New("api_key 不能为空")
+	}
+	if err := s.validateImageCapability(item); err != nil {
+		return Model{}, err
 	}
 	item.OwnershipType = "system"
 	item.OwnerUserID = ownerUserID
@@ -85,6 +122,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	if err != nil {
 		return Model{}, err
 	}
+	if err := s.validateImageCapability(item); err != nil {
+		return Model{}, err
+	}
 	item.ID = id
 	item.OwnershipType = existing.OwnershipType
 	item.OwnerUserID = existing.OwnerUserID
@@ -92,6 +132,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	item.Enabled = existing.Enabled
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
+	}
+	if len(input.ProviderOptions) == 0 {
+		item.ProviderOptions = existing.ProviderOptions
 	}
 	return s.repository.Update(ctx, item)
 }
@@ -115,6 +158,17 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 	}
 	result := make([]AgentModel, 0, len(models))
 	for _, item := range models {
+		var imageConfig *AgentImageConfig
+		if item.Kind == KindImage && item.ImageConfig != nil {
+			cap := ImageCapabilities{}
+			if s.imageCapabilities != nil {
+				cap, err = s.imageCapabilities(item.Provider, item.ModelID)
+				if err != nil || s.validateImageCapability(item) != nil {
+					continue
+				}
+			}
+			imageConfig = &AgentImageConfig{ImageConfig: *item.ImageConfig, ImageCapabilities: cap}
+		}
 		entry := AgentModel{
 			OwnershipType:       item.OwnershipType,
 			User:                item.User,
@@ -122,6 +176,9 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			Model:               item.ModelID + "@" + item.ID,
 			DisplayName:         item.DisplayName,
 			Protocol:            item.Protocol,
+			Kind:                item.Kind,
+			ImageConfig:         imageConfig,
+			ImagePricing:        item.ImagePricing,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
@@ -161,16 +218,32 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 		UserID:          userID,
 		UpstreamModelID: item.ModelID,
 		Protocol:        item.Protocol,
+		Kind:            item.Kind,
+		Provider:        item.Provider,
+		ProviderOptions: item.ProviderOptions,
 		BaseURL:         item.BaseURL,
 		APIKey:          item.APIKey,
 	}, nil
 }
 
 func modelFromInput(input SaveInput) (Model, error) {
+	kind := input.Kind
+	if kind == "" {
+		kind = KindText
+	}
+	provider := input.Provider
+	if provider == "" && kind == KindText {
+		provider = ProviderPassthrough
+	}
 	item := Model{
 		ModelID:          strings.TrimSpace(input.ModelID),
 		DisplayName:      strings.TrimSpace(input.DisplayName),
 		Protocol:         input.Protocol,
+		Kind:             kind,
+		Provider:         provider,
+		ProviderOptions:  input.ProviderOptions,
+		ImageConfig:      input.ImageConfig,
+		ImagePricing:     input.ImagePricing,
 		BaseURL:          strings.TrimRight(strings.TrimSpace(input.BaseURL), "/"),
 		APIKey:           strings.TrimSpace(input.APIKey),
 		AdvancedConfig:   input.AdvancedConfig,
@@ -180,15 +253,29 @@ func modelFromInput(input SaveInput) (Model, error) {
 	if item.ModelID == "" || item.DisplayName == "" || item.BaseURL == "" {
 		return Model{}, errors.New("model_id、display_name 和 base_url 不能为空")
 	}
-	if !slices.Contains([]Protocol{ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic}, item.Protocol) {
-		return Model{}, errors.New("protocol 无效")
+	if kind == KindText {
+		if !slices.Contains([]Protocol{ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic}, item.Protocol) || provider != ProviderPassthrough || item.ImageConfig != nil || item.ImagePricing != nil {
+			return Model{}, errors.New("文本模型配置无效")
+		}
+	} else if kind == KindImage {
+		if item.Protocol != ProtocolImage {
+			return Model{}, errors.New("生图模型 protocol 无效")
+		}
+		if err := validateImageModel(&item); err != nil {
+			return Model{}, err
+		}
+	} else {
+		return Model{}, errors.New("kind 无效")
 	}
 	parsed, err := url.Parse(item.BaseURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
 		return Model{}, errors.New("base_url 必须是有效的 HTTP(S) 地址")
 	}
-	if item.AdvancedConfig.ContextWindowTokens <= 0 || item.AdvancedConfig.MaxOutputTokens <= 0 {
+	if kind == KindText && (item.AdvancedConfig.ContextWindowTokens <= 0 || item.AdvancedConfig.MaxOutputTokens <= 0) {
 		return Model{}, errors.New("上下文和最大输出 Token 必须大于 0")
+	}
+	if kind == KindImage && item.CreditMultiplier == 0 {
+		item.CreditMultiplier = 1
 	}
 	if item.CreditMultiplier <= 0 {
 		return Model{}, errors.New("credit_multiplier 必须大于 0")

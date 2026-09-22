@@ -86,6 +86,13 @@ func priceTokens(input, cached, output int64, p Price) (Amount, error) {
 	total.Mul(total, big.NewInt(int64(p.Multiplier)))
 	return rounded(total, new(big.Int).Mul(big.NewInt(scale), big.NewInt(scale)))
 }
+func priceImages(unit Amount, count int64) (Amount, error) {
+	if unit < 0 || count < 0 {
+		return 0, errors.New("生图积分或数量无效")
+	}
+	return rounded(new(big.Int).Mul(big.NewInt(int64(unit)), big.NewInt(count)), big.NewInt(1))
+}
+
 func quotaAmount(a Amount, up bool) int64 {
 	n := int64(a)
 	if up {

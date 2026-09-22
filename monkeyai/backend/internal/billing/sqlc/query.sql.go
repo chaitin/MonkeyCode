@@ -907,6 +907,62 @@ func (q *Queries) IdempotentTransaction(ctx context.Context, arg IdempotentTrans
 	return i, err
 }
 
+const imageCharge = `-- name: ImageCharge :one
+SELECT amount::text FROM billing_transactions
+WHERE id = $1 AND user_id = $2 AND category = 'image'
+    AND amount IS NOT NULL AND status IN ('settled', 'released')
+`
+
+type ImageChargeParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) ImageCharge(ctx context.Context, arg ImageChargeParams) (string, error) {
+	row := q.db.QueryRow(ctx, imageCharge, arg.ID, arg.UserID)
+	var amount string
+	err := row.Scan(&amount)
+	return amount, err
+}
+
+const imageJobReview = `-- name: ImageJobReview :one
+SELECT job.id, job.requested_images, count(output.id)::bigint AS archived_images
+FROM image_jobs job LEFT JOIN image_outputs output ON output.job_id = job.id
+WHERE job.billing_transaction_id = $1 AND job.status = 'unknown'
+GROUP BY job.id
+`
+
+type ImageJobReviewRow struct {
+	ID              string
+	RequestedImages int32
+	ArchivedImages  int64
+}
+
+func (q *Queries) ImageJobReview(ctx context.Context, billingTransactionID *string) (ImageJobReviewRow, error) {
+	row := q.db.QueryRow(ctx, imageJobReview, billingTransactionID)
+	var i ImageJobReviewRow
+	err := row.Scan(&i.ID, &i.RequestedImages, &i.ArchivedImages)
+	return i, err
+}
+
+const imagePricingModel = `-- name: ImagePricingModel :one
+SELECT ownership_type, display_name
+FROM models
+WHERE id = $1 AND kind = 'image' AND enabled AND deleted_at IS NULL
+`
+
+type ImagePricingModelRow struct {
+	OwnershipType string
+	DisplayName   string
+}
+
+func (q *Queries) ImagePricingModel(ctx context.Context, id string) (ImagePricingModelRow, error) {
+	row := q.db.QueryRow(ctx, imagePricingModel, id)
+	var i ImagePricingModelRow
+	err := row.Scan(&i.OwnershipType, &i.DisplayName)
+	return i, err
+}
+
 const initializePolicy = `-- name: InitializePolicy :execresult
 INSERT INTO settings (KEY, value, updated_by_user_id)
 SELECT
@@ -1371,7 +1427,8 @@ func (q *Queries) LockSettlement(ctx context.Context, id string) (LockSettlement
 const lockTransactionStatus = `-- name: LockTransactionStatus :one
 SELECT
     status,
-    MODE
+    MODE,
+    category
 FROM
     billing_transactions
 WHERE
@@ -1380,14 +1437,15 @@ FOR UPDATE
 `
 
 type LockTransactionStatusRow struct {
-	Status string
-	Mode   string
+	Status   string
+	Mode     string
+	Category string
 }
 
 func (q *Queries) LockTransactionStatus(ctx context.Context, id string) (LockTransactionStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockTransactionStatus, id)
 	var i LockTransactionStatusRow
-	err := row.Scan(&i.Status, &i.Mode)
+	err := row.Scan(&i.Status, &i.Mode, &i.Category)
 	return i, err
 }
 
@@ -1667,6 +1725,35 @@ SELECT
 
 func (q *Queries) ReleaseSettlementLock(ctx context.Context, hashtextextended string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, releaseSettlementLock, hashtextextended)
+}
+
+const resolveImageJob = `-- name: ResolveImageJob :execrows
+UPDATE image_jobs
+SET status = $1::text,
+    generated_images = $2::integer,
+    error_code = $3::text,
+    completed_at = now()
+WHERE billing_transaction_id = $4::uuid AND status = 'unknown'
+`
+
+type ResolveImageJobParams struct {
+	Status               string
+	GeneratedImages      int32
+	ErrorCode            string
+	BillingTransactionID string
+}
+
+func (q *Queries) ResolveImageJob(ctx context.Context, arg ResolveImageJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveImageJob,
+		arg.Status,
+		arg.GeneratedImages,
+		arg.ErrorCode,
+		arg.BillingTransactionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const savePolicy = `-- name: SavePolicy :execresult
@@ -2340,6 +2427,28 @@ type UpdatePeriodEndParams struct {
 func (q *Queries) UpdatePeriodEnd(ctx context.Context, arg UpdatePeriodEndParams) error {
 	_, err := q.db.Exec(ctx, updatePeriodEnd, arg.PeriodEndAt, arg.PeriodStartAt)
 	return err
+}
+
+const upsertImageCall = `-- name: UpsertImageCall :execresult
+INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code, started_at, completed_at)
+SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, $1::bigint,
+    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at
+FROM billing_transactions bt
+WHERE bt.id = $2
+ON CONFLICT (id) DO UPDATE SET
+    status = EXCLUDED.status,
+    generated_images = EXCLUDED.generated_images,
+    error_code = EXCLUDED.error_code,
+    completed_at = EXCLUDED.completed_at
+`
+
+type UpsertImageCallParams struct {
+	GeneratedImages int64
+	ID              string
+}
+
+func (q *Queries) UpsertImageCall(ctx context.Context, arg UpsertImageCallParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, upsertImageCall, arg.GeneratedImages, arg.ID)
 }
 
 const upsertModelCall = `-- name: UpsertModelCall :execresult

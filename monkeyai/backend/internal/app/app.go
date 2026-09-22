@@ -21,6 +21,12 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
+	openaiimages "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/openai/images"
+	openairesponses "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/openai/responses"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/volcengine"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/xai"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imageproxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
@@ -40,6 +46,8 @@ type App struct {
 	shutdownTimeout time.Duration
 	billing         *billing.Service
 	proxy           *proxy.Proxy
+	images          *imagegen.Service
+	inputs          *imagegen.Inputs
 	endpoints       *endpoint.Service
 }
 
@@ -75,6 +83,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		},
 		billing:         handler.(*applicationHandler).billing,
 		proxy:           handler.(*applicationHandler).proxy,
+		images:          handler.(*applicationHandler).images,
+		inputs:          handler.(*applicationHandler).inputs,
 		endpoints:       handler.(*applicationHandler).endpoints,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
@@ -87,6 +97,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 	auth := chi.NewRouter()
 	router := chi.NewRouter()
 	proxy.NewProxy(nil, logger).Register(router)
+	imageproxy.NewProxy(nil, nil, nil, nil, nil).Register(router)
 	router.Mount("/", httpapi.New(logger, database, admin, agent, auth))
 	return router
 }
@@ -116,6 +127,20 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	if err != nil {
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
 	}
+	imageRepo := imagegen.NewPostgres(pool)
+	imageInputs := imagegen.NewInputs(imageRepo, storage)
+	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
+	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges)
+	upstreamClient := &http.Client{Timeout: 10 * time.Minute}
+	gptImages := openaiimages.New(upstreamClient)
+	gptResponses := openairesponses.New(upstreamClient)
+	seedream := volcengine.New(upstreamClient)
+	grok := xai.New(upstreamClient)
+	imageService.WithAdapter(model.ProviderOpenAIImages, imagegen.Adapter{Capabilities: gptImages.Capabilities, Generator: gptImages, Editor: gptImages})
+	imageService.WithAdapter(model.ProviderOpenAIResponses, imagegen.Adapter{Capabilities: gptResponses.Capabilities, Generator: gptResponses, Editor: gptResponses})
+	imageService.WithAdapter(model.ProviderVolcengine, imagegen.Adapter{Capabilities: seedream.Capabilities, Generator: seedream, Editor: seedream})
+	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, Generator: grok})
+	models.WithImageCapabilities(imageService.Capabilities)
 	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
@@ -166,6 +191,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	router := chi.NewRouter()
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges})
 	modelProxy.Register(router)
+	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
+		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
 	connectors.RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
@@ -184,7 +211,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, endpoints: endpoints}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints}, nil
 }
 
 type modelResolver struct {
@@ -213,7 +240,11 @@ func (a *App) Run(ctx context.Context) error {
 	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
 	observeDone := make(chan struct{})
 	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
-	defer func() { stopWorker(); <-workerDone; <-observeDone }()
+	imageDone := make(chan struct{})
+	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
+	cleanupDone := make(chan struct{})
+	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
+	defer func() { stopWorker(); <-workerDone; <-observeDone; <-imageDone; <-cleanupDone }()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {
@@ -251,6 +282,9 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	if err := a.proxy.Wait(shutdownCtx); err != nil {
+		runErrors = append(runErrors, err)
+	}
+	if err := a.images.Wait(shutdownCtx); err != nil {
 		runErrors = append(runErrors, err)
 	}
 	for completed < len(a.servers) {

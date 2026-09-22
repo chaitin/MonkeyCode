@@ -486,12 +486,27 @@ WHERE
 -- name: LockTransactionStatus :one
 SELECT
     status,
-    MODE
+    MODE,
+    category
 FROM
     billing_transactions
 WHERE
     id = $1
 FOR UPDATE;
+
+-- name: ImageJobReview :one
+SELECT job.id, job.requested_images, count(output.id)::bigint AS archived_images
+FROM image_jobs job LEFT JOIN image_outputs output ON output.job_id = job.id
+WHERE job.billing_transaction_id = $1 AND job.status = 'unknown'
+GROUP BY job.id;
+
+-- name: ResolveImageJob :execrows
+UPDATE image_jobs
+SET status = sqlc.arg(status)::text,
+    generated_images = sqlc.arg(generated_images)::integer,
+    error_code = sqlc.arg(error_code)::text,
+    completed_at = now()
+WHERE billing_transaction_id = sqlc.arg(billing_transaction_id)::uuid AND status = 'unknown';
 
 -- name: WalletStatus :one
 SELECT
@@ -737,6 +752,16 @@ WHERE
     AND enabled
     AND deleted_at IS NULL;
 
+-- name: ImageCharge :one
+SELECT amount::text FROM billing_transactions
+WHERE id = $1 AND user_id = $2 AND category = 'image'
+    AND amount IS NOT NULL AND status IN ('settled', 'released');
+
+-- name: ImagePricingModel :one
+SELECT ownership_type, display_name
+FROM models
+WHERE id = $1 AND kind = 'image' AND enabled AND deleted_at IS NULL;
+
 -- name: ToolPricing :one
 SELECT
     t.name,
@@ -846,6 +871,18 @@ ON CONFLICT (id)
         cache_hit = EXCLUDED.cache_hit,
         error_code = EXCLUDED.error_code,
         completed_at = EXCLUDED.completed_at;
+
+-- name: UpsertImageCall :execresult
+INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code, started_at, completed_at)
+SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, sqlc.arg(generated_images)::bigint,
+    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at
+FROM billing_transactions bt
+WHERE bt.id = sqlc.arg(id)
+ON CONFLICT (id) DO UPDATE SET
+    status = EXCLUDED.status,
+    generated_images = EXCLUDED.generated_images,
+    error_code = EXCLUDED.error_code,
+    completed_at = EXCLUDED.completed_at;
 
 -- name: UpsertToolCall :execresult
 INSERT INTO mcp_tool_calls (id, session_id, user_id, connector_id, tool_id, request_id, status, error_code, started_at,

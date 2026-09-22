@@ -2631,8 +2631,110 @@ paths:
       schema:
         type: string
         format: uuid
+  /v1/images/inputs:
+    post:
+      summary: 上传当前用户的生图参考图片
+      description: 调用密钥需要 model:invoke 权限；仅接受一张不超过 16 MiB 的 PNG/JPEG。
+      security: [{ModelInvocationKey: []}, {ModelApiKey: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: 用户专属文件，24 小时内可用于生图任务
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImageInputFile'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/images/generations:
+    post:
+      summary: 创建生图任务
+      description: 原生异步接口，返回任务 ID；不与 OpenAI Images 同路径同步语义兼容。
+      security: [{ModelInvocationKey: []}, {ModelApiKey: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ImageGenerateInput'}
+      responses:
+        '202':
+          description: 任务已受理，客户端用任务 ID 查询结果
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImageTask'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+  /v1/images/edits:
+    post:
+      summary: 创建图片编辑任务
+      description: 仅模型原生支持编辑时开放；images 引用此前上传的原图。
+      security: [{ModelInvocationKey: []}, {ModelApiKey: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ImageEditInput'}
+      responses:
+        '202':
+          description: 编辑任务已受理
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImageTask'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+  /v1/images/tasks/{id}:
+    get:
+      summary: 查询当前用户的生图任务
+      description: 返回本地任务状态、图片访问地址与用量；结果图片到期后返回 expired 状态。
+      security: [{ModelInvocationKey: []}, {ModelApiKey: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200':
+          description: 当前用户的任务
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImageTask'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /v1/images/outputs/{id}:
+    get:
+      summary: 下载当前用户的生图结果
+      description: 需要调用密钥；图片到期或不属于当前用户时返回 404。
+      security: [{ModelInvocationKey: []}, {ModelApiKey: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200':
+          description: 生图内容，仅返回 PNG、JPEG 或 WebP
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
 components:
   securitySchemes:
+    ModelInvocationKey:
+      type: http
+      scheme: bearer
+      description: 带 model:invoke 权限的长期调用密钥。
+    ModelApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: 同一调用密钥，优先于 Authorization Bearer。
     InvocationKey:
       type: http
       scheme: bearer
@@ -3124,7 +3226,6 @@ components:
       - display_name
       - protocol
       - base_url
-      - advanced_config
       properties:
         model_id: &id001
           type: string
@@ -3138,6 +3239,16 @@ components:
           - openai_chat_completions
           - openai_responses
           - anthropic
+          - image_generation
+        kind:
+          type: string
+          enum: [text, image]
+          default: text
+        provider:
+          type: string
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+        image_config:
+          $ref: '#/components/schemas/AgentImageConfig'
         base_url: &id004
           type: string
           format: uri
@@ -3156,11 +3267,11 @@ components:
             context_window_tokens:
               type: integer
               format: int64
-              minimum: 1
+              minimum: 0
             max_output_tokens:
               type: integer
               format: int64
-              minimum: 1
+              minimum: 0
             supports_vision:
               type: boolean
     CreateUserModelInput:
@@ -3183,9 +3294,10 @@ components:
       - model_id
       - display_name
       - protocol
+      - kind
+      - provider
       - base_url
       - api_key_configured
-      - advanced_config
       - credit_multiplier
       - authorization
       - enabled
@@ -3195,6 +3307,16 @@ components:
         model_id: *id001
         display_name: *id002
         protocol: *id003
+        kind:
+          type: string
+          enum: [text, image]
+        provider:
+          type: string
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+        image_config:
+          $ref: '#/components/schemas/AgentImageConfig'
+        image_pricing:
+          $ref: '#/components/schemas/AgentImagePricing'
         base_url: *id004
         advanced_config: *id005
         id: *id006
@@ -3507,6 +3629,119 @@ components:
           type: string
           enum: [api_key]
           description: 模型代理使用用户创建的调用密钥鉴权。
+    ImageInputFile:
+      type: object
+      required: [file_id, mime_type, width, height, expires_at]
+      properties:
+        file_id: {type: string, format: uuid}
+        mime_type: {type: string}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+    ImageReference:
+      type: object
+      required: [file_id]
+      properties:
+        file_id: {type: string, format: uuid}
+    ImageGenerateInput:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: {type: string}
+        prompt: {type: string, minLength: 1}
+        reference_images:
+          type: array
+          items: {$ref: '#/components/schemas/ImageReference'}
+        quality: {type: string, description: 模型目录公布的画质档位，如 1K、2K。}
+        aspect_ratio: {type: string, description: '模型目录公布的比例，如 1:1、9:16。'}
+        count: {type: integer, minimum: 1}
+    ImageEditInput:
+      type: object
+      additionalProperties: false
+      required: [model, prompt, images]
+      properties:
+        model: {type: string}
+        prompt: {type: string, minLength: 1}
+        images:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ImageReference'}
+        mask: {$ref: '#/components/schemas/ImageReference'}
+        quality: {type: string}
+        aspect_ratio: {type: string}
+        count: {type: integer, minimum: 1}
+    ImageTask:
+      type: object
+      required: [id, operation, status]
+      properties:
+        id: {type: string, format: uuid}
+        operation: {type: string, enum: [generate, edit]}
+        status: {type: string, enum: [pending, running, succeeded, failed, unknown, expired]}
+        outputs:
+          type: array
+          items:
+            type: object
+            required: [url, mime_type, width, height]
+            properties:
+              url: {type: string, description: 相对路径；下载时需要同一调用密钥。}
+              mime_type: {type: string}
+              width: {type: integer, minimum: 1}
+              height: {type: integer, minimum: 1}
+        usage:
+          type: object
+          properties:
+            requested_images: {type: integer, minimum: 0}
+            generated_images: {type: integer, minimum: 0}
+            credits: {type: string, description: 最终结算积分，完成后提供。}
+    AgentImageConfig:
+      type: object
+      required: [qualities, aspect_ratios, default_quality, default_aspect_ratio]
+      properties:
+        qualities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string}
+        aspect_ratios:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string}
+        default_quality: {type: string}
+        default_aspect_ratio: {type: string}
+        operations:
+          type: array
+          readOnly: true
+          items: {type: string, enum: [generate, edit]}
+        max_images: {type: integer, minimum: 1, readOnly: true}
+        max_reference_images: {type: integer, minimum: 0, readOnly: true}
+        supports_reference_image: {type: boolean, readOnly: true}
+        supports_mask: {type: boolean, readOnly: true}
+        allowed_aspect_ratios:
+          type: object
+          readOnly: true
+          additionalProperties: {type: array, items: {type: string}}
+    AgentImageMultiplier:
+      type: object
+      required: [name, multiplier]
+      properties:
+        name: {type: string}
+        multiplier: {type: string}
+    AgentImagePricing:
+      type: object
+      required: [base_credits_per_image]
+      properties:
+        base_credits_per_image: {type: string}
+        quality_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/AgentImageMultiplier'}
+        aspect_ratio_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/AgentImageMultiplier'}
+        operation_multipliers:
+          type: array
+          items: {$ref: '#/components/schemas/AgentImageMultiplier'}
     AgentModel:
       type: object
       required:
@@ -3516,9 +3751,7 @@ components:
         - model
         - display_name
         - protocol
-        - context_window_tokens
-        - max_output_tokens
-        - supports_vision
+        - kind
         - credit_multiplier
       properties:
         ownership_type:
@@ -3551,18 +3784,25 @@ components:
           description: Agent 向用户展示的模型名称。
         protocol:
           type: string
-          enum: [openai_chat_completions, openai_responses, anthropic]
+          enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
           description: MonkeyAI 与上游服务通信时使用的协议。
+        kind:
+          type: string
+          enum: [text, image]
+        image_config:
+          $ref: '#/components/schemas/AgentImageConfig'
+        image_pricing:
+          $ref: '#/components/schemas/AgentImagePricing'
         context_window_tokens:
           type: integer
           format: int64
-          minimum: 1
-          description: 模型上下文窗口的最大 Token 数。
+          minimum: 0
+          description: 文本模型必须大于 0；生图模型为 0。
         max_output_tokens:
           type: integer
           format: int64
-          minimum: 1
-          description: 单次请求允许生成的最大 Token 数。
+          minimum: 0
+          description: 文本模型必须大于 0；生图模型为 0。
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
