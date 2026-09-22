@@ -260,6 +260,9 @@ export const deDE = {
       },
     },
     models: {
+      searchAuthorization: "Nach Name, E-Mail oder Pinyin suchen",
+      noMatchingAuthorization: "Keine passenden Gruppen oder Benutzer.",
+
       title: "Modelle",
       description:
         "Verwalten Sie die für Ihre Organisation verfügbaren Modelle und Integrationen.",
@@ -542,10 +545,10 @@ export const deDE = {
       systemRule: "Systemregel",
       userRule: "Benutzerregel",
       creator: "Erstellt von",
-      forcedScope: "Bereich der erzwungenen Aktivierung",
-      forcedScopePlaceholder: "Gruppen oder Benutzer auswählen",
+      forcedScope: "Verbindliche Regel",
+      forcedScopePlaceholder: "Optional (standardmäßig aktiviert)",
       forcedScopeDescription:
-        "Diese Systemregel wird für die ausgewählten Gruppen und Benutzer erzwungen.",
+        "Verbindliche Regeln können nicht deaktiviert werden. Optionale Regeln sind anfangs aktiviert; danach verwaltet der Agent ihren Status.",
       usageScope: "Nutzungsbereich",
       creatorOnly: "Nur der Ersteller",
       cancel: "Abbrechen",
@@ -558,6 +561,14 @@ export const deDE = {
         "„{{rule}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Gruppen",
+        placeholder: "Gruppen auswählen (Mehrfachauswahl)",
+        search: "Gruppen suchen",
+        noMatches: "Keine passenden Gruppen.",
+        empty: "Keine Gruppen verfügbar.",
+        clear: "Auswahl löschen",
+      },
       directMembersHint:
         "Nur direkte Mitgliedschaften werden geändert. Mitglieder von Untergruppen bleiben sichtbar.",
       deleteChildrenHint:

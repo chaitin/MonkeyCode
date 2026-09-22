@@ -6,6 +6,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -17,10 +18,29 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			Fail(w, err)
 			return
 		}
+		name, err := rootgroup.Name(r.Context(), s.Pool)
+		if err != nil {
+			Fail(w, err)
+			return
+		}
+		for _, group := range groups {
+			if group["parent_id"] == nil {
+				group["parent_id"] = rootgroup.ID
+			}
+		}
+		groups = append([]Object{{"id": rootgroup.ID, "parent_id": nil, "name": name}}, groups...)
 		users, err := DecodeObjects(sqlc.New(s.Pool).ListUsers(r.Context()))
 		if err != nil {
 			Fail(w, err)
 			return
+		}
+		memberships, err := rootgroup.UserGroups(r.Context(), s.Pool)
+		if err != nil {
+			Fail(w, err)
+			return
+		}
+		for _, user := range users {
+			user["group_id"] = memberships[user.String("id")]
 		}
 		JSON(w, 200, Object{"groups": groups, "users": users})
 	})

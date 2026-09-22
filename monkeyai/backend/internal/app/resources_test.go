@@ -24,6 +24,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -926,7 +927,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	}
 
 	t.Run("全员授权保存回显下发与撤销", func(t *testing.T) {
-		all := []resource.Object{{"all_users": true, "usage_requirement": "optional"}}
+		all := []resource.Object{{"group_id": rootgroup.ID, "usage_requirement": "optional"}}
 		item := must("POST", "/api/admin/v1/rules", resource.Object{"name": "全员规则", "content": "全员规则正文", "grants": all}, "", "")
 		id := item.String("id")
 		path := "/api/admin/v1/resources/rule/" + id + "/grants"
@@ -936,8 +937,13 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("全员授权记录数量错误: %v", stored)
 		}
 		grant := resource.Object(storedGrants[0].(map[string]any))
-		if !grant.Bool("all_users") || grant["user_id"] != nil || grant["group_id"] != nil {
-			t.Fatalf("全员授权不应引用用户或虚拟分组: %v", grant)
+		if grant.Bool("all_users") || grant["user_id"] != nil || grant.String("group_id") != rootgroup.ID {
+			t.Fatalf("全员授权回包应使用根分组 ID: %v", grant)
+		}
+		var storedAllUsers bool
+		var storedGroup *string
+		if err := pool.QueryRow(ctx, `SELECT all_users, group_id::text FROM resource_access_grants WHERE resource_type='rule' AND resource_id=$1`, id).Scan(&storedAllUsers, &storedGroup); err != nil || !storedAllUsers || storedGroup != nil {
+			t.Fatalf("全员授权入库仍应使用 all_users: %v %v %v", storedAllUsers, storedGroup, err)
 		}
 		for _, token := range []string{"a", "b"} {
 			if !hasRule(token, id) {
@@ -1000,6 +1006,63 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("直接资源访问未撤销: %v", err)
 		}
 		must("DELETE", "/api/admin/v1/rules/"+id, nil, "", `"4"`)
+	})
+
+	t.Run("规则授权范围与强制状态独立", func(t *testing.T) {
+		path := "/api/admin/v1/rules"
+		optional := []resource.Object{{"user_id": users[0], "usage_requirement": "optional"}}
+		item := must("POST", path, resource.Object{"name": "可关闭规则", "content": "正文", "grants": optional}, "", "")
+		id := item.String("id")
+		path += "/" + id
+		assertRule := func(token string, visible, required bool) {
+			t.Helper()
+			catalog := must("GET", "/api/v1/rules", nil, token, "")
+			found := false
+			for _, raw := range catalog["rules"].([]any) {
+				rule := resource.Object(raw.(map[string]any))
+				if rule.String("id") != id {
+					continue
+				}
+				found = true
+				if rule.Bool("required") != required {
+					t.Fatalf("规则强制状态错误: %v", rule)
+				}
+			}
+			if found != visible {
+				t.Fatalf("规则可见范围错误: token=%s visible=%v", token, found)
+			}
+			resolved := must("POST", "/api/v1/resources/resolve", resource.Object{}, token, "")
+			included := false
+			for _, raw := range resolved["rules"].([]any) {
+				if raw.(map[string]any)["id"] == id {
+					included = true
+				}
+			}
+			if included != (visible && required) {
+				t.Fatalf("规则自动解析错误: token=%s included=%v", token, included)
+			}
+		}
+		assertRule("a", true, false)
+		assertRule("b", false, false)
+		selected := must("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{id}}, "a", "")
+		found := false
+		for _, raw := range selected["rules"].([]any) {
+			if raw.(map[string]any)["id"] == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("非强制规则开启时应允许 Agent 显式选用")
+		}
+		if code, _, _ := call("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{id}}, "b", ""); code != 404 {
+			t.Fatalf("未授权用户选择规则应返回 404: %d", code)
+		}
+		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": []resource.Object{{"user_id": users[0], "usage_requirement": "required"}}}, "", `"1"`)
+		assertRule("a", true, true)
+		assertRule("b", false, false)
+		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": optional}, "", `"2"`)
+		assertRule("a", true, false)
+		must("DELETE", path, nil, "", `"3"`)
 	})
 
 	t.Run("共享个人 MCP 认证与网关", func(t *testing.T) {

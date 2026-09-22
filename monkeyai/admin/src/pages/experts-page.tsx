@@ -29,6 +29,9 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { useSkillTags } from "@/hooks/use-skill-tags"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,6 +94,7 @@ type Expert = {
   name: string
   description: string
   prompt: string
+  tagIds: string[]
   connectorSettings: ResourceRow["connectors"]
   knowledgeBaseIds: string[]
   toolIds: string[]
@@ -122,6 +126,7 @@ function toExpert(row: ResourceRow): Expert {
     name: row.name,
     description: row.description,
     prompt: row.prompt,
+    tagIds: (row.tags ?? []).map((tag) => tag.id),
     connectorSettings: row.connectors ?? [],
     knowledgeBaseIds: [],
     toolIds: (row.connectors ?? []).map((p) => p.connector_id),
@@ -136,6 +141,7 @@ const EMPTY_FORM: ExpertForm = {
   name: "",
   description: "",
   prompt: "",
+  tagIds: [],
   connectorSettings: [],
   knowledgeBaseIds: [],
   toolIds: [],
@@ -281,6 +287,7 @@ function ExpertAssociationSelect({
 
 export function ExpertsPage() {
   const { i18n, t } = useTranslation()
+  const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const remote = useResources("/experts", toExpert)
   const experts = remote.items
@@ -295,6 +302,7 @@ export function ExpertsPage() {
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [form, setForm] = useState<ExpertForm>(EMPTY_FORM)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
 
   useEffect(() => {
@@ -352,6 +360,7 @@ export function ExpertsPage() {
     setEditingExpert(null)
     setForm(EMPTY_FORM)
     setAuthorizationOpen(false)
+    setTagsOpen(false)
     setEditorOpen(true)
   }
 
@@ -361,6 +370,7 @@ export function ExpertsPage() {
       name: expert.name,
       description: expert.description,
       prompt: expert.prompt,
+      tagIds: expert.tagIds,
       connectorSettings: expert.connectorSettings,
       knowledgeBaseIds: expert.knowledgeBaseIds,
       toolIds: expert.toolIds,
@@ -368,6 +378,7 @@ export function ExpertsPage() {
       skillIds: expert.skillIds,
       authorization: expert.authorization,
     })
+    setTagsOpen(false)
     setEditorOpen(true)
   }
 
@@ -404,6 +415,7 @@ export function ExpertsPage() {
           name: form.name,
           description: form.description,
           prompt: form.prompt,
+          tag_ids: form.tagIds,
           rule_ids: form.ruleIds,
           skill_ids: form.skillIds,
           connectors: form.toolIds.map(
@@ -601,6 +613,7 @@ export function ExpertsPage() {
                 >
                   {expert.prompt}
                 </p>
+                <ResourceTagSummary tagIds={expert.tagIds} />
               </CardContent>
               <CardFooter className="min-w-0 gap-4 border-t">
                 <span
@@ -702,6 +715,20 @@ export function ExpertsPage() {
                   onChange={(event) => updateForm("prompt", event.target.value)}
                   placeholder={t("pages.experts.promptPlaceholder")}
                   required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="expert-tags">
+                  {t("pages.skills.tags")}
+                </FieldLabel>
+                <SkillTagSelect
+                  id="expert-tags"
+                  open={tagsOpen}
+                  options={availableTags}
+                  placeholder={t("pages.skills.tagsPlaceholder")}
+                  value={form.tagIds}
+                  onOpenChange={setTagsOpen}
+                  onValueChange={(value) => updateForm("tagIds", value)}
                 />
               </Field>
               {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (

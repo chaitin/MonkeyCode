@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Card,
   CardContent,
@@ -82,8 +83,9 @@ type AgentRule = {
   content: string
   type: RuleType
   creator: string
+  sharedUsers: string[]
   authorization: AuthorizationSelection
-  forcedScope: AuthorizationSelection | null
+  forced: boolean
 }
 
 function toRule(row: ResourceRow): AgentRule {
@@ -94,8 +96,11 @@ function toRule(row: ResourceRow): AgentRule {
     content: row.content,
     type: row.ownership_type,
     creator: row.user.name || row.user.email || row.user.id,
+    sharedUsers: row.grants.flatMap((grant) =>
+      grant.user ? [grant.user.name || grant.user.email || grant.user.id] : []
+    ),
     authorization: selection(row.grants),
-    forcedScope: selection(row.grants, true),
+    forced: row.grants.some((grant) => grant.usage_requirement === "required"),
   }
 }
 
@@ -118,17 +123,12 @@ export function RulesPage() {
     memberIds: [],
   })
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
-  const [forcedScopeOpen, setForcedScopeOpen] = useState(false)
-  const [forcedScope, setForcedScope] = useState<AuthorizationSelection>({
-    groupIds: [],
-    memberIds: [],
-  })
+  const [forced, setForced] = useState(false)
   const editingRule = rules.find((rule) => rule.id === editingRuleId)
 
   const resetRuleOptions = () => {
-    setForcedScopeOpen(false)
     setAuthorization({ groupIds: [], memberIds: [] })
-    setForcedScope({ groupIds: [], memberIds: [] })
+    setForced(false)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -146,8 +146,7 @@ export function RulesPage() {
 
     setAuthorization(rule.authorization)
     setEditingRuleId(rule.id)
-    setForcedScope(rule.forcedScope ?? { groupIds: [], memberIds: [] })
-    setForcedScopeOpen(false)
+    setForced(rule.forced)
     setDialogOpen(true)
   }
 
@@ -155,17 +154,12 @@ export function RulesPage() {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     await remote.run(async () => {
-      const required = grants(forcedScope, true)
-      const requiredKeys = new Set(required.map((g) => g.group_id ?? g.user_id))
-      const optional = grants(authorization).filter(
-        (g) => !requiredKeys.has(g.group_id ?? g.user_id)
-      )
       await saveResource(
         editingRule ? `/rules/${editingRule.id}` : "/rules",
         {
           name: String(data.get("name") ?? ""),
           content: String(data.get("content") ?? ""),
-          grants: [...optional, ...required],
+          grants: grants(authorization, forced),
         },
         editingRule?.revision
       )
@@ -275,24 +269,20 @@ export function RulesPage() {
                         required
                       />
                     </Field>
-                    <Field>
-                      <FieldLabel htmlFor="rule-forced-scope">
-                        {t("pages.rules.forcedScope")}
-                      </FieldLabel>
-                      <AuthorizationSelect
-                        groups={subjects.groups}
-                        members={subjects.members}
-                        id="rule-forced-scope"
-                        open={forcedScopeOpen}
-                        placeholder={t("pages.rules.forcedScopePlaceholder")}
-                        title={t("pages.rules.forcedScope")}
-                        value={forcedScope}
-                        onOpenChange={setForcedScopeOpen}
-                        onValueChange={setForcedScope}
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id="rule-forced"
+                        checked={forced}
+                        onCheckedChange={setForced}
                       />
-                      <FieldDescription>
-                        {t("pages.rules.forcedScopeDescription")}
-                      </FieldDescription>
+                      <div className="flex flex-col gap-1">
+                        <FieldLabel htmlFor="rule-forced">
+                          {t("pages.rules.forcedScope")}
+                        </FieldLabel>
+                        <FieldDescription>
+                          {t("pages.rules.forcedScopeDescription")}
+                        </FieldDescription>
+                      </div>
                     </Field>
                   </FieldGroup>
                   <ResourceNotice
@@ -324,15 +314,17 @@ export function RulesPage() {
               {rules
                 .filter((rule) => rule.type === tabType)
                 .map((rule) => {
-                  const forcedScopeNames =
-                    rule.type === "system" && rule.forcedScope
+                  const scopeNames =
+                    rule.type === "system"
                       ? getAuthorizationNames(
-                          rule.forcedScope,
+                          rule.authorization,
                           t,
                           subjects.flatGroups,
                           subjects.members
                         )
-                      : null
+                      : rule.sharedUsers.length
+                        ? [rule.creator, ...rule.sharedUsers].join(", ")
+                        : t("pages.rules.creatorOnly")
 
                   return (
                     <Card className="h-full" key={rule.id}>
@@ -420,29 +412,30 @@ export function RulesPage() {
                           {rule.content}
                         </p>
                       </CardContent>
-                      <CardFooter className="min-w-0 gap-4 border-t">
-                        <span
-                          className="w-2/5 truncate text-muted-foreground"
-                          title={t(
-                            rule.type === "system"
-                              ? "pages.rules.forcedScope"
-                              : "pages.rules.usageScope"
-                          )}
-                        >
-                          {t(
-                            rule.type === "system"
-                              ? "pages.rules.forcedScope"
-                              : "pages.rules.usageScope"
-                          )}
-                        </span>
-                        <span
-                          className="w-3/5 truncate text-end font-medium"
-                          title={
-                            forcedScopeNames ?? t("pages.rules.creatorOnly")
-                          }
-                        >
-                          {forcedScopeNames ?? t("pages.rules.creatorOnly")}
-                        </span>
+                      <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
+                        <div className="flex gap-4">
+                          <span className="w-2/5 truncate text-muted-foreground">
+                            {t("pages.rules.usageScope")}
+                          </span>
+                          <span
+                            className="w-3/5 truncate text-end font-medium"
+                            title={scopeNames}
+                          >
+                            {scopeNames}
+                          </span>
+                        </div>
+                        {rule.type === "system" && (
+                          <div className="flex gap-4">
+                            <span className="w-2/5 truncate text-muted-foreground">
+                              {t("pages.rules.forcedScope")}
+                            </span>
+                            <span className="w-3/5 truncate text-end font-medium">
+                              {rule.forced
+                                ? t("pages.rules.forcedScope")
+                                : t("pages.rules.forcedScopePlaceholder")}
+                            </span>
+                          </div>
+                        )}
                       </CardFooter>
                     </Card>
                   )

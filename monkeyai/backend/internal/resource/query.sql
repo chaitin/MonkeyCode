@@ -32,6 +32,20 @@ ORDER BY
     lower(name),
     id;
 
+-- name: ResourceTags :many
+SELECT jsonb_build_object('id', t.id, 'name', t.name)
+FROM tags t JOIN resource_tags rt ON rt.tag_id = t.id
+WHERE rt.resource_type = $1 AND rt.resource_id = $2 AND t.deleted_at IS NULL
+ORDER BY lower(t.name), t.id;
+
+-- name: RemoveResourceTags :exec
+DELETE FROM resource_tags WHERE resource_type = $1 AND resource_id = $2;
+
+-- name: AddResourceTag :execresult
+INSERT INTO resource_tags (resource_type, resource_id, tag_id, assigned_by_user_id)
+SELECT sqlc.arg(resource_type), sqlc.arg(resource_id), t.id, sqlc.arg(actor_id)::uuid
+FROM tags t WHERE t.id = sqlc.arg(tag_id)::uuid AND t.deleted_at IS NULL;
+
 -- name: CreateTag :one
 INSERT INTO tags (name, created_by_user_id)
     VALUES ($1, $2)

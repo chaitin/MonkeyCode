@@ -979,12 +979,26 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/models/tags:
+    get:
+      summary: 列出当前用户可用模型配置的标签
+      responses:
+        '200':
+          description: 去重后的标签列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTagsResponse'
   /api/v1/models:
     get:
       summary: 读取 Agent 模型目录
       description: 仅包含启用的系统授权模型、自有模型和收到分享的模型，同时返回模型代理地址与鉴权方式。版本只覆盖模型目录和代理信息。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentTagID'
+      - $ref: '#/components/parameters/AgentTagIDs'
+      - $ref: '#/components/parameters/AgentPage'
+      - $ref: '#/components/parameters/AgentPageSize'
       responses:
         '200':
           description: 模型目录数据，不包含服务端密钥。
@@ -1094,7 +1108,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户
-      description: 支持 model、skill、connector、expert；个人规则不支持分享。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
         1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
       requestBody:
         required: true
@@ -1160,9 +1174,11 @@ paths:
   /api/v1/rules:
     get:
       summary: 读取 Agent 规则
-      description: 仅返回系统授权规则和当前用户创建的个人规则；历史个人规则分享授权不再生效。独立计算版本，每次请求重新检查当前用户身份和资源权限。
+      description: 仅返回系统授权规则、当前用户创建及分享给当前用户的个人规则；共享的个人规则不能强制应用。独立计算版本，每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentPage'
+      - $ref: '#/components/parameters/AgentPageSize'
       responses:
         '200':
           description: 规则数据，不包含服务端密钥。
@@ -1211,13 +1227,27 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 归属固定为当前用户；个人规则仅创建者可用，保留创建、读取、编辑和删除，不支持分享。
+      description: 归属固定为当前用户；个人规则可分享给指定用户使用，但仅创建者可读取详情、编辑、删除及管理分享。
+  /api/v1/skills/tags:
+    get:
+      summary: 列出当前用户可用技能配置的标签
+      responses:
+        '200':
+          description: 去重后的标签列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTagsResponse'
   /api/v1/skills:
     get:
       summary: 读取 Agent 技能
       description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentTagID'
+      - $ref: '#/components/parameters/AgentTagIDs'
+      - $ref: '#/components/parameters/AgentPage'
+      - $ref: '#/components/parameters/AgentPageSize'
       responses:
         '200':
           description: 技能数据，不包含服务端密钥。
@@ -1277,12 +1307,26 @@ paths:
         '500':
           $ref: '#/components/responses/ResourceError500'
       description: 技能包最多 20 MiB，解包最多 50 MiB、500 个文件。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
+  /api/v1/experts/tags:
+    get:
+      summary: 列出当前用户可用专家配置的标签
+      responses:
+        '200':
+          description: 去重后的标签列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTagsResponse'
   /api/v1/experts:
     get:
       summary: 读取 Agent 专家
       description: 返回启用的系统授权专家、自有专家及收到分享的个人专家；包含归属与修订号，所有者可查看 shared_users。独立计算版本，每次请求重新检查身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentTagID'
+      - $ref: '#/components/parameters/AgentTagIDs'
+      - $ref: '#/components/parameters/AgentPage'
+      - $ref: '#/components/parameters/AgentPageSize'
       responses:
         '200':
           description: 专家数据，不包含服务端密钥。
@@ -1335,12 +1379,26 @@ paths:
         '500':
           $ref: '#/components/responses/ResourceError500'
       description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接。分享通过 /resources/shares 管理。
+  /api/v1/connectors/tags:
+    get:
+      summary: 列出当前用户可用连接器配置的标签
+      responses:
+        '200':
+          description: 去重后的标签列表。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTagsResponse'
   /api/v1/connectors:
     get:
       summary: 读取 Agent 连接器
       description: 只返回此类资源，独立计算版本；每次请求重新检查当前用户身份和资源权限。
       parameters:
       - $ref: '#/components/parameters/IfNoneMatch'
+      - $ref: '#/components/parameters/AgentTagID'
+      - $ref: '#/components/parameters/AgentTagIDs'
+      - $ref: '#/components/parameters/AgentPage'
+      - $ref: '#/components/parameters/AgentPageSize'
       responses:
         '200':
           description: 连接器数据，不包含服务端密钥。
@@ -2771,6 +2829,28 @@ components:
       description: 此接口上一次响应的 ETag；当前用户可见内容未变化时返回 304。
       schema:
         type: string
+    AgentTagID:
+      name: tag_id
+      in: query
+      description: 单标签筛选，兼容旧调用；与 tag_ids 同时传入时匹配任一标签。
+      schema: {type: string, format: uuid}
+    AgentTagIDs:
+      name: tag_ids
+      in: query
+      style: form
+      explode: true
+      description: 多标签筛选，可重复传入或以逗号分隔；匹配任一标签（OR），不重复返回资源，total_count 为筛选后总数。
+      schema:
+        type: array
+        items: {type: string, format: uuid}
+    AgentPage:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1, maximum: 1000000}
+    AgentPageSize:
+      name: page_size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
     KeyID:
       in: path
       name: keyID
@@ -2946,6 +3026,9 @@ components:
     UserExpertInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         prompt:
@@ -2973,6 +3056,9 @@ components:
     UserConnectorInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         name:
@@ -3202,16 +3288,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UserSummary'
+    AgentTagsResponse:
+      type: object
+      required: [version, tags]
+      properties:
+        version:
+          $ref: '#/components/schemas/ResourceVersion'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceTag'
     AgentModelsResponse:
       type: object
       required:
       - version
       - models
       - model_gateway
+      - total_count
+      - page
+      - page_size
       additionalProperties: false
       properties:
         version:
           $ref: '#/components/schemas/ResourceVersion'
+        total_count: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
         models:
           type: array
           description: 当前用户可用的资源，空集合返回 []。
@@ -3257,6 +3359,9 @@ components:
           type: string
           writeOnly: true
           description: 上游密钥，仅写入；更新时省略或为空表示保留。
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         advanced_config: &id005
           type: object
           required:
@@ -3329,6 +3434,9 @@ components:
           description: 资源所有者的基本信息；系统资源返回创建者，分享不改变归属。
         api_key_configured:
           type: boolean
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         credit_multiplier:
           type: number
           exclusiveMinimum: 0
@@ -3373,6 +3481,7 @@ components:
                 type: string
                 enum:
                 - model
+                - rule
                 - skill
                 - connector
                 - expert
@@ -3421,10 +3530,16 @@ components:
       required:
       - version
       - rules
+      - total_count
+      - page
+      - page_size
       additionalProperties: false
       properties:
         version:
           $ref: '#/components/schemas/ResourceVersion'
+        total_count: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
         rules:
           type: array
           description: 当前用户可用的资源，空集合返回 []。
@@ -3435,10 +3550,16 @@ components:
       required:
       - version
       - skills
+      - total_count
+      - page
+      - page_size
       additionalProperties: false
       properties:
         version:
           $ref: '#/components/schemas/ResourceVersion'
+        total_count: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
         skills:
           type: array
           description: 当前用户可用的资源，空集合返回 []。
@@ -3449,10 +3570,16 @@ components:
       required:
       - version
       - experts
+      - total_count
+      - page
+      - page_size
       additionalProperties: false
       properties:
         version:
           $ref: '#/components/schemas/ResourceVersion'
+        total_count: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
         experts:
           type: array
           description: 当前用户可用的资源，空集合返回 []。
@@ -3463,10 +3590,16 @@ components:
       required:
       - version
       - connectors
+      - total_count
+      - page
+      - page_size
       additionalProperties: false
       properties:
         version:
           $ref: '#/components/schemas/ResourceVersion'
+        total_count: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
         connectors:
           type: array
           description: 当前用户可用的资源，空集合返回 []。
@@ -3810,6 +3943,9 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 本模型消耗积分时使用的倍率。
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
     APIKeysResponse:
       type: object
       required: [api_keys]
@@ -4051,12 +4187,18 @@ components:
     AgentRule:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 仅规则所有者读取个人规则目录时返回共享用户列表，未共享时为 []；接收者和系统规则不返回。
         ownership_type:
           type: string
           enum:
           - system
           - user
-          description: 独立资源目录返回；个人规则仅创建者可用。
+          description: 独立资源目录返回；个人规则可由创建者分享给指定用户使用。
         user:
           $ref: '#/components/schemas/UserSummary'
           readOnly: true
@@ -4076,6 +4218,7 @@ components:
           type: string
         required:
           type: boolean
+          description: 系统规则命中的授权为 required 时不可关闭；optional 可由 Agent 关闭。首次获取的规则默认开启，之后非强制规则的开关状态由 Agent 维护。个人规则固定为 false。
       required:
       - id
       - name
@@ -4133,6 +4276,9 @@ components:
     AgentConnector:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -4212,6 +4358,9 @@ components:
     AgentExpert:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -4387,6 +4536,12 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 个人规则的共享用户列表；仅所有者及管理端可读取，未共享时为 []。
         id:
           type: string
           format: uuid
@@ -4409,7 +4564,7 @@ components:
         enabled:
           type: boolean
         grants:
-          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
+          description: 系统规则的授权范围；个人规则的指定用户只读共享授权（不可强制应用），仅所有者及管理端可读取。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
@@ -4524,6 +4679,9 @@ components:
     ExpertResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -4587,6 +4745,9 @@ components:
     ExpertInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         prompt:
@@ -4619,6 +4780,9 @@ components:
     ConnectorResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -4698,6 +4862,9 @@ components:
     ConnectorInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         url:

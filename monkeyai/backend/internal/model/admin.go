@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -15,6 +16,9 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		if err != nil {
 			modelError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		for i := range models {
+			models[i] = presentModel(models[i])
 		}
 		modelJSON(w, http.StatusOK, map[string]any{"models": models})
 	})
@@ -57,7 +61,7 @@ func (s *Service) createModel(w http.ResponseWriter, r *http.Request) {
 		modelError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	modelJSON(w, http.StatusCreated, item)
+	modelJSON(w, http.StatusCreated, presentModel(item))
 }
 
 func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +80,7 @@ func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 		modelError(w, status, err.Error())
 		return
 	}
-	modelJSON(w, http.StatusOK, item)
+	modelJSON(w, http.StatusOK, presentModel(item))
 }
 
 func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +100,7 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		modelError(w, status, err.Error())
 		return
 	}
-	modelJSON(w, http.StatusOK, item)
+	modelJSON(w, http.StatusOK, presentModel(item))
 }
 
 func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +113,15 @@ func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func presentModel(item Model) Model {
+	if item.Authorization.AllUsers {
+		item.Authorization.AllUsers = false
+		item.Authorization.GroupIDs = []string{rootgroup.ID}
+		item.Authorization.UserIDs = []string{}
+	}
+	return item
 }
 
 func decodeModelRequest(w http.ResponseWriter, r *http.Request, target any) error {

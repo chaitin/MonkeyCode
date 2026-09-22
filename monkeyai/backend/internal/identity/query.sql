@@ -230,6 +230,24 @@ WHERE
 ORDER BY
     joined_at DESC;
 
+-- name: LockUserCreationGroups :exec
+-- Same advisory lock as group writes, including membership replacement and deletion.
+SELECT pg_advisory_xact_lock(741209);
+
+-- name: GetUserCreationGroups :many
+SELECT id
+FROM groups
+WHERE id = ANY ($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR SHARE;
+
+-- name: AssignCreatedUserGroups :exec
+INSERT INTO group_users (group_id, user_id, assigned_by_user_id)
+SELECT unnest(sqlc.arg(group_ids)::uuid[]), sqlc.arg(user_id), sqlc.arg(actor_id);
+
+-- name: TouchUserCreationGroups :exec
+UPDATE groups SET updated_at = now() WHERE id = ANY ($1::uuid[]);
+
 -- name: CreateUser :one
 INSERT INTO users (name, email, ROLE, password_hash)
     VALUES ($1, $2, $3, $4)

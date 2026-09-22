@@ -1062,7 +1062,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([][]b
 
 const listGroupQuotas = `-- name: ListGroupQuotas :many
 SELECT
-    jsonb_build_object('id', g.id, 'parent_id', COALESCE(g.parent_id::text, 'team')::text,
+    jsonb_build_object('id', g.id, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')::text,
 	'name', g.name, 'credits', q.credits_per_cycle::text)
 FROM
     GROUPS g

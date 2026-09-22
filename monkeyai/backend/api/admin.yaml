@@ -952,8 +952,8 @@ paths:
               - $ref: '#/components/schemas/BillingWalletInput'
   /api/admin/v1/billing/quotas:
     get:
-      summary: 读取真实分组、成员额度与继承来源
-      description: 成员直接所属分组与成员管理一致。个人自定义额度优先；否则取各所属分组沿父级解析出的有效额度最大值，无分组时继承团队默认额度。
+      summary: 读取分组、成员额度与继承来源
+      description: 成员直接所属分组与成员管理一致。个人自定义额度优先；否则取各所属分组沿父级解析出的有效额度最大值，直属虚拟根节点的成员继承团队额度。
       responses:
         '200':
           description: 请求成功
@@ -969,18 +969,21 @@ paths:
                       properties:
                         id:
                           type: string
-                          description: 分组 UUID 或虚拟团队标识 team。
+                          description: 分组 UUID；虚拟根节点为 00000000-0000-0000-0000-000000000000。
                         parent_id:
                           type:
                           - string
                           - 'null'
-                          description: 父分组 UUID、team 或 null（仅虚拟团队节点）。
+                          description: 父分组 UUID；仅虚拟根节点为 null，其子分组的父级为全零 UUID。
                         name:
                           type: string
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
                           - type: 'null'
+                        allow_inherit:
+                          type: boolean
+                          description: 是否允许额度留空以继承父级，根节点为 false。
                   users:
                     type: array
                     items:
@@ -997,7 +1000,7 @@ paths:
                           type: string
                         group_ids:
                           type: array
-                          description: 成员直接所属的有效分组 UUID，与成员管理一致；无分组时为空数组。
+                          description: 成员直接所属的有效分组 UUID；未加入其他分组时仅包含虚拟根节点的全零 UUID。
                           items:
                             type: string
                             format: uuid
@@ -1009,7 +1012,7 @@ paths:
                           $ref: '#/components/schemas/CreditAmount'
                         inherited_from:
                           type: string
-                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID 或 team。额度相同时按直接所属分组的创建时间、ID 稳定选取。
+                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1044,18 +1047,21 @@ paths:
                       properties:
                         id:
                           type: string
-                          description: 分组 UUID 或虚拟团队标识 team。
+                          description: 分组 UUID；虚拟根节点为 00000000-0000-0000-0000-000000000000。
                         parent_id:
                           type:
                           - string
                           - 'null'
-                          description: 父分组 UUID、team 或 null（仅虚拟团队节点）。
+                          description: 父分组 UUID；仅虚拟根节点为 null，其子分组的父级为全零 UUID。
                         name:
                           type: string
                         credits:
                           anyOf:
                           - $ref: '#/components/schemas/CreditAmount'
                           - type: 'null'
+                        allow_inherit:
+                          type: boolean
+                          description: 是否允许额度留空以继承父级，根节点为 false。
                   users:
                     type: array
                     items:
@@ -1072,7 +1078,7 @@ paths:
                           type: string
                         group_ids:
                           type: array
-                          description: 成员直接所属的有效分组 UUID，与成员管理一致；无分组时为空数组。
+                          description: 成员直接所属的有效分组 UUID；未加入其他分组时仅包含虚拟根节点的全零 UUID。
                           items:
                             type: string
                             format: uuid
@@ -1084,7 +1090,7 @@ paths:
                           $ref: '#/components/schemas/CreditAmount'
                         inherited_from:
                           type: string
-                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID 或 team。额度相同时按直接所属分组的创建时间、ID 稳定选取。
+                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1122,7 +1128,7 @@ paths:
                         - group
                       id:
                         type: string
-                        description: 用户或分组 UUID；团队默认额度使用 team。
+                        description: 用户或分组 UUID；团队默认额度使用虚拟根的全零 UUID。
                       credits:
                         anyOf:
                         - $ref: '#/components/schemas/CreditAmount'
@@ -1619,6 +1625,45 @@ paths:
                   type: string
               required:
               - reason
+  /api/admin/v1/users:
+    post:
+      summary: 创建用户并加入分组
+      description: 创建用户与写入全部直接分组关系在同一事务内完成，任一失败全部回滚。group_ids 未传、为 null 或为空数组时不建立分组关系，用户自动显示在虚拟根分组下。重复分组 ID 自动去重，不可选择根分组、不存在或已删除的分组。只加入指定分组，不自动加入其父分组或子分组。批量添加可逐个调用此接口，每个用户独立提交。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminUserInput'
+      responses:
+        '201':
+          description: 用户及全部分组关系已创建。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailAuthUser'
+        '400':
+          description: invalid_request，请求字段或所选分组无效，未创建用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: user_exists，该邮箱已被未删除用户占用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: server_error，创建失败，用户与分组关系全部回滚。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/admin/v1/users/{userID}/reset-password:
     parameters:
       - in: path
@@ -1662,7 +1707,7 @@ paths:
   /api/admin/v1/groups:
     get:
       summary: 查询成员分组
-      description: 返回全部未删除分组及直接成员。团队根节点不入库，名称由 branding.workspace_name 设置提供；parent_id 为 null 的分组均为团队根节点的直属子分组，不预置任何分组。
+      description: 返回全零 UUID 的虚拟根分组和全部未删除子分组。根节点不入库，名称来自 branding.workspace_name，直属成员为未直接加入其他有效分组的用户；真实顶层分组的 parent_id 在响应中为根分组 UUID，数据库中仍为 null。actions 和 allow_add_members 由后端决定。
       responses:
         "200":
           description: 分组列表
@@ -1678,7 +1723,7 @@ paths:
           $ref: "#/components/responses/ResourceError500"
     post:
       summary: 创建子分组
-      description: 名称去除首尾空白后须为 1—100 个字符，同级名称不区分大小写且不能重复。parent_id 为 null 或省略时，创建团队根节点的直属子分组。
+      description: 名称去除首尾空白后须为 1—100 个字符，同级名称不区分大小写且不能重复。parent_id 为全零 UUID、null 或省略时，创建根节点的直属子分组。
       requestBody:
         required: true
         content:
@@ -1704,6 +1749,31 @@ paths:
           $ref: "#/components/responses/ResourceError409"
         "500":
           $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/groups/move:
+    post:
+      summary: 批量移动分组或成员
+      description: 管理员确认拖放预览后一次提交，全部变更在同一事务中完成。不能混合移动分组与成员；移动父分组会保留子树，不能同时选择其子分组、移动到自身/后代或在目标下造成同名冲突。树中成员仅移除指定来源分组，保留其他分组关系；未指定来源的列表成员只加入目标分组。全零 UUID 为虚拟根目标，不能直接增加成员关系。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberGroupMoveInput"
+      responses:
+        "204":
+          description: 批量移动成功，无响应体。
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
+        "409":
+          $ref: "#/components/responses/ResourceError409"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/groups/{groupID}:
     parameters:
       - in: path
@@ -1715,7 +1785,7 @@ paths:
           format: uuid
     patch:
       summary: 修改分组名称或上级分组
-      description: 至少指定 name 或 parent_id。parent_id 为 null 表示移动到团队根节点下，省略则保留原上级。不能移动到自身或后代中；更换上级会改变成员继承的资源授权。
+      description: 至少指定 name 或 parent_id。parent_id 为全零 UUID 或 null 表示移动到根节点下，省略则保留原上级。不能移动到自身或后代中；更换上级会改变成员继承的资源授权。
       requestBody:
         required: true
         content:
@@ -3184,6 +3254,10 @@ paths:
                           type: string
                         email:
                           type: string
+                        group_id:
+                          type: string
+                          format: uuid
+                          description: 授权选择器展示的所属分组；未加入其他分组时为根 UUID。
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -4407,6 +4481,43 @@ components:
         email_code_auto_registration_enabled:
           type: boolean
           description: 邮箱验证码自动注册开关，默认 false；客户端使用新邮箱通过验证码登录时自动创建普通账号，管理后台入口不会自动注册。
+    CreateAdminUserInput:
+      type: object
+      required: [name, email, role]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 姓名会去除首尾空白，不能为空。
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: 邮箱会去除首尾空白并转为小写。
+        role:
+          type: string
+          enum: [admin, user]
+        password:
+          type: string
+          writeOnly: true
+          description: 管理员必填，至少 12 个字符；普通用户忽略此字段。
+        group_ids:
+          type: [array, 'null']
+          maxItems: 1000
+          description: 直接加入的分组 UUID，重复值自动去重；未传、null 或空数组表示不加入真实分组。禁止根分组 UUID。
+          items:
+            type: string
+            format: uuid
+      allOf:
+        - if:
+            properties:
+              role:
+                const: admin
+          then:
+            required: [password]
+            properties:
+              password:
+                minLength: 12
     EmailAuthUser:
       type: object
       required:
@@ -4858,6 +4969,38 @@ components:
           items:
             type: string
             format: uuid
+    MemberGroupMoveInput:
+      type: object
+      required: [target_id]
+      description: group_ids 与 members 必须且只能有一个非空数组，分别最多 100 个分组和 1000 条成员来源关系。
+      properties:
+        target_id:
+          type: string
+          format: uuid
+          description: 目标分组 UUID；全零 UUID 表示虚拟根。
+        group_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          description: 需移动的分组 ID；不能包含虚拟根或同时包含父子分组。
+          items:
+            type: string
+            format: uuid
+        members:
+          type: array
+          maxItems: 1000
+          description: 需移动的成员及其来源分组；同一成员允许从不同来源分组移走。
+          items:
+            type: object
+            required: [id]
+            properties:
+              id:
+                type: string
+                format: uuid
+              source_group_id:
+                type: string
+                format: uuid
+                description: 树中拖动时指定来源分组；省略表示从成员列表拖动，仅追加目标分组关系。
     MemberGroupInput:
       type: object
       minProperties: 1
@@ -4873,37 +5016,46 @@ components:
         parent_id:
           type: [string, "null"]
           format: uuid
-          description: 新上级分组 ID，必须是有效分组；null 表示团队根节点，更新时省略则保留原值。
+          description: 新上级分组 ID，必须是有效分组；全零 UUID 或 null 表示虚拟根节点，更新时省略则保留原值。
     MemberGroupsResponse:
       type: object
       required: [groups]
       properties:
         groups:
           type: array
-          description: 未删除的分组列表，按创建时间和 ID 排序。
+          description: 首项为全零 UUID 的虚拟根节点，其余未删除分组按创建时间和 ID 排序。
           items:
             $ref: "#/components/schemas/MemberGroup"
     MemberGroup:
       type: object
-      required: [id, parent_id, name, member_ids]
+      required: [id, parent_id, name, member_ids, actions, allow_add_members]
       properties:
         id:
           type: string
           format: uuid
-          description: 分组唯一标识。
+          description: 分组唯一标识；虚拟根节点固定为 00000000-0000-0000-0000-000000000000。
         parent_id:
           type: [string, "null"]
           format: uuid
-          description: 上级分组 ID；null 表示该分组直属团队根节点。
+          description: 上级分组 ID；仅虚拟根节点为 null，其他顶层分组指向根节点的全零 UUID。
         name:
           type: string
           description: 分组显示名称。
         member_ids:
           type: array
-          description: 未删除用户的直接分组关系，不含子分组成员，也不按用户角色自动分配。
+          description: 未删除用户的直接分组关系，不含子分组成员；虚拟根节点列出未直接加入其他有效分组的用户，新用户自动归属该节点。
           items:
             type: string
             format: uuid
+        actions:
+          type: array
+          description: 后端允许在该分组上执行的管理动作；根节点仅允许新增子组。
+          items:
+            type: string
+            enum: [add-subgroup, rename, adjust-members, move, delete]
+        allow_add_members:
+          type: boolean
+          description: 是否允许从成员列表向本分组拖动并追加成员关系；虚拟根节点为 false。
     CreditAmount:
       type: string
       pattern: ^-?\d+(\.\d{1,6})?$
@@ -5339,6 +5491,9 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 本模型消耗积分时使用的倍率。
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         authorization:
           $ref: "#/components/schemas/Authorization"
         enabled:
@@ -5419,13 +5574,13 @@ components:
           description: 模型是否支持图像输入。
     Authorization:
       type: object
-      description: 可使用该模型的用户和分组；须选择全员授权，或在两个数组中至少指定一项。全员授权包含后续新增用户，启用时忽略用户和分组数组。
+      description: 可使用该模型的用户和分组。全零 UUID 根分组表示全员授权（包括后续新增用户），服务端入库时转为 all_users，管理端回包统一以 group_ids 中的根 UUID 表示。兼容输入 all_users=true，此时忽略其他授权 ID。
       required: [user_ids, group_ids]
       properties:
         all_users:
           type: boolean
           default: false
-          description: 是否授权给全体用户；界面通过选择虚拟根节点表达，不引用分组记录。
+          description: 兼容写入全员授权的旧字段；管理端回包固定为 false，统一通过 group_ids 中的根 UUID 表示。
         user_ids:
           type: array
           description: 获得模型访问权的用户 UUID。
@@ -5435,7 +5590,7 @@ components:
             format: uuid
         group_ids:
           type: array
-          description: 获得模型访问权的分组 UUID。
+          description: 获得模型访问权的分组 UUID；全零 UUID 表示全员。
           uniqueItems: true
           items:
             type: string
@@ -5484,6 +5639,9 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 积分消耗倍率。
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         authorization:
           $ref: "#/components/schemas/Authorization"
     CreateModelInput:
@@ -5509,7 +5667,7 @@ components:
       properties:
         groups:
           type: array
-          description: 可授权的分组。
+          description: 包含全零 UUID 的虚拟根节点及全部可授权分组。
           items:
             $ref: "#/components/schemas/GroupSubject"
         users:
@@ -5528,13 +5686,13 @@ components:
         parent_id:
           type: string
           format: uuid
-          description: 父分组 ID；根分组不返回该字段。
+          description: 父分组 ID；仅虚拟根分组不返回该字段，其他顶层分组指向根 UUID。
         name:
           type: string
           description: 分组名称。
     UserSubject:
       type: object
-      required: [id, name, email]
+      required: [id, name, email, group_id]
       properties:
         id:
           type: string
@@ -5547,6 +5705,10 @@ components:
           type: string
           format: email
           description: 用户邮箱。
+        group_id:
+          type: string
+          format: uuid
+          description: 授权选择器展示的用户所属分组；未加入其他分组时为根 UUID，多组用户取创建时间最早的分组。
     APIKeysResponse:
       type: object
       required: [api_keys]
@@ -5627,12 +5789,12 @@ components:
           format: email
     ResourceGrant:
       type: object
-      description: 每条授权必须且只能选择用户、分组或全体用户之一。全员授权仅用于系统资源，包含后续新增用户，user_id 和 group_id 须为空或省略。
+      description: 每条授权只能选择用户或分组之一；全零 UUID 的虚拟根分组表示全员授权，服务端入库时转换为 all_users，管理端读取时转换回 group_id。兼容写入 all_users=true，但不能同时指定用户或分组。
       properties:
         all_users:
           type: boolean
           default: false
-          description: 是否授权给全体用户；省略时按 false 处理。
+          description: 兼容旧请求的全员授权字段；管理端回包固定为 false，改由根分组 UUID 表示。
         user_id:
           type:
           - string
@@ -5815,6 +5977,9 @@ components:
     AgentConnector:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         id:
           type: string
           format: uuid
@@ -5874,6 +6039,9 @@ components:
     AgentExpert:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         id:
           type: string
           format: uuid
@@ -6029,6 +6197,12 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_users:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          description: 个人规则已共享的用户；未共享时为 []，系统规则不返回。
         id:
           type: string
           format: uuid
@@ -6051,7 +6225,7 @@ components:
         enabled:
           type: boolean
         grants:
-          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
+          description: 系统规则的授权范围及强制性：required 不可关闭，optional 默认开启但可由 Agent 关闭；个人规则可向指定用户共享只读使用权，不可强制应用。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'
@@ -6166,6 +6340,9 @@ components:
     ExpertResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -6229,6 +6406,9 @@ components:
     ExpertInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         prompt:
@@ -6261,6 +6441,9 @@ components:
     ConnectorResource:
       type: object
       properties:
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -6340,6 +6523,9 @@ components:
     ConnectorInput:
       type: object
       properties:
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
         description:
           type: string
         url:

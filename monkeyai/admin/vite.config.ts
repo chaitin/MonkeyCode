@@ -10,6 +10,9 @@ const apiBackend = process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    watch: {
+      awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+    },
     proxy: {
       "^/api/v1/endpoints/connect$": { target: apiBackend, changeOrigin: true, ws: true },
       "/api": { target: apiBackend, changeOrigin: true },

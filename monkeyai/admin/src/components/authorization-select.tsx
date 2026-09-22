@@ -27,8 +27,6 @@ import {
 } from "@/lib/authorization-groups"
 import { cn } from "@/lib/utils"
 
-const ROOT_ID = "authorization-root"
-
 function getGroupAndDescendantIds(
   group: AuthorizationGroupNode
 ): AuthorizationGroup[] {
@@ -64,10 +62,6 @@ export function AuthorizationSelect({
   const summary = getAuthorizationNames(value, t, flatGroups, members)
 
   const setGroupChecked = (group: AuthorizationGroupNode, checked: boolean) => {
-    if (group.value === ROOT_ID) {
-      onValueChange({ allUsers: checked, groupIds: [], memberIds: [] })
-      return
-    }
     if (!checked) {
       onValueChange({
         ...value,
@@ -106,16 +100,11 @@ export function AuthorizationSelect({
     level = 0,
     inherited = false
   ): ReactNode => {
-    const isRoot = group.value === ROOT_ID
-    const selected = isRoot
-      ? !!value.allUsers
-      : value.groupIds.includes(group.value)
+    const selected = value.groupIds.includes(group.value)
     const effectivelySelected = inherited || selected
     const subtreeGroupIds = new Set(getGroupAndDescendantIds(group))
     const subtreeMemberIds = new Set(
-      isRoot
-        ? members.map((member) => member.id)
-        : getMemberIdsInGroupTreeFromMembers(group, members)
+      getMemberIdsInGroupTreeFromMembers(group, members)
     )
     const partiallySelected =
       !effectivelySelected &&
@@ -123,10 +112,8 @@ export function AuthorizationSelect({
         (groupId) => groupId !== group.value && subtreeGroupIds.has(groupId)
       ) ||
         value.memberIds.some((memberId) => subtreeMemberIds.has(memberId)))
-    const directMembers = members.filter((member) =>
-      isRoot
-        ? !flatGroups.some((node) => node.value === member.groupId)
-        : member.groupId === group.value
+    const directMembers = members.filter(
+      (member) => member.groupId === group.value
     )
     const groupCheckboxId = `${id}-group-${group.value}`
 
@@ -227,11 +214,7 @@ export function AuthorizationSelect({
           <PopoverTitle>{title}</PopoverTitle>
         </PopoverHeader>
         <div role="tree">
-          {renderGroup({
-            value: ROOT_ID,
-            labelKey: "pages.membersAndGroups.groupNames.rootGroup",
-            children: groups,
-          })}
+          {groups.map((group) => renderGroup(group))}
         </div>
       </PopoverContent>
     </Popover>

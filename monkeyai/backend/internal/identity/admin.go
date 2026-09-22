@@ -9,6 +9,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (s *Service) RegisterAdmin(router chi.Router) {
@@ -115,10 +116,11 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Role     string `json:"role"`
-		Password string `json:"password"`
+		Name     string   `json:"name"`
+		Email    string   `json:"email"`
+		Role     string   `json:"role"`
+		Password string   `json:"password"`
+		GroupIDs []string `json:"group_ids"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "请求格式无效")
@@ -130,22 +132,38 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "姓名、邮箱或角色无效")
 		return
 	}
-	passwordHash := ""
+	groupIDs, err := normalizeCreationGroups(input.GroupIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	var passwordHash *string
 	if input.Role == "admin" {
 		if len(input.Password) < 12 {
 			writeError(w, http.StatusBadRequest, "invalid_request", "管理员密码不能少于 12 个字符")
 			return
 		}
-		var err error
-		passwordHash, err = hashPassword(input.Password)
+		hash, err := hashPassword(input.Password)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "server_error", "创建用户失败")
 			return
 		}
+		passwordHash = &hash
 	}
-	user, err := s.insertUser(r.Context(), input.Name, input.Email, input.Role, passwordHash)
+	actor, _ := UserFromContext(r.Context())
+	user, err := s.insertUserWithGroups(r.Context(), actor.ID, sqlc.CreateUserParams{
+		Name: input.Name, Email: input.Email, Role: input.Role, PasswordHash: passwordHash,
+	}, groupIDs)
 	if err != nil {
-		writeError(w, http.StatusConflict, "user_exists", "该邮箱已存在")
+		var dbError *pgconn.PgError
+		switch {
+		case errors.Is(err, errCreationGroupUnavailable):
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		case errors.As(err, &dbError) && dbError.Code == "23505" && dbError.ConstraintName == "users_email_active_key":
+			writeError(w, http.StatusConflict, "user_exists", "该邮箱已存在")
+		default:
+			writeError(w, http.StatusInternalServerError, "server_error", "创建用户失败")
+		}
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)

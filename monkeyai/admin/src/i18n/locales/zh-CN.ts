@@ -369,6 +369,9 @@ export const zhCN = {
       },
     },
     models: {
+      searchAuthorization: "搜索名称、邮箱或拼音",
+      noMatchingAuthorization: "没有匹配的分组或用户。",
+
       title: "大模型",
       description: "管理企业可用的大模型与接入配置。",
       count: "已接入 {{count}} 个模型",
@@ -738,9 +741,10 @@ export const zhCN = {
       systemRule: "系统规则",
       userRule: "用户规则",
       creator: "创建者",
-      forcedScope: "强制启用范围",
-      forcedScopePlaceholder: "选择需要强制启用的分组或用户",
-      forcedScopeDescription: "选中的分组和用户将被强制应用此系统规则。",
+      forcedScope: "强制规则",
+      forcedScopePlaceholder: "非强制（默认开启）",
+      forcedScopeDescription:
+        "强制规则不可关闭；非强制规则初始开启，之后由 Agent 管理开关。",
       usageScope: "使用范围",
       creatorOnly: "仅创建者本人",
       cancel: "取消",
@@ -752,6 +756,14 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{rule}}”吗？此操作无法撤销。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "分组",
+        placeholder: "选择分组（可多选）",
+        search: "搜索分组",
+        noMatches: "没有匹配的分组。",
+        empty: "暂无可选分组。",
+        clear: "清空选择",
+      },
       directMembersHint:
         "仅调整直接加入本组的成员；子分组成员仍会显示在本组中。",
       deleteChildrenHint: "请先移动或删除子分组，再删除此分组。",

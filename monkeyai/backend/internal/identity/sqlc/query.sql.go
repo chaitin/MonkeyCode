@@ -12,6 +12,22 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const assignCreatedUserGroups = `-- name: AssignCreatedUserGroups :exec
+INSERT INTO group_users (group_id, user_id, assigned_by_user_id)
+SELECT unnest($1::uuid[]), $2, $3
+`
+
+type AssignCreatedUserGroupsParams struct {
+	GroupIds []string
+	UserID   string
+	ActorID  string
+}
+
+func (q *Queries) AssignCreatedUserGroups(ctx context.Context, arg AssignCreatedUserGroupsParams) error {
+	_, err := q.db.Exec(ctx, assignCreatedUserGroups, arg.GroupIds, arg.UserID, arg.ActorID)
+	return err
+}
+
 const cleanEmailCodes = `-- name: CleanEmailCodes :exec
 DELETE FROM email_codes WHERE expires_at < now()
 `
@@ -823,6 +839,34 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (GetUserByEm
 	return i, err
 }
 
+const getUserCreationGroups = `-- name: GetUserCreationGroups :many
+SELECT id
+FROM groups
+WHERE id = ANY ($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR SHARE
+`
+
+func (q *Queries) GetUserCreationGroups(ctx context.Context, dollar_1 []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, getUserCreationGroups, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT
     id,
@@ -897,6 +941,16 @@ SELECT
 
 func (q *Queries) LockInitialAdmin(ctx context.Context) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, lockInitialAdmin)
+}
+
+const lockUserCreationGroups = `-- name: LockUserCreationGroups :exec
+SELECT pg_advisory_xact_lock(741209)
+`
+
+// Same advisory lock as group writes, including membership replacement and deletion.
+func (q *Queries) LockUserCreationGroups(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockUserCreationGroups)
+	return err
 }
 
 const readyEmailCode = `-- name: ReadyEmailCode :exec
@@ -1150,6 +1204,15 @@ WHERE
 
 func (q *Queries) TouchLogin(ctx context.Context, id string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, touchLogin, id)
+}
+
+const touchUserCreationGroups = `-- name: TouchUserCreationGroups :exec
+UPDATE groups SET updated_at = now() WHERE id = ANY ($1::uuid[])
+`
+
+func (q *Queries) TouchUserCreationGroups(ctx context.Context, dollar_1 []string) error {
+	_, err := q.db.Exec(ctx, touchUserCreationGroups, dollar_1)
+	return err
 }
 
 const updateBaizhiyunEmail = `-- name: UpdateBaizhiyunEmail :exec

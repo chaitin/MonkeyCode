@@ -252,6 +252,9 @@ export const koKR = {
       },
     },
     models: {
+      searchAuthorization: "이름, 이메일 또는 병음으로 검색",
+      noMatchingAuthorization: "일치하는 그룹이나 사용자가 없습니다.",
+
       title: "모델",
       description: "조직에서 사용할 수 있는 모델과 연동 설정을 관리합니다.",
       count: "연결된 모델 {{count}}개",
@@ -521,10 +524,10 @@ export const koKR = {
       systemRule: "시스템 규칙",
       userRule: "사용자 규칙",
       creator: "생성자",
-      forcedScope: "강제 활성화 범위",
-      forcedScopePlaceholder: "강제 적용할 그룹 또는 사용자 선택",
+      forcedScope: "필수 규칙",
+      forcedScopePlaceholder: "선택 사항 (기본 켜짐)",
       forcedScopeDescription:
-        "선택한 그룹과 사용자에게 이 시스템 규칙이 강제로 적용됩니다.",
+        "필수 규칙은 끌 수 없습니다. 선택 규칙은 처음에 켜져 있으며 이후 상태는 Agent가 관리합니다.",
       usageScope: "사용 범위",
       creatorOnly: "생성자 본인만",
       cancel: "취소",
@@ -537,6 +540,14 @@ export const koKR = {
         '"{{rule}}" 규칙을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "그룹",
+        placeholder: "그룹 선택 (여러 개 선택 가능)",
+        search: "그룹 검색",
+        noMatches: "일치하는 그룹이 없습니다.",
+        empty: "선택 가능한 그룹이 없습니다.",
+        clear: "선택 지우기",
+      },
       directMembersHint:
         "직접 소속된 멤버만 변경합니다. 하위 그룹의 멤버는 계속 표시됩니다.",
       deleteChildrenHint:

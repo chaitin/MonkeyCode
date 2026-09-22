@@ -57,6 +57,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 	item.Enabled = existing.Enabled
 	item.Authorization = existing.Authorization
 	item.CreditMultiplier = existing.CreditMultiplier
+	if input.TagIDs == nil {
+		item.TagIDs = tagIDs(existing.Tags)
+	}
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
@@ -68,7 +71,7 @@ func userModelFromInput(input UserInput) (Model, error) {
 		ModelID: input.ModelID, DisplayName: input.DisplayName, Protocol: input.Protocol,
 		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig,
 		BaseURL: input.BaseURL, APIKey: input.APIKey, AdvancedConfig: input.AdvancedConfig,
-		ImagePricing: userImagePricing(input.Kind), CreditMultiplier: 1,
+		ImagePricing: userImagePricing(input.Kind), CreditMultiplier: 1, TagIDs: input.TagIDs,
 	})
 	if err != nil {
 		return Model{}, resource.Invalid(err.Error())
@@ -78,16 +81,38 @@ func userModelFromInput(input UserInput) (Model, error) {
 
 func (s *Service) RegisterAgent(router chi.Router) {
 	router.Get("/models", func(w http.ResponseWriter, r *http.Request) {
+		page, size, err := resource.PageParams(r)
+		if err != nil {
+			userModelError(w, err)
+			return
+		}
 		user, _ := identity.UserFromContext(r.Context())
 		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
 		if err != nil {
 			userModelError(w, err)
 			return
 		}
+		items = filterModelTags(items, resource.QueryTagIDs(r))
 		if err = httpapi.CachedJSON(w, r, map[string]any{
-			"models":        items,
+			"models":      resource.PageSlice(items, page, size),
+			"total_count": len(items), "page": page, "page_size": size,
 			"model_gateway": map[string]string{"base_url": s.gatewayURL, "authentication": "api_key"},
 		}); err != nil {
+			userModelError(w, err)
+		}
+	})
+	router.Get("/models/tags", func(w http.ResponseWriter, r *http.Request) {
+		user, _ := identity.UserFromContext(r.Context())
+		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
+		if err != nil {
+			userModelError(w, err)
+			return
+		}
+		rows := make([]resource.Object, 0, len(items))
+		for _, item := range items {
+			rows = append(rows, resource.Object{"tags": item.Tags})
+		}
+		if err := httpapi.CachedJSON(w, r, map[string]any{"tags": resource.CollectTags(rows)}); err != nil {
 			userModelError(w, err)
 		}
 	})
@@ -132,6 +157,26 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func filterModelTags(items []AgentModel, ids []string) []AgentModel {
+	if len(ids) == 0 {
+		return items
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	filtered := make([]AgentModel, 0)
+	for _, item := range items {
+		for _, tag := range item.Tags {
+			if wanted[tag.String("id")] {
+				filtered = append(filtered, item)
+				break
+			}
+		}
+	}
+	return filtered
 }
 
 func userModelError(w http.ResponseWriter, err error) {

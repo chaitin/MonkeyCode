@@ -252,6 +252,9 @@ export const ar = {
       },
     },
     models: {
+      searchAuthorization: "البحث بالاسم أو البريد الإلكتروني أو بينيين",
+      noMatchingAuthorization: "لا توجد مجموعات أو مستخدمون مطابقون.",
+
       title: "النماذج",
       description: "أدِر النماذج والتكاملات المتاحة لمؤسستك.",
       count: "عدد النماذج المتصلة: {{count}}",
@@ -520,10 +523,10 @@ export const ar = {
       systemRule: "قاعدة النظام",
       userRule: "قاعدة المستخدم",
       creator: "المنشئ",
-      forcedScope: "نطاق التفعيل الإلزامي",
-      forcedScopePlaceholder: "اختر المجموعات أو المستخدمين",
+      forcedScope: "قاعدة إلزامية",
+      forcedScopePlaceholder: "اختيارية (مفعّلة افتراضيًا)",
       forcedScopeDescription:
-        "سيتم فرض قاعدة النظام هذه على المجموعات والمستخدمين المحددين.",
+        "لا يمكن تعطيل القواعد الإلزامية. تبدأ القواعد الاختيارية مفعّلة، ثم يدير الوكيل حالتها.",
       usageScope: "نطاق الاستخدام",
       creatorOnly: "المنشئ فقط",
       cancel: "إلغاء",
@@ -536,6 +539,14 @@ export const ar = {
         "هل تريد حذف قاعدة «{{rule}}»؟ لا يمكن التراجع عن هذا الإجراء.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "المجموعات",
+        placeholder: "اختر المجموعات (يمكن اختيار عدة مجموعات)",
+        search: "البحث عن مجموعات",
+        noMatches: "لا توجد مجموعات مطابقة.",
+        empty: "لا توجد مجموعات متاحة.",
+        clear: "مسح الاختيار",
+      },
       directMembersHint:
         "يتغير الانضمام المباشر فقط. يظل أعضاء المجموعات الفرعية ظاهرين هنا.",
       deleteChildrenHint:

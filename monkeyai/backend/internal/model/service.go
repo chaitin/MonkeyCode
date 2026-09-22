@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
 var (
@@ -130,6 +132,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	item.OwnerUserID = existing.OwnerUserID
 	item.GrantorUserID = actorUserID
 	item.Enabled = existing.Enabled
+	if input.TagIDs == nil {
+		item.TagIDs = tagIDs(existing.Tags)
+	}
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
@@ -183,6 +188,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
 			CreditMultiplier:    item.CreditMultiplier,
+			Tags:                item.Tags,
 			UpdatedAt:           item.UpdatedAt,
 		}
 		if item.OwnershipType == "user" {
@@ -249,6 +255,7 @@ func modelFromInput(input SaveInput) (Model, error) {
 		AdvancedConfig:   input.AdvancedConfig,
 		CreditMultiplier: input.CreditMultiplier,
 		Authorization:    normalizeAuthorization(input.Authorization),
+		TagIDs:           input.TagIDs,
 	}
 	if item.ModelID == "" || item.DisplayName == "" || item.BaseURL == "" {
 		return Model{}, errors.New("model_id、display_name 和 base_url 不能为空")
@@ -281,6 +288,14 @@ func modelFromInput(input SaveInput) (Model, error) {
 		return Model{}, errors.New("credit_multiplier 必须大于 0")
 	}
 	return item, nil
+}
+
+func tagIDs(tags []resource.Object) []string {
+	ids := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		ids = append(ids, tag.String("id"))
+	}
+	return ids
 }
 
 func systemModelFromInput(input SaveInput) (Model, error) {

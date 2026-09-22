@@ -182,3 +182,41 @@ WHERE
 -- name: DeleteGrants :execresult
 DELETE FROM resource_access_grants
 WHERE group_id = $1;
+
+-- name: RootName :one
+SELECT COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')::text;
+
+-- name: RootDirectMemberIDs :many
+SELECT u.id::text FROM users u
+WHERE u.deleted_at IS NULL AND NOT EXISTS (
+    SELECT 1 FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = u.id AND gu.removed_at IS NULL
+)
+ORDER BY u.id;
+
+-- name: RootUserGroups :many
+SELECT u.id::text AS user_id, COALESCE((
+    SELECT g.id::text FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = u.id AND gu.removed_at IS NULL ORDER BY g.created_at, g.id LIMIT 1
+), sqlc.arg(root_id)::text)::text AS group_id
+FROM users u WHERE u.deleted_at IS NULL;
+
+-- name: HasUserInActiveGroup :one
+SELECT EXISTS (
+    SELECT 1 FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = $1 AND gu.removed_at IS NULL
+);
+
+-- name: HasActiveMember :one
+SELECT EXISTS (
+    SELECT 1 FROM group_users WHERE group_id = sqlc.arg(group_id) AND user_id = sqlc.arg(user_id) AND removed_at IS NULL
+);
+
+-- name: RemoveMember :execresult
+UPDATE group_users SET removed_at = now()
+WHERE group_id = sqlc.arg(group_id) AND user_id = sqlc.arg(user_id) AND removed_at IS NULL;
+
+-- name: AddMember :execresult
+INSERT INTO group_users(group_id, user_id, assigned_by_user_id)
+VALUES (sqlc.arg(group_id), sqlc.arg(user_id), sqlc.arg(assigned_by_user_id))
+ON CONFLICT (group_id, user_id) WHERE removed_at IS NULL DO NOTHING;

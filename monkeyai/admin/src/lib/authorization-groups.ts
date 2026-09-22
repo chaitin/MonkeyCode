@@ -1,5 +1,7 @@
 import type { TFunction } from "i18next"
 
+import { ROOT_GROUP_ID } from "@/lib/member-groups"
+
 export type AuthorizationGroup = string
 
 export type AuthorizationGroupNode = {
@@ -16,14 +18,13 @@ export type AuthorizationMember = {
 }
 
 export type AuthorizationSelection = {
-  allUsers?: boolean
   groupIds: AuthorizationGroup[]
   memberIds: string[]
 }
 
 export const AUTHORIZATION_GROUP_TREE: AuthorizationGroupNode[] = [
   {
-    value: "all-members",
+    value: ROOT_GROUP_ID,
     labelKey: "pages.membersAndGroups.groupNames.rootGroup",
     children: [
       {
@@ -231,9 +232,6 @@ export function getAuthorizationNames(
   groups = AUTHORIZATION_GROUPS,
   members = AUTHORIZATION_MEMBERS
 ) {
-  if (authorization.allUsers) {
-    return t("pages.membersAndGroups.groupNames.rootGroup")
-  }
   const groupNames = authorization.groupIds.map((groupId) => {
     const group = groups.find((item) => item.value === groupId)
 

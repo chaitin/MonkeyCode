@@ -20,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -126,7 +127,17 @@ func Allowed(ctx context.Context, q Queryer, kind, id, user string) (bool, error
 	return ok, err
 }
 func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
-	return DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))
+	grants, err := DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))
+	if err != nil {
+		return nil, err
+	}
+	for _, grant := range grants {
+		if grant.Bool("all_users") {
+			grant["group_id"] = rootgroup.ID
+			grant["all_users"] = false
+		}
+	}
+	return grants, nil
 }
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
 	b, _ := json.Marshal(raw)
@@ -143,6 +154,9 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 		return err
 	}
 	for _, g := range grants {
+		if g.GroupID == rootgroup.ID && !g.AllUsers && g.UserID == "" {
+			g.AllUsers, g.GroupID = true, ""
+		}
 		if g.AllUsers {
 			if personal || g.UserID != "" || g.GroupID != "" {
 				return Invalid("全员授权仅用于系统资源，且不能同时指定用户或分组")
@@ -216,14 +230,12 @@ func (c *CRUD) Get(ctx context.Context, q Queryer, id string) (Object, error) {
 func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error) {
 	g := []Object{}
 	var err error
-	if c.Def.Kind != "rule" || o.String("ownership_type") != "user" {
-		g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
-		if err != nil {
-			return nil, err
-		}
+	g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
+	if err != nil {
+		return nil, err
 	}
 	o["grants"] = g
-	if c.Def.Kind != "rule" && o.String("ownership_type") == "user" {
+	if o.String("ownership_type") == "user" {
 		users := []any{}
 		for _, grant := range g {
 			if user := grant["user"]; user != nil {
@@ -239,6 +251,12 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 		}
 
 		o["user"] = users[owner]
+	}
+	if c.Def.Kind == "expert" || c.Def.Kind == "connector" {
+		o["tags"], err = Tags(ctx, q, c.Def.Kind, o.String("id"))
+		if err != nil {
+			return nil, err
+		}
 	}
 	if c.Def.Decorate != nil {
 		if err = c.Def.Decorate(ctx, q, o); err != nil {
@@ -345,6 +363,11 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 	}
 	if c.Def.Persist != nil {
 		if err = c.Def.Persist(ctx, tx, in); err != nil {
+			return nil, err
+		}
+	}
+	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector") {
+		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, raw); err != nil {
 			return nil, err
 		}
 	}
@@ -510,17 +533,28 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false, nil
 	}
-	if kind == "rule" && o.String("ownership_type") == "user" {
-		return owned(o, user), nil
-	}
 	if o.String("ownership_type") == "system" {
 		ok, err := CanUseSystem(ctx, q, user)
 		if err != nil || !ok {
 			return false, err
 		}
 	}
-	if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
-		return true, nil
+	if o.String("ownership_type") == "user" {
+		if o.String("owner_user_id") == user {
+			return true, nil
+		}
+		if kind == "rule" {
+			shared, err := SharedUsers(ctx, q, kind, []string{o.String("id")})
+			if err != nil {
+				return false, err
+			}
+			for _, recipient := range shared[o.String("id")] {
+				if recipient.String("id") == user {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
 	}
 	return Allowed(ctx, q, kind, o.String("id"), user)
 }

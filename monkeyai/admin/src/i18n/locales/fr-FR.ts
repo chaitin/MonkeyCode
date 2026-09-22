@@ -260,6 +260,9 @@ export const frFR = {
       },
     },
     models: {
+      searchAuthorization: "Rechercher par nom, e-mail ou pinyin",
+      noMatchingAuthorization: "Aucun groupe ou utilisateur correspondant.",
+
       title: "Modèles",
       description:
         "Gérez les modèles et les intégrations disponibles pour votre organisation.",
@@ -538,10 +541,10 @@ export const frFR = {
       systemRule: "Règle système",
       userRule: "Règle utilisateur",
       creator: "Créateur",
-      forcedScope: "Périmètre d’activation forcée",
-      forcedScopePlaceholder: "Sélectionnez des groupes ou des utilisateurs",
+      forcedScope: "Règle obligatoire",
+      forcedScopePlaceholder: "Facultative (activée par défaut)",
       forcedScopeDescription:
-        "Cette règle système sera imposée aux groupes et utilisateurs sélectionnés.",
+        "Les règles obligatoires ne peuvent pas être désactivées. Les autres sont activées au départ, puis l’Agent gère leur état.",
       usageScope: "Périmètre d’utilisation",
       creatorOnly: "Créateur uniquement",
       cancel: "Annuler",
@@ -554,6 +557,14 @@ export const frFR = {
         "Supprimer « {{rule}} » ? Cette action est irréversible.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Groupes",
+        placeholder: "Sélectionner des groupes (choix multiples)",
+        search: "Rechercher des groupes",
+        noMatches: "Aucun groupe correspondant.",
+        empty: "Aucun groupe disponible.",
+        clear: "Effacer la sélection",
+      },
       directMembersHint:
         "Seules les appartenances directes sont modifiées. Les membres des sous-groupes restent visibles.",
       deleteChildrenHint:

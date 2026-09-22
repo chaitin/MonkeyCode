@@ -255,6 +255,9 @@ export const jaJP = {
       },
     },
     models: {
+      searchAuthorization: "名前、メールアドレス、ピンインで検索",
+      noMatchingAuthorization: "一致するグループまたはユーザーがありません。",
+
       title: "モデル",
       description: "組織で利用可能なモデルと連携設定を管理します。",
       count: "{{count}} 件のモデルを接続済み",
@@ -528,10 +531,10 @@ export const jaJP = {
       systemRule: "システムルール",
       userRule: "ユーザールール",
       creator: "作成者",
-      forcedScope: "強制適用範囲",
-      forcedScopePlaceholder: "強制適用するグループまたはユーザーを選択",
+      forcedScope: "必須ルール",
+      forcedScopePlaceholder: "任意（初期状態はオン）",
       forcedScopeDescription:
-        "選択したグループとユーザーには、このシステムルールが強制的に適用されます。",
+        "必須ルールはオフにできません。任意ルールは初期状態でオンになり、その後は Agent が状態を管理します。",
       usageScope: "使用範囲",
       creatorOnly: "作成者本人のみ",
       cancel: "キャンセル",
@@ -544,6 +547,14 @@ export const jaJP = {
         "「{{rule}}」を削除しますか？この操作は元に戻せません。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "グループ",
+        placeholder: "グループを選択（複数選択可）",
+        search: "グループを検索",
+        noMatches: "一致するグループはありません。",
+        empty: "選択できるグループはありません。",
+        clear: "選択をクリア",
+      },
       directMembersHint:
         "直接所属するメンバーのみ変更します。子グループのメンバーは引き続き表示されます。",
       deleteChildrenHint: "先に子グループを移動または削除してください。",

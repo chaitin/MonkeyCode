@@ -29,6 +29,7 @@ export type QuotaGroup = {
   parent_id: string | null
   name: string
   credits: string | null
+  allow_inherit: boolean
 }
 export type QuotaUser = {
   id: string
@@ -54,10 +55,6 @@ export function userQuota(
 ) {
   const value = (type: string, id: string, saved: string | null) =>
     changes[`${type}:${id}`] !== undefined ? changes[`${type}:${id}`] : saved
-  const root = groups.find((group) => group.parent_id === null)
-  const fallback = root
-    ? (value("group", root.id, root.credits) ?? "15000")
-    : "15000"
   const inheritedFrom = (id: string): string => {
     let group = groups.find((group) => group.id === id)
     for (let depth = 0; group && depth <= 100; depth++) {
@@ -66,19 +63,18 @@ export function userQuota(
       const parent = group.parent_id
       group = groups.find((group) => group.id === parent)
     }
-    return fallback
+    return "15000"
   }
   const amount = (credits: string) => {
     const [whole, fraction = ""] = credits.split(".")
     return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"))
   }
-  const inherited = user.group_ids.length
-    ? user.group_ids
-        .map(inheritedFrom)
-        .reduce((highest, next) =>
-          amount(next) > amount(highest) ? next : highest
-        )
-    : fallback
+  const inherited = user.group_ids
+    .map(inheritedFrom)
+    .reduce(
+      (highest, next) => (amount(next) > amount(highest) ? next : highest),
+      "0"
+    )
   const own = value("user", user.id, user.credits)
   return { own, inherited, effective: own ?? inherited }
 }

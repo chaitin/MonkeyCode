@@ -244,6 +244,9 @@ export const zhTW = {
       },
     },
     models: {
+      searchAuthorization: "搜尋名稱、電子郵件或拼音",
+      noMatchingAuthorization: "沒有符合的群組或使用者。",
+
       title: "大型模型",
       description: "管理組織可用的大型模型與串接設定。",
       count: "已接入 {{count}} 個模型",
@@ -500,9 +503,10 @@ export const zhTW = {
       systemRule: "系統規則",
       userRule: "使用者規則",
       creator: "建立者",
-      forcedScope: "強制啟用範圍",
-      forcedScopePlaceholder: "選擇需要強制啟用的群組或使用者",
-      forcedScopeDescription: "所選群組與使用者將被強制套用此系統規則。",
+      forcedScope: "強制規則",
+      forcedScopePlaceholder: "非強制（預設開啟）",
+      forcedScopeDescription:
+        "強制規則不可關閉；非強制規則初始開啟，之後由 Agent 管理開關。",
       usageScope: "使用範圍",
       creatorOnly: "僅建立者本人",
       cancel: "取消",
@@ -514,6 +518,14 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{rule}}」嗎？此操作無法復原。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "分組",
+        placeholder: "選擇分組（可多選）",
+        search: "搜尋分組",
+        noMatches: "沒有符合的分組。",
+        empty: "暫無可選分組。",
+        clear: "清空選擇",
+      },
       directMembersHint: "僅調整直接加入本組的成員；子分組成員仍會顯示於本組。",
       deleteChildrenHint: "請先移動或刪除子分組，再刪除此分組。",
       deleteMembersHint: "成員帳號會保留；本組的成員關係與資源授權將一併移除。",

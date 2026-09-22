@@ -384,6 +384,9 @@ export const enUS = {
       },
     },
     models: {
+      searchAuthorization: "Search by name, email, or pinyin",
+      noMatchingAuthorization: "No matching groups or users.",
+
       title: "Models",
       description:
         "Manage the models and integrations available to your organization.",
@@ -779,10 +782,10 @@ export const enUS = {
       systemRule: "System rule",
       userRule: "User rule",
       creator: "Creator",
-      forcedScope: "Forced enablement scope",
-      forcedScopePlaceholder: "Select groups or users",
+      forcedScope: "Mandatory rule",
+      forcedScopePlaceholder: "Optional (on by default)",
       forcedScopeDescription:
-        "This system rule will be enforced for the selected groups and users.",
+        "Mandatory rules cannot be turned off. Optional rules start on; the Agent manages their state afterward.",
       usageScope: "Usage scope",
       creatorOnly: "Creator only",
       cancel: "Cancel",
@@ -795,6 +798,14 @@ export const enUS = {
         'Delete "{{rule}}"? This action cannot be undone.',
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Groups",
+        placeholder: "Select groups (multiple allowed)",
+        search: "Search groups",
+        noMatches: "No matching groups.",
+        empty: "No groups available.",
+        clear: "Clear selection",
+      },
       directMembersHint:
         "Only direct membership is changed; members of subgroups remain visible here.",
       deleteChildrenHint:

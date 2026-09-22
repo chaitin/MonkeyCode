@@ -9,6 +9,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,6 +35,9 @@ func (p *Postgres) List(ctx context.Context, ownership string) ([]Model, error) 
 	if err := p.loadGrants(ctx, models); err != nil {
 		return nil, err
 	}
+	if err := p.loadTags(ctx, models); err != nil {
+		return nil, err
+	}
 	return models, nil
 }
 
@@ -47,6 +51,9 @@ func (p *Postgres) Get(ctx context.Context, id string) (Model, error) {
 	}
 	models := []Model{item}
 	if err := p.loadGrants(ctx, models); err != nil {
+		return Model{}, err
+	}
+	if err := p.loadTags(ctx, models); err != nil {
 		return Model{}, err
 	}
 	return models[0], nil
@@ -75,7 +82,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	authorization := item.Authorization
+	authorization, tagIDs := item.Authorization, item.TagIDs
 	item, err = readModel(sqlc.New(tx).CreateModel(ctx, sqlc.CreateModelParams{
 		OwnershipType:    item.OwnershipType,
 		OwnerUserID:      item.OwnerUserID,
@@ -95,14 +102,18 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	if err != nil {
 		return Model{}, fmt.Errorf("创建模型: %w", err)
 	}
-	item.Authorization = authorization
+	item.Authorization = normalizeAuthorization(authorization)
 	if err := replaceGrants(ctx, tx, item); err != nil {
 		return Model{}, err
+	}
+	if tagIDs != nil {
+		if err := resource.SaveTags(ctx, tx, "model", item.ID, item.OwnerUserID, tagIDs); err != nil {
+			return Model{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Model{}, err
 	}
-	item.Authorization = normalizeAuthorization(item.Authorization)
 	return p.Get(ctx, item.ID)
 }
 
@@ -132,7 +143,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		return Model{}, err
 	}
 	authorization := item.Authorization
-	grantorUserID := item.GrantorUserID
+	grantorUserID, tagIDs := item.GrantorUserID, item.TagIDs
 	item, err = readModel(sqlc.New(tx).UpdateModel(ctx, sqlc.UpdateModelParams{
 		ID:               item.ID,
 		ModelID:          item.ModelID,
@@ -163,6 +174,15 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 			return Model{}, err
 		}
 	}
+	if tagIDs != nil {
+		actor := item.OwnerUserID
+		if item.GrantorUserID != "" {
+			actor = item.GrantorUserID
+		}
+		if err := resource.SaveTags(ctx, tx, "model", item.ID, actor, tagIDs); err != nil {
+			return Model{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Model{}, err
 	}
@@ -179,6 +199,9 @@ func (p *Postgres) SetEnabled(ctx context.Context, id string, enabled bool) (Mod
 	}
 	models := []Model{item}
 	if err := p.loadGrants(ctx, models); err != nil {
+		return Model{}, err
+	}
+	if err := p.loadTags(ctx, models); err != nil {
 		return Model{}, err
 	}
 	return models[0], nil
@@ -228,6 +251,9 @@ func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin boo
 	if err := p.loadPeople(ctx, models, userID); err != nil {
 		return nil, err
 	}
+	if err := p.loadTags(ctx, models); err != nil {
+		return nil, err
+	}
 	return models, nil
 }
 
@@ -250,9 +276,14 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	if err != nil {
 		return Subjects{}, err
 	}
+	name, err := rootgroup.Name(ctx, p.pool)
+	if err != nil {
+		return Subjects{}, err
+	}
+	result.Groups = append(result.Groups, Subject{ID: rootgroup.ID, Name: name})
 	for _, row := range groupRows {
 		var subject Subject
-		subject.ID, subject.ParentID, subject.Name = row.ID, row.ParentID, row.Name
+		subject.ID, subject.ParentID, subject.Name = row.ID, rootgroup.ParentID(row.ParentID), row.Name
 		result.Groups = append(result.Groups, subject)
 	}
 
@@ -260,10 +291,13 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	if err != nil {
 		return Subjects{}, err
 	}
-
+	memberships, err := rootgroup.UserGroups(ctx, p.pool)
+	if err != nil {
+		return Subjects{}, err
+	}
 	for _, row := range userRows {
 		var subject Subject
-		subject.ID, subject.Name, subject.Email = row.ID, row.Name, row.Email
+		subject.ID, subject.Name, subject.Email, subject.GroupID = row.ID, row.Name, row.Email, memberships[row.ID]
 		result.Users = append(result.Users, subject)
 	}
 	return result, nil
@@ -304,6 +338,18 @@ func readModels(rows []sqlc.Model) ([]Model, error) {
 		models = append(models, item)
 	}
 	return models, nil
+}
+
+func (p *Postgres) loadTags(ctx context.Context, models []Model) error {
+	q := database.Reader(ctx, p.pool)
+	for i := range models {
+		tags, err := resource.Tags(ctx, q, "model", models[i].ID)
+		if err != nil {
+			return err
+		}
+		models[i].Tags = tags
+	}
+	return nil
 }
 
 func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
@@ -369,6 +415,11 @@ func replaceGrants(ctx context.Context, tx pgx.Tx, item Model) error {
 func normalizeAuthorization(value Authorization) Authorization {
 	if value.AllUsers {
 		return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
+	}
+	for _, id := range value.GroupIDs {
+		if id == rootgroup.ID {
+			return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
+		}
 	}
 	value.UserIDs = unique(value.UserIDs)
 	value.GroupIDs = unique(value.GroupIDs)

@@ -8,9 +8,9 @@ import type {
   AuthorizationMember,
 } from "@/lib/authorization-groups"
 export type Grant = {
-  all_users?: boolean
   user_id?: string | null
   group_id?: string | null
+  user?: { id: string; name: string; email: string } | null
   usage_requirement: "optional" | "required"
 }
 export type Credential = {
@@ -69,7 +69,6 @@ export function selection(
       (g.usage_requirement === "required") === required
   )
   return {
-    allUsers: gs.some((g) => g.all_users),
     groupIds: gs.flatMap((g) => (g.group_id ? [g.group_id] : [])),
     memberIds: gs.flatMap((g) => (g.user_id ? [g.user_id] : [])),
   }
@@ -78,14 +77,6 @@ export function grants(
   value: AuthorizationSelection,
   required = false
 ): Grant[] {
-  if (value.allUsers) {
-    return [
-      {
-        all_users: true,
-        usage_requirement: required ? "required" : "optional",
-      },
-    ]
-  }
   return [
     ...value.groupIds.map((group_id) => ({
       group_id,
@@ -189,7 +180,7 @@ export function useSubjects() {
     let cancelled = false
     api<{
       groups: { id: string; parent_id?: string; name: string }[]
-      users: { id: string; name: string; email: string }[]
+      users: { id: string; name: string; email: string; group_id: string }[]
     }>(base + "/resources/authorization-subjects")
       .then((data) => {
         if (cancelled) return
@@ -202,7 +193,7 @@ export function useSubjects() {
               children: tree(g.id),
             }))
         setGroups(tree())
-        setMembers(data.users.map((u) => ({ ...u, groupId: "" })))
+        setMembers(data.users.map((u) => ({ ...u, groupId: u.group_id })))
       })
       .catch((e) => {
         if (!cancelled) {

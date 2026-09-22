@@ -71,15 +71,25 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	if err != nil {
 		return c, err
 	}
+	personalRules := []string{}
+	for _, grant := range g {
+		if grant.String("kind") == "rule" && c.rules[grant.String("id")].String("ownership_type") == "user" {
+			personalRules = append(personalRules, grant.String("id"))
+		}
+	}
+	sharedRules, err := resource.SharedUsers(ctx, q, "rule", personalRules)
+	if err != nil {
+		return c, err
+	}
 	for _, o := range g {
 		if o.String("kind") == "rule" {
 			rule := c.rules[o.String("id")]
-			if rule == nil || rule.String("ownership_type") == "user" {
+			if rule == nil || (rule.String("ownership_type") == "user" && !slices.ContainsFunc(sharedRules[o.String("id")], func(shared resource.Object) bool { return shared.String("id") == user })) {
 				continue
 			}
 		}
 		c.grants[o.String("kind")+":"+o.String("id")] = true
-		if o.Bool("required") {
+		if o.Bool("required") && (o.String("kind") != "rule" || c.rules[o.String("id")].String("ownership_type") == "system") {
 			c.required[o.String("id")] = true
 		}
 	}
@@ -107,10 +117,6 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	if v, ok := o["enabled"].(bool); ok && !v {
 		return false
 	}
-	if kind == "rule" && o.String("ownership_type") == "user" {
-		return user != "" && o.String("owner_user_id") == user
-	}
-
 	return (o.String("ownership_type") == "user" && o.String("owner_user_id") == user) || c.grants[kind+":"+o.String("id")]
 }
 func ruleDTO(o resource.Object, required bool) resource.Object {
@@ -171,7 +177,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 			issues = append(issues, resource.Object{"code": "rule_missing", "blocking": true})
 			continue
 		}
-		rules = append(rules, ruleDTO(o, false))
+		rules = append(rules, ruleDTO(o, c.required[o.String("id")]))
 	}
 	for _, link := range c.links[expert+":expert_skills"] {
 		o := c.skills[link.String("skill_id")]
@@ -245,7 +251,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto = ruleDTO(o, c.required[id])
 		case "skills":
 			dto = skillDTO(o, "")
-			dto["tags"], err = resource.DecodeObjects(sqlc.New(q).ListSkillTags(ctx, id))
+			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
 		case "experts":
 			var manifest resource.Object
 			manifest, err = r.manifest(ctx, q, c, id, user)
@@ -258,11 +264,17 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 		if err != nil {
 			return nil, err
 		}
+		if kind == "experts" || kind == "connectors" {
+			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
+			if err != nil {
+				return nil, err
+			}
+		}
 		dto["ownership_type"] = o["ownership_type"]
 		owners = append(owners, o.String("owner_user_id"))
 		ownerIDs[id] = o.String("owner_user_id")
 		dto["revision"] = o["revision"]
-		if resourceType != "rule" && o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
+		if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
 			owned = append(owned, id)
 		}
 		out = append(out, dto)
@@ -286,6 +298,11 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 }
 
 func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind string) {
+	page, size, err := resource.PageParams(req)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
@@ -295,7 +312,26 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 	defer tx.Rollback(req.Context())
 	items, err := r.list(req.Context(), tx, u.ID, kind)
 	if err == nil {
-		err = httpapi.CachedJSON(w, req, map[string]any{kind: items})
+		items = resource.FilterTags(items, resource.QueryTagIDs(req))
+		total := len(items)
+		err = httpapi.CachedJSON(w, req, map[string]any{kind: resource.PageSlice(items, page, size), "total_count": total, "page": page, "page_size": size})
+	}
+	if err != nil {
+		resource.Fail(w, err)
+	}
+}
+
+func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind string) {
+	u, _ := identity.UserFromContext(req.Context())
+	tx, err := r.transaction(req.Context())
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	defer tx.Rollback(req.Context())
+	items, err := r.list(req.Context(), tx, u.ID, kind)
+	if err == nil {
+		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
 	}
 	if err != nil {
 		resource.Fail(w, err)
@@ -308,6 +344,9 @@ func (r *Resources) transaction(ctx context.Context) (pgx.Tx, error) {
 func (r *Resources) RegisterAgent(router chi.Router) {
 	for _, kind := range []string{"rules", "skills", "experts", "connectors"} {
 		router.Get("/"+kind, func(w http.ResponseWriter, req *http.Request) { r.getList(w, req, kind) })
+		if kind != "rules" {
+			router.Get("/"+kind+"/tags", func(w http.ResponseWriter, req *http.Request) { r.getTags(w, req, kind) })
+		}
 	}
 	router.Get("/experts/{id}/manifest", r.getManifest)
 	router.Post("/resources/resolve", r.resolve)

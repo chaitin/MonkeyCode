@@ -50,6 +50,46 @@ test("image model UI has translations in all supported locales", () => {
   }
 })
 
+test("resource editors retain and save tags", async () => {
+  for (const page of ["models", "experts", "tools"]) {
+    const source = await readFile(
+      new URL(`../src/pages/${page}-page.tsx`, import.meta.url),
+      "utf8"
+    )
+    assert.match(source, /<SkillTagSelect/, `${page} is missing tag selection`)
+    assert.match(source, /tag_ids:/, `${page} does not save tags`)
+    assert.match(
+      source,
+      /\(.*\.tags \?\? \[\]\)\.map\(\(tag\) => tag\.id\)/,
+      `${page} does not restore tags`
+    )
+  }
+})
+
+test("resource cards show configured tag names", async () => {
+  const summary = await readFile(
+    new URL("../src/components/resource-tag-summary.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(summary, /tagIds\.includes\(tag\.id\)/)
+  assert.match(summary, /pages\.skills\.noTags/)
+
+  for (const [page, item] of [
+    ["models", "model"],
+    ["experts", "expert"],
+    ["tools", "server"],
+  ]) {
+    const source = await readFile(
+      new URL(`../src/pages/${page}-page.tsx`, import.meta.url),
+      "utf8"
+    )
+    assert.match(
+      source,
+      new RegExp(`<ResourceTagSummary tagIds=\\{${item}\\.tagIds\\}`)
+    )
+  }
+})
+
 test("models page uses backend models and authorization subjects", async () => {
   const source = await readFile(
     new URL("../src/pages/models-page.tsx", import.meta.url),
@@ -64,6 +104,13 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.match(source, /openai_responses/)
   assert.match(source, /image-capabilities/)
   assert.match(source, /base_credits_per_image/)
+  assert.match(source, /<GroupSelect/)
+  assert.match(source, /selectionMode="both"/)
+  assert.match(source, /cascadeGroups/)
+  assert.match(source, /userIds: authorization\.memberIds/)
+  assert.match(source, /memberIds: \[\.\.\.next\.userIds\]/)
+  assert.match(source, /user_ids: authorization\.memberIds/)
+  assert.doesNotMatch(source, /\bAuthorizationSelect\b|authorizationOpen/)
   assert.doesNotMatch(source, /member-01|engineering/)
 })
 

@@ -11,8 +11,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { AuthorizationSelect } from "@/components/authorization-select"
+import { GroupSelect } from "@/components/group-select"
 import { ImageGenerationTest } from "@/components/image-generation-test"
+import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +73,8 @@ import {
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
+import { useSkillTags } from "@/hooks/use-skill-tags"
+import { ROOT_GROUP_ID } from "@/lib/member-groups"
 import { getModelIconName } from "@/lib/model-utils"
 import { cn } from "@/lib/utils"
 
@@ -136,6 +140,7 @@ type ModelBase = {
   imageConfig?: ImageConfig
   imagePricing?: ImagePricing
   apiKeyConfigured: boolean
+  tagIds: string[]
   authorization: AuthorizationSelection
   enabled: boolean
 }
@@ -160,8 +165,8 @@ type ApiModel = {
     supports_vision: boolean
   }
   credit_multiplier: number
+  tags?: { id: string; name: string }[]
   authorization: {
-    all_users?: boolean
     user_ids: string[] | null
     group_ids: string[] | null
   }
@@ -173,6 +178,7 @@ type AuthorizationSubject = {
   parent_id?: string
   name: string
   email?: string
+  group_id?: string
 }
 
 function fromApiModel(model: ApiModel): Model {
@@ -191,8 +197,8 @@ function fromApiModel(model: ApiModel): Model {
     imagePricing: model.image_pricing,
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
+    tagIds: (model.tags ?? []).map((tag) => tag.id),
     authorization: {
-      allUsers: model.authorization.all_users ?? false,
       groupIds: model.authorization.group_ids ?? [],
       memberIds: model.authorization.user_ids ?? [],
     },
@@ -217,16 +223,18 @@ function buildGroupTree(groups: AuthorizationSubject[]) {
 }
 
 function flattenGroupTree(
-  groups: AuthorizationGroupNode[]
-): AuthorizationGroupNode[] {
+  groups: AuthorizationGroupNode[],
+  parentId: string | null = null
+): (AuthorizationGroupNode & { parentId: string | null })[] {
   return groups.flatMap((group) => [
-    group,
-    ...flattenGroupTree(group.children ?? []),
+    { ...group, parentId },
+    ...flattenGroupTree(group.children ?? [], group.value),
   ])
 }
 
 export function ModelsPage() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
+  const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
   const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
@@ -260,7 +268,8 @@ export function ModelsPage() {
   >({})
   const [editMultiplier, setEditMultiplier] = useState("1")
   const [supportsVision, setSupportsVision] = useState(false)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
     memberIds: [],
@@ -284,7 +293,7 @@ export function ModelsPage() {
             id: user.id,
             name: user.name,
             email: user.email ?? "",
-            groupId: "",
+            groupId: user.group_id ?? "",
           }))
         )
       })
@@ -347,7 +356,8 @@ export function ModelsPage() {
     setAspectMultipliers({})
     setEditMultiplier("1")
     setSupportsVision(false)
-    setAuthorizationOpen(false)
+    setTagsOpen(false)
+    setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
 
@@ -398,6 +408,7 @@ export function ModelsPage() {
       )?.multiplier ?? "1"
     )
     setSupportsVision(model.supportsVision)
+    setTagIds(model.tagIds)
     setAuthorization(model.authorization)
     setDialogOpen(true)
   }
@@ -462,8 +473,7 @@ export function ModelsPage() {
       !displayName ||
       !baseUrl ||
       (!apiKey && !editingModel?.apiKeyConfigured) ||
-      (!authorization.allUsers &&
-        authorization.groupIds.length + authorization.memberIds.length === 0) ||
+      authorization.groupIds.length + authorization.memberIds.length === 0 ||
       editingModel?.type === "user"
     )
       return
@@ -514,10 +524,10 @@ export function ModelsPage() {
         display_name: displayName,
         base_url: baseUrl,
         api_key: apiKey,
+        tag_ids: tagIds,
         authorization: {
-          all_users: authorization.allUsers ?? false,
-          group_ids: authorization.allUsers ? [] : authorization.groupIds,
-          user_ids: authorization.allUsers ? [] : authorization.memberIds,
+          group_ids: authorization.groupIds,
+          user_ids: authorization.memberIds,
         },
       }
       const payload =
@@ -1107,19 +1117,65 @@ export function ModelsPage() {
                     )}
 
                     <Field>
+                      <FieldLabel htmlFor="model-tags">
+                        {t("pages.skills.tags")}
+                      </FieldLabel>
+                      <SkillTagSelect
+                        id="model-tags"
+                        open={tagsOpen}
+                        options={availableTags}
+                        placeholder={t("pages.skills.tagsPlaceholder")}
+                        value={tagIds}
+                        onOpenChange={setTagsOpen}
+                        onValueChange={setTagIds}
+                      />
+                    </Field>
+
+                    <Field>
                       <FieldLabel htmlFor="model-authorized-groups">
                         {t("pages.models.authorizedGroups")}
                       </FieldLabel>
-                      <AuthorizationSelect
+                      <GroupSelect
                         id="model-authorized-groups"
-                        open={authorizationOpen}
+                        options={flattenGroupTree(groups).map((group) => ({
+                          id: group.value,
+                          parentId: group.parentId,
+                          name: group.labelKey,
+                          disabled: group.value === ROOT_GROUP_ID,
+                        }))}
+                        users={members.map((member) => ({
+                          id: member.id,
+                          name: member.name,
+                          email: member.email,
+                          groupIds: member.groupId ? [member.groupId] : [],
+                        }))}
+                        label={t("pages.models.authorizedGroups")}
                         placeholder={t("pages.models.authorizationPlaceholder")}
-                        title={t("pages.models.authorizedGroups")}
-                        value={authorization}
-                        onOpenChange={setAuthorizationOpen}
-                        onValueChange={setAuthorization}
-                        groups={groups}
-                        members={members}
+                        emptyText={t("pages.membersAndGroups.noMembersFound")}
+                        locale={i18n.resolvedLanguage ?? i18n.language}
+                        value={{
+                          groupIds: authorization.groupIds,
+                          userIds: authorization.memberIds,
+                        }}
+                        onValueChange={(next) =>
+                          setAuthorization({
+                            groupIds: [...next.groupIds],
+                            memberIds: [...next.userIds],
+                          })
+                        }
+                        disabled={saving}
+                        defaultExpanded
+                        collapsible
+                        multiple
+                        selectionMode="both"
+                        searchable
+                        searchPlaceholder={t(
+                          "pages.models.searchAuthorization"
+                        )}
+                        noResultsText={t(
+                          "pages.models.noMatchingAuthorization"
+                        )}
+                        cascadeGroups
                       />
                     </Field>
                   </FieldGroup>
@@ -1271,7 +1327,7 @@ export function ModelsPage() {
                         )}
                       </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex flex-col gap-3">
                       <dl className="flex flex-col gap-3">
                         {model.kind === "image" ? (
                           <>
@@ -1344,6 +1400,7 @@ export function ModelsPage() {
                           </>
                         )}
                       </dl>
+                      <ResourceTagSummary tagIds={model.tagIds} />
                     </CardContent>
                     <CardFooter className="min-w-0 gap-4 border-t">
                       <span
