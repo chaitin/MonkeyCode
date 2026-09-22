@@ -502,10 +502,10 @@ export const jaJP = {
       systemRule: "システムルール",
       userRule: "ユーザールール",
       creator: "作成者",
-      forcedScope: "強制適用範囲",
-      forcedScopePlaceholder: "強制適用するグループまたはユーザーを選択",
+      forcedScope: "必須ルール",
+      forcedScopePlaceholder: "任意（初期状態はオン）",
       forcedScopeDescription:
-        "選択したグループとユーザーには、このシステムルールが強制的に適用されます。",
+        "必須ルールはオフにできません。任意ルールは初期状態でオンになり、その後は Agent が状態を管理します。",
       usageScope: "使用範囲",
       creatorOnly: "作成者本人のみ",
       cancel: "キャンセル",

@@ -513,10 +513,10 @@ export const es419 = {
       systemRule: "Regla del sistema",
       userRule: "Regla de usuario",
       creator: "Creador",
-      forcedScope: "Alcance de activación obligatoria",
-      forcedScopePlaceholder: "Selecciona grupos o usuarios",
+      forcedScope: "Regla obligatoria",
+      forcedScopePlaceholder: "Opcional (activada de forma predeterminada)",
       forcedScopeDescription:
-        "Esta regla del sistema se aplicará obligatoriamente a los grupos y usuarios seleccionados.",
+        "Las reglas obligatorias no se pueden desactivar. Las opcionales empiezan activadas; después el agente gestiona su estado.",
       usageScope: "Alcance de uso",
       creatorOnly: "Solo el creador",
       cancel: "Cancelar",

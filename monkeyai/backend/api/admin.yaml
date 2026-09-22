@@ -5964,7 +5964,7 @@ components:
         enabled:
           type: boolean
         grants:
-          description: 系统规则的授权范围；个人规则固定为空数组，仅创建者可用。
+          description: 系统规则的授权范围及强制性：required 不可关闭，optional 默认开启但可由 Agent 关闭；个人规则固定为空数组，仅创建者可用。
           type: array
           items:
             $ref: '#/components/schemas/ResourceGrant'

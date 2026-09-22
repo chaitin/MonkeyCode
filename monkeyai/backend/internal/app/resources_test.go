@@ -1002,6 +1002,63 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		must("DELETE", "/api/admin/v1/rules/"+id, nil, "", `"4"`)
 	})
 
+	t.Run("规则授权范围与强制状态独立", func(t *testing.T) {
+		path := "/api/admin/v1/rules"
+		optional := []resource.Object{{"user_id": users[0], "usage_requirement": "optional"}}
+		item := must("POST", path, resource.Object{"name": "可关闭规则", "content": "正文", "grants": optional}, "", "")
+		id := item.String("id")
+		path += "/" + id
+		assertRule := func(token string, visible, required bool) {
+			t.Helper()
+			catalog := must("GET", "/api/v1/rules", nil, token, "")
+			found := false
+			for _, raw := range catalog["rules"].([]any) {
+				rule := resource.Object(raw.(map[string]any))
+				if rule.String("id") != id {
+					continue
+				}
+				found = true
+				if rule.Bool("required") != required {
+					t.Fatalf("规则强制状态错误: %v", rule)
+				}
+			}
+			if found != visible {
+				t.Fatalf("规则可见范围错误: token=%s visible=%v", token, found)
+			}
+			resolved := must("POST", "/api/v1/resources/resolve", resource.Object{}, token, "")
+			included := false
+			for _, raw := range resolved["rules"].([]any) {
+				if raw.(map[string]any)["id"] == id {
+					included = true
+				}
+			}
+			if included != (visible && required) {
+				t.Fatalf("规则自动解析错误: token=%s included=%v", token, included)
+			}
+		}
+		assertRule("a", true, false)
+		assertRule("b", false, false)
+		selected := must("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{id}}, "a", "")
+		found := false
+		for _, raw := range selected["rules"].([]any) {
+			if raw.(map[string]any)["id"] == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("非强制规则开启时应允许 Agent 显式选用")
+		}
+		if code, _, _ := call("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{id}}, "b", ""); code != 404 {
+			t.Fatalf("未授权用户选择规则应返回 404: %d", code)
+		}
+		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": []resource.Object{{"user_id": users[0], "usage_requirement": "required"}}}, "", `"1"`)
+		assertRule("a", true, true)
+		assertRule("b", false, false)
+		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": optional}, "", `"2"`)
+		assertRule("a", true, false)
+		must("DELETE", path, nil, "", `"3"`)
+	})
+
 	t.Run("共享个人 MCP 认证与网关", func(t *testing.T) {
 		remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var in resource.Object

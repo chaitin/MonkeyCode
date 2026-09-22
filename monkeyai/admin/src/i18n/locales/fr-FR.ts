@@ -512,10 +512,10 @@ export const frFR = {
       systemRule: "Règle système",
       userRule: "Règle utilisateur",
       creator: "Créateur",
-      forcedScope: "Périmètre d’activation forcée",
-      forcedScopePlaceholder: "Sélectionnez des groupes ou des utilisateurs",
+      forcedScope: "Règle obligatoire",
+      forcedScopePlaceholder: "Facultative (activée par défaut)",
       forcedScopeDescription:
-        "Cette règle système sera imposée aux groupes et utilisateurs sélectionnés.",
+        "Les règles obligatoires ne peuvent pas être désactivées. Les autres sont activées au départ, puis l’Agent gère leur état.",
       usageScope: "Périmètre d’utilisation",
       creatorOnly: "Créateur uniquement",
       cancel: "Annuler",

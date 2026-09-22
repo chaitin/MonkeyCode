@@ -495,10 +495,10 @@ export const koKR = {
       systemRule: "시스템 규칙",
       userRule: "사용자 규칙",
       creator: "생성자",
-      forcedScope: "강제 활성화 범위",
-      forcedScopePlaceholder: "강제 적용할 그룹 또는 사용자 선택",
+      forcedScope: "필수 규칙",
+      forcedScopePlaceholder: "선택 사항 (기본 켜짐)",
       forcedScopeDescription:
-        "선택한 그룹과 사용자에게 이 시스템 규칙이 강제로 적용됩니다.",
+        "필수 규칙은 끌 수 없습니다. 선택 규칙은 처음에 켜져 있으며 이후 상태는 Agent가 관리합니다.",
       usageScope: "사용 범위",
       creatorOnly: "생성자 본인만",
       cancel: "취소",

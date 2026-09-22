@@ -516,10 +516,10 @@ export const deDE = {
       systemRule: "Systemregel",
       userRule: "Benutzerregel",
       creator: "Erstellt von",
-      forcedScope: "Bereich der erzwungenen Aktivierung",
-      forcedScopePlaceholder: "Gruppen oder Benutzer auswählen",
+      forcedScope: "Verbindliche Regel",
+      forcedScopePlaceholder: "Optional (standardmäßig aktiviert)",
       forcedScopeDescription:
-        "Diese Systemregel wird für die ausgewählten Gruppen und Benutzer erzwungen.",
+        "Verbindliche Regeln können nicht deaktiviert werden. Optionale Regeln sind anfangs aktiviert; danach verwaltet der Agent ihren Status.",
       usageScope: "Nutzungsbereich",
       creatorOnly: "Nur der Ersteller",
       cancel: "Abbrechen",
