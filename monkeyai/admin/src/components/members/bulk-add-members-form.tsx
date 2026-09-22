@@ -111,7 +111,8 @@ export function BulkAddMembersForm({
           method: "POST",
           body: JSON.stringify(input),
         }),
-      (completed, total) => setProgress({ completed, total })
+      (completed, total) => setProgress({ completed, total }),
+      groupIDs
     )
     if (created.length) onCreated(created)
     onSavingChange(false)

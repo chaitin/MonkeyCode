@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Card,
   CardAction,
@@ -110,9 +109,6 @@ export function MembersAndGroupsPage() {
     key: string
     select: boolean
   } | null>(null)
-  const [selectionArea, setSelectionArea] = useState<"tree" | "list" | null>(
-    null
-  )
   const [dragging, setDragging] = useState<MovePayload | null>(null)
   const [pendingMove, setPendingMove] = useState<{
     payload: MovePayload
@@ -266,7 +262,6 @@ export function MembersAndGroupsPage() {
   const selectedMemberKeys = selectedMembers.map(memberMoveKey)
   const selectGroup = (id: string) => {
     setSelectedMembers([])
-    setSelectionArea(null)
     setPendingMove(null)
     setSelectedGroupIDs((current) =>
       current.includes(id)
@@ -274,17 +269,15 @@ export function MembersAndGroupsPage() {
         : [...current, id]
     )
   }
-  const selectMember = (member: MoveMember, area: "tree" | "list") => {
+  const selectMember = (member: MoveMember) => {
     setSelectedGroupIDs([])
     setPendingMove(null)
     setSelectedMembers((current) => {
-      const existing = selectionArea === area ? current : []
       const key = memberMoveKey(member)
-      return existing.some((selected) => memberMoveKey(selected) === key)
-        ? existing.filter((selected) => memberMoveKey(selected) !== key)
-        : [...existing, member]
+      return current.some((selected) => memberMoveKey(selected) === key)
+        ? current.filter((selected) => memberMoveKey(selected) !== key)
+        : [...current, member]
     })
-    setSelectionArea(area)
   }
   const startGroupSweep = (id: string, wasSelected: boolean) => {
     selectionSweep.current = { kind: "group", key: id, select: !wasSelected }
@@ -296,13 +289,12 @@ export function MembersAndGroupsPage() {
       key: memberMoveKey(member),
       select: !wasSelected,
     }
-    selectMember(member, "tree")
+    selectMember(member)
   }
   const sweepGroup = (id: string, pressed: boolean) => {
     const sweep = selectionSweep.current
     if (!pressed || sweep?.kind !== "group" || sweep.key === id) return
     setSelectedMembers([])
-    setSelectionArea(null)
     setPendingMove(null)
     setSelectedGroupIDs((current) =>
       updateGroupSelection(current, id, sweep.select)
@@ -313,7 +305,6 @@ export function MembersAndGroupsPage() {
     const key = memberMoveKey(member)
     if (!pressed || sweep?.kind !== "member" || sweep.key === key) return
     setSelectedGroupIDs([])
-    setSelectionArea("tree")
     setPendingMove(null)
     setSelectedMembers((current) =>
       updateMemberSelection(current, member, sweep.select)
@@ -348,22 +339,14 @@ export function MembersAndGroupsPage() {
     )
     setSelectedGroupIDs(ids)
     setSelectedMembers([])
-    setSelectionArea(null)
     startDrag({ kind: "group", ids }, event)
   }
-  const dragMember = (
-    member: MoveMember,
-    area: "tree" | "list",
-    event: DragEvent
-  ) => {
-    const members =
-      selectionArea === area &&
-      selectedMemberKeys.includes(memberMoveKey(member))
-        ? selectedMembers
-        : [member]
+  const dragMember = (member: MoveMember, event: DragEvent) => {
+    const members = selectedMemberKeys.includes(memberMoveKey(member))
+      ? selectedMembers
+      : [member]
     setSelectedGroupIDs([])
     setSelectedMembers(members)
-    setSelectionArea(area)
     startDrag({ kind: "member", members }, event)
   }
   const dropOn = (target: MemberGroup, event: DragEvent) => {
@@ -411,11 +394,12 @@ export function MembersAndGroupsPage() {
     try {
       const created = await api<User>("/api/admin/v1/users", {
         method: "POST",
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({ ...newUser, group_ids: newMemberGroupIDs }),
       })
       setUsers((current) => [created, ...current])
       void reloadGroups()
       setNewUser({ name: "", email: "", role: "user", password: "" })
+      setNewMemberGroupIDs([])
       showToast({
         status: "success",
         title: t("pages.membersAndGroups.bulk.singleSuccess"),
@@ -519,15 +503,13 @@ export function MembersAndGroupsPage() {
                       selectedGroupIDs={selectedGroupIDs}
                       selectedMemberKeys={selectedMemberKeys}
                       onGroupSelect={selectGroup}
-                      onMemberSelect={(member) => selectMember(member, "tree")}
+                      onMemberSelect={selectMember}
                       onGroupSweepStart={startGroupSweep}
                       onMemberSweepStart={startMemberSweep}
                       onGroupSweepEnter={sweepGroup}
                       onMemberSweepEnter={sweepMember}
                       onGroupDragStart={dragGroup}
-                      onMemberDragStart={(member, event) =>
-                        dragMember(member, "tree", event)
-                      }
+                      onMemberDragStart={dragMember}
                       onDragEnd={() => setDragging(null)}
                       canDropOn={(target) =>
                         !!dragging && canMoveTo(groups, dragging, target)
@@ -603,23 +585,13 @@ export function MembersAndGroupsPage() {
                           event.preventDefault()
                           return
                         }
-                        dragMember({ id: user.id }, "list", event)
+                        startDrag(
+                          { kind: "member", members: [{ id: user.id }] },
+                          event
+                        )
                       }}
                       onDragEnd={() => setDragging(null)}
-                      className={
-                        selectedMemberKeys.includes(`list:${user.id}`)
-                          ? "border-primary bg-primary/5"
-                          : undefined
-                      }
                     >
-                      <Checkbox
-                        checked={selectedMemberKeys.includes(`list:${user.id}`)}
-                        onCheckedChange={() =>
-                          selectMember({ id: user.id }, "list")
-                        }
-                        aria-label={user.name}
-                        className="me-2 shrink-0"
-                      />
                       <ItemMedia>
                         <MemberAvatar
                           role={user.role}

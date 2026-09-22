@@ -369,6 +369,9 @@ export const zhCN = {
       },
     },
     models: {
+      searchAuthorization: "搜索名称、邮箱或拼音",
+      noMatchingAuthorization: "没有匹配的分组或用户。",
+
       title: "大模型",
       description: "管理企业可用的大模型与接入配置。",
       count: "已接入 {{count}} 个模型",

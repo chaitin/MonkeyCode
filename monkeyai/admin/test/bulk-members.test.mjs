@@ -106,6 +106,66 @@ test("bulk submission continues after a failure and reports progress without reu
   assert.equal("password" in regular.created[0], false)
 })
 
+test("bulk creation sends selected groups for every member and retries only failed rows", async () => {
+  const rows = parseBulkEmails("a@example.com\nb@example.com")
+  const groups = ["group-a", "group-b"]
+  const submitted = []
+  const result = await createBulkMembers(
+    rows,
+    "user",
+    async (input) => {
+      submitted.push(input)
+      if (input.email === "b@example.com")
+        throw new Error("Group assignment failed")
+      return input
+    },
+    () => {},
+    groups
+  )
+  assert.deepEqual(
+    submitted.map((input) => input.group_ids),
+    [groups, groups]
+  )
+  assert.equal(result.created.length, 1)
+  assert.equal(result.failures.size, 1)
+  const retries = await createBulkMembers(
+    rows.filter((row) => result.failures.has(row.id)),
+    "user",
+    async (input) => input,
+    () => {},
+    groups
+  )
+  assert.deepEqual(
+    retries.created.map((input) => [input.email, input.group_ids]),
+    [["b@example.com", groups]]
+  )
+  const ungrouped = await createBulkMembers(
+    rows.slice(0, 1),
+    "user",
+    async (input) => input,
+    () => {}
+  )
+  assert.deepEqual(ungrouped.created[0].group_ids, [])
+})
+
+test("bulk creation snapshots groups before asynchronous requests", async () => {
+  const groups = ["group-a"]
+  const result = await createBulkMembers(
+    parseBulkEmails("a@example.com\nb@example.com"),
+    "user",
+    async (input) => {
+      groups.push("changed-during-request")
+      return input
+    },
+    () => {},
+    groups
+  )
+  assert.deepEqual(
+    result.created.map((input) => input.group_ids),
+    [["group-a"], ["group-a"]]
+  )
+})
+
 test("bulk dialog labels and errors exist in all supported languages", () => {
   const keys = Object.keys(enUS.pages.membersAndGroups.bulk)
   assert.equal(zhCN.pages.membersAndGroups.bulk.role, "角色")

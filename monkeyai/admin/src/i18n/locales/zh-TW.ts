@@ -244,6 +244,9 @@ export const zhTW = {
       },
     },
     models: {
+      searchAuthorization: "搜尋名稱、電子郵件或拼音",
+      noMatchingAuthorization: "沒有符合的群組或使用者。",
+
       title: "大型模型",
       description: "管理組織可用的大型模型與串接設定。",
       count: "已接入 {{count}} 個模型",

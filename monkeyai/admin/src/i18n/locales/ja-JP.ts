@@ -255,6 +255,9 @@ export const jaJP = {
       },
     },
     models: {
+      searchAuthorization: "名前、メールアドレス、ピンインで検索",
+      noMatchingAuthorization: "一致するグループまたはユーザーがありません。",
+
       title: "モデル",
       description: "組織で利用可能なモデルと連携設定を管理します。",
       count: "{{count}} 件のモデルを接続済み",

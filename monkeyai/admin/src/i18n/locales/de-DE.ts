@@ -260,6 +260,9 @@ export const deDE = {
       },
     },
     models: {
+      searchAuthorization: "Nach Name, E-Mail oder Pinyin suchen",
+      noMatchingAuthorization: "Keine passenden Gruppen oder Benutzer.",
+
       title: "Modelle",
       description:
         "Verwalten Sie die für Ihre Organisation verfügbaren Modelle und Integrationen.",

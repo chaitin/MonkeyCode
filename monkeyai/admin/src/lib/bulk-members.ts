@@ -13,6 +13,7 @@ export type BulkMemberInput = {
   email: string
   role: BulkMemberRole
   password?: string
+  group_ids: string[]
 }
 export type BulkMemberIssue =
   | "invalidEmail"
@@ -72,8 +73,10 @@ export async function createBulkMembers<T>(
   rows: BulkMemberRow[],
   role: BulkMemberRole,
   create: (input: BulkMemberInput) => Promise<T>,
-  onProgress: (completed: number, total: number) => void
+  onProgress: (completed: number, total: number) => void,
+  groupIDs: readonly string[] = []
 ): Promise<{ created: T[]; failures: Map<number, string> }> {
+  const selectedGroups = [...groupIDs]
   const created: T[] = []
   const failures = new Map<number, string>()
   for (const [index, row] of rows.entries()) {
@@ -83,6 +86,7 @@ export async function createBulkMembers<T>(
           name: row.name.trim(),
           email: row.email.trim().toLowerCase(),
           role,
+          group_ids: [...selectedGroups],
           ...(role === "admin" ? { password: row.password } : {}),
         })
       )

@@ -258,6 +258,9 @@ export const ruRU = {
       },
     },
     models: {
+      searchAuthorization: "Поиск по имени, почте или пиньиню",
+      noMatchingAuthorization: "Подходящие группы и пользователи не найдены.",
+
       title: "Модели",
       description:
         "Управляйте моделями и интеграциями, доступными вашей организации.",

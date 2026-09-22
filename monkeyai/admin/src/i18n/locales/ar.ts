@@ -252,6 +252,9 @@ export const ar = {
       },
     },
     models: {
+      searchAuthorization: "البحث بالاسم أو البريد الإلكتروني أو بينيين",
+      noMatchingAuthorization: "لا توجد مجموعات أو مستخدمون مطابقون.",
+
       title: "النماذج",
       description: "أدِر النماذج والتكاملات المتاحة لمؤسستك.",
       count: "عدد النماذج المتصلة: {{count}}",

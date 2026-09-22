@@ -252,6 +252,9 @@ export const koKR = {
       },
     },
     models: {
+      searchAuthorization: "이름, 이메일 또는 병음으로 검색",
+      noMatchingAuthorization: "일치하는 그룹이나 사용자가 없습니다.",
+
       title: "모델",
       description: "조직에서 사용할 수 있는 모델과 연동 설정을 관리합니다.",
       count: "연결된 모델 {{count}}개",

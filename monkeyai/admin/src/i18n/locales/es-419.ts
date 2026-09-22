@@ -259,6 +259,9 @@ export const es419 = {
       },
     },
     models: {
+      searchAuthorization: "Buscar por nombre, correo o pinyin",
+      noMatchingAuthorization: "No hay grupos ni usuarios que coincidan.",
+
       title: "Modelos",
       description:
         "Administra los modelos y las integraciones disponibles para tu organización.",

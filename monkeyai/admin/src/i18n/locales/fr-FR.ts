@@ -260,6 +260,9 @@ export const frFR = {
       },
     },
     models: {
+      searchAuthorization: "Rechercher par nom, e-mail ou pinyin",
+      noMatchingAuthorization: "Aucun groupe ou utilisateur correspondant.",
+
       title: "Modèles",
       description:
         "Gérez les modèles et les intégrations disponibles pour votre organisation.",

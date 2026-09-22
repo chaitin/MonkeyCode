@@ -1625,6 +1625,45 @@ paths:
                   type: string
               required:
               - reason
+  /api/admin/v1/users:
+    post:
+      summary: 创建用户并加入分组
+      description: 创建用户与写入全部直接分组关系在同一事务内完成，任一失败全部回滚。group_ids 未传、为 null 或为空数组时不建立分组关系，用户自动显示在虚拟根分组下。重复分组 ID 自动去重，不可选择根分组、不存在或已删除的分组。只加入指定分组，不自动加入其父分组或子分组。批量添加可逐个调用此接口，每个用户独立提交。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminUserInput'
+      responses:
+        '201':
+          description: 用户及全部分组关系已创建。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailAuthUser'
+        '400':
+          description: invalid_request，请求字段或所选分组无效，未创建用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: user_exists，该邮箱已被未删除用户占用。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: server_error，创建失败，用户与分组关系全部回滚。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/admin/v1/users/{userID}/reset-password:
     parameters:
       - in: path
@@ -4416,6 +4455,43 @@ components:
         email_code_auto_registration_enabled:
           type: boolean
           description: 邮箱验证码自动注册开关，默认 false；客户端使用新邮箱通过验证码登录时自动创建普通账号，管理后台入口不会自动注册。
+    CreateAdminUserInput:
+      type: object
+      required: [name, email, role]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 姓名会去除首尾空白，不能为空。
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: 邮箱会去除首尾空白并转为小写。
+        role:
+          type: string
+          enum: [admin, user]
+        password:
+          type: string
+          writeOnly: true
+          description: 管理员必填，至少 12 个字符；普通用户忽略此字段。
+        group_ids:
+          type: [array, 'null']
+          maxItems: 1000
+          description: 直接加入的分组 UUID，重复值自动去重；未传、null 或空数组表示不加入真实分组。禁止根分组 UUID。
+          items:
+            type: string
+            format: uuid
+      allOf:
+        - if:
+            properties:
+              role:
+                const: admin
+          then:
+            required: [password]
+            properties:
+              password:
+                minLength: 12
     EmailAuthUser:
       type: object
       required:

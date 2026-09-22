@@ -11,7 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { AuthorizationSelect } from "@/components/authorization-select"
+import { GroupSelect } from "@/components/group-select"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
   AlertDialog,
@@ -72,6 +72,7 @@ import {
 } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
 import { useSkillTags } from "@/hooks/use-skill-tags"
+import { ROOT_GROUP_ID } from "@/lib/member-groups"
 import { getModelIconName } from "@/lib/model-utils"
 import { cn } from "@/lib/utils"
 
@@ -169,16 +170,17 @@ function buildGroupTree(groups: AuthorizationSubject[]) {
 }
 
 function flattenGroupTree(
-  groups: AuthorizationGroupNode[]
-): AuthorizationGroupNode[] {
+  groups: AuthorizationGroupNode[],
+  parentId: string | null = null
+): (AuthorizationGroupNode & { parentId: string | null })[] {
   return groups.flatMap((group) => [
-    group,
-    ...flattenGroupTree(group.children ?? []),
+    { ...group, parentId },
+    ...flattenGroupTree(group.children ?? [], group.value),
   ])
 }
 
 export function ModelsPage() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
@@ -195,7 +197,6 @@ export function ModelsPage() {
     "openai_chat_completions"
   )
   const [supportsVision, setSupportsVision] = useState(false)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
@@ -245,7 +246,6 @@ export function ModelsPage() {
   const resetModelOptions = () => {
     setProtocol("openai_chat_completions")
     setSupportsVision(false)
-    setAuthorizationOpen(false)
     setTagsOpen(false)
     setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -606,16 +606,47 @@ export function ModelsPage() {
                       <FieldLabel htmlFor="model-authorized-groups">
                         {t("pages.models.authorizedGroups")}
                       </FieldLabel>
-                      <AuthorizationSelect
+                      <GroupSelect
                         id="model-authorized-groups"
-                        open={authorizationOpen}
+                        options={flattenGroupTree(groups).map((group) => ({
+                          id: group.value,
+                          parentId: group.parentId,
+                          name: group.labelKey,
+                          disabled: group.value === ROOT_GROUP_ID,
+                        }))}
+                        users={members.map((member) => ({
+                          id: member.id,
+                          name: member.name,
+                          email: member.email,
+                          groupIds: member.groupId ? [member.groupId] : [],
+                        }))}
+                        label={t("pages.models.authorizedGroups")}
                         placeholder={t("pages.models.authorizationPlaceholder")}
-                        title={t("pages.models.authorizedGroups")}
-                        value={authorization}
-                        onOpenChange={setAuthorizationOpen}
-                        onValueChange={setAuthorization}
-                        groups={groups}
-                        members={members}
+                        emptyText={t("pages.membersAndGroups.noMembersFound")}
+                        locale={i18n.resolvedLanguage ?? i18n.language}
+                        value={{
+                          groupIds: authorization.groupIds,
+                          userIds: authorization.memberIds,
+                        }}
+                        onValueChange={(next) =>
+                          setAuthorization({
+                            groupIds: [...next.groupIds],
+                            memberIds: [...next.userIds],
+                          })
+                        }
+                        disabled={saving}
+                        defaultExpanded
+                        collapsible
+                        multiple
+                        selectionMode="both"
+                        searchable
+                        searchPlaceholder={t(
+                          "pages.models.searchAuthorization"
+                        )}
+                        noResultsText={t(
+                          "pages.models.noMatchingAuthorization"
+                        )}
+                        cascadeGroups
                       />
                     </Field>
                   </FieldGroup>

@@ -384,6 +384,9 @@ export const enUS = {
       },
     },
     models: {
+      searchAuthorization: "Search by name, email, or pinyin",
+      noMatchingAuthorization: "No matching groups or users.",
+
       title: "Models",
       description:
         "Manage the models and integrations available to your organization.",
