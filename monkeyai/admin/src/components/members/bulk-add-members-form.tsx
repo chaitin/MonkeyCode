@@ -2,6 +2,8 @@ import { useMemo, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { MemberGroupSelect } from "@/components/members/member-group-select"
+import type { MemberGroup } from "@/lib/member-groups"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -31,12 +33,14 @@ type CreatedMember = MemberActionUser & {
 }
 
 export function BulkAddMembersForm({
+  groups,
   existingEmails,
   saving,
   onSavingChange,
   onCreated,
   onClose,
 }: {
+  groups: MemberGroup[]
   existingEmails: string[]
   saving: boolean
   onSavingChange: (saving: boolean) => void
@@ -47,6 +51,7 @@ export function BulkAddMembersForm({
   const { showToast } = useAppToast()
   const [input, setInput] = useState("")
   const [role, setRole] = useState<BulkMemberRole>("user")
+  const [groupIDs, setGroupIDs] = useState<string[]>([])
   const [rows, setRows] = useState<BulkMemberRow[] | null>(null)
   const [inputError, setInputError] = useState("")
   const [progress, setProgress] = useState<{
@@ -168,6 +173,13 @@ export function BulkAddMembersForm({
           </SelectContent>
         </Select>
       </Field>
+      <MemberGroupSelect
+        id="bulk-member-groups"
+        groups={groups}
+        value={groupIDs}
+        onValueChange={setGroupIDs}
+        disabled={saving}
+      />
       {rows === null && (
         <Field>
           <FieldLabel htmlFor="bulk-member-emails">

@@ -529,6 +529,14 @@ export const es419 = {
         '¿Eliminar "{{rule}}"? Esta acción no se puede deshacer.',
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Grupos",
+        placeholder: "Seleccionar grupos (selección múltiple)",
+        search: "Buscar grupos",
+        noMatches: "No hay grupos que coincidan.",
+        empty: "No hay grupos disponibles.",
+        clear: "Borrar selección",
+      },
       directMembersHint:
         "Solo se cambia la membresía directa. Los miembros de subgrupos seguirán visibles.",
       deleteChildrenHint:

@@ -510,6 +510,14 @@ export const ar = {
         "هل تريد حذف قاعدة «{{rule}}»؟ لا يمكن التراجع عن هذا الإجراء.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "المجموعات",
+        placeholder: "اختر المجموعات (يمكن اختيار عدة مجموعات)",
+        search: "البحث عن مجموعات",
+        noMatches: "لا توجد مجموعات مطابقة.",
+        empty: "لا توجد مجموعات متاحة.",
+        clear: "مسح الاختيار",
+      },
       directMembersHint:
         "يتغير الانضمام المباشر فقط. يظل أعضاء المجموعات الفرعية ظاهرين هنا.",
       deleteChildrenHint:

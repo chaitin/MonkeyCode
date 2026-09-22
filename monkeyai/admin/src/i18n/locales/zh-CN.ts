@@ -727,6 +727,14 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{rule}}”吗？此操作无法撤销。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "分组",
+        placeholder: "选择分组（可多选）",
+        search: "搜索分组",
+        noMatches: "没有匹配的分组。",
+        empty: "暂无可选分组。",
+        clear: "清空选择",
+      },
       directMembersHint:
         "仅调整直接加入本组的成员；子分组成员仍会显示在本组中。",
       deleteChildrenHint: "请先移动或删除子分组，再删除此分组。",

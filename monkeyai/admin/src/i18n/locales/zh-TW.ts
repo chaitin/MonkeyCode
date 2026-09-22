@@ -489,6 +489,14 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{rule}}」嗎？此操作無法復原。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "分組",
+        placeholder: "選擇分組（可多選）",
+        search: "搜尋分組",
+        noMatches: "沒有符合的分組。",
+        empty: "暫無可選分組。",
+        clear: "清空選擇",
+      },
       directMembersHint: "僅調整直接加入本組的成員；子分組成員仍會顯示於本組。",
       deleteChildrenHint: "請先移動或刪除子分組，再刪除此分組。",
       deleteMembersHint: "成員帳號會保留；本組的成員關係與資源授權將一併移除。",

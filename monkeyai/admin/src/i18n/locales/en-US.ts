@@ -769,6 +769,14 @@ export const enUS = {
         'Delete "{{rule}}"? This action cannot be undone.',
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Groups",
+        placeholder: "Select groups (multiple allowed)",
+        search: "Search groups",
+        noMatches: "No matching groups.",
+        empty: "No groups available.",
+        clear: "Clear selection",
+      },
       directMembersHint:
         "Only direct membership is changed; members of subgroups remain visible here.",
       deleteChildrenHint:

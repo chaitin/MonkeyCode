@@ -532,6 +532,14 @@ export const deDE = {
         "„{{rule}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Gruppen",
+        placeholder: "Gruppen auswählen (Mehrfachauswahl)",
+        search: "Gruppen suchen",
+        noMatches: "Keine passenden Gruppen.",
+        empty: "Keine Gruppen verfügbar.",
+        clear: "Auswahl löschen",
+      },
       directMembersHint:
         "Nur direkte Mitgliedschaften werden geändert. Mitglieder von Untergruppen bleiben sichtbar.",
       deleteChildrenHint:

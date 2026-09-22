@@ -518,6 +518,14 @@ export const jaJP = {
         "「{{rule}}」を削除しますか？この操作は元に戻せません。",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "グループ",
+        placeholder: "グループを選択（複数選択可）",
+        search: "グループを検索",
+        noMatches: "一致するグループはありません。",
+        empty: "選択できるグループはありません。",
+        clear: "選択をクリア",
+      },
       directMembersHint:
         "直接所属するメンバーのみ変更します。子グループのメンバーは引き続き表示されます。",
       deleteChildrenHint: "先に子グループを移動または削除してください。",

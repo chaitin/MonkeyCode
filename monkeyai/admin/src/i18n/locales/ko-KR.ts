@@ -511,6 +511,14 @@ export const koKR = {
         '"{{rule}}" 규칙을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "그룹",
+        placeholder: "그룹 선택 (여러 개 선택 가능)",
+        search: "그룹 검색",
+        noMatches: "일치하는 그룹이 없습니다.",
+        empty: "선택 가능한 그룹이 없습니다.",
+        clear: "선택 지우기",
+      },
       directMembersHint:
         "직접 소속된 멤버만 변경합니다. 하위 그룹의 멤버는 계속 표시됩니다.",
       deleteChildrenHint:

@@ -59,6 +59,7 @@ import { compareMembers } from "@/lib/member-sorting"
 import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
 import { MemberAvatar } from "@/components/members/member-avatar"
+import { MemberGroupSelect } from "@/components/members/member-group-select"
 import {
   GroupTreeItem,
   UngroupedTreeItem,
@@ -99,6 +100,7 @@ export function MembersAndGroupsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single")
   const [creating, setCreating] = useState(false)
+  const [newMemberGroupIDs, setNewMemberGroupIDs] = useState<string[]>([])
   const [batchSaving, setBatchSaving] = useState(false)
   const [pendingMemberAction, setPendingMemberAction] = useState<{
     user: MemberActionUser
@@ -338,6 +340,7 @@ export function MembersAndGroupsPage() {
                 aria-label={t("pages.membersAndGroups.bulk.addMember")}
                 onClick={() => {
                   setCreateMode("single")
+                  setNewMemberGroupIDs([])
                   setCreateOpen(true)
                 }}
               >
@@ -572,6 +575,13 @@ export function MembersAndGroupsPage() {
                       </SelectContent>
                     </Select>
                   </Field>
+                  <MemberGroupSelect
+                    id="new-user-groups"
+                    groups={groups}
+                    value={newMemberGroupIDs}
+                    onValueChange={setNewMemberGroupIDs}
+                    disabled={creating || loading}
+                  />
                   <Field>
                     <FieldLabel htmlFor="new-user-name">
                       {t("pages.membersAndGroups.bulk.name")}
@@ -656,6 +666,7 @@ export function MembersAndGroupsPage() {
             <TabsContent value="bulk" keepMounted className="pt-3">
               {createOpen && (
                 <BulkAddMembersForm
+                  groups={groups}
                   existingEmails={users.map((user) => user.email)}
                   saving={batchSaving}
                   onSavingChange={setBatchSaving}

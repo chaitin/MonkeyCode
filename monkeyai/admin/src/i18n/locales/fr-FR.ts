@@ -528,6 +528,14 @@ export const frFR = {
         "Supprimer « {{rule}} » ? Cette action est irréversible.",
     },
     membersAndGroups: {
+      groupSelection: {
+        label: "Groupes",
+        placeholder: "Sélectionner des groupes (choix multiples)",
+        search: "Rechercher des groupes",
+        noMatches: "Aucun groupe correspondant.",
+        empty: "Aucun groupe disponible.",
+        clear: "Effacer la sélection",
+      },
       directMembersHint:
         "Seules les appartenances directes sont modifiées. Les membres des sous-groupes restent visibles.",
       deleteChildrenHint:
