@@ -11,6 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const addResourceTag = `-- name: AddResourceTag :execresult
+INSERT INTO resource_tags (resource_type, resource_id, tag_id, assigned_by_user_id)
+SELECT $1, $2, t.id, $3::uuid
+FROM tags t WHERE t.id = $4::uuid AND t.deleted_at IS NULL
+`
+
+type AddResourceTagParams struct {
+	ResourceType string
+	ResourceID   string
+	ActorID      string
+	TagID        string
+}
+
+func (q *Queries) AddResourceTag(ctx context.Context, arg AddResourceTagParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, addResourceTag,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.ActorID,
+		arg.TagID,
+	)
+}
+
 const canUseSystem = `-- name: CanUseSystem :one
 SELECT EXISTS (
     SELECT 1 FROM users u
@@ -464,6 +486,52 @@ func (q *Queries) LockRecipients(ctx context.Context, dollar_1 []string) ([]stri
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeResourceTags = `-- name: RemoveResourceTags :exec
+DELETE FROM resource_tags WHERE resource_type = $1 AND resource_id = $2
+`
+
+type RemoveResourceTagsParams struct {
+	ResourceType string
+	ResourceID   string
+}
+
+func (q *Queries) RemoveResourceTags(ctx context.Context, arg RemoveResourceTagsParams) error {
+	_, err := q.db.Exec(ctx, removeResourceTags, arg.ResourceType, arg.ResourceID)
+	return err
+}
+
+const resourceTags = `-- name: ResourceTags :many
+SELECT jsonb_build_object('id', t.id, 'name', t.name)
+FROM tags t JOIN resource_tags rt ON rt.tag_id = t.id
+WHERE rt.resource_type = $1 AND rt.resource_id = $2 AND t.deleted_at IS NULL
+ORDER BY lower(t.name), t.id
+`
+
+type ResourceTagsParams struct {
+	ResourceType string
+	ResourceID   string
+}
+
+func (q *Queries) ResourceTags(ctx context.Context, arg ResourceTagsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, resourceTags, arg.ResourceType, arg.ResourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

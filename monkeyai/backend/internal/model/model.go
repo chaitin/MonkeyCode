@@ -27,41 +27,44 @@ type Authorization struct {
 }
 
 type Model struct {
-	Creator          *Subject       `json:"-"`
-	SharedUsers      []Subject      `json:"-"`
-	ID               string         `json:"id"`
-	OwnershipType    string         `json:"ownership_type"`
-	OwnerUserID      string         `json:"-"`
-	User             resource.User  `json:"user"`
-	ModelID          string         `json:"model_id"`
-	DisplayName      string         `json:"display_name"`
-	Protocol         Protocol       `json:"protocol"`
-	BaseURL          string         `json:"base_url"`
-	APIKey           string         `json:"-"`
-	GrantorUserID    string         `json:"-"`
-	APIKeyConfigured bool           `json:"api_key_configured"`
-	AdvancedConfig   AdvancedConfig `json:"advanced_config"`
-	CreditMultiplier float64        `json:"credit_multiplier"`
-	Authorization    Authorization  `json:"authorization"`
-	Enabled          bool           `json:"enabled"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	Creator          *Subject          `json:"-"`
+	SharedUsers      []Subject         `json:"-"`
+	ID               string            `json:"id"`
+	OwnershipType    string            `json:"ownership_type"`
+	OwnerUserID      string            `json:"-"`
+	User             resource.User     `json:"user"`
+	ModelID          string            `json:"model_id"`
+	DisplayName      string            `json:"display_name"`
+	Protocol         Protocol          `json:"protocol"`
+	BaseURL          string            `json:"base_url"`
+	APIKey           string            `json:"-"`
+	GrantorUserID    string            `json:"-"`
+	APIKeyConfigured bool              `json:"api_key_configured"`
+	AdvancedConfig   AdvancedConfig    `json:"advanced_config"`
+	CreditMultiplier float64           `json:"credit_multiplier"`
+	Authorization    Authorization     `json:"authorization"`
+	Tags             []resource.Object `json:"tags"`
+	TagIDs           []string          `json:"-"`
+	Enabled          bool              `json:"enabled"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
 type AgentModel struct {
-	OwnershipType       string        `json:"ownership_type"`
-	User                resource.User `json:"user"`
-	Creator             *Subject      `json:"creator,omitempty"`
-	SharedUsers         *[]Subject    `json:"shared_users,omitempty"`
-	ID                  string        `json:"id"`
-	Model               string        `json:"model"`
-	DisplayName         string        `json:"display_name"`
-	Protocol            Protocol      `json:"protocol"`
-	ContextWindowTokens int64         `json:"context_window_tokens"`
-	MaxOutputTokens     int64         `json:"max_output_tokens"`
-	SupportsVision      bool          `json:"supports_vision"`
-	CreditMultiplier    float64       `json:"credit_multiplier"`
-	UpdatedAt           time.Time     `json:"-"`
+	OwnershipType       string            `json:"ownership_type"`
+	User                resource.User     `json:"user"`
+	Creator             *Subject          `json:"creator,omitempty"`
+	SharedUsers         *[]Subject        `json:"shared_users,omitempty"`
+	ID                  string            `json:"id"`
+	Model               string            `json:"model"`
+	DisplayName         string            `json:"display_name"`
+	Protocol            Protocol          `json:"protocol"`
+	ContextWindowTokens int64             `json:"context_window_tokens"`
+	MaxOutputTokens     int64             `json:"max_output_tokens"`
+	SupportsVision      bool              `json:"supports_vision"`
+	CreditMultiplier    float64           `json:"credit_multiplier"`
+	Tags                []resource.Object `json:"tags"`
+	UpdatedAt           time.Time         `json:"-"`
 }
 
 type Target struct {
@@ -95,6 +98,7 @@ type SaveInput struct {
 	AdvancedConfig   AdvancedConfig `json:"advanced_config"`
 	CreditMultiplier float64        `json:"credit_multiplier"`
 	Authorization    Authorization  `json:"authorization"`
+	TagIDs           []string       `json:"tag_ids,omitempty"`
 }
 
 // 用户不能设置积分倍率或通过模型编辑修改分享范围。
@@ -105,4 +109,5 @@ type UserInput struct {
 	BaseURL        string         `json:"base_url"`
 	APIKey         string         `json:"api_key"`
 	AdvancedConfig AdvancedConfig `json:"advanced_config"`
+	TagIDs         []string       `json:"tag_ids,omitempty"`
 }
