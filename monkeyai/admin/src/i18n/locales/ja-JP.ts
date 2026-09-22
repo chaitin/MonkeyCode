@@ -584,14 +584,11 @@ export const jaJP = {
         cancel: "キャンセル",
         createOne: "作成",
         creating: "作成中…",
-        description:
-          "1 行に 1 件のメールアドレスを入力します。名前の初期値はメールアドレスで、役割は全員共通です。",
         role: "役割",
         member: "メンバー",
         administrator: "管理者",
         emails: "メールアドレス",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "一度に最大 {{count}} 人まで追加できます。",
         empty: "メールアドレスを 1 件以上入力してください。",
         tooMany:
           "一度に追加できるのは {{count}} 人までです。分けて追加してください。",
@@ -685,11 +682,18 @@ export const jaJP = {
       description:
         "モデル、ツール、その他の機能によるポイント消費を確認します。",
       filters: {
-        userPlaceholder: "ユーザーまたはメールを検索",
+        userPlaceholder: "ユーザー",
         itemPlaceholder: "内容を検索",
         category: "課金タイプ",
-        allCategories: "すべてのタイプ",
+        entryType: "明細タイプ",
         search: "検索",
+      },
+      entryTypes: {
+        charge: "課金",
+        grant: "付与",
+        reset: "リセット",
+        refund: "返金",
+        adjustment: "調整",
       },
       categories: {
         model: "モデル",
@@ -798,6 +802,7 @@ export const jaJP = {
         operatorSearchPlaceholder: "操作者",
         ipSearchPlaceholder: "送信元 IP",
         search: "検索",
+        searchSuccess: "検索が完了しました",
         actionType: "操作タイプ",
         result: "実行結果",
       },

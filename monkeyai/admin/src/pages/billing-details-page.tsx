@@ -1,18 +1,44 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Loading03Icon,
+  Search02Icon,
+  User02Icon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
+import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -23,6 +49,7 @@ import {
 } from "@/components/ui/table"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { api } from "@/lib/api"
+import { endOfLocalDay, startOfLocalDay } from "@/lib/date-range"
 import {
   credits,
   dateTime,
@@ -50,7 +77,31 @@ type Pending = {
   }[]
   migration_issues: { id: number; subject: string; reason: string }[]
 }
+const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
 const selectClass = "h-9 rounded-md border bg-background px-3 text-sm"
+const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
+  credits(value, locale, 0)
+const changedCredits = (value: string, locale: string) =>
+  credits(value, locale, 0, "expand")
+const balanceCredits = (value: string, locale: string) =>
+  credits(value, locale, 0, "floor")
+
+const CATEGORY_FILTERS = ["model", "tool", "other"]
+const ENTRY_FILTERS = ["charge", "grant", "reset", "refund", "adjustment"]
+
+function filterDate(value?: string) {
+  if (!value) return undefined
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  const date = dateOnly
+    ? new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3])
+      )
+    : new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
 const categoryNames: Record<string, string> = {
   model: "模型",
   image: "生图",
@@ -62,42 +113,57 @@ export function BillingDetailsPage() {
   const { t, i18n } = useTranslation()
   const { showToast } = useAppToast()
   const [params, setParams] = useSearchParams()
-  const [draft, setDraft] = useState(() => Object.fromEntries(params))
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const values = Object.fromEntries(params)
+    delete values.page
+    delete values.page_size
+    return values
+  })
   const [entries, setEntries] = useState<Entries | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
-  const [summary, setSummary] = useState<{
-    charges: string
-    refunds: string
-    net_consumption: string
-  } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
   const [refresh, setRefresh] = useState(0)
+  const searchRefreshRef = useRef<number | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const view = params.get("view") ?? "entries"
-  const page = Math.max(1, Number(params.get("page") ?? "1"))
-  const pageSize = Number(params.get("page_size") ?? "20")
-  const query = params.toString()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const requestParams = new URLSearchParams(params)
+  requestParams.delete("page")
+  requestParams.delete("page_size")
+  requestParams.set("page", String(page))
+  requestParams.set("page_size", String(pageSize))
+  const query = requestParams.toString()
+  useEffect(() => {
+    if (!params.has("page") && !params.has("page_size")) return
+    const next = new URLSearchParams(params)
+    next.delete("page")
+    next.delete("page_size")
+    setParams(next, { replace: true })
+  }, [params, setParams])
   useEffect(() => {
     let cancelled = false
+    const isSearch = searchRefreshRef.current === refresh
     const next = new URLSearchParams(query)
-    for (const key of ["from", "until"]) {
-      const v = next.get(key)
-      if (v && /^\d{4}-\d{2}-\d{2}$/.test(v))
-        next.set(key, new Date(`${v}T00:00:00+08:00`).toISOString())
+    next.delete("mode")
+    for (const key of ["from", "until"] as const) {
+      const value = filterDate(next.get(key) ?? undefined)
+      if (value) {
+        next.set(
+          key,
+          (key === "from"
+            ? startOfLocalDay(value)
+            : endOfLocalDay(value)
+          ).toISOString()
+        )
+      }
     }
     const request =
       view === "entries"
-        ? Promise.all([
-            api<Entries>(`/api/admin/v1/billing/entries?${next}`),
-            api<{ charges: string; refunds: string; net_consumption: string }>(
-              `/api/admin/v1/billing/summary?${next}`
-            ),
-          ]).then(([list, total]) => {
-            if (!cancelled) {
-              setEntries(list)
-              setSummary(total)
-            }
+        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`).then((list) => {
+            if (!cancelled) setEntries(list)
           })
         : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`).then(
             (set) => {
@@ -105,19 +171,33 @@ export function BillingDetailsPage() {
             }
           )
     void request
+      .then(() => {
+        if (!cancelled && isSearch) {
+          showToast({
+            status: "success",
+            title: t("pages.operationLogs.filters.searchSuccess"),
+          })
+        }
+      })
       .catch((e: Error) => {
         if (!cancelled) {
-          setLoadFailed(true)
+          if (!isSearch) setLoadFailed(true)
           showToast({ status: "error", title: e.message })
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (cancelled) return
+        if (isSearch) {
+          setSearching(false)
+          searchRefreshRef.current = null
+        } else {
+          setLoading(false)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [query, view, refresh, showToast])
+  }, [query, view, refresh, showToast, t])
   const navigate = (change: Record<string, string>) => {
     const next = new URLSearchParams(params)
     Object.entries(change).forEach(([key, value]) =>
@@ -125,247 +205,387 @@ export function BillingDetailsPage() {
     )
     setLoadFailed(false)
     setLoading(true)
+    setSearching(false)
+    searchRefreshRef.current = null
     setParams(next)
     setRefresh((v) => v + 1)
   }
   const reload = () => {
     setLoadFailed(false)
     setLoading(true)
+    setSearching(false)
+    searchRefreshRef.current = null
     setRefresh((v) => v + 1)
   }
   const search = (e: FormEvent) => {
     e.preventDefault()
+    if (searching) return
     setLoadFailed(false)
-    setLoading(true)
-    setParams({ ...draft, page: "1", view: "entries" })
-    setRefresh((v) => v + 1)
+    setPage(1)
+    const next = new URLSearchParams({ view: "entries" })
+    for (const [key, value] of Object.entries(draft)) {
+      if (value && !["mode", "page", "page_size", "view"].includes(key)) {
+        next.set(key, value)
+      }
+    }
+    const nextRefresh = refresh + 1
+    searchRefreshRef.current = nextRefresh
+    setSearching(true)
+    setParams(next)
+    setRefresh(nextRefresh)
   }
   const total =
     view === "entries" ? (entries?.total ?? 0) : (pending?.total ?? 0)
   const pages = Math.max(1, Math.ceil(total / pageSize))
+  const visibleCount =
+    view === "entries"
+      ? (entries?.items.length ?? 0)
+      : (pending?.items.length ?? 0)
+  const firstVisible = visibleCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const lastVisible =
+    visibleCount === 0 ? 0 : (page - 1) * pageSize + visibleCount
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const fromInput = filterDate(draft.from)
+  const untilInput = filterDate(draft.until)
+  const categoryLabel = (value: string) =>
+    t(`pages.billingDetails.categories.${value}`, {
+      defaultValue: categoryNames[value] ?? value,
+    })
+  const entryLabel = (value: string) =>
+    t(`pages.billingDetails.entryTypes.${value}`, {
+      defaultValue: entryNames[value] ?? value,
+    })
+  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
+    value,
+    label: t("pages.operationLogs.pagination.perPage", { count: value }),
+  }))
   const field = (key: string, value: string) =>
     setDraft({ ...draft, [key]: value })
-  return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <Button
-            variant={view === "entries" ? "secondary" : "ghost"}
-            onClick={() => navigate({ view: "entries", page: "1" })}
+  const pagination = (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select
+          items={pageSizeItems}
+          value={String(pageSize)}
+          onValueChange={(value) => {
+            if (value !== null) {
+              setPageSize(Number(value))
+              setPage(1)
+            }
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
           >
-            积分流水
-          </Button>
-          <Button
-            variant={view === "pending" ? "secondary" : "ghost"}
-            onClick={() => navigate({ view: "pending", page: "1" })}
-          >
-            待处理与对账
-          </Button>
-        </div>
-        <Button variant="outline" disabled={loading} onClick={reload}>
-          {loading ? "读取中…" : "刷新"}
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} align="start">
+            <SelectGroup>
+              {pageSizeItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <p className="text-sm text-muted-foreground">
+          {t("pages.operationLogs.pagination.summary", {
+            from: firstVisible,
+            to: lastVisible,
+            total,
+          })}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">
+          {t("pages.operationLogs.pagination.page", { page, pages })}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          disabled={loading || page === 1}
+          onClick={() => setPage((value) => Math.max(1, value - 1))}
+          aria-label={t("pages.operationLogs.pagination.previous")}
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          disabled={loading || loadFailed || page >= pages}
+          onClick={() => setPage((value) => Math.min(pages, value + 1))}
+          aria-label={t("pages.operationLogs.pagination.next")}
+        >
+          <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
         </Button>
       </div>
-      {loadFailed && (
-        <div>
-          <Button variant="outline" onClick={reload}>
-            重试
-          </Button>
-        </div>
-      )}
-      {view === "entries" && (
-        <>
-          {summary && (
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                ["扣费积分", summary.charges],
-                ["退款积分", summary.refunds],
-                ["净消耗积分", summary.net_consumption],
-              ].map(([label, value]) => (
-                <Card key={label}>
-                  <CardContent className="py-4">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-2 text-xl tabular-nums">
-                      {credits(value, i18n.language)}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-          <Card>
-            <CardContent className="p-0">
+    </div>
+  )
+  return (
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+      <Tabs
+        value={view}
+        onValueChange={(value) => {
+          if (value !== "entries" && value !== "pending") return
+          setPage(1)
+          navigate({ view: value })
+        }}
+        className="min-h-0 flex-1 gap-4"
+      >
+        <TabsList>
+          <TabsTrigger value="entries">积分流水</TabsTrigger>
+          <TabsTrigger value="pending">待处理与对账</TabsTrigger>
+        </TabsList>
+        {loadFailed && (
+          <div>
+            <Button variant="outline" onClick={reload}>
+              重试
+            </Button>
+          </div>
+        )}
+        <TabsContent value="entries" className="min-h-0 flex-1">
+          <Card className="h-full min-h-0">
+            <CardContent className="min-h-0 flex-1 gap-4 px-0">
               <form
                 onSubmit={search}
-                className="flex flex-wrap items-end gap-3 p-5"
+                className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
               >
-                <Field className="w-48">
-                  <FieldLabel htmlFor="billing-user">用户或邮箱</FieldLabel>
-                  <Input
-                    id="billing-user"
-                    placeholder="搜索用户或邮箱"
-                    value={draft.user ?? ""}
-                    onChange={(e) => field("user", e.target.value)}
+                <Input
+                  id="billing-user"
+                  className="w-32"
+                  placeholder={t(
+                    "pages.billingDetails.filters.userPlaceholder"
+                  )}
+                  aria-label={t("pages.billingDetails.filters.userPlaceholder")}
+                  value={draft.user ?? ""}
+                  onChange={(event) => field("user", event.target.value)}
+                />
+                <Input
+                  id="billing-content"
+                  className="w-32"
+                  placeholder={t(
+                    "pages.billingDetails.filters.itemPlaceholder"
+                  )}
+                  aria-label={t("pages.billingDetails.filters.itemPlaceholder")}
+                  value={draft.content ?? ""}
+                  onChange={(event) => field("content", event.target.value)}
+                />
+                <DatePickerField
+                  id="billing-from"
+                  className="w-32 sm:w-32"
+                  label={t("audit.since")}
+                  placeholder={t("audit.since")}
+                  locale={locale}
+                  value={fromInput}
+                  onChange={(value) =>
+                    field(
+                      "from",
+                      value ? startOfLocalDay(value).toISOString() : ""
+                    )
+                  }
+                  disabled={untilInput ? { after: untilInput } : undefined}
+                />
+                <DatePickerField
+                  id="billing-until"
+                  className="w-32 sm:w-32"
+                  label={t("audit.until")}
+                  placeholder={t("audit.until")}
+                  locale={locale}
+                  value={untilInput}
+                  onChange={(value) =>
+                    field(
+                      "until",
+                      value ? endOfLocalDay(value).toISOString() : ""
+                    )
+                  }
+                  disabled={fromInput ? { before: fromInput } : undefined}
+                />
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={
+                          draft.category ? undefined : "text-muted-foreground"
+                        }
+                      />
+                    }
+                  >
+                    {draft.category
+                      ? categoryLabel(draft.category)
+                      : t("pages.billingDetails.filters.category")}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>
+                        {t("pages.billingDetails.filters.category")}
+                      </DropdownMenuLabel>
+                      {CATEGORY_FILTERS.map((value) => (
+                        <DropdownMenuCheckboxItem
+                          key={value}
+                          checked={draft.category === value}
+                          onCheckedChange={(checked) =>
+                            field("category", checked ? value : "")
+                          }
+                        >
+                          {categoryLabel(value)}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={
+                          draft.entry_type ? undefined : "text-muted-foreground"
+                        }
+                      />
+                    }
+                  >
+                    {draft.entry_type
+                      ? entryLabel(draft.entry_type)
+                      : t("pages.billingDetails.filters.entryType")}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>
+                        {t("pages.billingDetails.filters.entryType")}
+                      </DropdownMenuLabel>
+                      {ENTRY_FILTERS.map((value) => (
+                        <DropdownMenuCheckboxItem
+                          key={value}
+                          checked={draft.entry_type === value}
+                          onCheckedChange={(checked) =>
+                            field("entry_type", checked ? value : "")
+                          }
+                        >
+                          {entryLabel(value)}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button type="submit" disabled={loading || searching}>
+                  <HugeiconsIcon
+                    icon={searching ? Loading03Icon : Search02Icon}
+                    data-icon="inline-start"
+                    className={
+                      searching
+                        ? "animate-spin motion-reduce:animate-none"
+                        : undefined
+                    }
                   />
-                </Field>
-                <Field className="w-48">
-                  <FieldLabel htmlFor="billing-content">内容</FieldLabel>
-                  <Input
-                    id="billing-content"
-                    placeholder="搜索资源或调整原因"
-                    value={draft.content ?? ""}
-                    onChange={(e) => field("content", e.target.value)}
-                  />
-                </Field>
-                <Field className="w-40">
-                  <FieldLabel htmlFor="billing-from">开始日期</FieldLabel>
-                  <Input
-                    id="billing-from"
-                    type="date"
-                    value={draft.from ?? ""}
-                    onChange={(e) => field("from", e.target.value)}
-                  />
-                </Field>
-                <Field className="w-40">
-                  <FieldLabel htmlFor="billing-until">
-                    结束日期（不含）
-                  </FieldLabel>
-                  <Input
-                    id="billing-until"
-                    type="date"
-                    value={draft.until ?? ""}
-                    onChange={(e) => field("until", e.target.value)}
-                  />
-                </Field>
-                <select
-                  className={selectClass}
-                  aria-label="资源类型"
-                  value={draft.category ?? ""}
-                  onChange={(e) => field("category", e.target.value)}
-                >
-                  <option value="">全部类型</option>
-                  {Object.entries(categoryNames).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={selectClass}
-                  aria-label="流水类型"
-                  value={draft.entry_type ?? ""}
-                  onChange={(e) => field("entry_type", e.target.value)}
-                >
-                  <option value="">全部账目</option>
-                  {Object.entries(entryNames).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={selectClass}
-                  aria-label="计费模式"
-                  value={draft.mode ?? ""}
-                  onChange={(e) => field("mode", e.target.value)}
-                >
-                  <option value="">全部模式</option>
-                  <option value="local">本地</option>
-                  <option value="remote">百智云</option>
-                </select>
-                <Button type="submit" disabled={loading}>
-                  搜索
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setDraft({})
-                    setLoading(true)
-                    setParams({})
-                    setRefresh((v) => v + 1)
-                  }}
-                >
-                  重置
+                  {t("pages.billingDetails.filters.search")}
                 </Button>
               </form>
-              <Table aria-busy={loading}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>入账时间</TableHead>
-                    <TableHead>用户</TableHead>
-                    <TableHead>类型</TableHead>
-                    <TableHead>
-                      {t("pages.billingDetails.columns.content")}
-                    </TableHead>
-                    <TableHead>模式</TableHead>
-                    <TableHead className="text-end">积分变动</TableHead>
-                    <TableHead className="text-end">当期剩余额度</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries?.items.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {dateTime(e.occurred_at)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{e.user_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {e.user_email}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {entryNames[e.entry_type]}
-                        </Badge>
-                        <span className="ms-2 text-xs text-muted-foreground">
-                          {categoryNames[e.category]}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {e.transaction_id ? (
-                          <button
-                            className="text-start hover:text-primary hover:underline"
-                            onClick={() => setSelected(e.transaction_id)}
-                          >
-                            {e.item_name}
-                          </button>
-                        ) : (
-                          e.item_name
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {e.mode === "remote" ? "百智云" : "本地"}
-                      </TableCell>
-                      <TableCell className="text-end font-medium tabular-nums">
-                        {credits(e.credit_delta, i18n.language)}
-                      </TableCell>
-                      <TableCell className="text-end text-muted-foreground tabular-nums">
-                        {credits(e.balance_after, i18n.language)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!entries?.items.length && (
+              <ScrollArea
+                horizontal
+                className="min-h-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+              >
+                <Table
+                  aria-busy={loading}
+                  className={!entries?.items.length ? "h-full" : undefined}
+                >
+                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        className="h-36 text-center text-muted-foreground"
-                      >
-                        {loading
-                          ? "正在读取流水…"
-                          : t("pages.billingDetails.empty")}
-                      </TableCell>
+                      <TableHead className="ps-(--card-spacing)">
+                        入账时间
+                      </TableHead>
+                      <TableHead>用户</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead>
+                        {t("pages.billingDetails.columns.content")}
+                      </TableHead>
+                      <TableHead className="text-end">积分变动</TableHead>
+                      <TableHead className="text-end">剩余积分</TableHead>
+                      <TableHead className="pe-(--card-spacing) whitespace-nowrap">
+                        {t("pages.operationLogs.columns.operations")}
+                      </TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody
+                    className={!entries?.items.length ? "h-full" : undefined}
+                  >
+                    {entries?.items.map((e) => (
+                      <TableRow key={e.id}>
+                        <TableCell className="ps-(--card-spacing) whitespace-nowrap">
+                          {dateTime(e.occurred_at)}
+                        </TableCell>
+                        <TableCell>
+                          <div
+                            className="flex items-center gap-3"
+                            title={e.user_email}
+                          >
+                            <HugeiconsIcon
+                              icon={User02Icon}
+                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{e.user_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {entryLabel(e.entry_type)} -{" "}
+                          {categoryLabel(e.category)}
+                        </TableCell>
+                        <TableCell>{e.item_name}</TableCell>
+                        <TableCell
+                          className={`text-end font-medium tabular-nums ${e.credit_delta.startsWith("-") ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}
+                        >
+                          {changedCredits(e.credit_delta, i18n.language)}
+                        </TableCell>
+                        <TableCell className="text-end text-yellow-600 tabular-nums dark:text-yellow-400">
+                          {balanceCredits(e.balance_after, i18n.language)}
+                        </TableCell>
+                        <TableCell className="pe-(--card-spacing) whitespace-nowrap">
+                          {e.transaction_id ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="xs"
+                              onClick={() => setSelected(e.transaction_id)}
+                            >
+                              {t("pages.operationLogs.details")}
+                            </Button>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!entries?.items.length && (
+                      <TableRow className="h-full">
+                        <TableCell
+                          colSpan={7}
+                          className="h-full text-center text-muted-foreground"
+                        >
+                          {loading
+                            ? "正在读取流水…"
+                            : t("pages.billingDetails.empty")}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+              {pagination}
             </CardContent>
           </Card>
-        </>
-      )}
-      {view === "pending" && (
-        <>
+        </TabsContent>
+        <TabsContent
+          value="pending"
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
           <p className="text-sm text-muted-foreground">
             系统会自动重试扣费确认，并对带上游响应 ID 的 Responses
             异常查询真实用量；不会重新执行模型调用，证据不足时仍需人工核查。百智云历史余额以钱包侧记录为准。
@@ -380,8 +600,11 @@ export function BillingDetailsPage() {
               </p>
               {pending.differences.map((d) => (
                 <p key={d.account_id} className="mt-2 text-xs">
-                  账户 {d.account_id}：余额 {d.balance} / 流水合计{" "}
-                  {d.ledger_balance}；冻结 {d.frozen} / 未完成预留 {d.reserved}
+                  账户 {d.account_id}：余额{" "}
+                  {billingCredits(d.balance, i18n.language)} / 流水合计{" "}
+                  {billingCredits(d.ledger_balance, i18n.language)}；冻结{" "}
+                  {billingCredits(d.frozen, i18n.language)} / 未完成预留{" "}
+                  {billingCredits(d.reserved, i18n.language)}
                 </p>
               ))}
             </div>
@@ -398,106 +621,97 @@ export function BillingDetailsPage() {
               ))}
             </details>
           )}
-          <Card>
-            <CardContent className="p-0">
-              <Table aria-busy={loading}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>调用时间</TableHead>
-                    <TableHead>用户</TableHead>
-                    <TableHead>
-                      {t("pages.billingDetails.columns.content")}
-                    </TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>原因</TableHead>
-                    <TableHead className="text-end">预留积分</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pending?.items.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {dateTime(tx.started_at)}
-                      </TableCell>
-                      <TableCell>{tx.user_name}</TableCell>
-                      <TableCell>{tx.item_name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {stateNames[tx.status]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {tx.error_code || "—"}
-                      </TableCell>
-                      <TableCell className="text-end tabular-nums">
-                        {credits(tx.reserve)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelected(tx.id)}
-                        >
-                          查看详情
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!pending?.items.length && (
+          <Card className="min-h-0 flex-1">
+            <CardContent className="min-h-0 flex-1 gap-4 px-0">
+              <ScrollArea
+                horizontal
+                className="min-h-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+              >
+                <Table
+                  aria-busy={loading}
+                  className={!pending?.items.length ? "h-full" : undefined}
+                >
+                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        className="h-36 text-center text-muted-foreground"
-                      >
-                        {loading ? "正在读取…" : "暂无待处理交易"}
-                      </TableCell>
+                      <TableHead className="ps-(--card-spacing)">
+                        调用时间
+                      </TableHead>
+                      <TableHead>用户</TableHead>
+                      <TableHead>
+                        {t("pages.billingDetails.columns.content")}
+                      </TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>原因</TableHead>
+                      <TableHead className="text-end">预留积分</TableHead>
+                      <TableHead className="pe-(--card-spacing) whitespace-nowrap">
+                        {t("pages.operationLogs.columns.operations")}
+                      </TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody
+                    className={!pending?.items.length ? "h-full" : undefined}
+                  >
+                    {pending?.items.map((tx) => (
+                      <TableRow key={tx.id}>
+                        <TableCell className="ps-(--card-spacing) whitespace-nowrap">
+                          {dateTime(tx.started_at)}
+                        </TableCell>
+                        <TableCell>
+                          <div
+                            className="flex items-center gap-3"
+                            title={tx.user_email}
+                          >
+                            <HugeiconsIcon
+                              icon={User02Icon}
+                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{tx.user_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{tx.item_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {stateNames[tx.status]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {tx.error_code || "—"}
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums">
+                          {billingCredits(tx.reserve, i18n.language)}
+                        </TableCell>
+                        <TableCell className="pe-(--card-spacing) whitespace-nowrap">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setSelected(tx.id)}
+                          >
+                            {t("pages.operationLogs.details")}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!pending?.items.length && (
+                      <TableRow className="h-full">
+                        <TableCell
+                          colSpan={7}
+                          className="h-full text-center text-muted-foreground"
+                        >
+                          {loading ? "正在读取…" : "暂无待处理交易"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+              {pagination}
             </CardContent>
           </Card>
-        </>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-        <div className="flex items-center gap-3">
-          <select
-            className={selectClass}
-            aria-label="每页条数"
-            value={pageSize}
-            onChange={(e) => navigate({ page_size: e.target.value, page: "1" })}
-          >
-            {[20, 50, 100].map((v) => (
-              <option key={v} value={v}>
-                {v} 条 / 页
-              </option>
-            ))}
-          </select>
-          <span>共 {total} 条</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span>
-            第 {page} / {pages} 页
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading || page <= 1}
-            onClick={() => navigate({ page: String(page - 1) })}
-          >
-            上一页
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading || page >= pages}
-            onClick={() => navigate({ page: String(page + 1) })}
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
       {selected && (
         <TransactionDialog
           id={selected}
@@ -518,7 +732,7 @@ function TransactionDialog({
   onClose: () => void
   onChanged: () => void
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const [data, setData] = useState<Transaction | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -602,13 +816,9 @@ function TransactionDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>计费交易详情</DialogTitle>
-          <DialogDescription>
-            {data
-              ? `${data.user_name} · ${data.item_name}`
-              : loadFailed
-                ? ""
-                : "正在读取交易…"}
-          </DialogDescription>
+          {!data && !loadFailed && (
+            <p className="text-sm text-muted-foreground">正在读取交易…</p>
+          )}
         </DialogHeader>
         {loadFailed && (
           <Button
@@ -621,106 +831,92 @@ function TransactionDialog({
         )}
         {data && (
           <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/50 p-4">
-              {[
-                ["状态", stateNames[data.status]],
-                ["预留积分", credits(data.reserve)],
-                ["结算积分", credits(data.amount)],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 font-medium">{value}</p>
-                </div>
-              ))}
-            </div>
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+            <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">用户</dt>
+              <dd className="break-all">{data.user_name}</dd>
+              <dt className="text-muted-foreground">内容</dt>
+              <dd className="break-all">{data.item_name}</dd>
+              <dt className="text-muted-foreground">状态</dt>
+              <dd className="break-all">{stateNames[data.status]}</dd>
+              <dt className="text-muted-foreground">预留积分</dt>
+              <dd className="break-all">
+                {billingCredits(data.reserve, i18n.language)}
+              </dd>
+              <dt className="text-muted-foreground">结算积分</dt>
+              <dd className="break-all">
+                {billingCredits(data.amount, i18n.language)}
+              </dd>
               <dt className="text-muted-foreground">交易 ID</dt>
-              <dd className="font-mono text-xs break-all">{data.id}</dd>
+              <dd className="break-all">{data.id}</dd>
               <dt className="text-muted-foreground">调用时间</dt>
-              <dd>{dateTime(data.started_at)}</dd>
+              <dd className="break-all">{dateTime(data.started_at)}</dd>
               <dt className="text-muted-foreground">模式</dt>
-              <dd>{data.mode === "remote" ? "百智云远程计费" : "本地计费"}</dd>
+              <dd className="break-all">
+                {data.mode === "remote" ? "百智云远程计费" : "本地计费"}
+              </dd>
               <dt className="text-muted-foreground">会话</dt>
               <dd className="break-all">{data.session_id || "未关联会话"}</dd>
               <dt className="text-muted-foreground">原始计价</dt>
-              <dd>{credits(data.raw_amount)} 积分</dd>
+              <dd className="break-all">
+                {billingCredits(data.raw_amount, i18n.language)} 积分
+              </dd>
               {data.request_id && (
                 <>
                   <dt className="text-muted-foreground">上游响应 ID</dt>
-                  <dd className="font-mono text-xs break-all">
-                    {data.request_id}
-                  </dd>
+                  <dd className="break-all">{data.request_id}</dd>
                 </>
               )}
               {data.usage?.stream !== undefined && (
                 <>
                   <dt className="text-muted-foreground">响应方式</dt>
-                  <dd>{data.usage.stream ? "流式" : "非流式"}</dd>
+                  <dd className="break-all">
+                    {data.usage.stream ? "流式" : "非流式"}
+                  </dd>
                 </>
               )}
               {data.usage?.terminal_event && (
                 <>
                   <dt className="text-muted-foreground">终止事件</dt>
-                  <dd className="font-mono text-xs break-all">
-                    {data.usage.terminal_event}
-                  </dd>
+                  <dd className="break-all">{data.usage.terminal_event}</dd>
                 </>
               )}
               {data.usage?.reconciled && (
                 <>
                   <dt className="text-muted-foreground">用量来源</dt>
-                  <dd>上游自动对账</dd>
+                  <dd className="break-all">上游自动对账</dd>
+                </>
+              )}
+              {data.usage && data.category === "model" && (
+                <>
+                  <dt className="text-muted-foreground">普通输入 Token</dt>
+                  <dd className="break-all">
+                    {data.usage.input_tokens - data.usage.cached_input_tokens}
+                  </dd>
+                  <dt className="text-muted-foreground">缓存输入 Token</dt>
+                  <dd className="break-all">
+                    {data.usage.cached_input_tokens}
+                  </dd>
+                  <dt className="text-muted-foreground">输出 Token</dt>
+                  <dd className="break-all">{data.usage.output_tokens}</dd>
+                </>
+              )}
+              {data.usage && data.category === "image" && (
+                <>
+                  <dt className="text-muted-foreground">生成图片</dt>
+                  <dd className="break-all">
+                    {data.usage.generated_images ?? 0} 张
+                  </dd>
+                  {data.pricing?.image_unit && (
+                    <>
+                      <dt className="text-muted-foreground">每张图片积分</dt>
+                      <dd className="break-all">
+                        {billingCredits(data.pricing.image_unit, i18n.language)}
+                      </dd>
+                    </>
+                  )}
                 </>
               )}
             </dl>
-            {data.usage && data.category === "image" && (
-              <div className="rounded-md border p-3 text-sm">
-                实际生成 {data.usage.generated_images ?? 0} 张
-                {data.pricing?.image_unit &&
-                  ` · 每张 ${credits(data.pricing.image_unit)} 积分`}
-              </div>
-            )}
-            {data.usage && data.category === "model" && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>用量组成</TableHead>
-                    <TableHead>Token 数</TableHead>
-                    <TableHead>每百万 Token 积分</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[
-                    [
-                      "普通输入",
-                      data.usage.input_tokens - data.usage.cached_input_tokens,
-                      data.pricing?.input,
-                    ],
-                    [
-                      "缓存输入",
-                      data.usage.cached_input_tokens,
-                      data.pricing?.cached,
-                    ],
-                    ["输出", data.usage.output_tokens, data.pricing?.output],
-                  ].map(([label, count, price]) => (
-                    <TableRow key={label}>
-                      <TableCell>{label}</TableCell>
-                      <TableCell>{count}</TableCell>
-                      <TableCell>{credits(price as string)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            {data.pricing && (
-              <p className="text-xs text-muted-foreground">
-                {data.category === "model"
-                  ? `模型倍率：${credits(data.pricing.multiplier)}`
-                  : data.category === "image"
-                    ? `每张图片：${credits(data.pricing.image_unit)} 积分`
-                    : `每次调用：${credits(data.pricing.tool)} 积分`}
-              </p>
-            )}
             {data.error_code && (
               <p className="rounded-md border p-3 text-sm">
                 处理原因：{data.error_code}
@@ -747,42 +943,6 @@ function TransactionDialog({
                 重试结算
               </Button>
             )}
-            {data.status === "settled" &&
-              data.mode === "local" &&
-              data.amount &&
-              !/^0(?:\.0+)?$/.test(data.amount) &&
-              !data.entries?.some((e) => e.entry_type === "refund") && (
-                <form
-                  className="space-y-3 border-t pt-4"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    void act("refund")
-                  }}
-                >
-                  <Field>
-                    <FieldLabel htmlFor="refund-reason">
-                      全额退款原因
-                    </FieldLabel>
-                    <Input
-                      id="refund-reason"
-                      value={reason}
-                      required
-                      maxLength={500}
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                  </Field>
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    disabled={busy || !reason.trim()}
-                  >
-                    退回原周期账户
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    退款保留原始扣款流水。原周期已结束时，退款不会转入当前周期。
-                  </p>
-                </form>
-              )}
             {data.status === "unknown" && (
               <form
                 className="space-y-3 border-t pt-4"

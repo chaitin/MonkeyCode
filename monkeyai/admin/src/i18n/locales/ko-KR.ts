@@ -577,14 +577,11 @@ export const koKR = {
         cancel: "취소",
         createOne: "생성",
         creating: "생성 중…",
-        description:
-          "한 줄에 이메일 하나씩 입력하세요. 이름은 기본적으로 이메일과 같고 역할은 모두 동일하게 설정됩니다.",
         role: "역할",
         member: "구성원",
         administrator: "관리자",
         emails: "구성원 이메일",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "한 번에 최대 {{count}}명까지 추가할 수 있습니다.",
         empty: "이메일을 하나 이상 입력하세요.",
         tooMany:
           "한 번에 최대 {{count}}명까지 추가할 수 있습니다. 나누어 추가하세요.",
@@ -675,11 +672,18 @@ export const koKR = {
       description:
         "모델, 도구 및 기타 기능에서 발생한 모든 포인트 차감을 확인합니다.",
       filters: {
-        userPlaceholder: "사용자 또는 이메일 검색",
+        userPlaceholder: "사용자",
         itemPlaceholder: "내용 검색",
         category: "차감 유형",
-        allCategories: "모든 유형",
+        entryType: "내역 유형",
         search: "검색",
+      },
+      entryTypes: {
+        charge: "차감",
+        grant: "지급",
+        reset: "재설정",
+        refund: "환불",
+        adjustment: "조정",
       },
       categories: {
         model: "모델",
@@ -787,6 +791,7 @@ export const koKR = {
         operatorSearchPlaceholder: "작업자",
         ipSearchPlaceholder: "소스 IP",
         search: "검색",
+        searchSuccess: "검색이 완료되었습니다",
         actionType: "작업 유형",
         result: "실행 결과",
       },

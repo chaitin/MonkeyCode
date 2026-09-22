@@ -195,11 +195,8 @@ export function BulkAddMembersForm({
             }}
             placeholder={t(`${key}.placeholder`)}
             rows={6}
-            className="min-h-32 resize-y"
+            className="max-h-72 min-h-32 resize-y"
           />
-          <p className="text-xs text-muted-foreground">
-            {t(`${key}.limit`, { count: MAX_BULK_MEMBERS })}
-          </p>
           {inputError && (
             <p className="text-sm text-destructive" role="alert">
               {inputError}

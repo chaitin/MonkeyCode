@@ -592,14 +592,11 @@ export const ruRU = {
         cancel: "Отмена",
         createOne: "Создать",
         creating: "Создание…",
-        description:
-          "Введите по одному адресу на строку. Имя по умолчанию совпадает с адресом, роль общая для всех.",
         role: "Роль",
         member: "Участник",
         administrator: "Администратор",
         emails: "Адреса участников",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "Не более {{count}} участников за один раз.",
         empty: "Введите хотя бы один адрес электронной почты.",
         tooMany: "Не более {{count}} участников за один раз. Разделите список.",
         memberList: "Список участников",
@@ -696,11 +693,18 @@ export const ruRU = {
       description:
         "Просматривайте каждое списание баллов за модели, инструменты и другие функции.",
       filters: {
-        userPlaceholder: "Поиск пользователя или e-mail",
+        userPlaceholder: "Пользователь",
         itemPlaceholder: "Поиск по содержанию",
         category: "Тип списания",
-        allCategories: "Все типы",
+        entryType: "Тип записи",
         search: "Поиск",
+      },
+      entryTypes: {
+        charge: "Списание",
+        grant: "Начисление",
+        reset: "Сброс",
+        refund: "Возврат",
+        adjustment: "Корректировка",
       },
       categories: {
         model: "Модель",
@@ -814,6 +818,7 @@ export const ruRU = {
         operatorSearchPlaceholder: "Оператор",
         ipSearchPlaceholder: "Исходный IP",
         search: "Найти",
+        searchSuccess: "Поиск завершён",
         actionType: "Тип действия",
         result: "Результат",
       },

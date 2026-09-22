@@ -174,16 +174,46 @@ export const entryNames: Record<string, string> = {
   refund: "退款",
   adjustment: "调整",
 }
-export function credits(value: string | null | undefined, locale = "zh-CN") {
+export type CreditRoundingMode = "half-up" | "ceil" | "floor" | "expand"
+
+export function credits(
+  value: string | null | undefined,
+  locale = "zh-CN",
+  fractionDigits?: number,
+  roundingMode: CreditRoundingMode = "half-up"
+) {
   if (value == null) return "—"
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value)
   if (!match) return value
-  const fraction = (match[3] ?? "").replace(/0+$/, "")
+  const formatter = new Intl.NumberFormat(locale)
   const decimal =
-    new Intl.NumberFormat(locale)
-      .formatToParts(1.1)
-      .find((part) => part.type === "decimal")?.value ?? "."
-  return `${match[1]}${new Intl.NumberFormat(locale).format(BigInt(match[2]))}${fraction ? decimal + fraction : ""}`
+    formatter.formatToParts(1.1).find((part) => part.type === "decimal")
+      ?.value ?? "."
+  if (fractionDigits !== undefined) {
+    const digits = Math.max(0, Math.trunc(fractionDigits))
+    const scale = 10n ** BigInt(digits)
+    const rawFraction = match[3] ?? ""
+    const padded = rawFraction.padEnd(digits + 1, "0")
+    let scaled =
+      BigInt(match[2]) * scale +
+      BigInt(digits > 0 ? padded.slice(0, digits) : "0")
+    const discarded = padded
+      .slice(digits)
+      .split("")
+      .some((digit) => digit !== "0")
+    const increment =
+      (roundingMode === "half-up" && padded[digits] >= "5") ||
+      (roundingMode === "expand" && discarded) ||
+      (roundingMode === "ceil" && match[1] !== "-" && discarded) ||
+      (roundingMode === "floor" && match[1] === "-" && discarded)
+    if (increment) scaled += 1n
+    const whole = formatter.format(scaled / scale)
+    const fraction =
+      digits > 0 ? (scaled % scale).toString().padStart(digits, "0") : ""
+    return `${match[1]}${whole}${fraction ? decimal + fraction : ""}`
+  }
+  const fraction = (match[3] ?? "").replace(/0+$/, "")
+  return `${match[1]}${formatter.format(BigInt(match[2]))}${fraction ? decimal + fraction : ""}`
 }
 export const validCredits = (value: string, signed = false) =>
   (signed ? /^-?\d{1,12}(\.\d{1,6})?$/ : /^\d{1,12}(\.\d{1,6})?$/).test(value)

@@ -53,7 +53,7 @@ test("operation log filters use shared date pickers and local day boundaries", a
   )
   assert.ok(
     filterRow.lastIndexOf("<DropdownMenu>") <
-      filterRow.indexOf('<Button type="button" onClick={applySearch}>')
+      filterRow.indexOf("onClick={applySearch}")
   )
   assert.match(source, /useState<CategoryFilter>\(null\)/)
   assert.match(source, /useState<ResultFilter>\(null\)/)
@@ -73,6 +73,27 @@ test("operation log filters use shared date pickers and local day boundaries", a
   assert.match(picker, /!value && "text-muted-foreground"/)
   assert.doesNotMatch(picker, /Calendar03Icon|HugeiconsIcon/)
   assert.doesNotMatch(picker, /captionLayout="dropdown"/)
+})
+
+test("operation log search only loads inside its button and preserves current rows", async () => {
+  const source = await readFile(
+    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const searchHandler = source
+    .split("const applySearch =")[1]
+    .split("const handleSearchKeyDown")[0]
+  assert.match(searchHandler, /if \(loading \|\| searching\) return/)
+  assert.match(searchHandler, /setSearching\(true\)/)
+  assert.doesNotMatch(searchHandler, /setLoading\(true\)/)
+  assert.match(source, /disabled=\{loading \|\| searching\}/)
+  assert.match(source, /icon=\{searching \? Loading03Icon : Search02Icon\}/)
+  assert.match(source, /animate-spin motion-reduce:animate-none/)
+  assert.match(source, /setData\(nextData\)/)
+  assert.doesNotMatch(source, /setData\(undefined\)/)
+  assert.match(source, /if \(!isSearch\) setError\(message\)/)
+  assert.match(source, /status: "success"[\s\S]*?filters\.searchSuccess/)
+  assert.match(source, /status: "error"[\s\S]*?title: message/)
 })
 
 test("operation log pagination uses matching arrow icons", async () => {
@@ -197,7 +218,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(source, /<CardContent className="min-h-0 flex-1 gap-4 px-0">/)
   assert.match(
     source,
-    /<ScrollArea\s+horizontal\s+className="min-h-0 flex-1 \[&_\[data-slot=table-container\]\]:overflow-visible"/
+    /<ScrollArea\s+horizontal\s+className="min-h-0 flex-1 \[&_\[data-slot=table-container\]\]:h-full \[&_\[data-slot=table-container\]\]:overflow-visible"/
   )
   assert.match(
     source,
@@ -206,6 +227,12 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.ok(
     source.indexOf("</ScrollArea>") <
       source.indexOf('pagination.pageSizeLabel")')
+  )
+  assert.match(source, /!visibleLogs\.length && "h-full"/)
+  assert.match(source, /<TableRow className="h-full">/)
+  assert.match(
+    source,
+    /colSpan=\{6\}\s+className="h-full text-center text-muted-foreground"/
   )
 
   const scrollArea = await readFile(

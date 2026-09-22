@@ -601,14 +601,11 @@ export const deDE = {
         cancel: "Abbrechen",
         createOne: "Erstellen",
         creating: "Wird erstellt…",
-        description:
-          "Eine E-Mail-Adresse pro Zeile. Der Name entspricht zunächst der E-Mail-Adresse; die Rolle gilt für alle.",
         role: "Rolle",
         member: "Mitglied",
         administrator: "Administrator",
         emails: "E-Mail-Adressen",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "Bis zu {{count}} Mitglieder pro Vorgang.",
         empty: "Geben Sie mindestens eine E-Mail-Adresse ein.",
         tooMany:
           "Maximal {{count}} Mitglieder pro Vorgang. Teilen Sie die Liste auf.",
@@ -708,11 +705,18 @@ export const deDE = {
       description:
         "Prüfen Sie jede Punkteabbuchung durch Modelle, Tools und andere Funktionen.",
       filters: {
-        userPlaceholder: "Benutzer oder E-Mail suchen",
+        userPlaceholder: "Benutzer",
         itemPlaceholder: "Inhalt suchen",
         category: "Abbuchungstyp",
-        allCategories: "Alle Typen",
+        entryType: "Buchungstyp",
         search: "Suchen",
+      },
+      entryTypes: {
+        charge: "Belastung",
+        grant: "Zuteilung",
+        reset: "Zurücksetzen",
+        refund: "Erstattung",
+        adjustment: "Anpassung",
       },
       categories: {
         model: "Modell",
@@ -828,6 +832,7 @@ export const deDE = {
         operatorSearchPlaceholder: "Bediener",
         ipSearchPlaceholder: "Quell-IP",
         search: "Suchen",
+        searchSuccess: "Suche abgeschlossen",
         actionType: "Aktionstyp",
         result: "Ergebnis",
       },

@@ -577,14 +577,11 @@ export const ar = {
         cancel: "إلغاء",
         createOne: "إنشاء",
         creating: "جارٍ الإنشاء…",
-        description:
-          "أدخل بريدًا إلكترونيًا واحدًا في كل سطر. الاسم يساوي البريد افتراضيًا والدور موحد للجميع.",
         role: "الدور",
         member: "عضو",
         administrator: "مسؤول",
         emails: "عناوين البريد الإلكتروني",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "يمكن إضافة {{count}} عضوًا كحد أقصى في كل مرة.",
         empty: "أدخل عنوان بريد إلكتروني واحدًا على الأقل.",
         tooMany: "الحد الأقصى {{count}} عضوًا في كل مرة. قسّم القائمة.",
         memberList: "قائمة الأعضاء",
@@ -673,11 +670,18 @@ export const ar = {
       description:
         "راجع كل خصم للنقاط ناتج عن النماذج والأدوات والميزات الأخرى.",
       filters: {
-        userPlaceholder: "ابحث عن مستخدم أو بريد",
+        userPlaceholder: "المستخدم",
         itemPlaceholder: "ابحث في المحتوى",
         category: "نوع الخصم",
-        allCategories: "كل الأنواع",
+        entryType: "نوع القيد",
         search: "بحث",
+      },
+      entryTypes: {
+        charge: "خصم",
+        grant: "منح",
+        reset: "إعادة تعيين",
+        refund: "استرداد",
+        adjustment: "تعديل",
       },
       categories: {
         model: "نموذج",
@@ -786,6 +790,7 @@ export const ar = {
         operatorSearchPlaceholder: "المشغّل",
         ipSearchPlaceholder: "عنوان IP المصدر",
         search: "بحث",
+        searchSuccess: "اكتمل البحث",
         actionType: "نوع الإجراء",
         result: "النتيجة",
       },

@@ -115,7 +115,7 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
   assert.match(source, /<Tabs\s+value=\{createMode\}/)
   assert.match(source, /<TabsContent value="single" keepMounted/)
   assert.match(source, /<TabsContent value="bulk" keepMounted/)
-  assert.match(source, /createMode === "bulk" && \(\s*<DialogDescription>/)
+  assert.doesNotMatch(source, /bulk\.description|<DialogDescription>/)
   assert.doesNotMatch(source, /singleDescription/)
   assert.match(source, /<BulkAddMembersForm/)
   assert.match(
@@ -134,6 +134,8 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
   )
   assert.match(bulk, /<SelectTrigger id="bulk-member-role"/)
   assert.match(bulk, /t\(`\$\{key\}\.memberList`\)/)
+  assert.match(bulk, /className="max-h-72 min-h-32 resize-y"/)
+  assert.doesNotMatch(bulk, /`\$\{key\}\.limit`/)
   assert.doesNotMatch(bulk, /<select\b|previewCount/)
   assert.match(bulk, /<DialogFooter>[\s\S]*?t\(`\$\{key\}\.previous`\)/)
   assert.match(bulk, /t\(`\$\{key\}\.next`\)/)

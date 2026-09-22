@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  Loading03Icon,
   Search02Icon,
   User02Icon,
 } from "@hugeicons/core-free-icons"
@@ -107,12 +108,11 @@ export function OperationLogsPage() {
   const [since, setSince] = useState("")
   const [until, setUntil] = useState("")
   const [invalidRange, setInvalidRange] = useState(false)
-  const [loaded, setLoaded] = useState<{
-    path: string
-    revision: number
-    data?: AuditPage
-    error?: string
-  }>()
+  const [data, setData] = useState<AuditPage>()
+  const [error, setError] = useState<string>()
+  const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
+  const searchRevisionRef = useRef<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
@@ -137,32 +137,52 @@ export function OperationLogsPage() {
   const path = `/api/admin/v1/audits?${query}`
   useEffect(() => {
     const controller = new AbortController()
+    const isSearch = searchRevisionRef.current === revision
+    if (!isSearch) {
+      setLoading(true)
+      setError(undefined)
+    }
     api<AuditPage>(path, { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) setLoaded({ path, revision, data })
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          const message = error instanceof Error ? error.message : String(error)
-          setLoaded({ path, revision, error: message })
+      .then((nextData) => {
+        if (controller.signal.aborted) return
+        setData(nextData)
+        setError(undefined)
+        if (isSearch) {
           showToast({
-            status: "error",
-            title: message,
+            status: "success",
+            title: t("pages.operationLogs.filters.searchSuccess"),
+          })
+        }
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return
+        const message =
+          reason instanceof Error ? reason.message : String(reason)
+        if (!isSearch) setError(message)
+        showToast({
+          status: "error",
+          title: message,
+          ...(!isSearch && {
             action: {
               label: t("statistics.retry"),
               onClick: () => setRevision((value) => value + 1),
             },
-          })
+          }),
+        })
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        if (isSearch) {
+          setSearching(false)
+          searchRevisionRef.current = null
+        } else {
+          setLoading(false)
         }
       })
     return () => controller.abort()
   }, [path, revision, showToast, t])
-  const current =
-    loaded?.path === path && loaded.revision === revision ? loaded : undefined
-  const loading = !current
-  const error = current?.error
-  const total = current?.data?.total ?? 0
-  const visibleLogs = current?.data?.items ?? []
+  const total = data?.total ?? 0
+  const visibleLogs = data?.items ?? []
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = page
   const pageStart = (page - 1) * pageSize
@@ -191,6 +211,7 @@ export function OperationLogsPage() {
   )
 
   const applySearch = () => {
+    if (loading || searching) return
     const start = sinceInput ? startOfLocalDay(sinceInput) : undefined
     const end = untilInput ? endOfLocalDay(untilInput) : undefined
     if (start && end && start > end) {
@@ -198,9 +219,13 @@ export function OperationLogsPage() {
       return
     }
     setInvalidRange(false)
+    setError(undefined)
     setSince(start?.toISOString() ?? "")
     setUntil(end?.toISOString() ?? "")
-    setRevision((value) => value + 1)
+    const nextRevision = revision + 1
+    searchRevisionRef.current = nextRevision
+    setSearching(true)
+    setRevision(nextRevision)
     setOperatorQuery(operatorInput)
     setIpQuery(ipInput)
     setCategory(categoryInput)
@@ -324,8 +349,20 @@ export function OperationLogsPage() {
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button type="button" onClick={applySearch}>
-              <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
+            <Button
+              type="button"
+              onClick={applySearch}
+              disabled={loading || searching}
+            >
+              <HugeiconsIcon
+                icon={searching ? Loading03Icon : Search02Icon}
+                data-icon="inline-start"
+                className={
+                  searching
+                    ? "animate-spin motion-reduce:animate-none"
+                    : undefined
+                }
+              />
               {t("pages.operationLogs.filters.search")}
             </Button>
             {invalidRange && (
@@ -350,10 +387,10 @@ export function OperationLogsPage() {
           )}
           <ScrollArea
             horizontal
-            className="min-h-0 flex-1 [&_[data-slot=table-container]]:overflow-visible"
+            className="min-h-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
           >
             <Table
-              className="min-w-4xl"
+              className={cn("min-w-4xl", !visibleLogs.length && "h-full")}
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
@@ -379,7 +416,7 @@ export function OperationLogsPage() {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className={!visibleLogs.length ? "h-full" : undefined}>
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
@@ -487,10 +524,10 @@ export function OperationLogsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow>
+                  <TableRow className="h-full">
                     <TableCell
                       colSpan={6}
-                      className="h-40 text-center text-muted-foreground"
+                      className="h-full text-center text-muted-foreground"
                     >
                       {loading ? (
                         <span role="status">{t("resources.loading")}</span>

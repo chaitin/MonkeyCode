@@ -46,7 +46,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -793,11 +792,6 @@ export function MembersAndGroupsPage() {
             <DialogTitle>
               {t("pages.membersAndGroups.bulk.addMember")}
             </DialogTitle>
-            {createMode === "bulk" && (
-              <DialogDescription>
-                {t("pages.membersAndGroups.bulk.description")}
-              </DialogDescription>
-            )}
           </DialogHeader>
           <Tabs
             value={createMode}

@@ -597,14 +597,11 @@ export const frFR = {
         cancel: "Annuler",
         createOne: "Créer",
         creating: "Création…",
-        description:
-          "Saisissez une adresse e-mail par ligne. Le nom reprend l'adresse par défaut et le rôle s'applique à tous.",
         role: "Rôle",
         member: "Membre",
         administrator: "Administrateur",
         emails: "Adresses e-mail",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "Jusqu'à {{count}} membres par opération.",
         empty: "Saisissez au moins une adresse e-mail.",
         tooMany: "Limite de {{count}} membres par opération. Divisez la liste.",
         memberList: "Liste des membres",
@@ -700,11 +697,18 @@ export const frFR = {
       description:
         "Consultez chaque débit de crédits généré par les modèles, les outils et les autres fonctions.",
       filters: {
-        userPlaceholder: "Rechercher un utilisateur ou un e-mail",
+        userPlaceholder: "Utilisateur",
         itemPlaceholder: "Rechercher dans le contenu",
         category: "Type de frais",
-        allCategories: "Tous les types",
+        entryType: "Type d’écriture",
         search: "Rechercher",
+      },
+      entryTypes: {
+        charge: "Débit",
+        grant: "Attribution",
+        reset: "Réinitialisation",
+        refund: "Remboursement",
+        adjustment: "Ajustement",
       },
       categories: {
         model: "Modèle",
@@ -820,6 +824,7 @@ export const frFR = {
         operatorSearchPlaceholder: "Opérateur",
         ipSearchPlaceholder: "IP source",
         search: "Rechercher",
+        searchSuccess: "Recherche terminée",
         actionType: "Type d’action",
         result: "Résultat",
       },

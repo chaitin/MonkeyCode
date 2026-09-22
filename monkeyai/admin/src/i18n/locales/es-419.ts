@@ -597,14 +597,11 @@ export const es419 = {
         cancel: "Cancelar",
         createOne: "Crear",
         creating: "Creando…",
-        description:
-          "Ingresa un correo por línea. El nombre será el correo de forma predeterminada y todos tendrán el mismo rol.",
         role: "Rol",
         member: "Miembro",
         administrator: "Administrador",
         emails: "Correos de miembros",
         placeholder: "alice@example.com\nbob@example.com",
-        limit: "Agrega hasta {{count}} miembros por vez.",
         empty: "Ingresa al menos un correo.",
         tooMany: "El máximo es {{count}} miembros por vez. Divide la lista.",
         memberList: "Lista de miembros",
@@ -701,11 +698,18 @@ export const es419 = {
       description:
         "Consulta cada cargo de créditos generado por modelos, herramientas y otras funciones.",
       filters: {
-        userPlaceholder: "Buscar usuario o correo",
+        userPlaceholder: "Usuario",
         itemPlaceholder: "Buscar contenido",
         category: "Tipo de cargo",
-        allCategories: "Todos los tipos",
+        entryType: "Tipo de movimiento",
         search: "Buscar",
+      },
+      entryTypes: {
+        charge: "Cargo",
+        grant: "Asignación",
+        reset: "Restablecimiento",
+        refund: "Reembolso",
+        adjustment: "Ajuste",
       },
       categories: {
         model: "Modelo",
@@ -817,6 +821,7 @@ export const es419 = {
         operatorSearchPlaceholder: "Operador",
         ipSearchPlaceholder: "IP de origen",
         search: "Buscar",
+        searchSuccess: "Búsqueda completada",
         actionType: "Tipo de acción",
         result: "Resultado",
       },
