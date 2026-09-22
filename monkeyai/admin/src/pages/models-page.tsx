@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,6 +71,7 @@ import {
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
+import { useSkillTags } from "@/hooks/use-skill-tags"
 import { getModelIconName } from "@/lib/model-utils"
 import { cn } from "@/lib/utils"
 
@@ -92,6 +94,7 @@ type ModelBase = {
   baseUrl: string
   protocol: ModelProtocol
   apiKeyConfigured: boolean
+  tagIds: string[]
   authorization: AuthorizationSelection
   enabled: boolean
 }
@@ -112,6 +115,7 @@ type ApiModel = {
     supports_vision: boolean
   }
   credit_multiplier: number
+  tags?: { id: string; name: string }[]
   authorization: {
     user_ids: string[] | null
     group_ids: string[] | null
@@ -139,6 +143,7 @@ function fromApiModel(model: ApiModel): Model {
     protocol: model.protocol,
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
+    tagIds: (model.tags ?? []).map((tag) => tag.id),
     authorization: {
       groupIds: model.authorization.group_ids ?? [],
       memberIds: model.authorization.user_ids ?? [],
@@ -174,6 +179,7 @@ function flattenGroupTree(
 
 export function ModelsPage() {
   const { t } = useTranslation()
+  const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
   const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
@@ -190,6 +196,8 @@ export function ModelsPage() {
   )
   const [supportsVision, setSupportsVision] = useState(false)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
     memberIds: [],
@@ -238,6 +246,8 @@ export function ModelsPage() {
     setProtocol("openai_chat_completions")
     setSupportsVision(false)
     setAuthorizationOpen(false)
+    setTagsOpen(false)
+    setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
 
@@ -257,6 +267,7 @@ export function ModelsPage() {
     setEditingModelId(model.id)
     setProtocol(model.protocol)
     setSupportsVision(model.supportsVision)
+    setTagIds(model.tagIds)
     setAuthorization(model.authorization)
     setDialogOpen(true)
   }
@@ -347,6 +358,7 @@ export function ModelsPage() {
           supports_vision: supportsVision,
         },
         credit_multiplier: multiplier,
+        tag_ids: tagIds,
         authorization: {
           group_ids: authorization.groupIds,
           user_ids: authorization.memberIds,
@@ -572,6 +584,21 @@ export function ModelsPage() {
                         checked={supportsVision}
                         id="model-vision"
                         onCheckedChange={setSupportsVision}
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="model-tags">
+                        {t("pages.skills.tags")}
+                      </FieldLabel>
+                      <SkillTagSelect
+                        id="model-tags"
+                        open={tagsOpen}
+                        options={availableTags}
+                        placeholder={t("pages.skills.tagsPlaceholder")}
+                        value={tagIds}
+                        onOpenChange={setTagsOpen}
+                        onValueChange={setTagIds}
                       />
                     </Field>
 

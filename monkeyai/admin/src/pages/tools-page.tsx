@@ -26,6 +26,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { SkillTagSelect } from "@/components/skill-tag-select"
+import { useSkillTags } from "@/hooks/use-skill-tags"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -135,6 +137,7 @@ type McpServer = {
   id: string
   name: string
   description: string
+  tagIds: string[]
   type: McpServerType
   creator: string
   url: string
@@ -156,6 +159,7 @@ function toServer(row: ResourceRow): McpServer {
     credentials: row.credentials ?? [],
     name: row.name,
     description: row.description,
+    tagIds: (row.tags ?? []).map((tag) => tag.id),
     url: row.url,
     authorizationMode: row.authorization_mode,
     authorizationMethod:
@@ -184,6 +188,7 @@ function getCreatorInitials(creator: string) {
 
 export function ToolsPage() {
   const { t } = useTranslation()
+  const { tags: availableTags } = useSkillTags()
   const remote = useResources("/connectors", toServer)
   const servers = remote.items
   const reload = remote.reload
@@ -200,6 +205,8 @@ export function ToolsPage() {
   const [oauthClientMode, setOAuthClientMode] =
     useState<OAuthClientMode>("dynamic")
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
     memberIds: [],
@@ -234,6 +241,8 @@ export function ToolsPage() {
     setAuthorizationMethod("oauth")
     setOAuthClientMode("dynamic")
     setAuthorizationOpen(false)
+    setTagsOpen(false)
+    setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
 
@@ -252,6 +261,8 @@ export function ToolsPage() {
       server.oauthConfig.mode === "dynamic" ? "dynamic" : "manual"
     )
     setAuthorization(server.authorization)
+    setTagIds(server.tagIds)
+    setTagsOpen(false)
     setAuthorizationOpen(false)
     setDialogOpen(true)
   }
@@ -272,6 +283,7 @@ export function ToolsPage() {
           name,
           description,
           url,
+          tag_ids: tagIds,
           grants: grants(authorization),
           authorization_mode: authorizationMode,
           authorization_method:
@@ -484,6 +496,20 @@ export function ToolsPage() {
                         name="description"
                         placeholder={t("pages.tools.descriptionPlaceholder")}
                         required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="mcp-tags">
+                        {t("pages.skills.tags")}
+                      </FieldLabel>
+                      <SkillTagSelect
+                        id="mcp-tags"
+                        open={tagsOpen}
+                        options={availableTags}
+                        placeholder={t("pages.skills.tagsPlaceholder")}
+                        value={tagIds}
+                        onOpenChange={setTagsOpen}
+                        onValueChange={setTagIds}
                       />
                     </Field>
                     <Field>
