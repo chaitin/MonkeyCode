@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import {
   AlertDialog,
@@ -612,6 +613,7 @@ export function ExpertsPage() {
                 >
                   {expert.prompt}
                 </p>
+                <ResourceTagSummary tagIds={expert.tagIds} />
               </CardContent>
               <CardFooter className="min-w-0 gap-4 border-t">
                 <span
