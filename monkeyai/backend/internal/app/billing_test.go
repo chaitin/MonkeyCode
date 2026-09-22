@@ -19,6 +19,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -118,22 +119,51 @@ func TestBillingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	groups := must("GET", "/api/admin/v1/groups", nil, "")
-	if len(groups["groups"].([]any)) != 0 {
-		t.Fatal("启动应用不应初始化分组")
+	if len(groups["groups"].([]any)) != 1 || resource.Object(groups["groups"].([]any)[0].(map[string]any)).String("id") != rootgroup.ID {
+		t.Fatal("启动应用应返回虚拟根分组")
+	}
+	rootMembers := resource.Object(groups["groups"].([]any)[0].(map[string]any))["member_ids"].([]any)
+	if len(rootMembers) != 1 || rootMembers[0] != user {
+		t.Fatalf("新用户应直属根分组: %v", rootMembers)
 	}
 	quotas := must("GET", "/api/admin/v1/billing/quotas", nil, "")
 	team := resource.Object(quotas["groups"].([]any)[0].(map[string]any))
-	if team.String("id") != "team" || team["parent_id"] != nil {
+	if team.String("id") != rootgroup.ID || team["parent_id"] != nil {
 		t.Fatalf("团队额度根节点: %v", team)
 	}
-	must("PUT", "/api/admin/v1/billing/quotas", resource.Object{"revision": quotas.Int("revision"), "changes": []resource.Object{{"subject_type": "group", "id": "team", "credits": "12345"}}}, "")
+	must("PUT", "/api/admin/v1/billing/quotas", resource.Object{"revision": quotas.Int("revision"), "changes": []resource.Object{{"subject_type": "group", "id": rootgroup.ID, "credits": "12345"}}}, "")
 	updated := must("GET", "/api/admin/v1/billing/quotas", nil, "")
-	if resource.Object(updated["users"].([]any)[0].(map[string]any)).String("effective_credits") != "12345" {
-		t.Fatalf("团队额度继承: %v", updated)
+	defaultUser := resource.Object(updated["users"].([]any)[0].(map[string]any))
+	if defaultUser.String("effective_credits") != "12345" || len(defaultUser["group_ids"].([]any)) != 1 || defaultUser["group_ids"].([]any)[0] != rootgroup.ID {
+		t.Fatalf("新用户应归属根分组并继承团队额度: %v", defaultUser)
 	}
 	top := must("POST", "/api/admin/v1/groups", resource.Object{"name": "研发", "parent_id": nil}, "")
-	if top["parent_id"] != nil {
-		t.Fatalf("顶层分组入库父级不为 null: %v", top)
+	if top["parent_id"] != rootgroup.ID {
+		t.Fatalf("顶层分组回包父级不为虚拟根: %v", top)
+	}
+	for _, path := range []string{"/api/admin/v1/resources/authorization-subjects", "/api/admin/v1/models/authorization-subjects"} {
+		subjects := must("GET", path, nil, "")
+		items := subjects["groups"].([]any)
+		if len(items) != 2 {
+			t.Fatalf("授权对象未返回根节点与顶层分组: %s %v", path, items)
+		}
+		var foundRoot, foundTop bool
+		for _, raw := range items {
+			item := resource.Object(raw.(map[string]any))
+			foundRoot = foundRoot || item.String("id") == rootgroup.ID && item["parent_id"] == nil
+			foundTop = foundTop || item.String("id") == top.String("id") && item["parent_id"] == rootgroup.ID
+		}
+		if !foundRoot || !foundTop {
+			t.Fatalf("授权对象分组树不正确: %s %v", path, items)
+		}
+		subjectUser := resource.Object(subjects["users"].([]any)[0].(map[string]any))
+		if subjectUser.String("group_id") != rootgroup.ID {
+			t.Fatalf("新用户授权对象应归属根分组: %s %v", path, subjectUser)
+		}
+	}
+	var storedParent *string
+	if err = pool.QueryRow(ctx, `SELECT parent_id FROM groups WHERE id=$1`, top.String("id")).Scan(&storedParent); err != nil || storedParent != nil {
+		t.Fatalf("顶层分组入库父级应为 null: %v, %v", storedParent, err)
 	}
 	must("PATCH", "/api/admin/v1/groups/"+top.String("id"), resource.Object{"name": "研发组"}, "")
 	must("PUT", "/api/admin/v1/groups/"+top.String("id")+"/members", resource.Object{"member_ids": []string{user}}, "")
@@ -148,7 +178,7 @@ func TestBillingIntegration(t *testing.T) {
 	must("DELETE", "/api/admin/v1/groups/"+top.String("id"), nil, "")
 	updated = must("GET", "/api/admin/v1/billing/quotas", nil, "")
 	member = resource.Object(updated["users"].([]any)[0].(map[string]any))
-	if member.String("effective_credits") != "12345" || len(member["group_ids"].([]any)) != 0 {
+	if member.String("effective_credits") != "12345" || len(member["group_ids"].([]any)) != 1 || member["group_ids"].([]any)[0] != rootgroup.ID {
 		t.Fatalf("删除分组后应恢复团队额度: %v", member)
 	}
 	hash := sha256.Sum256([]byte("billing-oauth-test"))

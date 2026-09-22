@@ -9,16 +9,19 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Group struct {
-	ID        string   `json:"id"`
-	ParentID  *string  `json:"parent_id"`
-	Name      string   `json:"name"`
-	MemberIDs []string `json:"member_ids"`
+	ID              string   `json:"id"`
+	ParentID        *string  `json:"parent_id"`
+	Name            string   `json:"name"`
+	MemberIDs       []string `json:"member_ids"`
+	Actions         []string `json:"actions"`
+	AllowAddMembers bool     `json:"allow_add_members"`
 }
 
 type Input struct {
@@ -42,17 +45,32 @@ func (s *Service) WithAccountPreserver(accounts AccountPreserver) *Service {
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 
+func present(group Group) Group {
+	group.ParentID = rootgroup.ParentID(group.ParentID)
+	group.Actions = []string{"add-subgroup", "rename", "adjust-members", "move", "delete"}
+	group.AllowAddMembers = true
+	return group
+}
+
 func (s *Service) List(ctx context.Context) ([]Group, error) {
 	rows, err := sqlc.New(s.pool).ListGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	groups := []Group{}
+	name, err := rootgroup.Name(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	members, err := rootgroup.DirectMemberIDs(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	groups := []Group{{ID: rootgroup.ID, Name: name, MemberIDs: members, Actions: []string{"add-subgroup"}}}
 	for _, row := range rows {
 		var group Group
-		group.ID, group.ParentID, group.Name, group.MemberIDs = row.ID, row.ParentID, row.Name, row.MemberIds
-		groups = append(groups, group)
+		group.ID, group.ParentID, group.Name, group.MemberIDs = row.ID, rootgroup.ParentID(row.ParentID), row.Name, row.MemberIds
+		groups = append(groups, present(group))
 	}
 	return groups, nil
 }
@@ -104,6 +122,9 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 	if len(in.ParentID) > 0 {
 		if err := json.Unmarshal(in.ParentID, &parentID); err != nil {
 			return Group{}, resource.Invalid("parent_id 必须是分组 ID 或 null")
+		}
+		if parentID != nil && *parentID == rootgroup.ID {
+			parentID = nil
 		}
 	}
 	create := id == ""
@@ -167,6 +188,7 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 	if err != nil {
 		return Group{}, err
 	}
+	group = present(group)
 	if err = resource.Audit(ctx, tx, actor, "group", id, action); err != nil {
 		return Group{}, err
 	}
@@ -209,6 +231,7 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 	if err != nil {
 		return Group{}, err
 	}
+	group = present(group)
 	if err = resource.Audit(ctx, tx, actor, "group", id, "members"); err != nil {
 		return Group{}, err
 	}

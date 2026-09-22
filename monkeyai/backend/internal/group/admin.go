@@ -37,6 +37,19 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		resource.JSON(w, status, group)
 	}
 	router.Post("/groups", save)
+	router.Post("/groups/move", func(w http.ResponseWriter, r *http.Request) {
+		var in MoveInput
+		if err := resource.Decode(w, r, &in); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		user, _ := identity.UserFromContext(r.Context())
+		if err := s.Move(r.Context(), user.ID, in); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	router.Patch("/groups/{groupID}", save)
 	router.Put("/groups/{groupID}/members", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {

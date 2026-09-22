@@ -9,6 +9,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,14 +78,13 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	if err != nil {
 		return Model{}, fmt.Errorf("创建模型: %w", err)
 	}
-	item.Authorization = authorization
+	item.Authorization = normalizeAuthorization(authorization)
 	if err := replaceGrants(ctx, tx, item); err != nil {
 		return Model{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Model{}, err
 	}
-	item.Authorization = normalizeAuthorization(item.Authorization)
 	return p.Get(ctx, item.ID)
 }
 
@@ -220,9 +220,14 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	if err != nil {
 		return Subjects{}, err
 	}
+	name, err := rootgroup.Name(ctx, p.pool)
+	if err != nil {
+		return Subjects{}, err
+	}
+	result.Groups = append(result.Groups, Subject{ID: rootgroup.ID, Name: name})
 	for _, row := range groupRows {
 		var subject Subject
-		subject.ID, subject.ParentID, subject.Name = row.ID, row.ParentID, row.Name
+		subject.ID, subject.ParentID, subject.Name = row.ID, rootgroup.ParentID(row.ParentID), row.Name
 		result.Groups = append(result.Groups, subject)
 	}
 
@@ -230,10 +235,13 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	if err != nil {
 		return Subjects{}, err
 	}
-
+	memberships, err := rootgroup.UserGroups(ctx, p.pool)
+	if err != nil {
+		return Subjects{}, err
+	}
 	for _, row := range userRows {
 		var subject Subject
-		subject.ID, subject.Name, subject.Email = row.ID, row.Name, row.Email
+		subject.ID, subject.Name, subject.Email, subject.GroupID = row.ID, row.Name, row.Email, memberships[row.ID]
 		result.Users = append(result.Users, subject)
 	}
 	return result, nil
@@ -328,6 +336,11 @@ func replaceGrants(ctx context.Context, tx pgx.Tx, item Model) error {
 func normalizeAuthorization(value Authorization) Authorization {
 	if value.AllUsers {
 		return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
+	}
+	for _, id := range value.GroupIDs {
+		if id == rootgroup.ID {
+			return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
+		}
 	}
 	value.UserIDs = unique(value.UserIDs)
 	value.GroupIDs = unique(value.GroupIDs)

@@ -20,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -126,7 +127,17 @@ func Allowed(ctx context.Context, q Queryer, kind, id, user string) (bool, error
 	return ok, err
 }
 func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
-	return DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))
+	grants, err := DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))
+	if err != nil {
+		return nil, err
+	}
+	for _, grant := range grants {
+		if grant.Bool("all_users") {
+			grant["group_id"] = rootgroup.ID
+			grant["all_users"] = false
+		}
+	}
+	return grants, nil
 }
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
 	b, _ := json.Marshal(raw)
@@ -143,6 +154,9 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 		return err
 	}
 	for _, g := range grants {
+		if g.GroupID == rootgroup.ID && !g.AllUsers && g.UserID == "" {
+			g.AllUsers, g.GroupID = true, ""
+		}
 		if g.AllUsers {
 			if personal || g.UserID != "" || g.GroupID != "" {
 				return Invalid("全员授权仅用于系统资源，且不能同时指定用户或分组")

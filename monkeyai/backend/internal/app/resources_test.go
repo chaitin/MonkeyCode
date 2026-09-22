@@ -24,6 +24,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -926,7 +927,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	}
 
 	t.Run("全员授权保存回显下发与撤销", func(t *testing.T) {
-		all := []resource.Object{{"all_users": true, "usage_requirement": "optional"}}
+		all := []resource.Object{{"group_id": rootgroup.ID, "usage_requirement": "optional"}}
 		item := must("POST", "/api/admin/v1/rules", resource.Object{"name": "全员规则", "content": "全员规则正文", "grants": all}, "", "")
 		id := item.String("id")
 		path := "/api/admin/v1/resources/rule/" + id + "/grants"
@@ -936,8 +937,13 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("全员授权记录数量错误: %v", stored)
 		}
 		grant := resource.Object(storedGrants[0].(map[string]any))
-		if !grant.Bool("all_users") || grant["user_id"] != nil || grant["group_id"] != nil {
-			t.Fatalf("全员授权不应引用用户或虚拟分组: %v", grant)
+		if grant.Bool("all_users") || grant["user_id"] != nil || grant.String("group_id") != rootgroup.ID {
+			t.Fatalf("全员授权回包应使用根分组 ID: %v", grant)
+		}
+		var storedAllUsers bool
+		var storedGroup *string
+		if err := pool.QueryRow(ctx, `SELECT all_users, group_id::text FROM resource_access_grants WHERE resource_type='rule' AND resource_id=$1`, id).Scan(&storedAllUsers, &storedGroup); err != nil || !storedAllUsers || storedGroup != nil {
+			t.Fatalf("全员授权入库仍应使用 all_users: %v %v %v", storedAllUsers, storedGroup, err)
 		}
 		for _, token := range []string{"a", "b"} {
 			if !hasRule(token, id) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -96,8 +97,11 @@ func TestGroups(t *testing.T) {
 		return group
 	}
 	groups, err := service.List(ctx)
-	if err != nil || len(groups) != 0 {
-		t.Fatalf("初始化不应创建分组: %v, %v", groups, err)
+	if err != nil || len(groups) != 1 || groups[0].ID != rootgroup.ID || groups[0].ParentID != nil {
+		t.Fatalf("初始化应返回虚拟根分组: %v, %v", groups, err)
+	}
+	if len(groups[0].MemberIDs) != 2 || len(groups[0].Actions) != 1 || groups[0].Actions[0] != "add-subgroup" || groups[0].AllowAddMembers {
+		t.Fatalf("用户应默认直属根分组，根节点操作由后端指定: %+v", groups[0])
 	}
 	rootID := resource.ID()
 	create := func(name string, parent any) Group {
@@ -134,8 +138,8 @@ func TestGroups(t *testing.T) {
 	must("PATCH", "/groups/"+parent.ID, map[string]any{"parent_id": resource.ID()}, 404)
 	must("DELETE", "/groups/"+parent.ID, nil, 409)
 	implicit := must("POST", "/groups", map[string]any{"name": "未指定上级"}, 201)
-	if implicit.ParentID != nil || parent.ParentID != nil || other.ParentID != nil {
-		t.Fatal("顶层分组 parent_id 应为 null")
+	if implicit.ParentID == nil || *implicit.ParentID != rootgroup.ID || parent.ParentID == nil || *parent.ParentID != rootgroup.ID || other.ParentID == nil || *other.ParentID != rootgroup.ID {
+		t.Fatal("顶层分组 parent_id 应为虚拟根 ID")
 	}
 	must("PUT", "/groups/"+implicit.ID+"/members", map[string]any{"member_ids": []string{actor}}, 200)
 	must("DELETE", "/groups/"+implicit.ID, nil, 204)
@@ -147,10 +151,21 @@ func TestGroups(t *testing.T) {
 	if moved.ParentID == nil || *moved.ParentID != parent.ID {
 		t.Fatal("仅改名时不应更改上级")
 	}
+	moved = must("PATCH", "/groups/"+other.ID, map[string]any{"parent_id": rootgroup.ID}, 200)
+	if moved.ParentID == nil || *moved.ParentID != rootgroup.ID {
+		t.Fatal("根分组 ID 未将分组移回团队根节点")
+	}
 	moved = must("PATCH", "/groups/"+other.ID, map[string]any{"parent_id": nil}, 200)
-	if moved.ParentID != nil {
+	if moved.ParentID == nil || *moved.ParentID != rootgroup.ID {
 		t.Fatal("显式 null 未将分组移回团队根节点")
 	}
+	rootChild := create("根节点子组", rootgroup.ID)
+	if rootChild.ParentID == nil || *rootChild.ParentID != rootgroup.ID {
+		t.Fatal("根节点子组的上级 ID 不正确")
+	}
+	must("PATCH", "/groups/"+rootgroup.ID, map[string]any{"name": "非法修改"}, 404)
+	must("PUT", "/groups/"+rootgroup.ID+"/members", map[string]any{"member_ids": []string{}}, 404)
+	must("DELETE", "/groups/"+rootgroup.ID, nil, 404)
 	must("PATCH", "/groups/"+other.ID, map[string]any{"parent_id": 1}, 400)
 	must("POST", "/groups", map[string]any{"name": "虚拟根不能入库", "parent_id": "team"}, 400)
 
@@ -236,9 +251,75 @@ func TestGroups(t *testing.T) {
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &list) != nil {
 		t.Fatalf("读取分组失败: %s", response.Body.String())
 	}
+	if len(list.Groups) == 0 || list.Groups[0].ID != rootgroup.ID || list.Groups[0].ParentID != nil {
+		t.Fatal("列表未返回虚拟根分组")
+	}
 	for _, group := range list.Groups {
 		if group.ID == child.ID || group.ID == parent.ID {
 			t.Fatal("列表仍包含已删除的分组")
+		}
+		if group.ID == other.ID && (group.ParentID == nil || *group.ParentID != rootgroup.ID) {
+			t.Fatal("顶层分组未指向虚拟根分组")
+		}
+	}
+	for _, token := range []struct {
+		token  string
+		status int
+	}{{"", 401}, {"member-session", 403}} {
+		if got := call("POST", "/groups/move", map[string]any{"target_id": rootgroup.ID, "group_ids": []string{other.ID}}, token.token); got.Code != token.status {
+			t.Fatalf("批量移动权限校验: %d, 预期 %d", got.Code, token.status)
+		}
+	}
+	source1, source2, destination := create("批量来源一", nil), create("批量来源二", nil), create("批量目标", nil)
+	one, two := create("移动一", source1.ID), create("移动二", source2.ID)
+	move := func(target string, groupIDs []string, members []map[string]any, status int) {
+		t.Helper()
+		must("POST", "/groups/move", map[string]any{"target_id": target, "group_ids": groupIDs, "members": members}, status)
+	}
+	move(destination.ID, []string{one.ID, two.ID}, nil, 204)
+	for _, id := range []string{one.ID, two.ID} {
+		var storedParent string
+		if err := pool.QueryRow(ctx, `SELECT parent_id::text FROM groups WHERE id=$1`, id).Scan(&storedParent); err != nil || storedParent != destination.ID {
+			t.Fatalf("批量移动未更新上级: %s %s %v", id, storedParent, err)
+		}
+	}
+	move(one.ID, []string{destination.ID, source1.ID}, nil, 409)
+	var remainsTop bool
+	if err := pool.QueryRow(ctx, `SELECT parent_id IS NULL FROM groups WHERE id=$1`, source1.ID).Scan(&remainsTop); err != nil || !remainsTop {
+		t.Fatal("批量循环移动应整体回滚")
+	}
+	duplicate1, duplicate2 := create("重名", source1.ID), create("重名", source2.ID)
+	move(destination.ID, []string{source1.ID, duplicate1.ID}, nil, 400)
+	move(destination.ID, []string{duplicate1.ID, duplicate2.ID}, nil, 409)
+	var duplicateParent string
+	if err := pool.QueryRow(ctx, `SELECT parent_id::text FROM groups WHERE id=$1`, duplicate1.ID).Scan(&duplicateParent); err != nil || duplicateParent != source1.ID {
+		t.Fatal("重名的批量移动应整体回滚")
+	}
+	must("PUT", "/groups/"+source1.ID+"/members", map[string]any{"member_ids": []string{actor, member}}, 200)
+	must("PUT", "/groups/"+source2.ID+"/members", map[string]any{"member_ids": []string{member}}, 200)
+	move(destination.ID, nil, []map[string]any{{"id": actor, "source_group_id": source1.ID}, {"id": member, "source_group_id": source1.ID}}, 204)
+	var sourceCount, targetCount, retainedCount int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM group_users WHERE group_id=$1 AND removed_at IS NULL),(SELECT count(*) FROM group_users WHERE group_id=$2 AND removed_at IS NULL),(SELECT count(*) FROM group_users WHERE group_id=$3 AND user_id=$4 AND removed_at IS NULL)`, source1.ID, destination.ID, source2.ID, member).Scan(&sourceCount, &targetCount, &retainedCount); err != nil || sourceCount != 0 || targetCount != 2 || retainedCount != 1 {
+		t.Fatalf("成员移动未保留其他分组: %d %d %d %v", sourceCount, targetCount, retainedCount, err)
+	}
+	move(source1.ID, nil, []map[string]any{{"id": member}}, 204)
+	move(rootgroup.ID, nil, []map[string]any{{"id": actor, "source_group_id": destination.ID}}, 204)
+	move(rootgroup.ID, nil, []map[string]any{{"id": member}}, 400)
+	move(rootgroup.ID, nil, []map[string]any{{"id": member, "source_group_id": destination.ID}, {"id": actor, "source_group_id": destination.ID}}, 409)
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM group_users WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL`, destination.ID, member).Scan(&targetCount); err != nil || targetCount != 1 {
+		t.Fatal("失败的批量成员移动应整体回滚")
+	}
+}
+
+func TestMoveInvalidInput(t *testing.T) {
+	for _, in := range []MoveInput{
+		{},
+		{TargetID: "invalid", GroupIDs: []string{resource.ID()}},
+		{TargetID: rootgroup.ID, GroupIDs: []string{resource.ID()}, Members: []MoveMember{{ID: resource.ID()}}},
+		{TargetID: rootgroup.ID, Members: []MoveMember{{ID: resource.ID()}}},
+	} {
+		if err := NewService(nil).Move(t.Context(), resource.ID(), in); err == nil {
+			t.Fatalf("移动参数无效时不应进入事务: %+v", in)
 		}
 	}
 }

@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const addMember = `-- name: AddMember :execresult
+INSERT INTO group_users(group_id, user_id, assigned_by_user_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (group_id, user_id) WHERE removed_at IS NULL DO NOTHING
+`
+
+type AddMemberParams struct {
+	GroupID          string
+	UserID           string
+	AssignedByUserID string
+}
+
+func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, addMember, arg.GroupID, arg.UserID, arg.AssignedByUserID)
+}
+
 const addMembers = `-- name: AddMembers :execresult
 INSERT INTO group_users (group_id, user_id, assigned_by_user_id)
 SELECT
@@ -120,6 +136,24 @@ func (q *Queries) GetGroup(ctx context.Context, id string) (GetGroupRow, error) 
 	return i, err
 }
 
+const hasActiveMember = `-- name: HasActiveMember :one
+SELECT EXISTS (
+    SELECT 1 FROM group_users WHERE group_id = $1 AND user_id = $2 AND removed_at IS NULL
+)
+`
+
+type HasActiveMemberParams struct {
+	GroupID string
+	UserID  string
+}
+
+func (q *Queries) HasActiveMember(ctx context.Context, arg HasActiveMemberParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveMember, arg.GroupID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const hasChildren = `-- name: HasChildren :one
 SELECT
     EXISTS (
@@ -134,6 +168,20 @@ SELECT
 
 func (q *Queries) HasChildren(ctx context.Context, parentID *string) (bool, error) {
 	row := q.db.QueryRow(ctx, hasChildren, parentID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const hasUserInActiveGroup = `-- name: HasUserInActiveGroup :one
+SELECT EXISTS (
+    SELECT 1 FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = $1 AND gu.removed_at IS NULL
+)
+`
+
+func (q *Queries) HasUserInActiveGroup(ctx context.Context, userID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasUserInActiveGroup, userID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -277,6 +325,20 @@ func (q *Queries) RemoveAllMembers(ctx context.Context, groupID string) (pgconn.
 	return q.db.Exec(ctx, removeAllMembers, groupID)
 }
 
+const removeMember = `-- name: RemoveMember :execresult
+UPDATE group_users SET removed_at = now()
+WHERE group_id = $1 AND user_id = $2 AND removed_at IS NULL
+`
+
+type RemoveMemberParams struct {
+	GroupID string
+	UserID  string
+}
+
+func (q *Queries) RemoveMember(ctx context.Context, arg RemoveMemberParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, removeMember, arg.GroupID, arg.UserID)
+}
+
 const removeMembers = `-- name: RemoveMembers :execresult
 UPDATE
     group_users
@@ -295,6 +357,79 @@ type RemoveMembersParams struct {
 
 func (q *Queries) RemoveMembers(ctx context.Context, arg RemoveMembersParams) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, removeMembers, arg.GroupID, arg.UserIds)
+}
+
+const rootDirectMemberIDs = `-- name: RootDirectMemberIDs :many
+SELECT u.id::text FROM users u
+WHERE u.deleted_at IS NULL AND NOT EXISTS (
+    SELECT 1 FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = u.id AND gu.removed_at IS NULL
+)
+ORDER BY u.id
+`
+
+func (q *Queries) RootDirectMemberIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, rootDirectMemberIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var u_id string
+		if err := rows.Scan(&u_id); err != nil {
+			return nil, err
+		}
+		items = append(items, u_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rootName = `-- name: RootName :one
+SELECT COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')::text
+`
+
+func (q *Queries) RootName(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, rootName)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const rootUserGroups = `-- name: RootUserGroups :many
+SELECT u.id::text AS user_id, COALESCE((
+    SELECT g.id::text FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
+    WHERE gu.user_id = u.id AND gu.removed_at IS NULL ORDER BY g.created_at, g.id LIMIT 1
+), $1::text)::text AS group_id
+FROM users u WHERE u.deleted_at IS NULL
+`
+
+type RootUserGroupsRow struct {
+	UserID  string
+	GroupID string
+}
+
+func (q *Queries) RootUserGroups(ctx context.Context, rootID string) ([]RootUserGroupsRow, error) {
+	rows, err := q.db.Query(ctx, rootUserGroups, rootID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RootUserGroupsRow{}
+	for rows.Next() {
+		var i RootUserGroupsRow
+		if err := rows.Scan(&i.UserID, &i.GroupID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const touchGroup = `-- name: TouchGroup :execresult
