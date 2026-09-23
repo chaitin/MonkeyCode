@@ -444,21 +444,24 @@ SELECT
 	COALESCE(t.reserved, 0)::text)
 FROM
     credit_accounts a
-    LEFT JOIN LATERAL (
+    LEFT JOIN (
         SELECT
+            account_id,
             sum(credit_delta) balance
         FROM
             credit_ledger_entries
-        WHERE
-            account_id = a.id) l ON TRUE
-    LEFT JOIN LATERAL (
+        GROUP BY
+            account_id) l ON l.account_id = a.id
+    LEFT JOIN (
         SELECT
+            account_id,
             sum(reserve) reserved
         FROM
             billing_transactions
         WHERE
-            account_id = a.id
-            AND status NOT IN ('settled', 'released', 'rejected')) t ON TRUE
+            status NOT IN ('settled', 'released', 'rejected')
+        GROUP BY
+            account_id) t ON t.account_id = a.id
 WHERE
     a.balance <> COALESCE(l.balance, 0)
     OR a.frozen <> COALESCE(t.reserved, 0)

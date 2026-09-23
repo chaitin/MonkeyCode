@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS billing_transactions_pending_account_idx;
