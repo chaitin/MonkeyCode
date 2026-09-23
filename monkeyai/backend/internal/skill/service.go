@@ -204,6 +204,10 @@ func (s *Service) Download(w http.ResponseWriter, r *http.Request, id string) {
 		resource.Fail(w, err)
 		return
 	}
+	s.ServePackage(w, r, o)
+}
+
+func (s *Service) ServePackage(w http.ResponseWriter, r *http.Request, o resource.Object) {
 	if hash := r.URL.Query().Get("sha256"); hash != "" && hash != o.String("package_sha256") {
 		resource.Fail(w, resource.Conflict)
 		return

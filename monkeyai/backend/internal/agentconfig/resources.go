@@ -392,7 +392,7 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(req.Context())
+	defer tx.Rollback(context.WithoutCancel(req.Context()))
 	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
 		resource.Fail(w, err)
@@ -418,7 +418,11 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 		resource.Fail(w, resource.NotFound)
 		return
 	}
-	r.skills.Download(w, req, id)
+	if err := tx.Commit(req.Context()); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	r.skills.ServePackage(w, req, c.skills[id])
 }
 func (r *Resources) resolve(w http.ResponseWriter, req *http.Request) {
 	var in resource.Object
