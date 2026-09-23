@@ -103,6 +103,10 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.match(source, /image-capabilities/)
   assert.match(source, /base_credits_per_image/)
   assert.match(source, /positiveMultiplier/)
+  assert.match(
+    source,
+    /id="model-multiplier"[\s\S]{0,400}?min="0\.01"[\s\S]{0,400}?step="0\.01"/
+  )
   assert.doesNotMatch(source, /aspect_ratio_multipliers|operation_multipliers/)
   assert.match(source, /<GroupSelect/)
   assert.match(source, /selectionMode="both"/)
