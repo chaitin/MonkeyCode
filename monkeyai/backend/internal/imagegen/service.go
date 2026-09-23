@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,10 +59,11 @@ type TaskQuerier interface {
 }
 
 type Adapter struct {
-	Capabilities func(string) (Capabilities, error)
-	Generator    Generator
-	Editor       Editor
-	TaskQuerier  TaskQuerier
+	Capabilities        func(string) (Capabilities, error)
+	DefaultCapabilities func() Capabilities
+	Generator           Generator
+	Editor              Editor
+	TaskQuerier         TaskQuerier
 }
 
 type ModelReader interface {
@@ -124,9 +126,18 @@ func (s *Service) Capabilities(provider model.Provider, modelID string) (model.I
 	if !ok || adapter.Capabilities == nil {
 		return model.ImageCapabilities{}, resource.Invalid("生图供应商未配置")
 	}
-	cap, err := adapter.Capabilities(modelID)
-	if err != nil {
-		return model.ImageCapabilities{}, err
+	var cap Capabilities
+	if strings.TrimSpace(modelID) == "" {
+		if adapter.DefaultCapabilities == nil {
+			return model.ImageCapabilities{}, resource.Invalid("生图供应商默认能力未配置")
+		}
+		cap = adapter.DefaultCapabilities()
+	} else {
+		var err error
+		cap, err = adapter.Capabilities(strings.TrimSpace(modelID))
+		if err != nil {
+			return model.ImageCapabilities{}, err
+		}
 	}
 	operations := make([]string, 0, len(cap.Operations))
 	for _, operation := range cap.Operations {

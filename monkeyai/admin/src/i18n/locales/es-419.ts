@@ -272,7 +272,8 @@ export const es419 = {
       imageKind: "Generación de imágenes",
       imageProvider: "Proveedor de imágenes",
       imageCapabilitiesUnavailable:
-        "Ingresa un ID de modelo compatible para cargar las opciones.",
+        "No se pudieron cargar las opciones de este proveedor.",
+      selectAllSupported: "Seleccionar compatibles",
       imageQuality: "Nivel de resolución",
       aspectRatio: "Relación de aspecto",
       defaultQuality: "Nivel predeterminado",

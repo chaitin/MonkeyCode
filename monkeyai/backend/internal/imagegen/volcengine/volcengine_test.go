@@ -46,13 +46,16 @@ func TestSeedreamReferenceEdit(t *testing.T) {
 	if err != nil || cap.MaxCount != 1 || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" || !cap.SupportsReference {
 		t.Fatalf("Seedream 5.0 pro 能力错误: %+v, %v", cap, err)
 	}
+	if defaults := p.DefaultCapabilities(); len(defaults.Qualities) != 3 || len(defaults.AspectRatios) != 8 {
+		t.Fatalf("Seedream 默认能力错误: %+v", defaults)
+	}
 	result, err := p.Edit(context.Background(), proxy.Target{BaseURL: server.URL + "/api/v3", UpstreamModel: "doubao-seedream-5-0-pro-260628", APIKey: "upstream-key"},
 		imagegen.ProviderRequest{Prompt: "改成日落", Quality: "4K", AspectRatio: "9:16", Count: 1,
 			Images: []imagegen.Input{{Data: imageBytes.Bytes(), MIMEType: "image/png"}}})
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 {
 		t.Fatalf("Seedream 结果解析失败: %+v, %v", result, err)
 	}
-	if _, err := p.Capabilities("doubao-seedream-unknown"); err == nil {
-		t.Fatal("未知模型不应被当成 Seedream 5.0 pro")
+	if custom, err := p.Capabilities("custom-seedream-alias"); err != nil || len(custom.Qualities) != 3 {
+		t.Fatalf("自定义模型应使用 Seedream 默认能力: %+v, %v", custom, err)
 	}
 }

@@ -1915,7 +1915,6 @@ paths:
       summary: 查询生图模型支持的画质、比例和操作
       parameters:
         - {name: provider, in: query, required: true, schema: {$ref: '#/components/schemas/ModelProvider'}}
-        - {name: model_id, in: query, required: true, schema: {type: string}}
       responses:
         '200':
           description: 供应商代码声明的原始能力，供管理员选择开放画质与比例。

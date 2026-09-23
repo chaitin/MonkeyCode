@@ -31,7 +31,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		modelJSON(w, http.StatusOK, subjects)
 	})
 	router.Get("/models/image-capabilities", func(w http.ResponseWriter, r *http.Request) {
-		cap, err := s.DescribeImage(Provider(r.URL.Query().Get("provider")), r.URL.Query().Get("model_id"))
+		cap, err := s.DescribeImage(Provider(r.URL.Query().Get("provider")), "")
 		if err != nil {
 			modelError(w, http.StatusBadRequest, err.Error())
 			return

@@ -48,6 +48,12 @@ func TestResponsesImageTool(t *testing.T) {
 	if err != nil || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" {
 		t.Fatalf("Responses 生图画质档位错误: %+v, %v", cap, err)
 	}
+	if defaults := p.DefaultCapabilities(); len(defaults.Qualities) != 3 || len(defaults.AspectRatios) != 8 {
+		t.Fatalf("Responses 默认能力错误: %+v", defaults)
+	}
+	if custom, err := p.Capabilities("gpt-5.6-sol"); err != nil || len(custom.Qualities) != 3 {
+		t.Fatalf("自定义模型应使用 Responses 默认能力: %+v, %v", custom, err)
+	}
 	result, err := p.Generate(context.Background(), proxy.Target{BaseURL: server.URL + "/v1", APIKey: "upstream-key", UpstreamModel: "gpt-5"},
 		imagegen.ProviderRequest{Prompt: "猫", Quality: "4K", AspectRatio: "16:9", Count: 1})
 	if err != nil || result.Status != "succeeded" || result.RequestID != "response-1" || len(result.Images) != 1 {

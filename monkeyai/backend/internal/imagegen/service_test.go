@@ -157,6 +157,23 @@ func testImageService(call generatorFunc) (*Service, *testJobs, *testBilling) {
 	return svc, jobs, bills
 }
 
+func TestCapabilitiesUsesProviderDefaultWithoutModel(t *testing.T) {
+	modelSpecificCalled := false
+	svc := NewService(nil, nil, nil, nil, nil).WithAdapter(model.ProviderXAI, Adapter{
+		Capabilities: func(string) (Capabilities, error) {
+			modelSpecificCalled = true
+			return Capabilities{}, nil
+		},
+		DefaultCapabilities: func() Capabilities {
+			return Capabilities{Qualities: []string{"1K", "2K", "4K"}, AspectRatios: []string{"1:1", "16:9"}}
+		},
+	})
+	cap, err := svc.Capabilities(model.ProviderXAI, " ")
+	if err != nil || modelSpecificCalled || len(cap.Qualities) != 3 || len(cap.AspectRatios) != 2 {
+		t.Fatalf("供应商默认能力错误: %+v, %v", cap, err)
+	}
+}
+
 func TestGenerateReservesAndSettlesActualImages(t *testing.T) {
 	var imageBytes bytes.Buffer
 	if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {

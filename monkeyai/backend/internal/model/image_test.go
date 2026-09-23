@@ -77,6 +77,19 @@ func TestImageCapabilitiesRestrictAdminConfigAndCatalog(t *testing.T) {
 	}
 }
 
+func TestDescribeImageUsesProviderDefaultsWithoutModelID(t *testing.T) {
+	service := NewService(&repositoryStub{}).WithImageCapabilities(func(provider Provider, upstream string) (ImageCapabilities, error) {
+		if provider != ProviderXAI || upstream != "" {
+			t.Fatalf("供应商默认能力查询参数错误: %s %q", provider, upstream)
+		}
+		return ImageCapabilities{Qualities: []string{"1K", "2K", "4K"}, AspectRatios: []string{"1:1", "16:9"}}, nil
+	})
+	cap, err := service.DescribeImage(ProviderXAI, " ")
+	if err != nil || len(cap.Qualities) != 3 || len(cap.AspectRatios) != 2 {
+		t.Fatalf("供应商默认能力错误: %+v, %v", cap, err)
+	}
+}
+
 func TestRejectInvalidImageModel(t *testing.T) {
 	cases := []struct {
 		name   string

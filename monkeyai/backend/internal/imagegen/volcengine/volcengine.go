@@ -21,15 +21,16 @@ var sizes = map[string]map[string]string{
 	"4K": {"1:1": "4096x4096", "4:3": "4608x3456", "3:4": "3456x4608", "16:9": "5120x2880", "9:16": "2880x5120", "3:2": "4992x3328", "2:3": "3328x4992", "21:9": "5376x2304"},
 }
 
-func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
-	if model != "doubao-seedream-5-0-pro-260628" {
-		return imagegen.Capabilities{}, errors.New("不支持此 Seedream 生图模型版本")
-	}
+func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
 	return imagegen.Capabilities{
 		Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K", "4K"},
 		AspectRatios: []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"},
 		MaxCount:     1, MaxReferences: 4, SupportsReference: true,
-	}, nil
+	}
+}
+
+func (p *Provider) Capabilities(string) (imagegen.Capabilities, error) {
+	return p.DefaultCapabilities(), nil
 }
 
 func (p *Provider) Generate(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest) (imagegen.ProviderResult, error) {
