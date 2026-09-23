@@ -18,12 +18,16 @@ func New(client *http.Client) *Provider { return &Provider{client: client} }
 
 var ratios = []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"}
 
+func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
+	return imagegen.Capabilities{Operations: []string{"generate"}, Qualities: []string{"1K", "2K", "4K"},
+		AspectRatios: ratios, MaxCount: 4}
+}
+
 func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
 	if model != "grok-imagine-image-2.0" {
 		return imagegen.Capabilities{}, errors.New("不支持此 Grok 生图模型版本")
 	}
-	return imagegen.Capabilities{Operations: []string{"generate"}, Qualities: []string{"1K", "2K", "4K"},
-		AspectRatios: ratios, MaxCount: 4}, nil
+	return p.DefaultCapabilities(), nil
 }
 
 func (p *Provider) Generate(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest) (imagegen.ProviderResult, error) {

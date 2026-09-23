@@ -60,7 +60,7 @@ func (s *Service) WithImageCapabilities(describe func(Provider, string) (ImageCa
 }
 
 func (s *Service) DescribeImage(provider Provider, modelID string) (ImageCapabilities, error) {
-	if s.imageCapabilities == nil || strings.TrimSpace(modelID) == "" {
+	if s.imageCapabilities == nil {
 		return ImageCapabilities{}, errors.New("生图模型能力不可用")
 	}
 	return s.imageCapabilities(provider, strings.TrimSpace(modelID))

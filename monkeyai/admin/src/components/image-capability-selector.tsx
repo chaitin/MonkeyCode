@@ -1,6 +1,3 @@
-import { Tick02Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
-
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -10,18 +7,18 @@ function AspectRatioGlyph({ value }: { value: string }) {
   const [rawWidth, rawHeight] = value.split(":").map(Number)
   const width = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 1
   const height = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 1
-  const scale = Math.min(36 / width, 24 / height)
+  const scale = Math.min(28 / width, 16 / height)
 
   return (
     <span
       aria-hidden="true"
-      className="flex h-6 w-9 items-center justify-center"
+      className="flex h-4 w-7 items-center justify-center"
     >
       <span
         className="rounded-[3px] border-[1.5px] border-current/60 bg-current/5"
         style={{
-          width: Math.max(6, Math.round(width * scale)),
-          height: Math.max(6, Math.round(height * scale)),
+          width: Math.max(5, Math.round(width * scale)),
+          height: Math.max(5, Math.round(height * scale)),
         }}
       />
     </span>
@@ -42,7 +39,7 @@ function SelectionHeader({
   onSelectAll: () => void
 }) {
   return (
-    <div className="flex min-h-8 items-center justify-between gap-3">
+    <div className="flex min-h-7 items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         <FieldLabel>{label}</FieldLabel>
         <Badge className="tabular-nums" variant="secondary">
@@ -51,7 +48,7 @@ function SelectionHeader({
       </div>
       <Button
         aria-label={`${label}: ${selectAllLabel}`}
-        className="h-7 px-2 text-xs"
+        className="h-6 px-2 text-xs"
         disabled={selected === total}
         onClick={onSelectAll}
         size="sm"
@@ -64,20 +61,11 @@ function SelectionHeader({
   )
 }
 
-function SelectedMark() {
-  return (
-    <span className="absolute end-2 top-2 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 transition-opacity group-aria-pressed:opacity-100">
-      <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} size={11} />
-    </span>
-  )
-}
-
 type ImageCapabilitySelectorProps = {
   qualities: string[]
   aspectRatios: string[]
   selectedQualities: string[]
   selectedAspectRatios: string[]
-  qualityMultipliers: Record<string, string>
   qualityLabel: string
   aspectRatioLabel: string
   selectAllLabel: string
@@ -90,7 +78,6 @@ export function ImageCapabilitySelector({
   aspectRatios,
   selectedQualities,
   selectedAspectRatios,
-  qualityMultipliers,
   qualityLabel,
   aspectRatioLabel,
   selectAllLabel,
@@ -118,16 +105,12 @@ export function ImageCapabilitySelector({
             <ToggleGroupItem
               key={value}
               aria-label={value}
-              className="group relative h-16 w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border bg-background px-3 py-2.5 text-start shadow-xs transition-[border-color,background-color,box-shadow,transform] hover:border-foreground/25 hover:bg-muted/40 active:scale-[0.98] aria-pressed:border-primary/60 aria-pressed:bg-primary/6 aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-primary/15"
+              className="h-9 w-full min-w-0 justify-start rounded-md border border-border bg-background px-3 py-1 text-start shadow-xs transition-[border-color,background-color,transform] hover:border-foreground/25 hover:bg-muted/40 active:scale-[0.98] aria-pressed:border-primary/60 aria-pressed:bg-primary/6 aria-pressed:text-foreground"
               value={value}
             >
               <span className="text-sm font-semibold tracking-tight">
                 {value}
               </span>
-              <span className="text-xs font-normal text-muted-foreground">
-                ×{qualityMultipliers[value] ?? "1"}
-              </span>
-              <SelectedMark />
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -152,14 +135,13 @@ export function ImageCapabilitySelector({
             <ToggleGroupItem
               key={value}
               aria-label={value}
-              className="group relative h-[4.5rem] w-full min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-center shadow-xs transition-[border-color,background-color,box-shadow,transform] hover:border-foreground/25 hover:bg-muted/40 active:scale-[0.98] aria-pressed:border-primary/60 aria-pressed:bg-primary/6 aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-primary/15"
+              className="h-11 w-full min-w-0 flex-col gap-0.5 rounded-md border border-border bg-background px-2 py-1 text-center shadow-xs transition-[border-color,background-color,transform] hover:border-foreground/25 hover:bg-muted/40 active:scale-[0.98] aria-pressed:border-primary/60 aria-pressed:bg-primary/6 aria-pressed:text-foreground"
               value={value}
             >
               <AspectRatioGlyph value={value} />
               <span className="text-xs font-medium tabular-nums" dir="ltr">
                 {value}
               </span>
-              <SelectedMark />
             </ToggleGroupItem>
           ))}
         </ToggleGroup>

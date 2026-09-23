@@ -51,6 +51,9 @@ func TestGenerateMapsTierAndAspect(t *testing.T) {
 	if err != nil || cap.MaxCount != 4 || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" || len(cap.AspectRatios) != 8 {
 		t.Fatalf("GPT Image 能力错误: %+v, %v", cap, err)
 	}
+	if defaults := p.DefaultCapabilities(); len(defaults.Qualities) != 3 || len(defaults.AspectRatios) != 8 {
+		t.Fatalf("GPT Image 默认能力错误: %+v", defaults)
+	}
 	result, err := p.Generate(context.Background(), proxy.Target{BaseURL: server.URL + "/v1", APIKey: "upstream-key", UpstreamModel: "gpt-image-2.5-flare"},
 		imagegen.ProviderRequest{Prompt: "猫", Quality: "4K", AspectRatio: "9:16", Count: 2})
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 || !bytes.Equal(result.Images[0].Data, content) {

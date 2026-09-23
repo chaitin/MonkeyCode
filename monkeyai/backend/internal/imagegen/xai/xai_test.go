@@ -37,6 +37,9 @@ func TestGrokImageGeneration(t *testing.T) {
 	if err != nil || len(cap.Operations) != 1 || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" || cap.MaxCount != 4 {
 		t.Fatalf("Grok 能力错误: %+v, %v", cap, err)
 	}
+	if defaults := p.DefaultCapabilities(); len(defaults.Qualities) != 3 || len(defaults.AspectRatios) != 8 {
+		t.Fatalf("Grok 默认能力错误: %+v", defaults)
+	}
 	result, err := p.Generate(context.Background(), proxy.Target{BaseURL: server.URL + "/v1", APIKey: "upstream-key", UpstreamModel: "grok-imagine-image-2.0"},
 		imagegen.ProviderRequest{Prompt: "test", Quality: "4K", AspectRatio: "9:16", Count: 2})
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 {

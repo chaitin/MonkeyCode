@@ -66,6 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Iconfont } from "@/components/iconfont"
@@ -312,17 +313,33 @@ export function ModelsPage() {
   }, [loadRevision, showToast, t])
 
   useEffect(() => {
-    if (!dialogOpen || kind !== "image" || !imageModelId.trim()) return
+    if (!dialogOpen || kind !== "image") return
     const upstreamModel = imageModelId.trim()
     let active = true
     const timer = window.setTimeout(() => {
-      api<ImageCapabilities>(
-        `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}&model_id=${encodeURIComponent(upstreamModel)}`
-      )
-        .then((capability) => {
+      const providerPath = `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}`
+      const request = upstreamModel
+        ? api<ImageCapabilities>(
+            `${providerPath}&model_id=${encodeURIComponent(upstreamModel)}`
+          )
+            .then((capability) => ({ capability, modelSpecific: true }))
+            .catch(() =>
+              api<ImageCapabilities>(providerPath).then((capability) => ({
+                capability,
+                modelSpecific: false,
+              }))
+            )
+        : api<ImageCapabilities>(providerPath).then((capability) => ({
+            capability,
+            modelSpecific: false,
+          }))
+
+      request
+        .then(({ capability, modelSpecific }) => {
           if (!active) return
 
           const preserveSavedSelection =
+            modelSpecific &&
             editingModel?.kind === "image" &&
             editingModel.provider === provider &&
             editingModel.modelId === upstreamModel
@@ -706,7 +723,7 @@ export function ModelsPage() {
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
-                  <FieldGroup className="gap-5">
+                  <FieldGroup className="gap-4">
                     <FieldGroup className="grid gap-4 sm:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="model-id">
@@ -718,7 +735,6 @@ export function ModelsPage() {
                           defaultValue={editingModel?.modelId}
                           onChange={(event) => {
                             setImageModelId(event.target.value)
-                            setImageCapabilities(null)
                           }}
                           placeholder={t("pages.models.modelIdPlaceholder")}
                           required
@@ -895,161 +911,171 @@ export function ModelsPage() {
                     )}
 
                     {kind === "image" && (
-                      <FieldGroup className="gap-4">
-                        {!imageCapabilities && (
-                          <p className="text-sm text-muted-foreground">
-                            {t("pages.models.imageCapabilitiesUnavailable")}
-                          </p>
-                        )}
-                        {imageCapabilities && (
-                          <>
-                            <ImageCapabilitySelector
-                              aspectRatioLabel={t("pages.models.aspectRatio")}
-                              aspectRatios={imageCapabilities.aspect_ratios}
-                              onAspectRatiosChange={
-                                handleAspectRatioSelectionChange
-                              }
-                              onQualitiesChange={handleQualitySelectionChange}
-                              qualities={imageCapabilities.qualities}
-                              qualityLabel={t("pages.models.imageQuality")}
-                              qualityMultipliers={qualityMultipliers}
-                              selectAllLabel={t(
-                                "pages.models.selectAllSupported"
-                              )}
-                              selectedAspectRatios={aspectRatios}
-                              selectedQualities={qualities}
-                            />
-                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                              <Field>
-                                <FieldLabel>
-                                  {t("pages.models.defaultQuality")}
-                                </FieldLabel>
-                                <Select
-                                  items={qualities.map((value) => ({
-                                    value,
-                                    label: value,
-                                  }))}
-                                  value={defaultQuality}
-                                  onValueChange={(value) =>
-                                    setDefaultQuality(value ?? "")
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {qualities.map((value) => (
-                                        <SelectItem key={value} value={value}>
-                                          {value}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                              <Field>
-                                <FieldLabel>
-                                  {t("pages.models.defaultAspectRatio")}
-                                </FieldLabel>
-                                <Select
-                                  items={aspectRatios.map((value) => ({
-                                    value,
-                                    label: value,
-                                  }))}
-                                  value={defaultAspectRatio}
-                                  onValueChange={(value) =>
-                                    setDefaultAspectRatio(value ?? "")
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {aspectRatios.map((value) => (
-                                        <SelectItem key={value} value={value}>
-                                          {value}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                              </Field>
-                            </FieldGroup>
-                            <Field>
-                              <FieldLabel htmlFor="model-base-credits">
-                                {t("pages.models.baseCreditsPerImage")}
-                              </FieldLabel>
-                              <Input
-                                id="model-base-credits"
-                                value={baseCredits}
-                                onChange={(event) =>
-                                  setBaseCredits(event.target.value)
+                      <>
+                        <Separator className="my-1" />
+                        <FieldGroup className="gap-3">
+                          {!imageCapabilities && (
+                            <p className="text-sm text-muted-foreground">
+                              {t("pages.models.imageCapabilitiesUnavailable")}
+                            </p>
+                          )}
+                          {imageCapabilities && (
+                            <>
+                              <ImageCapabilitySelector
+                                aspectRatioLabel={t("pages.models.aspectRatio")}
+                                aspectRatios={imageCapabilities.aspect_ratios}
+                                onAspectRatiosChange={
+                                  handleAspectRatioSelectionChange
                                 }
-                                inputMode="decimal"
-                                required
+                                onQualitiesChange={handleQualitySelectionChange}
+                                qualities={imageCapabilities.qualities}
+                                qualityLabel={t("pages.models.imageQuality")}
+                                selectAllLabel={t(
+                                  "pages.models.selectAllSupported"
+                                )}
+                                selectedAspectRatios={aspectRatios}
+                                selectedQualities={qualities}
                               />
-                            </Field>
-                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                              {qualities.map((value) => (
-                                <Field key={value}>
-                                  <FieldLabel
-                                    htmlFor={`quality-price-${value}`}
+                              <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                <Field>
+                                  <FieldLabel>
+                                    {t("pages.models.defaultQuality")}
+                                  </FieldLabel>
+                                  <Select
+                                    items={qualities.map((value) => ({
+                                      value,
+                                      label: value,
+                                    }))}
+                                    value={defaultQuality}
+                                    onValueChange={(value) =>
+                                      setDefaultQuality(value ?? "")
+                                    }
                                   >
-                                    {value}{" "}
-                                    {t("pages.models.qualityMultiplier")}
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {qualities.map((value) => (
+                                          <SelectItem key={value} value={value}>
+                                            {value}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                                <Field>
+                                  <FieldLabel>
+                                    {t("pages.models.defaultAspectRatio")}
+                                  </FieldLabel>
+                                  <Select
+                                    items={aspectRatios.map((value) => ({
+                                      value,
+                                      label: value,
+                                    }))}
+                                    value={defaultAspectRatio}
+                                    onValueChange={(value) =>
+                                      setDefaultAspectRatio(value ?? "")
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {aspectRatios.map((value) => (
+                                          <SelectItem key={value} value={value}>
+                                            {value}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
+                              </FieldGroup>
+                              <Separator className="my-1" />
+                              <FieldGroup className="gap-3">
+                                <Field>
+                                  <FieldLabel htmlFor="model-base-credits">
+                                    {t("pages.models.baseCreditsPerImage")}
                                   </FieldLabel>
                                   <Input
-                                    id={`quality-price-${value}`}
-                                    value={qualityMultipliers[value] ?? "1"}
+                                    id="model-base-credits"
+                                    value={baseCredits}
                                     onChange={(event) =>
-                                      setQualityMultipliers((current) => ({
-                                        ...current,
-                                        [value]: event.target.value,
-                                      }))
+                                      setBaseCredits(event.target.value)
                                     }
                                     inputMode="decimal"
+                                    required
                                   />
                                 </Field>
-                              ))}
-                            </FieldGroup>
-                          </>
-                        )}
-                      </FieldGroup>
+                                <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                  {qualities.map((value) => (
+                                    <Field key={value}>
+                                      <FieldLabel
+                                        htmlFor={`quality-price-${value}`}
+                                      >
+                                        {value}{" "}
+                                        {t("pages.models.qualityMultiplier")}
+                                      </FieldLabel>
+                                      <Input
+                                        id={`quality-price-${value}`}
+                                        value={qualityMultipliers[value] ?? "1"}
+                                        onChange={(event) =>
+                                          setQualityMultipliers((current) => ({
+                                            ...current,
+                                            [value]: event.target.value,
+                                          }))
+                                        }
+                                        inputMode="decimal"
+                                      />
+                                    </Field>
+                                  ))}
+                                </FieldGroup>
+                              </FieldGroup>
+                            </>
+                          )}
+                        </FieldGroup>
+                      </>
                     )}
 
-                    <Field>
-                      <FieldLabel htmlFor="model-tags">
-                        {t("pages.skills.tags")}
-                      </FieldLabel>
-                      <SkillTagSelect
-                        id="model-tags"
-                        open={tagsOpen}
-                        options={availableTags}
-                        placeholder={t("pages.skills.tagsPlaceholder")}
-                        value={tagIds}
-                        onOpenChange={setTagsOpen}
-                        onValueChange={setTagIds}
-                      />
-                    </Field>
+                    <Separator className="my-1" />
+                    <FieldGroup className="gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="model-tags">
+                          {t("pages.skills.tags")}
+                        </FieldLabel>
+                        <SkillTagSelect
+                          id="model-tags"
+                          open={tagsOpen}
+                          options={availableTags}
+                          placeholder={t("pages.skills.tagsPlaceholder")}
+                          value={tagIds}
+                          onOpenChange={setTagsOpen}
+                          onValueChange={setTagIds}
+                        />
+                      </Field>
 
-                    <Field>
-                      <FieldLabel htmlFor="model-authorization">
-                        {t("pages.models.authorizedScope")}
-                      </FieldLabel>
-                      <AuthorizationSelect
-                        groups={groups}
-                        members={members}
-                        id="model-authorization"
-                        open={authorizationOpen}
-                        placeholder={t("pages.models.authorizationPlaceholder")}
-                        title={t("pages.models.authorizedScope")}
-                        value={authorization}
-                        onOpenChange={setAuthorizationOpen}
-                        onValueChange={setAuthorization}
-                      />
-                    </Field>
+                      <Field>
+                        <FieldLabel htmlFor="model-authorization">
+                          {t("pages.models.authorizedScope")}
+                        </FieldLabel>
+                        <AuthorizationSelect
+                          groups={groups}
+                          members={members}
+                          id="model-authorization"
+                          open={authorizationOpen}
+                          placeholder={t(
+                            "pages.models.authorizationPlaceholder"
+                          )}
+                          title={t("pages.models.authorizedScope")}
+                          value={authorization}
+                          onOpenChange={setAuthorizationOpen}
+                          onValueChange={setAuthorization}
+                        />
+                      </Field>
+                    </FieldGroup>
                   </FieldGroup>
                   <DialogFooter>
                     <DialogClose

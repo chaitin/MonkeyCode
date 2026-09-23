@@ -148,15 +148,19 @@ test("image capabilities use card multi-selects and supported defaults", async (
   )
 
   assert.match(page, /preserveSavedSelection/)
+  assert.match(page, /modelSpecific: false/)
+  assert.match(page, /api<ImageCapabilities>\(providerPath\)/)
   assert.match(page, /: \[\.\.\.capability\.qualities\]/)
   assert.match(page, /: \[\.\.\.capability\.aspect_ratios\]/)
   assert.match(page, /if \(next\.length === 0\) return/)
+  assert.match(page, /<Separator className="my-1"/)
   assert.match(selector, /<ToggleGroup/)
   assert.match(selector, /multiple/)
   assert.match(selector, /AspectRatioGlyph/)
-  assert.match(selector, /group-aria-pressed/)
+  assert.match(selector, /h-9/)
+  assert.match(selector, /h-11/)
   assert.match(selector, /aria-pressed:border-primary/)
-  assert.doesNotMatch(selector, /type="checkbox"/)
+  assert.doesNotMatch(selector, /type="checkbox"|SelectedMark|Tick02Icon/)
 })
 
 test("image generation test form follows model capabilities and protects invocation key", async () => {

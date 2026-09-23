@@ -16,14 +16,18 @@ type Provider struct{ client *http.Client }
 
 func New(client *http.Client) *Provider { return &Provider{client: client} }
 
+func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
+	return imagegen.Capabilities{
+		Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K", "4K"},
+		AspectRatios: []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"},
+		MaxCount:     1, MaxReferences: 4, SupportsReference: true,
+	}
+}
+
 func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
 	switch model {
 	case "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-6-astra":
-		return imagegen.Capabilities{
-			Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K", "4K"},
-			AspectRatios: []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"},
-			MaxCount:     1, MaxReferences: 4, SupportsReference: true,
-		}, nil
+		return p.DefaultCapabilities(), nil
 	default:
 		return imagegen.Capabilities{}, errors.New("不支持此 Responses 生图模型版本")
 	}

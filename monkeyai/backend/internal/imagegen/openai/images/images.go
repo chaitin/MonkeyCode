@@ -42,9 +42,19 @@ func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
 	return capabilities(model)
 }
 
+func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
+	return defaultCapabilities()
+}
+
+func defaultCapabilities() imagegen.Capabilities {
+	return imagegen.Capabilities{
+		Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K", "4K"},
+		AspectRatios: ratios, MaxCount: 4, MaxReferences: 4, SupportsMask: true,
+	}
+}
+
 func capabilities(model string) (imagegen.Capabilities, error) {
-	cap := imagegen.Capabilities{Operations: []string{"generate", "edit"},
-		MaxCount: 4, MaxReferences: 4, SupportsMask: true}
+	cap := defaultCapabilities()
 	switch model {
 	case "gpt-image-2.5-sunburst", "gpt-image-2.5-flare":
 		cap.Qualities = []string{"1K", "2K", "4K"}
