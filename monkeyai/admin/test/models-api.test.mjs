@@ -22,6 +22,7 @@ const modelKeys = [
   "imageKind",
   "imageProvider",
   "imageCapabilitiesUnavailable",
+  "selectAllSupported",
   "imageQuality",
   "aspectRatio",
   "defaultQuality",
@@ -134,6 +135,28 @@ test("model kinds use icon tabs and card badges", async () => {
   assert.doesNotMatch(source, /id="model-kind"/)
   assert.equal(zhCN.pages.models.dialogTitle, "添加大模型")
   assert.equal(zhCN.pages.models.textKind, "大语言模型")
+})
+
+test("image capabilities use card multi-selects and supported defaults", async () => {
+  const page = await readFile(
+    new URL("../src/pages/models-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const selector = await readFile(
+    new URL("../src/components/image-capability-selector.tsx", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(page, /preserveSavedSelection/)
+  assert.match(page, /: \[\.\.\.capability\.qualities\]/)
+  assert.match(page, /: \[\.\.\.capability\.aspect_ratios\]/)
+  assert.match(page, /if \(next\.length === 0\) return/)
+  assert.match(selector, /<ToggleGroup/)
+  assert.match(selector, /multiple/)
+  assert.match(selector, /AspectRatioGlyph/)
+  assert.match(selector, /group-aria-pressed/)
+  assert.match(selector, /aria-pressed:border-primary/)
+  assert.doesNotMatch(selector, /type="checkbox"/)
 })
 
 test("image generation test form follows model capabilities and protects invocation key", async () => {

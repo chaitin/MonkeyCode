@@ -274,6 +274,7 @@ export const deDE = {
       imageProvider: "Bildanbieter",
       imageCapabilitiesUnavailable:
         "Unterstützte Modell-ID eingeben, um Bildoptionen zu laden.",
+      selectAllSupported: "Alle unterstützten auswählen",
       imageQuality: "Auflösungsstufe",
       aspectRatio: "Seitenverhältnis",
       defaultQuality: "Standardstufe",

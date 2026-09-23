@@ -410,6 +410,7 @@ export const enUS = {
       taskStatus: "Task status",
       imageCapabilitiesUnavailable:
         "Enter a supported upstream model ID to load available image options.",
+      selectAllSupported: "Select all supported",
       imageQuality: "Resolution tier",
       aspectRatio: "Aspect ratio",
       defaultQuality: "Default tier",

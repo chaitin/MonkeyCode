@@ -394,6 +394,7 @@ export const zhCN = {
       taskStatus: "任务状态",
       imageCapabilitiesUnavailable:
         "请输入受支持的上游模型 ID，以加载画质和比例选项。",
+      selectAllSupported: "全选支持项",
       imageQuality: "画质档位",
       aspectRatio: "比例",
       defaultQuality: "默认画质",

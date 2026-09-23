@@ -274,6 +274,7 @@ export const frFR = {
       imageProvider: "Fournisseur d’images",
       imageCapabilitiesUnavailable:
         "Saisissez un ID de modèle pris en charge pour charger les options.",
+      selectAllSupported: "Tout sélectionner",
       imageQuality: "Niveau de résolution",
       aspectRatio: "Format d’image",
       defaultQuality: "Niveau par défaut",

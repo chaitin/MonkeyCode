@@ -265,6 +265,7 @@ export const ar = {
       imageProvider: "مزود الصور",
       imageCapabilitiesUnavailable:
         "أدخل معرّف نموذج مدعوم لتحميل خيارات الصور.",
+      selectAllSupported: "تحديد كل الخيارات المدعومة",
       imageQuality: "دقة الصورة",
       aspectRatio: "نسبة الأبعاد",
       defaultQuality: "الدقة الافتراضية",

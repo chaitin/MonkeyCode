@@ -273,6 +273,7 @@ export const es419 = {
       imageProvider: "Proveedor de imágenes",
       imageCapabilitiesUnavailable:
         "Ingresa un ID de modelo compatible para cargar las opciones.",
+      selectAllSupported: "Seleccionar compatibles",
       imageQuality: "Nivel de resolución",
       aspectRatio: "Relación de aspecto",
       defaultQuality: "Nivel predeterminado",

@@ -268,6 +268,7 @@ export const jaJP = {
       imageProvider: "画像プロバイダー",
       imageCapabilitiesUnavailable:
         "対応するモデル ID を入力すると画像設定を読み込みます。",
+      selectAllSupported: "対応項目をすべて選択",
       imageQuality: "解像度ランク",
       aspectRatio: "アスペクト比",
       defaultQuality: "既定のランク",

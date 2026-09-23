@@ -272,6 +272,7 @@ export const ruRU = {
       imageProvider: "Поставщик изображений",
       imageCapabilitiesUnavailable:
         "Введите поддерживаемый ID модели, чтобы загрузить параметры.",
+      selectAllSupported: "Выбрать все поддерживаемые",
       imageQuality: "Уровень разрешения",
       aspectRatio: "Соотношение сторон",
       defaultQuality: "Уровень по умолчанию",

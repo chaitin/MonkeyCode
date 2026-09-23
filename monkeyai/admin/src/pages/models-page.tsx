@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { ImageCapabilitySelector } from "@/components/image-capability-selector"
 import { ImageGenerationTest } from "@/components/image-generation-test"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
@@ -312,19 +313,46 @@ export function ModelsPage() {
 
   useEffect(() => {
     if (!dialogOpen || kind !== "image" || !imageModelId.trim()) return
+    const upstreamModel = imageModelId.trim()
     let active = true
     const timer = window.setTimeout(() => {
       api<ImageCapabilities>(
-        `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}&model_id=${encodeURIComponent(imageModelId.trim())}`
+        `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}&model_id=${encodeURIComponent(upstreamModel)}`
       )
         .then((capability) => {
           if (!active) return
+
+          const preserveSavedSelection =
+            editingModel?.kind === "image" &&
+            editingModel.provider === provider &&
+            editingModel.modelId === upstreamModel
+          const savedConfig = preserveSavedSelection
+            ? editingModel.imageConfig
+            : undefined
+          const nextQualities = savedConfig
+            ? capability.qualities.filter((value) =>
+                savedConfig.qualities.includes(value)
+              )
+            : [...capability.qualities]
+          const nextAspectRatios = savedConfig
+            ? capability.aspect_ratios.filter((value) =>
+                savedConfig.aspect_ratios.includes(value)
+              )
+            : [...capability.aspect_ratios]
+
           setImageCapabilities(capability)
-          setQualities((current) =>
-            current.filter((value) => capability.qualities.includes(value))
+          setQualities(nextQualities)
+          setAspectRatios(nextAspectRatios)
+          setDefaultQuality(
+            savedConfig && nextQualities.includes(savedConfig.default_quality)
+              ? savedConfig.default_quality
+              : (nextQualities[0] ?? "")
           )
-          setAspectRatios((current) =>
-            current.filter((value) => capability.aspect_ratios.includes(value))
+          setDefaultAspectRatio(
+            savedConfig &&
+              nextAspectRatios.includes(savedConfig.default_aspect_ratio)
+              ? savedConfig.default_aspect_ratio
+              : (nextAspectRatios[0] ?? "")
           )
         })
         .catch(() => {
@@ -335,7 +363,29 @@ export function ModelsPage() {
       active = false
       window.clearTimeout(timer)
     }
-  }, [dialogOpen, kind, provider, imageModelId])
+  }, [dialogOpen, editingModel, kind, provider, imageModelId])
+
+  const handleQualitySelectionChange = (values: string[]) => {
+    if (!imageCapabilities) return
+    const next = imageCapabilities.qualities.filter((value) =>
+      values.includes(value)
+    )
+    if (next.length === 0) return
+    setQualities(next)
+    setDefaultQuality((current) => (next.includes(current) ? current : next[0]))
+  }
+
+  const handleAspectRatioSelectionChange = (values: string[]) => {
+    if (!imageCapabilities) return
+    const next = imageCapabilities.aspect_ratios.filter((value) =>
+      values.includes(value)
+    )
+    if (next.length === 0) return
+    setAspectRatios(next)
+    setDefaultAspectRatio((current) =>
+      next.includes(current) ? current : next[0]
+    )
+  }
 
   const resetModelOptions = () => {
     setProtocol("openai_chat_completions")
@@ -853,84 +903,22 @@ export function ModelsPage() {
                         )}
                         {imageCapabilities && (
                           <>
-                            <Field>
-                              <FieldLabel>
-                                {t("pages.models.imageQuality")}
-                              </FieldLabel>
-                              <div className="flex flex-wrap gap-3">
-                                {imageCapabilities.qualities.map((value) => (
-                                  <label
-                                    key={value}
-                                    className="flex items-center gap-2 text-sm"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={qualities.includes(value)}
-                                      onChange={(event) => {
-                                        setQualities((current) =>
-                                          event.target.checked
-                                            ? [...current, value]
-                                            : current.filter(
-                                                (item) => item !== value
-                                              )
-                                        )
-                                        if (
-                                          event.target.checked &&
-                                          !defaultQuality
-                                        )
-                                          setDefaultQuality(value)
-                                        if (
-                                          !event.target.checked &&
-                                          defaultQuality === value
-                                        )
-                                          setDefaultQuality("")
-                                      }}
-                                    />
-                                    {value}
-                                  </label>
-                                ))}
-                              </div>
-                            </Field>
-                            <Field>
-                              <FieldLabel>
-                                {t("pages.models.aspectRatio")}
-                              </FieldLabel>
-                              <div className="flex flex-wrap gap-3">
-                                {imageCapabilities.aspect_ratios.map(
-                                  (value) => (
-                                    <label
-                                      key={value}
-                                      className="flex items-center gap-2 text-sm"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={aspectRatios.includes(value)}
-                                        onChange={(event) => {
-                                          setAspectRatios((current) =>
-                                            event.target.checked
-                                              ? [...current, value]
-                                              : current.filter(
-                                                  (item) => item !== value
-                                                )
-                                          )
-                                          if (
-                                            event.target.checked &&
-                                            !defaultAspectRatio
-                                          )
-                                            setDefaultAspectRatio(value)
-                                          if (
-                                            !event.target.checked &&
-                                            defaultAspectRatio === value
-                                          )
-                                            setDefaultAspectRatio("")
-                                        }}
-                                      />
-                                      {value}
-                                    </label>
-                                  )
-                                )}
-                              </div>
-                            </Field>
+                            <ImageCapabilitySelector
+                              aspectRatioLabel={t("pages.models.aspectRatio")}
+                              aspectRatios={imageCapabilities.aspect_ratios}
+                              onAspectRatiosChange={
+                                handleAspectRatioSelectionChange
+                              }
+                              onQualitiesChange={handleQualitySelectionChange}
+                              qualities={imageCapabilities.qualities}
+                              qualityLabel={t("pages.models.imageQuality")}
+                              qualityMultipliers={qualityMultipliers}
+                              selectAllLabel={t(
+                                "pages.models.selectAllSupported"
+                              )}
+                              selectedAspectRatios={aspectRatios}
+                              selectedQualities={qualities}
+                            />
                             <FieldGroup className="grid gap-4 sm:grid-cols-2">
                               <Field>
                                 <FieldLabel>

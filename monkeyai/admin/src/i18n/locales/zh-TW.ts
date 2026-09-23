@@ -257,6 +257,7 @@ export const zhTW = {
       imageProvider: "生圖供應商",
       imageCapabilitiesUnavailable:
         "請輸入支援的上游模型 ID，以載入畫質與比例選項。",
+      selectAllSupported: "全選支援項目",
       imageQuality: "畫質檔位",
       aspectRatio: "比例",
       defaultQuality: "預設畫質",
