@@ -22,7 +22,7 @@ func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
 	if model != "grok-imagine-image-2.0" {
 		return imagegen.Capabilities{}, errors.New("不支持此 Grok 生图模型版本")
 	}
-	return imagegen.Capabilities{Operations: []string{"generate"}, Qualities: []string{"1K", "2K"},
+	return imagegen.Capabilities{Operations: []string{"generate"}, Qualities: []string{"1K", "2K", "4K"},
 		AspectRatios: ratios, MaxCount: 4}, nil
 }
 

@@ -400,8 +400,6 @@ export const zhCN = {
       defaultAspectRatio: "默认比例",
       baseCreditsPerImage: "每张基础积分",
       qualityMultiplier: "画质倍率",
-      aspectMultiplier: "比例倍率",
-      editMultiplier: "编辑倍率",
       systemModel: "系统模型",
       userModel: "用户模型",
       add: "添加大模型",

@@ -27,8 +27,6 @@ const imageKeys = [
   "defaultAspectRatio",
   "baseCreditsPerImage",
   "qualityMultiplier",
-  "aspectMultiplier",
-  "editMultiplier",
   "testGeneration",
   "testGenerationWarning",
   "invocationKey",
@@ -104,6 +102,8 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.match(source, /openai_responses/)
   assert.match(source, /image-capabilities/)
   assert.match(source, /base_credits_per_image/)
+  assert.match(source, /positiveMultiplier/)
+  assert.doesNotMatch(source, /aspect_ratio_multipliers|operation_multipliers/)
   assert.match(source, /<GroupSelect/)
   assert.match(source, /selectionMode="both"/)
   assert.match(source, /cascadeGroups/)

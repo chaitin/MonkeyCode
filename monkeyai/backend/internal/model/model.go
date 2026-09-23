@@ -12,6 +12,10 @@ type Kind string
 const (
 	KindText  Kind = "text"
 	KindImage Kind = "image"
+
+	ImageQuality1K = "1K"
+	ImageQuality2K = "2K"
+	ImageQuality4K = "4K"
 )
 
 type Provider string
@@ -68,10 +72,8 @@ type ImageMultiplier struct {
 }
 
 type ImagePricing struct {
-	BaseCreditsPerImage  string            `json:"base_credits_per_image"`
-	QualityMultipliers   []ImageMultiplier `json:"quality_multipliers,omitempty"`
-	AspectMultipliers    []ImageMultiplier `json:"aspect_ratio_multipliers,omitempty"`
-	OperationMultipliers []ImageMultiplier `json:"operation_multipliers,omitempty"`
+	BaseCreditsPerImage string            `json:"base_credits_per_image"`
+	QualityMultipliers  []ImageMultiplier `json:"quality_multipliers,omitempty"`
 }
 
 type Authorization struct {

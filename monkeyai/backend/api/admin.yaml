@@ -1926,7 +1926,7 @@ paths:
                 required: [operations, qualities, aspect_ratios, max_images, max_reference_images, supports_reference_image, supports_mask]
                 properties:
                   operations: {type: array, items: {type: string, enum: [generate, edit]}}
-                  qualities: {type: array, items: {type: string}}
+                  qualities: {type: array, items: {$ref: '#/components/schemas/ImageQuality'}}
                   aspect_ratios: {type: array, items: {type: string}}
                   allowed_aspect_ratios: {type: object}
                   max_images: {type: integer, minimum: 1}
@@ -5519,6 +5519,10 @@ components:
       type: string
       enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
       description: 上游调用路径；text 模型只允许 passthrough。
+    ImageQuality:
+      type: string
+      enum: [1K, 2K, 4K]
+      description: 平台统一的生图画质档位；具体像素由供应商适配器映射。
     ImageConfig:
       type: object
       required: [qualities, aspect_ratios, default_quality, default_aspect_ratio]
@@ -5527,32 +5531,29 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
-          items: {type: string}
+          items: {$ref: '#/components/schemas/ImageQuality'}
         aspect_ratios:
           type: array
           minItems: 1
           uniqueItems: true
           items: {type: string, pattern: '^[1-9][0-9]*:[1-9][0-9]*$'}
-        default_quality: {type: string}
+        default_quality: {$ref: '#/components/schemas/ImageQuality'}
         default_aspect_ratio: {type: string}
     ImageMultiplier:
       type: object
       required: [name, multiplier]
       properties:
-        name: {type: string}
-        multiplier: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
+        name: {$ref: '#/components/schemas/ImageQuality'}
+        multiplier:
+          type: string
+          pattern: '^[0-9]+(\.[0-9]{1,6})?$'
+          description: 大于 0 的十进制倍率，最多 6 位小数。
     ImagePricing:
       type: object
       required: [base_credits_per_image]
       properties:
         base_credits_per_image: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
         quality_multipliers:
-          type: array
-          items: {$ref: '#/components/schemas/ImageMultiplier'}
-        aspect_ratio_multipliers:
-          type: array
-          items: {$ref: '#/components/schemas/ImageMultiplier'}
-        operation_multipliers:
           type: array
           items: {$ref: '#/components/schemas/ImageMultiplier'}
     AdvancedConfig:

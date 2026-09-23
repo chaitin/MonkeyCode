@@ -35,7 +35,7 @@ func TestSeedreamReferenceEdit(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 		}
-		if request.Model != "doubao-seedream-5-0-pro-260628" || request.Size != "1440x2560" || request.Format != "b64_json" || request.Output != "png" || len(request.Images) != 1 || !strings.HasPrefix(request.Images[0], "data:image/png;base64,") {
+		if request.Model != "doubao-seedream-5-0-pro-260628" || request.Size != "2880x5120" || request.Format != "b64_json" || request.Output != "png" || len(request.Images) != 1 || !strings.HasPrefix(request.Images[0], "data:image/png;base64,") {
 			t.Errorf("Seedream 图生图参数错误: %+v", request)
 		}
 		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(imageBytes.Bytes())}}})
@@ -43,11 +43,11 @@ func TestSeedreamReferenceEdit(t *testing.T) {
 	defer server.Close()
 	p := New(server.Client())
 	cap, err := p.Capabilities("doubao-seedream-5-0-pro-260628")
-	if err != nil || cap.MaxCount != 1 || !cap.SupportsReference {
+	if err != nil || cap.MaxCount != 1 || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" || !cap.SupportsReference {
 		t.Fatalf("Seedream 5.0 pro 能力错误: %+v, %v", cap, err)
 	}
 	result, err := p.Edit(context.Background(), proxy.Target{BaseURL: server.URL + "/api/v3", UpstreamModel: "doubao-seedream-5-0-pro-260628", APIKey: "upstream-key"},
-		imagegen.ProviderRequest{Prompt: "改成日落", Quality: "2K", AspectRatio: "9:16", Count: 1,
+		imagegen.ProviderRequest{Prompt: "改成日落", Quality: "4K", AspectRatio: "9:16", Count: 1,
 			Images: []imagegen.Input{{Data: imageBytes.Bytes(), MIMEType: "image/png"}}})
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 {
 		t.Fatalf("Seedream 结果解析失败: %+v, %v", result, err)

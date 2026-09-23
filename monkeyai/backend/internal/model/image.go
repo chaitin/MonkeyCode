@@ -3,7 +3,6 @@ package model
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,8 +71,8 @@ func validateImageConfig(config *ImageConfig) error {
 	}
 	qualities := make(map[string]bool, len(config.Qualities))
 	for _, quality := range config.Qualities {
-		if strings.TrimSpace(quality) != quality || quality == "" || len(quality) > 32 || qualities[quality] {
-			return errors.New("画质配置无效或重复")
+		if !validImageQuality(quality) || qualities[quality] {
+			return errors.New("画质仅支持 1K、2K、4K 且不能重复")
 		}
 		qualities[quality] = true
 	}
@@ -91,6 +90,10 @@ func validateImageConfig(config *ImageConfig) error {
 		return errors.New("默认比例必须属于可选比例")
 	}
 	return nil
+}
+
+func validImageQuality(value string) bool {
+	return value == ImageQuality1K || value == ImageQuality2K || value == ImageQuality4K
 }
 
 func validRatio(value string) bool {
@@ -111,25 +114,15 @@ func validateImagePricing(config *ImageConfig, pricing *ImagePricing) error {
 	if err != nil || base < 0 {
 		return errors.New("base_credits_per_image 必须是非负积分")
 	}
-	for _, group := range []struct {
-		name   string
-		values []ImageMultiplier
-		allows []string
-	}{
-		{"quality", pricing.QualityMultipliers, config.Qualities},
-		{"aspect_ratio", pricing.AspectMultipliers, config.AspectRatios},
-		{"operation", pricing.OperationMultipliers, []string{"generate", "edit"}},
-	} {
-		seen := make(map[string]bool, len(group.values))
-		for _, entry := range group.values {
-			if !slices.Contains(group.allows, entry.Name) || seen[entry.Name] {
-				return fmt.Errorf("%s 倍率名称无效或重复", group.name)
-			}
-			seen[entry.Name] = true
-			value, err := billing.ParseAmount(entry.Multiplier)
-			if err != nil || value <= 0 {
-				return fmt.Errorf("%s 倍率必须大于 0", group.name)
-			}
+	seen := make(map[string]bool, len(pricing.QualityMultipliers))
+	for _, entry := range pricing.QualityMultipliers {
+		if !slices.Contains(config.Qualities, entry.Name) || seen[entry.Name] {
+			return errors.New("quality 倍率名称无效或重复")
+		}
+		seen[entry.Name] = true
+		value, err := billing.ParseAmount(entry.Multiplier)
+		if err != nil || value <= 0 {
+			return errors.New("quality 倍率必须大于 0")
 		}
 	}
 	return nil

@@ -263,8 +263,6 @@ export const zhTW = {
       defaultAspectRatio: "預設比例",
       baseCreditsPerImage: "每張基礎積分",
       qualityMultiplier: "畫質倍率",
-      aspectMultiplier: "比例倍率",
-      editMultiplier: "編輯倍率",
       testGeneration: "測試生圖",
       testGenerationWarning:
         "測試呼叫可能產生上游費用與積分扣款；請使用有模型權限的呼叫金鑰。",

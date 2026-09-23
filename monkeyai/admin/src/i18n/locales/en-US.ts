@@ -416,8 +416,6 @@ export const enUS = {
       defaultAspectRatio: "Default aspect ratio",
       baseCreditsPerImage: "Credits per image",
       qualityMultiplier: "tier multiplier",
-      aspectMultiplier: "ratio multiplier",
-      editMultiplier: "Edit multiplier",
       systemModel: "System models",
       userModel: "User models",
       add: "Add model",

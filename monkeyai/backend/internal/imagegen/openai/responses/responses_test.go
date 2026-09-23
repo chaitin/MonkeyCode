@@ -36,7 +36,7 @@ func TestResponsesImageTool(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 		}
-		if request.Model != "gpt-5" || len(request.Tools) != 1 || request.Tools[0].Type != "image_generation" || request.Tools[0].Model != "gpt-image-2.5-sunburst" || request.Tools[0].Size != "2560x1440" {
+		if request.Model != "gpt-5" || len(request.Tools) != 1 || request.Tools[0].Type != "image_generation" || request.Tools[0].Model != "gpt-image-2.5-sunburst" || request.Tools[0].Size != "5120x2880" {
 			t.Errorf("Responses 工具参数错误: %+v", request)
 		}
 		json.NewEncoder(w).Encode(map[string]any{"id": "response-1", "output": []map[string]any{{"type": "message"},
@@ -44,8 +44,12 @@ func TestResponsesImageTool(t *testing.T) {
 	}))
 	defer server.Close()
 	p := New(server.Client())
+	cap, err := p.Capabilities("gpt-5")
+	if err != nil || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" {
+		t.Fatalf("Responses 生图画质档位错误: %+v, %v", cap, err)
+	}
 	result, err := p.Generate(context.Background(), proxy.Target{BaseURL: server.URL + "/v1", APIKey: "upstream-key", UpstreamModel: "gpt-5"},
-		imagegen.ProviderRequest{Prompt: "猫", Quality: "2K", AspectRatio: "16:9", Count: 1})
+		imagegen.ProviderRequest{Prompt: "猫", Quality: "4K", AspectRatio: "16:9", Count: 1})
 	if err != nil || result.Status != "succeeded" || result.RequestID != "response-1" || len(result.Images) != 1 {
 		t.Fatalf("Responses 生图工具结果错误: %+v, %v", result, err)
 	}
