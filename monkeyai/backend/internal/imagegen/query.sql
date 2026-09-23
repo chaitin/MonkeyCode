@@ -72,9 +72,6 @@ WHERE job.id = sqlc.arg(job_id) AND input.id = sqlc.arg(input_id) AND input.expi
 ON CONFLICT DO NOTHING
 RETURNING job_id;
 
--- name: CountLiveImageInputs :one
-SELECT count(*) FROM image_inputs WHERE user_id = $1 AND expires_at > now();
-
 -- name: InsertImageInput :exec
 INSERT INTO image_inputs (id, user_id, object_key, mime_type, width, height, byte_size, sha256, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);

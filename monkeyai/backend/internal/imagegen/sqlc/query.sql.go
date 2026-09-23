@@ -10,17 +10,6 @@ import (
 	"time"
 )
 
-const countLiveImageInputs = `-- name: CountLiveImageInputs :one
-SELECT count(*) FROM image_inputs WHERE user_id = $1 AND expires_at > now()
-`
-
-func (q *Queries) CountLiveImageInputs(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countLiveImageInputs, userID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const expiredInputs = `-- name: ExpiredInputs :many
 SELECT input.id, input.object_key
 FROM image_inputs input
