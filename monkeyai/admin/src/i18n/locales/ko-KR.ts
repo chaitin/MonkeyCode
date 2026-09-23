@@ -307,7 +307,7 @@ export const koKR = {
       apiKey: "API 키",
       apiKeyPlaceholder: "모델 API 키 입력",
       multiplier: "배율",
-      authorizedGroups: "승인된 사용자",
+      authorizedScope: "권한 범위",
       authorizationPlaceholder: "그룹 또는 사용자 선택",
       authorizedGroupsDescription:
         "선택한 그룹의 구성원만 이 모델을 사용할 수 있습니다.",

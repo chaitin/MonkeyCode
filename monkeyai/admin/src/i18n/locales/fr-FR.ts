@@ -316,7 +316,7 @@ export const frFR = {
       apiKey: "Clé API",
       apiKeyPlaceholder: "Saisissez la clé API du modèle",
       multiplier: "Multiplicateur",
-      authorizedGroups: "Utilisateurs autorisés",
+      authorizedScope: "Portée de l’autorisation",
       authorizationPlaceholder: "Sélectionnez des groupes ou des utilisateurs",
       authorizedGroupsDescription:
         "Seuls les membres des groupes sélectionnés peuvent utiliser ce modèle.",

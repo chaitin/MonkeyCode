@@ -297,7 +297,7 @@ export const zhTW = {
       apiKey: "密鑰",
       apiKeyPlaceholder: "輸入模型 API 密鑰",
       multiplier: "倍率",
-      authorizedGroups: "授權使用者",
+      authorizedScope: "授權範圍",
       authorizationPlaceholder: "選擇群組或使用者",
       authorizedGroupsDescription: "只有所選群組中的成員可以使用此模型。",
       groupAdministrators: "管理員",

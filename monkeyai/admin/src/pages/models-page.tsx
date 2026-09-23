@@ -11,7 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { GroupSelect } from "@/components/group-select"
+import { AuthorizationSelect } from "@/components/authorization-select"
 import { ImageGenerationTest } from "@/components/image-generation-test"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
@@ -74,7 +74,6 @@ import {
 } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
 import { useSkillTags } from "@/hooks/use-skill-tags"
-import { ROOT_GROUP_ID } from "@/lib/member-groups"
 import { getModelIconName } from "@/lib/model-utils"
 import { cn } from "@/lib/utils"
 
@@ -231,7 +230,7 @@ function flattenGroupTree(
 }
 
 export function ModelsPage() {
-  const { i18n, t } = useTranslation()
+  const { t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
@@ -263,6 +262,7 @@ export function ModelsPage() {
   >({})
   const [supportsVision, setSupportsVision] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
+  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -349,6 +349,7 @@ export function ModelsPage() {
     setQualityMultipliers({})
     setSupportsVision(false)
     setTagsOpen(false)
+    setAuthorizationOpen(false)
     setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
@@ -1061,50 +1062,19 @@ export function ModelsPage() {
                     </Field>
 
                     <Field>
-                      <FieldLabel htmlFor="model-authorized-groups">
-                        {t("pages.models.authorizedGroups")}
+                      <FieldLabel htmlFor="model-authorization">
+                        {t("pages.models.authorizedScope")}
                       </FieldLabel>
-                      <GroupSelect
-                        id="model-authorized-groups"
-                        options={flattenGroupTree(groups).map((group) => ({
-                          id: group.value,
-                          parentId: group.parentId,
-                          name: group.labelKey,
-                          disabled: group.value === ROOT_GROUP_ID,
-                        }))}
-                        users={members.map((member) => ({
-                          id: member.id,
-                          name: member.name,
-                          email: member.email,
-                          groupIds: member.groupId ? [member.groupId] : [],
-                        }))}
-                        label={t("pages.models.authorizedGroups")}
+                      <AuthorizationSelect
+                        groups={groups}
+                        members={members}
+                        id="model-authorization"
+                        open={authorizationOpen}
                         placeholder={t("pages.models.authorizationPlaceholder")}
-                        emptyText={t("pages.membersAndGroups.noMembersFound")}
-                        locale={i18n.resolvedLanguage ?? i18n.language}
-                        value={{
-                          groupIds: authorization.groupIds,
-                          userIds: authorization.memberIds,
-                        }}
-                        onValueChange={(next) =>
-                          setAuthorization({
-                            groupIds: [...next.groupIds],
-                            memberIds: [...next.userIds],
-                          })
-                        }
-                        disabled={saving}
-                        defaultExpanded
-                        collapsible
-                        multiple
-                        selectionMode="both"
-                        searchable
-                        searchPlaceholder={t(
-                          "pages.models.searchAuthorization"
-                        )}
-                        noResultsText={t(
-                          "pages.models.noMatchingAuthorization"
-                        )}
-                        cascadeGroups
+                        title={t("pages.models.authorizedScope")}
+                        value={authorization}
+                        onOpenChange={setAuthorizationOpen}
+                        onValueChange={setAuthorization}
                       />
                     </Field>
                   </FieldGroup>
@@ -1334,9 +1304,9 @@ export function ModelsPage() {
                     <CardFooter className="min-w-0 gap-4 border-t">
                       <span
                         className="w-2/5 truncate text-muted-foreground"
-                        title={t("pages.models.authorizedGroups")}
+                        title={t("pages.models.authorizedScope")}
                       >
-                        {t("pages.models.authorizedGroups")}
+                        {t("pages.models.authorizedScope")}
                       </span>
                       <span
                         className="w-3/5 truncate text-end font-medium"

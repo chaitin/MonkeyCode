@@ -422,7 +422,7 @@ export const zhCN = {
       apiKey: "密钥",
       apiKeyPlaceholder: "输入模型 API 密钥",
       multiplier: "倍率",
-      authorizedGroups: "授权用户",
+      authorizedScope: "授权范围",
       authorizationPlaceholder: "选择分组或用户",
       authorizedGroupsDescription: "只有所选分组中的成员可以使用该模型。",
       groupAdministrators: "管理员",

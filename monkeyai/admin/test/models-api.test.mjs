@@ -15,7 +15,8 @@ import { zhTW } from "../src/i18n/locales/zh-TW.ts"
 
 const resources = { ar, deDE, enUS, es419, frFR, jaJP, koKR, ruRU, zhCN, zhTW }
 
-const imageKeys = [
+const modelKeys = [
+  "authorizedScope",
   "kind",
   "textKind",
   "imageKind",
@@ -40,12 +41,13 @@ const imageKeys = [
   "taskStatus",
 ]
 
-test("image model UI has translations in all supported locales", () => {
+test("model UI has translations in all supported locales", () => {
   for (const [language, resource] of Object.entries(resources)) {
-    for (const key of imageKeys) {
+    for (const key of modelKeys) {
       assert.ok(resource.pages.models[key], `${language} is missing ${key}`)
     }
   }
+  assert.equal(zhCN.pages.models.authorizedScope, "授权范围")
 })
 
 test("resource editors retain and save tags", async () => {
@@ -108,13 +110,14 @@ test("models page uses backend models and authorization subjects", async () => {
     /id="model-multiplier"[\s\S]{0,400}?min="0\.01"[\s\S]{0,400}?step="0\.01"/
   )
   assert.doesNotMatch(source, /aspect_ratio_multipliers|operation_multipliers/)
-  assert.match(source, /<GroupSelect/)
-  assert.match(source, /selectionMode="both"/)
-  assert.match(source, /cascadeGroups/)
-  assert.match(source, /userIds: authorization\.memberIds/)
-  assert.match(source, /memberIds: \[\.\.\.next\.userIds\]/)
+  assert.match(source, /<AuthorizationSelect/)
+  assert.match(source, /groups=\{groups\}/)
+  assert.match(source, /members=\{members\}/)
+  assert.match(source, /open=\{authorizationOpen\}/)
+  assert.match(source, /value=\{authorization\}/)
+  assert.match(source, /onValueChange=\{setAuthorization\}/)
   assert.match(source, /user_ids: authorization\.memberIds/)
-  assert.doesNotMatch(source, /\bAuthorizationSelect\b|authorizationOpen/)
+  assert.doesNotMatch(source, /\bGroupSelect\b|ROOT_GROUP_ID/)
   assert.doesNotMatch(source, /member-01|engineering/)
 })
 

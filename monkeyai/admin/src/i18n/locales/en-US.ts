@@ -441,7 +441,7 @@ export const enUS = {
       apiKey: "API key",
       apiKeyPlaceholder: "Enter the model API key",
       multiplier: "Multiplier",
-      authorizedGroups: "Authorized users",
+      authorizedScope: "Authorization scope",
       authorizationPlaceholder: "Select groups or users",
       authorizedGroupsDescription:
         "Only members of the selected groups can use this model.",

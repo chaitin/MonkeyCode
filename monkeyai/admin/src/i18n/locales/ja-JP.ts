@@ -311,7 +311,7 @@ export const jaJP = {
       apiKey: "API キー",
       apiKeyPlaceholder: "モデルの API キーを入力",
       multiplier: "倍率",
-      authorizedGroups: "許可ユーザー",
+      authorizedScope: "許可範囲",
       authorizationPlaceholder: "グループまたはユーザーを選択",
       authorizedGroupsDescription:
         "選択したグループのメンバーのみ、このモデルを利用できます。",

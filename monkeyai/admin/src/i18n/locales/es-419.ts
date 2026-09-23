@@ -317,7 +317,7 @@ export const es419 = {
       apiKey: "Clave de API",
       apiKeyPlaceholder: "Ingresa la clave de API del modelo",
       multiplier: "Multiplicador",
-      authorizedGroups: "Usuarios autorizados",
+      authorizedScope: "Alcance de autorización",
       authorizationPlaceholder: "Selecciona grupos o usuarios",
       authorizedGroupsDescription:
         "Solo los miembros de los grupos seleccionados pueden usar este modelo.",

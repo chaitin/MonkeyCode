@@ -318,7 +318,7 @@ export const deDE = {
       apiKey: "API-Schlüssel",
       apiKeyPlaceholder: "API-Schlüssel des Modells eingeben",
       multiplier: "Multiplikator",
-      authorizedGroups: "Berechtigte Benutzer",
+      authorizedScope: "Berechtigungsumfang",
       authorizationPlaceholder: "Gruppen oder Benutzer auswählen",
       authorizedGroupsDescription:
         "Nur Mitglieder der ausgewählten Gruppen können dieses Modell verwenden.",
