@@ -11,6 +11,52 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
+test("operation log time is muted and its operations column has a fixed width", async () => {
+  const source = await readFile(
+    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(
+    source,
+    /TableHead className="ps-\(--card-spacing\) text-muted-foreground"/
+  )
+  assert.match(
+    source,
+    /TableCell className="ps-\(--card-spacing\) text-muted-foreground"/
+  )
+  assert.equal(
+    (
+      source.match(
+        /className="w-20 pe-\(--card-spacing\) whitespace-nowrap"/g
+      ) ?? []
+    ).length,
+    2
+  )
+})
+
+test("connector credentials have audit target translations in every locale", async () => {
+  const translations = {
+    "ar.ts": "بيانات اعتماد الموصل",
+    "de-DE.ts": "Konnektor-Anmeldedaten",
+    "en-US.ts": "Connector credential",
+    "es-419.ts": "Credencial del conector",
+    "fr-FR.ts": "Identifiants du connecteur",
+    "ja-JP.ts": "コネクター認証情報",
+    "ko-KR.ts": "커넥터 인증 정보",
+    "ru-RU.ts": "Учётные данные коннектора",
+    "zh-CN.ts": "连接器凭证",
+    "zh-TW.ts": "連接器憑證",
+  }
+
+  for (const [file, label] of Object.entries(translations)) {
+    const locale = await readFile(
+      new URL(`../src/i18n/locales/${file}`, import.meta.url),
+      "utf8"
+    )
+    assert.match(locale, new RegExp(`connector_credential: "${label}"`))
+  }
+})
+
 test("operation logs show 50 rows per page by default", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
@@ -159,9 +205,8 @@ test("operation log operator appears before the result with regular text", async
   )
   assert.match(
     row,
-    /<TableCell className="ps-\(--card-spacing\)">\s*\{dateFormatter\.format/
+    /<TableCell className="ps-\(--card-spacing\) text-muted-foreground">\s*\{dateFormatter\.format/
   )
-  assert.doesNotMatch(row, /ps-\(--card-spacing\) text-muted-foreground/)
   assert.doesNotMatch(row, /font-mono text-muted-foreground/)
 })
 
@@ -178,7 +223,7 @@ test("operation log details are opened from the last actions column", async () =
   )
   assert.match(
     header,
-    /<TableHead className="w-px pe-\(--card-spacing\) whitespace-nowrap">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
+    /<TableHead className="w-20 pe-\(--card-spacing\) whitespace-nowrap">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
   )
 
   const row = source
@@ -186,7 +231,7 @@ test("operation log details are opened from the last actions column", async () =
     .split("</TableRow>")[0]
   assert.match(
     row,
-    /<TableCell className="w-px pe-\(--card-spacing\) whitespace-nowrap">\s*<Dialog>/
+    /<TableCell className="w-20 pe-\(--card-spacing\) whitespace-nowrap">\s*<Dialog>/
   )
   assert.match(
     row,

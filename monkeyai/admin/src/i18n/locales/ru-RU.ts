@@ -11,6 +11,10 @@ export const ruRU = {
     userAgent: "User-Agent",
     requestId: "ID запроса",
     error: "Ошибка",
+    targets: {
+      ...enUS.audit.targets,
+      connector_credential: "Учётные данные коннектора",
+    },
   },
 
   resources: enUS.resources,
@@ -730,24 +734,44 @@ export const ruRU = {
       title: "Настройки расходов",
       description:
         "Настройте правила списания и периодическое обновление квот пользователей.",
-      save: "Сохранить настройки",
+      save: "Сохранить",
       saved: "Настройки расходов сохранены",
       modelPricing: {
-        title: "Правила списания за модели",
-        description: "Настройте расход баллов за токены моделей.",
-        inputToken: "Модель — входные токены",
-        cachedInputToken: "Модель — входные токены (кэш)",
-        outputToken: "Модель — выходные токены",
+        title: "Правила списания за LLM",
+        description: "Задайте цену токенов LLM в баллах.",
+        inputToken: "Стоимость входных токенов без кэша",
+        cachedInputToken: "Стоимость кэшированных входных токенов",
+        outputToken: "Стоимость выходных токенов",
+        inputTokenDescription:
+          "{{credits}} баллов за миллион входных токенов без кэша",
+        cachedInputTokenDescription:
+          "{{credits}} баллов за миллион кэшированных входных токенов",
+        outputTokenDescription:
+          "{{credits}} баллов за миллион выходных токенов",
+        configure: "Настроить",
+        manageMultiplier: "Настроить множители моделей",
+        configureTitle: "Настроить: {{name}}",
+        dialogDescription: "Задайте расход баллов на миллион токенов.",
+        valueLabel: "Баллы",
+        valueInvalid:
+          "Введите неотрицательное число с точностью до шести знаков.",
+        cancel: "Отмена",
+        confirm: "Подтвердить",
         unit: "Баллов на миллион токенов",
+      },
+      toolPricing: {
+        title: "Правила списания за инструменты",
+        description: "Задайте расход баллов за вызов инструмента.",
+        manage: "Настроить тарифы инструментов",
       },
       chargingMethod: {
         title: "Способ списания",
-        description:
-          "Выполняйте списания локально или подключите удалённый биллинг Baizhi Cloud.",
+        description: "Настройте стратегию тарификации ресурсов.",
         mode: "Способ списания",
         modes: {
-          local: "Локальный биллинг",
-          remote: "Удалённый биллинг (Baizhi Cloud)",
+          disabled: "Без списаний",
+          local: "Прямая тарификация",
+          remote: "Тарификация в связке с Baizhi Cloud",
         },
         modeDescriptions: {
           local:
@@ -760,10 +784,27 @@ export const ruRU = {
         apiKeyPlaceholder: "Введите ключ Baizhi Cloud",
       },
       quotaRefresh: {
-        title: "Настройки обновления",
-        description:
-          "Цикл обновления применяется ко всем группам и пользователям.",
-        cycle: "Цикл обновления",
+        title: "Автоматическое обновление баллов",
+        description: "Автоматически обновляет баллы участников по циклу.",
+        itemTitle: "Цикл сброса баллов",
+        itemDescription: "Автоматический сброс: {{cycle}}",
+        nextResetTitle: "Время следующего сброса",
+        resetNow: "Сбросить сейчас",
+        resetting: "Сброс…",
+        resetSuccess: "Квоты {{count}} участников сброшены.",
+        resetDialogTitle: "Сбросить квоты участников сейчас",
+        resetDialogDescription:
+          "Выберите группы и участников, квоты которых нужно сбросить немедленно. Выбор группы включает её участников.",
+        resetTargets: "Группы и участники",
+        resetPlaceholder: "Выберите группы или участников",
+        resetSearch: "Поиск групп, имён или адресов почты",
+        resetNoResults: "Подходящие группы или участники не найдены.",
+        configure: "Настроить",
+        dialogTitle: "Настроить цикл сброса",
+        dialogDescription: "Выберите цикл сброса для локальной тарификации.",
+        cancel: "Отмена",
+        confirm: "Подтвердить",
+        cycle: "Цикл сброса",
         cycleDescription:
           "Все группы и пользователи обновляются вместе в начале выбранного цикла.",
         credits: "Баллов за обновление",
@@ -779,7 +820,9 @@ export const ruRU = {
         },
       },
       groupQuota: {
-        title: "Квоты групп и пользователей",
+        title: "Квоты групп",
+        memberTitle: "Квоты участников",
+        manageGroups: "Управление группами",
         description:
           "Для корневой группы квота обязательна. Пустые подгруппы и пользователи наследуют квоту ближайшей родительской группы.",
         treeTitle: "Квоты групп и пользователей",
@@ -792,6 +835,9 @@ export const ruRU = {
         overridden: "Индивидуально",
         inherited: "Наследует {{credits}}",
         summary: "{{cycle}} · {{credits}} баллов",
+        remaining: "Осталось {{credits}} баллов",
+        billingDisabled: "Биллинг отключен",
+        remoteBilling: "Удалённый биллинг",
         actions: "Действия с квотой",
         adjust: "Изменить квоту",
         dialogTitle: "Изменить квоту",

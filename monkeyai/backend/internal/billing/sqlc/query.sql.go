@@ -65,39 +65,6 @@ func (q *Queries) AccountDifferences(ctx context.Context) ([][]byte, error) {
 	return items, nil
 }
 
-const accountHistory = `-- name: AccountHistory :many
-SELECT
-    jsonb_build_object('id', id, 'period_start_at', period_start_at, 'period_end_at', period_end_at,
-	'balance', balance::text, 'frozen', frozen::text, 'quota', QUOTA::text)
-FROM
-    credit_accounts
-WHERE
-    user_id = $1
-ORDER BY
-    period_start_at DESC
-LIMIT 24
-`
-
-func (q *Queries) AccountHistory(ctx context.Context, userID string) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, accountHistory, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := [][]byte{}
-	for rows.Next() {
-		var jsonb_build_object []byte
-		if err := rows.Scan(&jsonb_build_object); err != nil {
-			return nil, err
-		}
-		items = append(items, jsonb_build_object)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const activeUsersWithoutAccount = `-- name: ActiveUsersWithoutAccount :many
 SELECT
     id
@@ -596,7 +563,7 @@ WITH RECURSIVE chain AS (
         0 AS depth
     FROM group_users gu
         JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
-    WHERE gu.user_id = $1 AND gu.removed_at IS NULL
+    WHERE gu.user_id = $2 AND gu.removed_at IS NULL
     UNION ALL
     SELECT c.member_id, g.id, g.parent_id, c.created_at, c.depth + 1
     FROM chain c
@@ -604,12 +571,12 @@ WITH RECURSIVE chain AS (
     WHERE g.deleted_at IS NULL AND c.depth < 100
 ),
 root AS (
-    SELECT COALESCE((SELECT (value ->> 'root_credits')::numeric FROM settings WHERE key = 'billing'), 15000) AS credits
+    SELECT COALESCE((SELECT (value ->> 'root_credits')::numeric FROM settings WHERE key = 'billing'), 10000) AS credits
 ),
 choices AS (
     SELECT c.id, c.created_at,
         COALESCE(q.credits_per_cycle, root.credits) AS credits,
-        COALESCE(q.source, $2::text) AS source
+        COALESCE(q.source, $1::text) AS source
     FROM chain c
         CROSS JOIN root
         LEFT JOIN LATERAL (
@@ -623,12 +590,10 @@ choices AS (
     WHERE c.depth = 0
 )
 SELECT
-    COALESCE(q.credits_per_cycle, g.credits, root.credits)::text AS credits,
+    COALESCE(g.credits, root.credits)::text AS credits,
     COALESCE(g.id::text, '')::text AS group_id,
-    CASE WHEN q.id IS NOT NULL THEN $1::text
-        ELSE COALESCE(g.source, $2::text) END::text AS source
+    COALESCE(g.source, $1::text)::text AS source
 FROM root
-    LEFT JOIN billing_quotas q ON q.user_id = $1 AND q.deleted_at IS NULL
     LEFT JOIN LATERAL (
         SELECT id, credits, source FROM choices
         ORDER BY credits DESC, created_at, id
@@ -637,8 +602,8 @@ FROM root
 `
 
 type EffectiveQuotaParams struct {
-	ID        string
 	RootGroup string
+	ID        string
 }
 
 type EffectiveQuotaRow struct {
@@ -648,7 +613,7 @@ type EffectiveQuotaRow struct {
 }
 
 func (q *Queries) EffectiveQuota(ctx context.Context, arg EffectiveQuotaParams) (EffectiveQuotaRow, error) {
-	row := q.db.QueryRow(ctx, effectiveQuota, arg.ID, arg.RootGroup)
+	row := q.db.QueryRow(ctx, effectiveQuota, arg.RootGroup, arg.ID)
 	var i EffectiveQuotaRow
 	err := row.Scan(&i.Credits, &i.GroupID, &i.Source)
 	return i, err
@@ -726,6 +691,26 @@ func (q *Queries) GetAdjustment(ctx context.Context, eventKey *string) (GetAdjus
 	row := q.db.QueryRow(ctx, getAdjustment, eventKey)
 	var i GetAdjustmentRow
 	err := row.Scan(&i.CreditDelta, &i.ItemName)
+	return i, err
+}
+
+const getImmediateReset = `-- name: GetImmediateReset :one
+SELECT
+    COALESCE(metadata ->> 'request_hash', '')::text AS request_hash,
+    COALESCE((metadata ->> 'reset_count')::bigint, 0)::bigint AS reset_count
+FROM credit_ledger_entries
+WHERE event_key = $1
+`
+
+type GetImmediateResetRow struct {
+	RequestHash string
+	ResetCount  int64
+}
+
+func (q *Queries) GetImmediateReset(ctx context.Context, eventKey *string) (GetImmediateResetRow, error) {
+	row := q.db.QueryRow(ctx, getImmediateReset, eventKey)
+	var i GetImmediateResetRow
+	err := row.Scan(&i.RequestHash, &i.ResetCount)
 	return i, err
 }
 
@@ -964,6 +949,56 @@ func (q *Queries) ImagePricingModel(ctx context.Context, id string) (ImagePricin
 	var i ImagePricingModelRow
 	err := row.Scan(&i.OwnershipType, &i.DisplayName)
 	return i, err
+}
+
+const immediateResetUsers = `-- name: ImmediateResetUsers :many
+WITH RECURSIVE descendants(id) AS (
+    SELECT id FROM groups
+    WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+    UNION
+    SELECT g.id FROM groups g
+    JOIN descendants d ON g.parent_id = d.id
+    WHERE g.deleted_at IS NULL
+), selected_users(id) AS (
+    SELECT unnest($2::uuid[])
+    UNION
+    SELECT gu.user_id FROM group_users gu
+    JOIN descendants d ON d.id = gu.group_id
+    WHERE gu.removed_at IS NULL
+    UNION
+    SELECT id FROM users WHERE $3::boolean
+)
+SELECT u.id
+FROM users u
+JOIN selected_users selected ON selected.id = u.id
+WHERE u.deleted_at IS NULL
+ORDER BY u.id
+`
+
+type ImmediateResetUsersParams struct {
+	GroupIds    []string
+	UserIds     []string
+	IncludeRoot bool
+}
+
+func (q *Queries) ImmediateResetUsers(ctx context.Context, arg ImmediateResetUsersParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, immediateResetUsers, arg.GroupIds, arg.UserIds, arg.IncludeRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const initializePolicy = `-- name: InitializePolicy :execresult
@@ -1206,15 +1241,15 @@ memberships AS (
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
         'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
-        'credits', q.credits_per_cycle::text,
-        'effective_credits', COALESCE(q.credits_per_cycle, g.credits, $1::numeric)::text,
-        'inherited_from', CASE WHEN q.id IS NOT NULL THEN u.id::text
-            ELSE COALESCE(g.source, $2::text) END,
+        'effective_credits', COALESCE(g.credits, $1::numeric)::text,
+        'balance_credits', COALESCE(a.balance,
+            g.credits, $1::numeric)::text,
+        'available_credits', COALESCE(a.balance - a.frozen,
+            g.credits, $1::numeric)::text,
+        'inherited_from', COALESCE(g.source, $2::text),
         'external_user_id', wb.external_user_id)
 FROM
     users u
-    LEFT JOIN billing_quotas q ON q.user_id = u.id
-        AND q.deleted_at IS NULL
     LEFT JOIN LATERAL (
         SELECT m.credits, m.source
         FROM memberships m
@@ -1222,6 +1257,13 @@ FROM
         ORDER BY m.credits DESC, m.created_at, m.id
         LIMIT 1
     ) g ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT balance, frozen
+        FROM credit_accounts
+        WHERE user_id = u.id
+            AND period_start_at = $3
+        LIMIT 1
+    ) a ON TRUE
     LEFT JOIN wallet_user_bindings wb ON wb.user_id = u.id
 WHERE
     u.deleted_at IS NULL
@@ -1231,12 +1273,13 @@ ORDER BY
 `
 
 type ListUserQuotasParams struct {
-	RootCredits string
-	RootGroup   string
+	RootCredits   string
+	RootGroup     string
+	PeriodStartAt time.Time
 }
 
 func (q *Queries) ListUserQuotas(ctx context.Context, arg ListUserQuotasParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listUserQuotas, arg.RootCredits, arg.RootGroup)
+	rows, err := q.db.Query(ctx, listUserQuotas, arg.RootCredits, arg.RootGroup, arg.PeriodStartAt)
 	if err != nil {
 		return nil, err
 	}
@@ -1323,6 +1366,14 @@ func (q *Queries) LockBalance(ctx context.Context, id string) (string, error) {
 	var balance string
 	err := row.Scan(&balance)
 	return balance, err
+}
+
+const lockGroupsForReset = `-- name: LockGroupsForReset :execresult
+SELECT pg_advisory_xact_lock(741209)
+`
+
+func (q *Queries) LockGroupsForReset(ctx context.Context) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, lockGroupsForReset)
 }
 
 const lockPolicy = `-- name: LockPolicy :one
@@ -1730,6 +1781,29 @@ func (q *Queries) ReleaseSettlementLock(ctx context.Context, hashtextextended st
 	return q.db.Exec(ctx, releaseSettlementLock, hashtextextended)
 }
 
+const resetTargetsExist = `-- name: ResetTargetsExist :one
+SELECT
+    (SELECT count(*) FROM groups WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL) = cardinality($1::uuid[]) AS groups_exist,
+    (SELECT count(*) FROM users WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL) = cardinality($2::uuid[]) AS users_exist
+`
+
+type ResetTargetsExistParams struct {
+	GroupIds []string
+	UserIds  []string
+}
+
+type ResetTargetsExistRow struct {
+	GroupsExist bool
+	UsersExist  bool
+}
+
+func (q *Queries) ResetTargetsExist(ctx context.Context, arg ResetTargetsExistParams) (ResetTargetsExistRow, error) {
+	row := q.db.QueryRow(ctx, resetTargetsExist, arg.GroupIds, arg.UserIds)
+	var i ResetTargetsExistRow
+	err := row.Scan(&i.GroupsExist, &i.UsersExist)
+	return i, err
+}
+
 const resolveImageJob = `-- name: ResolveImageJob :execrows
 UPDATE image_jobs
 SET status = $1::text,
@@ -1877,6 +1951,32 @@ func (q *Queries) SessionOwned(ctx context.Context, arg SessionOwnedParams) (boo
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const setAccountQuotaBalance = `-- name: SetAccountQuotaBalance :execresult
+UPDATE credit_accounts
+SET balance = $1,
+    quota = $1,
+    group_id = NULLIF($2::text, '')::uuid,
+    last_refreshed_at = $3,
+    updated_at = now()
+WHERE id = $4
+`
+
+type SetAccountQuotaBalanceParams struct {
+	Balance     string
+	GroupID     string
+	RefreshedAt time.Time
+	ID          string
+}
+
+func (q *Queries) SetAccountQuotaBalance(ctx context.Context, arg SetAccountQuotaBalanceParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, setAccountQuotaBalance,
+		arg.Balance,
+		arg.GroupID,
+		arg.RefreshedAt,
+		arg.ID,
+	)
 }
 
 const setRootQuota = `-- name: SetRootQuota :execresult

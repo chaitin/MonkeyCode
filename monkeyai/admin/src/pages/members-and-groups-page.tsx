@@ -470,7 +470,7 @@ export function MembersAndGroupsPage() {
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 aria-pressed={multiSelect}
                 disabled={loading || moving || batchUpdatingStatus}
                 onClick={() => {
@@ -495,7 +495,7 @@ export function MembersAndGroupsPage() {
                       <Button
                         type="button"
                         size="sm"
-                        variant="outline"
+                        variant="secondary"
                         disabled={
                           moving ||
                           batchUpdatingStatus ||

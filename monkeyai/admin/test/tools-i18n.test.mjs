@@ -65,5 +65,5 @@ test("tools only configure remote MCP servers with client or centralized auth", 
   assert.match(source, /disabled=\{!tool\.enabled\}/)
   assert.match(source, /description: string/)
   assert.match(source, /\{tool\.description\}/)
-  assert.doesNotMatch(source, /McpToolPricing|pricingOptions|<Select/)
+  assert.doesNotMatch(source, /McpToolPricing|pricingOptions/)
 })

@@ -62,6 +62,26 @@ test("members page keeps the original split cards and compact member list", asyn
   assert.doesNotMatch(source, /<Table/)
 })
 
+test("group card selection actions use secondary buttons", async () => {
+  const source = await readFile(
+    new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
+    "utf8"
+  )
+  const groupActions = source
+    .split(
+      '<CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>'
+    )[1]
+    .split("</CardAction>")[0]
+
+  assert.equal((groupActions.match(/variant="secondary"/g) ?? []).length, 2)
+  assert.doesNotMatch(groupActions, /variant="outline"/)
+  assert.match(
+    groupActions,
+    /treeSelection\.\$\{multiSelect \? "exit" : "enter"\}/
+  )
+  assert.match(groupActions, /treeSelection\.actions/)
+})
+
 test("both members panels scroll inside shadcn Scroll Areas", async () => {
   const page = await readFile(
     new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),

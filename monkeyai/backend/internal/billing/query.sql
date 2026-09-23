@@ -74,15 +74,15 @@ memberships AS (
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
         'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
-        'credits', q.credits_per_cycle::text,
-        'effective_credits', COALESCE(q.credits_per_cycle, g.credits, sqlc.arg(root_credits)::numeric)::text,
-        'inherited_from', CASE WHEN q.id IS NOT NULL THEN u.id::text
-            ELSE COALESCE(g.source, sqlc.arg(root_group)::text) END,
+        'effective_credits', COALESCE(g.credits, sqlc.arg(root_credits)::numeric)::text,
+        'balance_credits', COALESCE(a.balance,
+            g.credits, sqlc.arg(root_credits)::numeric)::text,
+        'available_credits', COALESCE(a.balance - a.frozen,
+            g.credits, sqlc.arg(root_credits)::numeric)::text,
+        'inherited_from', COALESCE(g.source, sqlc.arg(root_group)::text),
         'external_user_id', wb.external_user_id)
 FROM
     users u
-    LEFT JOIN billing_quotas q ON q.user_id = u.id
-        AND q.deleted_at IS NULL
     LEFT JOIN LATERAL (
         SELECT m.credits, m.source
         FROM memberships m
@@ -90,6 +90,13 @@ FROM
         ORDER BY m.credits DESC, m.created_at, m.id
         LIMIT 1
     ) g ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT balance, frozen
+        FROM credit_accounts
+        WHERE user_id = u.id
+            AND period_start_at = sqlc.arg(period_start_at)
+        LIMIT 1
+    ) a ON TRUE
     LEFT JOIN wallet_user_bindings wb ON wb.user_id = u.id
 WHERE
     u.deleted_at IS NULL
@@ -182,18 +189,6 @@ UPDATE credit_accounts
 SET period_end_at = sqlc.arg(period_end_at), updated_at = now()
 WHERE period_start_at = sqlc.arg(period_start_at)
     AND period_end_at <> sqlc.arg(period_end_at);
-
--- name: AccountHistory :many
-SELECT
-    jsonb_build_object('id', id, 'period_start_at', period_start_at, 'period_end_at', period_end_at,
-	'balance', balance::text, 'frozen', frozen::text, 'quota', QUOTA::text)
-FROM
-    credit_accounts
-WHERE
-    user_id = $1
-ORDER BY
-    period_start_at DESC
-LIMIT 24;
 
 -- name: WalletUser :one
 SELECT min(i.provider_subject)::text AS external_user_id
@@ -572,7 +567,7 @@ WITH RECURSIVE chain AS (
     WHERE g.deleted_at IS NULL AND c.depth < 100
 ),
 root AS (
-    SELECT COALESCE((SELECT (value ->> 'root_credits')::numeric FROM settings WHERE key = 'billing'), 15000) AS credits
+    SELECT COALESCE((SELECT (value ->> 'root_credits')::numeric FROM settings WHERE key = 'billing'), 10000) AS credits
 ),
 choices AS (
     SELECT c.id, c.created_at,
@@ -591,17 +586,53 @@ choices AS (
     WHERE c.depth = 0
 )
 SELECT
-    COALESCE(q.credits_per_cycle, g.credits, root.credits)::text AS credits,
+    COALESCE(g.credits, root.credits)::text AS credits,
     COALESCE(g.id::text, '')::text AS group_id,
-    CASE WHEN q.id IS NOT NULL THEN sqlc.arg(id)::text
-        ELSE COALESCE(g.source, sqlc.arg(root_group)::text) END::text AS source
+    COALESCE(g.source, sqlc.arg(root_group)::text)::text AS source
 FROM root
-    LEFT JOIN billing_quotas q ON q.user_id = sqlc.arg(id) AND q.deleted_at IS NULL
     LEFT JOIN LATERAL (
         SELECT id, credits, source FROM choices
         ORDER BY credits DESC, created_at, id
         LIMIT 1
     ) g ON TRUE;
+
+-- name: LockGroupsForReset :execresult
+SELECT pg_advisory_xact_lock(741209);
+
+-- name: ResetTargetsExist :one
+SELECT
+    (SELECT count(*) FROM groups WHERE id = ANY(sqlc.arg(group_ids)::uuid[]) AND deleted_at IS NULL) = cardinality(sqlc.arg(group_ids)::uuid[]) AS groups_exist,
+    (SELECT count(*) FROM users WHERE id = ANY(sqlc.arg(user_ids)::uuid[]) AND deleted_at IS NULL) = cardinality(sqlc.arg(user_ids)::uuid[]) AS users_exist;
+
+-- name: ImmediateResetUsers :many
+WITH RECURSIVE descendants(id) AS (
+    SELECT id FROM groups
+    WHERE id = ANY(sqlc.arg(group_ids)::uuid[]) AND deleted_at IS NULL
+    UNION
+    SELECT g.id FROM groups g
+    JOIN descendants d ON g.parent_id = d.id
+    WHERE g.deleted_at IS NULL
+), selected_users(id) AS (
+    SELECT unnest(sqlc.arg(user_ids)::uuid[])
+    UNION
+    SELECT gu.user_id FROM group_users gu
+    JOIN descendants d ON d.id = gu.group_id
+    WHERE gu.removed_at IS NULL
+    UNION
+    SELECT id FROM users WHERE sqlc.arg(include_root)::boolean
+)
+SELECT u.id
+FROM users u
+JOIN selected_users selected ON selected.id = u.id
+WHERE u.deleted_at IS NULL
+ORDER BY u.id;
+
+-- name: GetImmediateReset :one
+SELECT
+    COALESCE(metadata ->> 'request_hash', '')::text AS request_hash,
+    COALESCE((metadata ->> 'reset_count')::bigint, 0)::bigint AS reset_count
+FROM credit_ledger_entries
+WHERE event_key = $1;
 
 -- name: LockUser :one
 SELECT
@@ -620,6 +651,15 @@ INSERT INTO credit_accounts (user_id, balance, QUOTA, group_id, period_start_at,
 	sqlc.arg(last_refreshed_at))
 RETURNING
     id;
+
+-- name: SetAccountQuotaBalance :execresult
+UPDATE credit_accounts
+SET balance = sqlc.arg(balance),
+    quota = sqlc.arg(balance),
+    group_id = NULLIF(sqlc.arg(group_id)::text, '')::uuid,
+    last_refreshed_at = sqlc.arg(refreshed_at),
+    updated_at = now()
+WHERE id = sqlc.arg(id);
 
 -- name: AppendLedger :execresult
 WITH a AS (

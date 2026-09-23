@@ -953,7 +953,7 @@ paths:
   /api/admin/v1/billing/quotas:
     get:
       summary: 读取分组、成员额度与继承来源
-      description: 成员直接所属分组与成员管理一致。个人自定义额度优先；否则取各所属分组沿父级解析出的有效额度最大值，直属虚拟根节点的成员继承团队额度。
+      description: 成员直接所属分组与成员管理一致；周期额度取各所属分组沿父级解析出的有效额度最大值，直属虚拟根节点的成员继承团队额度。
       responses:
         '200':
           description: 请求成功
@@ -1004,15 +1004,17 @@ paths:
                           items:
                             type: string
                             format: uuid
-                        credits:
-                          anyOf:
-                          - $ref: '#/components/schemas/CreditAmount'
-                          - type: 'null'
                         effective_credits:
                           $ref: '#/components/schemas/CreditAmount'
+                        balance_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                          description: 当前周期账户的账面剩余；尚未开户时等于有效周期额度。
+                        available_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                          description: 当前周期账户的可用积分（账面剩余减冻结积分）；尚未开户时等于有效周期额度。
                         inherited_from:
                           type: string
-                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
+                          description: 最高有效额度的来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1031,7 +1033,7 @@ paths:
         '409':
           description: 修订号、幂等键或交易状态冲突
     put:
-      summary: 批量更新周期额度，下周期生效
+      summary: 批量更新分组周期额度，下周期生效
       responses:
         '200':
           description: 请求成功
@@ -1082,15 +1084,17 @@ paths:
                           items:
                             type: string
                             format: uuid
-                        credits:
-                          anyOf:
-                          - $ref: '#/components/schemas/CreditAmount'
-                          - type: 'null'
                         effective_credits:
                           $ref: '#/components/schemas/CreditAmount'
+                        balance_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                          description: 当前周期账户的账面剩余；尚未开户时等于有效周期额度。
+                        available_credits:
+                          $ref: '#/components/schemas/CreditAmount'
+                          description: 当前周期账户的可用积分（账面剩余减冻结积分）；尚未开户时等于有效周期额度。
                         inherited_from:
                           type: string
-                          description: 自定义额度为用户 UUID，否则为最高额度来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
+                          description: 最高有效额度的来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
                         external_user_id:
                           type:
                           - string
@@ -1124,12 +1128,12 @@ paths:
                     properties:
                       subject_type:
                         enum:
-                        - user
                         - group
                       id:
                         type: string
-                        description: 用户或分组 UUID；团队默认额度使用虚拟根的全零 UUID。
+                        description: 分组 UUID；团队默认额度使用虚拟根的全零 UUID。
                       credits:
+                        description: 非负整数积分；null 表示继承上级额度。
                         anyOf:
                         - $ref: '#/components/schemas/CreditAmount'
                         - type: 'null'
@@ -1140,6 +1144,60 @@ paths:
               required:
               - revision
               - changes
+  /api/admin/v1/billing/quotas/reset:
+    post:
+      summary: 立即重置所选分组和成员的当前周期额度
+      description: 分组包含所有后代分组的成员；成员自动去重。仅直接计费模式可用。重置当前余额和周期额度快照，保留冻结积分，并记录重置流水与审计。
+      responses:
+        '200':
+          description: 重置成功或幂等重放成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reset_count:
+                    type: integer
+                required:
+                - reset_count
+        '400':
+          description: 请求格式不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
+        '404':
+          description: 分组或成员不存在
+        '409':
+          description: 非直接计费模式或幂等键冲突
+        '422':
+          description: 选择为空、数量超限或没有可重置成员
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group_ids:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: string
+                    format: uuid
+                user_ids:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: string
+                    format: uuid
+                idempotency_key:
+                  type: string
+                  format: uuid
+              required:
+              - group_ids
+              - user_ids
+              - idempotency_key
   /api/admin/v1/billing/accounts/{userID}:
     parameters:
     - in: path
@@ -1149,7 +1207,7 @@ paths:
         format: uuid
       required: true
     get:
-      summary: 查询当期账户与最近 24 个周期
+      summary: 查询当期积分账户
       responses:
         '200':
           description: 请求成功
@@ -1160,10 +1218,6 @@ paths:
                 properties:
                   account:
                     $ref: '#/components/schemas/CreditAccount'
-                  history:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/CreditAccount'
                   external_user_id:
                     type: string
                   wallet:
@@ -1204,10 +1258,6 @@ paths:
                   properties:
                     account:
                       $ref: '#/components/schemas/CreditAccount'
-                    history:
-                      type: array
-                      items:
-                        $ref: '#/components/schemas/CreditAccount'
                     external_user_id:
                       type: string
                     wallet:
@@ -1840,7 +1890,7 @@ paths:
           format: uuid
     put:
       summary: 替换分组直接成员
-      description: 调整直接成员关系，不改变用户角色或子分组成员。空数组清空直接成员，重复 ID 自动去重。成员额度随分组关系继承，多个分组取最高有效额度，个人自定义额度优先；变更不重发当期额度。
+      description: 调整直接成员关系，不改变用户角色或子分组成员。空数组清空直接成员，重复 ID 自动去重。成员额度随分组关系继承，多个分组取最高有效额度；变更不重发当期额度。
       requestBody:
         required: true
         content:

@@ -396,7 +396,7 @@ export function OperationLogsPage() {
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="ps-(--card-spacing) text-muted-foreground">
                     {t("pages.operationLogs.columns.time")}
                   </TableHead>
                   <TableHead>
@@ -411,7 +411,7 @@ export function OperationLogsPage() {
                   <TableHead>
                     {t("pages.operationLogs.columns.ipAddress")}
                   </TableHead>
-                  <TableHead className="w-px pe-(--card-spacing) whitespace-nowrap">
+                  <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
                     {t("pages.operationLogs.columns.operations")}
                   </TableHead>
                 </TableRow>
@@ -420,7 +420,7 @@ export function OperationLogsPage() {
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="ps-(--card-spacing)">
+                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
                         {dateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
                       <TableCell>
@@ -452,7 +452,7 @@ export function OperationLogsPage() {
                       <TableCell className="font-mono">
                         {log.source_ip || "—"}
                       </TableCell>
-                      <TableCell className="w-px pe-(--card-spacing) whitespace-nowrap">
+                      <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
                         <Dialog>
                           <DialogTrigger
                             render={

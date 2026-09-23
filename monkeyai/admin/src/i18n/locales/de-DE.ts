@@ -11,6 +11,10 @@ export const deDE = {
     userAgent: "User-Agent",
     requestId: "Anfrage-ID",
     error: "Fehler",
+    targets: {
+      ...enUS.audit.targets,
+      connector_credential: "Konnektor-Anmeldedaten",
+    },
   },
 
   resources: enUS.resources,
@@ -742,24 +746,44 @@ export const deDE = {
       title: "Kosteneinstellungen",
       description:
         "Konfigurieren Sie Abrechnungsregeln und die periodische Aktualisierung von Benutzerkontingenten.",
-      save: "Einstellungen speichern",
+      save: "Speichern",
       saved: "Kosteneinstellungen gespeichert",
       modelPricing: {
-        title: "Modell-Abrechnungsregeln",
-        description: "Konfigurieren Sie den Punkteverbrauch für Modell-Token.",
-        inputToken: "Modell — Eingabe-Token",
-        cachedInputToken: "Modell — Eingabe-Token (Cache-Treffer)",
-        outputToken: "Modell — Ausgabe-Token",
+        title: "Abrechnungsregeln für LLMs",
+        description: "Guthabenpreise für LLM-Token festlegen.",
+        inputToken: "Kosten für nicht gecachte Eingabe-Token",
+        cachedInputToken: "Kosten für gecachte Eingabe-Token",
+        outputToken: "Kosten für Ausgabe-Token",
+        inputTokenDescription:
+          "{{credits}} Guthaben pro Million nicht gecachte Eingabe-Token",
+        cachedInputTokenDescription:
+          "{{credits}} Guthaben pro Million gecachte Eingabe-Token",
+        outputTokenDescription:
+          "{{credits}} Guthaben pro Million Ausgabe-Token",
+        configure: "Konfigurieren",
+        manageMultiplier: "Modellmultiplikatoren konfigurieren",
+        configureTitle: "{{name}} konfigurieren",
+        dialogDescription: "Guthabenverbrauch pro Million Token festlegen.",
+        valueLabel: "Guthaben",
+        valueInvalid:
+          "Nicht-negative Zahl mit bis zu sechs Dezimalstellen eingeben.",
+        cancel: "Abbrechen",
+        confirm: "Bestätigen",
         unit: "Verbrauchte Punkte pro Million Token",
+      },
+      toolPricing: {
+        title: "Tool-Abrechnungsregeln",
+        description: "Guthabenverbrauch pro Tool-Aufruf festlegen.",
+        manage: "Tool-Tarife konfigurieren",
       },
       chargingMethod: {
         title: "Abrechnungsmethode",
-        description:
-          "Verarbeiten Sie Abrechnungen lokal oder über die Remote-Abrechnung von Baizhi Cloud.",
+        description: "Abrechnungsstrategie für Ressourcen konfigurieren.",
         mode: "Abrechnungsmethode",
         modes: {
-          local: "Lokale Abrechnung",
-          remote: "Remote-Abrechnung (Baizhi Cloud)",
+          disabled: "Keine Abrechnung",
+          local: "Direkte Abrechnung",
+          remote: "Mit Baizhi Cloud verknüpfte Abrechnung",
         },
         modeDescriptions: {
           local:
@@ -772,10 +796,30 @@ export const deDE = {
         apiKeyPlaceholder: "Baizhi-Cloud-Schlüssel eingeben",
       },
       quotaRefresh: {
-        title: "Aktualisierungseinstellungen",
+        title: "Automatische Guthabenaktualisierung",
         description:
-          "Der Aktualisierungszyklus gilt global für alle Gruppen und Benutzer.",
-        cycle: "Aktualisierungszyklus",
+          "Mitgliederguthaben automatisch nach Zyklus aktualisieren.",
+        itemTitle: "Guthaben-Zurücksetzungszyklus",
+        itemDescription: "Automatisches Zurücksetzen: {{cycle}}",
+        nextResetTitle: "Zeitpunkt der nächsten Zurücksetzung",
+        resetNow: "Jetzt zurücksetzen",
+        resetting: "Wird zurückgesetzt…",
+        resetSuccess:
+          "Guthaben von {{count}} Mitgliedern wurden zurückgesetzt.",
+        resetDialogTitle: "Mitgliederguthaben jetzt zurücksetzen",
+        resetDialogDescription:
+          "Wählen Sie Gruppen und Mitglieder aus, deren Guthaben sofort zurückgesetzt werden soll. Eine Gruppe schließt ihre Mitglieder ein.",
+        resetTargets: "Gruppen und Mitglieder",
+        resetPlaceholder: "Gruppen oder Mitglieder auswählen",
+        resetSearch: "Gruppen, Namen oder E-Mail-Adressen durchsuchen",
+        resetNoResults: "Keine passenden Gruppen oder Mitglieder.",
+        configure: "Konfigurieren",
+        dialogTitle: "Zurücksetzungszyklus konfigurieren",
+        dialogDescription:
+          "Zurücksetzungszyklus für die lokale Abrechnung auswählen.",
+        cancel: "Abbrechen",
+        confirm: "Bestätigen",
+        cycle: "Zurücksetzungszyklus",
         cycleDescription:
           "Alle Gruppen und Benutzer werden zu Beginn des gewählten Zyklus gemeinsam aktualisiert.",
         credits: "Punkte je Aktualisierung",
@@ -791,7 +835,9 @@ export const deDE = {
         },
       },
       groupQuota: {
-        title: "Gruppen- und Benutzerkontingente",
+        title: "Gruppenkontingente",
+        memberTitle: "Mitgliederkontingente",
+        manageGroups: "Gruppen verwalten",
         description:
           "Für die Stammgruppe ist ein Kontingent erforderlich. Leere Untergruppen und Benutzer erben von der nächsten übergeordneten Gruppe.",
         treeTitle: "Gruppen- und Benutzerkontingente",
@@ -804,6 +850,9 @@ export const deDE = {
         overridden: "Individuell",
         inherited: "Erbt {{credits}}",
         summary: "{{cycle}} · {{credits}} Punkte",
+        remaining: "Verbleibend: {{credits}} Punkte",
+        billingDisabled: "Abrechnung deaktiviert",
+        remoteBilling: "Remote-Abrechnung",
         actions: "Kontingentaktionen",
         adjust: "Kontingent anpassen",
         dialogTitle: "Kontingent anpassen",

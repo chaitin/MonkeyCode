@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Service) RegisterAdmin(r chi.Router) {
@@ -23,6 +24,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Patch("/billing/settings/{section}", s.saveSettings)
 	r.Get("/billing/quotas", s.quotas)
 	r.Put("/billing/quotas", s.saveQuotas)
+	r.Post("/billing/quotas/reset", s.resetQuotas)
 	r.Get("/billing/accounts/{userID}", s.account)
 	r.Post("/billing/accounts/{userID}/adjustments", s.adjust)
 	r.Put("/billing/accounts/{userID}/wallet", func(w http.ResponseWriter, r *http.Request) {
@@ -184,12 +186,13 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start, end := p.period(s.now())
 	groups, err := resource.DecodeObjects(sqlc.New(s.pool).ListGroupQuotas(r.Context()))
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
-	users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(r.Context(), sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: p.RootCredits.String()}))
+	users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(r.Context(), sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: p.RootCredits.String(), PeriodStartAt: start}))
 	if err != nil {
 		resource.Fail(w, err)
 		return
@@ -210,7 +213,6 @@ func (s *Service) quotas(w http.ResponseWriter, r *http.Request) {
 		group["allow_inherit"] = true
 	}
 	groups = append([]resource.Object{{"id": rootGroup, "parent_id": nil, "name": teamName, "credits": p.RootCredits.String(), "allow_inherit": false}}, groups...)
-	_, end := p.period(s.now())
 	resource.JSON(w, 200, map[string]any{"groups": groups, "users": users, "revision": p.Revision, "effective_at": end})
 }
 func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
@@ -252,14 +254,14 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 	}
 	seen := map[string]bool{}
 	for _, v := range in.Changes {
-		if !slices.Contains([]string{"group", "user"}, v.Type) || v.ID == "" || len(v.Credits) == 0 || seen[v.Type+v.ID] {
-			resource.Fail(w, resource.Invalid("额度对象无效或重复"))
+		if v.Type != "group" || v.ID == "" || len(v.Credits) == 0 || seen[v.Type+v.ID] {
+			resource.Fail(w, resource.Invalid("仅支持配置分组额度，且额度对象不能无效或重复"))
 			return
 		}
 		seen[v.Type+v.ID] = true
 		var amount *Amount
-		if err = json.Unmarshal(v.Credits, &amount); err != nil || amount != nil && *amount < 0 {
-			resource.Fail(w, resource.Invalid("额度需为非负积分或 null"))
+		if err = json.Unmarshal(v.Credits, &amount); err != nil || amount != nil && (*amount < 0 || int64(*amount)%scale != 0) {
+			resource.Fail(w, resource.Invalid("额度需为非负整数积分或 null"))
 			return
 		}
 		if v.Type == "group" && v.ID == rootGroup {
@@ -324,6 +326,159 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 
 	s.quotas(w, r)
 }
+
+func normalizeResetIDs(ids []string, field string) ([]string, error) {
+	normalized := make([]string, 0, len(ids))
+	for _, id := range ids {
+		var value pgtype.UUID
+		if err := value.Scan(id); err != nil || !value.Valid {
+			return nil, resource.Invalid(field + " 必须包含有效的 UUID")
+		}
+		normalized = append(normalized, value.String())
+	}
+	slices.Sort(normalized)
+	return slices.Compact(normalized), nil
+}
+
+func (s *Service) resetQuotas(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		GroupIDs       []string `json:"group_ids"`
+		UserIDs        []string `json:"user_ids"`
+		IdempotencyKey string   `json:"idempotency_key"`
+	}
+	if err := resource.Decode(w, r, &in); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	in.IdempotencyKey = strings.TrimSpace(in.IdempotencyKey)
+	if len(in.GroupIDs)+len(in.UserIDs) == 0 || len(in.GroupIDs)+len(in.UserIDs) > 1000 || in.IdempotencyKey == "" || len(in.IdempotencyKey) > 128 {
+		resource.Fail(w, resource.Invalid("请选择 1 到 1000 个分组或成员，并提供有效的幂等键"))
+		return
+	}
+	groupIDs, err := normalizeResetIDs(in.GroupIDs, "group_ids")
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	userIDs, err := normalizeResetIDs(in.UserIDs, "user_ids")
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	var idempotencyID pgtype.UUID
+	if err = idempotencyID.Scan(in.IdempotencyKey); err != nil || !idempotencyID.Valid {
+		resource.Fail(w, resource.Invalid("idempotency_key 必须是有效的 UUID"))
+		return
+	}
+	in.IdempotencyKey = idempotencyID.String()
+	includeRoot := slices.Contains(groupIDs, rootGroup)
+	databaseGroupIDs := slices.DeleteFunc(slices.Clone(groupIDs), func(id string) bool { return id == rootGroup })
+	actor, _ := identity.UserFromContext(r.Context())
+	requestHash := resource.Hash(struct {
+		Actor  string   `json:"actor_user_id"`
+		Groups []string `json:"group_ids"`
+		Users  []string `json:"user_ids"`
+	}{Actor: actor.ID, Groups: groupIDs, Users: userIDs})
+	eventKey := "admin-quota-reset:" + in.IdempotencyKey
+
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	queries := sqlc.New(tx)
+	if _, err = queries.LockGroupsForReset(ctx); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	p, err := s.policy(ctx, tx, true)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	previous, previousErr := queries.GetImmediateReset(ctx, new(eventKey))
+	if previousErr == nil {
+		if previous.RequestHash != requestHash {
+			resource.Fail(w, fail(409, "idempotency_conflict", "该幂等键已用于不同的额度重置请求"))
+			return
+		}
+		if err = tx.Commit(ctx); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		resource.JSON(w, http.StatusOK, map[string]any{"reset_count": previous.ResetCount})
+		return
+	}
+	if !errors.Is(previousErr, pgx.ErrNoRows) {
+		resource.Fail(w, previousErr)
+		return
+	}
+	if !p.Enabled || p.Mode != "local" {
+		resource.Fail(w, fail(409, "local_billing_required", "仅直接计费模式支持立即重置额度"))
+		return
+	}
+	exists, err := queries.ResetTargetsExist(ctx, sqlc.ResetTargetsExistParams{GroupIds: databaseGroupIDs, UserIds: userIDs})
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if !exists.GroupsExist || !exists.UsersExist {
+		resource.Fail(w, resource.NotFound)
+		return
+	}
+	users, err := queries.ImmediateResetUsers(ctx, sqlc.ImmediateResetUsersParams{GroupIds: databaseGroupIDs, UserIds: userIDs, IncludeRoot: includeRoot})
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if len(users) == 0 {
+		resource.Fail(w, resource.Invalid("所选分组和成员中没有可重置的成员"))
+		return
+	}
+	metadata := map[string]any{
+		"request_hash":    requestHash,
+		"reset_count":     len(users),
+		"idempotency_key": in.IdempotencyKey,
+		"actor_user_id":   actor.ID,
+	}
+	for index, userID := range users {
+		account, accountErr := s.ensureAccount(ctx, tx, userID, p)
+		if accountErr != nil {
+			resource.Fail(w, accountErr)
+			return
+		}
+		quota, groupID, _, quotaErr := effectiveQuota(ctx, tx, userID)
+		if quotaErr != nil {
+			resource.Fail(w, quotaErr)
+			return
+		}
+		if _, err = queries.SetAccountQuotaBalance(ctx, sqlc.SetAccountQuotaBalanceParams{Balance: quota.String(), GroupID: groupID, RefreshedAt: s.now(), ID: account.ID}); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		userEvent := eventKey + ":" + userID
+		if index == 0 {
+			userEvent = eventKey
+		}
+		if err = ledger(ctx, tx, account.ID, "", userEvent, "reset", "other", "管理员立即重置额度", quota-account.Balance, "local", metadata); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+	}
+	if err = audit(ctx, tx, actor.ID, "reset_credits", "", map[string]any{
+		"group_ids": groupIDs, "user_ids": userIDs, "reset_user_ids": users,
+	}); err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	resource.JSON(w, http.StatusOK, map[string]any{"reset_count": len(users)})
+}
+
 func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 	user := chi.URLParam(r, "userID")
 	a, err := s.Account(r.Context(), user)
@@ -331,12 +486,6 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	history, err := resource.DecodeObjects(sqlc.New(s.pool).AccountHistory(r.Context(), user))
-	if err != nil {
-		resource.Fail(w, err)
-		return
-	}
-
 	external, _ := sqlc.New(s.pool).WalletUser(r.Context(), user)
 
 	wallet, err := s.wallet(r.Context(), s.pool)
@@ -344,7 +493,7 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	out := map[string]any{"account": a, "history": history, "external_user_id": external, "wallet": wallet.info()}
+	out := map[string]any{"account": a, "external_user_id": external, "wallet": wallet.info()}
 	if external != "" && wallet.ready() {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()

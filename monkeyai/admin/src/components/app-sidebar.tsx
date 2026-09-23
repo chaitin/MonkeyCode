@@ -88,16 +88,16 @@ export function AppSidebar({
     },
     {
       title: t("sections.billingManagement"),
-      url: CONSOLE_ROUTES.billingDetails,
+      url: CONSOLE_ROUTES.billingSettings,
       icon: <HugeiconsIcon icon={Wallet01Icon} strokeWidth={2} />,
       items: [
         {
-          title: t("pages.billingDetails.title"),
-          url: CONSOLE_ROUTES.billingDetails,
-        },
-        {
           title: t("pages.billingSettings.title"),
           url: CONSOLE_ROUTES.billingSettings,
+        },
+        {
+          title: t("pages.billingDetails.title"),
+          url: CONSOLE_ROUTES.billingDetails,
         },
       ],
     },

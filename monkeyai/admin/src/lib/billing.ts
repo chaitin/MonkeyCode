@@ -37,8 +37,9 @@ export type QuotaUser = {
   email: string
   status: string
   group_ids: string[]
-  credits: string | null
   effective_credits: string
+  balance_credits?: string
+  available_credits: string
   inherited_from: string
   external_user_id?: string
 }
@@ -53,17 +54,19 @@ export function userQuota(
   groups: QuotaGroup[],
   changes: Record<string, string | null> = {}
 ) {
-  const value = (type: string, id: string, saved: string | null) =>
-    changes[`${type}:${id}`] !== undefined ? changes[`${type}:${id}`] : saved
+  const value = (id: string, saved: string | null) =>
+    changes[`group:${id}`] !== undefined ? changes[`group:${id}`] : saved
+  const rootCredits =
+    groups.find((group) => group.parent_id === null)?.credits ?? "10000"
   const inheritedFrom = (id: string): string => {
     let group = groups.find((group) => group.id === id)
     for (let depth = 0; group && depth <= 100; depth++) {
-      const credits = value("group", group.id, group.credits)
+      const credits = value(group.id, group.credits)
       if (credits !== null) return credits
       const parent = group.parent_id
       group = groups.find((group) => group.id === parent)
     }
-    return "15000"
+    return rootCredits
   }
   const amount = (credits: string) => {
     const [whole, fraction = ""] = credits.split(".")
@@ -75,8 +78,7 @@ export function userQuota(
       (highest, next) => (amount(next) > amount(highest) ? next : highest),
       "0"
     )
-  const own = value("user", user.id, user.credits)
-  return { own, inherited, effective: own ?? inherited }
+  return { inherited, effective: inherited }
 }
 
 export type Account = {
@@ -92,7 +94,6 @@ export type Account = {
 }
 export type AccountDetails = {
   account: Account
-  history: Account[]
   wallet: WalletInfo
   external_user_id: string
   wallet_available?: string

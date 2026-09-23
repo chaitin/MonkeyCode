@@ -15,6 +15,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -78,7 +83,6 @@ type Pending = {
   migration_issues: { id: number; subject: string; reason: string }[]
 }
 const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
-const selectClass = "h-9 rounded-md border bg-background px-3 text-sm"
 const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
   credits(value, locale, 0)
 const changedCredits = (value: string, locale: string) =>
@@ -497,7 +501,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-(--card-spacing) text-muted-foreground">
                         入账时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -505,9 +509,9 @@ export function BillingDetailsPage() {
                       <TableHead>
                         {t("pages.billingDetails.columns.content")}
                       </TableHead>
-                      <TableHead className="text-end">积分变动</TableHead>
-                      <TableHead className="text-end">剩余积分</TableHead>
-                      <TableHead className="pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="text-start">积分变动</TableHead>
+                      <TableHead className="text-start">剩余积分</TableHead>
+                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -517,7 +521,7 @@ export function BillingDetailsPage() {
                   >
                     {entries?.items.map((e) => (
                       <TableRow key={e.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
                           {dateTime(e.occurred_at)}
                         </TableCell>
                         <TableCell>
@@ -540,14 +544,14 @@ export function BillingDetailsPage() {
                         </TableCell>
                         <TableCell>{e.item_name}</TableCell>
                         <TableCell
-                          className={`text-end font-medium tabular-nums ${e.credit_delta.startsWith("-") ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}
+                          className={`text-start font-medium tabular-nums ${e.credit_delta.startsWith("-") ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}
                         >
                           {changedCredits(e.credit_delta, i18n.language)}
                         </TableCell>
-                        <TableCell className="text-end text-yellow-600 tabular-nums dark:text-yellow-400">
+                        <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
                           {balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
-                        <TableCell className="pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
                           {e.transaction_id ? (
                             <Button
                               type="button"
@@ -610,16 +614,26 @@ export function BillingDetailsPage() {
             </div>
           )}
           {!!pending?.migration_issues.length && (
-            <details className="rounded-lg border p-4">
-              <summary className="cursor-pointer text-sm">
+            <Collapsible className="rounded-lg border p-4">
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto justify-start p-0 text-sm font-normal hover:bg-transparent"
+                  />
+                }
+              >
                 {pending.migration_issues.length} 项旧额度配置需要核实
-              </summary>
-              {pending.migration_issues.map((i) => (
-                <p key={i.id} className="mt-2 text-sm text-muted-foreground">
-                  {i.subject}：{i.reason}
-                </p>
-              ))}
-            </details>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {pending.migration_issues.map((i) => (
+                  <p key={i.id} className="mt-2 text-sm text-muted-foreground">
+                    {i.subject}：{i.reason}
+                  </p>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
           )}
           <Card className="min-h-0 flex-1">
             <CardContent className="min-h-0 flex-1 gap-4 px-0">
@@ -633,7 +647,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-(--card-spacing) text-muted-foreground">
                         调用时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -643,7 +657,7 @@ export function BillingDetailsPage() {
                       <TableHead>状态</TableHead>
                       <TableHead>原因</TableHead>
                       <TableHead className="text-end">预留积分</TableHead>
-                      <TableHead className="pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -653,7 +667,7 @@ export function BillingDetailsPage() {
                   >
                     {pending?.items.map((tx) => (
                       <TableRow key={tx.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
                           {dateTime(tx.started_at)}
                         </TableCell>
                         <TableCell>
@@ -682,7 +696,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-end tabular-nums">
                           {billingCredits(tx.reserve, i18n.language)}
                         </TableCell>
-                        <TableCell className="pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
                           <Button
                             type="button"
                             variant="outline"
@@ -746,6 +760,13 @@ function TransactionDialog({
     cached_input_tokens: "0",
     output_tokens: "0",
   })
+  const resultItems = [
+    { value: "failed", label: "失败或未执行" },
+    { value: "succeeded", label: "执行成功" },
+    ...(data?.category === "image"
+      ? []
+      : [{ value: "cancelled", label: "已取消" }]),
+  ]
   useEffect(() => {
     let alive = true
     void api<Transaction>(`/api/admin/v1/billing/transactions/${id}`)
@@ -952,18 +973,26 @@ function TransactionDialog({
                 }}
               >
                 <p className="text-sm font-medium">填写核查结果</p>
-                <select
-                  className={selectClass}
-                  aria-label="业务执行结果"
+                <Select
+                  items={resultItems}
                   value={result}
-                  onChange={(e) => setResult(e.target.value)}
+                  onValueChange={(value) => {
+                    if (value !== null) setResult(value)
+                  }}
                 >
-                  <option value="failed">失败或未执行</option>
-                  <option value="succeeded">执行成功</option>
-                  {data.category !== "image" && (
-                    <option value="cancelled">已取消</option>
-                  )}
-                </select>
+                  <SelectTrigger aria-label="业务执行结果">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="start">
+                    <SelectGroup>
+                      {resultItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
                 {data.category === "image" && result === "succeeded" && (
                   <Field>
                     <FieldLabel htmlFor="generated-images">

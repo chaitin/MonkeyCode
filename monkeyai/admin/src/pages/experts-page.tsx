@@ -755,11 +755,10 @@ export function ExpertsPage() {
                       {options.toolIds.find((p) => p.id === id)?.name}
                     </FieldLabel>
                     <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={settings?.required ?? true}
-                        onChange={(e) =>
-                          updateConnector(id, { required: e.target.checked })
+                        onCheckedChange={(checked) =>
+                          updateConnector(id, { required: checked })
                         }
                       />
                       {t("resources.requiredConnector")}

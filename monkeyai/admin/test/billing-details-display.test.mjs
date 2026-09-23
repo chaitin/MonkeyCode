@@ -70,6 +70,43 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.match(source, /className="min-h-0 flex-1 gap-4 px-0"/)
   assert.doesNotMatch(source, /billing\/summary|summary\.charges|扣费积分/)
   assert.doesNotMatch(source, /w-px|max-w-52|table-fixed/)
+  assert.equal(
+    (
+      source.match(
+        /TableHead className="ps-\(--card-spacing\) text-muted-foreground"/g
+      ) ?? []
+    ).length,
+    2
+  )
+  assert.equal(
+    (
+      source.match(
+        /TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground"/g
+      ) ?? []
+    ).length,
+    2
+  )
+  assert.equal(
+    (
+      source.match(
+        /className="w-20 pe-\(--card-spacing\) whitespace-nowrap"/g
+      ) ?? []
+    ).length,
+    4
+  )
+  assert.match(
+    source,
+    /<TableHead className="text-start">积分变动<\/TableHead>/
+  )
+  assert.match(
+    source,
+    /<TableHead className="text-start">剩余积分<\/TableHead>/
+  )
+  assert.match(source, /className=\{`text-start font-medium tabular-nums/)
+  assert.match(
+    source,
+    /<TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">/
+  )
 })
 
 test("billing filters match the compact operation-log interaction", async () => {
@@ -218,7 +255,7 @@ test("billing entries omit mode and use directional integer rounding", async () 
   assert.match(source, /text-orange-600 dark:text-orange-400/)
   assert.match(
     source,
-    /text-end text-yellow-600 tabular-nums dark:text-yellow-400/
+    /text-start text-yellow-600 tabular-nums dark:text-yellow-400/
   )
   assert.match(
     source,
@@ -237,7 +274,7 @@ test("billing entries omit mode and use directional integer rounding", async () 
   assert.doesNotMatch(source, /hover:text-primary hover:underline/)
   assert.match(
     source,
-    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap">\s*\{dateTime\(e\.occurred_at\)\}/
+    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground">\s*\{dateTime\(e\.occurred_at\)\}/
   )
   assert.match(
     source,
@@ -245,11 +282,11 @@ test("billing entries omit mode and use directional integer rounding", async () 
   )
   assert.match(
     source,
-    /ps-\(--card-spacing\) whitespace-nowrap[\s\S]*?dateTime\(tx\.started_at\)/
+    /ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(tx\.started_at\)/
   )
   assert.match(
     source,
-    /<TableCell className="pe-\(--card-spacing\) whitespace-nowrap">[\s\S]*?<Button/
+    /<TableCell className="w-20 pe-\(--card-spacing\) whitespace-nowrap">[\s\S]*?<Button/
   )
   assert.match(source, /next\.delete\("mode"\)/)
   assert.doesNotMatch(

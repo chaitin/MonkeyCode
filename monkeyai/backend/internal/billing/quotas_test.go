@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"encoding/json"
 	"os"
 	"slices"
 	"testing"
@@ -72,6 +73,11 @@ func TestQuotaGroupsMatchMemberGroups(t *testing.T) {
 func TestQuotaMembershipInheritance(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
+	policy, err := s.Policy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	periodStart, _ := policy.period(s.now())
 	parent, child, other := resource.ID(), resource.ID(), resource.ID()
 	exec := func(statement string, args ...any) {
 		t.Helper()
@@ -90,12 +96,15 @@ func TestQuotaMembershipInheritance(t *testing.T) {
 			if err != nil || actual != amountText(credits) || group != groupID || inherited != source {
 				t.Fatalf("实际发放额度不符: credits=%s group=%s source=%s err=%v", actual, group, inherited, err)
 			}
-			users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(ctx, sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: "15000"}))
+			users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(ctx, sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: "10000", PeriodStartAt: periodStart}))
 			if err != nil || len(users) != 1 {
 				t.Fatalf("读取额度列表: %v %v", users, err)
 			}
 			listed := users[0]
-			if amountText(listed.String("effective_credits")) != actual || listed.String("inherited_from") != source {
+			if _, ok := listed["credits"]; ok {
+				t.Fatalf("成员不应返回个人额度字段: %v", listed)
+			}
+			if amountText(listed.String("effective_credits")) != actual || amountText(listed.String("balance_credits")) != actual || amountText(listed.String("available_credits")) != actual || listed.String("inherited_from") != source {
 				t.Fatalf("费用页与实际发放不一致: %v", listed)
 			}
 			ids := []string{}
@@ -107,16 +116,15 @@ func TestQuotaMembershipInheritance(t *testing.T) {
 			}
 		})
 	}
-	check("无分组继承团队", "15000", rootGroup, "")
+	check("无分组继承团队", "10000", rootGroup, "")
 	exec(`INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$2)`, child, user)
 	check("单组继承最近上级", "50000", parent, child, child)
 	exec(`INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$2)`, other, user)
 	check("多组取最高而非叠加", "80000", other, other, child, other)
 	exec(`INSERT INTO billing_quotas(subject_type,user_id,credits_per_cycle,updated_by_user_id) VALUES('user',$1,0,$1)`, user)
-	check("个人零额度优先", "0", user, other, child, other)
+	check("个人历史额度不参与计算", "80000", other, other, child, other)
 	exec(`UPDATE billing_quotas SET credits_per_cycle=123 WHERE user_id=$1`, user)
-	check("个人较低额度也优先", "123", user, other, child, other)
-	exec(`UPDATE billing_quotas SET deleted_at=now() WHERE user_id=$1`, user)
+	check("个人历史额度变化仍不参与计算", "80000", other, other, child, other)
 	exec(`UPDATE billing_quotas SET credits_per_cycle=50000 WHERE group_id=$1`, other)
 	check("同额度稳定选取较早分组", "50000", parent, child, child, other)
 	exec(`UPDATE group_users SET removed_at=now() WHERE group_id=$1`, other)
@@ -127,14 +135,132 @@ func TestQuotaMembershipInheritance(t *testing.T) {
 	exec(`UPDATE groups SET parent_id=$2 WHERE id=$1`, child, other)
 	check("移动分组跟随新上级", "50000", other, child, child)
 	exec(`UPDATE billing_quotas SET deleted_at=now() WHERE group_id=$1`, other)
-	check("整条分支未配置则继承团队", "15000", rootGroup, child, child)
+	check("整条分支未配置则继承团队", "10000", rootGroup, child, child)
 	exec(`INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$2)`, parent, user)
 	exec(`UPDATE billing_quotas SET credits_per_cycle=10 WHERE group_id=$1`, parent)
-	check("多组比较包含分支继承的团队默认值", "15000", rootGroup, child, parent, child)
+	check("多组比较包含分支继承的团队默认值", "10000", rootGroup, child, parent, child)
 	exec(`UPDATE groups SET deleted_at=now() WHERE id=$1`, child)
 	check("已删除分组不参与继承", "10", parent, parent, parent)
 	exec(`UPDATE group_users SET removed_at=now() WHERE group_id=$1`, parent)
-	check("移出全部分组恢复团队", "15000", rootGroup, "")
+	check("移出全部分组恢复团队", "10000", rootGroup, "")
+}
+
+func TestUserQuotaChangesAreRejected(t *testing.T) {
+	s, user, _ := fixture(t)
+	call := walletAdmin(t, s, user)
+	call("PUT", "/billing/quotas", map[string]any{
+		"revision": 1,
+		"changes": []map[string]any{{
+			"subject_type": "user",
+			"id":           user,
+			"credits":      "123",
+		}},
+	}, 422)
+
+	var count int
+	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM billing_quotas WHERE user_id=$1 AND deleted_at IS NULL`, user).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("个人额度不应写入: count=%d err=%v", count, err)
+	}
+}
+
+func TestGroupQuotaChangesRequireIntegers(t *testing.T) {
+	s, admin, _ := fixture(t)
+	call := walletAdmin(t, s, admin)
+	call("PUT", "/billing/quotas", map[string]any{
+		"revision": 1,
+		"changes": []map[string]any{{
+			"subject_type": "group",
+			"id":           rootGroup,
+			"credits":      "123.5",
+		}},
+	}, 422)
+
+	policy, err := s.Policy(t.Context())
+	if err != nil || policy.RootCredits != amountText("10000") {
+		t.Fatalf("小数额度不应写入: policy=%+v err=%v", policy, err)
+	}
+}
+
+func TestImmediateQuotaReset(t *testing.T) {
+	s, admin, _ := fixture(t)
+	ctx := t.Context()
+	parent, child, other := resource.ID(), resource.ID(), resource.ID()
+	explicit, unselected := resource.ID(), resource.ID()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO users(id,name,email,role) VALUES
+		($1,'显式成员','explicit@example.com','user'),($2,'未选成员','unselected@example.com','user')`, explicit, unselected); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES
+		($1,NULL,'父组'),($2,$1,'子组'),($3,NULL,'其他组')`, parent, child, other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES
+		($1,$2,$2),($3,$4,$2)`, child, admin, other, unselected); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO billing_quotas(subject_type,group_id,credits_per_cycle,updated_by_user_id) VALUES('group',$1,500,$2)`, parent, admin); err != nil {
+		t.Fatal(err)
+	}
+	adminAccount, err := s.Account(ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicitAccount, err := s.Account(ctx, explicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unselectedAccount, err := s.Account(ctx, unselected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.pool.Exec(ctx, `UPDATE credit_accounts SET balance=CASE id WHEN $1 THEN 100 WHEN $2 THEN 3 WHEN $3 THEN 2 END,
+		frozen=CASE WHEN id=$1 THEN 20 ELSE 0 END WHERE id IN ($1,$2,$3)`,
+		adminAccount.ID, explicitAccount.ID, unselectedAccount.ID); err != nil {
+		t.Fatal(err)
+	}
+	call := walletAdmin(t, s, admin)
+	key := resource.ID()
+	input := map[string]any{"group_ids": []string{parent}, "user_ids": []string{explicit}, "idempotency_key": key}
+	var result struct {
+		Count int `json:"reset_count"`
+	}
+	if err = json.Unmarshal(call("POST", "/billing/quotas/reset", input, 200), &result); err != nil || result.Count != 2 {
+		t.Fatalf("立即重置响应错误: %+v %v", result, err)
+	}
+	resetAdmin, err := s.Account(ctx, admin)
+	if err != nil || resetAdmin.Balance != amountText("500") || resetAdmin.Quota != amountText("500") || resetAdmin.Frozen != amountText("20") || resetAdmin.Available != amountText("480") || resetAdmin.GroupID != child {
+		t.Fatalf("后代分组成员重置错误: %+v %v", resetAdmin, err)
+	}
+	resetExplicit, err := s.Account(ctx, explicit)
+	if err != nil || resetExplicit.Balance != amountText("10000") || resetExplicit.Quota != amountText("10000") {
+		t.Fatalf("显式成员重置错误: %+v %v", resetExplicit, err)
+	}
+	stillUnselected, err := s.Account(ctx, unselected)
+	if err != nil || stillUnselected.Balance != amountText("2") {
+		t.Fatalf("未选成员不应被重置: %+v %v", stillUnselected, err)
+	}
+	var resets int
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger_entries WHERE entry_type='reset'`).Scan(&resets); err != nil || resets != 2 {
+		t.Fatalf("重置流水数量错误: %d %v", resets, err)
+	}
+	if err = json.Unmarshal(call("POST", "/billing/quotas/reset", input, 200), &result); err != nil || result.Count != 2 {
+		t.Fatalf("幂等重放响应错误: %+v %v", result, err)
+	}
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger_entries WHERE entry_type='reset'`).Scan(&resets); err != nil || resets != 2 {
+		t.Fatalf("幂等重放产生了重复流水: %d %v", resets, err)
+	}
+	call("POST", "/billing/quotas/reset", map[string]any{"group_ids": []string{}, "user_ids": []string{unselected}, "idempotency_key": key}, 409)
+
+	rootResult := struct {
+		Count int `json:"reset_count"`
+	}{}
+	if err = json.Unmarshal(call("POST", "/billing/quotas/reset", map[string]any{"group_ids": []string{rootGroup}, "user_ids": []string{}, "idempotency_key": resource.ID()}, 200), &rootResult); err != nil || rootResult.Count != 3 {
+		t.Fatalf("根分组应重置全部成员: %+v %v", rootResult, err)
+	}
+	resetUnselected, err := s.Account(ctx, unselected)
+	if err != nil || resetUnselected.Balance != amountText("10000") {
+		t.Fatalf("根分组未重置成员: %+v %v", resetUnselected, err)
+	}
 }
 
 func TestQuotaMigrationPreservesAccounts(t *testing.T) {
@@ -187,6 +313,29 @@ func TestQuotaMigrationPreservesAccounts(t *testing.T) {
 	}
 }
 
+func TestQuotaListUsesCurrentAccountBalances(t *testing.T) {
+	s, user, _ := fixture(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	currentStart := now.Add(-24 * time.Hour)
+	if _, err := s.pool.Exec(ctx, `INSERT INTO credit_accounts
+		(user_id,balance,frozen,quota,period_start_at,period_end_at,last_refreshed_at) VALUES
+		($1,999,0,999,$2,$3,$3),($1,150,30,150,$3,$4,$3)`,
+		user, now.Add(-48*time.Hour), currentStart, now.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	users, err := resource.DecodeObjects(sqlc.New(s.pool).ListUserQuotas(ctx, sqlc.ListUserQuotasParams{RootGroup: rootGroup, RootCredits: "10000", PeriodStartAt: currentStart}))
+	if err != nil || len(users) != 1 {
+		t.Fatalf("读取额度列表: %v %v", users, err)
+	}
+	if got := amountText(users[0].String("balance_credits")); got != amountText("150") {
+		t.Fatalf("账面剩余应读取当前账户并忽略过期账户: got=%s", got)
+	}
+	if got := amountText(users[0].String("available_credits")); got != amountText("120") {
+		t.Fatalf("可用积分应扣除冻结额: got=%s", got)
+	}
+}
+
 func TestGroupChangesPreserveCurrentAccount(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
@@ -234,7 +383,7 @@ func TestGroupChangesPreserveCurrentAccount(t *testing.T) {
 	checkCurrent(next)
 	s.now = func() time.Time { return time.Date(2026, 11, 7, 0, 0, 0, 0, time.UTC) }
 	last, err := s.Account(ctx, user)
-	if err != nil || last.Quota != amountText("15000") || last.GroupID != "" {
+	if err != nil || last.Quota != amountText("10000") || last.GroupID != "" {
 		t.Fatal(last, err)
 	}
 }

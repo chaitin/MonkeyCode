@@ -11,6 +11,10 @@ export const es419 = {
     userAgent: "Agente de usuario",
     requestId: "ID de solicitud",
     error: "Error",
+    targets: {
+      ...enUS.audit.targets,
+      connector_credential: "Credencial del conector",
+    },
   },
 
   resources: enUS.resources,
@@ -735,24 +739,44 @@ export const es419 = {
       title: "Configuración de costos",
       description:
         "Configura las reglas de cobro y la renovación periódica de cuotas de usuario.",
-      save: "Guardar configuración",
+      save: "Guardar",
       saved: "Configuración de costos guardada",
       modelPricing: {
-        title: "Reglas de cobro de modelos",
-        description: "Configura el consumo de créditos por tokens de modelos.",
-        inputToken: "Modelo — Tokens de entrada",
-        cachedInputToken: "Modelo — Tokens de entrada (caché)",
-        outputToken: "Modelo — Tokens de salida",
+        title: "Reglas de cobro de LLM",
+        description: "Define precios de créditos para tokens LLM.",
+        inputToken: "Costo de tokens de entrada sin caché",
+        cachedInputToken: "Costo de tokens de entrada en caché",
+        outputToken: "Costo de tokens de salida",
+        inputTokenDescription:
+          "{{credits}} créditos por millón de tokens de entrada sin caché",
+        cachedInputTokenDescription:
+          "{{credits}} créditos por millón de tokens de entrada en caché",
+        outputTokenDescription:
+          "{{credits}} créditos por millón de tokens de salida",
+        configure: "Configurar",
+        manageMultiplier: "Configurar multiplicadores de modelos",
+        configureTitle: "Configurar {{name}}",
+        dialogDescription:
+          "Define los créditos consumidos por millón de tokens.",
+        valueLabel: "Créditos",
+        valueInvalid: "Ingresa un número no negativo con hasta seis decimales.",
+        cancel: "Cancelar",
+        confirm: "Confirmar",
         unit: "Créditos consumidos por millón de tokens",
+      },
+      toolPricing: {
+        title: "Reglas de cobro de herramientas",
+        description: "Define los créditos consumidos por llamada.",
+        manage: "Configurar tarifas de herramientas",
       },
       chargingMethod: {
         title: "Método de cobro",
-        description:
-          "Procesa los cobros localmente o conecta el cobro remoto de Baizhi Cloud.",
+        description: "Configura la estrategia de cobro de recursos.",
         mode: "Método de cobro",
         modes: {
-          local: "Cobro local",
-          remote: "Cobro remoto (Baizhi Cloud)",
+          disabled: "Sin cobro",
+          local: "Cobro directo",
+          remote: "Cobro integrado con Baizhi Cloud",
         },
         modeDescriptions: {
           local: "Este sistema procesa el uso y la deducción de créditos.",
@@ -763,10 +787,28 @@ export const es419 = {
         apiKeyPlaceholder: "Ingresa la clave de Baizhi Cloud",
       },
       quotaRefresh: {
-        title: "Configuración de renovación",
-        description:
-          "El ciclo de renovación se aplica globalmente a todos los grupos y usuarios.",
-        cycle: "Ciclo de renovación",
+        title: "Renovación automática de créditos",
+        description: "Renueva automáticamente los créditos por ciclo.",
+        itemTitle: "Ciclo de restablecimiento de créditos",
+        itemDescription: "Restablecimiento automático: {{cycle}}",
+        nextResetTitle: "Hora del próximo restablecimiento",
+        resetNow: "Restablecer ahora",
+        resetting: "Restableciendo…",
+        resetSuccess: "Se restablecieron las cuotas de {{count}} miembros.",
+        resetDialogTitle: "Restablecer cuotas de miembros ahora",
+        resetDialogDescription:
+          "Selecciona los grupos y miembros cuyas cuotas se restablecerán de inmediato. Seleccionar un grupo incluye a sus miembros.",
+        resetTargets: "Grupos y miembros",
+        resetPlaceholder: "Seleccionar grupos o miembros",
+        resetSearch: "Buscar grupos, nombres o correos",
+        resetNoResults: "No hay grupos ni miembros coincidentes.",
+        configure: "Configurar",
+        dialogTitle: "Configurar ciclo de restablecimiento",
+        dialogDescription:
+          "Elige el ciclo de restablecimiento para el cobro local.",
+        cancel: "Cancelar",
+        confirm: "Confirmar",
+        cycle: "Ciclo de restablecimiento",
         cycleDescription:
           "Todos los grupos y usuarios se renuevan juntos al inicio del ciclo seleccionado.",
         credits: "Créditos por renovación",
@@ -782,7 +824,9 @@ export const es419 = {
         },
       },
       groupQuota: {
-        title: "Cuotas de grupos y usuarios",
+        title: "Cuotas de grupos",
+        memberTitle: "Cuotas de miembros",
+        manageGroups: "Administrar grupos",
         description:
           "El grupo raíz requiere una cuota. Los grupos secundarios y usuarios vacíos heredan del grupo superior más cercano.",
         treeTitle: "Cuotas de grupos y usuarios",
@@ -795,6 +839,9 @@ export const es419 = {
         overridden: "Personalizada",
         inherited: "Hereda {{credits}}",
         summary: "{{cycle}} · {{credits}} créditos",
+        remaining: "{{credits}} créditos restantes",
+        billingDisabled: "Facturación desactivada",
+        remoteBilling: "Facturación remota",
         actions: "Acciones de cuota",
         adjust: "Ajustar cuota",
         dialogTitle: "Ajustar cuota",

@@ -1084,7 +1084,7 @@ export function OtherSettingsPage() {
                           setKnowledgeModelDialog(open ? kind : null)
                         }
                       >
-                        <DialogTrigger render={<Button variant="outline" />}>
+                        <DialogTrigger render={<Button variant="secondary" />}>
                           {t(
                             config
                               ? "pages.otherSettings.knowledgeBase.edit"
@@ -1267,7 +1267,7 @@ export function OtherSettingsPage() {
                   open={documentParsingDialogOpen}
                   onOpenChange={setDocumentParsingDialogOpen}
                 >
-                  <DialogTrigger render={<Button variant="outline" />}>
+                  <DialogTrigger render={<Button variant="secondary" />}>
                     {t(
                       knowledgeBaseSettings.documentParsingEngine
                         ? "pages.otherSettings.knowledgeBase.edit"
@@ -1399,7 +1399,7 @@ export function OtherSettingsPage() {
                   open={contentEnhancementDialogOpen}
                   onOpenChange={setContentEnhancementDialogOpen}
                 >
-                  <DialogTrigger render={<Button variant="outline" />}>
+                  <DialogTrigger render={<Button variant="secondary" />}>
                     {t(
                       knowledgeBaseSettings.contentEnhancementModel
                         ? "pages.otherSettings.knowledgeBase.edit"
@@ -2139,7 +2139,7 @@ export function OtherSettingsPage() {
               <ItemActions>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => handleEmailDialogOpenChange(true)}
                 >
                   {t("pages.otherSettings.email.configure")}
@@ -2217,6 +2217,7 @@ export function OtherSettingsPage() {
                   <ItemActions>
                     <Button
                       type="submit"
+                      variant="secondary"
                       disabled={testSending}
                       aria-busy={testSending}
                     >

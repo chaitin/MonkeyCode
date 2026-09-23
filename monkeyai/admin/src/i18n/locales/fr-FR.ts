@@ -12,6 +12,10 @@ export const frFR = {
     userAgent: "Agent utilisateur",
     requestId: "ID de la requête",
     error: "Erreur",
+    targets: {
+      ...enUS.audit.targets,
+      connector_credential: "Identifiants du connecteur",
+    },
   },
 
   resources: enUS.resources,
@@ -734,25 +738,45 @@ export const frFR = {
       title: "Paramètres des coûts",
       description:
         "Configurez les règles de facturation et le renouvellement périodique des quotas utilisateur.",
-      save: "Enregistrer les paramètres",
+      save: "Enregistrer",
       saved: "Paramètres des coûts enregistrés",
       modelPricing: {
-        title: "Règles de facturation des modèles",
-        description:
-          "Configurez la consommation de crédits liée aux tokens des modèles.",
-        inputToken: "Modèle — Tokens d’entrée",
-        cachedInputToken: "Modèle — Tokens d’entrée (cache)",
-        outputToken: "Modèle — Tokens de sortie",
+        title: "Règles de facturation des LLM",
+        description: "Définissez le prix en crédits des tokens LLM.",
+        inputToken: "Coût des tokens d’entrée hors cache",
+        cachedInputToken: "Coût des tokens d’entrée en cache",
+        outputToken: "Coût des tokens de sortie",
+        inputTokenDescription:
+          "{{credits}} crédits par million de tokens d’entrée hors cache",
+        cachedInputTokenDescription:
+          "{{credits}} crédits par million de tokens d’entrée en cache",
+        outputTokenDescription:
+          "{{credits}} crédits par million de tokens de sortie",
+        configure: "Configurer",
+        manageMultiplier: "Configurer les multiplicateurs des modèles",
+        configureTitle: "Configurer {{name}}",
+        dialogDescription:
+          "Définissez les crédits consommés par million de tokens.",
+        valueLabel: "Crédits",
+        valueInvalid:
+          "Saisissez un nombre positif ou nul avec six décimales maximum.",
+        cancel: "Annuler",
+        confirm: "Confirmer",
         unit: "Crédits consommés par million de tokens",
+      },
+      toolPricing: {
+        title: "Règles de facturation des outils",
+        description: "Définissez les crédits consommés par appel.",
+        manage: "Configurer les tarifs des outils",
       },
       chargingMethod: {
         title: "Mode de facturation",
-        description:
-          "Traitez la facturation localement ou connectez la facturation distante de Baizhi Cloud.",
+        description: "Configurez la stratégie de facturation des ressources.",
         mode: "Mode de facturation",
         modes: {
-          local: "Facturation locale",
-          remote: "Facturation distante (Baizhi Cloud)",
+          disabled: "Aucune facturation",
+          local: "Facturation directe",
+          remote: "Facturation liée à Baizhi Cloud",
         },
         modeDescriptions: {
           local:
@@ -764,10 +788,28 @@ export const frFR = {
         apiKeyPlaceholder: "Saisissez la clé Baizhi Cloud",
       },
       quotaRefresh: {
-        title: "Paramètres de renouvellement",
-        description:
-          "Le cycle de renouvellement s’applique globalement à tous les groupes et utilisateurs.",
-        cycle: "Cycle de renouvellement",
+        title: "Renouvellement automatique des crédits",
+        description: "Renouvelle automatiquement les crédits par cycle.",
+        itemTitle: "Cycle de réinitialisation des crédits",
+        itemDescription: "Réinitialisation automatique : {{cycle}}",
+        nextResetTitle: "Heure de la prochaine réinitialisation",
+        resetNow: "Réinitialiser maintenant",
+        resetting: "Réinitialisation…",
+        resetSuccess: "Les quotas de {{count}} membres ont été réinitialisés.",
+        resetDialogTitle: "Réinitialiser les quotas des membres",
+        resetDialogDescription:
+          "Sélectionnez les groupes et membres dont les quotas doivent être réinitialisés immédiatement. Un groupe inclut ses membres.",
+        resetTargets: "Groupes et membres",
+        resetPlaceholder: "Sélectionner des groupes ou membres",
+        resetSearch: "Rechercher des groupes, noms ou e-mails",
+        resetNoResults: "Aucun groupe ou membre correspondant.",
+        configure: "Configurer",
+        dialogTitle: "Configurer le cycle de réinitialisation",
+        dialogDescription:
+          "Choisissez le cycle de réinitialisation pour la facturation locale.",
+        cancel: "Annuler",
+        confirm: "Confirmer",
+        cycle: "Cycle de réinitialisation",
         cycleDescription:
           "Tous les groupes et utilisateurs sont renouvelés ensemble au début du cycle choisi.",
         credits: "Crédits par renouvellement",
@@ -783,7 +825,9 @@ export const frFR = {
         },
       },
       groupQuota: {
-        title: "Quotas des groupes et utilisateurs",
+        title: "Quotas des groupes",
+        memberTitle: "Quotas des membres",
+        manageGroups: "Gérer les groupes",
         description:
           "Le groupe racine doit avoir un quota. Les sous-groupes et utilisateurs vides héritent du groupe parent le plus proche.",
         treeTitle: "Quotas des groupes et utilisateurs",
@@ -796,6 +840,9 @@ export const frFR = {
         overridden: "Personnalisé",
         inherited: "Hérite de {{credits}}",
         summary: "{{cycle}} · {{credits}} crédits",
+        remaining: "{{credits}} crédits restants",
+        billingDisabled: "Facturation désactivée",
+        remoteBilling: "Facturation distante",
         actions: "Actions de quota",
         adjust: "Ajuster le quota",
         dialogTitle: "Ajuster le quota",

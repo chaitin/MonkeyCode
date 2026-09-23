@@ -318,6 +318,34 @@ test("email code sign-in changes require confirmation", async () => {
   )
 })
 
+test("other settings configuration buttons use the secondary style", async () => {
+  const source = await readFile(
+    new URL("../src/pages/other-settings-page.tsx", import.meta.url),
+    "utf8"
+  )
+
+  assert.equal(
+    (
+      source.match(
+        /DialogTrigger render=\{<Button variant="secondary" \/>\}/g
+      ) ?? []
+    ).length,
+    3
+  )
+  assert.match(
+    source,
+    /variant="secondary"\s+onClick=\{\(\) => handleEmailDialogOpenChange\(true\)\}/
+  )
+  assert.doesNotMatch(
+    source,
+    /DialogTrigger render=\{<Button variant="outline" \/>\}[\s\S]*?knowledgeBase\.configure/
+  )
+  assert.match(
+    source,
+    /type="submit"\s+variant="secondary"\s+disabled=\{testSending\}/
+  )
+})
+
 test("other settings are fully translated in every supported language", () => {
   const expectedPaths = getLeafPaths(enUS.pages.otherSettings).sort()
 

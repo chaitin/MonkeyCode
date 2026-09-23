@@ -5,6 +5,7 @@ import { ApiError, api } from "@/lib/api"
 import { base, match, type Credential } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
@@ -343,16 +344,18 @@ export function ConnectorCredentials({
           {connector.authorizationMethod === "httpHeader" && (
             <>
               {credential && (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="replace-credential-headers"
                     checked={replaceHeaders}
-                    onChange={(e) => setReplaceHeaders(e.target.checked)}
+                    onCheckedChange={setReplaceHeaders}
                   />
-                  {t("resources.replaceHeaders", {
-                    defaultValue: "替换全部 Header（未勾选时保留原值）",
-                  })}
-                </label>
+                  <FieldLabel htmlFor="replace-credential-headers">
+                    {t("resources.replaceHeaders", {
+                      defaultValue: "替换全部 Header（未勾选时保留原值）",
+                    })}
+                  </FieldLabel>
+                </Field>
               )}
               {(!credential || replaceHeaders) && (
                 <fieldset className="flex flex-col gap-2">

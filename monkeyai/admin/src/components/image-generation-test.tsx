@@ -10,6 +10,15 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 
 type Option = {
@@ -163,6 +172,15 @@ export function ImageGenerationTest({
       !capability?.allowed_aspect_ratios ||
       capability.allowed_aspect_ratios[quality]?.includes(ratio)
   )
+  const operationItems = [
+    { value: "generate", label: t("pages.models.generate") },
+    { value: "edit", label: t("pages.models.edit") },
+  ]
+  const qualityItems = options.qualities.map((value) => ({
+    value,
+    label: value,
+  }))
+  const aspectItems = availableRatios.map((value) => ({ value, label: value }))
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -243,26 +261,36 @@ export function ImageGenerationTest({
                 <FieldLabel htmlFor="image-test-operation">
                   {t("pages.models.imageOperation")}
                 </FieldLabel>
-                <select
-                  id="image-test-operation"
-                  className="h-9 rounded-md border bg-background px-2"
+                <Select
+                  items={operationItems}
                   value={operation}
-                  onChange={(event) =>
-                    setOperation(event.target.value as "generate" | "edit")
-                  }
+                  onValueChange={(value) => {
+                    if (value !== null)
+                      setOperation(value as "generate" | "edit")
+                  }}
                 >
-                  <option value="generate">{t("pages.models.generate")}</option>
-                  <option value="edit">{t("pages.models.edit")}</option>
-                </select>
+                  <SelectTrigger id="image-test-operation" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="start">
+                    <SelectGroup>
+                      {operationItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </Field>
             )}
             <Field>
               <FieldLabel htmlFor="image-test-prompt">
                 {t("pages.models.prompt")}
               </FieldLabel>
-              <textarea
+              <Textarea
                 id="image-test-prompt"
-                className="min-h-20 rounded-md border bg-background p-2"
+                className="min-h-20"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 required
@@ -273,41 +301,53 @@ export function ImageGenerationTest({
                 <FieldLabel htmlFor="image-test-quality">
                   {t("pages.models.imageQuality")}
                 </FieldLabel>
-                <select
-                  id="image-test-quality"
-                  className="h-9 rounded-md border bg-background px-2"
+                <Select
+                  items={qualityItems}
                   value={quality}
-                  onChange={(event) => {
-                    setQuality(event.target.value)
+                  onValueChange={(value) => {
+                    if (value === null) return
+                    setQuality(value)
                     setAspect("")
                   }}
                 >
-                  {options.qualities.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="image-test-quality" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="start">
+                    <SelectGroup>
+                      {qualityItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </Field>
               <Field>
                 <FieldLabel htmlFor="image-test-aspect">
                   {t("pages.models.aspectRatio")}
                 </FieldLabel>
-                <select
-                  id="image-test-aspect"
-                  className="h-9 rounded-md border bg-background px-2"
-                  value={aspect}
-                  onChange={(event) => setAspect(event.target.value)}
+                <Select
+                  items={aspectItems}
+                  value={aspect || null}
+                  onValueChange={(value) => {
+                    if (value !== null) setAspect(value)
+                  }}
                 >
-                  <option value="" disabled>
-                    {t("pages.models.selectAspect")}
-                  </option>
-                  {availableRatios.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="image-test-aspect" className="w-full">
+                    <SelectValue placeholder={t("pages.models.selectAspect")} />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="start">
+                    <SelectGroup>
+                      {aspectItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
             <Field>

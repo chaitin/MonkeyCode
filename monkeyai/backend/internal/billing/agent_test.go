@@ -74,7 +74,7 @@ func TestAgentBilling(t *testing.T) {
 	}
 
 	a := call("account?user_id="+other, user, http.StatusOK)
-	if a.String("user_id") != user || a.String("balance") != "15000" || a.String("frozen") != "0" || a.String("available") != "15000" || a.String("quota") != "15000" {
+	if a.String("user_id") != user || a.String("balance") != "10000" || a.String("frozen") != "0" || a.String("available") != "10000" || a.String("quota") != "10000" {
 		t.Fatalf("首次查询应初始化自己的周期账户: %v", a)
 	}
 	if again := call("account", user, http.StatusOK); again.String("id") != a.String("id") {
@@ -90,7 +90,7 @@ func TestAgentBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 	frozen := call("account", user, http.StatusOK)
-	if frozen.String("frozen") != "14" || frozen.String("available") != "14986" {
+	if frozen.String("frozen") != "14" || frozen.String("available") != "9986" {
 		t.Fatalf("状态应反映预留积分: %v", frozen)
 	}
 	if err := s.Start(ctx, reservation.ID); err != nil {
@@ -100,7 +100,7 @@ func TestAgentBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := call("account", user, http.StatusOK)
-	if after.String("balance") != "14998.52" || after.String("frozen") != "0" || after.String("available") != "14998.52" {
+	if after.String("balance") != "9998.52" || after.String("frozen") != "0" || after.String("available") != "9998.52" {
 		t.Fatalf("状态应反映结算后余额: %v", after)
 	}
 
@@ -147,7 +147,7 @@ func TestAgentBilling(t *testing.T) {
 		}
 	}
 	charge := resource.Object(items[len(items)-1].(map[string]any))
-	if charge.String("transaction_id") != reservation.ID || charge.String("credit_delta") != "-1.480000" || charge.String("balance_after") != "14998.520000" {
+	if charge.String("transaction_id") != reservation.ID || charge.String("credit_delta") != "-1.480000" || charge.String("balance_after") != "9998.520000" {
 		t.Fatalf("应返回真实结算的消耗明细: %v", charge)
 	}
 	for _, tc := range []struct {
@@ -189,7 +189,7 @@ func TestAgentBilling(t *testing.T) {
 		t.Fatalf("不能截断负余额: %v", out)
 	}
 	s.now = func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }
-	if out := call("account", user, http.StatusOK); out.String("id") == a.String("id") || out.String("balance") != "15000" {
+	if out := call("account", user, http.StatusOK); out.String("id") == a.String("id") || out.String("balance") != "10000" {
 		t.Fatalf("新周期应刷新账户: %v", out)
 	}
 	if out := call("entries", user, http.StatusOK); out.Int("total") != 3 {

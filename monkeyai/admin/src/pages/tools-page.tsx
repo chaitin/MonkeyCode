@@ -75,6 +75,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
   Table,
@@ -96,12 +104,16 @@ type McpAuthorizationMode = "none" | "independent" | "centralized"
 type McpAuthorizationMethod = "oauth" | "httpHeader"
 type OAuthClientMode = "dynamic" | "manual"
 
+const DEFAULT_TOKEN_AUTH_METHOD = "__default"
+const NO_TOOL_CONTEXT = "__none"
+
 function oauthFormConfig(
   mode: OAuthClientMode,
   formData: FormData,
   existing?: Record<string, string>
 ) {
   if (mode === "dynamic") return { mode: "dynamic" }
+  const tokenAuthMethod = String(formData.get("oauthTokenAuthMethod") ?? "")
   return {
     mode:
       !existing || existing.mode === "dynamic"
@@ -113,9 +125,8 @@ function oauthFormConfig(
     token_url: String(formData.get("oauthTokenURL") ?? "").trim(),
     client_id: String(formData.get("oauthClientID") ?? "").trim(),
     registration_url: String(formData.get("oauthRegistrationURL") ?? "").trim(),
-    token_endpoint_auth_method: String(
-      formData.get("oauthTokenAuthMethod") ?? ""
-    ),
+    token_endpoint_auth_method:
+      tokenAuthMethod === "__default" ? "" : tokenAuthMethod,
     scopes: String(formData.get("oauthScopes") ?? "").trim(),
   }
 }
@@ -226,6 +237,35 @@ export function ToolsPage() {
     editingServer?.oauthConfig.mode === "dynamic"
       ? {}
       : (editingServer?.oauthConfig ?? {})
+  const oauthTokenAuthItems = [
+    {
+      value: DEFAULT_TOKEN_AUTH_METHOD,
+      label: t(
+        manualOAuthConfig.registration_url
+          ? "resources.oauthTokenAuthLegacyDefault"
+          : "resources.oauthTokenAuthDefault"
+      ),
+    },
+    { value: "none", label: "none (PKCE)" },
+    { value: "client_secret_post", label: "client_secret_post" },
+    { value: "client_secret_basic", label: "client_secret_basic" },
+  ]
+  const contextItems = [
+    {
+      value: NO_TOOL_CONTEXT,
+      label: t("resources.selectCredential", { defaultValue: "选择凭证" }),
+    },
+    ...contexts.map((credential) => ({
+      value: credential.id,
+      label: [
+        credential.name,
+        credential.user?.name || credential.user?.email,
+        credential.id,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    })),
+  ]
 
   const setConnectionEnabled = async (server: McpServer) => {
     await remote.run(async () => {
@@ -695,30 +735,36 @@ export function ToolsPage() {
                                   <FieldLabel htmlFor="oauthTokenAuthMethod">
                                     {t("resources.oauthTokenAuthMethod")}
                                   </FieldLabel>
-                                  <select
-                                    id="oauthTokenAuthMethod"
+                                  <Select
                                     name="oauthTokenAuthMethod"
-                                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                                    items={oauthTokenAuthItems}
                                     defaultValue={
-                                      manualOAuthConfig.token_endpoint_auth_method ??
-                                      ""
+                                      manualOAuthConfig.token_endpoint_auth_method ||
+                                      DEFAULT_TOKEN_AUTH_METHOD
                                     }
                                   >
-                                    <option value="">
-                                      {t(
-                                        manualOAuthConfig.registration_url
-                                          ? "resources.oauthTokenAuthLegacyDefault"
-                                          : "resources.oauthTokenAuthDefault"
-                                      )}
-                                    </option>
-                                    <option value="none">none (PKCE)</option>
-                                    <option value="client_secret_post">
-                                      client_secret_post
-                                    </option>
-                                    <option value="client_secret_basic">
-                                      client_secret_basic
-                                    </option>
-                                  </select>
+                                    <SelectTrigger
+                                      id="oauthTokenAuthMethod"
+                                      className="w-full"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent
+                                      alignItemWithTrigger={false}
+                                      align="start"
+                                    >
+                                      <SelectGroup>
+                                        {oauthTokenAuthItems.map((item) => (
+                                          <SelectItem
+                                            key={item.value}
+                                            value={item.value}
+                                          >
+                                            {item.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
                                 </Field>
                               </>
                             )}
@@ -1010,34 +1056,30 @@ export function ToolsPage() {
               <FieldLabel htmlFor="tool-context">
                 {t("resources.selectCredential", { defaultValue: "选择凭证" })}
               </FieldLabel>
-              <select
-                id="tool-context"
-                className="h-9 rounded-md border bg-background px-3"
-                value={contextID}
-                onChange={(e) => {
-                  const id = e.target.value
+              <Select
+                items={contextItems}
+                value={contextID || NO_TOOL_CONTEXT}
+                onValueChange={(value) => {
+                  if (value === null) return
+                  const id = value === NO_TOOL_CONTEXT ? "" : value
                   setContextID(id)
                   setToolDrafts([])
                   if (id) void remote.run(() => loadTools(viewingServer, id))
                 }}
               >
-                <option value="">
-                  {t("resources.selectCredential", {
-                    defaultValue: "选择凭证",
-                  })}
-                </option>
-                {contexts.map((credential) => (
-                  <option key={credential.id} value={credential.id}>
-                    {[
-                      credential.name,
-                      credential.user?.name || credential.user?.email,
-                      credential.id,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="tool-context" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false} align="start">
+                  <SelectGroup>
+                    {contextItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </Field>
           )}
           <ResourceNotice

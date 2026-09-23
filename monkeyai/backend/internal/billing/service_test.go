@@ -40,6 +40,14 @@ func TestAmountAndPricing(t *testing.T) {
 		t.Fatal("远程单位或舍入错误")
 	}
 }
+
+func TestDefaultPolicy(t *testing.T) {
+	p := defaultPolicy()
+	if !p.Enabled || p.Mode != "local" || p.Cycle != "weekly" || p.RootCredits != amountText("10000") {
+		t.Fatalf("默认计费策略不正确: %+v", p)
+	}
+}
+
 func TestPeriods(t *testing.T) {
 	for _, tc := range []struct{ cycle, at, start, end string }{{"monthly", "2028-02-29T15:59:00Z", "2028-01-31T16:00:00Z", "2028-02-29T16:00:00Z"}, {"weekly", "2026-09-06T12:00:00Z", "2026-08-30T16:00:00Z", "2026-09-06T16:00:00Z"}, {"daily", "2026-09-07T16:00:00Z", "2026-09-07T16:00:00Z", "2026-09-08T16:00:00Z"}} {
 		now, _ := time.Parse(time.RFC3339, tc.at)
@@ -239,14 +247,14 @@ func TestSettlementAndPeriodIsolation(t *testing.T) {
 	if err = s.pool.QueryRow(ctx, `SELECT balance::text,frozen::text FROM credit_accounts WHERE id=$1`, old.ID).Scan(&balance, &frozen); err != nil {
 		t.Fatal(err)
 	}
-	if amountText(balance) != amountText("14998.52") || amountText(frozen) != 0 {
+	if amountText(balance) != amountText("9998.52") || amountText(frozen) != 0 {
 		t.Fatalf("旧账户: %s %s", balance, frozen)
 	}
 	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger_entries WHERE transaction_id=$1`, r.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("流水数量 %d %v", count, err)
 	}
 	next, err = s.Account(ctx, user)
-	if err != nil || next.Balance != amountText("15000") {
+	if err != nil || next.Balance != amountText("10000") {
 		t.Fatal("迟到结算污染新周期", next, err)
 	}
 	if _, err = s.pool.Exec(ctx, `UPDATE credit_ledger_entries SET item_name='篡改' WHERE transaction_id=$1`, r.ID); err == nil {
@@ -390,7 +398,7 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 		t.Fatal("远程确认失败应保持待结算")
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Balance != amountText("15000") || a.Frozen == 0 {
+	if err != nil || a.Balance != amountText("10000") || a.Frozen == 0 {
 		t.Fatal(a, err)
 	}
 	stub.failConfirm = false
@@ -403,7 +411,7 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 		t.Fatalf("远程业务 ID 未保持幂等: %+v", stub)
 	}
 	a, err = s.Account(ctx, user)
-	if err != nil || a.Balance != amountText("14998.52") || a.Frozen != 0 {
+	if err != nil || a.Balance != amountText("9998.52") || a.Frozen != 0 {
 		t.Fatal(a, err)
 	}
 }
@@ -437,7 +445,7 @@ func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (a.Frozen > 0) != tc.frozen || a.Balance != amountText("15000") {
+			if (a.Frozen > 0) != tc.frozen || a.Balance != amountText("10000") {
 				t.Fatalf("错误释放或扣款: %+v", a)
 			}
 		})
@@ -462,14 +470,14 @@ func TestMissingUsageKeepsReservation(t *testing.T) {
 		t.Fatal(state, err)
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Frozen <= 0 || a.Balance != amountText("15000") {
+	if err != nil || a.Frozen <= 0 || a.Balance != amountText("10000") {
 		t.Fatal(a, err)
 	}
 	if err = s.Finish(ctx, r.ID, Usage{Known: true, Input: 10000, Cached: 4000, Output: 2000, Result: "failed"}); err != nil {
 		t.Fatal(err)
 	}
 	a, err = s.Account(ctx, user)
-	if err != nil || a.Frozen != 0 || a.Balance != amountText("14998.52") {
+	if err != nil || a.Frozen != 0 || a.Balance != amountText("9998.52") {
 		t.Fatal(a, err)
 	}
 	var input int64
@@ -531,7 +539,7 @@ func TestUnknownUsageIsAutomaticallyReconciled(t *testing.T) {
 		t.Fatalf("自动对账证据不完整: state=%s usage=%+v", state, usage)
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Balance != amountText("14998.52") || a.Frozen != 0 {
+	if err != nil || a.Balance != amountText("9998.52") || a.Frozen != 0 {
 		t.Fatal(a, err)
 	}
 }
@@ -554,7 +562,7 @@ func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Quota != amountText("15000") {
+	if err != nil || a.Quota != amountText("10000") {
 		t.Fatal("首次访问不应提前使用下周期额度", a, err)
 	}
 }

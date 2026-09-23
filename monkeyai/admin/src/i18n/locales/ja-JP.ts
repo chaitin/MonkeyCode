@@ -11,6 +11,10 @@ export const jaJP = {
     userAgent: "ユーザーエージェント",
     requestId: "リクエスト ID",
     error: "エラー",
+    targets: {
+      ...enUS.audit.targets,
+      connector_credential: "コネクター認証情報",
+    },
   },
 
   resources: enUS.resources,
@@ -718,24 +722,43 @@ export const jaJP = {
     billingSettings: {
       title: "料金設定",
       description: "課金ルールとユーザー枠の定期更新方法を設定します。",
-      save: "設定を保存",
+      save: "保存",
       saved: "料金設定を保存しました",
       modelPricing: {
-        title: "モデル課金ルール",
-        description: "モデルの Token 使用量に対するポイント消費を設定します。",
-        inputToken: "モデル — 入力 Token",
-        cachedInputToken: "モデル — 入力 Token（キャッシュヒット）",
-        outputToken: "モデル — 出力 Token",
+        title: "大規模言語モデルの課金ルール",
+        description: "LLM Token のクレジット価格を設定します。",
+        inputToken: "非キャッシュ入力 Token 費用",
+        cachedInputToken: "キャッシュ入力 Token 費用",
+        outputToken: "出力 Token 費用",
+        inputTokenDescription:
+          "非キャッシュ入力 Token 100 万件あたり {{credits}} クレジット",
+        cachedInputTokenDescription:
+          "キャッシュ入力 Token 100 万件あたり {{credits}} クレジット",
+        outputTokenDescription:
+          "出力 Token 100 万件あたり {{credits}} クレジット",
+        configure: "設定",
+        manageMultiplier: "モデル倍率を設定",
+        configureTitle: "{{name}}を設定",
+        dialogDescription: "100 万 Token あたりの消費クレジットを設定します。",
+        valueLabel: "クレジット",
+        valueInvalid: "0 以上で小数点以下 6 桁までの数値を入力してください。",
+        cancel: "キャンセル",
+        confirm: "確定",
         unit: "100 万 Token あたりの消費ポイント",
+      },
+      toolPricing: {
+        title: "ツール課金ルール",
+        description: "ツール呼び出しごとのクレジットを設定します。",
+        manage: "ツール料金を設定",
       },
       chargingMethod: {
         title: "課金方式",
-        description:
-          "ローカルで課金するか、百智クラウドのリモート課金に接続します。",
+        description: "システムリソースの課金方針を設定します。",
         mode: "課金方式",
         modes: {
-          local: "ローカル課金",
-          remote: "リモート課金（百智クラウド）",
+          disabled: "課金なし",
+          local: "直接課金",
+          remote: "百智クラウド連携課金",
         },
         modeDescriptions: {
           local: "使用量とポイント控除を現在のシステムで処理します。",
@@ -746,10 +769,27 @@ export const jaJP = {
         apiKeyPlaceholder: "百智クラウドキーを入力",
       },
       quotaRefresh: {
-        title: "更新設定",
-        description:
-          "枠の更新周期は、すべてのグループとユーザーに共通で適用されます。",
-        cycle: "更新周期",
+        title: "クレジットの自動更新",
+        description: "周期ごとにメンバーのクレジットを自動更新します。",
+        itemTitle: "クレジットリセット周期",
+        itemDescription: "{{cycle}}自動リセット",
+        nextResetTitle: "次回のリセット時刻",
+        resetNow: "今すぐリセット",
+        resetting: "リセット中…",
+        resetSuccess: "{{count}} 人のメンバー枠をリセットしました。",
+        resetDialogTitle: "メンバー枠を今すぐリセット",
+        resetDialogDescription:
+          "枠をすぐにリセットするグループとメンバーを選択します。グループを選ぶと所属メンバーも含まれます。",
+        resetTargets: "グループとメンバー",
+        resetPlaceholder: "グループまたはメンバーを選択",
+        resetSearch: "グループ、名前、メールを検索",
+        resetNoResults: "一致するグループまたはメンバーがありません。",
+        configure: "設定",
+        dialogTitle: "クレジットリセット周期を設定",
+        dialogDescription: "ローカル課金の自動リセット周期を選択します。",
+        cancel: "キャンセル",
+        confirm: "確定",
+        cycle: "リセット周期",
         cycleDescription:
           "すべてのグループとユーザーは、選択した周期の開始時に一斉に更新されます。",
         credits: "1 回あたりの更新ポイント",
@@ -765,7 +805,9 @@ export const jaJP = {
         },
       },
       groupQuota: {
-        title: "グループとユーザーの枠",
+        title: "グループ枠",
+        memberTitle: "メンバー枠",
+        manageGroups: "グループを管理",
         description:
           "ルートグループの枠は必須です。子グループとユーザーが未設定の場合、最も近い親グループの枠を継承します。",
         treeTitle: "グループとユーザーの枠",
@@ -778,6 +820,9 @@ export const jaJP = {
         overridden: "個別設定",
         inherited: "{{credits}} を継承",
         summary: "{{cycle}} {{credits}} ポイント",
+        remaining: "残り {{credits}} ポイント",
+        billingDisabled: "課金は無効です",
+        remoteBilling: "リモート課金",
         actions: "枠の操作",
         adjust: "枠を調整",
         dialogTitle: "枠を調整",

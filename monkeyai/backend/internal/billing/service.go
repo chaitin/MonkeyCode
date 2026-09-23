@@ -43,7 +43,7 @@ type Policy struct {
 }
 
 func defaultPolicy() Policy {
-	return Policy{RootCredits: 15000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "monthly", Mode: "local"}
+	return Policy{RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
 }
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	zone, _ := time.LoadLocation("Asia/Shanghai")
