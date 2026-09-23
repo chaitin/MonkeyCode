@@ -260,7 +260,7 @@ export const ar = {
       count: "عدد النماذج المتصلة: {{count}}",
       type: "النوع",
       kind: "نوع النموذج",
-      textKind: "نص",
+      textKind: "نموذج لغوي كبير",
       imageKind: "توليد الصور",
       imageProvider: "مزود الصور",
       imageCapabilitiesUnavailable:
@@ -286,10 +286,10 @@ export const ar = {
       systemModel: "نماذج النظام",
       userModel: "نماذج المستخدم",
       add: "إضافة نموذج",
-      dialogTitle: "إضافة نموذج لغوي كبير",
+      dialogTitle: "إضافة نموذج",
       dialogDescription:
         "اضبط طريقة استدعاء النموذج والمجموعات المسموح لها باستخدامه.",
-      editDialogTitle: "تعديل نموذج لغوي كبير",
+      editDialogTitle: "تعديل نموذج",
       editDialogDescription:
         "حدّث طريقة استدعاء النموذج والمجموعات المسموح لها باستخدامه.",
       modelId: "معرّف النموذج",

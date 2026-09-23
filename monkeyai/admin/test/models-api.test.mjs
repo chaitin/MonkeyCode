@@ -118,6 +118,21 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.doesNotMatch(source, /member-01|engineering/)
 })
 
+test("model kinds use icon tabs and card badges", async () => {
+  const source = await readFile(
+    new URL("../src/pages/models-page.tsx", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(source, /<TabsTrigger[^>]*value="text">/)
+  assert.match(source, /<TabsTrigger[^>]*value="image">/)
+  assert.match(source, /AiChat02Icon/)
+  assert.match(source, /AiImageIcon/)
+  assert.doesNotMatch(source, /id="model-kind"/)
+  assert.equal(zhCN.pages.models.dialogTitle, "添加大模型")
+  assert.equal(zhCN.pages.models.textKind, "大语言模型")
+})
+
 test("image generation test form follows model capabilities and protects invocation key", async () => {
   const source = await readFile(
     new URL("../src/components/image-generation-test.tsx", import.meta.url),

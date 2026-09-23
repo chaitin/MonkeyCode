@@ -392,8 +392,8 @@ export const enUS = {
         "Manage the models and integrations available to your organization.",
       count: "{{count}} models connected",
       type: "Type",
-      kind: "Model kind",
-      textKind: "Text",
+      kind: "Model type",
+      textKind: "Large language model",
       imageKind: "Image generation",
       imageProvider: "Image provider",
       testGeneration: "Test image generation",
@@ -419,10 +419,10 @@ export const enUS = {
       systemModel: "System models",
       userModel: "User models",
       add: "Add model",
-      dialogTitle: "Add large language model",
+      dialogTitle: "Add model",
       dialogDescription:
         "Configure how this model is called and which groups can use it.",
-      editDialogTitle: "Edit large language model",
+      editDialogTitle: "Edit model",
       editDialogDescription:
         "Update how this model is called and which groups can use it.",
       modelId: "Model ID",
