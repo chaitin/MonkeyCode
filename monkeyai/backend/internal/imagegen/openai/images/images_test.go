@@ -40,7 +40,7 @@ func TestGenerateMapsTierAndAspect(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			t.Error(err)
 		}
-		if input.Model != "gpt-image-2.5-flare" || input.Size != "1440x2560" || input.N != 2 {
+		if input.Model != "gpt-image-2.5-flare" || input.Size != "2880x5120" || input.N != 2 {
 			t.Errorf("生图参数未正确转换: %+v", input)
 		}
 		io.WriteString(w, `{"data":[{"b64_json":"`+base64.StdEncoding.EncodeToString(content)+`"}]}`)
@@ -48,11 +48,11 @@ func TestGenerateMapsTierAndAspect(t *testing.T) {
 	defer server.Close()
 	p := New(server.Client())
 	cap, err := p.Capabilities("gpt-image-2.5-flare")
-	if err != nil || cap.MaxCount != 4 || len(cap.AspectRatios) != 8 {
+	if err != nil || cap.MaxCount != 4 || len(cap.Qualities) != 3 || cap.Qualities[2] != "4K" || len(cap.AspectRatios) != 8 {
 		t.Fatalf("GPT Image 能力错误: %+v, %v", cap, err)
 	}
 	result, err := p.Generate(context.Background(), proxy.Target{BaseURL: server.URL + "/v1", APIKey: "upstream-key", UpstreamModel: "gpt-image-2.5-flare"},
-		imagegen.ProviderRequest{Prompt: "猫", Quality: "2K", AspectRatio: "9:16", Count: 2})
+		imagegen.ProviderRequest{Prompt: "猫", Quality: "4K", AspectRatio: "9:16", Count: 2})
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 || !bytes.Equal(result.Images[0].Data, content) {
 		t.Fatalf("GPT Image 上游响应解析失败: %+v, %v", result, err)
 	}

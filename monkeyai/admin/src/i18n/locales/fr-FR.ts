@@ -280,8 +280,6 @@ export const frFR = {
       defaultAspectRatio: "Format par défaut",
       baseCreditsPerImage: "Crédits par image",
       qualityMultiplier: "Multiplicateur de résolution",
-      aspectMultiplier: "Multiplicateur de format",
-      editMultiplier: "Multiplicateur d’édition",
       testGeneration: "Tester la génération d’images",
       testGenerationWarning:
         "Le test peut entraîner des frais et consommer des crédits. Utilisez une clé autorisée.",

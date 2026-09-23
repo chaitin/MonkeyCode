@@ -18,6 +18,7 @@ func New(client *http.Client) *Provider { return &Provider{client: client} }
 var sizes = map[string]map[string]string{
 	"1K": {"1:1": "1024x1024", "4:3": "1152x864", "3:4": "864x1152", "16:9": "1280x720", "9:16": "720x1280", "3:2": "1248x832", "2:3": "832x1248", "21:9": "1344x576"},
 	"2K": {"1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "16:9": "2560x1440", "9:16": "1440x2560", "3:2": "2496x1664", "2:3": "1664x2496", "21:9": "2688x1152"},
+	"4K": {"1:1": "4096x4096", "4:3": "4608x3456", "3:4": "3456x4608", "16:9": "5120x2880", "9:16": "2880x5120", "3:2": "4992x3328", "2:3": "3328x4992", "21:9": "5376x2304"},
 }
 
 func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
@@ -25,7 +26,7 @@ func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
 		return imagegen.Capabilities{}, errors.New("不支持此 Seedream 生图模型版本")
 	}
 	return imagegen.Capabilities{
-		Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K"},
+		Operations: []string{"generate", "edit"}, Qualities: []string{"1K", "2K", "4K"},
 		AspectRatios: []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"},
 		MaxCount:     1, MaxReferences: 4, SupportsReference: true,
 	}, nil

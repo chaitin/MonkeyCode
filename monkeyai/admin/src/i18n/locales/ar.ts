@@ -271,8 +271,6 @@ export const ar = {
       defaultAspectRatio: "النسبة الافتراضية",
       baseCreditsPerImage: "رصيد لكل صورة",
       qualityMultiplier: "مضاعف الدقة",
-      aspectMultiplier: "مضاعف النسبة",
-      editMultiplier: "مضاعف التعديل",
       testGeneration: "اختبار توليد الصور",
       testGenerationWarning:
         "قد يترتب على الاختبار تكلفة ورصيد. استخدم مفتاح استدعاء مصرّحًا له.",

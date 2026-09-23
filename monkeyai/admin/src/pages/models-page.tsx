@@ -108,8 +108,6 @@ type ImageMultiplier = { name: string; multiplier: string }
 type ImagePricing = {
   base_credits_per_image: string
   quality_multipliers?: ImageMultiplier[]
-  aspect_ratio_multipliers?: ImageMultiplier[]
-  operation_multipliers?: ImageMultiplier[]
 }
 
 type ImageCapabilities = {
@@ -263,10 +261,6 @@ export function ModelsPage() {
   const [qualityMultipliers, setQualityMultipliers] = useState<
     Record<string, string>
   >({})
-  const [aspectMultipliers, setAspectMultipliers] = useState<
-    Record<string, string>
-  >({})
-  const [editMultiplier, setEditMultiplier] = useState("1")
   const [supportsVision, setSupportsVision] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
@@ -353,8 +347,6 @@ export function ModelsPage() {
     setDefaultAspectRatio("")
     setBaseCredits("10")
     setQualityMultipliers({})
-    setAspectMultipliers({})
-    setEditMultiplier("1")
     setSupportsVision(false)
     setTagsOpen(false)
     setTagIds([])
@@ -393,19 +385,6 @@ export function ModelsPage() {
           item.multiplier,
         ])
       )
-    )
-    setAspectMultipliers(
-      Object.fromEntries(
-        (model.imagePricing?.aspect_ratio_multipliers ?? []).map((item) => [
-          item.name,
-          item.multiplier,
-        ])
-      )
-    )
-    setEditMultiplier(
-      model.imagePricing?.operation_multipliers?.find(
-        (item) => item.name === "edit"
-      )?.multiplier ?? "1"
     )
     setSupportsVision(model.supportsVision)
     setTagIds(model.tagIds)
@@ -508,11 +487,9 @@ export function ModelsPage() {
                   ))
             )
         ) ||
-        [
-          ...qualities.map((value) => qualityMultipliers[value] ?? "1"),
-          ...aspectRatios.map((value) => aspectMultipliers[value] ?? "1"),
-          editMultiplier,
-        ].some((value) => !positiveMultiplier.test(value))
+        qualities
+          .map((value) => qualityMultipliers[value] ?? "1")
+          .some((value) => !positiveMultiplier.test(value))
       )
         return
     }
@@ -566,19 +543,6 @@ export function ModelsPage() {
                     name,
                     multiplier: qualityMultipliers[name],
                   })),
-                aspect_ratio_multipliers: aspectRatios
-                  .filter(
-                    (name) =>
-                      aspectMultipliers[name] && aspectMultipliers[name] !== "1"
-                  )
-                  .map((name) => ({
-                    name,
-                    multiplier: aspectMultipliers[name],
-                  })),
-                operation_multipliers:
-                  editMultiplier === "1"
-                    ? []
-                    : [{ name: "edit", multiplier: editMultiplier }],
               },
             }
       const saved = await api<ApiModel>(
@@ -1075,41 +1039,6 @@ export function ModelsPage() {
                                   />
                                 </Field>
                               ))}
-                              {aspectRatios.map((value) => (
-                                <Field key={value}>
-                                  <FieldLabel htmlFor={`ratio-price-${value}`}>
-                                    {value} {t("pages.models.aspectMultiplier")}
-                                  </FieldLabel>
-                                  <Input
-                                    id={`ratio-price-${value}`}
-                                    value={aspectMultipliers[value] ?? "1"}
-                                    onChange={(event) =>
-                                      setAspectMultipliers((current) => ({
-                                        ...current,
-                                        [value]: event.target.value,
-                                      }))
-                                    }
-                                    inputMode="decimal"
-                                  />
-                                </Field>
-                              ))}
-                              {imageCapabilities.operations.includes(
-                                "edit"
-                              ) && (
-                                <Field>
-                                  <FieldLabel htmlFor="edit-price">
-                                    {t("pages.models.editMultiplier")}
-                                  </FieldLabel>
-                                  <Input
-                                    id="edit-price"
-                                    value={editMultiplier}
-                                    onChange={(event) =>
-                                      setEditMultiplier(event.target.value)
-                                    }
-                                    inputMode="decimal"
-                                  />
-                                </Field>
-                              )}
                             </FieldGroup>
                           </>
                         )}

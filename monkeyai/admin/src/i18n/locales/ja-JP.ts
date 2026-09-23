@@ -274,8 +274,6 @@ export const jaJP = {
       defaultAspectRatio: "既定の比率",
       baseCreditsPerImage: "画像あたりのクレジット",
       qualityMultiplier: "解像度倍率",
-      aspectMultiplier: "比率倍率",
-      editMultiplier: "編集倍率",
       testGeneration: "画像生成をテスト",
       testGenerationWarning:
         "テストには上流の費用とクレジットが発生する場合があります。権限のある呼び出しキーを使用してください。",

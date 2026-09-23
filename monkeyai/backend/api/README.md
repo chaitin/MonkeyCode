@@ -27,7 +27,7 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 
 ## 生图模型网关
 
-模型列表的 `kind` 为 `text` 或 `image`。生图模型返回已开放的 `image_config`（画质 `qualities`、比例 `aspect_ratios`、默认值和操作等能力）与字符串形式的 `image_pricing`。管理员只选择画质、比例及积分；供应商适配器按上游模型在代码中完成参数映射。调用前使用该模型的可用能力校验，并按服务端报价预留积分。
+模型列表的 `kind` 为 `text` 或 `image`。生图模型返回已开放的 `image_config`（平台统一的 1K/2K/4K 画质子集、比例、默认值和操作等能力）与字符串形式的 `image_pricing`。管理员只选择画质、比例，并配置每张基础积分和画质倍率；宽高比及生成/编辑操作不参与定价。供应商适配器按上游模型在代码中完成参数映射。调用前使用该模型的可用能力校验，并按服务端报价预留积分。
 
 生图使用与文本代理相同的调用密钥，`X-Api-Key` 优先于 `Authorization: Bearer`；必须具备 `model:invoke` 权限。以下接口均以 `/v1/images` 为前缀，不接受 Agent OAuth access token，也**不兼容同路径的 OpenAI Images 同步响应**：
 

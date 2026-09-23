@@ -279,8 +279,6 @@ export const es419 = {
       defaultAspectRatio: "Relación predeterminada",
       baseCreditsPerImage: "Créditos por imagen",
       qualityMultiplier: "Multiplicador de nivel",
-      aspectMultiplier: "Multiplicador de proporción",
-      editMultiplier: "Multiplicador de edición",
       testGeneration: "Probar generación de imágenes",
       testGenerationWarning:
         "La prueba puede generar costos y consumir créditos. Usa una clave autorizada.",

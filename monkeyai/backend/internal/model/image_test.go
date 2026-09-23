@@ -17,12 +17,14 @@ func imageInput() SaveInput {
 		BaseURL:     "https://api.example.com/v1",
 		APIKey:      "secret",
 		ImageConfig: &ImageConfig{
-			Qualities:          []string{"1K", "2K"},
+			Qualities:          []string{"1K", "2K", "4K"},
 			AspectRatios:       []string{"1:1", "9:16"},
 			DefaultQuality:     "2K",
 			DefaultAspectRatio: "1:1",
 		},
-		ImagePricing:  &ImagePricing{BaseCreditsPerImage: "10", QualityMultipliers: []ImageMultiplier{{Name: "2K", Multiplier: "2"}}},
+		ImagePricing: &ImagePricing{BaseCreditsPerImage: "10", QualityMultipliers: []ImageMultiplier{
+			{Name: "2K", Multiplier: "1.5"}, {Name: "4K", Multiplier: "3"},
+		}},
 		Authorization: Authorization{AllUsers: true},
 	}
 }
@@ -53,7 +55,7 @@ func TestImageCapabilitiesRestrictAdminConfigAndCatalog(t *testing.T) {
 			t.Fatal("错误的供应商能力查询")
 		}
 		return ImageCapabilities{Operations: []string{"generate", "edit"},
-			Qualities: []string{"1K", "2K"}, AspectRatios: []string{"1:1", "9:16"},
+			Qualities: []string{"1K", "2K", "4K"}, AspectRatios: []string{"1:1", "9:16"},
 			MaxImages: 4, MaxReferenceImages: 4, SupportsMask: true}, nil
 	})
 	input := imageInput()
@@ -85,7 +87,8 @@ func TestRejectInvalidImageModel(t *testing.T) {
 		{"未知适配器", func(i *SaveInput) { i.Provider = Provider("other") }},
 		{"缺失生图配置", func(i *SaveInput) { i.ImageConfig = nil }},
 		{"缺失价格", func(i *SaveInput) { i.ImagePricing = nil }},
-		{"非法画质", func(i *SaveInput) { i.ImageConfig.Qualities = []string{"2K", "2K"} }},
+		{"重复画质", func(i *SaveInput) { i.ImageConfig.Qualities = []string{"2K", "2K"} }},
+		{"平台外画质", func(i *SaveInput) { i.ImageConfig.Qualities = []string{"8K"}; i.ImageConfig.DefaultQuality = "8K" }},
 		{"非法比例", func(i *SaveInput) { i.ImageConfig.AspectRatios = []string{"33:32"} }},
 		{"默认比例不在列表", func(i *SaveInput) { i.ImageConfig.DefaultAspectRatio = "16:9" }},
 		{"价格含浮点溢出", func(i *SaveInput) { i.ImagePricing.BaseCreditsPerImage = "1.0000001" }},

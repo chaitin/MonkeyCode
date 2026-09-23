@@ -280,8 +280,6 @@ export const deDE = {
       defaultAspectRatio: "Standard-Seitenverhältnis",
       baseCreditsPerImage: "Credits pro Bild",
       qualityMultiplier: "Stufenfaktor",
-      aspectMultiplier: "Seitenverhältnisfaktor",
-      editMultiplier: "Bearbeitungsfaktor",
       testGeneration: "Bildgenerierung testen",
       testGenerationWarning:
         "Der Test kann Kosten und Credits verursachen. Autorisierten Aufrufschlüssel verwenden.",

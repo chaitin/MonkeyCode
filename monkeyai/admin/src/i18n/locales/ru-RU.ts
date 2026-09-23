@@ -278,8 +278,6 @@ export const ruRU = {
       defaultAspectRatio: "Соотношение по умолчанию",
       baseCreditsPerImage: "Кредиты за изображение",
       qualityMultiplier: "Множитель разрешения",
-      aspectMultiplier: "Множитель соотношения",
-      editMultiplier: "Множитель редактирования",
       testGeneration: "Проверить генерацию",
       testGenerationWarning:
         "Тест может повлечь расходы и списание кредитов. Используйте разрешённый ключ вызова.",

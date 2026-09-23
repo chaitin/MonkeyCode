@@ -271,8 +271,6 @@ export const koKR = {
       defaultAspectRatio: "기본 비율",
       baseCreditsPerImage: "이미지당 크레딧",
       qualityMultiplier: "등급 배율",
-      aspectMultiplier: "비율 배율",
-      editMultiplier: "편집 배율",
       testGeneration: "이미지 생성 테스트",
       testGenerationWarning:
         "테스트에 상위 서비스 비용과 크레딧이 발생할 수 있습니다. 승인된 호출 키를 사용하세요.",
