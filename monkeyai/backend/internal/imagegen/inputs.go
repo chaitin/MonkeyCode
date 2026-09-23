@@ -46,13 +46,6 @@ func (s *Inputs) Upload(ctx context.Context, userID string, data []byte) (Input,
 	if userID == "" || len(data) == 0 || len(data) > maxInputBytes {
 		return Input{}, resource.Invalid("参考图大小无效")
 	}
-	count, err := sqlc.New(s.repo.pool).CountLiveImageInputs(ctx, userID)
-	if err != nil {
-		return Input{}, err
-	}
-	if count >= 32 {
-		return Input{}, &resource.Error{Status: 429, Code: "image_input_limit", Message: "参考图上传数量已达上限"}
-	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxInputPixels {
 		return Input{}, resource.Invalid("参考图格式或像素数无效")
