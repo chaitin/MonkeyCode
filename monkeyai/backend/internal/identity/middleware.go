@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
-	"github.com/jackc/pgx/v5"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5"
 )
 
 type userContextKey struct{}
@@ -67,13 +70,29 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 		}
 		reference := tokenHash(strings.TrimSpace(authorization[7:]))
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		startedAt := time.Now()
 		row, err := sqlc.New(s.db).GetTokenUser(ctx, reference)
+		duration := time.Since(startedAt)
 		cancel()
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusUnauthorized, "invalid_token", "access token 无效或已过期")
 			return
 		}
 		if err != nil {
+			stats := s.db.Stat()
+			slog.ErrorContext(r.Context(), "Agent 认证查询失败",
+				"request_id", middleware.GetReqID(r.Context()),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"duration", duration,
+				"error", err,
+				"db_pool_acquired_conns", stats.AcquiredConns(),
+				"db_pool_idle_conns", stats.IdleConns(),
+				"db_pool_total_conns", stats.TotalConns(),
+				"db_pool_max_conns", stats.MaxConns(),
+				"db_pool_empty_acquire_count", stats.EmptyAcquireCount(),
+				"db_pool_canceled_acquire_count", stats.CanceledAcquireCount(),
+			)
 			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "认证服务暂不可用")
 			return
 		}

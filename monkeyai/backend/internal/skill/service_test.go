@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -31,6 +33,32 @@ func (s memoryStorage) Delete(_ context.Context, key string) error {
 }
 
 func (s memoryStorage) Ping(context.Context) error { return nil }
+
+func TestServePackageWithoutStore(t *testing.T) {
+	p, err := Parse(archive(map[string]string{"SKILL.md": manifest}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage := memoryStorage{"skills/review.zip": p.Bytes}
+	s := NewService(nil, storage)
+	o := resource.Object{
+		"package_s3_key":     "skills/review.zip",
+		"package_file_name":  "review.zip",
+		"package_sha256":     p.SHA,
+		"package_size_bytes": float64(len(p.Bytes)),
+	}
+	r := httptest.NewRequest(http.MethodGet, "/package?sha256="+p.SHA, nil)
+	w := httptest.NewRecorder()
+
+	s.ServePackage(w, r, o)
+
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), p.Bytes) {
+		t.Fatalf("技能包响应错误: status=%d size=%d", w.Code, w.Body.Len())
+	}
+	if w.Header().Get("X-Content-SHA256") != p.SHA || w.Header().Get("Content-Length") == "" {
+		t.Fatalf("技能包响应头缺失: %v", w.Header())
+	}
+}
 
 func TestEditDescription(t *testing.T) {
 	p, err := Parse(archive(map[string]string{"SKILL.md": manifest, "scripts/check.sh": "echo ok"}))
