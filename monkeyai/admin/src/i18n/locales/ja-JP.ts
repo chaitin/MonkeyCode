@@ -263,7 +263,7 @@ export const jaJP = {
       count: "{{count}} 件のモデルを接続済み",
       type: "種類",
       kind: "モデル種別",
-      textKind: "テキスト",
+      textKind: "大規模言語モデル",
       imageKind: "画像生成",
       imageProvider: "画像プロバイダー",
       imageCapabilitiesUnavailable:
@@ -289,10 +289,10 @@ export const jaJP = {
       systemModel: "システムモデル",
       userModel: "ユーザーモデル",
       add: "モデルを追加",
-      dialogTitle: "大規模言語モデルを追加",
+      dialogTitle: "モデルを追加",
       dialogDescription:
         "モデルの呼び出し方法と、利用を許可するグループを設定します。",
-      editDialogTitle: "大規模言語モデルを編集",
+      editDialogTitle: "モデルを編集",
       editDialogDescription:
         "モデルの呼び出し方法と、利用を許可するグループを更新します。",
       modelId: "モデル ID",

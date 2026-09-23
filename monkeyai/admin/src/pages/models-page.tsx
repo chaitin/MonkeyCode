@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import {
+  AiChat02Icon,
+  AiImageIcon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -624,6 +626,36 @@ export function ModelsPage() {
                         : t("pages.models.dialogTitle")}
                     </DialogTitle>
                   </DialogHeader>
+                  <Tabs
+                    value={kind}
+                    onValueChange={(value) => {
+                      const next = value as ModelKind
+                      setKind(next)
+                      setImageCapabilities(null)
+                      if (next === "text")
+                        setProtocol("openai_chat_completions")
+                    }}
+                  >
+                    <TabsList
+                      className="w-full"
+                      aria-label={t("pages.models.kind")}
+                    >
+                      <TabsTrigger type="button" value="text">
+                        <HugeiconsIcon
+                          icon={AiChat02Icon}
+                          data-icon="inline-start"
+                        />
+                        {t("pages.models.textKind")}
+                      </TabsTrigger>
+                      <TabsTrigger type="button" value="image">
+                        <HugeiconsIcon
+                          icon={AiImageIcon}
+                          data-icon="inline-start"
+                        />
+                        {t("pages.models.imageKind")}
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                   <FieldGroup className="gap-5">
                     <FieldGroup className="grid gap-4 sm:grid-cols-2">
                       <Field>
@@ -656,81 +688,34 @@ export function ModelsPage() {
                       </Field>
                     </FieldGroup>
 
-                    <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                    {kind === "image" && (
                       <Field>
-                        <FieldLabel htmlFor="model-kind">
-                          {t("pages.models.kind")}
+                        <FieldLabel htmlFor="model-provider">
+                          {t("pages.models.imageProvider")}
                         </FieldLabel>
                         <Select
-                          items={[
-                            {
-                              value: "text",
-                              label: t("pages.models.textKind"),
-                            },
-                            {
-                              value: "image",
-                              label: t("pages.models.imageKind"),
-                            },
-                          ]}
-                          value={kind}
+                          items={IMAGE_PROVIDERS}
+                          value={provider}
                           onValueChange={(value) => {
-                            const next = value as ModelKind
-                            setKind(next)
+                            setProvider(value as ImageProvider)
                             setImageCapabilities(null)
-                            if (next === "text")
-                              setProtocol("openai_chat_completions")
                           }}
                         >
-                          <SelectTrigger className="w-full" id="model-kind">
+                          <SelectTrigger className="w-full" id="model-provider">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
-                              <SelectItem value="text">
-                                {t("pages.models.textKind")}
-                              </SelectItem>
-                              <SelectItem value="image">
-                                {t("pages.models.imageKind")}
-                              </SelectItem>
+                              {IMAGE_PROVIDERS.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>
+                                  {item.label}
+                                </SelectItem>
+                              ))}
                             </SelectGroup>
                           </SelectContent>
                         </Select>
                       </Field>
-                      {kind === "image" && (
-                        <Field>
-                          <FieldLabel htmlFor="model-provider">
-                            {t("pages.models.imageProvider")}
-                          </FieldLabel>
-                          <Select
-                            items={IMAGE_PROVIDERS}
-                            value={provider}
-                            onValueChange={(value) => {
-                              setProvider(value as ImageProvider)
-                              setImageCapabilities(null)
-                            }}
-                          >
-                            <SelectTrigger
-                              className="w-full"
-                              id="model-provider"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                {IMAGE_PROVIDERS.map((item) => (
-                                  <SelectItem
-                                    key={item.value}
-                                    value={item.value}
-                                  >
-                                    {item.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                      )}
-                    </FieldGroup>
+                    )}
 
                     <Field>
                       <FieldLabel htmlFor="model-base-url">
@@ -1124,11 +1109,21 @@ export function ModelsPage() {
                             >
                               {model.displayName}
                             </span>
-                            {model.kind === "image" && (
-                              <Badge variant="outline">
-                                {t("pages.models.imageKind")}
-                              </Badge>
-                            )}
+                            <Badge variant="outline">
+                              <HugeiconsIcon
+                                icon={
+                                  model.kind === "image"
+                                    ? AiImageIcon
+                                    : AiChat02Icon
+                                }
+                                data-icon="inline-start"
+                              />
+                              {t(
+                                model.kind === "image"
+                                  ? "pages.models.imageKind"
+                                  : "pages.models.textKind"
+                              )}
+                            </Badge>
                             {!model.enabled && (
                               <Badge variant="outline">
                                 {t("pages.models.disable")}

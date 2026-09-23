@@ -267,7 +267,7 @@ export const ruRU = {
       count: "Подключено моделей: {{count}}",
       type: "Тип",
       kind: "Тип модели",
-      textKind: "Текст",
+      textKind: "Большая языковая модель",
       imageKind: "Генерация изображений",
       imageProvider: "Поставщик изображений",
       imageCapabilitiesUnavailable:
@@ -293,10 +293,10 @@ export const ruRU = {
       systemModel: "Системные модели",
       userModel: "Пользовательские модели",
       add: "Добавить модель",
-      dialogTitle: "Добавить большую языковую модель",
+      dialogTitle: "Добавить модель",
       dialogDescription:
         "Настройте способ вызова модели и группы, которым разрешено её использовать.",
-      editDialogTitle: "Изменить большую языковую модель",
+      editDialogTitle: "Изменить модель",
       editDialogDescription:
         "Обновите способ вызова модели и группы, которым разрешено её использовать.",
       modelId: "ID модели",

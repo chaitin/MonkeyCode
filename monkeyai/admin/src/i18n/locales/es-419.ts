@@ -268,7 +268,7 @@ export const es419 = {
       count: "{{count}} modelos conectados",
       type: "Tipo",
       kind: "Tipo de modelo",
-      textKind: "Texto",
+      textKind: "Modelo de lenguaje grande",
       imageKind: "Generación de imágenes",
       imageProvider: "Proveedor de imágenes",
       imageCapabilitiesUnavailable:
@@ -294,10 +294,10 @@ export const es419 = {
       systemModel: "Modelos del sistema",
       userModel: "Modelos de usuario",
       add: "Agregar modelo",
-      dialogTitle: "Agregar modelo de lenguaje",
+      dialogTitle: "Agregar modelo",
       dialogDescription:
         "Configura cómo se invoca el modelo y qué grupos pueden utilizarlo.",
-      editDialogTitle: "Editar modelo de lenguaje",
+      editDialogTitle: "Editar modelo",
       editDialogDescription:
         "Actualiza cómo se invoca el modelo y qué grupos pueden utilizarlo.",
       modelId: "ID del modelo",

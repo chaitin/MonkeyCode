@@ -269,7 +269,7 @@ export const frFR = {
       count: "{{count}} modèles connectés",
       type: "Type",
       kind: "Type de modèle",
-      textKind: "Texte",
+      textKind: "Grand modèle de langage",
       imageKind: "Génération d’images",
       imageProvider: "Fournisseur d’images",
       imageCapabilitiesUnavailable:
@@ -295,10 +295,10 @@ export const frFR = {
       systemModel: "Modèles système",
       userModel: "Modèles utilisateur",
       add: "Ajouter un modèle",
-      dialogTitle: "Ajouter un grand modèle de langage",
+      dialogTitle: "Ajouter un modèle",
       dialogDescription:
         "Configurez la manière dont le modèle est appelé et les groupes autorisés à l’utiliser.",
-      editDialogTitle: "Modifier le grand modèle de langage",
+      editDialogTitle: "Modifier le modèle",
       editDialogDescription:
         "Mettez à jour la manière dont le modèle est appelé et les groupes autorisés à l’utiliser.",
       modelId: "ID du modèle",

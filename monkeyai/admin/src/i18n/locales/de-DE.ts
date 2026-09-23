@@ -269,7 +269,7 @@ export const deDE = {
       count: "{{count}} Modelle verbunden",
       type: "Typ",
       kind: "Modelltyp",
-      textKind: "Text",
+      textKind: "Großes Sprachmodell",
       imageKind: "Bildgenerierung",
       imageProvider: "Bildanbieter",
       imageCapabilitiesUnavailable:
@@ -295,10 +295,10 @@ export const deDE = {
       systemModel: "Systemmodelle",
       userModel: "Benutzermodelle",
       add: "Modell hinzufügen",
-      dialogTitle: "Großes Sprachmodell hinzufügen",
+      dialogTitle: "Modell hinzufügen",
       dialogDescription:
         "Legen Sie fest, wie das Modell aufgerufen wird und welche Gruppen es verwenden dürfen.",
-      editDialogTitle: "Großes Sprachmodell bearbeiten",
+      editDialogTitle: "Modell bearbeiten",
       editDialogDescription:
         "Aktualisieren Sie, wie das Modell aufgerufen wird und welche Gruppen es verwenden dürfen.",
       modelId: "Modell-ID",

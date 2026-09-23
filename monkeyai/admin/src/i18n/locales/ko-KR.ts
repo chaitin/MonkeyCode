@@ -260,7 +260,7 @@ export const koKR = {
       count: "연결된 모델 {{count}}개",
       type: "유형",
       kind: "모델 유형",
-      textKind: "텍스트",
+      textKind: "대규모 언어 모델",
       imageKind: "이미지 생성",
       imageProvider: "이미지 공급자",
       imageCapabilitiesUnavailable:
@@ -286,10 +286,10 @@ export const koKR = {
       systemModel: "시스템 모델",
       userModel: "사용자 모델",
       add: "모델 추가",
-      dialogTitle: "대규모 언어 모델 추가",
+      dialogTitle: "모델 추가",
       dialogDescription:
         "모델 호출 방식과 이 모델을 사용할 수 있는 그룹을 설정합니다.",
-      editDialogTitle: "대규모 언어 모델 수정",
+      editDialogTitle: "모델 수정",
       editDialogDescription:
         "모델 호출 방식과 이 모델을 사용할 수 있는 그룹을 업데이트합니다.",
       modelId: "모델 ID",
