@@ -85,10 +85,16 @@ func TestEditUsesMultipart(t *testing.T) {
 	}
 }
 
-func TestUnsupportedModelAndRejectedResponse(t *testing.T) {
+func TestCustomModelAndRejectedResponse(t *testing.T) {
 	p := New(&http.Client{})
-	if _, err := p.Capabilities("gpt-text"); err == nil {
-		t.Fatal("不能猜测未知模型的生图能力")
+	if cap, err := p.Capabilities("custom-image-alias"); err != nil || len(cap.Qualities) != 3 || len(cap.AspectRatios) != 8 {
+		t.Fatalf("自定义模型应使用供应商默认能力: %+v, %v", cap, err)
+	}
+	if cap, err := p.Capabilities("gpt-image-1"); err != nil || len(cap.Qualities) != 3 || len(cap.AspectRatios) != 8 {
+		t.Fatalf("模型 ID 不应收窄管理能力: %+v, %v", cap, err)
+	}
+	if _, err := Size("gpt-image-1", "2K", "1:1"); err == nil {
+		t.Fatal("调用上游时应保留 GPT Image 1 尺寸限制")
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadRequest) }))
 	defer server.Close()

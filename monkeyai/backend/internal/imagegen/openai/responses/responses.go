@@ -24,13 +24,8 @@ func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
 	}
 }
 
-func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
-	switch model {
-	case "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-6-astra":
-		return p.DefaultCapabilities(), nil
-	default:
-		return imagegen.Capabilities{}, errors.New("不支持此 Responses 生图模型版本")
-	}
+func (p *Provider) Capabilities(string) (imagegen.Capabilities, error) {
+	return p.DefaultCapabilities(), nil
 }
 
 func (p *Provider) Generate(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest) (imagegen.ProviderResult, error) {

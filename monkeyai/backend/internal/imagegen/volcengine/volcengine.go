@@ -29,10 +29,7 @@ func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
 	}
 }
 
-func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
-	if model != "doubao-seedream-5-0-pro-260628" {
-		return imagegen.Capabilities{}, errors.New("不支持此 Seedream 生图模型版本")
-	}
+func (p *Provider) Capabilities(string) (imagegen.Capabilities, error) {
 	return p.DefaultCapabilities(), nil
 }
 

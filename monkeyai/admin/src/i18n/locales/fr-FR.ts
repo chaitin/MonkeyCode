@@ -273,7 +273,7 @@ export const frFR = {
       imageKind: "Génération d’images",
       imageProvider: "Fournisseur d’images",
       imageCapabilitiesUnavailable:
-        "Saisissez un ID de modèle pris en charge pour charger les options.",
+        "Impossible de charger les options de ce fournisseur.",
       selectAllSupported: "Tout sélectionner",
       imageQuality: "Niveau de résolution",
       aspectRatio: "Format d’image",

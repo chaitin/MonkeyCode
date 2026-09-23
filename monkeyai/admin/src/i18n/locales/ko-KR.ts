@@ -264,7 +264,7 @@ export const koKR = {
       imageKind: "이미지 생성",
       imageProvider: "이미지 공급자",
       imageCapabilitiesUnavailable:
-        "지원되는 모델 ID를 입력하면 이미지 옵션이 표시됩니다.",
+        "이 공급자의 이미지 옵션을 불러올 수 없습니다.",
       selectAllSupported: "지원 항목 모두 선택",
       imageQuality: "해상도 등급",
       aspectRatio: "화면 비율",

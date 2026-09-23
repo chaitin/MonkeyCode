@@ -53,43 +53,27 @@ func defaultCapabilities() imagegen.Capabilities {
 	}
 }
 
-func capabilities(model string) (imagegen.Capabilities, error) {
-	cap := defaultCapabilities()
-	switch model {
-	case "gpt-image-2.5-sunburst", "gpt-image-2.5-flare":
-		cap.Qualities = []string{"1K", "2K", "4K"}
-		cap.AspectRatios = ratios
-	case "gpt-image-1":
-		cap.Qualities = []string{"1K"}
-		cap.AspectRatios = []string{"1:1", "3:2", "2:3"}
-	default:
-		return imagegen.Capabilities{}, errors.New("不支持此 GPT Image 模型版本")
-	}
-	return cap, nil
+func capabilities(string) (imagegen.Capabilities, error) {
+	return defaultCapabilities(), nil
 }
 
 func Size(model, quality, aspect string) (string, error) {
-	cap, err := capabilities(model)
-	if err != nil {
-		return "", err
-	}
-	for _, q := range cap.Qualities {
-		if q == quality {
-			for _, a := range cap.AspectRatios {
-				if a == aspect {
-					if model == "gpt-image-1" {
-						switch aspect {
-						case "1:1":
-							return "1024x1024", nil
-						case "3:2":
-							return "1536x1024", nil
-						case "2:3":
-							return "1024x1536", nil
-						}
-					}
-					return dimensions[quality][aspect], nil
-				}
+	if model == "gpt-image-1" {
+		if quality == "1K" {
+			switch aspect {
+			case "1:1":
+				return "1024x1024", nil
+			case "3:2":
+				return "1536x1024", nil
+			case "2:3":
+				return "1024x1536", nil
 			}
+		}
+		return "", errors.New("不支持此 GPT Image 画质比例组合")
+	}
+	if sizes, ok := dimensions[quality]; ok {
+		if size, ok := sizes[aspect]; ok {
+			return size, nil
 		}
 	}
 	return "", errors.New("不支持此 GPT Image 画质比例组合")

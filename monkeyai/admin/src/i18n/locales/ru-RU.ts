@@ -271,7 +271,7 @@ export const ruRU = {
       imageKind: "Генерация изображений",
       imageProvider: "Поставщик изображений",
       imageCapabilitiesUnavailable:
-        "Введите поддерживаемый ID модели, чтобы загрузить параметры.",
+        "Не удалось загрузить параметры этого поставщика.",
       selectAllSupported: "Выбрать все поддерживаемые",
       imageQuality: "Уровень разрешения",
       aspectRatio: "Соотношение сторон",

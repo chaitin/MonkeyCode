@@ -45,7 +45,7 @@ func TestGrokImageGeneration(t *testing.T) {
 	if err != nil || result.Status != "succeeded" || len(result.Images) != 1 {
 		t.Fatalf("Grok 解析错误: %+v, %v", result, err)
 	}
-	if _, err := p.Capabilities("grok-unknown"); err == nil {
-		t.Fatal("未知 Grok 模型不应被误判支持")
+	if custom, err := p.Capabilities("custom-grok-alias"); err != nil || len(custom.Qualities) != 3 {
+		t.Fatalf("自定义模型应使用 Grok 默认能力: %+v, %v", custom, err)
 	}
 }

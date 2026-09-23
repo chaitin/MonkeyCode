@@ -392,8 +392,7 @@ export const zhCN = {
       referenceImages: "参考图／原图",
       mask: "蒙版",
       taskStatus: "任务状态",
-      imageCapabilitiesUnavailable:
-        "请输入受支持的上游模型 ID，以加载画质和比例选项。",
+      imageCapabilitiesUnavailable: "无法加载该供应商的画质和比例选项。",
       selectAllSupported: "全选支持项",
       imageQuality: "画质档位",
       aspectRatio: "比例",

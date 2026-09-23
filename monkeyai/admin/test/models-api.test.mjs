@@ -148,8 +148,8 @@ test("image capabilities use card multi-selects and supported defaults", async (
   )
 
   assert.match(page, /preserveSavedSelection/)
-  assert.match(page, /modelSpecific: false/)
   assert.match(page, /api<ImageCapabilities>\(providerPath\)/)
+  assert.doesNotMatch(page, /imageModelId|modelSpecific/)
   assert.match(page, /: \[\.\.\.capability\.qualities\]/)
   assert.match(page, /: \[\.\.\.capability\.aspect_ratios\]/)
   assert.match(page, /if \(next\.length === 0\) return/)

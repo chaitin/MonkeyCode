@@ -255,8 +255,7 @@ export const zhTW = {
       textKind: "大型語言模型",
       imageKind: "生圖模型",
       imageProvider: "生圖供應商",
-      imageCapabilitiesUnavailable:
-        "請輸入支援的上游模型 ID，以載入畫質與比例選項。",
+      imageCapabilitiesUnavailable: "無法載入此供應商的畫質與比例選項。",
       selectAllSupported: "全選支援項目",
       imageQuality: "畫質檔位",
       aspectRatio: "比例",

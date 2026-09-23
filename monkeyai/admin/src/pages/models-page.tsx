@@ -253,7 +253,6 @@ export function ModelsPage() {
   )
   const [kind, setKind] = useState<ModelKind>("text")
   const [provider, setProvider] = useState<ImageProvider>("openai_images")
-  const [imageModelId, setImageModelId] = useState("")
   const [imageCapabilities, setImageCapabilities] =
     useState<ImageCapabilities | null>(null)
   const [qualities, setQualities] = useState<string[]>([])
@@ -314,35 +313,15 @@ export function ModelsPage() {
 
   useEffect(() => {
     if (!dialogOpen || kind !== "image") return
-    const upstreamModel = imageModelId.trim()
     let active = true
     const timer = window.setTimeout(() => {
       const providerPath = `/api/admin/v1/models/image-capabilities?provider=${encodeURIComponent(provider)}`
-      const request = upstreamModel
-        ? api<ImageCapabilities>(
-            `${providerPath}&model_id=${encodeURIComponent(upstreamModel)}`
-          )
-            .then((capability) => ({ capability, modelSpecific: true }))
-            .catch(() =>
-              api<ImageCapabilities>(providerPath).then((capability) => ({
-                capability,
-                modelSpecific: false,
-              }))
-            )
-        : api<ImageCapabilities>(providerPath).then((capability) => ({
-            capability,
-            modelSpecific: false,
-          }))
-
-      request
-        .then(({ capability, modelSpecific }) => {
+      api<ImageCapabilities>(providerPath)
+        .then((capability) => {
           if (!active) return
 
           const preserveSavedSelection =
-            modelSpecific &&
-            editingModel?.kind === "image" &&
-            editingModel.provider === provider &&
-            editingModel.modelId === upstreamModel
+            editingModel?.kind === "image" && editingModel.provider === provider
           const savedConfig = preserveSavedSelection
             ? editingModel.imageConfig
             : undefined
@@ -380,7 +359,7 @@ export function ModelsPage() {
       active = false
       window.clearTimeout(timer)
     }
-  }, [dialogOpen, editingModel, kind, provider, imageModelId])
+  }, [dialogOpen, editingModel, kind, provider])
 
   const handleQualitySelectionChange = (values: string[]) => {
     if (!imageCapabilities) return
@@ -408,7 +387,6 @@ export function ModelsPage() {
     setProtocol("openai_chat_completions")
     setKind("text")
     setProvider("openai_images")
-    setImageModelId("")
     setImageCapabilities(null)
     setQualities([])
     setAspectRatios([])
@@ -442,7 +420,6 @@ export function ModelsPage() {
     setProvider(
       model.provider === "passthrough" ? "openai_images" : model.provider
     )
-    setImageModelId(model.modelId)
     setQualities(model.imageConfig?.qualities ?? [])
     setAspectRatios(model.imageConfig?.aspect_ratios ?? [])
     setDefaultQuality(model.imageConfig?.default_quality ?? "")
@@ -733,9 +710,6 @@ export function ModelsPage() {
                           id="model-id"
                           name="modelId"
                           defaultValue={editingModel?.modelId}
-                          onChange={(event) => {
-                            setImageModelId(event.target.value)
-                          }}
                           placeholder={t("pages.models.modelIdPlaceholder")}
                           required
                         />

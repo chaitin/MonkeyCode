@@ -23,10 +23,7 @@ func (p *Provider) DefaultCapabilities() imagegen.Capabilities {
 		AspectRatios: ratios, MaxCount: 4}
 }
 
-func (p *Provider) Capabilities(model string) (imagegen.Capabilities, error) {
-	if model != "grok-imagine-image-2.0" {
-		return imagegen.Capabilities{}, errors.New("不支持此 Grok 生图模型版本")
-	}
+func (p *Provider) Capabilities(string) (imagegen.Capabilities, error) {
 	return p.DefaultCapabilities(), nil
 }
 
