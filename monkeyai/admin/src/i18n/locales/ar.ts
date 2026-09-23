@@ -307,7 +307,7 @@ export const ar = {
       apiKey: "مفتاح API",
       apiKeyPlaceholder: "أدخل مفتاح API للنموذج",
       multiplier: "المضاعف",
-      authorizedGroups: "المستخدمون المصرح لهم",
+      authorizedScope: "نطاق التفويض",
       authorizationPlaceholder: "اختر المجموعات أو المستخدمين",
       authorizedGroupsDescription:
         "يمكن فقط لأعضاء المجموعات المحددة استخدام هذا النموذج.",

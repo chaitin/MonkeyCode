@@ -315,7 +315,7 @@ export const ruRU = {
       apiKey: "Ключ API",
       apiKeyPlaceholder: "Введите ключ API модели",
       multiplier: "Множитель",
-      authorizedGroups: "Авторизованные пользователи",
+      authorizedScope: "Область доступа",
       authorizationPlaceholder: "Выберите группы или пользователей",
       authorizedGroupsDescription:
         "Только участники выбранных групп могут использовать эту модель.",
