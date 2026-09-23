@@ -806,7 +806,7 @@ export function ModelsPage() {
                                 : undefined
                             }
                             placeholder="1.0"
-                            step="0.1"
+                            step="0.01"
                             type="number"
                             required
                           />
