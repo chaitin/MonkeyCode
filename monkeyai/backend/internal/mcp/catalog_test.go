@@ -24,7 +24,7 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 			}))
 			defer oauth.Close()
 			c := f.call("POST", "/admin/connectors", resource.Object{
-				"name": "系统独立认证", "url": remote.URL, "authorization_mode": "independent", "authorization_method": method,
+				"name": "系统独立认证", "description": "供 Agent 使用的连接器", "url": remote.URL, "authorization_mode": "independent", "authorization_method": method,
 				"oauth_config": resource.Object{"client_id": "client", "token_url": oauth.URL, "authorization_url": oauth.URL},
 				"grants":       []resource.Object{{"user_id": f.users["other"]}},
 			}, "owner", "", 200)
@@ -74,6 +74,9 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 				catalog, err := f.service.Catalog(t.Context(), f.pool, c, f.users["other"])
 				if err != nil {
 					t.Fatal(err)
+				}
+				if catalog.String("description") != "供 Agent 使用的连接器" {
+					t.Fatalf("Agent 连接器描述 = %q", catalog.String("description"))
 				}
 				credentials := catalog["credentials"].([]resource.Object)
 				if len(credentials) != 1 || len(credentials[0]["tools"].([]resource.Object)) != want {

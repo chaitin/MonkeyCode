@@ -15,7 +15,7 @@ func (s *Service) gateway(c resource.Object, credential string) resource.Object 
 	return resource.Object{"url": url, "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}
 }
 func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
-	out := resource.Object{"id": c["id"], "name": c["name"], "authorization_mode": c["authorization_mode"], "authorization_method": c["authorization_method"], "icon_path": "", "capabilities": []string{"catalog", "invoke"}}
+	out := resource.Object{"id": c["id"], "name": c["name"], "description": c["description"], "authorization_mode": c["authorization_mode"], "authorization_method": c["authorization_method"], "icon_path": "", "capabilities": []string{"catalog", "invoke"}}
 	if key := c.String("icon_s3_key"); key != "" {
 		out["icon_path"] = "/api/v1/connectors/" + c.String("id") + "/icon?v=" + resource.Hash(key)
 	}

@@ -4326,6 +4326,8 @@ components:
           type: string
         name:
           type: string
+        description:
+          type: string
         authorization_mode:
           type: string
           enum:
@@ -4372,6 +4374,7 @@ components:
       required:
       - id
       - name
+      - description
       - authorization_mode
       - capabilities
       description: 独立认证在 credentials 内返回每份凭证的工具和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。resolve 返回所选凭证、工具和 mcp_gateway，API Key 全局创建。
