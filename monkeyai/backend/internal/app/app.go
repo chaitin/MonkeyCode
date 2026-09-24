@@ -131,7 +131,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
 	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
 	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges)
-	upstreamClient := &http.Client{Timeout: 10 * time.Minute}
+	upstreamClient := &http.Client{Timeout: 10 * time.Minute, Transport: proxy.DirectTransport()}
 	gptImages := openaiimages.New(upstreamClient)
 	gptResponses := openairesponses.New(upstreamClient)
 	seedream := volcengine.New(upstreamClient)

@@ -215,6 +215,20 @@ func TestProxyRegister(t *testing.T) {
 	}
 }
 
+func TestModelTransportsIgnoreEnvironmentProxy(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+	for _, transport := range []*http.Transport{
+		NewProxy(nil, discardLogger()).reverse.Transport.(*http.Transport),
+		NewResponseReconciler().client.Transport.(*http.Transport),
+		DirectTransport(),
+	} {
+		if transport.Proxy != nil || transport == http.DefaultTransport {
+			t.Fatal("模型和图片上游不应使用环境代理或共享默认传输层")
+		}
+	}
+}
+
 func TestProxyChainConfiguration(t *testing.T) {
 	proxy := NewProxy(nil, discardLogger())
 	recorder := &usageRecorderStub{calls: make(chan Call, 1)}

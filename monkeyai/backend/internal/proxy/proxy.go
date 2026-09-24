@@ -78,6 +78,12 @@ type Proxy struct {
 	reverse  *httputil.ReverseProxy
 }
 
+func DirectTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return transport
+}
+
 func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 	if logger == nil {
 		logger = slog.Default()
@@ -87,7 +93,7 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		logger:   logger.With("module", "proxy"),
 	}
 	p.reverse = &httputil.ReverseProxy{
-		Transport:      http.DefaultTransport,
+		Transport:      DirectTransport(),
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.errorHandler,

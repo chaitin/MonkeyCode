@@ -52,6 +52,43 @@ func TestExchangeHTTPFailureExcludesResponse(t *testing.T) {
 	}
 }
 
+func TestExchangeNoProxyKeepsDirectPolicy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/token", http.StatusFound)
+			return
+		}
+		resource.JSON(w, http.StatusOK, resource.Object{"access_token": "direct"})
+	}))
+	defer server.Close()
+	noProxy := func(*http.Request) (*url.URL, error) { return nil, nil }
+	config := func(target string) resource.Object {
+		return resource.Object{"oauth_config": oauthConfig{ClientID: "client", TokenURL: target}}
+	}
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
+	if _, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"refresh_token"}}, noProxy); err == nil || !strings.Contains(err.Error(), "目标地址不在允许范围内") {
+		t.Fatalf("未继承直连目标 IP 校验: %v", err)
+	}
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
+	result, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"authorization_code"}}, noProxy)
+	if err != nil || result.Access != "direct" {
+		t.Fatalf("无代理时 OAuth 授权交换未直连: %+v %v", result, err)
+	}
+	if _, err := exchangeWithProxy(t.Context(), config(server.URL+"/redirect"), url.Values{"grant_type": {"refresh_token"}}, noProxy); err == nil || !strings.Contains(err.Error(), "不允许自动重定向") {
+		t.Fatalf("未继承直连禁重定向策略: %v", err)
+	}
+}
+
+func TestExchangeRejectsHTTPProxyTarget(t *testing.T) {
+	proxyURL, _ := url.Parse("http://127.0.0.1:3128")
+	_, err := exchangeWithProxy(t.Context(), resource.Object{"oauth_config": oauthConfig{TokenURL: "http://example.com/token"}}, url.Values{"grant_type": {"refresh_token"}}, func(*http.Request) (*url.URL, error) {
+		return proxyURL, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "仅支持 HTTPS 目标") {
+		t.Fatalf("HTTP Token URL 不得由代理解析: %v", err)
+	}
+}
+
 func TestOAuthFailureDoesNotExposeURL(t *testing.T) {
 	err := &url.Error{Op: "POST", URL: "https://oauth.example/token?code=private-code", Err: errors.New("private-token")}
 	logged := fmt.Sprint(safeMCPFailure(err))
