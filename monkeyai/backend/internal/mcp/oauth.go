@@ -407,6 +407,10 @@ func safeMCPFailure(err error) []any {
 }
 
 func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
+	return exchangeWithProxy(ctx, c, v, http.ProxyFromEnvironment)
+}
+
+func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, proxy func(*http.Request) (*url.URL, error)) (tokens, error) {
 	o := oauthSettings(c)
 	if o.clientSecretExpired() {
 		return tokens{}, invalidGrant
@@ -419,6 +423,8 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 	if secret != "" && (o.TokenAuthMethod == "" || o.TokenAuthMethod == "client_secret_post") {
 		v.Set("client_secret", secret)
 	}
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", o.TokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return tokens{}, tokenExchangeError{reason: "invalid_token_url"}
@@ -428,7 +434,10 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	h := client()
+	h, req, err := tokenClient(req, proxy, net.DefaultResolver.LookupNetIP)
+	if err != nil {
+		return tokens{}, err
+	}
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
 	if err != nil {

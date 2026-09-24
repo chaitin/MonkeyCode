@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -53,6 +54,44 @@ func client() *http.Client {
 		return nil, fmt.Errorf("无法连接目标")
 	}}}
 }
+func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error), lookup func(context.Context, string, string) ([]netip.Addr, error)) (*http.Client, *http.Request, error) {
+	h := client()
+	p, err := proxy(req)
+	if err != nil || p == nil {
+		return h, req, err
+	}
+	if req.URL.Scheme != "https" || p.Scheme != "http" || p.Host == "" {
+		return nil, nil, fmt.Errorf("OAuth Token 代理仅支持 HTTPS 目标和 HTTP 代理")
+	}
+	name := req.URL.Hostname()
+	ips, err := lookup(req.Context(), "ip", name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(ips) == 0 {
+		return nil, nil, fmt.Errorf("无法解析 OAuth Token 目标")
+	}
+	for _, ip := range ips {
+		if ip.Zone() != "" || !allowedIP(ip) {
+			return nil, nil, fmt.Errorf("目标地址不在允许范围内")
+		}
+	}
+	target := req.Clone(req.Context())
+	u := *req.URL
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+	u.Host = net.JoinHostPort(ips[0].Unmap().String(), port)
+	target.URL = &u
+	target.Host = req.URL.Host
+	h.Transport = &http.Transport{
+		Proxy:           func(*http.Request) (*url.URL, error) { return p, nil },
+		TLSClientConfig: &tls.Config{ServerName: name},
+	}
+	return h, target, nil
+}
+
 func validURL(value string) bool {
 	u, err := url.Parse(value)
 	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil && u.Fragment == ""
