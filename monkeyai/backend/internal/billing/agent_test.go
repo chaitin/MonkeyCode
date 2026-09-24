@@ -219,7 +219,7 @@ func TestAgentBillingContract(t *testing.T) {
 		case map[string]any:
 			if ref, ok := node["$ref"].(string); ok && strings.HasPrefix(ref, "#/") {
 				var target any = document
-				for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+				for part := range strings.SplitSeq(strings.TrimPrefix(ref, "#/"), "/") {
 					parent, ok := target.(map[string]any)
 					if !ok || parent[part] == nil {
 						t.Fatalf("无效契约引用 %s", ref)

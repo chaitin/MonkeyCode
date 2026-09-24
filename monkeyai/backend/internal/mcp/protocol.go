@@ -33,8 +33,7 @@ func readRequest(w http.ResponseWriter, r *http.Request) (request, bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
 		status := http.StatusBadRequest
-		var limit *http.MaxBytesError
-		if errors.As(err, &limit) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			status = http.StatusRequestEntityTooLarge
 		}
 		rpcReply(w, status, nil, nil, &rpcError{Code: -32700, Message: "请求超限或不完整"})

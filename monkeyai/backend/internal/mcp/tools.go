@@ -160,8 +160,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	status, message := "connected", ""
 	if discoveryErr != nil {
 		status, message = "error", "MCP 连接或工具发现失败，请检查地址和网络"
-		var upstreamStatus remoteStatus
-		if errors.As(discoveryErr, &upstreamStatus) {
+		if upstreamStatus, ok := errors.AsType[remoteStatus](discoveryErr); ok {
 			if upstreamStatus == http.StatusUnauthorized {
 				message = "上游认证失败，请更新 Header 或重新授权"
 			}

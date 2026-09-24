@@ -124,14 +124,15 @@ func sendEmail(ctx context.Context, cfg emailConfig, to, subject, body string) e
 		return err
 	}
 	from := (&mail.Address{Name: cfg.SenderName, Address: cfg.SenderEmail}).String()
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n", from, recipient.String(), mime.QEncoding.Encode("UTF-8", subject), time.Now().Format(time.RFC1123Z))
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n", from, recipient.String(), mime.QEncoding.Encode("UTF-8", subject), time.Now().Format(time.RFC1123Z)))
 	encoded := base64.StdEncoding.EncodeToString([]byte(body))
 	for len(encoded) > 0 {
 		n := min(76, len(encoded))
-		message += encoded[:n] + "\r\n"
+		message.WriteString(encoded[:n] + "\r\n")
 		encoded = encoded[n:]
 	}
-	if _, err := writer.Write([]byte(message)); err != nil {
+	if _, err := writer.Write([]byte(message.String())); err != nil {
 		return err
 	}
 	if err := writer.Close(); err != nil {
@@ -168,8 +169,7 @@ func (s *Service) testEmail(w http.ResponseWriter, r *http.Request) {
 
 // SMTP 响应和网络错误可能回显收件人或认证信息，只记录协议状态及错误类别。
 func smtpFailure(err error) []any {
-	var response *textproto.Error
-	if errors.As(err, &response) {
+	if response, ok := errors.AsType[*textproto.Error](err); ok {
 		return []any{"reason", "smtp_rejected", "smtp_status", response.Code}
 	}
 	if errors.Is(err, ErrNotFound) {
@@ -178,8 +178,7 @@ func smtpFailure(err error) []any {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return []any{"reason", "timeout"}
 	}
-	var network net.Error
-	if errors.As(err, &network) {
+	if network, ok := errors.AsType[net.Error](err); ok {
 		return []any{"reason", "network_error", "timeout", network.Timeout()}
 	}
 	return []any{"reason", "email_error", "error_type", fmt.Sprintf("%T", err)}

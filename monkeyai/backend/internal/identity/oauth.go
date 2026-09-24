@@ -334,8 +334,7 @@ func (s *Service) clientLoginURL(requestID, errorCode string) string {
 }
 
 func logUpstreamFailure(ctx context.Context, operation, connectionID string, err error) {
-	var response *upstreamHTTPError
-	if errors.As(err, &response) {
+	if response, ok := errors.AsType[*upstreamHTTPError](err); ok {
 		slog.ErrorContext(ctx, "上游 OAuth 操作失败", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status)
 		return
 	}
