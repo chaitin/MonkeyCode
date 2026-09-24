@@ -155,7 +155,7 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 		)
 	}
 	p.finish(ctx, proxyCtx, call)
-	if p.recorder == nil || !result.hasTokens() {
+	if target.OwnershipType == "user" || p.billing != nil || p.recorder == nil || !result.hasTokens() {
 		return
 	}
 	if err := p.recorder.Record(context.WithoutCancel(ctx), call); err != nil {

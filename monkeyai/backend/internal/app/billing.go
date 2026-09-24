@@ -25,6 +25,19 @@ type applicationHandler struct {
 	endpoints *endpoint.Service
 }
 type modelBilling struct{ service *billing.Service }
+type modelUsageRecorder struct{ models *model.Postgres }
+
+func (r modelUsageRecorder) Record(ctx context.Context, c proxy.Call) error {
+	if c.InputTokens > math.MaxInt64 || c.CachedInputTokens > math.MaxInt64 || c.OutputTokens > math.MaxInt64 || c.CachedInputTokens > c.InputTokens {
+		return errors.New("模型用量无效")
+	}
+	return r.models.RecordCall(ctx, model.Call{
+		ModelID: c.ModelID, UserID: c.UserID, RequestID: c.RequestID,
+		Status: c.Result, ErrorCode: c.ErrorCode,
+		InputTokens: int64(c.InputTokens), CachedInputTokens: int64(c.CachedInputTokens),
+		OutputTokens: int64(c.OutputTokens), StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+	})
+}
 
 type reconciliationModels interface {
 	Get(context.Context, string) (model.Model, error)

@@ -218,9 +218,12 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		(mask != nil && (!cap.SupportsMask || operation != "edit")) {
 		return imageproxy.Task{}, resource.Invalid("参考图或编辑参数不受支持")
 	}
-	unit, err := Quote(item, operation, quality, aspect)
-	if err != nil {
-		return imageproxy.Task{}, resource.Invalid(err.Error())
+	var unit billing.Amount
+	if item.OwnershipType != "user" {
+		unit, err = Quote(item, operation, quality, aspect)
+		if err != nil {
+			return imageproxy.Task{}, resource.Invalid(err.Error())
+		}
 	}
 	images := make([]Input, 0, len(references))
 	fileIDs := make([]string, 0, len(references)+1)
@@ -269,22 +272,28 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		s.failUnsubmitted(ctx, job, "invalid_reference")
 		return imageproxy.Task{}, err
 	}
-	reservation, err := s.billing.Begin(ctx, billing.Request{
-		UserID: target.UserID, ResourceID: item.ID, Category: "image", ImageCount: int64(imageCount),
-		ImageUnitPrice: unit, IdempotencyKey: job.ID, RequestHash: job.RequestHash,
-	})
-	if err != nil {
-		s.failUnsubmitted(ctx, job, "billing_failed")
-		return imageproxy.Task{}, err
+	var reservationID string
+	if item.OwnershipType != "user" {
+		reservation, err := s.billing.Begin(ctx, billing.Request{
+			UserID: target.UserID, ResourceID: item.ID, Category: "image", ImageCount: int64(imageCount),
+			ImageUnitPrice: unit, IdempotencyKey: job.ID, RequestHash: job.RequestHash,
+		})
+		if err != nil {
+			s.failUnsubmitted(ctx, job, "billing_failed")
+			return imageproxy.Task{}, err
+		}
+		reservationID = reservation.ID
+		job.BillingTransactionID = &reservationID
 	}
-	job.BillingTransactionID = &reservation.ID
-	if err := s.jobs.Reserve(ctx, job, reservation.ID); err != nil {
+	if err := s.jobs.Reserve(ctx, job, reservationID); err != nil {
 		s.failUnsubmitted(ctx, job, "reservation_failed")
 		return imageproxy.Task{}, err
 	}
-	if err := s.billing.Start(ctx, reservation.ID); err != nil {
-		s.failUnsubmitted(ctx, job, "billing_start_failed")
-		return imageproxy.Task{}, err
+	if reservationID != "" {
+		if err := s.billing.Start(ctx, reservationID); err != nil {
+			s.failUnsubmitted(ctx, job, "billing_start_failed")
+			return imageproxy.Task{}, err
+		}
 	}
 	if err := s.jobs.Submitted(ctx, job.ID); err != nil {
 		s.failUnsubmitted(ctx, job, "submit_failed")

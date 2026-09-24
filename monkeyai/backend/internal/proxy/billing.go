@@ -25,7 +25,37 @@ type Billing interface {
 
 func (p *Proxy) WithBilling(b Billing) *Proxy { p.billing = b; return p }
 func (p *Proxy) finish(ctx context.Context, pc *proxyContext, call Call) {
-	if p.billing == nil || pc == nil || pc.reservation.ID == "" {
+	if pc == nil {
+		return
+	}
+	if pc.target.OwnershipType == "user" {
+		if p.recorder == nil {
+			return
+		}
+		pc.settled.Do(func() {
+			c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			call.ModelID, call.UserID = pc.target.ModelID, pc.target.UserID
+			call.SessionID = pc.target.SessionID
+			if call.StartedAt.IsZero() {
+				call.StartedAt = pc.startedAt
+			}
+			if call.CompletedAt.IsZero() {
+				call.CompletedAt = time.Now()
+			}
+			if call.Result == "" {
+				call.Result = "succeeded"
+			}
+			if !call.Known && call.ErrorCode == "" {
+				call.ErrorCode = "usage_unknown"
+			}
+			if err := p.recorder.Record(c, call); err != nil {
+				p.logger.ErrorContext(c, "记录自配模型用量失败", "model_id", call.ModelID, "error", err)
+			}
+		})
+		return
+	}
+	if p.billing == nil || pc.reservation.ID == "" {
 		return
 	}
 	pc.settled.Do(func() {
@@ -36,7 +66,7 @@ func (p *Proxy) finish(ctx context.Context, pc *proxyContext, call Call) {
 		}
 	})
 }
-func billRequest(body []byte, path string, limit int64, stream bool) ([]byte, error) {
+func prepareRequest(body []byte, path string, limit int64, stream bool) ([]byte, error) {
 	var data map[string]json.RawMessage
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, err
