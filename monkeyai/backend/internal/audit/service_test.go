@@ -38,6 +38,41 @@ func TestRedaction(t *testing.T) {
 	}
 }
 
+func TestClientIP(t *testing.T) {
+	for _, tc := range []struct {
+		name, remote, realIP, forwarded, want string
+	}{
+		{"nginx", "172.18.0.5:1234", "198.51.100.23", "203.0.113.99", "198.51.100.23"},
+		{"ipv6", "[fd00::5]:1234", "::ffff:198.51.100.23", "", "198.51.100.23"},
+		{"missing", "172.18.0.5:1234", "", "203.0.113.99", "172.18.0.5"},
+		{"invalid", "172.18.0.5:1234", "198.51.100.23, 203.0.113.99", "", "172.18.0.5"},
+		{"public direct", "198.51.100.10:1234", "203.0.113.99", "", "198.51.100.10"},
+		{"local direct", "127.0.0.1:1234", "203.0.113.99", "", "127.0.0.1"},
+		{"invalid peer", "unknown", "203.0.113.99", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/admin/v1/models", nil)
+			r.RemoteAddr = tc.remote
+			if tc.realIP != "" {
+				r.Header.Set("X-Real-IP", tc.realIP)
+			}
+			if tc.forwarded != "" {
+				r.Header.Set("X-Forwarded-For", tc.forwarded)
+			}
+			if got := clientIP(r); got != tc.want {
+				t.Fatalf("来源 IP = %q，期望 %q", got, tc.want)
+			}
+		})
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/admin/v1/models", nil)
+	r.RemoteAddr = "172.18.0.5:1234"
+	r.Header.Add("X-Real-IP", "198.51.100.23")
+	r.Header.Add("X-Real-IP", "203.0.113.99")
+	if got := clientIP(r); got != "172.18.0.5" {
+		t.Fatalf("多个客户端地址应退回连接地址，实际为 %q", got)
+	}
+}
+
 func TestFilters(t *testing.T) {
 	for _, query := range []string{"page=0", "page=-1", "page=1000001", "page=x", "page_size=501", "page_size=0", "category=unknown", "result=unknown", "since=x", "until=", "since=2026-09-08T00:00:00Z&until=2026-09-07T00:00:00Z", "params=%00", "actor=" + strings.Repeat("a", 513)} {
 		if _, _, err := filters(httptest.NewRequest("GET", "/?"+query, nil)); err == nil {
@@ -146,6 +181,10 @@ func TestRequestIntegration(t *testing.T) {
 		r.Header.Set("Content-Type", media)
 		r.Header.Set("User-Agent", "audit-test")
 		r.Header.Set("X-Forwarded-For", "203.0.113.99")
+		if operation == "large" {
+			r.RemoteAddr = "172.18.0.5:1234"
+			r.Header.Set("X-Real-IP", "198.51.100.23")
+		}
 		r.Header.Set("X-Request-ID", "forged-request")
 		w := httptest.NewRecorder()
 		if operation == "panic" {
@@ -176,7 +215,7 @@ func TestRequestIntegration(t *testing.T) {
 	if count != 9 || requests != 8 || failed != 3 || preserved != 3 || omitted != 3 {
 		t.Fatalf("请求审计重复或丢失: %d %d %d %d %d", count, requests, failed, preserved, omitted)
 	}
-	if strings.Contains(raw, "secret-") || strings.Contains(raw, "203.0.113.99") || strings.Contains(raw, "forged-request") || !strings.Contains(raw, "127.0.0.1") {
+	if strings.Contains(raw, "secret-") || strings.Contains(raw, "203.0.113.99") || strings.Contains(raw, "forged-request") || !strings.Contains(raw, "127.0.0.1") || !strings.Contains(raw, "198.51.100.23") {
 		t.Fatalf("审计信息错误: %s", raw)
 	}
 	if _, err = s.pool.Exec(t.Context(), `UPDATE users SET name='新名称', email='new@example.com' WHERE id=$1`, actor.ID); err != nil {
@@ -188,7 +227,7 @@ func TestRequestIntegration(t *testing.T) {
 	}{
 		{"page_size=2", 9, 2}, {"page=999&page_size=2", 9, 0}, {"result=failed", 3, 3},
 		{"actor=" + url.QueryEscape("审计管理员"), 9, 9}, {"actor=new@example.com", 0, 0}, {"actor=%25", 0, 0},
-		{"ip=127.0.0.1", 9, 9}, {"category=model", 9, 9}, {"params=" + url.QueryEscape("测试模型"), 6, 6}, {"params=secret-input", 0, 0},
+		{"ip=127.0.0.1", 8, 8}, {"ip=198.51.100.23", 1, 1}, {"category=model", 9, 9}, {"params=" + url.QueryEscape("测试模型"), 6, 6}, {"params=secret-input", 0, 0},
 		{"since=2000-01-01T00:00:00Z&until=2001-01-01T00:00:00Z", 0, 0},
 	} {
 		w := httptest.NewRecorder()

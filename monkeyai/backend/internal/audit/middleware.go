@@ -70,7 +70,7 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 				failure(w, 500, "server_error", "初始化操作审计失败")
 				return
 			}
-			state := &requestState{id: hex.EncodeToString(random[:]), actor: user, at: time.Now().UTC(), ip: sourceIP(r.RemoteAddr), agent: clean(r.UserAgent(), 512)}
+			state := &requestState{id: hex.EncodeToString(random[:]), actor: user, at: time.Now().UTC(), ip: clientIP(r), agent: clean(r.UserAgent(), 512)}
 			r = r.WithContext(context.WithValue(r.Context(), requestKey{}, state))
 			var body, response capture
 			media, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -100,6 +100,24 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 			next.ServeHTTP(writer, r)
 		})
 	}
+}
+
+func clientIP(r *http.Request) string {
+	remote := sourceIP(r.RemoteAddr)
+	peer, err := netip.ParseAddr(remote)
+	if err != nil || !peer.IsPrivate() {
+		return remote
+	}
+	// 默认部署由内网 Nginx 转发；公网或本机直连不信任代理头。
+	values := r.Header.Values("X-Real-IP")
+	if len(values) != 1 {
+		return remote
+	}
+	ip, err := netip.ParseAddr(values[0])
+	if err != nil {
+		return remote
+	}
+	return ip.WithZone("").Unmap().String()
 }
 
 func sourceIP(remote string) string {
