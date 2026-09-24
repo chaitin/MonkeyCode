@@ -15,6 +15,18 @@ docker compose up --build
 
 `MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，也用于 OAuth 回调、元数据及登录后的页面跳转。若修改 `MONKEYAI_ADMIN_PORT`，还需将该地址改为浏览器实际访问的地址；生产环境应使用 HTTPS。
 
+## 后端出站代理
+
+在 `.env` 中设置 `HTTP_PROXY`、`HTTPS_PROXY`（例如 `http://proxy.example.com:7890`），Compose 会将其传入 backend；不配置时保持直连。修改后运行 `docker compose up -d backend` 重建容器。可通过 `MONKEYAI_NO_PROXY` 指定直连地址，默认包含 `db,rustfs,localhost,127.0.0.1,::1`；覆盖时应保留这些地址及其他内网服务域名，避免内部流量误走代理。代理凭据如写入 `.env`，应限制该文件的读取权限。
+
+| 出站请求 | 代理行为 |
+|---|---|
+| GitHub、Google、Microsoft、GitLab、OIDC 等登录提供方的元数据、令牌和用户信息 | 后端 HTTP(S) 请求使用环境代理；授权页面跳转由用户浏览器访问，不经过后端代理 |
+| 文本模型上游、图片生成上游（OpenAI、xAI、火山引擎等）、Responses 用量补偿及 S3 对象存储 | 后端 HTTP(S) 请求使用环境代理；S3 等内网服务需配置直连 |
+| 远程 MCP 连接器与其 OAuth 元数据、注册和令牌请求 | 支持环境代理；代理模式仅允许目标为通过地址策略检查的 IP 字面量，域名目标无法校验代理端 DNS 结果，会被拒绝；`NO_PROXY` 命中时仍按原有直连策略检查 |
+| 百智云钱包 SDK | SDK 的专用 mTLS 传输未提供代理配置，仍然直连 |
+| SMTP 邮件及 Admin 的 ACME 证书签发/续期 | 不使用后端 HTTP(S) 代理；分别通过 TCP 直连和 Admin 容器独立发起 |
+
 ## 自动域名证书
 
 Admin 镜像包含 Nginx 官方 ACME 模块，自动申请、续期并动态加载证书。功能默认关闭；Go 后端不参与证书管理。启用前，将域名解析到部署服务器，确保公网 TCP 80、443 可达，容器能够解析并访问 CA 的 HTTPS 接口。如果域名配置了 AAAA 记录，其 IPv6 入口也必须能完成验证。
