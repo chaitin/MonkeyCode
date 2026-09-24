@@ -308,8 +308,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	h, err := hello(data)
 	if err != nil {
 		name := "invalid_message"
-		var f fault
-		if errors.As(err, &f) {
+		if f, ok := errors.AsType[fault](err); ok {
 			name = f.code
 		}
 		c.sendError(name, "")

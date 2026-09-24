@@ -18,7 +18,7 @@ func TestQueueBoundsAndSnapshots(t *testing.T) {
 	s := NewService(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
 	c := queueConnection(s, nil, machineA)
 	defer c.cancel()
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		if !c.enqueue([]byte("x")) {
 			t.Fatal("提前拒绝入队")
 		}
@@ -62,8 +62,8 @@ func TestConnectionFencingAndRouting(t *testing.T) {
 	defer old.cancel()
 	u.connections[machineA] = a
 	u.connections[machineB] = b
-	u.endpoints[machineA] = Endpoint{View: View{MachineID: machineA}}
-	u.endpoints[machineB] = Endpoint{View: View{MachineID: machineB}}
+	u.endpoints[machineA] = Endpoint{MachineID: machineA}
+	u.endpoints[machineB] = Endpoint{MachineID: machineB}
 	m := Message{Type: "event", ID: messageID, Target: machineB, Method: "agent.example", Payload: json.RawMessage(`{}`)}
 	s.route(old, m, 100)
 	if !old.dead.Load() || len(b.business) != 0 {

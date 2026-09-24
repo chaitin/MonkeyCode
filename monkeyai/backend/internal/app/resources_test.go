@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1320,8 +1321,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	})
 
 	// 在已有业务数据的测试库验证完整回滚，再重新初始化。
-	for i := len(migrations) - 1; i >= 0; i-- {
-		path := strings.TrimSuffix(migrations[i], ".up.sql") + ".down.sql"
+	for _, migration := range slices.Backward(migrations) {
+		path := strings.TrimSuffix(migration, ".up.sql") + ".down.sql"
 		down, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

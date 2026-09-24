@@ -312,9 +312,7 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		return imageproxy.Task{}, err
 	}
 	held = false
-	s.active.Add(1)
-	go func() {
-		defer s.active.Done()
+	s.active.Go(func() {
 		defer func() { <-s.slots }()
 		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
 		defer cancel()
@@ -327,7 +325,7 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 			result, err = adapter.Editor.Edit(callCtx, target, request)
 		}
 		s.handleResult(callCtx, job, result, err)
-	}()
+	})
 	return imageproxy.Task{ID: job.ID, UserID: job.UserID, Operation: operation, Status: "pending",
 		Usage: &imageproxy.Usage{RequestedImages: imageCount}}, nil
 }
@@ -346,8 +344,7 @@ func (s *Service) failUnsubmitted(ctx context.Context, job Job, code string) {
 }
 
 func providerErrorType(err error) string {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if _, ok := errors.AsType[*url.Error](err); ok {
 		return "url_error"
 	}
 	return fmt.Sprintf("%T", err)

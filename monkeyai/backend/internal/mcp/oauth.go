@@ -42,8 +42,7 @@ type oauthConfig struct {
 func oauthSettings(c resource.Object) oauthConfig {
 	b, err := json.Marshal(c["oauth_config"])
 	if err != nil {
-		var unsupported *json.UnsupportedTypeError
-		if errors.As(err, &unsupported) {
+		if unsupported, ok := errors.AsType[*json.UnsupportedTypeError](err); ok {
 			slog.Error("编码 OAuth 配置失败", "connector_id", c.String("id"), "operation", "encode_config", "error", unsupported)
 		} else {
 			// 自定义 JSON 错误可能回显配置中的客户端密钥。
@@ -374,19 +373,16 @@ func (e tokenExchangeError) Error() string { return e.reason }
 
 // 上游及回调错误可能携带 URL 查询串、授权码或 Token，仅输出受控分类与状态。
 func safeMCPFailure(err error) []any {
-	var exchangeErr tokenExchangeError
-	if errors.As(err, &exchangeErr) {
+	if exchangeErr, ok := errors.AsType[tokenExchangeError](err); ok {
 		if exchangeErr.status != 0 {
 			return []any{"reason", exchangeErr.reason, "upstream_status", exchangeErr.status}
 		}
 		return []any{"reason", exchangeErr.reason}
 	}
-	var failure *resource.Error
-	if errors.As(err, &failure) {
+	if failure, ok := errors.AsType[*resource.Error](err); ok {
 		return []any{"reason", failure.Code, "status", failure.Status}
 	}
-	var upstream remoteStatus
-	if errors.As(err, &upstream) {
+	if upstream, ok := errors.AsType[remoteStatus](err); ok {
 		return []any{"reason", "upstream_http_error", "upstream_status", int(upstream)}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -395,16 +391,13 @@ func safeMCPFailure(err error) []any {
 	if errors.Is(err, context.Canceled) {
 		return []any{"reason", "canceled"}
 	}
-	var network net.Error
-	if errors.As(err, &network) {
+	if network, ok := errors.AsType[net.Error](err); ok {
 		return []any{"reason", "network_error", "timeout", network.Timeout()}
 	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if _, ok := errors.AsType[*url.Error](err); ok {
 		return []any{"reason", "transport_error"}
 	}
-	var databaseErr *pgconn.PgError
-	if errors.As(err, &databaseErr) {
+	if databaseErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return []any{"reason", "database_error", "sqlstate", databaseErr.Code}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {

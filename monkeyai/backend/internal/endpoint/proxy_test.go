@@ -62,7 +62,7 @@ func TestNginxUpgrade(t *testing.T) {
 	}
 	address := strings.TrimSpace(string(data))
 	var conn *websocket.Conn
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		conn, _, err = websocket.Dial(ctx, "ws://"+address+"/api/v1/endpoints/connect", &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer owner"}}})
 		if err == nil {
 			break

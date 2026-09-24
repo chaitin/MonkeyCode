@@ -63,7 +63,7 @@ func fromRow(row sqlc.Endpoint) Endpoint {
 	if row.Alias != nil {
 		name = *row.Alias
 	}
-	return Endpoint{View: View{MachineID: row.MachineID, Profile: Profile{row.DeviceName, row.Platform, row.OsVersion, row.Arch, row.ClientVersion}, Alias: row.Alias, DisplayName: name, ProtocolVersion: row.ProtocolVersion, LastSeenAt: millis(row.LastSeenAt)}, Status: row.Status, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt)}
+	return Endpoint{MachineID: row.MachineID, Profile: Profile{row.DeviceName, row.Platform, row.OsVersion, row.Arch, row.ClientVersion}, Alias: row.Alias, DisplayName: name, ProtocolVersion: row.ProtocolVersion, LastSeenAt: millis(row.LastSeenAt), Status: row.Status, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt)}
 }
 func missing(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {

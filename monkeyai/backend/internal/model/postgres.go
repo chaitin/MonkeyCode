@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model/sqlc"
@@ -429,10 +430,8 @@ func normalizeAuthorization(value Authorization) Authorization {
 	if value.AllUsers {
 		return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
 	}
-	for _, id := range value.GroupIDs {
-		if id == rootgroup.ID {
-			return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
-		}
+	if slices.Contains(value.GroupIDs, rootgroup.ID) {
+		return Authorization{AllUsers: true, UserIDs: []string{}, GroupIDs: []string{}}
 	}
 	value.UserIDs = unique(value.UserIDs)
 	value.GroupIDs = unique(value.GroupIDs)

@@ -275,8 +275,7 @@ func (s *Service) check(ctx context.Context, credential Credential) (int, error)
 	return 0, nil
 }
 func status(err error) (int, string) {
-	var f fault
-	if errors.As(err, &f) {
+	if f, ok := errors.AsType[fault](err); ok {
 		switch f.code {
 		case "unauthorized":
 			return 401, f.code

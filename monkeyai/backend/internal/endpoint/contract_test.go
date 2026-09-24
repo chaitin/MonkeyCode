@@ -40,7 +40,7 @@ func TestEndpointContract(t *testing.T) {
 			case map[string]any:
 				if ref, ok := v["$ref"].(string); ok && strings.HasPrefix(ref, "#/") {
 					var target any = document
-					for _, key := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+					for key := range strings.SplitSeq(strings.TrimPrefix(ref, "#/"), "/") {
 						node, ok := target.(map[string]any)
 						if !ok {
 							t.Fatalf("无效引用 %s", ref)
