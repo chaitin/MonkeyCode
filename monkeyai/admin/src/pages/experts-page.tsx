@@ -676,7 +676,7 @@ export function ExpertsPage() {
             className="flex min-h-0 flex-col gap-6"
             onSubmit={saveExpert}
           >
-            <FieldGroup className="max-h-[calc(100vh-12rem)] gap-6 overflow-y-auto pe-1">
+            <FieldGroup className="max-h-[calc(100vh-12rem)] gap-4 overflow-y-auto pe-1">
               <Field>
                 <FieldLabel htmlFor="expert-name">
                   {t("pages.experts.name")}

@@ -16,6 +16,11 @@ import { zhTW } from "../src/i18n/locales/zh-TW.ts"
 const resources = { ar, deDE, enUS, es419, frFR, jaJP, koKR, ruRU, zhCN, zhTW }
 
 const modelKeys = [
+  "noTags",
+  "maxOutputTokens",
+  "supportsReasoning",
+  "notRecommended",
+  "billingMultiplier",
   "authorizedScope",
   "kind",
   "textKind",
@@ -49,6 +54,11 @@ test("model UI has translations in all supported locales", () => {
     }
   }
   assert.equal(zhCN.pages.models.authorizedScope, "授权范围")
+  assert.equal(zhCN.pages.models.noTags, "没有标签")
+  assert.equal(zhCN.pages.models.maxOutputTokens, "最大输出 Token")
+  assert.equal(zhCN.pages.models.supportsReasoning, "推理能力")
+  assert.equal(zhCN.pages.models.notRecommended, "不推荐")
+  assert.equal(zhCN.pages.models.billingMultiplier, "扣费倍率")
 })
 
 test("resource editors retain and save tags", async () => {
@@ -76,7 +86,6 @@ test("resource cards show configured tag names", async () => {
   assert.match(summary, /pages\.skills\.noTags/)
 
   for (const [page, item] of [
-    ["models", "model"],
     ["experts", "expert"],
     ["tools", "server"],
   ]) {
@@ -89,6 +98,21 @@ test("resource cards show configured tag names", async () => {
       new RegExp(`<ResourceTagSummary tagIds=\\{${item}\\.tagIds\\}`)
     )
   }
+
+  const models = await readFile(
+    new URL("../src/pages/models-page.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(models, /tags\.filter\(\(tag\) => tagIds\.includes\(tag\.id\)\)/)
+  assert.match(models, /<Badge\s+key=\{tag\.id\}\s+variant="secondary"/)
+  assert.match(
+    models,
+    /<CardFooter[^>]*>\s*<ModelTagBadges\s+tagIds=\{model\.tagIds\}/
+  )
+  assert.match(
+    models,
+    /text-muted-foreground">\{t\("pages\.models\.noTags"\)\}/
+  )
 })
 
 test("models page uses backend models and authorization subjects", async () => {
@@ -101,6 +125,7 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.match(source, /\/api\/admin\/v1\/models/)
   assert.match(source, /\/authorization-subjects/)
   assert.match(source, /max_output_tokens/)
+  assert.match(source, /supports_reasoning: supportsReasoning/)
   assert.match(source, /api_key_configured/)
   assert.match(source, /openai_responses/)
   assert.match(source, /image-capabilities/)
@@ -111,25 +136,34 @@ test("models page uses backend models and authorization subjects", async () => {
     /id="model-multiplier"[\s\S]{0,400}?min="0\.01"[\s\S]{0,400}?step="0\.01"/
   )
   assert.doesNotMatch(source, /aspect_ratio_multipliers|operation_multipliers/)
-  assert.match(source, /<AuthorizationSelect/)
-  assert.match(source, /groups=\{groups\}/)
-  assert.match(source, /members=\{members\}/)
-  assert.match(source, /open=\{authorizationOpen\}/)
-  assert.match(source, /value=\{authorization\}/)
-  assert.match(source, /onValueChange=\{setAuthorization\}/)
+  assert.match(source, /<GroupSelect/)
+  assert.match(source, /options=\{groups\}/)
+  assert.match(source, /users=\{members\}/)
+  assert.match(source, /groupIds: authorization\.groupIds/)
+  assert.match(source, /userIds: authorization\.memberIds/)
+  assert.match(source, /memberIds: \[\.\.\.next\.userIds\]/)
+  assert.match(source, /selectionMode="both"/)
+  assert.match(source, /cascadeGroups/)
+  assert.match(source, /searchable/)
   assert.match(source, /user_ids: authorization\.memberIds/)
-  assert.doesNotMatch(source, /\bGroupSelect\b|ROOT_GROUP_ID/)
+  assert.doesNotMatch(source, /<AuthorizationSelect\b|ROOT_GROUP_ID/)
   assert.doesNotMatch(source, /member-01|engineering/)
 })
 
-test("model kinds use icon tabs and card badges", async () => {
+test("model kinds use text tabs and icon card badges", async () => {
   const source = await readFile(
     new URL("../src/pages/models-page.tsx", import.meta.url),
     "utf8"
   )
 
-  assert.match(source, /<TabsTrigger[^>]*value="text">/)
-  assert.match(source, /<TabsTrigger[^>]*value="image">/)
+  assert.match(
+    source,
+    /<TabsTrigger type="button" value="text">\s*\{t\("pages\.models\.textKind"\)\}/
+  )
+  assert.match(
+    source,
+    /<TabsTrigger type="button" value="image">\s*\{t\("pages\.models\.imageKind"\)\}/
+  )
   assert.match(source, /AiChat02Icon/)
   assert.match(source, /AiImageIcon/)
   assert.doesNotMatch(source, /id="model-kind"/)

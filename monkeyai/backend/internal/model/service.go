@@ -196,6 +196,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
+			SupportsReasoning:   item.AdvancedConfig.SupportsReasoning,
 			CreditMultiplier:    item.CreditMultiplier,
 			Tags:                item.Tags,
 			UpdatedAt:           item.UpdatedAt,

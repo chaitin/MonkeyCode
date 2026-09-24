@@ -325,6 +325,7 @@ flowchart LR
 | `advanced_config.context_window_tokens` | `number` | 是 | 无 | 上下文 Token 上限，值为正整数。 |
 | `advanced_config.max_output_tokens` | `number` | 是 | 无 | 单次响应允许生成的最大 Token 数，值为正整数。 |
 | `advanced_config.supports_vision` | `boolean` | 是 | `false` | 是否支持图片输入。 |
+| `advanced_config.supports_reasoning` | `boolean` | 否 | `false` | 是否具备推理能力；已有模型未配置时视为 `false`。 |
 
 ### 8.2 `tags`：资源标签
 

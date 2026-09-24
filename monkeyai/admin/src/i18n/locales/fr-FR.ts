@@ -264,6 +264,8 @@ export const frFR = {
       },
     },
     models: {
+      noTags: "Aucune étiquette",
+      maxOutputTokens: "Nombre maximal de jetons de sortie",
       searchAuthorization: "Rechercher par nom, e-mail ou pinyin",
       noMatchingAuthorization: "Aucun groupe ou utilisateur correspondant.",
 
@@ -314,6 +316,8 @@ export const frFR = {
       contextSize: "Taille du contexte",
       imageRecognition: "Reconnaissance d’images",
       supportsVision: "Reconnaissance d’images",
+      supportsReasoning: "Capacité de raisonnement",
+      notRecommended: "Déconseillé",
       supportsVisionDescription: "Autorise l’envoi d’images à ce modèle.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -321,6 +325,7 @@ export const frFR = {
       apiKey: "Clé API",
       apiKeyPlaceholder: "Saisissez la clé API du modèle",
       multiplier: "Multiplicateur",
+      billingMultiplier: "Multiplicateur de facturation",
       authorizedScope: "Portée de l’autorisation",
       authorizationPlaceholder: "Sélectionnez des groupes ou des utilisateurs",
       authorizedGroupsDescription:

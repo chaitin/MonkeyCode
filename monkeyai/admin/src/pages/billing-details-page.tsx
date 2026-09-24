@@ -972,7 +972,7 @@ function TransactionDialog({
             )}
             {data.status === "unknown" && (
               <form
-                className="space-y-3 border-t pt-4"
+                className="space-y-4 border-t pt-4"
                 onSubmit={(e) => {
                   e.preventDefault()
                   void act("resolve")
@@ -1019,7 +1019,7 @@ function TransactionDialog({
                   </Field>
                 )}
                 {data.category === "model" && (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-4">
                     {Object.entries(counts).map(([key, value]) => (
                       <Field key={key}>
                         <FieldLabel htmlFor={key}>

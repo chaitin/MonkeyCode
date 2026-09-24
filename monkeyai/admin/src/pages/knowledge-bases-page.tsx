@@ -911,14 +911,14 @@ export function KnowledgeBasesPage() {
                 </DialogHeader>
 
                 <Tabs
-                  className="gap-5"
+                  className="gap-4"
                   value={contentMode}
                   onValueChange={(value) =>
                     setContentMode(value as KnowledgeContentType)
                   }
                 >
                   {!editingContent && (
-                    <FieldGroup>
+                    <FieldGroup className="gap-4">
                       <Field>
                         <FieldLabel>
                           {t("pages.knowledgeBases.contentSource")}
@@ -947,7 +947,7 @@ export function KnowledgeBasesPage() {
                   )}
 
                   <TabsContent value="text">
-                    <FieldGroup className="gap-5">
+                    <FieldGroup className="gap-4">
                       <Field>
                         <FieldLabel htmlFor="knowledge-content-title">
                           {t("pages.knowledgeBases.contentTitle")}
@@ -981,7 +981,7 @@ export function KnowledgeBasesPage() {
                   </TabsContent>
 
                   <TabsContent value="file">
-                    <FieldGroup>
+                    <FieldGroup className="gap-4">
                       <Field>
                         <FieldLabel htmlFor="knowledge-content-file">
                           {t("pages.knowledgeBases.selectFile")}
@@ -1126,7 +1126,7 @@ export function KnowledgeBasesPage() {
                         {t("pages.knowledgeBases.dialogDescription")}
                       </DialogDescription>
                     </DialogHeader>
-                    <FieldGroup className="gap-5">
+                    <FieldGroup className="gap-4">
                       <Field>
                         <FieldLabel htmlFor="knowledge-base-name">
                           {t("pages.knowledgeBases.name")}

@@ -386,6 +386,8 @@ export const enUS = {
       },
     },
     models: {
+      noTags: "No tags",
+      maxOutputTokens: "Maximum output tokens",
       searchAuthorization: "Search by name, email, or pinyin",
       noMatchingAuthorization: "No matching groups or users.",
 
@@ -436,6 +438,8 @@ export const enUS = {
       contextSize: "Context size",
       imageRecognition: "Image recognition",
       supportsVision: "Image recognition",
+      supportsReasoning: "Reasoning capability",
+      notRecommended: "Not recommended",
       supportsVisionDescription:
         "Allow image content to be sent to this model.",
       baseUrl: "Base URL",
@@ -444,6 +448,7 @@ export const enUS = {
       apiKey: "API key",
       apiKeyPlaceholder: "Enter the model API key",
       multiplier: "Multiplier",
+      billingMultiplier: "Billing multiplier",
       authorizedScope: "Authorization scope",
       authorizationPlaceholder: "Select groups or users",
       authorizedGroupsDescription:

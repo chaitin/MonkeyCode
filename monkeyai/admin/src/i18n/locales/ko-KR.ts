@@ -256,6 +256,8 @@ export const koKR = {
       },
     },
     models: {
+      noTags: "태그 없음",
+      maxOutputTokens: "최대 출력 Token",
       searchAuthorization: "이름, 이메일 또는 병음으로 검색",
       noMatchingAuthorization: "일치하는 그룹이나 사용자가 없습니다.",
 
@@ -305,6 +307,8 @@ export const koKR = {
       contextSize: "컨텍스트 크기",
       imageRecognition: "이미지 인식",
       supportsVision: "이미지 인식",
+      supportsReasoning: "추론 기능",
+      notRecommended: "권장하지 않음",
       supportsVisionDescription: "이 모델에 이미지 콘텐츠 전송을 허용합니다.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -312,6 +316,7 @@ export const koKR = {
       apiKey: "API 키",
       apiKeyPlaceholder: "모델 API 키 입력",
       multiplier: "배율",
+      billingMultiplier: "과금 배율",
       authorizedScope: "권한 범위",
       authorizationPlaceholder: "그룹 또는 사용자 선택",
       authorizedGroupsDescription:

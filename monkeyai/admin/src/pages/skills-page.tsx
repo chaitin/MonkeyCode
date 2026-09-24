@@ -389,7 +389,7 @@ export function SkillsPage() {
                           : t("pages.skills.dialogTitle")}
                       </DialogTitle>
                     </DialogHeader>
-                    <FieldGroup className="gap-5">
+                    <FieldGroup className="gap-4">
                       <Field data-invalid={Boolean(packageError)}>
                         <FieldLabel htmlFor="skill-package">
                           {t("pages.skills.skillPackage")}

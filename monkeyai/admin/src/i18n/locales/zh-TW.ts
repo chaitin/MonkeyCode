@@ -248,6 +248,8 @@ export const zhTW = {
       },
     },
     models: {
+      noTags: "沒有標籤",
+      maxOutputTokens: "最大輸出 Token",
       searchAuthorization: "搜尋名稱、電子郵件或拼音",
       noMatchingAuthorization: "沒有符合的群組或使用者。",
 
@@ -293,7 +295,9 @@ export const zhTW = {
       displayNamePlaceholder: "例如：GPT-4o",
       contextSize: "上下文大小",
       imageRecognition: "圖片辨識",
-      supportsVision: "支援圖片辨識",
+      supportsVision: "圖片辨識",
+      supportsReasoning: "推理能力",
+      notRecommended: "不建議",
       supportsVisionDescription: "允許向此模型傳送圖片內容。",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -301,6 +305,7 @@ export const zhTW = {
       apiKey: "密鑰",
       apiKeyPlaceholder: "輸入模型 API 密鑰",
       multiplier: "倍率",
+      billingMultiplier: "扣費倍率",
       authorizedScope: "授權範圍",
       authorizationPlaceholder: "選擇群組或使用者",
       authorizedGroupsDescription: "只有所選群組中的成員可以使用此模型。",

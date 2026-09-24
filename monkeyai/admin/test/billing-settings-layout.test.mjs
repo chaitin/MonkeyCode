@@ -293,7 +293,7 @@ test("billing settings forms use the shared shadcn controls", async () => {
   assert.match(page, /pages\.billingSettings\.chargingMethod\.modes\.disabled/)
   assert.match(page, /pages\.billingSettings\.chargingMethod\.modes\.local/)
   assert.match(page, /pages\.billingSettings\.chargingMethod\.modes\.remote/)
-  assert.match(page, /<Tabs\s+className="my-5"\s+value=\{quotaMode\}/)
+  assert.match(page, /<Tabs\s+className="my-6"\s+value=\{quotaMode\}/)
   assert.match(page, /<TabsTrigger[\s\S]*?value="inherit"[\s\S]*?继承上级额度/)
   assert.match(page, /<TabsTrigger value="custom">自定义额度<\/TabsTrigger>/)
   assert.match(

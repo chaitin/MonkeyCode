@@ -256,6 +256,8 @@ export const ar = {
       },
     },
     models: {
+      noTags: "بلا وسوم",
+      maxOutputTokens: "الحد الأقصى لرموز الإخراج",
       searchAuthorization: "البحث بالاسم أو البريد الإلكتروني أو بينيين",
       noMatchingAuthorization: "لا توجد مجموعات أو مستخدمون مطابقون.",
 
@@ -304,6 +306,8 @@ export const ar = {
       contextSize: "حجم السياق",
       imageRecognition: "التعرّف على الصور",
       supportsVision: "التعرّف على الصور",
+      supportsReasoning: "القدرة على الاستدلال",
+      notRecommended: "غير موصى به",
       supportsVisionDescription: "السماح بإرسال محتوى الصور إلى هذا النموذج.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -311,6 +315,7 @@ export const ar = {
       apiKey: "مفتاح API",
       apiKeyPlaceholder: "أدخل مفتاح API للنموذج",
       multiplier: "المضاعف",
+      billingMultiplier: "معامل احتساب التكلفة",
       authorizedScope: "نطاق التفويض",
       authorizationPlaceholder: "اختر المجموعات أو المستخدمين",
       authorizedGroupsDescription:

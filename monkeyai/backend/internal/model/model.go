@@ -41,6 +41,7 @@ type AdvancedConfig struct {
 	ContextWindowTokens int64 `json:"context_window_tokens"`
 	MaxOutputTokens     int64 `json:"max_output_tokens"`
 	SupportsVision      bool  `json:"supports_vision"`
+	SupportsReasoning   bool  `json:"supports_reasoning"`
 }
 
 type ImageConfig struct {
@@ -126,6 +127,7 @@ type AgentModel struct {
 	ContextWindowTokens int64             `json:"context_window_tokens"`
 	MaxOutputTokens     int64             `json:"max_output_tokens"`
 	SupportsVision      bool              `json:"supports_vision"`
+	SupportsReasoning   bool              `json:"supports_reasoning"`
 	CreditMultiplier    float64           `json:"credit_multiplier"`
 	Tags                []resource.Object `json:"tags"`
 	UpdatedAt           time.Time         `json:"-"`

@@ -964,7 +964,7 @@ export function OtherSettingsPage() {
                   : t("pages.otherSettings.skillTags.addDialogTitle")}
               </DialogTitle>
             </DialogHeader>
-            <FieldGroup>
+            <FieldGroup className="gap-4">
               <Field data-invalid={Boolean(tagError)}>
                 <FieldLabel htmlFor="skill-tag-name">
                   {t("pages.otherSettings.skillTags.name")}
@@ -1114,7 +1114,7 @@ export function OtherSettingsPage() {
                                 )}
                               </DialogDescription>
                             </DialogHeader>
-                            <FieldGroup>
+                            <FieldGroup className="gap-4">
                               <Field>
                                 <FieldLabel htmlFor={`${kind}-model`}>
                                   {t("pages.otherSettings.knowledgeBase.model")}
@@ -1294,7 +1294,7 @@ export function OtherSettingsPage() {
                           )}
                         </DialogDescription>
                       </DialogHeader>
-                      <FieldGroup>
+                      <FieldGroup className="gap-4">
                         <Field>
                           <FieldLabel>
                             {t(
@@ -1426,7 +1426,7 @@ export function OtherSettingsPage() {
                           )}
                         </DialogDescription>
                       </DialogHeader>
-                      <FieldGroup className="gap-5">
+                      <FieldGroup className="gap-4">
                         <FieldGroup className="grid gap-4 sm:grid-cols-2">
                           <Field>
                             <FieldLabel htmlFor="enhancement-model-id">
@@ -1608,7 +1608,7 @@ export function OtherSettingsPage() {
                       )}
                     </DialogTitle>
                   </DialogHeader>
-                  <FieldGroup>
+                  <FieldGroup className="gap-4">
                     <Field>
                       <FieldLabel htmlFor="oauth-provider">
                         {t("pages.otherSettings.oauth.provider")}

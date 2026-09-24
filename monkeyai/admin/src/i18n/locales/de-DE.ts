@@ -264,6 +264,8 @@ export const deDE = {
       },
     },
     models: {
+      noTags: "Keine Tags",
+      maxOutputTokens: "Maximale Ausgabe-Token",
       searchAuthorization: "Nach Name, E-Mail oder Pinyin suchen",
       noMatchingAuthorization: "Keine passenden Gruppen oder Benutzer.",
 
@@ -315,6 +317,8 @@ export const deDE = {
       contextSize: "Kontextgröße",
       imageRecognition: "Bilderkennung",
       supportsVision: "Bilderkennung",
+      supportsReasoning: "Schlussfolgerungsfähigkeit",
+      notRecommended: "Nicht empfohlen",
       supportsVisionDescription:
         "Erlaubt das Senden von Bildinhalten an dieses Modell.",
       baseUrl: "Base URL",
@@ -323,6 +327,7 @@ export const deDE = {
       apiKey: "API-Schlüssel",
       apiKeyPlaceholder: "API-Schlüssel des Modells eingeben",
       multiplier: "Multiplikator",
+      billingMultiplier: "Abrechnungsmultiplikator",
       authorizedScope: "Berechtigungsumfang",
       authorizationPlaceholder: "Gruppen oder Benutzer auswählen",
       authorizedGroupsDescription:

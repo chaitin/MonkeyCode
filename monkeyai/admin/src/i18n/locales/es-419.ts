@@ -263,6 +263,8 @@ export const es419 = {
       },
     },
     models: {
+      noTags: "Sin etiquetas",
+      maxOutputTokens: "Máximo de tokens de salida",
       searchAuthorization: "Buscar por nombre, correo o pinyin",
       noMatchingAuthorization: "No hay grupos ni usuarios que coincidan.",
 
@@ -314,6 +316,8 @@ export const es419 = {
       contextSize: "Tamaño del contexto",
       imageRecognition: "Reconocimiento de imágenes",
       supportsVision: "Reconocimiento de imágenes",
+      supportsReasoning: "Capacidad de razonamiento",
+      notRecommended: "No recomendado",
       supportsVisionDescription:
         "Permite enviar contenido de imagen a este modelo.",
       baseUrl: "Base URL",
@@ -322,6 +326,7 @@ export const es419 = {
       apiKey: "Clave de API",
       apiKeyPlaceholder: "Ingresa la clave de API del modelo",
       multiplier: "Multiplicador",
+      billingMultiplier: "Multiplicador de cobro",
       authorizedScope: "Alcance de autorización",
       authorizationPlaceholder: "Selecciona grupos o usuarios",
       authorizedGroupsDescription:

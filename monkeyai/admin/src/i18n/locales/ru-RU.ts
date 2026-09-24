@@ -262,6 +262,8 @@ export const ruRU = {
       },
     },
     models: {
+      noTags: "Без тегов",
+      maxOutputTokens: "Максимум выходных токенов",
       searchAuthorization: "Поиск по имени, почте или пиньиню",
       noMatchingAuthorization: "Подходящие группы и пользователи не найдены.",
 
@@ -312,6 +314,8 @@ export const ruRU = {
       contextSize: "Размер контекста",
       imageRecognition: "Распознавание изображений",
       supportsVision: "Распознавание изображений",
+      supportsReasoning: "Способность к рассуждению",
+      notRecommended: "Не рекомендуется",
       supportsVisionDescription:
         "Разрешает отправлять изображения этой модели.",
       baseUrl: "Base URL",
@@ -320,6 +324,7 @@ export const ruRU = {
       apiKey: "Ключ API",
       apiKeyPlaceholder: "Введите ключ API модели",
       multiplier: "Множитель",
+      billingMultiplier: "Множитель списания",
       authorizedScope: "Область доступа",
       authorizationPlaceholder: "Выберите группы или пользователей",
       authorizedGroupsDescription:

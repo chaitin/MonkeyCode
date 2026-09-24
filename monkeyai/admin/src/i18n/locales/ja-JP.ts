@@ -259,6 +259,8 @@ export const jaJP = {
       },
     },
     models: {
+      noTags: "タグなし",
+      maxOutputTokens: "最大出力 Token 数",
       searchAuthorization: "名前、メールアドレス、ピンインで検索",
       noMatchingAuthorization: "一致するグループまたはユーザーがありません。",
 
@@ -308,6 +310,8 @@ export const jaJP = {
       contextSize: "コンテキストサイズ",
       imageRecognition: "画像認識",
       supportsVision: "画像認識",
+      supportsReasoning: "推論機能",
+      notRecommended: "非推奨",
       supportsVisionDescription:
         "このモデルへの画像コンテンツの送信を許可します。",
       baseUrl: "Base URL",
@@ -316,6 +320,7 @@ export const jaJP = {
       apiKey: "API キー",
       apiKeyPlaceholder: "モデルの API キーを入力",
       multiplier: "倍率",
+      billingMultiplier: "課金倍率",
       authorizedScope: "許可範囲",
       authorizationPlaceholder: "グループまたはユーザーを選択",
       authorizedGroupsDescription:

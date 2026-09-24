@@ -3399,6 +3399,9 @@ components:
               minimum: 0
             supports_vision:
               type: boolean
+            supports_reasoning:
+              type: boolean
+              default: false
     CreateUserModelInput:
       allOf:
       - $ref: '#/components/schemas/UserModelInput'
@@ -3959,6 +3962,9 @@ components:
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
+        supports_reasoning:
+          type: boolean
+          description: 模型是否支持推理能力。
         credit_multiplier:
           type: number
           exclusiveMinimum: 0

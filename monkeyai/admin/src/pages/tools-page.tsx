@@ -502,7 +502,7 @@ export function ToolsPage() {
                     </DialogDescription>
                   </DialogHeader>
 
-                  <FieldGroup className="gap-5">
+                  <FieldGroup className="gap-4">
                     <Field>
                       <FieldLabel htmlFor="mcp-name">
                         {t("pages.tools.name")}

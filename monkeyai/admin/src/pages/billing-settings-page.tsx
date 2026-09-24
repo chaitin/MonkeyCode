@@ -811,7 +811,7 @@ export function BillingSettingsPage() {
                 {t("pages.billingSettings.quotaRefresh.resetDialogDescription")}
               </DialogDescription>
             </DialogHeader>
-            <Field className="my-5">
+            <Field className="my-6">
               <FieldLabel htmlFor="billing-reset-targets">
                 {t("pages.billingSettings.quotaRefresh.resetTargets")}
               </FieldLabel>
@@ -910,7 +910,7 @@ export function BillingSettingsPage() {
                 {t("pages.billingSettings.quotaRefresh.dialogDescription")}
               </DialogDescription>
             </DialogHeader>
-            <Field className="my-5">
+            <Field className="my-6">
               <FieldLabel htmlFor="billing-cycle">
                 {t("pages.billingSettings.quotaRefresh.cycle")}
               </FieldLabel>
@@ -994,7 +994,7 @@ export function BillingSettingsPage() {
                 {t("pages.billingSettings.modelPricing.dialogDescription")}
               </DialogDescription>
             </DialogHeader>
-            <Field className="my-5">
+            <Field className="my-6">
               <FieldLabel htmlFor="model-pricing-value">
                 {t("pages.billingSettings.modelPricing.valueLabel")}
               </FieldLabel>
@@ -1047,7 +1047,7 @@ export function BillingSettingsPage() {
               </DialogDescription>
             </DialogHeader>
             <Tabs
-              className="my-5"
+              className="my-6"
               value={quotaMode}
               onValueChange={(value) =>
                 setQuotaMode(value as "inherit" | "custom")
@@ -1332,7 +1332,7 @@ function AccountDialog({
             </DialogDescription>
           </DialogHeader>
           <form
-            className="space-y-5"
+            className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault()
               if (adjustmentValid) void run("adjust")
@@ -1389,7 +1389,7 @@ function AccountDialog({
                 disabled={busy}
               />
             </Field>
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button
                 type="button"
                 variant="secondary"

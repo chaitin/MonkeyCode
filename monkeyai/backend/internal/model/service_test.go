@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -83,6 +84,33 @@ func TestCreateModel(t *testing.T) {
 	}
 	if item.BaseURL != "https://api.openai.com/v1" {
 		t.Fatalf("base_url = %q", item.BaseURL)
+	}
+}
+
+func TestReasoningCapability(t *testing.T) {
+	repository := &repositoryStub{}
+	service := NewService(repository)
+	input := validInput()
+	input.AdvancedConfig.SupportsReasoning = true
+	saved, err := service.Create(t.Context(), "admin-1", input)
+	if err != nil || !saved.AdvancedConfig.SupportsReasoning {
+		t.Fatalf("创建模型未保存推理能力: %+v, %v", saved.AdvancedConfig, err)
+	}
+	models, err := service.AgentModels(t.Context(), "user-1", true)
+	if err != nil || len(models) != 1 || !models[0].SupportsReasoning {
+		t.Fatalf("模型目录未返回推理能力: %+v, %v", models, err)
+	}
+	encoded, err := json.Marshal(saved.AdvancedConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored AdvancedConfig
+	if err := json.Unmarshal(encoded, &restored); err != nil || !restored.SupportsReasoning {
+		t.Fatalf("模型配置未保留推理能力: %+v, %v", restored, err)
+	}
+	restored = AdvancedConfig{}
+	if err := json.Unmarshal([]byte(`{"context_window_tokens":400000,"max_output_tokens":128000,"supports_vision":true}`), &restored); err != nil || restored.SupportsReasoning {
+		t.Fatalf("旧模型未按默认关闭处理: %+v, %v", restored, err)
 	}
 }
 

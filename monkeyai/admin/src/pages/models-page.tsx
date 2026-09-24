@@ -13,11 +13,14 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { AuthorizationSelect } from "@/components/authorization-select"
+import {
+  GroupSelect,
+  type GroupSelectOption,
+  type GroupSelectUser,
+} from "@/components/group-select"
 import { ImageCapabilitySelector } from "@/components/image-capability-selector"
 import { ImageGenerationTest } from "@/components/image-generation-test"
 import { SkillTagSelect } from "@/components/skill-tag-select"
-import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +60,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Item, ItemActions, ItemContent, ItemGroup } from "@/components/ui/item"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -70,15 +74,11 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Iconfont } from "@/components/iconfont"
-import {
-  getAuthorizationNames,
-  type AuthorizationGroupNode,
-  type AuthorizationMember,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { getModelIconName } from "@/lib/model-utils"
+import type { SkillTag } from "@/lib/skill-tags"
 import { cn } from "@/lib/utils"
 
 const PROTOCOLS = [
@@ -134,6 +134,7 @@ type ModelBase = {
   contextSizeK: number
   maxOutputTokens: number
   supportsVision: boolean
+  supportsReasoning: boolean
   baseUrl: string
   protocol: ModelProtocol
   kind: ModelKind
@@ -164,6 +165,7 @@ type ApiModel = {
     context_window_tokens: number
     max_output_tokens: number
     supports_vision: boolean
+    supports_reasoning?: boolean
   }
   credit_multiplier: number
   tags?: { id: string; name: string }[]
@@ -190,6 +192,7 @@ function fromApiModel(model: ApiModel): Model {
     contextSizeK: (model.advanced_config?.context_window_tokens ?? 0) / 1000,
     maxOutputTokens: model.advanced_config?.max_output_tokens ?? 0,
     supportsVision: model.advanced_config?.supports_vision ?? false,
+    supportsReasoning: model.advanced_config?.supports_reasoning ?? false,
     baseUrl: model.base_url,
     protocol: model.protocol,
     kind: model.kind ?? "text",
@@ -208,38 +211,45 @@ function fromApiModel(model: ApiModel): Model {
   }
 }
 
-function buildGroupTree(groups: AuthorizationSubject[]) {
-  const nodes = new Map<string, AuthorizationGroupNode>()
-  groups.forEach((group) =>
-    nodes.set(group.id, { value: group.id, labelKey: group.name, children: [] })
-  )
-  const roots: AuthorizationGroupNode[] = []
-  groups.forEach((group) => {
-    const node = nodes.get(group.id)!
-    const parent = group.parent_id ? nodes.get(group.parent_id) : undefined
-    if (parent) parent.children!.push(node)
-    else roots.push(node)
-  })
-  return roots
-}
+function ModelTagBadges({
+  tagIds,
+  tags,
+}: {
+  tagIds: string[]
+  tags: SkillTag[]
+}) {
+  const { t } = useTranslation()
+  const selectedTags = tags.filter((tag) => tagIds.includes(tag.id))
 
-function flattenGroupTree(
-  groups: AuthorizationGroupNode[],
-  parentId: string | null = null
-): (AuthorizationGroupNode & { parentId: string | null })[] {
-  return groups.flatMap((group) => [
-    { ...group, parentId },
-    ...flattenGroupTree(group.children ?? [], group.value),
-  ])
+  if (!selectedTags.length) {
+    return (
+      <span className="text-muted-foreground">{t("pages.models.noTags")}</span>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap gap-2">
+      {selectedTags.map((tag) => (
+        <Badge
+          key={tag.id}
+          variant="secondary"
+          className="max-w-full truncate"
+          title={tag.name}
+        >
+          {tag.name}
+        </Badge>
+      ))}
+    </div>
+  )
 }
 
 export function ModelsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
-  const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
-  const [members, setMembers] = useState<AuthorizationMember[]>([])
+  const [groups, setGroups] = useState<GroupSelectOption[]>([])
+  const [members, setMembers] = useState<GroupSelectUser[]>([])
   const [loadRevision, setLoadRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [activeModelType, setActiveModelType] = useState<ModelType>("system")
@@ -248,9 +258,7 @@ export function ModelsPage() {
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
   const [modelToTest, setModelToTest] = useState<Model | null>(null)
-  const [protocol, setProtocol] = useState<ModelProtocol>(
-    "openai_chat_completions"
-  )
+  const [protocol, setProtocol] = useState<ModelProtocol>("openai_responses")
   const [kind, setKind] = useState<ModelKind>("text")
   const [provider, setProvider] = useState<ImageProvider>("openai_images")
   const [imageCapabilities, setImageCapabilities] =
@@ -263,9 +271,9 @@ export function ModelsPage() {
   const [qualityMultipliers, setQualityMultipliers] = useState<
     Record<string, string>
   >({})
-  const [supportsVision, setSupportsVision] = useState(false)
+  const [supportsVision, setSupportsVision] = useState(true)
+  const [supportsReasoning, setSupportsReasoning] = useState(true)
   const [tagsOpen, setTagsOpen] = useState(false)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -284,13 +292,19 @@ export function ModelsPage() {
       .then(([modelResult, subjects]) => {
         if (!active) return
         setModels(modelResult.models.map(fromApiModel))
-        setGroups(buildGroupTree(subjects.groups))
+        setGroups(
+          subjects.groups.map((group) => ({
+            id: group.id,
+            name: group.name,
+            parentId: group.parent_id ?? null,
+          }))
+        )
         setMembers(
           subjects.users.map((user) => ({
             id: user.id,
             name: user.name,
             email: user.email ?? "",
-            groupId: user.group_id ?? "",
+            groupIds: user.group_id ? [user.group_id] : [],
           }))
         )
       })
@@ -384,7 +398,7 @@ export function ModelsPage() {
   }
 
   const resetModelOptions = () => {
-    setProtocol("openai_chat_completions")
+    setProtocol("openai_responses")
     setKind("text")
     setProvider("openai_images")
     setImageCapabilities(null)
@@ -394,9 +408,9 @@ export function ModelsPage() {
     setDefaultAspectRatio("")
     setBaseCredits("10")
     setQualityMultipliers({})
-    setSupportsVision(false)
+    setSupportsVision(true)
+    setSupportsReasoning(true)
     setTagsOpen(false)
-    setAuthorizationOpen(false)
     setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
@@ -434,6 +448,7 @@ export function ModelsPage() {
       )
     )
     setSupportsVision(model.supportsVision)
+    setSupportsReasoning(model.supportsReasoning)
     setTagIds(model.tagIds)
     setAuthorization(model.authorization)
     setDialogOpen(true)
@@ -564,6 +579,7 @@ export function ModelsPage() {
                 context_window_tokens: contextSizeK * 1000,
                 max_output_tokens: maxOutputTokens,
                 supports_vision: supportsVision,
+                supports_reasoning: supportsReasoning,
               },
               credit_multiplier: multiplier,
             }
@@ -676,8 +692,7 @@ export function ModelsPage() {
                       const next = value as ModelKind
                       setKind(next)
                       setImageCapabilities(null)
-                      if (next === "text")
-                        setProtocol("openai_chat_completions")
+                      if (next === "text") setProtocol("openai_responses")
                     }}
                   >
                     <TabsList
@@ -685,17 +700,9 @@ export function ModelsPage() {
                       aria-label={t("pages.models.kind")}
                     >
                       <TabsTrigger type="button" value="text">
-                        <HugeiconsIcon
-                          icon={AiChat02Icon}
-                          data-icon="inline-start"
-                        />
                         {t("pages.models.textKind")}
                       </TabsTrigger>
                       <TabsTrigger type="button" value="image">
-                        <HugeiconsIcon
-                          icon={AiImageIcon}
-                          data-icon="inline-start"
-                        />
                         {t("pages.models.imageKind")}
                       </TabsTrigger>
                     </TabsList>
@@ -757,37 +764,39 @@ export function ModelsPage() {
                       </Field>
                     )}
 
-                    <Field>
-                      <FieldLabel htmlFor="model-base-url">
-                        {t("pages.models.baseUrl")}
-                      </FieldLabel>
-                      <Input
-                        id="model-base-url"
-                        name="baseUrl"
-                        defaultValue={editingModel?.baseUrl}
-                        type="url"
-                        placeholder={t("pages.models.baseUrlPlaceholder")}
-                        required
-                      />
-                    </Field>
+                    <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="model-base-url">
+                          {t("pages.models.baseUrl")}
+                        </FieldLabel>
+                        <Input
+                          id="model-base-url"
+                          name="baseUrl"
+                          defaultValue={editingModel?.baseUrl}
+                          type="url"
+                          placeholder={t("pages.models.baseUrlPlaceholder")}
+                          required
+                        />
+                      </Field>
 
-                    <Field>
-                      <FieldLabel htmlFor="model-api-key">
-                        {t("pages.models.apiKey")}
-                      </FieldLabel>
-                      <Input
-                        autoComplete="new-password"
-                        id="model-api-key"
-                        name="apiKey"
-                        defaultValue=""
-                        placeholder={t("pages.models.apiKeyPlaceholder")}
-                        type="password"
-                        required={!editingModel?.apiKeyConfigured}
-                      />
-                    </Field>
+                      <Field>
+                        <FieldLabel htmlFor="model-api-key">
+                          {t("pages.models.apiKey")}
+                        </FieldLabel>
+                        <Input
+                          autoComplete="new-password"
+                          id="model-api-key"
+                          name="apiKey"
+                          defaultValue=""
+                          placeholder={t("pages.models.apiKeyPlaceholder")}
+                          type="password"
+                          required={!editingModel?.apiKeyConfigured}
+                        />
+                      </Field>
+                    </FieldGroup>
 
                     {kind === "text" && (
-                      <FieldGroup className="grid gap-4 sm:grid-cols-4">
+                      <FieldGroup className="grid gap-4 sm:grid-cols-2">
                         <Field>
                           <FieldLabel htmlFor="model-context-size">
                             {t("pages.models.contextSize")} (K)
@@ -797,7 +806,7 @@ export function ModelsPage() {
                             min="1"
                             name="contextSizeK"
                             defaultValue={editingModel?.contextSizeK}
-                            placeholder="128"
+                            placeholder="256"
                             step="1"
                             type="number"
                             required
@@ -805,14 +814,14 @@ export function ModelsPage() {
                         </Field>
                         <Field>
                           <FieldLabel htmlFor="model-max-output-tokens">
-                            {t("pages.modelStatistics.metrics.outputTokens")}
+                            {t("pages.models.maxOutputTokens")}
                           </FieldLabel>
                           <Input
                             id="model-max-output-tokens"
                             min="1"
                             name="maxOutputTokens"
                             defaultValue={editingModel?.maxOutputTokens}
-                            placeholder="8192"
+                            placeholder="16384"
                             step="1"
                             type="number"
                             required
@@ -820,7 +829,7 @@ export function ModelsPage() {
                         </Field>
                         <Field>
                           <FieldLabel htmlFor="model-multiplier">
-                            {t("pages.models.multiplier")}
+                            {t("pages.models.billingMultiplier")}
                           </FieldLabel>
                           <Input
                             id="model-multiplier"
@@ -837,7 +846,7 @@ export function ModelsPage() {
                             required
                           />
                         </Field>
-                        <Field className="sm:col-span-2">
+                        <Field>
                           <FieldLabel htmlFor="model-protocol">
                             {t("pages.models.protocol")}
                           </FieldLabel>
@@ -860,8 +869,15 @@ export function ModelsPage() {
                                   <SelectItem
                                     key={item.value}
                                     value={item.value}
+                                    label={item.label}
                                   >
                                     {item.label}
+                                    {item.value ===
+                                      "openai_chat_completions" && (
+                                      <Badge variant="secondary">
+                                        {t("pages.models.notRecommended")}
+                                      </Badge>
+                                    )}
                                   </SelectItem>
                                 ))}
                               </SelectGroup>
@@ -872,16 +888,50 @@ export function ModelsPage() {
                     )}
 
                     {kind === "text" && (
-                      <Field orientation="horizontal">
-                        <FieldLabel htmlFor="model-vision">
-                          {t("pages.models.supportsVision")}
-                        </FieldLabel>
-                        <Switch
-                          checked={supportsVision}
-                          id="model-vision"
-                          onCheckedChange={setSupportsVision}
-                        />
-                      </Field>
+                      <ItemGroup className="grid grid-cols-2 gap-4 has-data-[size=sm]:gap-4">
+                        <Item
+                          variant="outline"
+                          size="sm"
+                          className="min-w-0 flex-nowrap px-2"
+                        >
+                          <ItemContent className="min-w-0">
+                            <FieldLabel
+                              htmlFor="model-vision"
+                              className="min-w-0 break-words"
+                            >
+                              {t("pages.models.supportsVision")}
+                            </FieldLabel>
+                          </ItemContent>
+                          <ItemActions>
+                            <Switch
+                              checked={supportsVision}
+                              id="model-vision"
+                              onCheckedChange={setSupportsVision}
+                            />
+                          </ItemActions>
+                        </Item>
+                        <Item
+                          variant="outline"
+                          size="sm"
+                          className="min-w-0 flex-nowrap px-2"
+                        >
+                          <ItemContent className="min-w-0">
+                            <FieldLabel
+                              htmlFor="model-reasoning"
+                              className="min-w-0 break-words"
+                            >
+                              {t("pages.models.supportsReasoning")}
+                            </FieldLabel>
+                          </ItemContent>
+                          <ItemActions>
+                            <Switch
+                              checked={supportsReasoning}
+                              id="model-reasoning"
+                              onCheckedChange={setSupportsReasoning}
+                            />
+                          </ItemActions>
+                        </Item>
+                      </ItemGroup>
                     )}
 
                     {kind === "image" && (
@@ -1014,8 +1064,7 @@ export function ModelsPage() {
                       </>
                     )}
 
-                    <Separator className="my-1" />
-                    <FieldGroup className="gap-3">
+                    <FieldGroup className="grid gap-4 sm:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="model-tags">
                           {t("pages.skills.tags")}
@@ -1035,18 +1084,36 @@ export function ModelsPage() {
                         <FieldLabel htmlFor="model-authorization">
                           {t("pages.models.authorizedScope")}
                         </FieldLabel>
-                        <AuthorizationSelect
-                          groups={groups}
-                          members={members}
+                        <GroupSelect
                           id="model-authorization"
-                          open={authorizationOpen}
+                          options={groups}
+                          users={members}
+                          value={{
+                            groupIds: authorization.groupIds,
+                            userIds: authorization.memberIds,
+                          }}
+                          onValueChange={(next) =>
+                            setAuthorization({
+                              groupIds: [...next.groupIds],
+                              memberIds: [...next.userIds],
+                            })
+                          }
+                          label={t("pages.models.authorizedScope")}
                           placeholder={t(
                             "pages.models.authorizationPlaceholder"
                           )}
-                          title={t("pages.models.authorizedScope")}
-                          value={authorization}
-                          onOpenChange={setAuthorizationOpen}
-                          onValueChange={setAuthorization}
+                          emptyText={t("pages.models.noMatchingAuthorization")}
+                          locale={i18n.resolvedLanguage ?? i18n.language}
+                          multiple
+                          selectionMode="both"
+                          cascadeGroups
+                          searchable
+                          searchPlaceholder={t(
+                            "pages.models.searchAuthorization"
+                          )}
+                          noResultsText={t(
+                            "pages.models.noMatchingAuthorization"
+                          )}
                         />
                       </Field>
                     </FieldGroup>
@@ -1076,6 +1143,7 @@ export function ModelsPage() {
                 .filter((model) => model.type === tabType)
                 .map((model) => (
                   <Card
+                    size="sm"
                     className={cn(!model.enabled && "bg-muted")}
                     key={model.id}
                   >
@@ -1209,27 +1277,10 @@ export function ModelsPage() {
                         )}
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-3">
-                      <dl className="flex flex-col gap-3">
-                        {model.kind === "image" ? (
-                          <>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.imageQuality")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imageConfig?.qualities.join(", ") ?? "-"}
-                              </dd>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.aspectRatio")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imageConfig?.aspect_ratios.join(", ") ??
-                                  "-"}
-                              </dd>
-                            </div>
+                    {(model.kind === "image" || model.type === "system") && (
+                      <CardContent className="flex flex-col gap-3">
+                        <dl className="flex flex-col gap-3">
+                          {model.kind === "image" ? (
                             <div className="flex min-w-0 items-center gap-4">
                               <dt className="w-2/5 truncate text-muted-foreground">
                                 {t("pages.models.baseCreditsPerImage")}
@@ -1239,74 +1290,27 @@ export function ModelsPage() {
                                   "0"}
                               </dd>
                             </div>
-                          </>
-                        ) : (
-                          <>
+                          ) : (
                             <div className="flex min-w-0 items-center gap-4">
                               <dt
                                 className="w-2/5 truncate text-muted-foreground"
-                                title={t("pages.models.contextSize")}
+                                title={t("pages.models.multiplier")}
                               >
-                                {t("pages.models.contextSize")}
+                                {t("pages.models.multiplier")}
                               </dt>
                               <dd className="w-3/5 truncate text-end font-medium">
-                                {model.contextSizeK}K
+                                {model.multiplier.toFixed(2)}×
                               </dd>
                             </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt
-                                className="w-2/5 truncate text-muted-foreground"
-                                title={t("pages.models.imageRecognition")}
-                              >
-                                {t("pages.models.imageRecognition")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.supportsVision
-                                  ? t("pages.models.supported")
-                                  : t("pages.models.unsupported")}
-                              </dd>
-                            </div>
-                            {model.type === "system" && (
-                              <div className="flex min-w-0 items-center gap-4">
-                                <dt
-                                  className="w-2/5 truncate text-muted-foreground"
-                                  title={t("pages.models.multiplier")}
-                                >
-                                  {t("pages.models.multiplier")}
-                                </dt>
-                                <dd className="w-3/5 truncate text-end font-medium">
-                                  {model.multiplier.toFixed(1)}×
-                                </dd>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </dl>
-                      <ResourceTagSummary tagIds={model.tagIds} />
-                    </CardContent>
-                    <CardFooter className="min-w-0 gap-4 border-t">
-                      <span
-                        className="w-2/5 truncate text-muted-foreground"
-                        title={t("pages.models.authorizedScope")}
-                      >
-                        {t("pages.models.authorizedScope")}
-                      </span>
-                      <span
-                        className="w-3/5 truncate text-end font-medium"
-                        title={getAuthorizationNames(
-                          model.authorization,
-                          t,
-                          flattenGroupTree(groups),
-                          members
-                        )}
-                      >
-                        {getAuthorizationNames(
-                          model.authorization,
-                          t,
-                          flattenGroupTree(groups),
-                          members
-                        )}
-                      </span>
+                          )}
+                        </dl>
+                      </CardContent>
+                    )}
+                    <CardFooter className="min-w-0 border-t">
+                      <ModelTagBadges
+                        tagIds={model.tagIds}
+                        tags={availableTags}
+                      />
                     </CardFooter>
                   </Card>
                 ))}

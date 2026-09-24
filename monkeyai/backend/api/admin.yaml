@@ -5622,6 +5622,10 @@ components:
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
+        supports_reasoning:
+          type: boolean
+          default: false
+          description: 模型是否支持推理能力；旧模型省略时视为 false。
     Authorization:
       type: object
       description: 可使用该模型的用户和分组。全零 UUID 根分组表示全员授权（包括后续新增用户），服务端入库时转为 all_users，管理端回包统一以 group_ids 中的根 UUID 表示。兼容输入 all_users=true，此时忽略其他授权 ID。

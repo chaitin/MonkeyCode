@@ -241,8 +241,8 @@ export function ImageGenerationTest({
         <p className="text-sm text-muted-foreground">
           {t("pages.models.testGenerationWarning")}
         </p>
-        <form className="flex flex-col gap-4" onSubmit={submit}>
-          <FieldGroup>
+        <form className="flex flex-col gap-6" onSubmit={submit}>
+          <FieldGroup className="gap-4">
             <Field>
               <FieldLabel htmlFor="image-test-key">
                 {t("pages.models.invocationKey")}
@@ -296,7 +296,7 @@ export function ImageGenerationTest({
                 required
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="image-test-quality">
                   {t("pages.models.imageQuality")}

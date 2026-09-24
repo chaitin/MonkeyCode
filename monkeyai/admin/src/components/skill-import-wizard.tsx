@@ -426,7 +426,7 @@ export function SkillImportWizard({
 
       {step === "source" ? (
         <div>
-          <FieldGroup className="gap-5">
+          <FieldGroup className="gap-4">
             <Field data-invalid={Boolean(sourceError)}>
               <FieldLabel>{t("pages.skills.skillPackage")}</FieldLabel>
               <Input
@@ -536,7 +536,7 @@ export function SkillImportWizard({
         </div>
       ) : (
         <div>
-          <FieldGroup className="gap-5">
+          <FieldGroup className="gap-4">
             <Field data-invalid={scanWarnings.length > 0}>
               <div className="flex items-center justify-between gap-3">
                 <FieldLabel htmlFor="select-all-skills">

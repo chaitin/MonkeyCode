@@ -157,7 +157,10 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
   assert.match(bulk, /className="max-h-72 min-h-32 resize-y"/)
   assert.doesNotMatch(bulk, /`\$\{key\}\.limit`/)
   assert.doesNotMatch(bulk, /<select\b|previewCount/)
-  assert.match(bulk, /<DialogFooter>[\s\S]*?t\(`\$\{key\}\.previous`\)/)
+  assert.match(
+    bulk,
+    /<DialogFooter className="mt-2">[\s\S]*?t\(`\$\{key\}\.previous`\)/
+  )
   assert.match(bulk, /t\(`\$\{key\}\.next`\)/)
   assert.doesNotMatch(bulk, /editEmails/)
 })

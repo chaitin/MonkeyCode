@@ -371,6 +371,8 @@ export const zhCN = {
       },
     },
     models: {
+      noTags: "没有标签",
+      maxOutputTokens: "最大输出 Token",
       searchAuthorization: "搜索名称、邮箱或拼音",
       noMatchingAuthorization: "没有匹配的分组或用户。",
 
@@ -416,7 +418,9 @@ export const zhCN = {
       displayNamePlaceholder: "例如：GPT-4o",
       contextSize: "上下文大小",
       imageRecognition: "图片识别",
-      supportsVision: "支持识别图片",
+      supportsVision: "图片识别",
+      supportsReasoning: "推理能力",
+      notRecommended: "不推荐",
       supportsVisionDescription: "允许向该模型发送图片内容。",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -424,6 +428,7 @@ export const zhCN = {
       apiKey: "密钥",
       apiKeyPlaceholder: "输入模型 API 密钥",
       multiplier: "倍率",
+      billingMultiplier: "扣费倍率",
       authorizedScope: "授权范围",
       authorizationPlaceholder: "选择分组或用户",
       authorizedGroupsDescription: "只有所选分组中的成员可以使用该模型。",
