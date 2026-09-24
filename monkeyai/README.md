@@ -17,13 +17,14 @@ docker compose up --build
 
 ## 后端出站代理
 
-在 `.env` 中设置 `HTTP_PROXY`、`HTTPS_PROXY`（例如 `http://proxy.example.com:7890`），Compose 会将其传入 backend；不配置时保持直连。修改后运行 `docker compose up -d backend` 重建容器。可通过 `MONKEYAI_NO_PROXY` 指定直连地址，默认包含 `db,rustfs,localhost,127.0.0.1,::1`；覆盖时应保留这些地址及其他内网服务域名，避免内部流量误走代理。代理凭据如写入 `.env`，应限制该文件的读取权限。
+在 `.env` 中设置 `HTTP_PROXY`、`HTTPS_PROXY`（例如 `http://proxy.example.com:7890`），Compose 会将其传入 backend，供 OAuth 和对象存储等非模型代理请求使用；不配置时保持直连。修改后运行 `docker compose up -d backend` 重建容器。可通过 `MONKEYAI_NO_PROXY` 指定直连地址，默认包含 `db,rustfs,localhost,127.0.0.1,::1`；覆盖时应保留这些地址及其他内网服务域名，避免内部流量误走代理。代理凭据如写入 `.env`，应限制该文件的读取权限。
 
 | 出站请求 | 代理行为 |
 |---|---|
 | GitHub、Google、Microsoft、GitLab、OIDC 等登录提供方的元数据、令牌和用户信息 | 后端 HTTP(S) 请求使用环境代理；授权页面跳转由用户浏览器访问，不经过后端代理 |
-| 文本模型上游、图片生成上游（OpenAI、xAI、火山引擎等）、Responses 用量补偿及 S3 对象存储 | 后端 HTTP(S) 请求使用环境代理；S3 等内网服务需配置直连 |
-| 远程 MCP 连接器与其 OAuth 元数据、注册和令牌请求 | 支持环境代理；代理模式仅允许目标为通过地址策略检查的 IP 字面量，域名目标无法校验代理端 DNS 结果，会被拒绝；`NO_PROXY` 命中时仍按原有直连策略检查 |
+| S3 对象存储 | 使用环境代理；内网存储服务需配置直连 |
+| llmproxy 文本模型上游及 Responses 用量补偿、imageproxy 图片生成上游（OpenAI、xAI、火山引擎等） | 始终直连，不读取环境代理配置 |
+| 远程 MCP 连接器与其 OAuth 元数据、注册和令牌请求 | 始终直连，继续执行原有目标地址限制和禁止重定向策略 |
 | 百智云钱包 SDK | SDK 的专用 mTLS 传输未提供代理配置，仍然直连 |
 | SMTP 邮件及 Admin 的 ACME 证书签发/续期 | 不使用后端 HTTP(S) 代理；分别通过 TCP 直连和 Admin 容器独立发起 |
 
