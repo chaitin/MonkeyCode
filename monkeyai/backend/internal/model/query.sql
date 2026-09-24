@@ -290,3 +290,14 @@ ORDER BY
     1,
     3,
     2;
+
+-- name: RecordModelCall :execresult
+INSERT INTO model_calls (user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
+    output_tokens, cache_hit, error_code, started_at, completed_at)
+SELECT sqlc.arg(user_id)::uuid, m.id, NULLIF(sqlc.arg(request_id)::text, ''),
+    sqlc.arg(status)::text, sqlc.arg(input_tokens)::bigint, sqlc.arg(cached_input_tokens)::bigint,
+    sqlc.arg(output_tokens)::bigint, sqlc.arg(cached_input_tokens)::bigint > 0,
+    NULLIF(sqlc.arg(error_code)::text, ''), sqlc.arg(started_at)::timestamptz,
+    sqlc.arg(completed_at)::timestamptz
+FROM models m
+WHERE m.id = sqlc.arg(model_id)::uuid AND m.ownership_type = 'user';

@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -582,6 +583,46 @@ func (q *Queries) LockOwned(ctx context.Context, arg LockOwnedParams) (string, e
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const recordModelCall = `-- name: RecordModelCall :execresult
+INSERT INTO model_calls (user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
+    output_tokens, cache_hit, error_code, started_at, completed_at)
+SELECT $1::uuid, m.id, NULLIF($2::text, ''),
+    $3::text, $4::bigint, $5::bigint,
+    $6::bigint, $5::bigint > 0,
+    NULLIF($7::text, ''), $8::timestamptz,
+    $9::timestamptz
+FROM models m
+WHERE m.id = $10::uuid AND m.ownership_type = 'user'
+`
+
+type RecordModelCallParams struct {
+	UserID            string
+	RequestID         string
+	Status            string
+	InputTokens       int64
+	CachedInputTokens int64
+	OutputTokens      int64
+	ErrorCode         string
+	StartedAt         time.Time
+	CompletedAt       time.Time
+	ModelID           string
+}
+
+func (q *Queries) RecordModelCall(ctx context.Context, arg RecordModelCallParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, recordModelCall,
+		arg.UserID,
+		arg.RequestID,
+		arg.Status,
+		arg.InputTokens,
+		arg.CachedInputTokens,
+		arg.OutputTokens,
+		arg.ErrorCode,
+		arg.StartedAt,
+		arg.CompletedAt,
+		arg.ModelID,
+	)
 }
 
 const resolveModel = `-- name: ResolveModel :one

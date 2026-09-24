@@ -222,6 +222,7 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 	return Target{
 		ID:              item.ID,
 		UserID:          userID,
+		OwnershipType:   item.OwnershipType,
 		UpstreamModelID: item.ModelID,
 		Protocol:        item.Protocol,
 		Kind:            item.Kind,

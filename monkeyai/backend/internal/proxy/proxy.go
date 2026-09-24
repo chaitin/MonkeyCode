@@ -32,6 +32,7 @@ var endpoints = []struct {
 
 type Target struct {
 	ModelID       string
+	OwnershipType string
 	UpstreamModel string
 	Protocol      string
 	UserID        string
@@ -168,13 +169,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var reservation Reservation
-	if p.billing != nil {
+	if p.billing != nil && target.OwnershipType != "user" {
 		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: r.Header.Get("X-Session-ID")})
 		if err != nil {
 			billingError(w, err)
 			return
 		}
-		body, err = billRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
+		body, err = prepareRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
 		if err != nil {
 			pc := &proxyContext{reservation: reservation, stream: meta.Stream}
 			p.finish(r.Context(), pc, Call{Known: true, Stream: meta.Stream, Result: "failed", ErrorCode: "invalid_request"})
@@ -186,6 +187,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("X-Billing-Transaction-ID", reservation.ID)
+	} else if target.OwnershipType == "user" && meta.Stream && r.URL.Path == "/v1/chat/completions" {
+		body, err = prepareRequest(body, r.URL.Path, 0, true)
+		if err != nil {
+			billingError(w, err)
+			return
+		}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))

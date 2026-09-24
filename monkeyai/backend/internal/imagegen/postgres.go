@@ -123,8 +123,12 @@ func (p *Postgres) Get(ctx context.Context, userID, id string) (Job, error) {
 }
 
 func (p *Postgres) Reserve(ctx context.Context, job Job, transactionID string) error {
+	var billingID *string
+	if transactionID != "" {
+		billingID = &transactionID
+	}
 	count, err := sqlc.New(p.pool).SetJobReservation(ctx, sqlc.SetJobReservationParams{
-		ID: job.ID, UserID: job.UserID, BillingTransactionID: &transactionID,
+		ID: job.ID, UserID: job.UserID, BillingTransactionID: billingID,
 	})
 	return one(count, err)
 }

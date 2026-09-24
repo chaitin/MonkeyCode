@@ -134,6 +134,7 @@ type AgentModel struct {
 type Target struct {
 	ID              string
 	UserID          string
+	OwnershipType   string
 	UpstreamModelID string
 	Protocol        Protocol
 	Kind            Kind

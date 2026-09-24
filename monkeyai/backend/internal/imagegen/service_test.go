@@ -51,7 +51,9 @@ func (*testJobs) LinkInputs(context.Context, string, []string) error { return ni
 func (s *testJobs) Reserve(_ context.Context, _ Job, tx string) error {
 	s.Lock()
 	defer s.Unlock()
-	s.job.BillingTransactionID = &tx
+	if tx != "" {
+		s.job.BillingTransactionID = &tx
+	}
 	s.job.Status = "reserved"
 	return nil
 }
@@ -171,6 +173,38 @@ func TestCapabilitiesUsesProviderDefaultWithoutModel(t *testing.T) {
 	cap, err := svc.Capabilities(model.ProviderXAI, " ")
 	if err != nil || modelSpecificCalled || len(cap.Qualities) != 3 || len(cap.AspectRatios) != 2 {
 		t.Fatalf("供应商默认能力错误: %+v, %v", cap, err)
+	}
+}
+
+func TestUserImageModelSkipsBillingAndKeepsJobUsage(t *testing.T) {
+	var imageBytes bytes.Buffer
+	if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	svc, jobs, _ := testImageService(generatorFunc(func(_ context.Context, _ proxy.Target, _ ProviderRequest) (ProviderResult, error) {
+		return ProviderResult{Status: "succeeded", Images: []Image{{Data: imageBytes.Bytes(), Width: 2, Height: 2}}}, nil
+	}))
+	svc.models = modelReaderFunc(func(_ context.Context, id string) (model.Model, error) {
+		return model.Model{ID: id, ModelID: "upstream", OwnershipType: "user", Kind: model.KindImage,
+			Protocol: model.ProtocolImage, Provider: model.ProviderOpenAIImages,
+			ImageConfig:  &model.ImageConfig{Qualities: []string{"1K"}, AspectRatios: []string{"1:1"}, DefaultQuality: "1K", DefaultAspectRatio: "1:1"},
+			ImagePricing: &model.ImagePricing{BaseCreditsPerImage: "0"}}, nil
+	})
+	svc.billing = nil
+	target := proxy.Target{ModelID: "model-1", UpstreamModel: "upstream", UserID: "owner", Protocol: "image_generation"}
+	result, err := svc.Generate(t.Context(), target, imageproxy.GenerateRequest{Model: "image@model-1", Prompt: "猫"})
+	if err != nil || result.Status != "pending" {
+		t.Fatalf("自配生图受理失败: %+v, %v", result, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := svc.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	jobs.Lock()
+	defer jobs.Unlock()
+	if jobs.job.Status != "succeeded" || jobs.job.GeneratedImages != 1 || jobs.job.BillingTransactionID != nil {
+		t.Fatalf("自配生图应保留任务统计但不创建计费交易: %+v", jobs.job)
 	}
 }
 

@@ -189,7 +189,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	charges.RegisterAgent(agent)
 
 	router := chi.NewRouter()
-	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges})
+	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges}).WithUsageRecorder(modelUsageRecorder{models: modelRepo})
 	modelProxy.Register(router)
 	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
@@ -225,6 +225,7 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 	}
 	return proxy.Target{
 		ModelID:       target.ID,
+		OwnershipType: target.OwnershipType,
 		UpstreamModel: target.UpstreamModelID,
 		Protocol:      string(target.Protocol),
 		UserID:        target.UserID,

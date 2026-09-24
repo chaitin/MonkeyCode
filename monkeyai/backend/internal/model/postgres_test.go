@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
@@ -133,8 +134,31 @@ func TestResolveModelName(t *testing.T) {
 			if err != nil || target.ID != tc.want || target.UserID != tc.user || target.UpstreamModelID == "" || target.APIKey != "test-key" {
 				t.Fatalf("模型解析错误: %+v, %v", target, err)
 			}
+			if tc.name == "自有模型" && target.OwnershipType != "user" || tc.name == "模型名" && target.OwnershipType != "system" {
+				t.Fatalf("模型归属类型未传递: %+v", target)
+			}
 		})
 	}
+	t.Run("自配模型独立记录用量", func(t *testing.T) {
+		call := Call{ModelID: private.ID, UserID: owner, RequestID: "own_response", Status: "succeeded",
+			InputTokens: 11, CachedInputTokens: 5, OutputTokens: 7,
+			StartedAt: time.Now().Add(-time.Second), CompletedAt: time.Now()}
+		if err := repo.RecordCall(ctx, call); err != nil {
+			t.Fatal(err)
+		}
+		var count, input, cached, output int
+		if err := pool.QueryRow(ctx, `SELECT count(*),sum(input_tokens),sum(cached_input_tokens),sum(output_tokens) FROM model_calls WHERE model_id=$1`, private.ID).Scan(&count, &input, &cached, &output); err != nil || count != 1 || input != 11 || cached != 5 || output != 7 {
+			t.Fatalf("独立用量记录不正确: %d %d %d %d, %v", count, input, cached, output, err)
+		}
+		var transactions int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM billing_transactions WHERE resource_id=$1`, private.ID).Scan(&transactions); err != nil || transactions != 0 {
+			t.Fatalf("自配模型不应有计费交易: %d, %v", transactions, err)
+		}
+		call.ModelID = shared.ID
+		if !errors.Is(repo.RecordCall(ctx, call), ErrNotFound) {
+			t.Fatal("系统模型不应由独立用量写入器记录")
+		}
+	})
 	models, err := NewService(repo).AgentModels(ctx, user, false)
 	if err != nil || len(models) != 2 {
 		t.Fatalf("下发模型目录错误: %+v, %v", models, err)

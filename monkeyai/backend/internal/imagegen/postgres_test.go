@@ -108,6 +108,19 @@ VALUES($1,'user',$2,'image-model','Image Model','image_generation','image','open
 	if _, err := repo.Get(ctx, otherID, created.ID); !errors.Is(err, resource.NotFound) {
 		t.Fatalf("跨用户任务查询未阻止: %v", err)
 	}
+	freeJob := job
+	freeJob.RequestHash, freeJob.IdempotencyKey = "hash-free", "request-free"
+	freeJob, _, err = repo.Create(ctx, freeJob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Reserve(ctx, freeJob, ""); err != nil {
+		t.Fatal(err)
+	}
+	freeJob, err = repo.Get(ctx, userID, freeJob.ID)
+	if err != nil || freeJob.Status != "reserved" || freeJob.BillingTransactionID != nil {
+		t.Fatalf("自配生图任务应无计费交易: %+v, %v", freeJob, err)
+	}
 
 	var imageBytes bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 2, 3))
