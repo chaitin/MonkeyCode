@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +52,19 @@ func TestReadyWhenDatabaseUnavailable(t *testing.T) {
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
+	}
+}
+
+type brokenWriter struct{ http.ResponseWriter }
+
+func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestHealthWriteFailureLogged(t *testing.T) {
+	var logs bytes.Buffer
+	handler := New(slog.New(slog.NewTextHandler(&logs, nil)), stubPinger{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler())
+	handler.ServeHTTP(brokenWriter{httptest.NewRecorder()}, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if !strings.Contains(logs.String(), "健康检查响应写入失败") || !strings.Contains(logs.String(), "write failed") {
+		t.Fatalf("缺少写入错误日志: %s", logs.String())
 	}
 }
 

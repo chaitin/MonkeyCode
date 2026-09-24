@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -193,7 +194,10 @@ func (s *Service) CompleteAuthorization(ctx context.Context, requestID, userID s
 	if err := s.storeAuthorizationCode(ctx, request, userID, tokenHash(code), s.now().Add(s.codeTTL)); err != nil {
 		return "", err
 	}
-	callback, _ := url.Parse(request.RedirectURI)
+	callback, err := url.Parse(request.RedirectURI)
+	if err != nil {
+		return "", fmt.Errorf("解析授权请求 %s 的回调地址: %w", request.ID, err)
+	}
 	query := callback.Query()
 	query.Set("code", code)
 	query.Set("state", request.State)
@@ -209,6 +213,9 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 		return Token{}, oauthError("invalid_grant", "code_verifier 无效")
 	}
 	stored, err := s.authorizationCode(ctx, tokenHash(code))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.ErrorContext(ctx, "查询授权码失败", "client_id", clientID, "error", err)
+	}
 	if err != nil || stored.ClientID != clientID || stored.RedirectURI != redirectURI || stored.RedeemedAt != nil || !s.now().Before(stored.ExpiresAt) {
 		return Token{}, oauthError("invalid_grant", "授权码无效或已过期")
 	}
@@ -231,6 +238,9 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 		ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: s.now().Add(s.accessTTL),
 	}
 	if err := s.redeemCodeAndStoreToken(ctx, stored.ID, stored.UserID, clientID, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL)); err != nil {
+		if !errors.Is(err, errAuthorizationCodeUsed) {
+			slog.ErrorContext(ctx, "兑换授权码失败", "code_id", stored.ID, "error", err)
+		}
 		return Token{}, oauthError("invalid_grant", "授权码已被使用")
 	}
 	return token, nil
@@ -250,6 +260,9 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 	}
 	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: s.now().Add(s.accessTTL)}
 	if err := s.rotateToken(ctx, tokenHash(refreshToken), clientID, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL)); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.ErrorContext(ctx, "刷新 OAuth 令牌失败", "client_id", clientID, "error", err)
+		}
 		return Token{}, oauthError("invalid_grant", "refresh_token 无效或已过期")
 	}
 	return token, nil

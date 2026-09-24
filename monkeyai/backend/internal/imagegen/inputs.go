@@ -11,6 +11,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log/slog"
 	"time"
 
 	_ "golang.org/x/image/webp"
@@ -76,7 +77,9 @@ func (s *Inputs) Upload(ctx context.Context, userID string, data []byte) (Input,
 	if err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		_ = s.storage.Delete(cleanupCtx, key)
+		if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
+			slog.Error("清理未登记参考图失败", "operation", "delete_input", "file_id", id, "error_type", providerErrorType(cleanupErr))
+		}
 		return Input{}, err
 	}
 	return Input{ID: id, MIMEType: mime, Width: config.Width, Height: config.Height, ExpiresAt: expiry}, nil
@@ -94,7 +97,11 @@ func (s *Inputs) Read(ctx context.Context, userID, fileID string) (Input, error)
 	if err != nil {
 		return Input{}, err
 	}
-	defer body.Close()
+	defer func() {
+		if closeErr := body.Close(); closeErr != nil && ctx.Err() == nil {
+			slog.Warn("关闭参考图存储流失败", "operation", "close_reader", "file_id", fileID, "error_type", providerErrorType(closeErr))
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxInputBytes+1))
 	if err != nil {
 		return Input{}, err

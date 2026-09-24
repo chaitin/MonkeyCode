@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,7 +49,11 @@ func CallBody(ctx context.Context, client *http.Client, target proxy.Target, end
 	if err != nil {
 		return nil, 0, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil && ctx.Err() == nil {
+			slog.Warn("关闭生图上游响应失败", "operation", "close_upstream_response", "model_id", target.ModelID, "status", response.StatusCode, "error_type", providerErrorType(closeErr))
+		}
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, response.StatusCode, nil
 	}

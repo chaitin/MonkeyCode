@@ -41,7 +41,7 @@ func (s *Service) agentEntries(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "list_user_entries", "")
 	queries := sqlc.New(tx)
 	total, err := queries.CountUserEntries(ctx, sqlc.CountUserEntriesParams{
 		UserID:       user.ID,

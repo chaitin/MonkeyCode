@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -101,7 +102,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer rollback(r.Context(), tx, "save_settings", "")
 	p, err := s.policy(r.Context(), tx, true)
 	if err != nil {
 		resource.Fail(w, err)
@@ -158,7 +159,11 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.Revision++
-	raw, _ := json.Marshal(p)
+	raw, err := json.Marshal(p)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("序列化计费策略: %w", err))
+		return
+	}
 	u, _ := identity.UserFromContext(r.Context())
 	_, err = sqlc.New(tx).SavePolicy(r.Context(), sqlc.SavePolicyParams{Value: raw, Revision: int64(p.Revision), UpdatedByUserID: u.ID})
 	if err == nil {
@@ -237,7 +242,7 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer rollback(r.Context(), tx, "save_quotas", "")
 	p, err := s.policy(r.Context(), tx, true)
 	if err != nil {
 		resource.Fail(w, err)
@@ -387,7 +392,7 @@ func (s *Service) resetQuotas(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "reset_credits", "")
 	queries := sqlc.New(tx)
 	if _, err = queries.LockGroupsForReset(ctx); err != nil {
 		resource.Fail(w, err)
@@ -486,7 +491,11 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	external, _ := sqlc.New(s.pool).WalletUser(r.Context(), user)
+	external, err := sqlc.New(s.pool).WalletUser(r.Context(), user)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		resource.Fail(w, fmt.Errorf("查询用户 %s 钱包绑定: %w", user, err))
+		return
+	}
 
 	wallet, err := s.wallet(r.Context(), s.pool)
 	if err != nil {
@@ -528,7 +537,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "adjust_balance", "")
 	p, err := s.policy(ctx, tx, false)
 	if err != nil {
 		resource.Fail(w, err)
@@ -547,7 +556,12 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if e == nil {
-		if oldAmount != in.Delta.String() && amountText(oldAmount) != in.Delta || oldReason != in.Reason {
+		previous, parseErr := ParseAmount(oldAmount)
+		if parseErr != nil {
+			resource.Fail(w, fmt.Errorf("解析账户 %s 的历史调整金额: %w", a.ID, parseErr))
+			return
+		}
+		if previous != in.Delta || oldReason != in.Reason {
 			resource.Fail(w, fail(409, "idempotency_conflict", "该账户版本已提交过不同的调整，请刷新后重试"))
 			return
 		}
@@ -594,15 +608,15 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 	s.account(w, r)
 }
 func pageParams(r *http.Request) (int, int) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	size, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
-	if page < 1 {
+	page, pageErr := strconv.Atoi(r.URL.Query().Get("page"))
+	size, sizeErr := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if pageErr != nil || page < 1 {
 		page = 1
 	}
 	if page > 100000 {
 		page = 100000
 	}
-	if size < 1 || size > 100 {
+	if sizeErr != nil || size < 1 || size > 100 {
 		size = 20
 	}
 	return page, size
@@ -628,7 +642,7 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "refund", id)
 	var account, mode, status, amountText, category, item string
 	var record sqlc.LockRefundRow
 	record, err = sqlc.New(tx).LockRefund(ctx, id)

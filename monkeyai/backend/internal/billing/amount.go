@@ -106,5 +106,4 @@ func boolInt(b bool) int64 {
 	}
 	return 0
 }
-func amountText(s string) Amount { a, _ := ParseAmount(s); return a }
-func stringInt(n int64) string   { return strconv.FormatInt(n, 10) }
+func stringInt(n int64) string { return strconv.FormatInt(n, 10) }

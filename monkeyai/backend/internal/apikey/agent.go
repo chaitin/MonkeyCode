@@ -3,6 +3,7 @@ package apikey
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -14,6 +15,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		user, _ := identity.UserFromContext(r.Context())
 		keys, err := s.ListByUser(r.Context(), user.ID)
 		if err != nil {
+			slog.ErrorContext(r.Context(), "读取用户调用密钥失败", "user_id", user.ID, "error", err)
 			keyError(w, http.StatusInternalServerError, "读取调用密钥失败")
 			return
 		}
@@ -47,6 +49,8 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
+		} else {
+			slog.ErrorContext(r.Context(), "操作用户调用密钥失败", "key_id", chi.URLParam(r, "keyID"), "user_id", user.ID, "error", err)
 		}
 		keyError(w, status, "调用密钥不存在")
 		return
@@ -61,6 +65,8 @@ func (s *Service) rotate(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
+		} else {
+			slog.ErrorContext(r.Context(), "操作用户调用密钥失败", "key_id", chi.URLParam(r, "keyID"), "user_id", user.ID, "error", err)
 		}
 		keyError(w, status, "轮换调用密钥失败")
 		return
@@ -72,7 +78,9 @@ func keyJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		slog.Error("写入调用密钥 HTTP 响应失败", "status", status, "error", err)
+	}
 }
 
 func keyError(w http.ResponseWriter, status int, message string) {

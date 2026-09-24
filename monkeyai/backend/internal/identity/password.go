@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/mail"
@@ -18,7 +19,10 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/jackc/pgx/v5"
 )
+
+var errPasswordNotSet = errors.New("未设置密码")
 
 const (
 	passwordIterations      = 600_000
@@ -53,7 +57,11 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚初始化管理员事务失败", "error", err)
+		}
+	}()
 	if _, err := sqlc.New(tx).LockInitialAdmin(ctx); err != nil {
 		return err
 	}
@@ -86,6 +94,7 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	methods, err := s.loginMethods(r.Context())
 	if err != nil {
+		slog.ErrorContext(r.Context(), "读取密码认证设置失败", "error", err)
 		writeError(w, 503, "settings_unavailable", "认证配置不可用")
 		return
 	}
@@ -107,13 +116,16 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	var passwordHash string
 	row, err := sqlc.New(s.db).GetPasswordUser(r.Context(), sqlc.GetPasswordUserParams{Email: input.Email, AdminOnly: adminOnly})
 	if err == nil && row.PasswordHash == nil {
-		err = errors.New("未设置密码")
+		err = errPasswordNotSet
 	}
 	if err == nil {
 		user = User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
 		passwordHash = *row.PasswordHash
 	}
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) && !errors.Is(err, errPasswordNotSet) {
+			slog.ErrorContext(r.Context(), "查询密码登录用户失败", "error", err)
+		}
 		passwordHash = dummyPasswordHash
 	}
 	valid := verifyPassword(input.Password, passwordHash)
@@ -126,11 +138,18 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method string) {
 	if _, err := sqlc.New(s.db).TouchLogin(r.Context(), user.ID); err != nil {
+		slog.ErrorContext(r.Context(), "更新登录时间失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
 	token, err := randomToken(32)
-	if err != nil || s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL)) != nil {
+	if err != nil {
+		slog.ErrorContext(r.Context(), "生成登录会话令牌失败", "user_id", user.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
+		return
+	}
+	if err := s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL)); err != nil {
+		slog.ErrorContext(r.Context(), "创建登录会话失败", "user_id", user.ID, "method", method, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}

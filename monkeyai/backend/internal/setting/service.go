@@ -86,11 +86,22 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 				}
 				id, ok := connection["id"]
 				if !ok || string(id) == `""` {
-					connection["id"], _ = json.Marshal(resource.ID())
+					encoded, err := json.Marshal(resource.ID())
+					if err != nil {
+						return Record{}, fmt.Errorf("生成 OAuth 连接标识: %w", err)
+					}
+					connection["id"] = encoded
 				}
 			}
-			object["oauth_connections"], _ = json.Marshal(connections)
-			value, _ = json.Marshal(object)
+			encoded, err := json.Marshal(connections)
+			if err != nil {
+				return Record{}, fmt.Errorf("编码 OAuth 连接配置: %w", err)
+			}
+			object["oauth_connections"] = encoded
+			value, err = json.Marshal(object)
+			if err != nil {
+				return Record{}, fmt.Errorf("编码认证设置: %w", err)
+			}
 		}
 	}
 	value, err := s.mergeSecrets(ctx, key, value)
@@ -153,14 +164,19 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 		}
 		if record.Key == "billing" {
 			var all map[string]json.RawMessage
-			_ = json.Unmarshal(value, &all)
+			if err := json.Unmarshal(value, &all); err != nil {
+				return Config{}, fmt.Errorf("读取计费设置: %w", err)
+			}
 			safe := map[string]json.RawMessage{}
 			for _, key := range []string{"input_credits_per_million_tokens", "cached_input_credits_per_million_tokens", "output_credits_per_million_tokens", "charging_mode", "enabled", "quota_refresh_cycle"} {
 				if v, ok := all[key]; ok {
 					safe[key] = v
 				}
 			}
-			value, _ = json.Marshal(safe)
+			value, err = json.Marshal(safe)
+			if err != nil {
+				return Config{}, fmt.Errorf("编码计费设置: %w", err)
+			}
 		}
 		config.Settings[record.Key] = value
 		if record.UpdatedAt.After(config.UpdatedAt) {
@@ -202,8 +218,11 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 		return nil, err
 	}
 	var next, previous map[string]any
-	if json.Unmarshal(value, &next) != nil || json.Unmarshal(existing.Value, &previous) != nil {
-		return value, nil
+	if err := json.Unmarshal(value, &next); err != nil {
+		return nil, errors.New("value 必须是 JSON 对象")
+	}
+	if err := json.Unmarshal(existing.Value, &previous); err != nil {
+		return nil, fmt.Errorf("解析已有 %s 设置: %w", key, err)
 	}
 	switch key {
 	case "authentication":
@@ -268,7 +287,10 @@ func validate(key string, value map[string]json.RawMessage) error {
 			}
 		}
 	case "email":
-		data, _ := json.Marshal(value)
+		data, err := json.Marshal(value)
+		if err != nil {
+			return errors.New("邮件配置格式无效")
+		}
 		var config emailConfig
 		if json.Unmarshal(data, &config) != nil {
 			return errors.New("邮件配置格式无效")
@@ -289,7 +311,9 @@ func validate(key string, value map[string]json.RawMessage) error {
 
 func rawString(value json.RawMessage) string {
 	var result string
-	_ = json.Unmarshal(value, &result)
+	if err := json.Unmarshal(value, &result); err != nil {
+		return ""
+	}
 	return result
 }
 

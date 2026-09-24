@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -54,8 +55,12 @@ func (c *remoteClient) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	response, err := c.request(ctx, http.MethodDelete, nil)
-	if err == nil {
-		response.Body.Close()
+	if err != nil {
+		slog.WarnContext(ctx, "关闭 MCP 会话失败", "operation", "delete_session", "failure", safeMCPFailure(err))
+		return
+	}
+	if err := response.Body.Close(); err != nil {
+		slog.WarnContext(ctx, "关闭 MCP 会话响应失败", "operation", "delete_session", "failure", safeMCPFailure(err))
 	}
 }
 
@@ -68,7 +73,11 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "关闭 MCP 调用响应失败", "operation", "call", "failure", safeMCPFailure(err))
+		}
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, remoteStatus(response.StatusCode)
 	}
@@ -164,7 +173,9 @@ func openRemote(ctx context.Context, target string, headers map[string]string) (
 	if err != nil {
 		return nil, err
 	}
-	response.Body.Close()
+	if err := response.Body.Close(); err != nil {
+		slog.WarnContext(ctx, "关闭 MCP 握手响应失败", "operation", "initialize", "failure", safeMCPFailure(err))
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, remoteStatus(response.StatusCode)
 	}

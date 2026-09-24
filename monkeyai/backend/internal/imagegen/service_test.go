@@ -4,8 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -296,5 +302,54 @@ func TestRejectedGenerationReleasesCredits(t *testing.T) {
 	defer bills.Unlock()
 	if status != "failed" || len(bills.finished) != 1 || !bills.finished[0].Known || bills.finished[0].Images != 0 {
 		t.Fatalf("审核拒绝未退款: %s %+v", status, bills.finished)
+	}
+}
+
+type testTransport func(*http.Request) (*http.Response, error)
+
+func (f testTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type testCloseBody struct {
+	io.Reader
+	err error
+}
+
+func (b testCloseBody) Close() error { return b.err }
+
+func TestProviderErrorLogsDoNotExposeWrappedURL(t *testing.T) {
+	const secret = "private-token-123"
+	var logs bytes.Buffer
+	original := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(original) })
+
+	wrapped := fmt.Errorf("outer token=%s: %w", secret, &url.Error{
+		Op: "Post", URL: "https://api.example/v1?token=" + secret,
+		Err: fmt.Errorf("inner token=%s: %w", secret, &url.Error{
+			Op: "Get", URL: "https://api.example/v1?api_key=" + secret,
+			Err: errors.New("failure token=" + secret),
+		}),
+	})
+	jobs := &testJobs{}
+	svc := NewService(nil, jobs, nil, nil, nil)
+	svc.handleResult(context.Background(), Job{ID: "job-1", Operation: "generate"}, ProviderResult{}, wrapped)
+	if jobs.job.Status != "unknown" || !strings.Contains(logs.String(), "error_type=url_error") ||
+		strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "api_key=") {
+		t.Fatalf("上游错误日志包含敏感详情或状态错误: %s", logs.String())
+	}
+
+	logs.Reset()
+	client := &http.Client{Transport: testTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+			Body: testCloseBody{Reader: strings.NewReader(`{}`), err: wrapped}}, nil
+	})}
+	target := proxy.Target{BaseURL: "https://api.example/v1?token=" + secret, APIKey: secret, ModelID: "model-1"}
+	content, status, err := CallBody(context.Background(), client, target, "/images", []byte(`{}`), "application/json")
+	if err != nil || status != http.StatusOK || string(content) != "{}" {
+		t.Fatalf("上游响应异常: status=%d error=%v", status, err)
+	}
+	if !strings.Contains(logs.String(), "error_type=url_error") || !strings.Contains(logs.String(), "status=200") ||
+		strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "token=") {
+		t.Fatalf("上游关闭日志包含敏感详情: %s", logs.String())
 	}
 }

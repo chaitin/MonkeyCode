@@ -69,7 +69,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			Fail(w, err)
 			return
 		}
-		defer tx.Rollback(r.Context())
+		defer func() { rollback(r.Context(), tx, "tag_save", chi.URLParam(r, "id")) }()
 		id := chi.URLParam(r, "id")
 		var out Object
 		if id == "" {
@@ -99,7 +99,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			Fail(w, err)
 			return
 		}
-		defer tx.Rollback(r.Context())
+		defer func() { rollback(r.Context(), tx, "tag_delete", chi.URLParam(r, "id")) }()
 		id := chi.URLParam(r, "id")
 		o, err := DecodeObject(sqlc.New(tx).DeleteTag(r.Context(), id))
 		u, _ := identity.UserFromContext(r.Context())

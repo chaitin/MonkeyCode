@@ -430,7 +430,11 @@ func TestConcurrentEmailCode(t *testing.T) {
 				consumed <- err
 				return
 			}
-			defer tx.Rollback(t.Context())
+			defer func() {
+				if err := tx.Rollback(t.Context()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+					t.Error(err)
+				}
+			}()
 			err = consumeEmailCode(t.Context(), tx, input)
 			if err == nil {
 				err = tx.Commit(t.Context())

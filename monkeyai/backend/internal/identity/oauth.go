@@ -1,11 +1,14 @@
 package identity
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) OAuthRouter() http.Handler {
@@ -98,7 +101,9 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err == nil {
-		_ = s.revokeToken(r.Context(), tokenHash(r.Form.Get("token")), r.Form.Get("client_id"))
+		if err := s.revokeToken(r.Context(), tokenHash(r.Form.Get("token")), r.Form.Get("client_id")); err != nil {
+			slog.ErrorContext(r.Context(), "撤销 OAuth 令牌失败", "client_id", r.Form.Get("client_id"), "error", err)
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -106,6 +111,7 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 func (s *Service) writeOAuthError(w http.ResponseWriter, err error) {
 	var protocol protocolError
 	if !errors.As(err, &protocol) {
+		slog.Error("OAuth 请求处理失败", "error", err)
 		protocol = protocolError{Code: "server_error", Description: "服务暂时不可用"}
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -115,6 +121,7 @@ func (s *Service) writeOAuthError(w http.ResponseWriter, err error) {
 func (s *Service) providers(w http.ResponseWriter, r *http.Request) {
 	connections, err := s.connections(r.Context())
 	if err != nil {
+		slog.ErrorContext(r.Context(), "读取登录方式失败", "error", err)
 		writeError(w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
 		return
 	}
@@ -144,7 +151,9 @@ func nullableUser(user User, ok bool) any {
 
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookie); err == nil {
-		_ = s.revokeBrowserSession(r.Context(), tokenHash(cookie.Value))
+		if err := s.revokeBrowserSession(r.Context(), tokenHash(cookie.Value)); err != nil {
+			slog.ErrorContext(r.Context(), "撤销浏览器会话失败", "error", err)
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
@@ -153,10 +162,18 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 	request, err := s.authorizationRequest(r.Context(), chi.URLParam(r, "requestID"))
 	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			slog.ErrorContext(r.Context(), "查询客户端授权请求失败", "request_id", chi.URLParam(r, "requestID"), "error", err)
+		}
 		writeError(w, http.StatusNotFound, "request_not_found", "授权请求不存在、已完成或已过期")
 		return
 	}
-	connections, _ := s.connections(r.Context())
+	connections, err := s.connections(r.Context())
+	if err != nil {
+		slog.ErrorContext(r.Context(), "读取客户端授权登录方式失败", "request_id", request.ID, "error", err)
+		writeError(w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
+		return
+	}
 	user, authenticated := s.BrowserUser(r)
 	client := Clients[request.ClientID]
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -194,6 +211,9 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 	}
 	request, err := s.authorizationRequest(r.Context(), requestID)
 	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			slog.ErrorContext(r.Context(), "查询上游登录授权请求失败", "request_id", requestID, "error", err)
+		}
 		writeError(w, http.StatusBadRequest, "request_unavailable", "授权请求无效")
 		return
 	}
@@ -208,21 +228,27 @@ func (s *Service) beginUpstream(w http.ResponseWriter, r *http.Request, requestI
 	connectionID := chi.URLParam(r, "connectionID")
 	connection, err := s.connection(r.Context(), connectionID)
 	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			slog.ErrorContext(r.Context(), "读取上游连接失败", "connection_id", connectionID, "error", err)
+		}
 		writeError(w, http.StatusNotFound, "provider_not_found", "登录方式不存在")
 		return
 	}
 	state, err := randomToken(32)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "准备上游登录失败", "connection_id", connectionID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
 	if err := s.createLoginState(r.Context(), tokenHash(state), connectionID, requestID, purpose, s.now().Add(s.requestTTL)); err != nil {
+		slog.ErrorContext(r.Context(), "创建上游登录状态失败", "connection_id", connectionID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
 	target, err := s.upstreamAuthorizeURL(r.Context(), connection, state)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "provider_unavailable", err.Error())
+		logUpstreamFailure(r.Context(), "构造上游授权地址", connectionID, err)
+		writeError(w, http.StatusBadGateway, "provider_unavailable", "登录方式暂不可用")
 		return
 	}
 	http.Redirect(w, r, target, http.StatusFound)
@@ -231,6 +257,9 @@ func (s *Service) beginUpstream(w http.ResponseWriter, r *http.Request, requestI
 func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	state, err := s.consumeLoginState(r.Context(), tokenHash(r.URL.Query().Get("state")))
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.ErrorContext(r.Context(), "读取上游登录状态失败", "error", err)
+		}
 		http.Redirect(w, r, s.clientLoginURL("", "oauth_callback"), http.StatusFound)
 		return
 	}
@@ -240,11 +269,15 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	connection, err := s.connection(r.Context(), state.ConnectionID)
 	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			slog.ErrorContext(r.Context(), "读取上游登录配置失败", "connection_id", state.ConnectionID, "error", err)
+		}
 		http.Redirect(w, r, s.upstreamResultURL(state, "provider_unavailable"), http.StatusFound)
 		return
 	}
 	profile, err := s.exchangeUpstream(r.Context(), connection, r.URL.Query().Get("code"))
 	if err != nil {
+		logUpstreamFailure(r.Context(), "交换上游身份", state.ConnectionID, err)
 		http.Redirect(w, r, s.upstreamResultURL(state, "oauth_exchange"), http.StatusFound)
 		return
 	}
@@ -262,7 +295,11 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := randomToken(32)
-	if err != nil || s.createBrowserSession(r.Context(), user.ID, tokenHash(token), "oauth", s.now().Add(s.sessionTTL)) != nil {
+	if err == nil {
+		err = s.createBrowserSession(r.Context(), user.ID, tokenHash(token), "oauth", s.now().Add(s.sessionTTL))
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "创建上游登录会话失败", "user_id", user.ID, "error", err)
 		http.Redirect(w, r, s.upstreamResultURL(state, "session_failed"), http.StatusFound)
 		return
 	}
@@ -294,4 +331,27 @@ func (s *Service) clientLoginURL(requestID, errorCode string) string {
 		query.Set("error", errorCode)
 	}
 	return s.publicURL + "/client-login?" + query.Encode()
+}
+
+func logUpstreamFailure(ctx context.Context, operation, connectionID string, err error) {
+	var response *upstreamHTTPError
+	if errors.As(err, &response) {
+		slog.ErrorContext(ctx, "上游 OAuth 操作失败", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status)
+		return
+	}
+	reason := "invalid_upstream_response"
+	var urlErr *url.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		reason = "request_canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		reason = "request_timeout"
+	case errors.As(err, &urlErr):
+		if urlErr.Op == "parse" {
+			reason = "invalid_upstream_url"
+		} else {
+			reason = "request_failed"
+		}
+	}
+	slog.ErrorContext(ctx, "上游 OAuth 操作失败", "operation", operation, "connection_id", connectionID, "reason", reason)
 }

@@ -2,8 +2,10 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -63,7 +65,12 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 	if err != nil {
 		return ResponseReconciliation{}, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil && ctx.Err() == nil && !errors.Is(closeErr, context.Canceled) && !errors.Is(closeErr, io.ErrClosedPipe) {
+			// 自定义 Transport 的关闭错误可能包含凭据或响应内容。
+			slog.WarnContext(ctx, "关闭上游对账响应失败", "model_id", target.ModelID, "operation", "close_reconciliation_response", "error_type", fmt.Sprintf("%T", closeErr))
+		}
+	}()
 
 	if response.StatusCode != http.StatusOK {
 		switch response.StatusCode {

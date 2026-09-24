@@ -3,6 +3,7 @@ package identity
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -20,6 +21,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/users", func(w http.ResponseWriter, r *http.Request) {
 		users, err := s.listUsers(r.Context())
 		if err != nil {
+			slog.ErrorContext(r.Context(), "读取用户列表失败", "error", err)
 			writeError(w, http.StatusInternalServerError, "server_error", "读取用户失败")
 			return
 		}
@@ -60,6 +62,11 @@ func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.updateUser(r.Context(), chi.URLParam(r, "userID"), input.Name, input.Role, input.Status, "")
 	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			slog.ErrorContext(r.Context(), "更新用户失败", "user_id", chi.URLParam(r, "userID"), "error", err)
+			writeError(w, http.StatusInternalServerError, "server_error", "更新用户失败")
+			return
+		}
 		writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		return
 	}
@@ -70,21 +77,28 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	password, err := generatePassword()
 	if err != nil {
+		slog.ErrorContext(r.Context(), "生成重置密码失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "生成密码失败")
 		return
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "重置用户密码失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
 	ctx := r.Context()
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "重置用户密码失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚重置用户密码事务失败", "user_id", chi.URLParam(r, "userID"), "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	user, err := q.GetUser(ctx, chi.URLParam(r, "userID"))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -92,22 +106,27 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.ErrorContext(r.Context(), "重置用户密码失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
 	if _, err := q.ResetUserPassword(ctx, sqlc.ResetUserPasswordParams{ID: user.ID, PasswordHash: &hash}); err != nil {
+		slog.ErrorContext(ctx, "更新用户密码失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
 	if err := revokePasswordAccess(ctx, q, user.ID, user.Email); err != nil {
+		slog.ErrorContext(ctx, "撤销用户旧凭据失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
 	if err := q.DeleteEmailCode(ctx, sqlc.DeleteEmailCodeParams{Email: user.Email, Purpose: "reset"}); err != nil {
+		slog.ErrorContext(ctx, "删除用户重置验证码失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
+		slog.ErrorContext(ctx, "提交用户密码重置失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}

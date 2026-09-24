@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -26,11 +27,13 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 		var err error
 		o, err = discoverOAuth(ctx, c.String("url"))
 		if err != nil {
+			slog.WarnContext(ctx, "OAuth 自动发现失败", "connector_id", c.String("id"), "operation", "discovery", "error", err)
 			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
 		}
 	}
 	registered, err := registerOAuthClient(ctx, o, redirect)
 	if err != nil {
+		slog.WarnContext(ctx, "OAuth 客户端注册失败", "connector_id", c.String("id"), "operation", "registration", "error", err)
 		return &resource.Error{Status: 502, Code: "oauth_registration_failed", Message: "OAuth 动态客户端注册失败，请检查注册端点或手动配置 Client ID"}
 	}
 	revision := c.Int("config_revision")
@@ -42,7 +45,10 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 		}
 	}
 	o.ClientID, o.TokenAuthMethod, o.ClientSecretExpiresAt = registered.ClientID, registered.Method, registered.SecretExpires
-	data, _ := json.Marshal(resource.Object{"id": c.String("id"), "oauth_config": o, "oauth_client_secret": registered.Secret, "config_revision": revision})
+	data, err := json.Marshal(resource.Object{"id": c.String("id"), "oauth_config": o, "oauth_client_secret": registered.Secret, "config_revision": revision})
+	if err != nil {
+		return fmt.Errorf("编码 OAuth 客户端配置: %w", err)
+	}
 	if err = connector.New(tx).UpdateResource(ctx, data); err != nil {
 		return err
 	}
@@ -82,7 +88,10 @@ func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (o
 	if o.Scopes != "" {
 		body["scope"] = o.Scopes
 	}
-	data, _ := json.Marshal(body)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return oauthRegistration{}, fmt.Errorf("编码 OAuth 注册请求: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.RegistrationURL, bytes.NewReader(data))
 	if err != nil {
 		return fail()
@@ -95,7 +104,11 @@ func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (o
 	if err != nil {
 		return fail()
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "关闭 OAuth 注册响应失败", "operation", "register_client", "failure", safeMCPFailure(err))
+		}
+	}()
 	if resp.StatusCode != http.StatusCreated {
 		return fail()
 	}

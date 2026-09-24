@@ -36,14 +36,24 @@ func (o Object) Int(k string) int64     { v, _ := o[k].(float64); return int64(v
 func ID() string                        { return uuid.New().String() }
 
 func Hash(v any) string {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("资源内容哈希编码失败", "type", fmt.Sprintf("%T", v), "error", err)
+	}
 	h := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 func Strings(v any) []string {
 	result := []string{}
-	b, _ := json.Marshal(v)
-	_ = json.Unmarshal(b, &result)
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("资源字符串列表编码失败", "type", fmt.Sprintf("%T", v), "error", err)
+		return result
+	}
+	if err := json.Unmarshal(b, &result); err != nil {
+		slog.Error("资源字符串列表解码失败", "error", err)
+		return []string{}
+	}
 	if result == nil {
 		return []string{}
 	}
@@ -67,7 +77,9 @@ var Conflict = &Error{Status: 412, Code: "revision_conflict", Message: "资源�
 func JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("资源响应写入失败", "status", status, "error", err)
+	}
 }
 func Fail(w http.ResponseWriter, err error) {
 	var e *Error
@@ -140,7 +152,10 @@ func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 	return grants, nil
 }
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
-	b, _ := json.Marshal(raw)
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("编码 %s 资源 %s 的授权: %w", kind, id, err)
+	}
 	var grants []struct {
 		UserID   string `json:"user_id"`
 		GroupID  string `json:"group_id"`
@@ -283,6 +298,12 @@ func (c *CRUD) List(ctx context.Context, q Queryer) ([]Object, error) {
 	}
 	return out, nil
 }
+func rollback(ctx context.Context, tx pgx.Tx, operation, id string) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		slog.ErrorContext(ctx, "回滚资源事务失败", "operation", operation, "resource_id", id, "error", err)
+	}
+}
+
 func (c *CRUD) Save(ctx context.Context, actor, id, match string, in Object) (Object, error) {
 	return c.save(ctx, actor, id, match, in, false)
 }
@@ -291,7 +312,7 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { rollback(ctx, tx, "save", id) }()
 	old := Object{}
 	create := id == ""
 	if create {
@@ -390,7 +411,7 @@ func (c *CRUD) delete(ctx context.Context, actor, id, match string, personal boo
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { rollback(ctx, tx, "delete", id) }()
 	o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 	if err != nil {
 		return err
@@ -567,7 +588,7 @@ func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled 
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { rollback(ctx, tx, "set_enabled", id) }()
 	o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 	if err != nil {
 		return nil, err

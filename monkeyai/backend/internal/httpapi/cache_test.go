@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+func TestCachedJSONWriteFailureDoesNotRequestSecondResponse(t *testing.T) {
+	w := brokenWriter{httptest.NewRecorder()}
+	if err := CachedJSON(w, httptest.NewRequest(http.MethodGet, "/rules", nil), map[string]any{"rules": []string{}}); err != nil {
+		t.Fatalf("响应已开始后不应返回写入错误: %v", err)
+	}
+}
+
 func TestCachedJSON(t *testing.T) {
 	value := map[string]any{"rules": []string{"rule-1"}}
 	read := func(match string) *httptest.ResponseRecorder {

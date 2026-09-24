@@ -189,7 +189,11 @@ func call(t *testing.T, f *fixture, method, path, body, token string) (int, []by
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil && t.Context().Err() == nil {
+			t.Errorf("关闭端点测试响应失败: %T", err)
+		}
+	}()
 	data, _ := io.ReadAll(response.Body)
 	return response.StatusCode, data
 }

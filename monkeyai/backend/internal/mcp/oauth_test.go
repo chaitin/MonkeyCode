@@ -3,9 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +16,73 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
+
+func TestExchangeRejectsInvalidExpiresIn(t *testing.T) {
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
+	for _, expiry := range []string{"invalid", "999999999999999999999999"} {
+		t.Run(expiry, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+				fmt.Fprint(w, "access_token=private-token&token_type=bearer&expires_in="+expiry)
+			}))
+			defer server.Close()
+			_, err := exchange(t.Context(), resource.Object{"oauth_config": oauthConfig{ClientID: "client", TokenURL: server.URL}}, url.Values{"grant_type": {"authorization_code"}})
+			var failure tokenExchangeError
+			if !errors.As(err, &failure) || failure.reason != "invalid_expires_in" || failure.status != http.StatusOK {
+				t.Fatalf("无效 expires_in 未被识别: %v", err)
+			}
+			if strings.Contains(fmt.Sprint(safeMCPFailure(err)), "private-token") {
+				t.Fatal("日志分类包含访问令牌")
+			}
+		})
+	}
+}
+
+func TestExchangeHTTPFailureExcludesResponse(t *testing.T) {
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, "access_token=private-token&error=upstream-failed")
+	}))
+	defer server.Close()
+	_, err := exchange(t.Context(), resource.Object{"oauth_config": oauthConfig{ClientID: "client", TokenURL: server.URL}}, url.Values{"grant_type": {"authorization_code"}})
+	logged := fmt.Sprint(safeMCPFailure(err))
+	if strings.Contains(logged, "private-token") || !strings.Contains(logged, "502") || !strings.Contains(logged, "upstream_http_error") {
+		t.Fatalf("上游错误状态记录不安全: %s", logged)
+	}
+}
+
+func TestOAuthFailureDoesNotExposeURL(t *testing.T) {
+	err := &url.Error{Op: "POST", URL: "https://oauth.example/token?code=private-code", Err: errors.New("private-token")}
+	logged := fmt.Sprint(safeMCPFailure(err))
+	if strings.Contains(logged, "private-code") || strings.Contains(logged, "private-token") || !strings.Contains(logged, "network_error") {
+		t.Fatalf("上游错误分类不安全: %s", logged)
+	}
+}
+
+func TestAutomaticRefreshContinuesAfterFailure(t *testing.T) {
+	f := setup(t)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		if r.Form.Get("refresh_token") == "broken" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		resource.JSON(w, http.StatusOK, resource.Object{"access_token": "renewed", "expires_in": 3600})
+	}))
+	defer remote.Close()
+	c := f.call("POST", "/agent/connectors", resource.Object{"name": "刷新任务隔离", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"client_id": "client", "token_url": remote.URL, "authorization_url": remote.URL}}, "owner", "", 201)
+	for _, refresh := range []string{"broken", "valid"} {
+		f.sql(`INSERT INTO connector_credentials(id,connector_id,user_id,name,oauth_access_token,oauth_refresh_token,oauth_expires_at,config_revision) VALUES($1,$2,$3,$4,'old',$5,now()-interval '1 minute',1)`, resource.ID(), c.String("id"), f.users["owner"], refresh, refresh)
+	}
+	f.service.refreshCredentials(t.Context())
+	var access string
+	if err := f.pool.QueryRow(t.Context(), `SELECT oauth_access_token FROM connector_credentials WHERE connector_id=$1 AND name='valid'`, c.String("id")).Scan(&access); err != nil || access != "renewed" {
+		t.Fatalf("单条刷新失败阻断了后续凭证: %s, %v", access, err)
+	}
+}
 
 func TestAutomaticRefresh(t *testing.T) {
 	f := setup(t)

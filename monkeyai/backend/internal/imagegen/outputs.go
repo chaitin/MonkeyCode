@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -91,7 +92,9 @@ func (s *Outputs) Save(ctx context.Context, jobID string, ordinal int32, img Ima
 	if err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		_ = s.storage.Delete(cleanupCtx, key)
+		if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
+			slog.Error("清理未登记生图结果失败", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
+		}
 		return SavedOutput{}, err
 	}
 	if count == 0 {
@@ -102,7 +105,9 @@ func (s *Outputs) Save(ctx context.Context, jobID string, ordinal int32, img Ima
 		if existing.Sha256 != hash {
 			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
-			_ = s.storage.Delete(cleanupCtx, key)
+			if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
+				slog.Error("清理冲突生图结果失败", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
+			}
 			return SavedOutput{}, errors.New("生成图片结果不一致")
 		}
 		id = existing.ID
@@ -138,7 +143,11 @@ func (s *Outputs) Open(ctx context.Context, userID, outputID string) ([]byte, st
 	if err != nil {
 		return nil, "", err
 	}
-	defer body.Close()
+	defer func() {
+		if closeErr := body.Close(); closeErr != nil && ctx.Err() == nil {
+			slog.Warn("关闭生图结果存储流失败", "operation", "close_reader", "file_id", outputID, "error_type", providerErrorType(closeErr))
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxOutputBytes+1))
 	if err != nil {
 		return nil, "", err

@@ -3,8 +3,13 @@ package endpoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -71,7 +76,12 @@ func (c *connection) reject(code, id string) {
 	if !validID(id) {
 		id = ""
 	}
-	data := errorFrame(code, id)
+	data, err := errorFrame(code, id)
+	if err != nil {
+		c.service.logger.Error("序列化端点错误帧失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "reject", "error", err)
+		c.stop(1011)
+		return
+	}
 	c.service.stats.rejected.Add(1)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -112,10 +122,27 @@ func (c *connection) pop(high bool) ([]byte, bool) {
 	}
 	return nil, false
 }
+func (c *connection) expected(err error) bool {
+	return c.ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) || websocket.CloseStatus(err) != -1
+}
+func (c *connection) sendError(code, reply string) {
+	data, err := errorFrame(code, reply)
+	if err != nil {
+		c.service.logger.Error("序列化端点错误帧失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "send_error", "error", err)
+		c.stop(1011)
+		return
+	}
+	c.write(data)
+}
 func (c *connection) write(data []byte) bool {
 	ctx, cancel := context.WithTimeout(c.ctx, c.service.timeWrite)
 	defer cancel()
 	if err := c.ws.Write(ctx, websocket.MessageText, data); err != nil {
+		if !c.dead.Load() && !c.expected(err) {
+			c.service.logger.Warn("端点消息写入失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_write", "error", err)
+		}
 		c.stop(1013)
 		return false
 	}
@@ -127,7 +154,9 @@ func (c *connection) writer() {
 		if code == 0 {
 			code = 1000
 		}
-		_ = c.ws.Close(websocket.StatusCode(code), "")
+		if err := c.ws.Close(websocket.StatusCode(code), ""); err != nil && !c.expected(err) {
+			c.service.logger.Warn("端点 WebSocket 关闭失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_close", "close_code", code, "error_type", fmt.Sprintf("%T", err))
+		}
 		c.cancel()
 	}()
 	select {
@@ -140,7 +169,12 @@ func (c *connection) writer() {
 		return
 	}
 	welcome := map[string]any{"type": "welcome", "protocol_version": 1, "server_time": time.Now().UnixMilli(), "heartbeat": map[string]int64{"interval_ms": c.service.pingInterval.Milliseconds(), "timeout_ms": c.service.timePong.Milliseconds()}, "limits": map[string]int{"max_frame_bytes": maxMessage, "max_endpoints": 20}}
-	data, _ := json.Marshal(welcome)
+	data, err := json.Marshal(welcome)
+	if err != nil {
+		c.service.logger.Error("序列化端点欢迎消息失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "welcome", "error", err)
+		c.stop(1011)
+		return
+	}
 	if !c.write(data) {
 		return
 	}
@@ -189,6 +223,9 @@ func (c *connection) reader() {
 	for {
 		kind, data, err := c.ws.Read(c.ctx)
 		if err != nil {
+			if !c.dead.Load() && !c.expected(err) {
+				c.service.logger.Warn("端点消息读取失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_read", "error", err)
+			}
 			c.stop(1000)
 			return
 		}
@@ -202,8 +239,13 @@ func (c *connection) reader() {
 		}
 		var envelope map[string]json.RawMessage
 		var messageType string
-		_ = json.Unmarshal(data, &envelope)
-		_ = json.Unmarshal(envelope["type"], &messageType)
+		if err := json.Unmarshal(data, &envelope); err == nil {
+			if raw, ok := envelope["type"]; ok {
+				if err := json.Unmarshal(raw, &messageType); err != nil {
+					messageType = ""
+				}
+			}
+		}
 		if messageType == "hello" {
 			c.stop(1002)
 			return
@@ -237,6 +279,9 @@ func (c *connection) ping() {
 			err := c.ws.Ping(ctx)
 			cancel()
 			if err != nil {
+				if !c.dead.Load() && !c.expected(err) {
+					c.service.logger.Warn("端点心跳失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_ping", "error", err)
+				}
 				c.stop(1013)
 				return
 			}
@@ -254,6 +299,9 @@ func (c *connection) ping() {
 				err = c.service.store.Touch(ctx, c.credential.UserID, c.machine, now)
 				cancel()
 				if err != nil {
+					if !c.dead.Load() && !c.expected(err) {
+						c.service.logger.Warn("端点心跳刷新失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "touch", "error", err)
+					}
 					c.stop(1013)
 					return
 				}
@@ -274,7 +322,10 @@ func (c *connection) verify() {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			code, _ := c.service.check(c.ctx, c.credential)
+			code, err := c.service.check(c.ctx, c.credential)
+			if err != nil && !c.expected(err) {
+				c.service.logger.Warn("端点凭据复核失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "verify", "error", err)
+			}
 			if code != 0 {
 				c.stop(code)
 				return

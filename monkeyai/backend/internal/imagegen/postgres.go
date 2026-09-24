@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/sqlc"
@@ -91,7 +92,13 @@ func (p *Postgres) LinkInputs(ctx context.Context, jobID string, fileIDs []strin
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && ctx.Err() == nil &&
+			!errors.Is(rollbackErr, pgx.ErrTxClosed) && !errors.Is(rollbackErr, context.Canceled) &&
+			!errors.Is(rollbackErr, context.DeadlineExceeded) {
+			slog.Warn("生图参考图关联回滚失败", "job_id", jobID, "operation", "rollback_link_inputs", "error_type", fmt.Sprintf("%T", rollbackErr))
+		}
+	}()
 	for _, fileID := range fileIDs {
 		if _, err := sqlc.New(tx).LinkJobInput(ctx, sqlc.LinkJobInputParams{JobID: jobID, InputID: fileID}); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

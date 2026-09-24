@@ -3,6 +3,8 @@ package endpoint
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
@@ -82,12 +84,20 @@ func (p *Postgres) Get(ctx context.Context, user, machine string) (Endpoint, err
 	row, err := sqlc.New(p.pool).Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
 	return fromRow(row), missing(err)
 }
+func rollback(ctx context.Context, tx pgx.Tx, user, operation string) {
+	if err := tx.Rollback(ctx); err != nil && ctx.Err() == nil &&
+		!errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		slog.Warn("端点事务回滚失败", "user_id", user, "operation", operation, "error_type", fmt.Sprintf("%T", err))
+	}
+}
+
 func (p *Postgres) Page(ctx context.Context, user string, page, size int) (Page, error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Page{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, user, "page")
 	q := sqlc.New(tx)
 	total, err := q.Count(ctx, user)
 	if err != nil {
@@ -109,7 +119,7 @@ func (p *Postgres) transaction(ctx context.Context, user string, fn func(*sqlc.Q
 	if err != nil {
 		return Endpoint{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, user, "transaction")
 	q := sqlc.New(tx)
 	if _, err = q.LockUser(ctx, user); err != nil {
 		return Endpoint{}, missing(err)

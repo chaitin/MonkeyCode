@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -83,7 +84,11 @@ func prepareRequest(body []byte, path string, limit int64, stream bool) ([]byte,
 			delete(data, "max_completion_tokens")
 			delete(data, "max_tokens")
 		}
-		data[field], _ = json.Marshal(limit)
+		value, err := json.Marshal(limit)
+		if err != nil {
+			return nil, fmt.Errorf("编码输出上限: %w", err)
+		}
+		data[field] = value
 	}
 	if stream && path == "/v1/chat/completions" {
 		options := map[string]json.RawMessage{}
@@ -93,7 +98,11 @@ func prepareRequest(body []byte, path string, limit int64, stream bool) ([]byte,
 			}
 		}
 		options["include_usage"] = json.RawMessage("true")
-		data["stream_options"], _ = json.Marshal(options)
+		value, err := json.Marshal(options)
+		if err != nil {
+			return nil, fmt.Errorf("编码流式选项: %w", err)
+		}
+		data["stream_options"] = value
 	}
 	return json.Marshal(data)
 }

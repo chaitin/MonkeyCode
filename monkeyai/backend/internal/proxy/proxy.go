@@ -157,8 +157,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	upstream, err := parseBaseURL(target.BaseURL)
 	if err != nil {
-		p.logger.ErrorContext(r.Context(), "模型配置无效", "model_id", target.ModelID, "error", err)
-		p.errorHandler(w, r, err)
+		p.logger.ErrorContext(r.Context(), "模型配置无效", "model_id", target.ModelID, "operation", "parse_base_url", "error", fmt.Sprintf("%T", err))
+		p.writeUpstreamFailure(w, r, target.ModelID, "")
 		return
 	}
 	if target.UpstreamModel != "" && target.UpstreamModel != meta.Model {
@@ -264,13 +264,23 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 }
 
 func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	modelID, transactionID := "", ""
 	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
+		modelID, transactionID = pc.target.ModelID, pc.reservation.ID
 		p.finish(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"})
 	}
-	p.logger.ErrorContext(r.Context(), "模型上游请求失败", "path", r.URL.Path, "error", err)
+	if r.Context().Err() == nil || !errors.Is(err, context.Canceled) {
+		p.logger.ErrorContext(r.Context(), "模型上游请求失败", "model_id", modelID, "transaction_id", transactionID, "operation", "proxy_request", "path", r.URL.Path, "error", fmt.Sprintf("%T", err))
+	}
+	p.writeUpstreamFailure(w, r, modelID, transactionID)
+}
+
+func (p *Proxy) writeUpstreamFailure(w http.ResponseWriter, r *http.Request, modelID, transactionID string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
-	_, _ = io.WriteString(w, upstreamFailureMessage)
+	if _, writeErr := io.WriteString(w, upstreamFailureMessage); writeErr != nil && r.Context().Err() == nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+		p.logger.WarnContext(r.Context(), "写入代理错误响应失败", "model_id", modelID, "transaction_id", transactionID, "operation", "write_error_response", "error", fmt.Sprintf("%T", writeErr))
+	}
 }
 
 func upstreamPath(requestPath string) (string, bool) {

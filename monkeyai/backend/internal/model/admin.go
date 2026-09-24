@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -12,9 +13,15 @@ import (
 
 func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/models", func(w http.ResponseWriter, r *http.Request) {
-		models, err := s.List(r.Context(), r.URL.Query().Get("ownership_type"))
+		ownership := r.URL.Query().Get("ownership_type")
+		models, err := s.List(r.Context(), ownership)
 		if err != nil {
-			modelError(w, http.StatusBadRequest, err.Error())
+			if ownership != "" && ownership != "system" && ownership != "user" {
+				modelError(w, http.StatusBadRequest, err.Error())
+			} else {
+				slog.ErrorContext(r.Context(), "读取模型列表失败", "error", err)
+				modelError(w, http.StatusInternalServerError, "读取模型列表失败")
+			}
 			return
 		}
 		for i := range models {
@@ -25,6 +32,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/models/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
 		subjects, err := s.Subjects(r.Context())
 		if err != nil {
+			slog.ErrorContext(r.Context(), "读取模型授权对象失败", "error", err)
 			modelError(w, http.StatusInternalServerError, "读取授权对象失败")
 			return
 		}
@@ -76,6 +84,8 @@ func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusBadRequest
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
+		} else {
+			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -96,6 +106,8 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
+		} else {
+			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -108,6 +120,8 @@ func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
+		} else {
+			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -131,7 +145,9 @@ func decodeModelRequest(w http.ResponseWriter, r *http.Request, target any) erro
 func modelJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		slog.Error("写入模型 HTTP 响应失败", "status", status, "error", err)
+	}
 }
 
 func modelError(w http.ResponseWriter, status int, message string) {

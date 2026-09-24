@@ -2,19 +2,21 @@ package mcp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) WithStorage(storage resource.Storage) *Service { s.storage = storage; return s }
@@ -41,13 +43,21 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 		resource.Fail(w, resource.Invalid("图标必须小于 1 MiB"))
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() {
+		if err := r.MultipartForm.RemoveAll(); err != nil {
+			slog.WarnContext(r.Context(), "清理图标上传临时文件失败", "connector_id", chi.URLParam(r, "id"), "error", err)
+		}
+	}()
 	f, _, err := r.FormFile("icon")
 	if err != nil {
 		resource.Fail(w, resource.Invalid("缺少 icon 文件"))
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.WarnContext(r.Context(), "关闭 Connector 图标上传文件失败", "connector_id", chi.URLParam(r, "id"), "operation", "close_upload", "error", err)
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
 		resource.Fail(w, resource.Invalid("图标超限"))
@@ -64,7 +74,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), "", "upload_icon")
 	id := chi.URLParam(r, "id")
 	u, _ := identity.UserFromContext(ctx)
 	user := u.ID
@@ -115,6 +125,9 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string) {
 	key, err := sqlc.New(s.Store.Pool).GetConnectorIcon(r.Context(), connector)
 	if err != nil || key == "" {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			slog.ErrorContext(r.Context(), "读取 Connector 图标失败", "connector_id", connector, "error", err)
+		}
 		resource.Fail(w, resource.NotFound)
 		return
 	}
@@ -124,7 +137,11 @@ func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string)
 		resource.Fail(w, err)
 		return
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			slog.WarnContext(r.Context(), "关闭 Connector 图标读取流失败", "connector_id", connector, "operation", "close_icon", "failure", safeMCPFailure(err))
+		}
+	}()
 	mime := "image/png"
 	if strings.HasSuffix(key, ".jpeg") {
 		mime = "image/jpeg"
@@ -133,5 +150,7 @@ func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("ETag", `"`+resource.Hash(key)+`"`)
-	_, _ = io.Copy(w, body)
+	if _, err := io.Copy(w, body); err != nil {
+		slog.WarnContext(r.Context(), "传输 Connector 图标失败", "connector_id", connector, "error", err)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type oauthConfig struct {
@@ -38,15 +40,30 @@ type oauthConfig struct {
 }
 
 func oauthSettings(c resource.Object) oauthConfig {
-	b, _ := json.Marshal(c["oauth_config"])
+	b, err := json.Marshal(c["oauth_config"])
+	if err != nil {
+		var unsupported *json.UnsupportedTypeError
+		if errors.As(err, &unsupported) {
+			slog.Error("编码 OAuth 配置失败", "connector_id", c.String("id"), "operation", "encode_config", "error", unsupported)
+		} else {
+			// 自定义 JSON 错误可能回显配置中的客户端密钥。
+			slog.Error("编码 OAuth 配置失败", "connector_id", c.String("id"), "operation", "encode_config", "failure_reason", "invalid_config_encoding")
+		}
+		return oauthConfig{}
+	}
 	var o oauthConfig
-	_ = json.Unmarshal(b, &o)
+	if err := json.Unmarshal(b, &o); err != nil {
+		slog.Error("解析 OAuth 配置失败", "connector_id", c.String("id"), "operation", "decode_config", "failure_reason", "invalid_config_format")
+		return oauthConfig{}
+	}
 	return o
 }
-func token() string {
+func token() (string, error) {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("生成 OAuth 随机数: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 func hash(value string) string { v := sha256.Sum256([]byte(value)); return hex.EncodeToString(v[:]) }
 func (s *Service) callbackURL(id string) string {
@@ -60,7 +77,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), chi.URLParam(r, "credentialID"), "authorize")
 	c, err := s.lockConnector(ctx, tx, chi.URLParam(r, "id"), u.ID, admin)
 	if err == nil {
 		err = manageCredential(c, admin)
@@ -112,7 +129,16 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 			}
 		}
 	}
-	state, verifier := token(), token()
+	state, err := token()
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	verifier, err := token()
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	redirect := s.callbackURL(c.String("id"))
 	if err = s.ensureOAuthClient(ctx, tx, c, redirect); err != nil {
 		resource.Fail(w, err)
@@ -120,7 +146,11 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	}
 	data["config_revision"] = c.Int("config_revision")
 	data["state_hash"], data["verifier"], data["redirect_uri"] = hash(state), verifier, redirect
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("编码 OAuth 授权请求: %w", err))
+		return
+	}
 	request, err := resource.DecodeObject(sqlc.New(tx).CreateOAuthRequest(ctx, b))
 	if err == nil {
 		err = tx.Commit(ctx)
@@ -130,7 +160,11 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		return
 	}
 	o := oauthSettings(c)
-	target, _ := url.Parse(o.AuthorizationURL)
+	target, err := url.Parse(o.AuthorizationURL)
+	if err != nil || target == nil || target.Scheme == "" || target.Host == "" {
+		resource.Fail(w, resource.Invalid("OAuth 授权地址无效"))
+		return
+	}
 	q := target.Query()
 	q.Set("response_type", "code")
 	q.Set("client_id", o.ClientID)
@@ -198,6 +232,9 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	request, err := resource.DecodeObject(sqlc.New(s.Store.Pool).ConsumeOAuthRequest(ctx, sqlc.ConsumeOAuthRequestParams{StateHash: hash(state), ConnectorID: id}))
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.ErrorContext(ctx, "消费 OAuth 授权事务失败", "connector_id", id, "operation", "consume", "failure", safeMCPFailure(err))
+		}
 		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
 		return
 	}
@@ -208,7 +245,9 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
-		_, _ = sqlc.New(s.Store.Pool).FinishOAuthRequest(cleanup, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "failed", CredentialID: ""})
+		if _, err := sqlc.New(s.Store.Pool).FinishOAuthRequest(cleanup, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "failed", CredentialID: ""}); err != nil {
+			slog.ErrorContext(cleanup, "标记 OAuth 授权失败事务失败", "connector_id", id, "operation", "finish_failed", "error", err)
+		}
 	}()
 	if r.URL.Query().Get("error") != "" || r.URL.Query().Get("code") == "" {
 		resource.Fail(w, resource.Invalid("授权已取消或缺少授权码"))
@@ -220,13 +259,20 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := s.oauthContext(ctx, tx, request)
-	_ = tx.Rollback(ctx)
+	if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+		if err == nil {
+			err = rollbackErr
+		} else {
+			slog.WarnContext(ctx, "释放 OAuth 授权事务失败", "connector_id", id, "operation", "rollback", "error", rollbackErr)
+		}
+	}
 	if err != nil {
 		resource.Fail(w, err)
 		return
 	}
 	result, err := exchange(ctx, c, url.Values{"grant_type": {"authorization_code"}, "code": {r.URL.Query().Get("code")}, "redirect_uri": {request.String("redirect_uri")}, "code_verifier": {request.String("verifier")}})
 	if err != nil {
+		slog.WarnContext(ctx, "OAuth Token 交换失败", "connector_id", id, "operation", "exchange", "failure", safeMCPFailure(err))
 		resource.Fail(w, &resource.Error{Status: 502, Code: "oauth_exchange_failed", Message: "OAuth Token 交换失败，请重新发起授权"})
 		return
 	}
@@ -235,7 +281,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, id, request.String("credential_id"), "callback")
 	c, err = s.oauthContext(ctx, tx, request)
 	if err != nil {
 		resource.Fail(w, err)
@@ -253,7 +299,11 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	data := resource.Object{"id": credential, "connector_id": id, "user_id": user, "name": request.String("name"),
 		"http_headers": resource.Object{}, "oauth_access_token": result.Access, "oauth_refresh_token": result.Refresh,
 		"oauth_expires_at": result.Expires, "config_revision": c.Int("config_revision"), "auth_change": true}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("编码 OAuth 凭证: %w", err))
+		return
+	}
 	queries := sqlc.New(tx)
 	var cred resource.Object
 	if create {
@@ -284,6 +334,9 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 	defer cancel()
 	_, testErr := s.testConnection(check, c, cred, request.String("user_id"), c.String("authorization_mode") == "centralized")
+	if testErr != nil {
+		slog.WarnContext(check, "OAuth 授权后连接测试失败", "connector_id", id, "credential_id", credential, "failure", safeMCPFailure(testErr))
+	}
 	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer stop()
 	rows, err := sqlc.New(s.Store.Pool).FinishOAuthRequest(finish, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "succeeded", CredentialID: credential})
@@ -300,7 +353,9 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		message = "授权成功，但自动连接测试失败，请返回 MonkeyAI 查看凭证状态并重试连接测试。"
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>%s</p></html>", message)
+	if _, err := fmt.Fprintf(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>%s</p></html>", message); err != nil {
+		slog.WarnContext(ctx, "写入 OAuth 授权结果失败", "connector_id", id, "credential_id", credential, "failure_reason", "response_write_failed", "error_type", fmt.Sprintf("%T", err))
+	}
 }
 
 type tokens struct {
@@ -309,6 +364,54 @@ type tokens struct {
 }
 
 var invalidGrant = errors.New("OAuth 凭证已失效")
+
+type tokenExchangeError struct {
+	reason string
+	status int
+}
+
+func (e tokenExchangeError) Error() string { return e.reason }
+
+// 上游及回调错误可能携带 URL 查询串、授权码或 Token，仅输出受控分类与状态。
+func safeMCPFailure(err error) []any {
+	var exchangeErr tokenExchangeError
+	if errors.As(err, &exchangeErr) {
+		if exchangeErr.status != 0 {
+			return []any{"reason", exchangeErr.reason, "upstream_status", exchangeErr.status}
+		}
+		return []any{"reason", exchangeErr.reason}
+	}
+	var failure *resource.Error
+	if errors.As(err, &failure) {
+		return []any{"reason", failure.Code, "status", failure.Status}
+	}
+	var upstream remoteStatus
+	if errors.As(err, &upstream) {
+		return []any{"reason", "upstream_http_error", "upstream_status", int(upstream)}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return []any{"reason", "timeout"}
+	}
+	if errors.Is(err, context.Canceled) {
+		return []any{"reason", "canceled"}
+	}
+	var network net.Error
+	if errors.As(err, &network) {
+		return []any{"reason", "network_error", "timeout", network.Timeout()}
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return []any{"reason", "transport_error"}
+	}
+	var databaseErr *pgconn.PgError
+	if errors.As(err, &databaseErr) {
+		return []any{"reason", "database_error", "sqlstate", databaseErr.Code}
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return []any{"error", pgx.ErrNoRows}
+	}
+	return []any{"reason", "internal_error", "error_type", fmt.Sprintf("%T", err)}
+}
 
 func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
 	o := oauthSettings(c)
@@ -325,7 +428,7 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", o.TokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
-		return tokens{}, err
+		return tokens{}, tokenExchangeError{reason: "invalid_token_url"}
 	}
 	if o.TokenAuthMethod == "client_secret_basic" {
 		req.SetBasicAuth(url.QueryEscape(o.ClientID), url.QueryEscape(secret))
@@ -338,10 +441,17 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 	if err != nil {
 		return tokens{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "关闭 OAuth Token 响应失败", "operation", "exchange", "failure", safeMCPFailure(err))
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
-	if err != nil || len(data) > 1<<20 {
-		return tokens{}, fmt.Errorf("Token 响应无效")
+	if err != nil {
+		return tokens{}, tokenExchangeError{reason: "response_read_error", status: resp.StatusCode}
+	}
+	if len(data) > 1<<20 {
+		return tokens{}, tokenExchangeError{reason: "response_too_large", status: resp.StatusCode}
 	}
 	var payload struct {
 		Access  string `json:"access_token"`
@@ -350,22 +460,34 @@ func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, err
 		Type    string `json:"token_type"`
 		Error   string `json:"error"`
 	}
+	var form url.Values
 	if json.Unmarshal(data, &payload) != nil {
-		form, err := url.ParseQuery(string(data))
+		form, err = url.ParseQuery(string(data))
 		if err != nil {
-			return tokens{}, fmt.Errorf("Token 响应无效")
+			return tokens{}, tokenExchangeError{reason: "invalid_token_response", status: resp.StatusCode}
 		}
 		payload.Access = form.Get("access_token")
 		payload.Refresh = form.Get("refresh_token")
 		payload.Type = form.Get("token_type")
 		payload.Error = form.Get("error")
-		payload.Expires, _ = strconv.ParseInt(form.Get("expires_in"), 10, 64)
 	}
 	if resp.StatusCode == 400 && payload.Error == "invalid_grant" {
 		return tokens{}, invalidGrant
 	}
-	if resp.StatusCode != 200 || payload.Error != "" || payload.Access == "" || strings.ContainsAny(payload.Access, "\r\n") || (!strings.EqualFold(payload.Type, "bearer") && payload.Type != "") {
-		return tokens{}, fmt.Errorf("Token 交换失败")
+	if resp.StatusCode != http.StatusOK {
+		return tokens{}, tokenExchangeError{reason: "upstream_http_error", status: resp.StatusCode}
+	}
+	if payload.Error != "" || payload.Access == "" || strings.ContainsAny(payload.Access, "\r\n") || (!strings.EqualFold(payload.Type, "bearer") && payload.Type != "") {
+		return tokens{}, tokenExchangeError{reason: "invalid_token_response", status: resp.StatusCode}
+	}
+	if form != nil {
+		if expires := form.Get("expires_in"); expires != "" {
+			seconds, err := strconv.ParseInt(expires, 10, 64)
+			if err != nil {
+				return tokens{}, tokenExchangeError{reason: "invalid_expires_in", status: resp.StatusCode}
+			}
+			payload.Expires = seconds
+		}
 	}
 	result := tokens{Access: payload.Access, Refresh: payload.Refresh}
 	if payload.Expires > 0 {
@@ -379,7 +501,7 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, c.String("id"), cred.String("id"), "refresh")
 	current, err := resource.DecodeObject(sqlc.New(tx).LockConnector(ctx, c.String("id")))
 	if err != nil {
 		return nil, err
@@ -417,6 +539,7 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 		return nil, authorizationRequired
 	}
 	if err != nil {
+		slog.WarnContext(ctx, "刷新 OAuth 凭证失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "operation", "refresh", "failure", safeMCPFailure(err))
 		return nil, &resource.Error{Status: 502, Code: "oauth_refresh_failed", Message: "OAuth 刷新暂时失败，请稍后重试"}
 	}
 	if result.Refresh == "" {
@@ -453,13 +576,15 @@ func (s *Service) refreshCredentials(ctx context.Context) {
 			defer stop()
 			c, err := resource.DecodeObject(item.Connector, nil)
 			if err != nil {
+				slog.ErrorContext(refresh, "解析待刷新 Connector 数据失败", "operation", "decode_connector", "error", err)
 				return
 			}
 			cred, err := resource.DecodeObject(item.Credential, nil)
 			if err != nil {
+				slog.ErrorContext(refresh, "解析待刷新凭证数据失败", "connector_id", c.String("id"), "operation", "decode_credential", "error", err)
 				return
 			}
-			if _, err = s.refresh(refresh, c, cred); err != nil && ctx.Err() == nil {
+			if _, err = s.refresh(refresh, c, cred); err != nil && ctx.Err() == nil && !errors.Is(err, authorizationRequired) && !isOAuthRefreshFailure(err) {
 				slog.WarnContext(ctx, "Connector OAuth 自动刷新失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
 			}
 		})
@@ -471,7 +596,9 @@ func (s *Service) Run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		cleanup, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_ = sqlc.New(s.Store.Pool).CleanupOAuthRequests(cleanup)
+		if err := sqlc.New(s.Store.Pool).CleanupOAuthRequests(cleanup); err != nil && ctx.Err() == nil {
+			slog.ErrorContext(cleanup, "清理过期 OAuth 授权请求失败", "operation", "cleanup", "error", err)
+		}
 		cancel()
 		s.refreshCredentials(ctx)
 		select {
@@ -480,4 +607,9 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func isOAuthRefreshFailure(err error) bool {
+	var failure *resource.Error
+	return errors.As(err, &failure) && failure.Code == "oauth_refresh_failed"
 }

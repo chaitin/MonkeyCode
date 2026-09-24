@@ -44,7 +44,7 @@ func (s *Service) Move(ctx context.Context, actor string, in MoveInput) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackGroup(ctx, tx, "移动分组或成员", in.TargetID)
 	var target *string
 	if in.TargetID != rootgroup.ID {
 		if _, err := get(ctx, tx, in.TargetID); err != nil {

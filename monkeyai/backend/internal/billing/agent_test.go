@@ -109,7 +109,7 @@ func TestAgentBilling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "test_agent_entries", "")
 	for _, entry := range []struct{ account, kind, category, item, delta, mode string }{
 		{a.String("id"), "refund", "model", "模型退款", "0.48", "local"},
 		{a.String("id"), "charge", "tool", "工具调用", "-2.5", "remote"},

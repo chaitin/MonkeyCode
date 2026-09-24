@@ -551,7 +551,7 @@ func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "test_preserve_accounts", "")
 	if err = s.PreserveAccounts(ctx, tx); err != nil {
 		t.Fatal(err)
 	}
@@ -565,4 +565,12 @@ func TestQuotaChangePreservesUnopenedAccount(t *testing.T) {
 	if err != nil || a.Quota != amountText("10000") {
 		t.Fatal("首次访问不应提前使用下周期额度", a, err)
 	}
+}
+
+func amountText(s string) Amount {
+	a, err := ParseAmount(s)
+	if err != nil {
+		panic(err)
+	}
+	return a
 }

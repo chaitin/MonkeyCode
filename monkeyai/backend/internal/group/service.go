@@ -3,6 +3,8 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -92,12 +94,12 @@ func (s *Service) begin(ctx context.Context) (pgx.Tx, error) {
 	}
 	// 串行化分组写入，避免并发移动绕过祖先校验形成环。
 	if _, err = sqlc.New(tx).LockGroups(ctx); err != nil {
-		_ = tx.Rollback(ctx)
+		rollbackGroup(ctx, tx, "初始化分组事务", "")
 		return nil, err
 	}
 	if s.accounts != nil {
 		if err = s.accounts.PreserveAccounts(ctx, tx); err != nil {
-			_ = tx.Rollback(ctx)
+			rollbackGroup(ctx, tx, "保全分组关联账户", "")
 			return nil, err
 		}
 	}
@@ -135,7 +137,7 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 	if err != nil {
 		return Group{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackGroup(ctx, tx, "保存分组", id)
 	var group Group
 	if !create {
 		group, err = get(ctx, tx, id)
@@ -205,7 +207,7 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 	if err != nil {
 		return Group{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackGroup(ctx, tx, "更新分组成员", id)
 	group, err := get(ctx, tx, id)
 	if err != nil {
 		return Group{}, err
@@ -243,7 +245,7 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackGroup(ctx, tx, "删除分组", id)
 	if _, err := get(ctx, tx, id); err != nil {
 		return err
 	}
@@ -269,4 +271,10 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func rollbackGroup(ctx context.Context, tx pgx.Tx, operation, id string) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+		slog.ErrorContext(ctx, "回滚分组事务失败", "operation", operation, "group_id", id, "error", err)
+	}
 }

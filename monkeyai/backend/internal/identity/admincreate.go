@@ -3,6 +3,8 @@ package identity
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5"
+	"log/slog"
 	"slices"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
@@ -40,7 +42,11 @@ func (s *Service) insertUserWithGroups(ctx context.Context, actor string, input 
 	if err != nil {
 		return User{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚创建用户事务失败", "actor_id", actor, "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	if len(groupIDs) > 0 {
 		// Coordinate with group deletion and membership replacement so validation

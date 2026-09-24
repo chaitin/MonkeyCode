@@ -145,16 +145,20 @@ func (s *Service) view(u *userState, e Endpoint) Endpoint {
 	}
 	return e
 }
-func (s *Service) broadcast(u *userState) {
+func (s *Service) broadcast(userID string, u *userState) {
 	rows := make([]View, 0, len(u.endpoints))
 	for _, e := range u.endpoints {
 		rows = append(rows, s.view(u, e).View)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].MachineID < rows[j].MachineID })
-	data, _ := json.Marshal(struct {
+	data, err := json.Marshal(struct {
 		Type      string `json:"type"`
 		Endpoints []View `json:"endpoints"`
 	}{"directory.snapshot", rows})
+	if err != nil {
+		s.logger.Error("序列化端点目录失败", "user_id", userID, "operation", "broadcast", "error", err)
+		return
+	}
 	for _, c := range u.connections {
 		c.snapshot(data)
 	}
@@ -163,7 +167,10 @@ func (s *Service) route(c *connection, m Message, size int) {
 	u := c.user
 	ctx, cancel := context.WithTimeout(c.ctx, s.timeDB)
 	defer cancel()
-	if u.enter(ctx) != nil {
+	if err := u.enter(ctx); err != nil {
+		if !c.dead.Load() && !c.expected(err) {
+			s.logger.Warn("端点路由获取锁失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "route", "error", err)
+		}
 		c.stop(1013)
 		return
 	}
@@ -205,6 +212,7 @@ func (s *Service) route(c *connection, m Message, size int) {
 	m.RoutedAt = now.UnixMilli()
 	data, err := json.Marshal(m)
 	if err != nil {
+		s.logger.Error("序列化端点转发消息失败", "user_id", c.credential.UserID, "machine_id", c.machine, "message_id", m.ID, "operation", "route", "error", err)
 		c.reject("invalid_message", m.ID)
 		return
 	}

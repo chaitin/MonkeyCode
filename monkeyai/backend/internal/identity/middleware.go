@@ -27,6 +27,9 @@ func (s *Service) BrowserUser(r *http.Request) (User, bool) {
 		return User{}, false
 	}
 	user, _, err := s.userByBrowserToken(r.Context(), tokenHash(cookie.Value))
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.ErrorContext(r.Context(), "查询浏览器会话失败", "error", err)
+	}
 	return user, err == nil
 }
 
@@ -39,6 +42,9 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 		}
 		user, _, err := s.userByBrowserToken(r.Context(), tokenHash(cookie.Value))
 		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				slog.ErrorContext(r.Context(), "查询管理员会话失败", "error", err)
+			}
 			writeError(w, http.StatusUnauthorized, "unauthorized", "请先登录")
 			return
 		}
@@ -106,7 +112,9 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		slog.Error("写入身份服务 HTTP 响应失败", "status", status, "error", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

@@ -2,6 +2,7 @@ package identity
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -23,9 +24,13 @@ func (s *Service) branding(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.settings != nil {
 		value, err := s.settings.GetValue(r.Context(), "branding")
-		if err == nil {
+		if err != nil {
+			slog.ErrorContext(r.Context(), "读取品牌设置失败，使用默认值", "error", err)
+		} else {
 			var configured publicBranding
-			if json.Unmarshal(value, &configured) == nil {
+			if err := json.Unmarshal(value, &configured); err != nil {
+				slog.ErrorContext(r.Context(), "解析品牌设置失败，使用默认值", "error", err)
+			} else {
 				if workspaceName := strings.TrimSpace(configured.WorkspaceName); workspaceName != "" {
 					branding.WorkspaceName = workspaceName
 				}

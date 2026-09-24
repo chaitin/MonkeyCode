@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -34,7 +35,11 @@ func credentialStatus(c, cred resource.Object) string {
 		return "authorization_required"
 	}
 	if c.String("authorization_method") == "http_header" {
-		b, _ := json.Marshal(cred["http_headers"])
+		b, err := json.Marshal(cred["http_headers"])
+		if err != nil {
+			slog.Error("编码认证 Header 失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
+			return "authorization_required"
+		}
 		if _, err := decodeHeaders(b); err == nil {
 			return "authorized"
 		}
@@ -257,7 +262,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), chi.URLParam(r, "credentialID"), "save_credential")
 	c, err := s.lockConnector(ctx, tx, chi.URLParam(r, "id"), u.ID, admin)
 	if err == nil {
 		err = manageCredential(c, admin)
@@ -342,7 +347,11 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		resource.Fail(w, resource.Invalid("请提供凭证名称或认证 Header"))
 		return
 	}
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("编码凭证更新: %w", err))
+		return
+	}
 	var out resource.Object
 	if r.Method == http.MethodPost {
 		out, err = resource.DecodeObject(queries.CreateCredential(ctx, b))
@@ -365,7 +374,9 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	if in.Headers != nil {
 		check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancel()
-		_, _ = s.testConnection(check, c, out, u.ID, admin)
+		if _, testErr := s.testConnection(check, c, out, u.ID, admin); testErr != nil {
+			slog.WarnContext(check, "保存凭证后连接测试失败", "connector_id", c.String("id"), "credential_id", id, "failure", safeMCPFailure(testErr))
+		}
 		out, err = s.Credential(check, s.Store.Pool, c, u.ID, id)
 	}
 	var views []resource.Object

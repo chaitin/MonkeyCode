@@ -42,7 +42,9 @@ func (b *capture) Write(p []byte) (int, error) {
 	if n > bodyLimit-b.Len() {
 		b.overflow = true
 	}
-	_, _ = b.Buffer.Write(p[:min(n, bodyLimit-b.Len())])
+	if _, err := b.Buffer.Write(p[:min(n, bodyLimit-b.Len())]); err != nil {
+		return 0, err
+	}
 	return n, nil
 }
 
@@ -67,13 +69,17 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 			}
 			var random [16]byte
 			if _, err := rand.Read(random[:]); err != nil {
-				failure(w, 500, "server_error", "初始化操作审计失败")
+				s.logger.ErrorContext(r.Context(), "初始化操作审计失败", "error", err)
+				failure(r.Context(), w, 500, "server_error", "初始化操作审计失败")
 				return
 			}
 			state := &requestState{id: hex.EncodeToString(random[:]), actor: user, at: time.Now().UTC(), ip: clientIP(r), agent: clean(r.UserAgent(), 512)}
 			r = r.WithContext(context.WithValue(r.Context(), requestKey{}, state))
 			var body, response capture
-			media, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			media, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if mediaErr != nil && r.Header.Get("Content-Type") != "" {
+				s.logger.WarnContext(r.Context(), "操作审计请求类型无法解析", "error", mediaErr)
+			}
 			if r.Body != nil && media == "application/json" {
 				r.Body = bodyReader{Reader: io.TeeReader(r.Body, &body), Closer: r.Body}
 			}
@@ -91,7 +97,7 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 				ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 				defer cancel()
 				if err := s.complete(ctx, r, state, &body, &response, media, status); err != nil {
-					s.logger.Error("操作审计写入失败", "request_id", state.id, "method", r.Method, "status", status)
+					s.logger.ErrorContext(ctx, "操作审计写入失败", "request_id", state.id, "method", r.Method, "status", status, "error", err)
 				}
 				if panicked != nil {
 					panic(panicked)
