@@ -827,6 +827,81 @@ function TransactionDialog({
       setBusy(false)
     }
   }
+  const detailRows: { label: string; value: string | number }[] = data
+    ? [
+        { label: "用户", value: data.user_name },
+        { label: "内容", value: data.item_name },
+        { label: "状态", value: stateNames[data.status] },
+        {
+          label: "预留积分",
+          value: billingCredits(data.reserve, i18n.language),
+        },
+        {
+          label: "结算积分",
+          value: billingCredits(data.amount, i18n.language),
+        },
+        { label: "交易 ID", value: data.id },
+        { label: "调用时间", value: dateTime(data.started_at) },
+        {
+          label: "模式",
+          value: data.mode === "remote" ? "百智云远程计费" : "本地计费",
+        },
+        { label: "会话", value: data.session_id || "未关联会话" },
+        {
+          label: "原始计价",
+          value: `${billingCredits(data.raw_amount, i18n.language)} 积分`,
+        },
+        ...(data.request_id
+          ? [{ label: "上游响应 ID", value: data.request_id }]
+          : []),
+        ...(data.usage?.stream !== undefined
+          ? [
+              {
+                label: "响应方式",
+                value: data.usage.stream ? "流式" : "非流式",
+              },
+            ]
+          : []),
+        ...(data.usage?.terminal_event
+          ? [{ label: "终止事件", value: data.usage.terminal_event }]
+          : []),
+        ...(data.usage?.reconciled
+          ? [{ label: "用量来源", value: "上游自动对账" }]
+          : []),
+        ...(data.usage && data.category === "model"
+          ? [
+              {
+                label: "普通输入 Token",
+                value: data.usage.input_tokens - data.usage.cached_input_tokens,
+              },
+              {
+                label: "缓存输入 Token",
+                value: data.usage.cached_input_tokens,
+              },
+              { label: "输出 Token", value: data.usage.output_tokens },
+            ]
+          : []),
+        ...(data.usage && data.category === "image"
+          ? [
+              {
+                label: "生成图片",
+                value: `${data.usage.generated_images ?? 0} 张`,
+              },
+              ...(data.pricing?.image_unit
+                ? [
+                    {
+                      label: "每张图片积分",
+                      value: billingCredits(
+                        data.pricing.image_unit,
+                        i18n.language
+                      ),
+                    },
+                  ]
+                : []),
+            ]
+          : []),
+      ]
+    : []
   return (
     <Dialog
       open
@@ -852,92 +927,23 @@ function TransactionDialog({
         )}
         {data && (
           <div className="space-y-5">
-            <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-              <dt className="text-muted-foreground">用户</dt>
-              <dd className="break-all">{data.user_name}</dd>
-              <dt className="text-muted-foreground">内容</dt>
-              <dd className="break-all">{data.item_name}</dd>
-              <dt className="text-muted-foreground">状态</dt>
-              <dd className="break-all">{stateNames[data.status]}</dd>
-              <dt className="text-muted-foreground">预留积分</dt>
-              <dd className="break-all">
-                {billingCredits(data.reserve, i18n.language)}
-              </dd>
-              <dt className="text-muted-foreground">结算积分</dt>
-              <dd className="break-all">
-                {billingCredits(data.amount, i18n.language)}
-              </dd>
-              <dt className="text-muted-foreground">交易 ID</dt>
-              <dd className="break-all">{data.id}</dd>
-              <dt className="text-muted-foreground">调用时间</dt>
-              <dd className="break-all">{dateTime(data.started_at)}</dd>
-              <dt className="text-muted-foreground">模式</dt>
-              <dd className="break-all">
-                {data.mode === "remote" ? "百智云远程计费" : "本地计费"}
-              </dd>
-              <dt className="text-muted-foreground">会话</dt>
-              <dd className="break-all">{data.session_id || "未关联会话"}</dd>
-              <dt className="text-muted-foreground">原始计价</dt>
-              <dd className="break-all">
-                {billingCredits(data.raw_amount, i18n.language)} 积分
-              </dd>
-              {data.request_id && (
-                <>
-                  <dt className="text-muted-foreground">上游响应 ID</dt>
-                  <dd className="break-all">{data.request_id}</dd>
-                </>
-              )}
-              {data.usage?.stream !== undefined && (
-                <>
-                  <dt className="text-muted-foreground">响应方式</dt>
-                  <dd className="break-all">
-                    {data.usage.stream ? "流式" : "非流式"}
-                  </dd>
-                </>
-              )}
-              {data.usage?.terminal_event && (
-                <>
-                  <dt className="text-muted-foreground">终止事件</dt>
-                  <dd className="break-all">{data.usage.terminal_event}</dd>
-                </>
-              )}
-              {data.usage?.reconciled && (
-                <>
-                  <dt className="text-muted-foreground">用量来源</dt>
-                  <dd className="break-all">上游自动对账</dd>
-                </>
-              )}
-              {data.usage && data.category === "model" && (
-                <>
-                  <dt className="text-muted-foreground">普通输入 Token</dt>
-                  <dd className="break-all">
-                    {data.usage.input_tokens - data.usage.cached_input_tokens}
-                  </dd>
-                  <dt className="text-muted-foreground">缓存输入 Token</dt>
-                  <dd className="break-all">
-                    {data.usage.cached_input_tokens}
-                  </dd>
-                  <dt className="text-muted-foreground">输出 Token</dt>
-                  <dd className="break-all">{data.usage.output_tokens}</dd>
-                </>
-              )}
-              {data.usage && data.category === "image" && (
-                <>
-                  <dt className="text-muted-foreground">生成图片</dt>
-                  <dd className="break-all">
-                    {data.usage.generated_images ?? 0} 张
-                  </dd>
-                  {data.pricing?.image_unit && (
-                    <>
-                      <dt className="text-muted-foreground">每张图片积分</dt>
-                      <dd className="break-all">
-                        {billingCredits(data.pricing.image_unit, i18n.language)}
-                      </dd>
-                    </>
-                  )}
-                </>
-              )}
-            </dl>
+            <ScrollArea className="rounded-lg border [&_[data-slot=scroll-area-viewport]]:max-h-[min(40vh,24rem)]">
+              <dl className="divide-y">
+                {detailRows.map(({ label, value }) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                  >
+                    <dt className="w-32 shrink-0 break-words text-muted-foreground sm:w-44">
+                      {label}
+                    </dt>
+                    <dd className="min-w-0 text-right break-all tabular-nums">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </ScrollArea>
             {data.error_code && (
               <p className="rounded-md border p-3 text-sm">
                 处理原因：{data.error_code}

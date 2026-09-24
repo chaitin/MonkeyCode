@@ -241,7 +241,15 @@ test("operation log details are opened from the last actions column", async () =
   assert.match(row, /JSON\.stringify\(log\.request_params, null, 2\)/)
   assert.doesNotMatch(row, /JSON\.stringify\(log\.request_params\)\s*<\/span>/)
   assert.doesNotMatch(row, /<DialogDescription>/)
-  assert.match(row, /grid-cols-\[9rem_minmax\(0,1fr\)\]/)
+  assert.match(
+    row,
+    /<ScrollArea className="rounded-lg border [^"]*max-h-\[min\(40vh,24rem\)\]">\s*<dl className="divide-y">/
+  )
+  assert.match(
+    row,
+    /className="flex items-center justify-between gap-4 px-4 py-3 text-sm"/
+  )
+  assert.match(row, /className="min-w-0 text-right break-all tabular-nums"/)
   assert.match(row, /columns\.time"\),\s*dateFormatter\.format/)
   assert.match(
     row,
@@ -263,8 +271,13 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(source, /<CardContent className="min-h-0 flex-1 gap-4 px-0">/)
   assert.match(
     source,
-    /<ScrollArea\s+horizontal\s+className="min-h-0 flex-1 \[&_\[data-slot=table-container\]\]:h-full \[&_\[data-slot=table-container\]\]:overflow-visible"/
+    /<ScrollArea\s+horizontal\s+className="min-h-0 min-w-0 flex-1 \[&_\[data-slot=table-container\]\]:h-full \[&_\[data-slot=table-container\]\]:overflow-visible"/
   )
+  const dashboard = await readFile(
+    new URL("../src/components/dashboard.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(dashboard, /<SidebarInset className="min-w-0">/)
   assert.match(
     source,
     /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_tr\]:border-b-0">/
@@ -273,7 +286,11 @@ test("only the operation log table scrolls and its header stays visible", async 
     source.indexOf("</ScrollArea>") <
       source.indexOf('pagination.pageSizeLabel")')
   )
-  assert.match(source, /!visibleLogs\.length && "h-full"/)
+  assert.match(
+    source,
+    /className=\{!visibleLogs\.length \? "h-full" : undefined\}/
+  )
+  assert.doesNotMatch(source, /min-w-4xl/)
   assert.match(source, /<TableRow className="h-full">/)
   assert.match(
     source,
