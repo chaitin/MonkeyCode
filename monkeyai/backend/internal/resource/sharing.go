@@ -105,7 +105,7 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { rollback(ctx, tx, "share", input.Resources[0].ID) }()
 	// 固定加锁顺序，批量授权和删除共享资源行锁。
 	for _, item := range input.Resources {
 		if err := kinds[item.Type].LockOwned(ctx, tx, item.ID, actor); err != nil {

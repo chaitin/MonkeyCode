@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -257,7 +259,7 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer rollbackMCP(r.Context(), tx, chi.URLParam(r, "id"), "", "update_tool")
 	var mode string
 	mode, err = sqlc.New(tx).GetAuthorizationMode(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
@@ -291,4 +293,10 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resource.JSON(w, 200, o)
+}
+
+func rollbackMCP(ctx context.Context, tx pgx.Tx, connectorID, credentialID, operation string) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		slog.WarnContext(ctx, "回滚 MCP 事务失败", "operation", operation, "connector_id", connectorID, "credential_id", credentialID, "failure", safeMCPFailure(err))
+	}
 }

@@ -1,6 +1,7 @@
 package setting
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -14,7 +15,8 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			err = httpapi.CachedJSON(w, r, map[string]any{"settings": config.Settings})
 		}
 		if err != nil {
-			settingError(w, http.StatusInternalServerError, "读取设置失败")
+			slog.ErrorContext(r.Context(), "读取 Agent 设置失败", "error", err)
+			settingError(r.Context(), w, http.StatusInternalServerError, "读取设置失败")
 		}
 	})
 }

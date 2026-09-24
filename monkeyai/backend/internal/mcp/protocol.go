@@ -2,9 +2,11 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 
@@ -84,7 +86,7 @@ func rpcReply(w http.ResponseWriter, status int, id json.RawMessage, result any,
 	resource.JSON(w, status, out)
 }
 
-func rpcFail(w http.ResponseWriter, id json.RawMessage, err error) {
+func rpcFail(ctx context.Context, w http.ResponseWriter, id json.RawMessage, err error) {
 	var failure *resource.Error
 	var postgres *pgconn.PgError
 	if !errors.As(err, &failure) {
@@ -94,12 +96,17 @@ func rpcFail(w http.ResponseWriter, id json.RawMessage, err error) {
 		case errors.As(err, &postgres) && postgres.Code == "22P02":
 			failure = &resource.Error{Status: 400, Code: "invalid_request", Message: "资源标识无效"}
 		default:
+			slog.ErrorContext(ctx, "MCP 请求处理失败", "operation", "rpc", "failure", safeMCPFailure(err))
 			failure = &resource.Error{Status: 500, Code: "mcp_internal_error", Message: "MCP 请求处理失败"}
 		}
 	}
 	if references, ok := failure.References.(map[string]string); ok && references["transaction_id"] != "" {
 		w.Header().Set("X-Billing-Transaction-ID", references["transaction_id"])
 	}
-	data, _ := json.Marshal(resource.Object{"code": failure.Code, "references": failure.References})
+	data, marshalErr := json.Marshal(resource.Object{"code": failure.Code, "references": failure.References})
+	if marshalErr != nil {
+		slog.Error("编码 MCP 错误响应失败", "code", failure.Code, "error", marshalErr)
+		data = nil
+	}
 	rpcReply(w, failure.Status, id, nil, &rpcError{Code: -32000, Message: failure.Message, Data: data})
 }

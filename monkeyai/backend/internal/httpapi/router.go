@@ -19,19 +19,25 @@ func New(logger *slog.Logger, database Pinger, admin, agent, auth http.Handler) 
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
 
-	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_, _ = io.WriteString(w, "{\"status\":\"ok\"}\n")
+		if _, err := io.WriteString(w, "{\"status\":\"ok\"}\n"); err != nil {
+			logger.ErrorContext(r.Context(), "健康检查响应写入失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+		}
 	})
 	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if err := database.Ping(r.Context()); err != nil {
-			logger.Error("数据库就绪检查失败", "error", err)
+			logger.ErrorContext(r.Context(), "数据库就绪检查失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(w, "{\"status\":\"unavailable\"}\n")
+			if _, writeErr := io.WriteString(w, "{\"status\":\"unavailable\"}\n"); writeErr != nil {
+				logger.ErrorContext(r.Context(), "就绪检查响应写入失败", "request_id", middleware.GetReqID(r.Context()), "error", writeErr)
+			}
 			return
 		}
-		_, _ = io.WriteString(w, "{\"status\":\"ok\"}\n")
+		if _, err := io.WriteString(w, "{\"status\":\"ok\"}\n"); err != nil {
+			logger.ErrorContext(r.Context(), "就绪检查响应写入失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+		}
 	})
 
 	router.Mount("/api/admin/v1", admin)

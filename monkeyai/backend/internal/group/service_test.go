@@ -75,7 +75,10 @@ func TestGroups(t *testing.T) {
 	router.Use(identity.NewService(pool, nil, "http://localhost").RequireAdmin)
 	service.RegisterAdmin(router)
 	call := func(method, path string, body any, token string) *httptest.ResponseRecorder {
-		data, _ := json.Marshal(body)
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
 		req := httptest.NewRequest(method, path, bytes.NewReader(data))
 		if token != "" {
 			req.AddCookie(&http.Cookie{Name: "monkeyai_session", Value: token})
@@ -92,7 +95,9 @@ func TestGroups(t *testing.T) {
 		}
 		var group Group
 		if status != 204 {
-			_ = json.Unmarshal(response.Body.Bytes(), &group)
+			if err := json.Unmarshal(response.Body.Bytes(), &group); err != nil {
+				t.Fatal(err)
+			}
 		}
 		return group
 	}

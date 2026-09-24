@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -104,7 +105,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			"total_count": len(items), "page": page, "page_size": size,
 			"model_gateway": map[string]string{"base_url": s.gatewayURL, "authentication": "api_key"},
 		}); err != nil {
-			userModelError(w, err)
+			slog.ErrorContext(r.Context(), "写入模型目录缓存响应失败", "user_id", user.ID, "error", err)
 		}
 	})
 	router.Get("/models/tags", func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +120,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			rows = append(rows, resource.Object{"tags": item.Tags})
 		}
 		if err := httpapi.CachedJSON(w, r, map[string]any{"tags": resource.CollectTags(rows)}); err != nil {
-			userModelError(w, err)
+			slog.ErrorContext(r.Context(), "写入模型标签缓存响应失败", "user_id", user.ID, "error", err)
 		}
 	})
 	router.Get("/models/{modelID}", func(w http.ResponseWriter, r *http.Request) {

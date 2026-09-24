@@ -1,7 +1,12 @@
 package identity
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,7 +31,9 @@ func TestBaizhiyunOIDC(t *testing.T) {
 				t.Error("缺少上游令牌")
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(userinfo))
+			if _, err := w.Write([]byte(userinfo)); err != nil {
+				t.Error(err)
+			}
 		default:
 			http.NotFound(w, r)
 		}
@@ -252,5 +259,127 @@ func TestBaizhiyunEmailBinding(t *testing.T) {
 				t.Fatalf("停用用户不应通过邮箱关联登录: %v", err)
 			}
 		})
+	}
+}
+
+func TestExchangeUpstreamDoesNotExposeTokenResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		if _, err := w.Write([]byte(`{"access_token":"private-token","password":"private-password"}`)); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer upstream.Close()
+	s := NewService(nil, nil, "https://monkeyai.example")
+	connection := OAuthConnection{Provider: "oidc", AuthorizationURL: upstream.URL, TokenURL: upstream.URL, UserInfoURL: upstream.URL}
+	_, err := s.exchangeUpstream(t.Context(), connection, "code")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401") || strings.Contains(err.Error(), "private-") {
+		t.Fatalf("上游敏感响应不得出现在错误中: %v", err)
+	}
+}
+
+type upstreamTransport func(*http.Request) (*http.Response, error)
+
+func (f upstreamTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestUpstreamFailureLogOmitsCredentialURLs(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	s := NewService(nil, nil, "https://monkeyai.example")
+	connection := OAuthConnection{
+		Provider: "oidc", AuthorizationURL: "https://example.com/authorize%zz?client_secret=private-authorize",
+		TokenURL: "https://example.com/token?client_secret=private-token", UserInfoURL: "https://example.com/userinfo?access_token=private-userinfo",
+	}
+	_, err := s.upstreamAuthorizeURL(t.Context(), connection, "state")
+	if err == nil || !strings.Contains(err.Error(), "private-authorize") {
+		t.Fatalf("测试应覆盖包含凭据 URL 的解析错误: %v", err)
+	}
+	logUpstreamFailure(t.Context(), "构造上游授权地址", "connection-1", err)
+	if !strings.Contains(output.String(), "invalid_upstream_url") || strings.Contains(output.String(), "private-") {
+		t.Fatalf("授权地址错误日志泄露凭据: %s", output.String())
+	}
+
+	for _, stage := range []string{"token", "userinfo"} {
+		t.Run(stage, func(t *testing.T) {
+			output.Reset()
+			s.client = &http.Client{Transport: upstreamTransport(func(r *http.Request) (*http.Response, error) {
+				if stage == "userinfo" && r.URL.Path == "/token" {
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"access_token":"private-access"}`)), Header: make(http.Header)}, nil
+				}
+				return nil, fmt.Errorf("transport failure: %s %s", r.URL.String(), r.Header.Get("Authorization"))
+			})}
+			_, err := s.exchangeUpstream(t.Context(), connection, "private-code")
+			if err == nil || !strings.Contains(err.Error(), "private-") {
+				t.Fatalf("测试应覆盖包含凭据的外部传输错误: %v", err)
+			}
+			logUpstreamFailure(t.Context(), "交换上游身份", "connection-1", err)
+			if !strings.Contains(output.String(), "reason=request_failed") || strings.Contains(output.String(), "private-") {
+				t.Fatalf("上游传输错误日志泄露凭据: %s", output.String())
+			}
+		})
+	}
+
+	output.Reset()
+	logUpstreamFailure(t.Context(), "交换上游身份", "connection-1", &upstreamHTTPError{operation: "交换上游令牌", status: http.StatusUnauthorized})
+	if !strings.Contains(output.String(), "status=401") || strings.Contains(output.String(), "private-") {
+		t.Fatalf("上游状态码日志不安全: %s", output.String())
+	}
+}
+
+type failingCloseBody struct {
+	io.Reader
+	err error
+}
+
+func (body failingCloseBody) Close() error { return body.err }
+
+func TestUpstreamResponseCloseLogsOnlySafeContext(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	s := NewService(nil, nil, "https://monkeyai.example")
+	s.client = &http.Client{Transport: upstreamTransport(func(r *http.Request) (*http.Response, error) {
+		var content string
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			content = `{"authorization_endpoint":"https://example.com/authorize","token_endpoint":"https://example.com/token","userinfo_endpoint":"https://example.com/userinfo"}`
+		case "/token":
+			content = `{"access_token":"private-access-token"}`
+		case "/userinfo":
+			content = `{"sub":"user-1"}`
+		default:
+			t.Errorf("意外的上游请求: %s", r.URL.Path)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: failingCloseBody{
+			Reader: strings.NewReader(content), err: fmt.Errorf("关闭 %s?access_token=private-close-token 失败", r.URL.Path),
+		}}, nil
+	})}
+	if _, err := s.providerURLs(t.Context(), OAuthConnection{Provider: "oidc", IssuerURL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	connection := OAuthConnection{Provider: "oidc", AuthorizationURL: "https://example.com/authorize", TokenURL: "https://example.com/token", UserInfoURL: "https://example.com/userinfo"}
+	if _, err := s.exchangeUpstream(t.Context(), connection, "code"); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"读取 OIDC 元数据", "交换上游令牌", "读取上游用户"} {
+		if !strings.Contains(output.String(), operation) {
+			t.Errorf("缺少 %s 的关闭失败日志: %s", operation, output.String())
+		}
+	}
+	if strings.Count(output.String(), "关闭上游响应失败") != 3 || strings.Contains(output.String(), "private-") {
+		t.Fatalf("关闭失败日志缺失或泄露凭据: %s", output.String())
+	}
+
+	output.Reset()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	closeUpstreamBody(ctx, failingCloseBody{Reader: strings.NewReader(""), err: errors.New("private-canceled")}, "读取上游用户")
+	if output.Len() != 0 {
+		t.Fatalf("取消上下文不应记录关闭错误: %s", output.String())
 	}
 }

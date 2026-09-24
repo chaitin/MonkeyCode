@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -59,11 +61,12 @@ type usageCaptureContext struct {
 }
 
 type usageCapture struct {
-	logger *slog.Logger
-	src    io.ReadCloser
-	ctx    usageCaptureContext
-	reader *io.PipeReader
-	writer *io.PipeWriter
+	logger     *slog.Logger
+	src        io.ReadCloser
+	ctx        usageCaptureContext
+	reader     *io.PipeReader
+	writer     *io.PipeWriter
+	copyFailed bool
 }
 
 var _ io.ReadCloser = (*usageCapture)(nil)
@@ -164,7 +167,11 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 }
 
 func (c *usageCapture) handleShadow() {
-	defer c.reader.Close()
+	defer func() {
+		if err := c.reader.Close(); err != nil {
+			c.logPipeError("close_usage_reader", err)
+		}
+	}()
 	var result usageResult
 	if c.ctx.stream {
 		result = c.handleStream()
@@ -388,18 +395,46 @@ func (c *usageCapture) handleNonStream() usageResult {
 	return result
 }
 
+func (c *usageCapture) logPipeError(operation string, err error) {
+	if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, context.Canceled) || (c.ctx.ctx != nil && c.ctx.ctx.Err() != nil) {
+		return
+	}
+	transactionID, modelID := "", ""
+	if c.ctx.proxyCtx != nil {
+		transactionID = c.ctx.proxyCtx.reservation.ID
+		modelID = c.ctx.proxyCtx.target.ModelID
+	}
+	c.logger.WarnContext(c.ctx.ctx, "转发模型用量副本失败", "transaction_id", transactionID, "model_id", modelID, "operation", operation, "path", c.ctx.path, "error", err)
+}
+
 func (c *usageCapture) Close() error {
-	_ = c.writer.CloseWithError(io.ErrUnexpectedEOF)
-	return c.src.Close()
+	if err := c.writer.CloseWithError(io.ErrUnexpectedEOF); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		c.logPipeError("close_usage_pipe", err)
+	}
+	if err := c.src.Close(); err != nil {
+		// 上游 Body 可由自定义 Transport 提供，Close 错误文本未必可安全记录。
+		if !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) {
+			c.logPipeError("close_upstream_response", fmt.Errorf("上游响应关闭错误类型 %T", err))
+		}
+		return fmt.Errorf("关闭上游响应: %w", err)
+	}
+	return nil
 }
 
 func (c *usageCapture) Read(buffer []byte) (int, error) {
 	n, err := c.src.Read(buffer)
-	if n > 0 {
-		_, _ = c.writer.Write(bytes.Clone(buffer[:n]))
+	if n > 0 && !c.copyFailed {
+		if _, writeErr := c.writer.Write(bytes.Clone(buffer[:n])); writeErr != nil {
+			c.copyFailed = true
+			if c.ctx.ctx.Err() == nil {
+				c.logPipeError("write_usage_pipe", writeErr)
+			}
+		}
 	}
 	if err != nil {
-		_ = c.writer.CloseWithError(err)
+		if closeErr := c.writer.CloseWithError(err); closeErr != nil && !errors.Is(closeErr, io.ErrClosedPipe) {
+			c.logPipeError("close_usage_pipe", closeErr)
+		}
 	}
 	return n, err
 }

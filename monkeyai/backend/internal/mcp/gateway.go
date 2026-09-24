@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -34,22 +35,25 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		w.Header().Set("Cache-Control", "no-store")
 		if origin := r.Header.Get("Origin"); origin != "" {
 			provided, err := url.Parse(origin)
-			public, _ := url.Parse(s.PublicURL)
-			if err != nil || public == nil || provided.User != nil || provided.Path != "" || provided.RawQuery != "" || provided.Fragment != "" || !strings.EqualFold(provided.Scheme, public.Scheme) || !strings.EqualFold(provided.Host, public.Host) {
-				rpcFail(w, nil, &resource.Error{Status: 403, Code: "invalid_origin", Message: "请求来源不被允许"})
+			public, publicErr := url.Parse(s.PublicURL)
+			if publicErr != nil {
+				slog.ErrorContext(r.Context(), "MCP 公共地址配置无效", "operation", "origin_check", "failure_reason", "invalid_public_url")
+			}
+			if err != nil || publicErr != nil || public == nil || provided.User != nil || provided.Path != "" || provided.RawQuery != "" || provided.Fragment != "" || !strings.EqualFold(provided.Scheme, public.Scheme) || !strings.EqualFold(provided.Host, public.Host) {
+				rpcFail(r.Context(), w, nil, &resource.Error{Status: 403, Code: "invalid_origin", Message: "请求来源不被允许"})
 				return
 			}
 		}
 		scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 		if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp"`)
-			rpcFail(w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "缺少 MCP 调用密钥"})
+			rpcFail(r.Context(), w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "缺少 MCP 调用密钥"})
 			return
 		}
 		user, err := keys.Authenticate(r.Context(), strings.TrimSpace(token), "mcp:invoke")
 		if err != nil {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp", error="invalid_token"`)
-			rpcFail(w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "MCP 调用密钥无效或权限不足"})
+			rpcFail(r.Context(), w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "MCP 调用密钥无效或权限不足"})
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -59,11 +63,11 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		}
 		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || media != "application/json" {
-			rpcFail(w, nil, &resource.Error{Status: 415, Code: "invalid_content_type", Message: "请求须使用 application/json"})
+			rpcFail(r.Context(), w, nil, &resource.Error{Status: 415, Code: "invalid_content_type", Message: "请求须使用 application/json"})
 			return
 		}
 		if version := r.Header.Get("MCP-Protocol-Version"); version != "" && !supportedVersion(version) {
-			rpcFail(w, nil, &resource.Error{Status: 400, Code: "unsupported_protocol", Message: "MCP 协议版本不支持"})
+			rpcFail(r.Context(), w, nil, &resource.Error{Status: 400, Code: "unsupported_protocol", Message: "MCP 协议版本不支持"})
 			return
 		}
 		in, ok := readRequest(w, r)
@@ -72,21 +76,21 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		}
 		connector, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), user, false)
 		if err != nil {
-			rpcFail(w, in.ID, err)
+			rpcFail(r.Context(), w, in.ID, err)
 			return
 		}
 		credentialID := chi.URLParam(r, "credentialID")
 		if connector.String("authorization_mode") != "none" && credentialID == "" {
-			rpcFail(w, in.ID, selectionRequired)
+			rpcFail(r.Context(), w, in.ID, selectionRequired)
 			return
 		}
 		credential, err := s.Credential(r.Context(), s.Store.Pool, connector, user, credentialID)
 		if err != nil {
-			rpcFail(w, in.ID, err)
+			rpcFail(r.Context(), w, in.ID, err)
 			return
 		}
 		if connector.String("authorization_mode") != "none" && credentialStatus(connector, credential) != "authorized" {
-			rpcFail(w, in.ID, authorizationRequired)
+			rpcFail(r.Context(), w, in.ID, authorizationRequired)
 			return
 		}
 		if strings.HasPrefix(in.Method, "notifications/") {
@@ -130,12 +134,12 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector, credential resource.Object, user string, billing InvocationBilling) {
 	headers, credential, err := s.headers(r.Context(), connector, credential)
 	if err != nil {
-		rpcFail(w, in.ID, err)
+		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
 	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
 	if err != nil {
-		rpcFail(w, in.ID, err)
+		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
 	if in.Method == "tools/list" {
@@ -177,23 +181,25 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	}
 	remote, err := openRemote(r.Context(), connector.String("url"), headers)
 	if err != nil {
-		rpcFail(w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})
+		slog.WarnContext(r.Context(), "连接 MCP 上游失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "connect", "failure", safeMCPFailure(err))
+		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})
 		return
 	}
 	defer remote.close()
 	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": r.Header.Get("X-Session-ID")})})
 	if err != nil {
-		rpcFail(w, in.ID, err)
+		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
 	w.Header().Set("X-Billing-Transaction-ID", id)
 	if err = billing.Start(r.Context(), id); err != nil {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 		defer cancel()
-		if billing.Finish(ctx, id, InvocationResult{Known: true, Result: "failed", ErrorCode: "mcp_not_started"}) != nil {
+		if finishErr := billing.Finish(ctx, id, InvocationResult{Known: true, Result: "failed", ErrorCode: "mcp_not_started"}); finishErr != nil {
+			slog.ErrorContext(ctx, "MCP 调用开始失败后结算失败", "connector_id", connector.String("id"), "operation", "finish", "failure", safeMCPFailure(finishErr))
 			w.Header().Set("X-Billing-Status", "pending")
 		}
-		rpcFail(w, in.ID, err)
+		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
 	result, callErr := remote.call(r.Context(), 2, "tools/call", in.Params)
@@ -221,9 +227,13 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 	defer cancel()
 	if err = billing.Finish(ctx, id, outcome); err != nil {
+		slog.ErrorContext(ctx, "MCP 调用结算失败", "connector_id", connector.String("id"), "operation", "finish", "failure", safeMCPFailure(err))
 		w.Header().Set("X-Billing-Status", "pending")
 	}
 	if callErr != nil {
+		if rpc == nil {
+			slog.WarnContext(r.Context(), "MCP 工具调用失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "tools/call", "failure", safeMCPFailure(callErr))
+		}
 		code := -32603
 		if rpc != nil {
 			code = rpc.Code

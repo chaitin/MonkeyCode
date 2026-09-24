@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
@@ -45,10 +46,17 @@ func (s *Service) storeAuthorizationCode(ctx context.Context, request Authorizat
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚授权请求事务失败", "request_id", request.ID, "error", err)
+		}
+	}()
 
 	result, err := sqlc.New(tx).CompleteAuthorizationRequest(ctx, request.ID)
-	if err != nil || result.RowsAffected() != 1 {
+	if err != nil {
+		return fmt.Errorf("完成授权请求 %s: %w", request.ID, err)
+	}
+	if result.RowsAffected() != 1 {
 		return errors.New("授权请求已完成或已过期")
 	}
 	_, err = sqlc.New(tx).CreateAuthorizationCode(ctx, sqlc.CreateAuthorizationCodeParams{
@@ -76,16 +84,25 @@ func (s *Service) authorizationCode(ctx context.Context, hash string) (Authoriza
 	return code, err
 }
 
+var errAuthorizationCodeUsed = errors.New("授权码已被使用")
+
 func (s *Service) redeemCodeAndStoreToken(ctx context.Context, codeID, userID, clientID, accessHash, refreshHash string, accessExpiry, refreshExpiry time.Time) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚授权码事务失败", "code_id", codeID, "error", err)
+		}
+	}()
 
 	result, err := sqlc.New(tx).RedeemAuthorizationCode(ctx, codeID)
-	if err != nil || result.RowsAffected() != 1 {
-		return errors.New("授权码已被使用")
+	if err != nil {
+		return fmt.Errorf("兑换授权码 %s: %w", codeID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return errAuthorizationCodeUsed
 	}
 	_, err = sqlc.New(tx).CreateToken(ctx, sqlc.CreateTokenParams{
 		UserID:           userID,
@@ -106,7 +123,11 @@ func (s *Service) rotateToken(ctx context.Context, oldRefreshHash, clientID, acc
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚刷新令牌事务失败", "client_id", clientID, "error", err)
+		}
+	}()
 
 	var userID string
 	userID, err = sqlc.New(tx).RevokeRefreshToken(ctx, sqlc.RevokeRefreshTokenParams{RefreshTokenHash: oldRefreshHash, ClientID: clientID})
@@ -214,7 +235,11 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 	if err != nil {
 		return User{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚更新用户事务失败", "user_id", id, "error", err)
+		}
+	}()
 	if s.accounts != nil {
 		if err = s.accounts.PreserveAccounts(ctx, tx); err != nil {
 			return User{}, err
@@ -240,7 +265,11 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, a
 	if err != nil {
 		return User{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
+			slog.ErrorContext(ctx, "回滚上游身份事务失败", "provider", profile.Provider, "error", err)
+		}
+	}()
 
 	identityRow, err := sqlc.New(tx).GetIdentityUser(ctx, sqlc.GetIdentityUserParams{Provider: profile.Provider, Issuer: profile.Issuer, ProviderSubject: profile.Subject})
 	user := User{ID: identityRow.ID, Name: identityRow.Name, Email: identityRow.Email, AvatarURL: identityRow.AvatarUrl, Role: identityRow.Role, Status: identityRow.Status, JoinedAt: identityRow.JoinedAt, LastLoginAt: identityRow.LastLoginAt}

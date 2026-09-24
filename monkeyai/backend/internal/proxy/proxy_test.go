@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -247,4 +248,21 @@ type usageRecorderStub struct {
 func (r *usageRecorderStub) Record(_ context.Context, call Call) error {
 	r.calls <- call
 	return nil
+}
+
+func TestProxyErrorHandlerRedactsUpstreamError(t *testing.T) {
+	var logs bytes.Buffer
+	proxy := NewProxy(nil, slog.New(slog.NewTextHandler(&logs, nil)))
+	pc := &proxyContext{target: Target{ModelID: "model-1"}, reservation: Reservation{ID: "transaction-1"}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(context.WithValue(req.Context(), proxyContextKey{}, pc))
+	recorder := httptest.NewRecorder()
+	proxy.errorHandler(recorder, req, errors.New("upstream-token-and-private-response"))
+	if recorder.Code != http.StatusBadGateway || recorder.Body.String() != upstreamFailureMessage {
+		t.Fatalf("代理错误响应不正确: %d %q", recorder.Code, recorder.Body.String())
+	}
+	text := logs.String()
+	if !strings.Contains(text, "model-1") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "proxy_request") || strings.Contains(text, "upstream-token-and-private-response") {
+		t.Fatalf("代理日志缺少安全上下文或泄漏上游详情: %s", text)
+	}
 }

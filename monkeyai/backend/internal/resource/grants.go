@@ -41,7 +41,7 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 			Fail(w, err)
 			return
 		}
-		defer tx.Rollback(ctx)
+		defer func() { rollback(ctx, tx, "update_grants", chi.URLParam(r, "id")) }()
 		id := chi.URLParam(r, "id")
 		o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 		if err != nil {

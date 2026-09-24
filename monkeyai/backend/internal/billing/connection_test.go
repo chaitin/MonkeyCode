@@ -374,3 +374,13 @@ func TestWalletPublicURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestWalletFromEnvInvalidAppIDDoesNotExposeValue(t *testing.T) {
+	t.Setenv("BAIZHIYUN_ENV", "dev")
+	t.Setenv("BAIZHIYUN_BASE_URL", "")
+	t.Setenv("BAIZHIYUN_APP_ID", "private-credential")
+	_, err := WalletFromEnv()
+	if err == nil || !strings.Contains(err.Error(), "BAIZHIYUN_APP_ID") || strings.Contains(err.Error(), "private-credential") {
+		t.Fatalf("应用 ID 配置错误未安全报告: %v", err)
+	}
+}

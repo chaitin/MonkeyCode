@@ -82,7 +82,10 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, releaseErr := sqlc.New(conn).ReleaseReconciliationLock(releaseCtx, row.ID); releaseErr != nil {
-			conn.Conn().Close(releaseCtx)
+			slog.ErrorContext(releaseCtx, "释放对账锁失败", "transaction_id", row.ID, "operation", "release_reconciliation_lock", "error", releaseErr)
+			if closeErr := conn.Conn().Close(releaseCtx); closeErr != nil {
+				slog.ErrorContext(releaseCtx, "关闭对账连接失败", "transaction_id", row.ID, "operation", "close_reconciliation_connection", "error", closeErr)
+			}
 		}
 	}()
 

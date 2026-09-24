@@ -148,3 +148,10 @@ func TestDefaultAuthenticationAndEmailSecret(t *testing.T) {
 		}
 	}
 }
+
+func TestSMTPFailureExcludesResponse(t *testing.T) {
+	logged := fmt.Sprint(smtpFailure(&textproto.Error{Code: 535, Msg: "secret@example.com private-token"}))
+	if strings.Contains(logged, "private-token") || strings.Contains(logged, "secret@example.com") || !strings.Contains(logged, "535") {
+		t.Fatalf("SMTP 日志分类不安全: %s", logged)
+	}
+}

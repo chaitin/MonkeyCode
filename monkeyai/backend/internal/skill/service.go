@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -34,7 +35,11 @@ func (s *Service) read(ctx context.Context, object resource.Object) (Package, er
 	if err != nil {
 		return Package{}, err
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			slog.ErrorContext(ctx, "关闭技能包读取流失败", "skill_id", object.String("id"), "error", err)
+		}
+	}()
 	b, err := io.ReadAll(io.LimitReader(r, MaxPackage+1))
 	if err != nil {
 		return Package{}, err
@@ -155,13 +160,21 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 		resource.Fail(w, resource.Invalid("技能包上传无效或超限"))
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() {
+		if err := r.MultipartForm.RemoveAll(); err != nil {
+			slog.ErrorContext(r.Context(), "清理技能包上传临时文件失败", "error", err)
+		}
+	}()
 	f, _, err := r.FormFile("package")
 	if err != nil {
 		resource.Fail(w, resource.Invalid("缺少 package"))
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.ErrorContext(r.Context(), "关闭技能包上传文件失败", "error", err)
+		}
+	}()
 	b, err := io.ReadAll(io.LimitReader(f, MaxPackage+1))
 	if err != nil {
 		resource.Fail(w, err)
@@ -223,5 +236,7 @@ func (s *Service) ServePackage(w http.ResponseWriter, r *http.Request, o resourc
 	w.Header().Set("ETag", `"`+o.String("package_sha256")+`"`)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-SHA256", o.String("package_sha256"))
-	_, _ = w.Write(p.Bytes)
+	if _, err := w.Write(p.Bytes); err != nil {
+		slog.ErrorContext(r.Context(), "技能包下载写入失败", "skill_id", o.String("id"), "error", err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -102,9 +103,16 @@ func (s *Service) RegisterAgent(r chi.Router) {
 }
 
 func connectorLinks(v any) []resource.Object {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("专家连接依赖编码失败", "error", err)
+		return nil
+	}
 	out := []resource.Object{}
-	_ = json.Unmarshal(b, &out)
+	if err := json.Unmarshal(b, &out); err != nil {
+		slog.Error("专家连接依赖解码失败", "error", err)
+		return nil
+	}
 	return out
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -93,7 +94,7 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		if e != nil {
 			return e
 		}
-		defer tx.Rollback(finalCtx)
+		defer rollback(finalCtx, tx, "mark_wallet_reservation_failed", id)
 		state := "unknown"
 		if definite {
 			state = "rejected"
@@ -125,7 +126,7 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(finalCtx)
+	defer rollback(finalCtx, tx, "mark_wallet_reserved", id)
 	_, err = sqlc.New(tx).MarkWalletReserved(finalCtx, id)
 	if err != nil {
 		return err
@@ -177,8 +178,12 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	err = wallet.Client.ConfirmBillingCharge(ctx, &opensdk.ConfirmBillingChargeReq{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
 	if err != nil {
 		code, trace := walletFailure(err)
-		_, _ = sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace})
-		_, _ = sqlc.New(conn).SetTransactionError(ctx, sqlc.SetTransactionErrorParams{ID: id, ErrorCode: code})
+		if _, markErr := sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace}); markErr != nil {
+			slog.ErrorContext(ctx, "记录钱包确认错误失败", "transaction_id", id, "operation", "set_wallet_error", "error", markErr)
+		}
+		if _, markErr := sqlc.New(conn).SetTransactionError(ctx, sqlc.SetTransactionErrorParams{ID: id, ErrorCode: code}); markErr != nil {
+			slog.ErrorContext(ctx, "记录交易确认错误失败", "transaction_id", id, "operation", "set_transaction_error", "error", markErr)
+		}
 		return fail(503, code, "百智云确认待重试")
 	}
 	_, err = sqlc.New(conn).MarkWalletConfirmed(ctx, id)
@@ -215,7 +220,7 @@ func (s *Service) BindWallet(ctx context.Context, actor, user, external string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "bind_wallet", "")
 	_, err = sqlc.New(tx).LockUser(ctx, user)
 	if err != nil {
 		return err

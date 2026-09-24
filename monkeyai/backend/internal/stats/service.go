@@ -2,6 +2,8 @@ package stats
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -62,6 +64,12 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/statistics/history", s.history)
 }
 
+func rollbackStats(ctx context.Context, tx pgx.Tx, operation string) {
+	if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		slog.ErrorContext(ctx, "回滚统计查询事务失败", "operation", operation, "error", err)
+	}
+}
+
 func (s *Service) read(live bool, query func(context.Context, pgx.Tx, window) (resource.Object, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		period, err := period(r, s.now().UTC(), live)
@@ -76,7 +84,7 @@ func (s *Service) read(live bool, query func(context.Context, pgx.Tx, window) (r
 			resource.Fail(w, err)
 			return
 		}
-		defer tx.Rollback(context.WithoutCancel(ctx))
+		defer func() { rollbackStats(ctx, tx, "read") }()
 		out, err := query(ctx, tx, period)
 		if err != nil {
 			resource.Fail(w, err)

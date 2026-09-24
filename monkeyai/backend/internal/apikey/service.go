@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -76,6 +77,7 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 	}
 	stored, err := s.store.Create(ctx, key, hash(raw))
 	if err != nil {
+		slog.ErrorContext(ctx, "保存调用密钥失败", "user_id", userID, "error", err)
 		return CreatedKey{}, err
 	}
 	return CreatedKey{Key: stored, APIKey: raw}, nil
@@ -108,7 +110,9 @@ func (s *Service) Rotate(ctx context.Context, userID, id string) (CreatedKey, er
 		return CreatedKey{}, err
 	}
 	if err := s.store.Revoke(ctx, id, userID); err != nil {
-		_ = s.store.Revoke(ctx, created.ID, userID)
+		if rollbackErr := s.store.Revoke(ctx, created.ID, userID); rollbackErr != nil {
+			slog.ErrorContext(ctx, "轮换调用密钥失败后撤销新密钥失败", "key_id", created.ID, "user_id", userID, "error", rollbackErr)
+		}
 		return CreatedKey{}, err
 	}
 	return created, nil
@@ -136,6 +140,9 @@ func (s *Service) Authenticate(ctx context.Context, raw, scope string) (string, 
 	}
 	userID, err := s.store.Authenticate(ctx, hash(raw), scope)
 	if err != nil {
+		if !errors.Is(err, ErrInvalidKey) {
+			slog.ErrorContext(ctx, "验证调用密钥失败", "scope", scope, "error", err)
+		}
 		return "", ErrInvalidKey
 	}
 	return userID, nil

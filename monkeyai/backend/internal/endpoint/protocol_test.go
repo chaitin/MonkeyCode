@@ -1,8 +1,18 @@
 package endpoint
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"syscall"
+
+	"github.com/jackc/pgx/v5"
 	"testing"
 )
 
@@ -85,5 +95,49 @@ func TestOrigin(t *testing.T) {
 		if got := origin(in); got != want {
 			t.Fatalf("origin(%q)=%q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestEndpointResponseSerializationFailure(t *testing.T) {
+	w := httptest.NewRecorder()
+	respond(w, http.StatusOK, make(chan int))
+	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "chan") {
+		t.Fatalf("未正确处理序列化失败: %d %q", w.Code, w.Body.String())
+	}
+}
+
+func TestConnectionExpectedErrors(t *testing.T) {
+	c := &connection{ctx: context.Background()}
+	c.dead.Store(true)
+	if c.expected(errors.New("forced close failure")) || !c.expected(io.EOF) || !c.expected(context.Canceled) || !c.expected(syscall.ECONNRESET) {
+		t.Fatal("主动关闭未掩盖意外失败或误报了正常断开")
+	}
+}
+
+type rollbackTestTx struct {
+	pgx.Tx
+	err error
+}
+
+func (tx rollbackTestTx) Rollback(context.Context) error { return tx.err }
+
+func TestRollbackLoggingSkipsNormalErrorsAndRedactsDetails(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	rollback(context.Background(), rollbackTestTx{err: pgx.ErrTxClosed}, "user-1", "page")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rollback(ctx, rollbackTestTx{err: errors.New("transaction canceled")}, "user-1", "page")
+	rollback(context.Background(), rollbackTestTx{err: context.Canceled}, "user-1", "page")
+	if logs.Len() != 0 {
+		t.Fatalf("正常事务关闭或取消不应记录警告: %s", logs.String())
+	}
+	rollback(context.Background(), rollbackTestTx{err: errors.New("https://example.com/?token=private-token")}, "user-1", "page")
+	if !strings.Contains(logs.String(), "error_type=") || !strings.Contains(logs.String(), "user_id=user-1") ||
+		strings.Contains(logs.String(), "private-token") || strings.Contains(logs.String(), "token=") {
+		t.Fatalf("回滚失败日志缺少安全上下文或泄露敏感信息: %s", logs.String())
 	}
 }

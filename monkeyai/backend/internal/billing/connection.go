@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -54,7 +55,13 @@ func WalletFromEnv() (*Wallet, error) {
 			return nil, resource.Invalid("请配置百智云服务 URL")
 		}
 	}
-	cfg.AppID, _ = strconv.Atoi(os.Getenv("BAIZHIYUN_APP_ID"))
+	if raw := os.Getenv("BAIZHIYUN_APP_ID"); raw != "" {
+		appID, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, resource.Invalid("BAIZHIYUN_APP_ID 必须为整数")
+		}
+		cfg.AppID = appID
+	}
 	dir := os.Getenv("MONKEYAI_WALLET_CERT_DIR")
 	if dir == "" {
 		return nil, errors.New("远程计费需配置 MONKEYAI_WALLET_CERT_DIR")
@@ -62,7 +69,7 @@ func WalletFromEnv() (*Wallet, error) {
 	for name, target := range map[string]*string{"app.crt": &cfg.Certificate, "app.key": &cfg.PrivateKey, "ca.crt": &cfg.CACertificate} {
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
-			return nil, fmt.Errorf("读取钱包证书文件 %s 失败", name)
+			return nil, fmt.Errorf("读取钱包证书文件 %s 失败: %w", name, err)
 		}
 		*target = string(data)
 	}
@@ -133,12 +140,16 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 	// SDK 仅接收文件路径，构造完成后证书已加载到内存。
 	dir, err := os.MkdirTemp("", "monkeyai-wallet-")
 	if err != nil {
-		return nil, errors.New("创建钱包证书临时目录失败")
+		return nil, fmt.Errorf("创建钱包证书临时目录失败: %w", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			slog.Error("清理钱包证书临时目录失败", "operation", "remove_wallet_temp_dir", "error", err)
+		}
+	}()
 	for name, content := range map[string]string{"app.crt": cfg.Certificate, "app.key": cfg.PrivateKey, "ca.crt": cfg.CACertificate} {
 		if err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
-			return nil, errors.New("写入钱包证书临时文件失败")
+			return nil, fmt.Errorf("写入钱包证书临时文件 %s 失败: %w", name, err)
 		}
 	}
 	openURL, walletURL := walletEndpoints(cfg.BaseURL)
@@ -241,7 +252,10 @@ func (s *Service) saveWallet(ctx context.Context, q resource.Queryer, in map[str
 	if pending {
 		return WalletInfo{}, WalletInfo{}, fail(409, "wallet_transactions_pending", "存在未完成的远程交易，请处理后再切换服务 URL 或应用 ID；同一应用可以更新证书")
 	}
-	raw, _ := json.Marshal(next)
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return WalletInfo{}, WalletInfo{}, fmt.Errorf("序列化钱包配置失败: %w", err)
+	}
 	_, err = sqlc.New(q).SaveWalletConfig(ctx, raw)
 	return previous.info(), wallet.info(), err
 }

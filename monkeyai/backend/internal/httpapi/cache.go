@@ -4,9 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func CachedJSON(w http.ResponseWriter, r *http.Request, value map[string]any) error {
@@ -33,6 +36,8 @@ func CachedJSON(w http.ResponseWriter, r *http.Request, value map[string]any) er
 		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, err = w.Write(encoded)
-	return err
+	if _, err := w.Write(encoded); err != nil {
+		slog.ErrorContext(r.Context(), "缓存响应写入失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+	}
+	return nil
 }

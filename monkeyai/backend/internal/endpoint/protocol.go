@@ -226,7 +226,7 @@ func message(data []byte) (Message, error) {
 	return m, nil
 }
 
-func errorFrame(code, reply string) []byte {
+func errorFrame(code, reply string) ([]byte, error) {
 	descriptions := map[string]string{
 		"invalid_message": "消息格式无效", "unsupported_protocol": "协议版本不兼容", "unauthorized": "凭据失效",
 		"endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "target_unavailable": "目标不可用",
@@ -242,6 +242,5 @@ func errorFrame(code, reply string) []byte {
 		Reply string    `json:"reply_to,omitempty"`
 		Error wireError `json:"error"`
 	}{"error", reply, e}
-	data, _ := json.Marshal(frame)
-	return data
+	return json.Marshal(frame)
 }

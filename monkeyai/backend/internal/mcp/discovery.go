@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -36,9 +37,12 @@ func discoveryURL(value, source string) bool {
 	if !validURL(value) {
 		return false
 	}
-	u, _ := url.Parse(value)
-	origin, _ := url.Parse(source)
-	return origin != nil && (origin.Scheme != "https" || u.Scheme == "https")
+	u, err := url.Parse(value)
+	if err != nil {
+		return false
+	}
+	origin, err := url.Parse(source)
+	return err == nil && origin != nil && (origin.Scheme != "https" || u.Scheme == "https")
 }
 
 func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out any) error {
@@ -51,7 +55,11 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.WarnContext(ctx, "关闭 OAuth 元数据响应失败", "operation", "read_metadata", "failure", safeMCPFailure(err))
+		}
+	}()
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
 		return metadataUnavailable
 	}
@@ -66,7 +74,10 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 }
 
 func metadataURLs(issuer, kind string) []string {
-	u, _ := url.Parse(issuer)
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return nil
+	}
 	origin := u.Scheme + "://" + u.Host
 	path := u.EscapedPath()
 	out := []string{origin + "/.well-known/" + kind + path}
@@ -97,13 +108,18 @@ func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
 	defer h.CloseIdleConnections()
 
 	// 不附带现有凭证；所有发现请求复用 MCP 的地址限制及禁止重定向策略。
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return fail()
+	}
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	resp, err := h.Do(req)
 	if err != nil {
 		return fail()
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		return fail()
+	}
 	var metadataURL string
 	if resp.StatusCode == http.StatusUnauthorized {
 		for _, challenge := range resp.Header.Values("WWW-Authenticate") {
@@ -136,7 +152,10 @@ func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
 		}
 	}
 
-	u, _ := url.Parse(target)
+	u, err := url.Parse(target)
+	if err != nil {
+		return fail()
+	}
 	issuer := u.Scheme + "://" + u.Host
 	resourceURL := *u
 	resourceURL.RawQuery, resourceURL.ForceQuery = "", false
@@ -154,7 +173,10 @@ func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
 	if !discoveryURL(issuer, target) {
 		return fail()
 	}
-	issuerURL, _ := url.Parse(issuer)
+	issuerURL, err := url.Parse(issuer)
+	if err != nil {
+		return fail()
+	}
 	if issuerURL.RawQuery != "" {
 		return fail()
 	}

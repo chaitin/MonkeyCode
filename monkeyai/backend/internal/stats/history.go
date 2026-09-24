@@ -53,7 +53,7 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() { rollbackStats(ctx, tx, "history") }()
 	var total int64
 	total, err = sqlc.New(tx).CountHistory(ctx, sqlc.CountHistoryParams{TitleQuery: title, UserQuery: user, FromTime: from, UntilTime: until})
 	if err != nil {

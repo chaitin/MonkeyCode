@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -74,6 +75,10 @@ func (s *Service) validateImageCapability(item Model) error {
 	if err != nil {
 		return err
 	}
+	return validateImageCapabilities(item, cap)
+}
+
+func validateImageCapabilities(item Model, cap ImageCapabilities) error {
 	for _, quality := range item.ImageConfig.Qualities {
 		if !slices.Contains(cap.Qualities, quality) {
 			return errors.New("画质档位不被上游模型支持")
@@ -168,7 +173,11 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			cap := ImageCapabilities{}
 			if s.imageCapabilities != nil {
 				cap, err = s.imageCapabilities(item.Provider, item.ModelID)
-				if err != nil || s.validateImageCapability(item) != nil {
+				if err != nil {
+					slog.ErrorContext(ctx, "读取模型生图能力失败", "model_id", item.ID, "error", err)
+					continue
+				}
+				if validateImageCapabilities(item, cap) != nil {
 					continue
 				}
 			}

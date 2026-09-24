@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -93,7 +94,10 @@ func (s *Service) headers(ctx context.Context, c, cred resource.Object) (map[str
 		}
 		return map[string]string{"Authorization": "Bearer " + fresh.String("oauth_access_token")}, fresh, nil
 	}
-	b, _ := json.Marshal(cred["http_headers"])
+	b, err := json.Marshal(cred["http_headers"])
+	if err != nil {
+		return nil, nil, fmt.Errorf("编码认证 Header: %w", err)
+	}
 	headers, err := decodeHeaders(b)
 	return headers, cred, err
 }
@@ -135,7 +139,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackMCP(ctx, tx, c.String("id"), cred.String("id"), "test_connection")
 	current, err := s.lockConnector(ctx, tx, c.String("id"), user, admin)
 	if err != nil {
 		return nil, err
@@ -145,7 +149,10 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	}
 	if cred != nil {
 		fresh, err := resource.DecodeObject(sqlc.New(tx).LockCredential(ctx, cred.String("id")))
-		if err != nil || fresh.Int("revision") != cred.Int("revision") || credentialStatus(current, fresh) != "authorized" {
+		if err != nil {
+			return nil, err
+		}
+		if fresh.Int("revision") != cred.Int("revision") || credentialStatus(current, fresh) != "authorized" {
 			return nil, resource.Conflict
 		}
 	}
@@ -168,7 +175,10 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 			if err != nil {
 				break
 			}
-			schema, _ := json.Marshal(tool.InputSchema)
+			schema, marshalErr := json.Marshal(tool.InputSchema)
+			if marshalErr != nil {
+				return nil, fmt.Errorf("编码工具 %s 的输入结构: %w", tool.Name, marshalErr)
+			}
 			_, err = queries.UpsertTool(ctx, sqlc.UpsertToolParams{
 				ConnectorID: c.String("id"), CredentialID: cred.String("id"),
 				Name: tool.Name, Description: tool.Description, InputSchema: schema,

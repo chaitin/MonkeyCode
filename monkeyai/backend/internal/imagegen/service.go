@@ -5,7 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -249,14 +252,23 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		fileIDs = append(fileIDs, mask.FileID)
 		maskInput = &image
 	}
-	body, _ := json.Marshal(struct {
+	body, err := json.Marshal(struct {
 		Model, Operation, Prompt, Quality, Aspect string
 		Count                                     uint32
 		Inputs                                    []string
 	}{requestedModel, operation, prompt, quality, aspect, imageCount, digests})
+	if err != nil {
+		return imageproxy.Task{}, err
+	}
 	hash := sha256.Sum256(body)
-	config, _ := json.Marshal(map[string]any{"file_ids": fileIDs})
-	pricing, _ := json.Marshal(map[string]string{"unit": unit.String()})
+	config, err := json.Marshal(map[string]any{"file_ids": fileIDs})
+	if err != nil {
+		return imageproxy.Task{}, err
+	}
+	pricing, err := json.Marshal(map[string]string{"unit": unit.String()})
+	if err != nil {
+		return imageproxy.Task{}, err
+	}
 	job, created, err := s.jobs.Create(ctx, Job{
 		UserID: target.UserID, ModelID: item.ID, Provider: string(item.Provider), Operation: operation,
 		RequestHash: hex.EncodeToString(hash[:]), IdempotencyKey: idempotency, RequestedImages: int32(imageCount),
@@ -333,14 +345,28 @@ func (s *Service) failUnsubmitted(ctx context.Context, job Job, code string) {
 	}
 }
 
+func providerErrorType(err error) string {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return "url_error"
+	}
+	return fmt.Sprintf("%T", err)
+}
+
 func (s *Service) handleResult(ctx context.Context, job Job, result ProviderResult, err error) {
 	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("生图上游请求失败，任务状态待确认", "job", job.ID, "operation", job.Operation, "error_type", providerErrorType(err))
+		}
 		s.markUnknown(ctx, job, "provider_status_unknown")
 		return
 	}
 	switch result.Status {
 	case "pending", "running":
-		if result.ID == "" || s.jobs.Running(ctx, job.ID, result.ID) != nil {
+		if result.ID == "" {
+			s.markUnknown(ctx, job, "provider_job_id_missing")
+		} else if err := s.jobs.Running(ctx, job.ID, result.ID); err != nil {
+			slog.Error("记录生图任务运行状态失败", "job", job.ID, "operation", "running", "error", err)
 			s.markUnknown(ctx, job, "provider_job_id_missing")
 		}
 	case "failed":
@@ -422,6 +448,8 @@ func (s *Service) Get(ctx context.Context, userID, jobID string) (imageproxy.Tas
 	if job.BillingTransactionID != nil && (status == "succeeded" || status == "failed" || status == "expired") {
 		if amount, err := s.billing.ImageCharge(ctx, *job.BillingTransactionID, userID); err == nil {
 			usage.Credits = amount.String()
+		} else if ctx.Err() == nil {
+			slog.Warn("读取生图积分用量失败", "job", job.ID, "operation", "image_charge", "error", err)
 		}
 	}
 	return imageproxy.Task{ID: job.ID, UserID: job.UserID, Operation: job.Operation, Status: status,
@@ -464,6 +492,9 @@ func (s *Service) recover(ctx context.Context) {
 			}
 			item, err := s.models.Get(ctx, job.ModelID)
 			if err != nil {
+				if ctx.Err() == nil {
+					slog.Warn("加载待恢复生图模型失败", "job", job.ID, "operation", "recover_model", "error", err)
+				}
 				continue
 			}
 			adapter := s.providers[item.Provider]
@@ -474,7 +505,11 @@ func (s *Service) recover(ctx context.Context) {
 				BaseURL: item.BaseURL, APIKey: item.APIKey, Protocol: string(item.Protocol)}
 			callCtx, cancel := context.WithTimeout(ctx, time.Minute)
 			result, err := adapter.TaskQuerier.QueryTask(callCtx, target, *job.ProviderJobID)
-			if err == nil && result.Status != "running" && result.Status != "pending" {
+			if err != nil {
+				if ctx.Err() == nil {
+					slog.Warn("查询待恢复生图任务失败", "job", job.ID, "operation", "query_task", "error_type", providerErrorType(err))
+				}
+			} else if result.Status != "running" && result.Status != "pending" {
 				s.handleResult(callCtx, job, result, nil)
 			}
 			cancel()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -46,7 +47,11 @@ func defaultPolicy() Policy {
 	return Policy{RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
 }
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
-	zone, _ := time.LoadLocation("Asia/Shanghai")
+	zone, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		slog.Error("加载计费时区失败，使用固定东八区", "operation", "load_billing_timezone", "error", err)
+		zone = time.FixedZone("CST", 8*60*60)
+	}
 	n := now.In(zone)
 	cycle := p.Cycle
 	anchor := p.CycleAnchor
@@ -124,8 +129,11 @@ func (s *Service) WithUsageReconciler(r UsageReconciler) *Service {
 }
 func (s *Service) Initialize(ctx context.Context) error {
 	p := defaultPolicy()
-	b, _ := json.Marshal(p)
-	_, err := sqlc.New(s.pool).InitializePolicy(ctx, b)
+	b, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("序列化默认计费策略: %w", err)
+	}
+	_, err = sqlc.New(s.pool).InitializePolicy(ctx, b)
 	if err != nil {
 		return err
 	}
@@ -255,12 +263,18 @@ func (s *Service) ensureAccount(ctx context.Context, tx pgx.Tx, user string, p P
 	}
 	return accountRow(ctx, tx, user, start)
 }
+func rollback(ctx context.Context, tx pgx.Tx, operation, transactionID string) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		slog.ErrorContext(ctx, "回滚计费事务失败", "operation", operation, "transaction_id", transactionID, "error", err)
+	}
+}
+
 func (s *Service) Account(ctx context.Context, user string) (Account, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Account{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "account", "")
 	p, err := s.policy(ctx, tx, false)
 	if err != nil {
 		return Account{}, err

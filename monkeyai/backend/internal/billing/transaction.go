@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"time"
@@ -45,7 +46,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 	if err != nil {
 		return Reservation{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "begin", "")
 	p, err := s.policy(ctx, tx, false)
 	if err != nil {
 		return Reservation{}, err
@@ -237,7 +238,10 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			return Reservation{}, err
 		}
 	}
-	snapshot, _ := json.Marshal(price)
+	snapshot, err := json.Marshal(price)
+	if err != nil {
+		return Reservation{}, fmt.Errorf("序列化计费价格快照: %w", err)
+	}
 	id := resource.ID()
 
 	_, err = sqlc.New(tx).FreezeBalance(ctx, sqlc.FreezeBalanceParams{ID: a.ID, Frozen: reserve.String()})
@@ -313,7 +317,7 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "finish", id)
 	var category, mode, status, reserveText string
 	var raw []byte
 	var record sqlc.LockUsageRow
@@ -368,7 +372,10 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 		state = "unknown"
 		code = "reservation_exceeded"
 	}
-	usage, _ := json.Marshal(u)
+	usage, err := json.Marshal(u)
+	if err != nil {
+		return fmt.Errorf("序列化交易 %s 的用量: %w", id, err)
+	}
 	_, err = sqlc.New(tx).SaveUsage(ctx, sqlc.SaveUsageParams{
 		ID:          id,
 		Status:      state,
@@ -421,7 +428,10 @@ func (s *Service) Settle(ctx context.Context, id string) error {
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, e := sqlc.New(conn).ReleaseSettlementLock(c, id); e != nil {
-			conn.Conn().Close(c)
+			slog.ErrorContext(c, "释放结算锁失败", "transaction_id", id, "operation", "release_settlement_lock", "error", e)
+			if closeErr := conn.Conn().Close(c); closeErr != nil {
+				slog.ErrorContext(c, "关闭结算连接失败", "transaction_id", id, "operation", "close_settlement_connection", "error", closeErr)
+			}
 		}
 	}()
 	var mode, status string
@@ -444,7 +454,7 @@ func (s *Service) Settle(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx, "settle", id)
 	var account, item, category, amountText, reserveText string
 	var settlement sqlc.LockSettlementRow
 	settlement, err = sqlc.New(tx).LockSettlement(ctx, id)
@@ -498,7 +508,10 @@ func (s *Service) recover(ctx context.Context) error {
 		e := s.Settle(c, id)
 		cancel()
 		if e != nil {
-			_, _ = sqlc.New(s.pool).ScheduleRetry(ctx, id)
+			slog.WarnContext(ctx, "恢复交易结算失败", "transaction_id", id, "operation", "settle", "error", e)
+			if _, retryErr := sqlc.New(s.pool).ScheduleRetry(ctx, id); retryErr != nil {
+				return fmt.Errorf("安排交易 %s 结算重试: %w", id, retryErr)
+			}
 		}
 	}
 	return s.reconcileUnknown(ctx)

@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -131,5 +133,138 @@ func TestUsageCaptureReadCopiesResponse(t *testing.T) {
 	}
 	if parsed.ResponseID != "chat_test" || parsed.InputTokens != 4 || parsed.OutputTokens != 6 {
 		t.Fatalf("result = %+v", parsed)
+	}
+}
+
+func TestUsageCaptureClosedPipeDoesNotInterruptResponse(t *testing.T) {
+	var logs bytes.Buffer
+	reader, writer := io.Pipe()
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	capture := &usageCapture{
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		src:    io.NopCloser(strings.NewReader("private-upstream-response")),
+		ctx: usageCaptureContext{ctx: context.Background(), path: "/v1/responses", proxyCtx: &proxyContext{
+			target: Target{ModelID: "model-1"}, reservation: Reservation{ID: "transaction-1"},
+		}},
+		reader: reader, writer: writer,
+	}
+	body, err := io.ReadAll(capture)
+	if err != nil || string(body) != "private-upstream-response" {
+		t.Fatalf("转发响应失败: %q %v", body, err)
+	}
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
+	text := logs.String()
+	if text != "" {
+		t.Fatalf("正常关闭的管道不应记录错误: %s", text)
+	}
+}
+
+func TestUsageCaptureNormalCloseDoesNotLogError(t *testing.T) {
+	var logs bytes.Buffer
+	reader, writer := io.Pipe()
+	capture := &usageCapture{
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		src:    io.NopCloser(strings.NewReader("")),
+		ctx:    usageCaptureContext{ctx: context.Background(), path: "/v1/responses"},
+		reader: reader, writer: writer,
+	}
+	if _, err := io.ReadAll(capture); err != nil {
+		t.Fatal(err)
+	}
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("正常关闭被误判为错误: %s", logs.String())
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUsageCapturePipeErrorLogsDetailWithoutResponse(t *testing.T) {
+	var logs bytes.Buffer
+	reader, writer := io.Pipe()
+	if err := reader.CloseWithError(errors.New("用量解析器意外失败")); err != nil {
+		t.Fatal(err)
+	}
+	capture := &usageCapture{
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		src:    io.NopCloser(strings.NewReader("private-upstream-response")),
+		ctx: usageCaptureContext{ctx: context.Background(), path: "/v1/responses", proxyCtx: &proxyContext{
+			target: Target{ModelID: "model-1"}, reservation: Reservation{ID: "transaction-1"},
+		}},
+		reader: reader, writer: writer,
+	}
+	body, err := io.ReadAll(capture)
+	if err != nil || string(body) != "private-upstream-response" {
+		t.Fatalf("响应转发失败: %q %v", body, err)
+	}
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
+	text := logs.String()
+	if strings.Count(text, "write_usage_pipe") != 1 || !strings.Contains(text, "用量解析器意外失败") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "model-1") || strings.Contains(text, "private-upstream-response") {
+		t.Fatalf("管道错误日志缺少详情或泄漏响应: %s", text)
+	}
+}
+
+func TestUsageCaptureCanceledRequestDoesNotLogPipeError(t *testing.T) {
+	var logs bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	reader, writer := io.Pipe()
+	if err := reader.CloseWithError(errors.New("管道意外关闭")); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	capture := &usageCapture{
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		src:    io.NopCloser(strings.NewReader("upstream-response")),
+		ctx:    usageCaptureContext{ctx: ctx, path: "/v1/responses"},
+		reader: reader, writer: writer,
+	}
+	if _, err := io.ReadAll(capture); err != nil {
+		t.Fatal(err)
+	}
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("请求取消不应记录管道错误: %s", logs.String())
+	}
+}
+
+type closeErrorReader struct {
+	io.Reader
+	err error
+}
+
+func (r closeErrorReader) Close() error { return r.err }
+
+func TestUsageCaptureUpstreamCloseDoesNotLogPrivateError(t *testing.T) {
+	var logs bytes.Buffer
+	reader, writer := io.Pipe()
+	defer func() {
+		if err := reader.Close(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			t.Errorf("关闭测试管道失败: %v", err)
+		}
+	}()
+	upstreamErr := errors.New("private-upstream-response")
+	capture := &usageCapture{
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		src:    closeErrorReader{Reader: strings.NewReader(""), err: upstreamErr},
+		ctx:    usageCaptureContext{ctx: context.Background(), path: "/v1/responses"},
+		reader: reader, writer: writer,
+	}
+	if err := capture.Close(); !errors.Is(err, upstreamErr) {
+		t.Fatalf("上游关闭错误未上抛: %v", err)
+	}
+	text := logs.String()
+	if !strings.Contains(text, "close_upstream_response") || strings.Contains(text, "private-upstream-response") {
+		t.Fatalf("上游关闭日志不安全: %s", text)
 	}
 }

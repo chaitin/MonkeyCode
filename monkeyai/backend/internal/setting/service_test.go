@@ -56,6 +56,21 @@ func TestAgentConfigRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestPutRejectsBrokenStoredSecrets(t *testing.T) {
+	broken := json.RawMessage(`{"smtp_password":"secret"`)
+	store := &memoryStore{records: map[string]Record{
+		"email": {Key: "email", Value: broken},
+	}}
+	service := NewService(store)
+	_, err := service.Put(t.Context(), "email", json.RawMessage(`{"smtp_host":"smtp.example.com","smtp_port":587,"smtp_encryption":"starttls","sender_email":"sender@example.com"}`), 1, "admin")
+	if err == nil {
+		t.Fatal("已保存的密钥损坏时不应覆盖现有配置")
+	}
+	if string(store.records["email"].Value) != string(broken) {
+		t.Fatal("损坏的已有配置被覆盖")
+	}
+}
+
 func TestPutPreservesRedactedSecret(t *testing.T) {
 	store := &memoryStore{records: map[string]Record{
 		"authentication": {Key: "authentication", Value: json.RawMessage(`{"oauth_connections":[{"id":"github","provider":"github","name":"GitHub","client_id":"client","client_secret":"secret","enabled":true}]}`)},

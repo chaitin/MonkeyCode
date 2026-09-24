@@ -2,7 +2,9 @@ package agentconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -297,6 +299,12 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 	return out, nil
 }
 
+func rollbackCatalog(ctx context.Context, tx pgx.Tx, operation, user string) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		slog.ErrorContext(ctx, "回滚 Agent 配置事务失败", "operation", operation, "user_id", user, "error", err)
+	}
+}
+
 func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind string) {
 	page, size, err := resource.PageParams(req)
 	if err != nil {
@@ -314,7 +322,7 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(req.Context())
+	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
 	items, err := r.list(req.Context(), tx, u.ID, kind, filter)
 	if err == nil {
 		items = resource.FilterTags(items, resource.QueryTagIDs(req))
@@ -333,7 +341,7 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(req.Context())
+	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
 	items, err := r.list(req.Context(), tx, u.ID, kind, resource.CatalogFilter{})
 	if err == nil {
 		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
@@ -365,7 +373,7 @@ func (r *Resources) getManifest(w http.ResponseWriter, req *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(req.Context())
+	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
 	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
 		resource.Fail(w, err)
@@ -392,7 +400,7 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(req.Context()))
+	defer func() { rollbackCatalog(context.WithoutCancel(req.Context()), tx, "download", u.ID) }()
 	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
 		resource.Fail(w, err)
@@ -443,7 +451,7 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { rollbackCatalog(ctx, tx, "resolve", user) }()
 	c, err := r.load(ctx, tx, user, "")
 	if err != nil {
 		return nil, err

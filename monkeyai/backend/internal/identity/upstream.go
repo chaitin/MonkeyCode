@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -33,6 +34,15 @@ func (c OAuthConnection) autoRegistrationEnabled() bool {
 
 type authenticationSettings struct {
 	OAuthConnections []OAuthConnection `json:"oauth_connections"`
+}
+
+type upstreamHTTPError struct {
+	operation string
+	status    int
+}
+
+func (e *upstreamHTTPError) Error() string {
+	return fmt.Sprintf("%s: HTTP %d", e.operation, e.status)
 }
 
 type providerMetadata struct {
@@ -113,9 +123,9 @@ func (s *Service) providerURLs(ctx context.Context, connection OAuthConnection) 
 		if err != nil {
 			return providerMetadata{}, fmt.Errorf("读取 OIDC 元数据: %w", err)
 		}
-		defer response.Body.Close()
+		defer closeUpstreamBody(ctx, response.Body, "读取 OIDC 元数据")
 		if response.StatusCode != http.StatusOK {
-			return providerMetadata{}, fmt.Errorf("读取 OIDC 元数据: HTTP %d", response.StatusCode)
+			return providerMetadata{}, &upstreamHTTPError{operation: "读取 OIDC 元数据", status: response.StatusCode}
 		}
 		if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&metadata); err != nil {
 			return providerMetadata{}, fmt.Errorf("解析 OIDC 元数据: %w", err)
@@ -177,10 +187,9 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 	if err != nil {
 		return upstreamProfile{}, fmt.Errorf("交换上游令牌: %w", err)
 	}
-	defer response.Body.Close()
+	defer closeUpstreamBody(ctx, response.Body, "交换上游令牌")
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return upstreamProfile{}, fmt.Errorf("交换上游令牌: HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return upstreamProfile{}, &upstreamHTTPError{operation: "交换上游令牌", status: response.StatusCode}
 	}
 	var tokenResponse struct {
 		AccessToken string `json:"access_token"`
@@ -199,9 +208,9 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 	if err != nil {
 		return upstreamProfile{}, fmt.Errorf("读取上游用户: %w", err)
 	}
-	defer response.Body.Close()
+	defer closeUpstreamBody(ctx, response.Body, "读取上游用户")
 	if response.StatusCode != http.StatusOK {
-		return upstreamProfile{}, fmt.Errorf("读取上游用户: HTTP %d", response.StatusCode)
+		return upstreamProfile{}, &upstreamHTTPError{operation: "读取上游用户", status: response.StatusCode}
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
 	var profile upstreamProfile
@@ -279,4 +288,10 @@ func stringValue(values map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func closeUpstreamBody(ctx context.Context, body io.ReadCloser, operation string) {
+	if err := body.Close(); err != nil && ctx.Err() == nil {
+		slog.ErrorContext(ctx, "关闭上游响应失败", "operation", operation, "error_type", fmt.Sprintf("%T", err))
+	}
 }

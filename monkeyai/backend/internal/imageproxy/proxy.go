@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -139,6 +140,9 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
+		if err != nil && r.Context().Err() == nil {
+			slog.Warn("生图鉴权失败", "operation", "authenticate_upload", "error", credentialError(err, credential))
+		}
 		unauthorized(w)
 		return
 	}
@@ -182,6 +186,9 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
+		if err != nil && r.Context().Err() == nil {
+			slog.Warn("生图鉴权失败", "operation", "authenticate_output", "error", credentialError(err, credential))
+		}
 		unauthorized(w)
 		return
 	}
@@ -197,7 +204,9 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write(data)
+	if _, err := w.Write(data); err != nil && r.Context().Err() == nil {
+		slog.Warn("生图结果响应写入失败", "operation", "write_output", "user_id", userID, "error", err)
+	}
 }
 
 func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
@@ -288,6 +297,9 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
+		if err != nil && r.Context().Err() == nil {
+			slog.Warn("生图鉴权失败", "operation", "authenticate_task", "error", credentialError(err, credential))
+		}
 		unauthorized(w)
 		return
 	}
@@ -311,6 +323,9 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 	}
 	target, err := p.resolver.Resolve(r.Context(), credential, model)
 	if err != nil || target.UserID == "" {
+		if err != nil && r.Context().Err() == nil {
+			slog.Warn("生图模型解析失败", "operation", "resolve", "error", credentialError(err, credential))
+		}
 		unauthorized(w)
 		return proxy.Target{}, false
 	}
@@ -354,6 +369,13 @@ func respond(w http.ResponseWriter, task Task, err error) {
 		return
 	}
 	resource.JSON(w, http.StatusAccepted, task)
+}
+
+func credentialError(err error, credential string) string {
+	if credential == "" {
+		return err.Error()
+	}
+	return strings.ReplaceAll(err.Error(), credential, "[redacted]")
 }
 
 func unauthorized(w http.ResponseWriter) {

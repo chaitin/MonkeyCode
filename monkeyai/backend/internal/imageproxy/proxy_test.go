@@ -96,7 +96,9 @@ func TestInputUploadAuthenticatesAndLimitsParts(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		writer.Close()
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
 		r := httptest.NewRequest(http.MethodPost, "/v1/images/inputs", &body)
 		r.Header.Set("Content-Type", writer.FormDataContentType())
 		if credential != "" {
@@ -126,6 +128,16 @@ func (f outputFunc) Open(ctx context.Context, userID, id string) ([]byte, string
 	return f(ctx, userID, id)
 }
 
+type failedOutputWriter struct {
+	*httptest.ResponseRecorder
+	writes int
+}
+
+func (w *failedOutputWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, errors.New("write failed")
+}
+
 func TestImageOutputRequiresSameKeyAndOwner(t *testing.T) {
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
@@ -146,6 +158,13 @@ func TestImageOutputRequiresSameKeyAndOwner(t *testing.T) {
 	w := request(h, http.MethodGet, "/v1/images/outputs/output-1", "", "invoke-key")
 	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || w.Header().Get("X-Content-Type-Options") != "nosniff" || !bytes.Equal(w.Body.Bytes(), data.Bytes()) {
 		t.Fatalf("图片输出失败: %d, %s", w.Code, w.Body.String())
+	}
+	r := httptest.NewRequest(http.MethodGet, "/v1/images/outputs/output-1", nil)
+	r.Header.Set("Authorization", "Bearer invoke-key")
+	failed := &failedOutputWriter{ResponseRecorder: httptest.NewRecorder()}
+	h.ServeHTTP(failed, r)
+	if failed.Code != http.StatusOK || failed.writes != 1 {
+		t.Fatalf("写失败后发生了二次响应: status=%d writes=%d", failed.Code, failed.writes)
 	}
 	for _, tc := range []struct {
 		path, key string

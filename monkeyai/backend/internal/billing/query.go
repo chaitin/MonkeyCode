@@ -2,6 +2,7 @@ package billing
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -56,7 +57,7 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer rollback(r.Context(), tx, "list_entries", "")
 	var total int64
 	total, err = sqlc.New(tx).CountEntries(r.Context(), filter)
 	if err != nil {
@@ -186,7 +187,7 @@ func (s *Service) resolve(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer rollback(r.Context(), tx, "resolve_transaction", id)
 	var state, mode string
 	var record sqlc.LockTransactionStatusRow
 	record, err = sqlc.New(tx).LockTransactionStatus(r.Context(), id)
@@ -244,7 +245,11 @@ func (s *Service) resolve(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := identity.UserFromContext(r.Context())
 	in.Usage.Known = true
-	body, _ := json.Marshal(in)
+	body, err := json.Marshal(in)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("序列化交易 %s 核查记录: %w", id, err))
+		return
+	}
 	err = audit(r.Context(), tx, u.ID, "resolve_transaction", id, json.RawMessage(body))
 
 	if err == nil {
