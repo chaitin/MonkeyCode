@@ -21,6 +21,7 @@ const modelKeys = [
   "supportsReasoning",
   "notRecommended",
   "billingMultiplier",
+  "creator",
   "authorizedScope",
   "kind",
   "textKind",
@@ -150,7 +151,7 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.doesNotMatch(source, /member-01|engineering/)
 })
 
-test("model kinds use text tabs and icon card badges", async () => {
+test("model kinds use text tabs and collapsible section icons", async () => {
   const source = await readFile(
     new URL("../src/pages/models-page.tsx", import.meta.url),
     "utf8"

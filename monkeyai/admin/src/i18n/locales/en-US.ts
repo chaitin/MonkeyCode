@@ -423,6 +423,7 @@ export const enUS = {
       qualityMultiplier: "tier multiplier",
       systemModel: "System models",
       userModel: "User models",
+      creator: "Creator",
       add: "Add model",
       dialogTitle: "Add model",
       dialogDescription:

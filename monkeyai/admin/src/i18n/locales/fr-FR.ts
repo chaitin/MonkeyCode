@@ -301,6 +301,7 @@ export const frFR = {
       taskStatus: "État de la tâche",
       systemModel: "Modèles système",
       userModel: "Modèles utilisateur",
+      creator: "Créateur",
       add: "Ajouter un modèle",
       dialogTitle: "Ajouter un modèle",
       dialogDescription:

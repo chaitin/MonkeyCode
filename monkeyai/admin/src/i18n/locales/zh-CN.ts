@@ -406,6 +406,7 @@ export const zhCN = {
       qualityMultiplier: "画质倍率",
       systemModel: "系统模型",
       userModel: "用户模型",
+      creator: "创建者",
       add: "添加大模型",
       dialogTitle: "添加大模型",
       dialogDescription: "配置模型的调用方式，以及可以使用该模型的分组。",

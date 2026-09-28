@@ -301,6 +301,7 @@ export const deDE = {
       taskStatus: "Aufgabenstatus",
       systemModel: "Systemmodelle",
       userModel: "Benutzermodelle",
+      creator: "Erstellt von",
       add: "Modell hinzufügen",
       dialogTitle: "Modell hinzufügen",
       dialogDescription:

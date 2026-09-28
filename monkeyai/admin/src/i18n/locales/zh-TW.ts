@@ -283,6 +283,7 @@ export const zhTW = {
       taskStatus: "任務狀態",
       systemModel: "系統模型",
       userModel: "使用者模型",
+      creator: "建立者",
       add: "新增大型模型",
       dialogTitle: "新增大型模型",
       dialogDescription: "設定模型的呼叫方式，以及可以使用該模型的群組。",

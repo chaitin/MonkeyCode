@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import {
   AiChat02Icon,
   AiImageIcon,
+  ArrowRight01Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -34,6 +35,11 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Card,
   CardContent,
@@ -131,6 +137,7 @@ type ModelBase = {
   id: string
   modelId: string
   displayName: string
+  owner: string
   contextSizeK: number
   maxOutputTokens: number
   supportsVision: boolean
@@ -152,6 +159,7 @@ type Model = ModelBase & { type: ModelType; multiplier: number }
 type ApiModel = {
   id: string
   ownership_type: ModelType
+  user: { id: string; name: string; email: string }
   model_id: string
   display_name: string
   protocol: ModelProtocol
@@ -189,6 +197,7 @@ function fromApiModel(model: ApiModel): Model {
     id: model.id,
     modelId: model.model_id,
     displayName: model.display_name,
+    owner: model.user.name || model.user.email || model.user.id,
     contextSizeK: (model.advanced_config?.context_window_tokens ?? 0) / 1000,
     maxOutputTokens: model.advanced_config?.max_output_tokens ?? 0,
     supportsVision: model.advanced_config?.supports_vision ?? false,
@@ -1137,184 +1146,245 @@ export function ModelsPage() {
         </div>
 
         {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {models
-                .filter((model) => model.type === tabType)
-                .map((model) => (
-                  <Card
-                    size="sm"
-                    className={cn(!model.enabled && "bg-muted")}
-                    key={model.id}
-                  >
-                    <CardHeader>
-                      <div className="flex min-w-0 items-start gap-3">
-                        <Avatar size="lg">
-                          <AvatarFallback>
-                            <Iconfont
-                              className="size-7"
-                              name={getModelIconName(model.modelId)}
-                            />
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="flex min-w-0 items-center gap-2">
-                            <span
-                              className="truncate"
-                              title={model.displayName}
-                            >
-                              {model.displayName}
-                            </span>
-                            <Badge variant="outline">
-                              <HugeiconsIcon
-                                icon={
-                                  model.kind === "image"
-                                    ? AiImageIcon
-                                    : AiChat02Icon
-                                }
-                                data-icon="inline-start"
-                              />
-                              {t(
-                                model.kind === "image"
-                                  ? "pages.models.imageKind"
-                                  : "pages.models.textKind"
-                              )}
-                            </Badge>
-                            {!model.enabled && (
-                              <Badge variant="outline">
-                                {t("pages.models.disable")}
-                              </Badge>
+          <TabsContent className="space-y-4" key={tabType} value={tabType}>
+            {(["text", "image"] as const).map((kind) => {
+              const kindModels = models.filter(
+                (model) => model.type === tabType && model.kind === kind
+              )
+
+              return (
+                <Collapsible
+                  key={kind}
+                  className="overflow-hidden rounded-lg border bg-card"
+                  defaultOpen
+                >
+                  <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset">
+                    <HugeiconsIcon
+                      icon={kind === "text" ? AiChat02Icon : AiImageIcon}
+                      strokeWidth={2}
+                    />
+                    <span className="font-medium">
+                      {t(
+                        kind === "text"
+                          ? "pages.models.textKind"
+                          : "pages.models.imageKind"
+                      )}
+                    </span>
+                    <Badge className="ms-auto" variant="secondary">
+                      {kindModels.length}
+                    </Badge>
+                    <HugeiconsIcon
+                      className="size-4 transition-transform group-aria-expanded:rotate-90 rtl:rotate-180 rtl:group-aria-expanded:-rotate-90"
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="border-t p-4">
+                    {kindModels.length > 0 ? (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {kindModels.map((model) => (
+                          <Card
+                            size="sm"
+                            className={cn(
+                              model.kind === "text"
+                                ? "bg-blue-50 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800"
+                                : "bg-purple-50 ring-purple-200 dark:bg-purple-950 dark:ring-purple-800",
+                              !model.enabled &&
+                                "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
                             )}
-                          </CardTitle>
-                          <CardDescription
-                            className="truncate"
-                            title={model.baseUrl}
+                            key={model.id}
                           >
-                            {model.baseUrl}
-                          </CardDescription>
-                        </div>
-                        {model.type === "system" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  aria-label={t("common.more")}
-                                  size="icon-sm"
-                                  type="button"
-                                  variant="ghost"
-                                />
-                              }
-                            >
-                              <HugeiconsIcon
-                                icon={MoreHorizontalIcon}
-                                strokeWidth={2}
-                              />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  disabled={model.enabled}
-                                  onClick={() =>
-                                    setModelEnabled(model.id, true)
-                                  }
-                                >
-                                  <HugeiconsIcon
-                                    icon={PlayIcon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.enable")}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  disabled={!model.enabled}
-                                  onClick={() =>
-                                    setModelEnabled(model.id, false)
-                                  }
-                                >
-                                  <HugeiconsIcon
-                                    icon={PauseIcon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.disable")}
-                                </DropdownMenuItem>
-                                {model.kind === "image" &&
-                                  model.enabled &&
-                                  model.imageConfig && (
-                                    <DropdownMenuItem
-                                      onClick={() => setModelToTest(model)}
+                            <CardHeader>
+                              <div className="flex min-w-0 items-start gap-3">
+                                <Avatar size="lg">
+                                  <AvatarFallback>
+                                    <Iconfont
+                                      className="size-7"
+                                      name={getModelIconName(model.modelId)}
+                                    />
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className="truncate"
+                                      title={model.displayName}
+                                    >
+                                      {model.displayName}
+                                    </span>
+                                    {!model.enabled && (
+                                      <Badge variant="outline">
+                                        {t("pages.models.disable")}
+                                      </Badge>
+                                    )}
+                                  </CardTitle>
+                                  <CardDescription
+                                    className="truncate"
+                                    title={model.baseUrl}
+                                  >
+                                    {model.baseUrl}
+                                  </CardDescription>
+                                </div>
+                                {model.type === "system" && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                      render={
+                                        <Button
+                                          aria-label={t("common.more")}
+                                          size="icon-sm"
+                                          type="button"
+                                          variant="ghost"
+                                        />
+                                      }
                                     >
                                       <HugeiconsIcon
-                                        icon={PlayIcon}
+                                        icon={MoreHorizontalIcon}
                                         strokeWidth={2}
                                       />
-                                      {t("pages.models.testGeneration")}
-                                    </DropdownMenuItem>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuGroup>
+                                        <DropdownMenuItem
+                                          disabled={model.enabled}
+                                          onClick={() =>
+                                            setModelEnabled(model.id, true)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={PlayIcon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.enable")}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={!model.enabled}
+                                          onClick={() =>
+                                            setModelEnabled(model.id, false)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={PauseIcon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.disable")}
+                                        </DropdownMenuItem>
+                                        {model.kind === "image" &&
+                                          model.enabled &&
+                                          model.imageConfig && (
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                setModelToTest(model)
+                                              }
+                                            >
+                                              <HugeiconsIcon
+                                                icon={PlayIcon}
+                                                strokeWidth={2}
+                                              />
+                                              {t("pages.models.testGeneration")}
+                                            </DropdownMenuItem>
+                                          )}
+                                        <DropdownMenuItem
+                                          onClick={() => handleEditModel(model)}
+                                        >
+                                          <HugeiconsIcon
+                                            icon={Edit02Icon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.edit")}
+                                        </DropdownMenuItem>
+                                      </DropdownMenuGroup>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuGroup>
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() =>
+                                            setModelPendingDeletion(model)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={Delete02Icon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.delete")}
+                                        </DropdownMenuItem>
+                                      </DropdownMenuGroup>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </div>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-3">
+                              <dl className="flex flex-col gap-3">
+                                {model.kind === "image" && (
+                                  <div className="flex min-w-0 items-center gap-4">
+                                    <dt className="w-2/5 truncate text-muted-foreground">
+                                      {t("pages.models.baseCreditsPerImage")}
+                                    </dt>
+                                    <dd className="w-3/5 truncate text-end font-medium">
+                                      {model.imagePricing
+                                        ?.base_credits_per_image ?? "0"}
+                                    </dd>
+                                  </div>
+                                )}
+                                {model.kind === "text" &&
+                                  model.type === "system" && (
+                                    <div className="flex min-w-0 items-center gap-4">
+                                      <dt
+                                        className="w-2/5 truncate text-muted-foreground"
+                                        title={t("pages.models.multiplier")}
+                                      >
+                                        {t("pages.models.multiplier")}
+                                      </dt>
+                                      <dd className="w-3/5 truncate text-end font-medium">
+                                        {model.multiplier.toFixed(2)}×
+                                      </dd>
+                                    </div>
                                   )}
-                                <DropdownMenuItem
-                                  onClick={() => handleEditModel(model)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Edit02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.edit")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setModelPendingDeletion(model)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Delete02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.delete")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+                                {model.type === "user" && (
+                                  <div className="flex min-w-0 items-center gap-4">
+                                    <dt
+                                      className="w-2/5 truncate text-muted-foreground"
+                                      title={t("pages.models.creator")}
+                                    >
+                                      {t("pages.models.creator")}
+                                    </dt>
+                                    <dd
+                                      className="w-3/5 truncate text-end font-medium"
+                                      title={model.owner}
+                                    >
+                                      {model.owner}
+                                    </dd>
+                                  </div>
+                                )}
+                              </dl>
+                            </CardContent>
+                            <CardFooter
+                              className={cn(
+                                "min-w-0 border-t",
+                                !model.enabled
+                                  ? "border-gray-300 dark:border-gray-700"
+                                  : model.kind === "text"
+                                    ? "border-blue-200 dark:border-blue-800"
+                                    : "border-purple-200 dark:border-purple-800"
+                              )}
+                            >
+                              <ModelTagBadges
+                                tagIds={model.tagIds}
+                                tags={availableTags}
+                              />
+                            </CardFooter>
+                          </Card>
+                        ))}
                       </div>
-                    </CardHeader>
-                    {(model.kind === "image" || model.type === "system") && (
-                      <CardContent className="flex flex-col gap-3">
-                        <dl className="flex flex-col gap-3">
-                          {model.kind === "image" ? (
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.baseCreditsPerImage")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imagePricing?.base_credits_per_image ??
-                                  "0"}
-                              </dd>
-                            </div>
-                          ) : (
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt
-                                className="w-2/5 truncate text-muted-foreground"
-                                title={t("pages.models.multiplier")}
-                              >
-                                {t("pages.models.multiplier")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.multiplier.toFixed(2)}×
-                              </dd>
-                            </div>
-                          )}
-                        </dl>
-                      </CardContent>
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">
+                        {t("pages.models.count", { count: 0 })}
+                      </p>
                     )}
-                    <CardFooter className="min-w-0 border-t">
-                      <ModelTagBadges
-                        tagIds={model.tagIds}
-                        tags={availableTags}
-                      />
-                    </CardFooter>
-                  </Card>
-                ))}
-            </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )
+            })}
           </TabsContent>
         ))}
       </Tabs>

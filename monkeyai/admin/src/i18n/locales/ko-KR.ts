@@ -292,6 +292,7 @@ export const koKR = {
       taskStatus: "작업 상태",
       systemModel: "시스템 모델",
       userModel: "사용자 모델",
+      creator: "생성자",
       add: "모델 추가",
       dialogTitle: "모델 추가",
       dialogDescription:

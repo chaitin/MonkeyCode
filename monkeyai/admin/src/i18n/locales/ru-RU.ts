@@ -299,6 +299,7 @@ export const ruRU = {
       taskStatus: "Статус задачи",
       systemModel: "Системные модели",
       userModel: "Пользовательские модели",
+      creator: "Автор",
       add: "Добавить модель",
       dialogTitle: "Добавить модель",
       dialogDescription:

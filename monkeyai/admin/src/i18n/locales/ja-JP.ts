@@ -295,6 +295,7 @@ export const jaJP = {
       taskStatus: "タスク状態",
       systemModel: "システムモデル",
       userModel: "ユーザーモデル",
+      creator: "作成者",
       add: "モデルを追加",
       dialogTitle: "モデルを追加",
       dialogDescription:

@@ -291,6 +291,7 @@ export const ar = {
       taskStatus: "حالة المهمة",
       systemModel: "نماذج النظام",
       userModel: "نماذج المستخدم",
+      creator: "المنشئ",
       add: "إضافة نموذج",
       dialogTitle: "إضافة نموذج",
       dialogDescription:

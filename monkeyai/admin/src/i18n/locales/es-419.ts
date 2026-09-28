@@ -300,6 +300,7 @@ export const es419 = {
       taskStatus: "Estado de la tarea",
       systemModel: "Modelos del sistema",
       userModel: "Modelos de usuario",
+      creator: "Creador",
       add: "Agregar modelo",
       dialogTitle: "Agregar modelo",
       dialogDescription:
