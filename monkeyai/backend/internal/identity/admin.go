@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -62,12 +63,17 @@ func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.updateUser(r.Context(), chi.URLParam(r, "userID"), input.Name, input.Role, input.Status, "")
 	if err != nil {
-		if !errors.Is(err, ErrNotFound) {
+		switch {
+		case errors.Is(err, ErrNotFound), errors.Is(err, pgx.ErrNoRows):
+			writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
+		case errors.Is(err, member.ErrSeatsExceeded):
+			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
+		case errors.Is(err, member.ErrSeatsUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", "成员席位授权不可用")
+		default:
 			slog.ErrorContext(r.Context(), "更新用户失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 			writeError(w, http.StatusInternalServerError, "server_error", "更新用户失败")
-			return
 		}
-		writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
@@ -110,7 +116,12 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
-	if _, err := q.ResetUserPassword(ctx, sqlc.ResetUserPasswordParams{ID: user.ID, PasswordHash: &hash}); err != nil {
+	if s.writer != nil {
+		err = s.writer.ResetUserPassword(ctx, tx, user.ID, hash)
+	} else {
+		_, err = q.ResetUserPassword(ctx, sqlc.ResetUserPasswordParams{ID: user.ID, PasswordHash: &hash})
+	}
+	if err != nil {
 		slog.ErrorContext(ctx, "更新用户密码失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
@@ -170,13 +181,26 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		passwordHash = &hash
 	}
 	actor, _ := UserFromContext(r.Context())
-	user, err := s.insertUserWithGroups(r.Context(), actor.ID, sqlc.CreateUserParams{
-		Name: input.Name, Email: input.Email, Role: input.Role, PasswordHash: passwordHash,
-	}, groupIDs)
+	var user User
+	if s.writer != nil {
+		result, writeErr := s.writer.CreateUser(r.Context(), member.CreateUser{
+			ActorID: actor.ID, Name: input.Name, Email: input.Email,
+			Role: input.Role, Password: input.Password, GroupIDs: groupIDs,
+		})
+		user, err = userFromMember(result), writeErr
+	} else {
+		user, err = s.insertUserWithGroups(r.Context(), actor.ID, sqlc.CreateUserParams{
+			Name: input.Name, Email: input.Email, Role: input.Role, PasswordHash: passwordHash,
+		}, groupIDs)
+	}
 	if err != nil {
 		var dbError *pgconn.PgError
 		switch {
-		case errors.Is(err, errCreationGroupUnavailable):
+		case errors.Is(err, member.ErrSeatsExceeded):
+			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
+		case errors.Is(err, member.ErrSeatsUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", "成员席位授权不可用")
+		case errors.Is(err, errCreationGroupUnavailable), errors.Is(err, member.ErrGroupUnavailable):
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		case errors.As(err, &dbError) && dbError.Code == "23505" && dbError.ConstraintName == "users_email_active_key":
 			writeError(w, http.StatusConflict, "user_exists", "该邮箱已存在")

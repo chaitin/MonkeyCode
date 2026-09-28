@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -286,10 +287,14 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := "user_unavailable"
 		switch {
-		case errors.Is(err, ErrAdminRoleRequired):
+		case errors.Is(err, ErrAdminRoleRequired), errors.Is(err, member.ErrAdminRoleRequired):
 			code = "admin_role_required"
-		case adminLogin && errors.Is(err, ErrUserDisabled):
+		case adminLogin && (errors.Is(err, ErrUserDisabled) || errors.Is(err, member.ErrUserDisabled)):
 			code = "admin_role_required"
+		case errors.Is(err, member.ErrSeatsExceeded):
+			code = "seats_exceeded"
+		case errors.Is(err, member.ErrSeatsUnavailable):
+			code = "seats_unavailable"
 		}
 		http.Redirect(w, r, s.upstreamResultURL(state, code), http.StatusFound)
 		return

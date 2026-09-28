@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -245,12 +246,20 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 			return User{}, err
 		}
 	}
-	var disabledAt *time.Time
-	if status == "disabled" {
-		disabledAt = new(s.now())
+	var user User
+	if s.writer != nil {
+		var result member.User
+		result, err = s.writer.UpdateUser(ctx, tx, member.UpdateUser{ID: id, Name: name, Role: role, Status: status, PasswordHash: passwordHash})
+		user = userFromMember(result)
+	} else {
+		var disabledAt *time.Time
+		if status == "disabled" {
+			disabledAt = new(s.now())
+		}
+		row, queryErr := sqlc.New(tx).UpdateUser(ctx, sqlc.UpdateUserParams{ID: id, Name: name, Role: role, Status: status, DisabledAt: disabledAt, PasswordHash: passwordHash})
+		err = queryErr
+		user = User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
 	}
-	row, err := sqlc.New(tx).UpdateUser(ctx, sqlc.UpdateUserParams{ID: id, Name: name, Role: role, Status: status, DisabledAt: disabledAt, PasswordHash: passwordHash})
-	user := User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -261,6 +270,14 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 }
 
 func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, adminOnly, autoRegistrationEnabled bool) (User, error) {
+	if s.writer != nil {
+		result, err := s.writer.UpsertIdentity(ctx, member.OAuthIdentity{
+			Provider: profile.Provider, Issuer: profile.Issuer, Subject: profile.Subject,
+			Username: profile.Username, Name: profile.Name, Email: profile.Email, AvatarURL: profile.AvatarURL,
+			AdminOnly: adminOnly, AutoRegistrationEnabled: autoRegistrationEnabled,
+		})
+		return userFromMember(result), err
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return User{}, err

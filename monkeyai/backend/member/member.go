@@ -8,9 +8,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const RootGroupID = "00000000-0000-0000-0000-000000000000"
+
 var (
-	ErrSeatsExceeded    = errors.New("成员席位已满")
-	ErrSeatsUnavailable = errors.New("成员席位授权不可用")
+	ErrSeatsExceeded      = errors.New("成员席位已满")
+	ErrSeatsUnavailable   = errors.New("成员席位授权不可用")
+	ErrGroupUnavailable   = errors.New("所选分组不存在或已删除")
+	ErrUserDisabled       = errors.New("用户已停用")
+	ErrAdminRoleRequired  = errors.New("需要管理员角色")
+	ErrRegistrationClosed = errors.New("自动注册未开启")
 )
 
 type User struct {
@@ -40,10 +46,11 @@ type CreateUser struct {
 }
 
 type UpdateUser struct {
-	ID     string
-	Name   string
-	Role   string
-	Status string
+	ID           string
+	Name         string
+	Role         string
+	Status       string
+	PasswordHash string
 }
 
 type OAuthIdentity struct {
@@ -59,19 +66,19 @@ type OAuthIdentity struct {
 }
 
 type PasswordReset struct {
-	Email    string
-	Password string
+	Email        string
+	PasswordHash string
 }
 
 // 接收 pgx.Tx 的方法参与调用方事务，不自行提交或回滚。
 type UserWriter interface {
 	EnsureInitialAdmin(context.Context, InitialAdmin) error
 	CreateUser(context.Context, CreateUser) (User, error)
-	UpdateUser(context.Context, UpdateUser) (User, error)
+	UpdateUser(context.Context, pgx.Tx, UpdateUser) (User, error)
 	RegisterEmailUser(context.Context, pgx.Tx, string) (User, error)
 	UpsertIdentity(context.Context, OAuthIdentity) (User, error)
-	ResetPassword(context.Context, pgx.Tx, PasswordReset) error
-	ResetUserPassword(context.Context, pgx.Tx, string) (string, error)
+	ResetPassword(context.Context, pgx.Tx, PasswordReset) (string, error)
+	ResetUserPassword(context.Context, pgx.Tx, string, string) error
 	TouchLogin(context.Context, string) error
 }
 

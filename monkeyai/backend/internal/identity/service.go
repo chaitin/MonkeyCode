@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -53,6 +54,13 @@ type User struct {
 	Status      string     `json:"status"`
 	JoinedAt    time.Time  `json:"joined_at"`
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+}
+
+func userFromMember(value member.User) User {
+	return User{
+		ID: value.ID, Name: value.Name, Email: value.Email, AvatarURL: value.AvatarURL,
+		Role: value.Role, Status: value.Status, JoinedAt: value.JoinedAt, LastLoginAt: value.LastLoginAt,
+	}
 }
 
 type AuthorizationRequest struct {
@@ -105,9 +113,15 @@ type AccountPreserver interface {
 
 func (s *Service) WithAccountPreserver(p AccountPreserver) *Service { s.accounts = p; return s }
 
+func (s *Service) WithUserWriter(writer member.UserWriter) *Service {
+	s.writer = writer
+	return s
+}
+
 type Service struct {
 	email        EmailSender
 	accounts     AccountPreserver
+	writer       member.UserWriter
 	db           *pgxpool.Pool
 	settings     SettingReader
 	client       *http.Client
