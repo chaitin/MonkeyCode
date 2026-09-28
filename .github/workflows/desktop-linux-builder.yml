@@ -1,0 +1,38 @@
+name: Desktop Linux Builder Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/ci/linux-builder.Dockerfile"
+      - ".github/workflows/desktop-linux-builder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        # Bump this tag with each Dockerfile revision. Release jobs only pull
+        # this published builder and never build it themselves.
+        with:
+          context: .
+          file: desktop/ci/linux-builder.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/monkeycode-desktop-linux-builder:glibc-2.28-glib-2.70-rust-ustc-v1
+            ghcr.io/${{ github.repository_owner }}/monkeycode-desktop-linux-builder:sha-${{ github.sha }}
