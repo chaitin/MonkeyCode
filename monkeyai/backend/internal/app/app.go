@@ -54,18 +54,22 @@ type App struct {
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
 
-func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
-	return newApp(ctx, cfg, logger, nil)
+type AdminRegistrar interface {
+	RegisterAdmin(chi.Router)
 }
 
-func NewWithMembers(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters) (*App, error) {
+func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
+	return newApp(ctx, cfg, logger, nil, nil)
+}
+
+func NewWithMembers(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) (*App, error) {
 	if factory == nil {
 		return nil, errors.New("私有版成员实现不可为空")
 	}
-	return newApp(ctx, cfg, logger, factory)
+	return newApp(ctx, cfg, logger, factory, registrars)
 }
 
-func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters) (*App, error) {
+func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars []AdminRegistrar) (*App, error) {
 	pool, err := database.Open(ctx, cfg.URL)
 	if err != nil {
 		return nil, err
@@ -83,7 +87,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 			return nil, errors.New("私有版成员实现不可为空")
 		}
 	}
-	handler, err := newApplicationHandlerWithMembers(ctx, logger, pool, cfg, users, groups)
+	handler, err := newApplicationHandlerWithMembers(ctx, logger, pool, cfg, users, groups, registrars)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -130,10 +134,10 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 }
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
-	return newApplicationHandlerWithMembers(ctx, logger, pool, cfg, nil, nil)
+	return newApplicationHandlerWithMembers(ctx, logger, pool, cfg, nil, nil, nil)
 }
 
-func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter) (http.Handler, error) {
+func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter, registrars []AdminRegistrar) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
 	if users != nil {
@@ -197,6 +201,11 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		groupService.WithMemberWriter(groups)
 	}
 	groupService.RegisterAdmin(admin)
+	for _, registrar := range registrars {
+		if registrar != nil {
+			registrar.RegisterAdmin(admin)
+		}
+	}
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
 	stats.NewService(pool).RegisterAdmin(admin)

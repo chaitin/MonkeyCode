@@ -9,12 +9,16 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
+type AdminRegistrar interface {
+	RegisterAdmin(chi.Router)
+}
 
-func Run(ctx context.Context, args []string, factory MemberWriters) error {
+func Run(ctx context.Context, args []string, factory MemberWriters, registrars ...AdminRegistrar) error {
 	if factory == nil {
 		return errors.New("私有版成员实现不可为空")
 	}
@@ -23,7 +27,11 @@ func Run(ctx context.Context, args []string, factory MemberWriters) error {
 		return err
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	application, err := app.NewWithMembers(ctx, cfg, logger, app.MemberWriters(factory))
+	appRegistrars := make([]app.AdminRegistrar, 0, len(registrars))
+	for _, registrar := range registrars {
+		appRegistrars = append(appRegistrars, registrar)
+	}
+	application, err := app.NewWithMembers(ctx, cfg, logger, app.MemberWriters(factory), appRegistrars...)
 	if err != nil {
 		return err
 	}
