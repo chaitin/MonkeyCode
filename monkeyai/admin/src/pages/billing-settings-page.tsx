@@ -365,7 +365,7 @@ export function BillingSettingsPage() {
             <span className="text-xs font-normal text-muted-foreground tabular-nums">
               {savedLocalBilling
                 ? t("pages.billingSettings.groupQuota.remaining", {
-                    credits: balance === undefined ? "—" : format(balance),
+                    credits: balance === undefined ? "—" : formatQuota(balance),
                   })
                 : savedBillingStateLabel}
             </span>

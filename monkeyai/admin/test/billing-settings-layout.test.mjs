@@ -232,7 +232,7 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(userItem, /groupQuota\.remaining/)
   assert.match(
     userItem,
-    /const balance = user\.balance_credits[\s\S]*?balance === undefined \? "—" : format\(balance\)/
+    /const balance = user\.balance_credits[\s\S]*?balance === undefined \? "—" : formatQuota\(balance\)/
   )
   assert.doesNotMatch(
     userItem,
