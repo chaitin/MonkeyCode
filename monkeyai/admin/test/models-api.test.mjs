@@ -96,7 +96,9 @@ test("resource cards show configured tag names", async () => {
     )
     assert.match(
       source,
-      new RegExp(`<ResourceTagSummary tagIds=\\{${item}\\.tagIds\\}`)
+      new RegExp(
+        `<CardFooter[^>]*>\\s*<ResourceTagSummary tagIds=\\{${item}\\.tagIds\\}`
+      )
     )
   }
 
@@ -105,7 +107,7 @@ test("resource cards show configured tag names", async () => {
     "utf8"
   )
   assert.match(models, /tags\.filter\(\(tag\) => tagIds\.includes\(tag\.id\)\)/)
-  assert.match(models, /<Badge\s+key=\{tag\.id\}\s+variant="secondary"/)
+  assert.match(models, /<Badge\s+key=\{tag\.id\}\s+variant="outline"/)
   assert.match(
     models,
     /<CardFooter[^>]*>\s*<ModelTagBadges\s+tagIds=\{model\.tagIds\}/

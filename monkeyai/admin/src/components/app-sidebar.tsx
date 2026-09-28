@@ -166,7 +166,6 @@ export function AppSidebar({
           user={{
             name: user?.name ?? "MonkeyAI Admin",
             email: user?.email ?? "",
-            avatar: user?.avatar_url ?? "/placeholder.svg",
           }}
           onLogout={onLogout}
         />

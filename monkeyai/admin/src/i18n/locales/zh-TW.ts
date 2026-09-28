@@ -473,7 +473,7 @@ export const zhTW = {
       noAvailableTags: "暫無可選標籤，請先到其他設定中新增。",
       searchTagsPlaceholder: "搜尋標籤",
       noMatchingTags: "沒有符合的標籤",
-      noTags: "無標籤",
+      noTags: "沒有標籤",
       authorizedUsers: "授權使用者",
       authorizationPlaceholder: "選擇群組或使用者",
       cancel: "取消",

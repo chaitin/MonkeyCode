@@ -597,7 +597,7 @@ export const zhCN = {
       noAvailableTags: "暂无可选标签，请先到其他设置中添加。",
       searchTagsPlaceholder: "搜索标签",
       noMatchingTags: "没有匹配的标签",
-      noTags: "无标签",
+      noTags: "没有标签",
       authorizedUsers: "授权用户",
       authorizationPlaceholder: "选择分组或用户",
       cancel: "取消",

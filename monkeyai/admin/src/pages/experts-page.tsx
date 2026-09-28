@@ -80,10 +80,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  getAuthorizationNames,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { cn } from "@/lib/utils"
 
 type Expert = {
@@ -606,38 +603,16 @@ export function ExpertsPage() {
                   </DropdownMenu>
                 </div>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4">
+              <CardContent>
                 <p
                   className="line-clamp-2 text-sm text-muted-foreground"
                   title={expert.prompt}
                 >
                   {expert.prompt}
                 </p>
-                <ResourceTagSummary tagIds={expert.tagIds} />
               </CardContent>
-              <CardFooter className="min-w-0 gap-4 border-t">
-                <span
-                  className="w-2/5 truncate text-muted-foreground"
-                  title={t("pages.experts.authorizedScope")}
-                >
-                  {t("pages.experts.authorizedScope")}
-                </span>
-                <span
-                  className="w-3/5 truncate text-end font-medium"
-                  title={getAuthorizationNames(
-                    expert.authorization,
-                    t,
-                    subjects.flatGroups,
-                    subjects.members
-                  )}
-                >
-                  {getAuthorizationNames(
-                    expert.authorization,
-                    t,
-                    subjects.flatGroups,
-                    subjects.members
-                  )}
-                </span>
+              <CardFooter className="min-w-0 border-t">
+                <ResourceTagSummary tagIds={expert.tagIds} />
               </CardFooter>
             </Card>
           ))}

@@ -241,7 +241,7 @@ function ModelTagBadges({
       {selectedTags.map((tag) => (
         <Badge
           key={tag.id}
-          variant="secondary"
+          variant="outline"
           className="max-w-full truncate"
           title={tag.name}
         >
