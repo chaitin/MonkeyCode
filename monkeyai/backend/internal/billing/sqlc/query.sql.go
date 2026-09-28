@@ -782,26 +782,6 @@ func (q *Queries) GetTransaction(ctx context.Context, id string) ([]byte, error)
 	return column_1, err
 }
 
-const hasExceededReservation = `-- name: HasExceededReservation :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            billing_transactions
-        WHERE
-            user_id = $1
-            AND status = 'unknown'
-            AND error_code = 'reservation_exceeded')
-`
-
-func (q *Queries) HasExceededReservation(ctx context.Context, userID string) (bool, error) {
-	row := q.db.QueryRow(ctx, hasExceededReservation, userID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const hasOtherWalletTransactions = `-- name: HasOtherWalletTransactions :one
 SELECT EXISTS (
     SELECT 1
@@ -1482,7 +1462,9 @@ const lockTransactionStatus = `-- name: LockTransactionStatus :one
 SELECT
     status,
     MODE,
-    category
+    category,
+    usage,
+    request_id
 FROM
     billing_transactions
 WHERE
@@ -1491,15 +1473,23 @@ FOR UPDATE
 `
 
 type LockTransactionStatusRow struct {
-	Status   string
-	Mode     string
-	Category string
+	Status    string
+	Mode      string
+	Category  string
+	Usage     []byte
+	RequestID string
 }
 
 func (q *Queries) LockTransactionStatus(ctx context.Context, id string) (LockTransactionStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockTransactionStatus, id)
 	var i LockTransactionStatusRow
-	err := row.Scan(&i.Status, &i.Mode, &i.Category)
+	err := row.Scan(
+		&i.Status,
+		&i.Mode,
+		&i.Category,
+		&i.Usage,
+		&i.RequestID,
+	)
 	return i, err
 }
 
