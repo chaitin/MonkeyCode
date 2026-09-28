@@ -27,12 +27,17 @@ func newTestDB(t *testing.T, name string) *db.Client {
 // agent_rule_versions.content (rule content lives entirely in the DB; no S3
 // involvement for rules).
 func seedRule(t *testing.T, ctx context.Context, client *db.Client, name string, isDeleted bool, content string, withVersion bool) (ruleID, versionID uuid.UUID) {
+	return seedRuleEnabled(t, ctx, client, name, isDeleted, true, content, withVersion)
+}
+
+func seedRuleEnabled(t *testing.T, ctx context.Context, client *db.Client, name string, isDeleted bool, enabled bool, content string, withVersion bool) (ruleID, versionID uuid.UUID) {
 	t.Helper()
 	creator := uuid.New()
 	rule, err := client.AgentRule.Create().
 		SetName(name).
 		SetCreatedBy(creator).
 		SetIsDeleted(isDeleted).
+		SetEnabled(enabled).
 		Save(ctx)
 	if err != nil {
 		t.Fatalf("seed rule %s: %v", name, err)
@@ -218,6 +223,84 @@ func TestListActiveRules_SkipsRuleWithoutActiveVersion(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Fatalf("expected no rules, got %+v", out)
+	}
+}
+
+func TestListActiveRules_SkipsDisabled(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-rules-disabled")
+
+	seedRuleEnabled(t, ctx, client, "alive", false, true, "a", true)
+	seedRuleEnabled(t, ctx, client, "stopped", false, false, "b", true)
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(out) != 1 || out[0].Name != "alive" {
+		t.Fatalf("expected only enabled rule, got %+v", out)
+	}
+}
+
+func TestListActiveRules_SkipsDanglingActiveVersion(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-rules-dangling")
+
+	aliveID, _ := seedRuleEnabled(t, ctx, client, "alive", false, true, "keep", true)
+	dangling, err := client.AgentRule.Create().
+		SetName("dangling").
+		SetCreatedBy(uuid.New()).
+		SetIsDeleted(false).
+		SetEnabled(true).
+		SetActiveVersionID(uuid.New()).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed dangling rule: %v", err)
+	}
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(out) != 1 || out[0].ID != aliveID {
+		t.Fatalf("expected only alive rule, got %+v (dangling=%s)", out, dangling.ID)
+	}
+}
+
+func TestListActiveRules_SkipsNonGlobalScope(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-rules-scope")
+
+	globalID, _ := seedRule(t, ctx, client, "global", false, "global", true)
+	scoped, err := client.AgentRule.Create().
+		SetName("scoped").
+		SetScopeID("team-" + uuid.NewString()).
+		SetCreatedBy(uuid.New()).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule: %v", err)
+	}
+	version, err := client.AgentRuleVersion.Create().
+		SetRuleID(scoped.ID).
+		SetVersion("v1").
+		SetContent("scoped").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed non-global rule version: %v", err)
+	}
+	if _, err := client.AgentRule.UpdateOneID(scoped.ID).SetActiveVersionID(version.ID).Save(ctx); err != nil {
+		t.Fatalf("set non-global active version: %v", err)
+	}
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveRules(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveRules: %v", err)
+	}
+	if len(out) != 1 || out[0].ID != globalID {
+		t.Fatalf("expected only global rule, got %+v (scoped=%s)", out, scoped.ID)
 	}
 }
 

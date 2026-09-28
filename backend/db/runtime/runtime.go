@@ -173,12 +173,16 @@ func init() {
 	agentruleDescIsDeleted := agentruleFields[10].Descriptor()
 	// agentrule.DefaultIsDeleted holds the default value on creation for the is_deleted field.
 	agentrule.DefaultIsDeleted = agentruleDescIsDeleted.Default.(bool)
+	// agentruleDescEnabled is the schema descriptor for enabled field.
+	agentruleDescEnabled := agentruleFields[11].Descriptor()
+	// agentrule.DefaultEnabled holds the default value on creation for the enabled field.
+	agentrule.DefaultEnabled = agentruleDescEnabled.Default.(bool)
 	// agentruleDescCreatedAt is the schema descriptor for created_at field.
-	agentruleDescCreatedAt := agentruleFields[11].Descriptor()
+	agentruleDescCreatedAt := agentruleFields[12].Descriptor()
 	// agentrule.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentrule.DefaultCreatedAt = agentruleDescCreatedAt.Default.(func() time.Time)
 	// agentruleDescUpdatedAt is the schema descriptor for updated_at field.
-	agentruleDescUpdatedAt := agentruleFields[12].Descriptor()
+	agentruleDescUpdatedAt := agentruleFields[13].Descriptor()
 	// agentrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	agentrule.DefaultUpdatedAt = agentruleDescUpdatedAt.Default.(func() time.Time)
 	// agentrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
