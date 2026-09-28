@@ -6,7 +6,7 @@
 //   sound-enabled 事件与托盘/桌宠双向同步);
 // - models/mcp/kernel_env 走保存条:save_config 全量写回(表单外字段从载入
 //   配置透传),壳保存后重启引擎——重启过程由全局引擎横幅外显,这里不管。
-import { IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconPhoto, IconRotate, IconTrash, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
+import { IconPaw, IconAdjustmentsHorizontal, IconAlertTriangle, IconDice5, IconPhoto, IconRotate, IconTrash, IconWand, IconBrain, IconCheck, IconChevronDown, IconInfoCircle, IconServer, IconSparkles, IconTerminal2, IconUser, IconWorld, type TablerIcon } from "@tabler/icons-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { resolveShortcut } from "@/app/shortcuts";
@@ -59,6 +59,7 @@ import { useMcTransport } from "@/lib/mcTransport";
 import { baizhiStatus } from "@/lib/ipc/account";
 import { AccountSection, type SyncApplied } from "@/features/account/AccountSection";
 import { engineCaps } from "@/lib/ipc/approvals";
+import { PetSection } from "./PetSection";
 import { AboutSection } from "./AboutSection";
 import { BrowserSection } from "./BrowserSection";
 import { McpSection } from "./McpSection";
@@ -78,7 +79,7 @@ import {
   type SettingsDraft,
 } from "./settingsForm";
 
-export type SettingsSection = "general" | "account" | "models" | "mcp" | "skills" | "browser" | "env" | "about";
+export type SettingsSection = "pet" | "general" | "account" | "models" | "mcp" | "skills" | "browser" | "env" | "about";
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -849,6 +850,7 @@ function EnvSection({
 export interface SettingsViewHandle {
   /** 所有外部跳转都经这里请求关闭，避免绕过未保存修改确认。 */
   requestClose(afterApproved?: () => void): void;
+  openSection(section: SettingsSection): void;
 }
 
 const FOCUSABLE =
@@ -959,7 +961,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
       else closeButtonRef.current?.focus();
     });
   };
-  useImperativeHandle(ref, () => ({ requestClose }));
+  useImperativeHandle(ref, () => ({ requestClose, openSection: setSection }));
 
   const trapTab = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Tab") return;
@@ -1158,6 +1160,7 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
 
   const items: Array<{ id: SettingsSection; label: string; desc: string; icon: TablerIcon }> = [
     { id: "general", label: t("settings.nav.general"), desc: t("settings.desc.general"), icon: IconAdjustmentsHorizontal },
+    ...(inDesktopShell() ? [{ id: "pet" as const, label: t("settings.nav.pet"), desc: t("settings.desc.pet"), icon: IconPaw }] : []),
     { id: "account", label: t("settings.nav.account"), desc: t("settings.desc.account"), icon: IconUser },
     { id: "models", label: t("settings.nav.models"), desc: t("settings.desc.models"), icon: IconBrain },
     { id: "mcp", label: t("settings.nav.mcp"), desc: t("settings.desc.mcp"), icon: IconServer },
@@ -1185,6 +1188,8 @@ export const SettingsView = forwardRef<SettingsViewHandle, {
 
   const body = () => {
     switch (section) {
+      case "pet":
+        return <PetSection />;
       case "general":
         return <GeneralSection />;
       case "account":

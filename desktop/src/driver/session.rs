@@ -1197,29 +1197,8 @@ impl OhmyDriver {
                 .map(|(id, _)| id.clone())
                 .collect()
         };
-        let waiting: HashSet<String> = inner
-            .sess
-            .pending_perms
-            .lock_ok()
-            .values()
-            .cloned()
-            .chain(
-                inner
-                    .sess
-                    .pending_questions
-                    .lock_ok()
-                    .values()
-                    .map(|(s, _)| s.clone()),
-            )
-            .chain(
-                inner
-                    .sess
-                    .pending_design_selections
-                    .lock_ok()
-                    .keys()
-                    .cloned(),
-            )
-            .collect();
+        let interactions = inner.waiting_interactions();
+        let waiting: HashSet<String> = interactions.keys().cloned().collect();
         for e in entries {
             if !e.path().is_dir() {
                 continue;
@@ -1282,6 +1261,7 @@ impl OhmyDriver {
                             // time.Time 序列化对表);sidecar 内部存毫秒,输出时转换
                             "updated_at": crate::config::ms_to_rfc3339(updated),
                             "waiting_ask": waiting.contains(&id),
+                            "waiting_items": interactions.get(&id).cloned().unwrap_or_default(),
                         }),
                     ));
         }
@@ -5082,6 +5062,38 @@ impl Inner {
         );
     }
 
+    /// 快照与事件共用类型化等待投影，桌宠无需读取审批内容或聊天正文。
+    fn waiting_interactions(&self) -> HashMap<String, Vec<Value>> {
+        let mut result: HashMap<String, Vec<Value>> = HashMap::new();
+        for (id, sid) in self.sess.pending_perms.lock_ok().iter() {
+            result
+                .entry(sid.clone())
+                .or_default()
+                .push(json!({"id": id, "kind": "approval"}));
+        }
+        for (id, (sid, _)) in self.sess.pending_questions.lock_ok().iter() {
+            result
+                .entry(sid.clone())
+                .or_default()
+                .push(json!({"id": id, "kind": "question"}));
+        }
+        for (sid, pending) in self.sess.pending_design_selections.lock_ok().iter() {
+            result
+                .entry(sid.clone())
+                .or_default()
+                .push(json!({"id": pending.request_id, "kind": "design"}));
+        }
+        for items in result.values_mut() {
+            items.sort_by(|a, b| {
+                a["kind"]
+                    .as_str()
+                    .cmp(&b["kind"].as_str())
+                    .then(a["id"].as_str().cmp(&b["id"].as_str()))
+            });
+        }
+        result
+    }
+
     pub(super) fn emit_session_ask(&self, sid: &str, open: bool) {
         let title = self
             .sess
@@ -5090,28 +5102,12 @@ impl Inner {
             .get(sid)
             .map(|s| s.title.clone())
             .unwrap_or_default();
-        // 关闭一种交互卡不等于会话已无等待项；从三本 pending 重新投影。
-        let open = open
-            || self
-                .sess
-                .pending_perms
-                .lock_ok()
-                .values()
-                .any(|pending_sid| pending_sid == sid)
-            || self
-                .sess
-                .pending_questions
-                .lock_ok()
-                .values()
-                .any(|(pending_sid, _)| pending_sid == sid)
-            || self
-                .sess
-                .pending_design_selections
-                .lock_ok()
-                .contains_key(sid);
+        // 同一任务的其他等待项仍存在时，关闭一张卡不清掉剩余提醒。
+        let items = self.waiting_interactions().remove(sid).unwrap_or_default();
         self.app.emit_json(
             "session-event",
-            json!({ "type": "session-ask", "id": sid, "title": title, "open": open }),
+            json!({ "type": "session-ask", "id": sid, "title": title,
+                "open": open || !items.is_empty(), "waiting_items": items }),
         );
     }
 

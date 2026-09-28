@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::util::LockExt;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -37,7 +37,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
-const LOGICAL_H: f64 = 120.0;
+const LOGICAL_H: f64 = 164.0;
 const LOGICAL_SPRITE: f64 = 88.0;
 const SOURCE_FRAME: usize = 176;
 const FRAME_COUNT: usize = 52;
@@ -94,7 +94,10 @@ struct VisualState {
     target_session_id: Option<String>,
     since: Instant,
     generation: u64,
-    last_key: Option<(usize, u64, u32, u32)>,
+    pressed: bool,
+    bounce: u64,
+    bounce_since: Option<Instant>,
+    last_key: Option<(usize, u64, u32, u32, u64)>,
 }
 
 impl Default for VisualState {
@@ -106,6 +109,9 @@ impl Default for VisualState {
             target_session_id: None,
             since: Instant::now(),
             generation: 0,
+            pressed: false,
+            bounce: 0,
+            bounce_since: None,
             last_key: None,
         }
     }
@@ -117,6 +123,9 @@ struct MouseState {
     dragged: bool,
     cursor: POINT,
     origin: RECT,
+    on_bubble: bool,
+    target: Option<String>,
+    last_click: Option<(Instant, POINT)>,
 }
 
 struct NativePet {
@@ -281,35 +290,114 @@ pub fn position(app: &AppHandle) -> Option<(i32, i32)> {
 }
 
 /// 由隐藏 pet-service WebView 推送已聚合的视觉状态。
-pub fn update(app: &AppHandle, mode: &str, tone: &str, text: &str, session_id: Option<&str>) {
+pub fn update(app: &AppHandle, view: &crate::pet::View) {
     let pet = app.state::<NativePetHost>().get();
     let Some(pet) = pet else { return };
     {
         let mut visual = pet.visual.lock_ok();
-        visual.mode = match mode {
+        let next_mode = match view.state.as_str() {
             "idle" => Mode::Idle,
             "running" => Mode::Running,
             "waiting" => Mode::Waiting,
             "celebrate" => Mode::Celebrate,
             _ => Mode::Offline,
         };
-        visual.tone = match tone {
+        if visual.mode != next_mode {
+            visual.since = Instant::now();
+        }
+        visual.mode = next_mode;
+        visual.pressed = view.pressed;
+        if visual.bounce != view.bounce {
+            visual.bounce = view.bounce;
+            visual.bounce_since = Some(Instant::now());
+        }
+        visual.tone = match view.tone.as_str() {
             "ok" => Tone::Ok,
             "warn" => Tone::Warn,
             "err" => Tone::Error,
             _ => Tone::Normal,
         };
         // IPC 载荷受壳内页控制,仍在原生边界做长度上限。
-        visual.text = text.chars().take(80).collect();
-        visual.target_session_id = session_id
+        visual.text = view.text.chars().take(80).collect();
+        visual.target_session_id = Some(view.action.as_str())
             .map(str::trim)
             .filter(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
             .map(str::to_string);
-        visual.since = Instant::now();
         visual.generation = visual.generation.wrapping_add(1);
     }
     unsafe {
         let _ = PostMessageW(Some(pet.hwnd()), WM_RENDER, WPARAM(0), LPARAM(0));
+    }
+}
+
+pub fn set_geometry(
+    app: &AppHandle,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> Result<(), String> {
+    let Some(pet) = app.state::<NativePetHost>().get() else {
+        return Ok(());
+    };
+    app.run_on_main_thread(move || unsafe {
+        let _ = SetWindowPos(
+            pet.hwnd(),
+            None,
+            x,
+            y,
+            width,
+            height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// 原生桌宠没有 Tao 窗口，使用它自己的 HWND 承载菜单与焦点回收。
+pub fn popup_menu(app: &AppHandle, entries: &[crate::pet::MenuEntry]) {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, SetForegroundWindow,
+        TrackPopupMenu, MF_GRAYED, MF_SEPARATOR, MF_STRING, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+        WM_NULL,
+    };
+    let Some(pet) = app.state::<NativePetHost>().get() else {
+        return;
+    };
+    unsafe {
+        let Ok(menu) = CreatePopupMenu() else { return };
+        for (i, entry) in entries.iter().enumerate() {
+            let text: Vec<u16> = entry.label.encode_utf16().chain(Some(0)).collect();
+            let flags = if entry.id == "separator" {
+                MF_SEPARATOR
+            } else if entry.enabled {
+                MF_STRING
+            } else {
+                MF_STRING | MF_GRAYED
+            };
+            let _ = AppendMenuW(menu, flags, i + 1, PCWSTR(text.as_ptr()));
+        }
+        let mut cursor = POINT::default();
+        let _ = GetCursorPos(&mut cursor);
+        let _ = SetForegroundWindow(pet.hwnd());
+        let selected = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON,
+            cursor.x,
+            cursor.y,
+            Some(0),
+            pet.hwnd(),
+            None,
+        )
+        .0;
+        let _ = PostMessageW(Some(pet.hwnd()), WM_NULL, WPARAM(0), LPARAM(0));
+        let _ = DestroyMenu(menu);
+        if selected > 0 {
+            if let Some(entry) = entries.get(selected as usize - 1).filter(|e| e.enabled) {
+                crate::pet::menu_action(app, &entry.id);
+            }
+        }
     }
 }
 
@@ -346,20 +434,31 @@ impl NativePet {
         let width = (client.right - client.left).max(1) as u32;
         let height = (client.bottom - client.top).max(1) as u32;
 
-        let (frame, tone, text, mode) = {
+        let (frame, tone, text, mode, motion) = {
             let mut visual = self.visual.lock_ok();
             let frame = Self::frame_at(visual.mode, visual.since.elapsed());
-            let key = (frame, visual.generation, width, height);
+            let elapsed = visual
+                .bounce_since
+                .map(|at| at.elapsed().as_millis() as u64)
+                .unwrap_or(480);
+            let motion_frame = if !visual.pressed && elapsed < 480 {
+                elapsed / 40 + 1
+            } else {
+                0
+            };
+            let key = (frame, visual.generation, width, height, motion_frame);
             if !force && visual.last_key == Some(key) {
                 return Ok(());
             }
             visual.last_key = Some(key);
-            (frame, visual.tone, visual.text.clone(), visual.mode)
+            let motion = touch_scale(visual.pressed, elapsed);
+            (frame, visual.tone, visual.text.clone(), visual.mode, motion)
         };
 
-        self.render_frame(width, height, frame, mode, tone, &text)
+        self.render_frame(width, height, frame, mode, tone, &text, motion)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_frame(
         &self,
         width: u32,
@@ -368,12 +467,14 @@ impl NativePet {
         mode: Mode,
         tone: Tone,
         text: &str,
+        motion: (f64, f64),
     ) -> Result<(), String> {
         let mut pixels = vec![0u8; width as usize * height as usize * 4];
         let scale = (height as f64 / LOGICAL_H).max(0.5);
-        let sprite_size = (LOGICAL_SPRITE * scale).round().max(1.0) as u32;
-        let sprite_x = (width.saturating_sub(sprite_size) / 2) as i32;
-        let sprite_y = height.saturating_sub(sprite_size) as i32;
+        let sprite_w = (LOGICAL_SPRITE * scale * motion.0).round().max(1.0) as u32;
+        let sprite_h = (LOGICAL_SPRITE * scale * motion.1).round().max(1.0) as u32;
+        let sprite_x = (width.saturating_sub(sprite_w) / 2) as i32;
+        let sprite_y = height.saturating_sub(sprite_h) as i32;
         self.draw_sprite(
             &mut pixels,
             width,
@@ -382,7 +483,7 @@ impl NativePet {
             mode,
             sprite_x,
             sprite_y,
-            sprite_size,
+            (sprite_w, sprite_h),
         );
 
         let bubble = if text.is_empty() {
@@ -404,19 +505,19 @@ impl NativePet {
         mode: Mode,
         dx: i32,
         dy: i32,
-        size: u32,
+        size: (u32, u32),
     ) {
         let src = self.sprite.rgba();
         let src_w = self.sprite.width() as usize;
         let sx0 = frame * SOURCE_FRAME;
-        for y in 0..size {
-            let sy = ((y as usize * SOURCE_FRAME) / size as usize).min(SOURCE_FRAME - 1);
+        for y in 0..size.1 {
+            let sy = ((y as usize * SOURCE_FRAME) / size.1 as usize).min(SOURCE_FRAME - 1);
             let oy = dy + y as i32;
             if oy < 0 || oy >= dst_h as i32 {
                 continue;
             }
-            for x in 0..size {
-                let sx = ((x as usize * SOURCE_FRAME) / size as usize).min(SOURCE_FRAME - 1);
+            for x in 0..size.0 {
+                let sx = ((x as usize * SOURCE_FRAME) / size.0 as usize).min(SOURCE_FRAME - 1);
                 let ox = dx + x as i32;
                 if ox < 0 || ox >= dst_w as i32 {
                     continue;
@@ -550,15 +651,13 @@ fn draw_bubble(
     tone: Tone,
     text: &str,
 ) -> BubbleSpec {
-    let logical_text = text
-        .chars()
-        .map(|c| if c.is_ascii() { 6.0 } else { 11.0 })
-        .sum::<f64>();
-    let bubble_w = ((logical_text + 18.0).clamp(42.0, 112.0) * scale).round() as i32;
-    let bubble_h = (24.0 * scale).round().max(16.0) as i32;
+    let lines = text.lines().count().max(1);
+    let logical_text = text.lines().map(|line| line.chars().map(|c| if c.is_ascii() { 6.0 } else { 11.0 }).sum::<f64>()).fold(0.0, f64::max);
+    let bubble_w = ((logical_text + 18.0).clamp(42.0, 176.0) * scale).round() as i32;
+    let bubble_h = ((8.0 + 15.4 * lines as f64) * scale).round().max(16.0) as i32;
     let radius = (9.0 * scale).round().max(4.0) as i32;
     let left = ((width as i32 - bubble_w) / 2).max(0);
-    let top = 0;
+    let top = (height as f64 - 90.0 * scale - f64::from(bubble_h)).round().max(0.0) as i32;
     let right = (left + bubble_w).min(width as i32);
     let bottom = (top + bubble_h).min(height as i32);
     let (bg, fg) = match tone {
@@ -653,20 +752,43 @@ unsafe fn draw_bubble_text(dc: windows::Win32::Graphics::Gdi::HDC, bubble: &Bubb
     let old_font = SelectObject(dc, HGDIOBJ(font.0));
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, bubble.color);
-    let mut rect = bubble.rect;
-    let mut text = bubble.text.clone();
-    DrawTextW(
-        dc,
-        &mut text,
-        &mut rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
-    );
+    let text = String::from_utf16_lossy(&bubble.text);
+    let lines: Vec<_> = text.lines().collect();
+    let line_height = (bubble.rect.bottom - bubble.rect.top) / lines.len().max(1) as i32;
+    for (index, line) in lines.iter().enumerate() {
+        let mut rect = bubble.rect;
+        rect.top += index as i32 * line_height;
+        rect.bottom = rect.top + line_height;
+        let mut text: Vec<u16> = line.encode_utf16().collect();
+        DrawTextW(dc, &mut text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    }
     SelectObject(dc, old_font);
     let _ = DeleteObject(HGDIOBJ(font.0));
 }
 
 const fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
     COLORREF(r as u32 | ((g as u32) << 8) | ((b as u32) << 16))
+}
+
+fn touch_scale(pressed: bool, elapsed_ms: u64) -> (f64, f64) {
+    if pressed {
+        return (1.10, 0.84);
+    }
+    let t = elapsed_ms as f64 / 480.0;
+    let frames = [
+        (0.0, 1.10, 0.84),
+        (0.32, 0.96, 1.06),
+        (0.62, 1.025, 0.97),
+        (1.0, 1.0, 1.0),
+    ];
+    for pair in frames.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        if t < b.0 {
+            let progress = 1.0 - (1.0 - (t - a.0) / (b.0 - a.0)).powi(2);
+            return (a.1 + (b.1 - a.1) * progress, a.2 + (b.2 - a.2) * progress);
+        }
+    }
+    (1.0, 1.0)
 }
 
 unsafe extern "system" fn window_proc(
@@ -723,7 +845,18 @@ unsafe extern "system" fn window_proc(
                 mouse.dragged = false;
                 mouse.cursor = cursor;
                 mouse.origin = origin;
+                let visual = pet.visual.lock_ok();
+                let scale = (origin.bottom - origin.top) as f64 / LOGICAL_H;
+                mouse.on_bubble =
+                    !visual.text.is_empty() && f64::from(cursor.y - origin.top) < (LOGICAL_H - 88.0) * scale;
+                mouse.target = visual.target_session_id.clone();
+                let on_bubble = mouse.on_bubble;
+                drop(visual);
+                drop(mouse);
                 SetCapture(hwnd);
+                if !on_bubble {
+                    let _ = pet.app.emit_to("pet-service", "pet-touch", "press");
+                }
             }
             return LRESULT(0);
         }
@@ -737,21 +870,31 @@ unsafe extern "system" fn window_proc(
                 if GetCapture() != hwnd {
                     mouse.down = false;
                     mouse.dragged = false;
+                    mouse.last_click = None;
+                    drop(mouse);
+                    let _ = pet.app.emit_to("pet-service", "pet-touch", "cancel");
                     return LRESULT(0);
                 }
                 let mut cursor = POINT::default();
                 if windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor).is_ok() {
                     let dx = cursor.x - mouse.cursor.x;
                     let dy = cursor.y - mouse.cursor.y;
-                    if dx.abs() + dy.abs() > 4 {
+                    let first_drag = !mouse.dragged && dx.abs() + dy.abs() > 4;
+                    if first_drag {
                         mouse.dragged = true;
+                        mouse.last_click = None;
                     }
                     if mouse.dragged {
+                        let (x, y) = (mouse.origin.left + dx, mouse.origin.top + dy);
+                        drop(mouse);
+                        if first_drag {
+                            let _ = pet.app.emit_to("pet-service", "pet-touch", "cancel");
+                        }
                         let _ = SetWindowPos(
                             hwnd,
                             None,
-                            mouse.origin.left + dx,
-                            mouse.origin.top + dy,
+                            x,
+                            y,
                             0,
                             0,
                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
@@ -764,13 +907,43 @@ unsafe extern "system" fn window_proc(
         WM_LBUTTONUP => {
             let mut mouse = pet.mouse.lock_ok();
             let clicked = mouse.down && !mouse.dragged;
+            let dragged = mouse.dragged;
+            let on_bubble = mouse.on_bubble;
+            let target = mouse.target.clone();
+            let double = clicked
+                && !on_bubble
+                && mouse.last_click.is_some_and(|(at, point)| {
+                    at.elapsed().as_millis()
+                        <= u128::from(
+                            windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime(),
+                        )
+                        && (point.x - mouse.cursor.x).abs() + (point.y - mouse.cursor.y).abs() <= 8
+                });
+            mouse.last_click = if clicked && !on_bubble && !double {
+                Some((Instant::now(), mouse.cursor))
+            } else {
+                None
+            };
             mouse.down = false;
             let _ = ReleaseCapture();
             drop(mouse);
             if clicked {
-                let target = pet.visual.lock_ok().target_session_id.clone();
-                crate::show_main_session(&pet.app, target.as_deref());
+                if on_bubble {
+                    let _ = crate::pet::pet_activate(pet.app.clone(), target);
+                } else {
+                    let _ = pet.app.emit_to("pet-service", "pet-touch", "release");
+                    if double {
+                        let _ = pet.app.emit_to("pet-service", "pet-touch", "activate");
+                    }
+                }
+            } else if dragged {
+                let _ = crate::pet::pet_drag_finished(pet.app.clone());
             }
+            return LRESULT(0);
+        }
+        windows::Win32::UI::WindowsAndMessaging::WM_RBUTTONUP => {
+            let _ = pet.app.emit_to("pet-service", "pet-touch", "cancel");
+            let _ = crate::pet::pet_menu(pet.app.clone());
             return LRESULT(0);
         }
         WM_CAPTURECHANGED => {
@@ -782,8 +955,14 @@ unsafe extern "system" fn window_proc(
             // **同步**重入投递(文档明言自己 Release 也会收到),lock 会在
             // 同线程上自锁死;那条路径 down 已复位,跳过正确。
             if let Ok(mut mouse) = pet.mouse.try_lock() {
+                let cancelled = mouse.down;
                 mouse.down = false;
                 mouse.dragged = false;
+                if cancelled {
+                    mouse.last_click = None;
+                    drop(mouse);
+                    let _ = pet.app.emit_to("pet-service", "pet-touch", "cancel");
+                }
             }
             return LRESULT(0);
         }

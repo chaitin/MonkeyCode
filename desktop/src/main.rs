@@ -19,6 +19,8 @@ mod config;
 mod driver;
 #[cfg(target_os = "windows")]
 mod native_pet;
+mod pet;
+mod pet_audio;
 mod preview;
 mod repo;
 mod skill_import;
@@ -195,6 +197,7 @@ struct SoundEnabled(AtomicBool);
 /// 托盘的提示音勾选项。设置页切换时要把托盘勾选态改过来,否则两处显示会打架;
 /// 托盘创建失败(无托盘宿主)时为 None,设置页照常工作。
 struct TraySoundItem(Mutex<Option<CheckMenuItem<tauri::Wry>>>);
+struct TrayPetItem(Mutex<Option<CheckMenuItem<tauri::Wry>>>);
 
 /// 桌宠位置暂存:Moved 事件在拖动中高频触发,不能逐次写盘;
 /// 退出与托盘开关切换时经 persist_pet_prefs 落盘。
@@ -790,23 +793,6 @@ fn window_system_menu(window: tauri::WebviewWindow) {
     let _ = window;
 }
 
-/// Windows 隐藏状态页→原生 layered window 的视觉快照。
-/// 非 Windows 继续由 pet.html 自己渲染,命令保留为跨平台空操作,
-/// 使同一份内置页不需分叉打包。
-#[tauri::command]
-fn pet_native_render(
-    app: AppHandle,
-    state: String,
-    tone: String,
-    text: String,
-    session_id: Option<String>,
-) {
-    #[cfg(target_os = "windows")]
-    native_pet::update(&app, &state, &tone, &text, session_id.as_deref());
-    #[cfg(not(target_os = "windows"))]
-    let _ = (app, state, tone, text, session_id);
-}
-
 /// 枚举 WSL 发行版(设置视图"运行环境"下拉用)。
 /// 非 Windows、未装 WSL 或任何失败均返回空数组,UI 据此隐藏 WSL 选项。
 #[tauri::command]
@@ -1258,9 +1244,9 @@ fn persist_main_window_state(app: &AppHandle) {
 
 // ==================== 桌宠 ====================
 
-/// 桌宠窗口尺寸(逻辑像素):气泡(24)+ 吉祥物精灵图(88)的画布。
-const PET_W: f64 = 116.0;
-const PET_H: f64 = 120.0;
+/// 桌宠画布尺寸(逻辑像素):多行气泡 + 原始 88px 吉祥物。
+const PET_W: f64 = 180.0;
+const PET_H: f64 = 164.0;
 
 /// 创建非 Windows 桌宠窗口。先隐藏创建以避免定位前在屏幕角落闪现,
 /// 定位完成后按用户开关显示,不受主窗口焦点影响。
@@ -1274,13 +1260,13 @@ fn ensure_pet_window(app: &AppHandle) {
     let saved = *app.state::<PetPos>().0.lock_ok();
     let win = WebviewWindowBuilder::new(app, "pet", WebviewUrl::App("pet.html".into()))
         .title("MonkeyCode 桌宠")
-        .inner_size(PET_W, PET_H)
+        .inner_size(PET_W * pet::scale(app), PET_H * pet::scale(app))
         // GTK 的不可缩放窗口按内容自然尺寸布局,resize 与几何约束全被忽略,
         // 实测落在 WebView 默认的 200x200。Linux 改为保留 resizable,
-        // 用 min=max 几何约束钉死 116x120(用户与 WM 同样无法拉伸);
+        // 用 min=max 几何约束钉死画布尺寸（猴子仍为 88x88）(用户与 WM 同样无法拉伸);
         // mac 维持原状,约束只是兜底
-        .min_inner_size(PET_W, PET_H)
-        .max_inner_size(PET_W, PET_H)
+        .min_inner_size(PET_W * pet::scale(app), PET_H * pet::scale(app))
+        .max_inner_size(PET_W * pet::scale(app), PET_H * pet::scale(app))
         .transparent(true)
         .decorations(false)
         .always_on_top(true)
@@ -1376,8 +1362,8 @@ fn ensure_pet_window(app: &AppHandle) {
         app,
         position.x,
         position.y,
-        (PET_W * scale).round() as i32,
-        (PET_H * scale).round() as i32,
+        (PET_W * pet::scale(app) * scale).round() as i32,
+        (PET_H * pet::scale(app) * scale).round() as i32,
     ) {
         eprintln!("[desktop] Windows 原生桌宠初始化失败: {e}");
         return;
@@ -1430,8 +1416,8 @@ fn pet_position(app: &AppHandle, saved: Option<(i32, i32)>) -> tauri::PhysicalPo
             .iter()
             .any(|m| {
                 let (ax, ay, aw, ah) = monitor_usable_rect(m);
-                let w = (PET_W * m.scale_factor()).round() as i32;
-                let h = (PET_H * m.scale_factor()).round() as i32;
+                let w = (PET_W * pet::scale(app) * m.scale_factor()).round() as i32;
+                let h = (PET_H * pet::scale(app) * m.scale_factor()).round() as i32;
                 x >= ax && y >= ay && x + w <= ax + aw && y + h <= ay + ah
             });
         if fits {
@@ -1447,8 +1433,8 @@ fn pet_position(app: &AppHandle, saved: Option<(i32, i32)>) -> tauri::PhysicalPo
             (ax, ay, aw, ah, m.scale_factor())
         })
         .unwrap_or((0, 0, 1280, 744, 1.0));
-    let w = (PET_W * scale) as i32;
-    let h = (PET_H * scale) as i32;
+    let w = (PET_W * pet::scale(app) * scale) as i32;
+    let h = (PET_H * pet::scale(app) * scale) as i32;
     let margin = (24.0 * scale) as i32;
     tauri::PhysicalPosition::new(ax + aw - w - margin, ay + ah - h - margin)
 }
@@ -1580,6 +1566,8 @@ fn main() {
         .manage(PetEnabled(AtomicBool::new(true)))
         .manage(SoundEnabled(AtomicBool::new(true)))
         .manage(TraySoundItem(Mutex::new(None)))
+        .manage(TrayPetItem(Mutex::new(None)))
+        .manage(pet::PetState::default())
         .manage(PetPos(Mutex::new(None)))
         .manage(MainWindowRuntime(Mutex::new(None)))
         .manage(EngineApply(Mutex::new(())))
@@ -1597,7 +1585,22 @@ fn main() {
             show_main,
             open_devtools,
             window_system_menu,
-            pet_native_render,
+            pet::pet_native_render,
+            pet::pet_preferences,
+            pet::pet_account_changed,
+            pet::pet_set_preferences,
+            pet::pet_set_enabled,
+            pet::pet_preview_sound,
+            pet_audio::pet_audio_error,
+            pet_audio::pet_sound_list,
+            pet_audio::pet_sound_import,
+            pet_audio::pet_sound_read,
+            pet_audio::pet_sound_remove,
+            pet::pet_wallet,
+            pet::pet_activate,
+            pet::pet_menu,
+            pet::pet_drag_finished,
+            pet::pet_reset_position,
             sound_enabled,
             set_sound_enabled,
             update_check,
@@ -1757,6 +1760,12 @@ fn main() {
                 .0
                 .store(cfg.sound_enabled, Ordering::Relaxed);
             *app.state::<PetPos>().0.lock_ok() = cfg.pet_pos;
+            *app.state::<pet::PetState>().prefs.lock_ok() = cfg.pet_preferences.clone();
+            app.on_menu_event(|app, event| {
+                if let Some(id) = event.id.as_ref().strip_prefix("pet:") {
+                    pet::menu_action(app, id);
+                }
+            });
 
             // 托盘失败只降级(无托盘宿主的桌面环境),不阻塞
             if let Err(e) = setup_tray(app.handle(), cfg.pet_enabled, cfg.sound_enabled) {
@@ -1921,6 +1930,7 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri:
     )?;
     // 设置页切换时要回改这个勾选项(见 apply_sound_enabled)
     *app.state::<TraySoundItem>().0.lock_ok() = Some(sound.clone());
+    *app.state::<TrayPetItem>().0.lock_ok() = Some(pet.clone());
     // 重启引擎:引擎正常跑着时界面上原本没有任何入口(横幅只在崩溃/启动
     // 失败时才出),而「改了设置外的东西要重启才生效」的提示到处都在指它。
     // 托盘这一份还兼顾引擎卡死到 UI 都不响应的场景(2026-08-07 用户报障)
@@ -1960,11 +1970,9 @@ fn setup_tray(app: &AppHandle, pet_enabled: bool, sound_enabled: bool) -> tauri:
             // 立即更新可见性并落盘。
             "toggle-pet" => {
                 let enabled = !app.state::<PetEnabled>().0.load(Ordering::Relaxed);
-                app.state::<PetEnabled>()
-                    .0
-                    .store(enabled, Ordering::Relaxed);
-                persist_pet_prefs(app);
-                set_pet_visible(app, enabled);
+                if let Err(error) = pet::pet_set_enabled(app.clone(), enabled) {
+                    eprintln!("[pet] 更新显示开关失败: {error}");
+                }
             }
             // 提示音开关:CheckMenuItem 已自翻勾选态,apply 里的 set_checked 是
             // 幂等回写(设置页那条路径才真正需要它)
