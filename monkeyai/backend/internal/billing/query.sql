@@ -485,7 +485,9 @@ WHERE
 SELECT
     status,
     MODE,
-    category
+    category,
+    usage,
+    request_id
 FROM
     billing_transactions
 WHERE
@@ -756,18 +758,6 @@ WHERE
     user_id = $1
     AND category = $2
     AND idempotency_key = $3;
-
--- name: HasExceededReservation :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            billing_transactions
-        WHERE
-            user_id = $1
-            AND status = 'unknown'
-            AND error_code = 'reservation_exceeded');
 
 -- name: SessionOwned :one
 SELECT
