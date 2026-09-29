@@ -15,6 +15,7 @@ export const CONSOLE_ROUTES = {
   billingDetails: "/console/billing/details",
   billingSettings: "/console/billing/settings",
   membersAndGroups: "/console/settings/members",
+  feedback: "/console/settings/feedback",
   operationLogs: "/console/settings/operation-logs",
   otherSettings: "/console/settings/other",
 } as const
@@ -112,6 +113,13 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.membersAndGroups,
     titleKey: "pages.membersAndGroups.title",
     descriptionKey: "pages.membersAndGroups.description",
+  },
+  {
+    path: CONSOLE_ROUTES.feedback,
+    sectionKey: "sections.systemSettings",
+    sectionPath: CONSOLE_ROUTES.membersAndGroups,
+    titleKey: "pages.feedback.title",
+    descriptionKey: "pages.feedback.description",
   },
   {
     path: CONSOLE_ROUTES.operationLogs,

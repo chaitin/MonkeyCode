@@ -16,6 +16,7 @@ import { ConsolePage } from "@/pages/console-page"
 import { BillingDetailsPage } from "@/pages/billing-details-page"
 import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
+import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LoginPage } from "@/pages/login-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
@@ -129,6 +130,8 @@ export function App() {
                     <BillingSettingsPage />
                   ) : page.path === CONSOLE_ROUTES.membersAndGroups ? (
                     <MembersAndGroupsPage />
+                  ) : page.path === CONSOLE_ROUTES.feedback ? (
+                    <FeedbackPage />
                   ) : page.path === CONSOLE_ROUTES.operationLogs ? (
                     <OperationLogsPage />
                   ) : page.path === CONSOLE_ROUTES.otherSettings ? (
