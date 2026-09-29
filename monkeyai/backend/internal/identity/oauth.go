@@ -295,6 +295,8 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 			code = "seats_exceeded"
 		case errors.Is(err, member.ErrSeatsUnavailable):
 			code = "seats_unavailable"
+		case errors.Is(err, member.ErrWriterUnavailable):
+			code = "member_writer_unavailable"
 		}
 		http.Redirect(w, r, s.upstreamResultURL(state, code), http.StatusFound)
 		return

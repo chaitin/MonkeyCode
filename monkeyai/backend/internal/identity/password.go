@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -53,45 +52,7 @@ func generatePassword() (string, error) {
 }
 
 func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password string) error {
-	if s.writer != nil {
-		return s.writer.EnsureInitialAdmin(ctx, member.InitialAdmin{Name: name, Email: email, Password: password})
-	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚初始化管理员事务失败", "error", err)
-		}
-	}()
-	if _, err := sqlc.New(tx).LockInitialAdmin(ctx); err != nil {
-		return err
-	}
-	var count int
-	record, err := sqlc.New(tx).CountUsers(ctx)
-	if err != nil {
-		return err
-	}
-	count = int(record)
-
-	if count > 0 {
-		return tx.Commit(ctx)
-	}
-	email = strings.ToLower(strings.TrimSpace(email))
-	name = strings.TrimSpace(name)
-	if name == "" || !validEmail(email) || len(password) < 12 {
-		return errors.New("用户表为空，必须配置有效的首次管理员姓名、邮箱和密码")
-	}
-	hash, err := hashPassword(password)
-	if err != nil {
-		return err
-	}
-	_, err = sqlc.New(tx).CreateInitialAdmin(ctx, sqlc.CreateInitialAdminParams{Name: name, Email: email, PasswordHash: new(hash)})
-	if err != nil {
-		return fmt.Errorf("创建首次管理员: %w", err)
-	}
-	return tx.Commit(ctx)
+	return s.writer.EnsureInitialAdmin(ctx, member.InitialAdmin{Name: name, Email: email, Password: password})
 }
 
 func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
@@ -140,12 +101,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method string) {
-	var err error
-	if s.writer != nil {
-		err = s.writer.TouchLogin(r.Context(), user.ID)
-	} else {
-		_, err = sqlc.New(s.db).TouchLogin(r.Context(), user.ID)
-	}
+	err := s.writer.TouchLogin(r.Context(), user.ID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "更新登录时间失败", "user_id", user.ID, "error", err)
 		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")

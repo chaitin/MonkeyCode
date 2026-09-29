@@ -114,6 +114,9 @@ type AccountPreserver interface {
 func (s *Service) WithAccountPreserver(p AccountPreserver) *Service { s.accounts = p; return s }
 
 func (s *Service) WithUserWriter(writer member.UserWriter) *Service {
+	if writer == nil {
+		writer = member.EmptyUserWriter{}
+	}
 	s.writer = writer
 	return s
 }
@@ -148,6 +151,7 @@ func NewService(db *pgxpool.Pool, settings SettingReader, publicURL string) *Ser
 		codeTTL:      2 * time.Minute,
 		accessTTL:    time.Hour,
 		refreshTTL:   30 * 24 * time.Hour,
+		writer:       member.EmptyUserWriter{},
 	}
 }
 

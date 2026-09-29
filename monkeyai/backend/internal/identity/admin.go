@@ -68,8 +68,8 @@ func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		case errors.Is(err, member.ErrSeatsExceeded):
 			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
-		case errors.Is(err, member.ErrSeatsUnavailable):
-			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", "成员席位授权不可用")
+		case errors.Is(err, member.ErrSeatsUnavailable), errors.Is(err, member.ErrWriterUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 		default:
 			slog.ErrorContext(r.Context(), "更新用户失败", "user_id", chi.URLParam(r, "userID"), "error", err)
 			writeError(w, http.StatusInternalServerError, "server_error", "更新用户失败")
@@ -116,14 +116,14 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
 		return
 	}
-	if s.writer != nil {
-		err = s.writer.ResetUserPassword(ctx, tx, user.ID, hash)
-	} else {
-		_, err = q.ResetUserPassword(ctx, sqlc.ResetUserPasswordParams{ID: user.ID, PasswordHash: &hash})
-	}
+	err = s.writer.ResetUserPassword(ctx, tx, user.ID, hash)
 	if err != nil {
-		slog.ErrorContext(ctx, "更新用户密码失败", "user_id", user.ID, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
+		if errors.Is(err, member.ErrWriterUnavailable) {
+			writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
+		} else {
+			slog.ErrorContext(ctx, "更新用户密码失败", "user_id", user.ID, "error", err)
+			writeError(w, http.StatusInternalServerError, "server_error", "重置密码失败")
+		}
 		return
 	}
 	if err := revokePasswordAccess(ctx, q, user.ID, user.Email); err != nil {
@@ -167,39 +167,23 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	var passwordHash *string
-	if input.Role == "admin" {
-		if len(input.Password) < 12 {
-			writeError(w, http.StatusBadRequest, "invalid_request", "管理员密码不能少于 12 个字符")
-			return
-		}
-		hash, err := hashPassword(input.Password)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "server_error", "创建用户失败")
-			return
-		}
-		passwordHash = &hash
+	if input.Role == "admin" && len(input.Password) < 12 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "管理员密码不能少于 12 个字符")
+		return
 	}
 	actor, _ := UserFromContext(r.Context())
-	var user User
-	if s.writer != nil {
-		result, writeErr := s.writer.CreateUser(r.Context(), member.CreateUser{
-			ActorID: actor.ID, Name: input.Name, Email: input.Email,
-			Role: input.Role, Password: input.Password, GroupIDs: groupIDs,
-		})
-		user, err = userFromMember(result), writeErr
-	} else {
-		user, err = s.insertUserWithGroups(r.Context(), actor.ID, sqlc.CreateUserParams{
-			Name: input.Name, Email: input.Email, Role: input.Role, PasswordHash: passwordHash,
-		}, groupIDs)
-	}
+	result, writeErr := s.writer.CreateUser(r.Context(), member.CreateUser{
+		ActorID: actor.ID, Name: input.Name, Email: input.Email,
+		Role: input.Role, Password: input.Password, GroupIDs: groupIDs,
+	})
+	user, err := userFromMember(result), writeErr
 	if err != nil {
 		var dbError *pgconn.PgError
 		switch {
 		case errors.Is(err, member.ErrSeatsExceeded):
 			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
-		case errors.Is(err, member.ErrSeatsUnavailable):
-			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", "成员席位授权不可用")
+		case errors.Is(err, member.ErrSeatsUnavailable), errors.Is(err, member.ErrWriterUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 		case errors.Is(err, errCreationGroupUnavailable), errors.Is(err, member.ErrGroupUnavailable):
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		case errors.As(err, &dbError) && dbError.Code == "23505" && dbError.ConstraintName == "users_email_active_key":

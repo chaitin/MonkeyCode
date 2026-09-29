@@ -59,7 +59,9 @@ type AdminRegistrar interface {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
-	return newApp(ctx, cfg, logger, nil, nil)
+	return newApp(ctx, cfg, logger, func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error) {
+		return member.EmptyUserWriter{}, member.EmptyGroupWriter{}, nil
+	}, nil)
 }
 
 func NewWithMembers(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) (*App, error) {
@@ -140,10 +142,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter, registrars []AdminRegistrar) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
-	if users != nil {
-		identities.WithUserWriter(users)
-	}
-	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
+	identities.WithUserWriter(users)
+	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
 	charges := billing.NewService(pool)
@@ -196,10 +196,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}))
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
-	groupService := group.NewService(pool).WithAccountPreserver(charges)
-	if groups != nil {
-		groupService.WithMemberWriter(groups)
-	}
+	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
 	groupService.RegisterAdmin(admin)
 	for _, registrar := range registrars {
 		if registrar != nil {

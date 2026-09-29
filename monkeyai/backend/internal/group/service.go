@@ -43,6 +43,9 @@ type Service struct {
 }
 
 func (s *Service) WithMemberWriter(writer member.GroupWriter) *Service {
+	if writer == nil {
+		writer = member.EmptyGroupWriter{}
+	}
 	s.members = writer
 	return s
 }
@@ -52,7 +55,9 @@ func (s *Service) WithAccountPreserver(accounts AccountPreserver) *Service {
 	return s
 }
 
-func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func NewService(pool *pgxpool.Pool) *Service {
+	return &Service{pool: pool, members: member.EmptyGroupWriter{}}
+}
 
 func present(group Group) Group {
 	group.ParentID = rootgroup.ParentID(group.ParentID)
@@ -227,14 +232,7 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 	if count != len(ids) {
 		return Group{}, resource.Invalid("所选成员不存在或已删除")
 	}
-	if s.members != nil {
-		err = s.members.SetMembers(ctx, tx, member.GroupMembers{ActorID: actor, GroupID: id, UserIDs: ids})
-	} else {
-		_, err = sqlc.New(tx).RemoveMembers(ctx, sqlc.RemoveMembersParams{GroupID: id, UserIds: ids})
-		if err == nil {
-			_, err = sqlc.New(tx).AddMembers(ctx, sqlc.AddMembersParams{GroupID: id, UserIds: ids, AssignedByUserID: actor})
-		}
-	}
+	err = s.members.SetMembers(ctx, tx, member.GroupMembers{ActorID: actor, GroupID: id, UserIDs: ids})
 	if err != nil {
 		return Group{}, err
 	}
@@ -273,11 +271,7 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 	if _, err = sqlc.New(tx).DeleteGroup(ctx, id); err != nil {
 		return err
 	}
-	if s.members != nil {
-		err = s.members.RemoveAllMembers(ctx, tx, id)
-	} else {
-		_, err = sqlc.New(tx).RemoveAllMembers(ctx, id)
-	}
+	err = s.members.RemoveAllMembers(ctx, tx, id)
 	if err != nil {
 		return err
 	}

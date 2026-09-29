@@ -197,23 +197,8 @@ func moveMembers(ctx context.Context, tx pgx.Tx, writer member.GroupWriter, acto
 			changed[*target] = true
 		}
 	}
-	if writer != nil {
-		if err := writer.MoveMembers(ctx, tx, input); err != nil {
-			return err
-		}
-	} else {
-		for _, entry := range members {
-			if entry.SourceGroupID != nil && *entry.SourceGroupID != rootgroup.ID {
-				if _, err := queries.RemoveMember(ctx, sqlc.RemoveMemberParams{GroupID: *entry.SourceGroupID, UserID: entry.ID}); err != nil {
-					return err
-				}
-			}
-			if target != nil {
-				if _, err := queries.AddMember(ctx, sqlc.AddMemberParams{GroupID: *target, UserID: entry.ID, AssignedByUserID: actor}); err != nil {
-					return err
-				}
-			}
-		}
+	if err := writer.MoveMembers(ctx, tx, input); err != nil {
+		return err
 	}
 	for id := range changed {
 		if _, err := queries.TouchGroup(ctx, id); err != nil {
