@@ -114,6 +114,8 @@ pub struct DesktopConfig {
     /// 桌宠窗口位置(物理像素;拖动后记忆)
     #[serde(default)]
     pub pet_pos: Option<(i32, i32)>,
+    #[serde(default)]
+    pub pet_preferences: crate::pet::Preferences,
     /// 主窗口正常态的位置、大小与最大化状态。
     #[serde(default)]
     pub main_window_state: Option<MainWindowState>,
@@ -139,6 +141,7 @@ impl Default for DesktopConfig {
             pet_enabled: true,
             sound_enabled: true,
             pet_pos: None,
+            pet_preferences: crate::pet::Preferences::default(),
             main_window_state: None,
             telemetry_enabled: true,
         }
@@ -548,6 +551,7 @@ fn merge_shell_prefs(incoming: DesktopConfig, disk: &DesktopConfig) -> DesktopCo
         pet_enabled: disk.pet_enabled,
         sound_enabled: disk.sound_enabled,
         pet_pos: disk.pet_pos,
+        pet_preferences: disk.pet_preferences.clone(),
         main_window_state: disk.main_window_state,
         telemetry_enabled: disk.telemetry_enabled,
         ..incoming
@@ -1126,6 +1130,11 @@ mod tests {
             pet_enabled: false,
             sound_enabled: false,
             pet_pos: Some((12, 34)),
+            pet_preferences: crate::pet::Preferences {
+                scale: 125,
+                quiet_enabled: true,
+                ..Default::default()
+            },
             main_window_state: Some(MainWindowState {
                 x: 56,
                 y: 78,
@@ -1152,6 +1161,7 @@ mod tests {
             "提示音开关同样不在表单里,必须保留关闭态"
         );
         assert_eq!(merged.pet_pos, Some((12, 34)));
+        assert_eq!(merged.pet_preferences, disk.pet_preferences);
         assert_eq!(merged.main_window_state, disk.main_window_state);
         assert_eq!(merged.kernel_env, "wsl:Ubuntu", "表单字段仍应生效");
     }
@@ -1163,6 +1173,7 @@ mod tests {
             serde_json::from_str(r#"{"models":[],"pet_enabled":false}"#).unwrap();
         assert!(cfg.telemetry_enabled);
         assert!(cfg.sound_enabled, "升级到带提示音开关的版本不该静音");
+        assert_eq!(cfg.pet_preferences, crate::pet::Preferences::default());
         assert!(!cfg.pet_enabled, "同一份 JSON 里显式给出的字段不受影响");
     }
 

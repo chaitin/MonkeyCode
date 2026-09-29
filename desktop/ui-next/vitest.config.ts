@@ -17,6 +17,7 @@ export default defineConfig({
           name: "unit",
           environment: "node",
           include: [
+            "tests/pet-*.test.mjs",
             "src/{lib,gen,app}/**/*.test.ts",
             "src/features/{chat/composer,cloud}/**/*.test.ts",
           ],

@@ -2550,3 +2550,30 @@ async fn wechat_start_guards() {
         .unwrap();
     assert!(err.contains("没有进行中的扫码会话"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pet_credits_use_full_transaction_pagination_not_free_tokens_or_topups() {
+    let fail = Arc::new(AtomicBool::new(false)); let flag = fail.clone();
+    let (url, _stop) = serve(Arc::new(move |req: Req| {
+        assert!(req.path.contains("start=100&end=200"));
+        if req.path.contains("page=1&") {
+            Resp::json(200, json!({"code":0,"data":{"page":{"has_next_page":true},"transactions":[
+                {"created_at":101,"kind":"model_consumption","amount":10000,"amount_balance":1500,"amount_daily":8500},
+                {"created_at":102,"kind":"top_up","amount_balance":900000},
+                {"created_at":99,"kind":"vm_consumption","amount_balance":7000}
+            ]}}))
+        } else if flag.load(Ordering::Relaxed) {
+            Resp::json(500, json!({"code":500,"message":"unavailable"}))
+        } else {
+            Resp::json(200, json!({"code":0,"data":{"page":{"has_next_page":false},"transactions":[
+                {"created_at":150,"kind":"mcp_tool_consumption","amount_balance":-250},
+                {"created_at":180,"kind":"model_consumption","amount_balance":0,"amount_daily":100000},
+                {"created_at":181,"kind":"violation_fine","amount_balance":50000}
+            ]}}))
+        }
+    }));
+    let svc = Service::test_service(Endpoints { account:url.clone(), model_gateway:url.clone(), mcp_gateway:url.clone(), monkeycode:url });
+    assert_eq!(super::monkeycode::mc_pet_used_credits(&svc, 100, 200).await.map_err(|e| e.msg()).unwrap(), 1.75);
+    fail.store(true, Ordering::Relaxed);
+    assert!(super::monkeycode::mc_pet_used_credits(&svc, 100, 200).await.is_err());
+}
