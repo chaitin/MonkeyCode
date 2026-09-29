@@ -53,7 +53,8 @@ services:
   backend:
     image: ${BACKEND_IMAGE:-monkeyai-backend:local}
     build:
-      context: ./backend
+      context: ../..
+      dockerfile: monkeyai/Dockerfile
     restart: unless-stopped
     init: true
     environment:
@@ -76,6 +77,12 @@ services:
       MONKEYAI_INITIAL_ADMIN_NAME: ${MONKEYAI_INITIAL_ADMIN_NAME:-MonkeyAI Admin}
       MONKEYAI_INITIAL_ADMIN_EMAIL: ${MONKEYAI_INITIAL_ADMIN_EMAIL:-}
       MONKEYAI_INITIAL_ADMIN_PASSWORD: ${MONKEYAI_INITIAL_ADMIN_PASSWORD:-}
+      MONKEYAI_LICENSE_PUBLIC_KEY: ${MONKEYAI_LICENSE_PUBLIC_KEY:-/app/license/public.key}
+      MONKEYAI_LICENSE_AES_KEY: ${MONKEYAI_LICENSE_AES_KEY:-/app/license/aes.key}
+      MONKEYAI_LICENSE_FILE: ${MONKEYAI_LICENSE_FILE:-/app/license/license.lic}
+      MONKEYAI_MACHINE_ID_FILE: ${MONKEYAI_MACHINE_ID_FILE:-/app/license/machine-id}
+    volumes:
+      - ./data/license:/app/license
     depends_on:
       rustfs:
         condition: service_healthy

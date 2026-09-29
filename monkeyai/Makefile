@@ -6,6 +6,7 @@ ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.6-acme0.4.1-r1
+PRIVATE_ROOT ?= ../..
 
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
@@ -24,10 +25,11 @@ image-admin:
 image-backend:
 	docker buildx build \
 	  --platform $(PLATFORM) \
+	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
 	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
-	  ./backend
+	  $(PRIVATE_ROOT)
 	@echo "Backend image: $(BACKEND_IMAGE)"
 
 image-migrate:
@@ -63,10 +65,11 @@ push-admin:
 push-backend:
 	docker buildx build \
 	  --platform $(PLATFORM) \
+	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
 	  --secret id=netrc,src=${HOME}/.netrc \
 	  --push \
-	  ./backend
+	  $(PRIVATE_ROOT)
 	@echo "Pushed: $(BACKEND_IMAGE)"
 
 push-migrate:
