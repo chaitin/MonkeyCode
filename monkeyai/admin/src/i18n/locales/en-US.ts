@@ -399,7 +399,7 @@ export const enUS = {
       kind: "Model type",
       textKind: "Large language model",
       imageKind: "Image generation",
-      imageProvider: "Image provider",
+      imageProvider: "Image protocol",
       testGeneration: "Test image generation",
       testGenerationWarning:
         "Testing incurs upstream costs and may charge credits. Use an invocation key authorized for this model.",

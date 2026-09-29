@@ -277,7 +277,7 @@ export const frFR = {
       kind: "Type de modèle",
       textKind: "Grand modèle de langage",
       imageKind: "Génération d’images",
-      imageProvider: "Fournisseur d’images",
+      imageProvider: "Protocole de génération d’images",
       imageCapabilitiesUnavailable:
         "Impossible de charger les options de ce fournisseur.",
       selectAllSupported: "Tout sélectionner",

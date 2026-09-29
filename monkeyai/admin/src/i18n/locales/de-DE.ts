@@ -277,7 +277,7 @@ export const deDE = {
       kind: "Modelltyp",
       textKind: "Großes Sprachmodell",
       imageKind: "Bildgenerierung",
-      imageProvider: "Bildanbieter",
+      imageProvider: "Bildgenerierungsprotokoll",
       imageCapabilitiesUnavailable:
         "Bildoptionen für diesen Anbieter konnten nicht geladen werden.",
       selectAllSupported: "Alle unterstützten auswählen",

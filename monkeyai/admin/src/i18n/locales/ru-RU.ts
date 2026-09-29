@@ -275,7 +275,7 @@ export const ruRU = {
       kind: "Тип модели",
       textKind: "Большая языковая модель",
       imageKind: "Генерация изображений",
-      imageProvider: "Поставщик изображений",
+      imageProvider: "Протокол генерации изображений",
       imageCapabilitiesUnavailable:
         "Не удалось загрузить параметры этого поставщика.",
       selectAllSupported: "Выбрать все поддерживаемые",

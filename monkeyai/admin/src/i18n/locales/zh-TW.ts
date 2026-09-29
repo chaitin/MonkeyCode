@@ -260,7 +260,7 @@ export const zhTW = {
       kind: "模型類型",
       textKind: "大型語言模型",
       imageKind: "生圖模型",
-      imageProvider: "生圖供應商",
+      imageProvider: "生圖協定",
       imageCapabilitiesUnavailable: "無法載入此供應商的畫質與比例選項。",
       selectAllSupported: "全選支援項目",
       imageQuality: "畫質檔位",

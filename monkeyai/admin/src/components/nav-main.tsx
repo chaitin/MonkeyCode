@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const mainItemClassName =
-  "h-10 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 data-active:bg-sidebar-accent data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground"
+  "h-10 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 data-active:bg-sidebar-accent data-active:font-normal data-active:text-sidebar-foreground/65 data-active:hover:bg-sidebar-accent data-active:hover:text-sidebar-foreground/85"
 
 export function NavMain({
   items,

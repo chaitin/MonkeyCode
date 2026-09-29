@@ -271,7 +271,7 @@ export const jaJP = {
       kind: "モデル種別",
       textKind: "大規模言語モデル",
       imageKind: "画像生成",
-      imageProvider: "画像プロバイダー",
+      imageProvider: "画像生成プロトコル",
       imageCapabilitiesUnavailable:
         "このプロバイダーの画像設定を読み込めませんでした。",
       selectAllSupported: "対応項目をすべて選択",

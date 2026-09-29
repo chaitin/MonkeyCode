@@ -276,7 +276,7 @@ export const es419 = {
       kind: "Tipo de modelo",
       textKind: "Modelo de lenguaje grande",
       imageKind: "Generación de imágenes",
-      imageProvider: "Proveedor de imágenes",
+      imageProvider: "Protocolo de generación de imágenes",
       imageCapabilitiesUnavailable:
         "No se pudieron cargar las opciones de este proveedor.",
       selectAllSupported: "Seleccionar compatibles",

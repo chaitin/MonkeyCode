@@ -268,7 +268,7 @@ export const ar = {
       kind: "نوع النموذج",
       textKind: "نموذج لغوي كبير",
       imageKind: "توليد الصور",
-      imageProvider: "مزود الصور",
+      imageProvider: "بروتوكول توليد الصور",
       imageCapabilitiesUnavailable: "تعذر تحميل خيارات الصور لهذا المزوّد.",
       selectAllSupported: "تحديد كل الخيارات المدعومة",
       imageQuality: "دقة الصورة",

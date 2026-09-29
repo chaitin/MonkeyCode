@@ -383,7 +383,7 @@ export const zhCN = {
       kind: "模型类型",
       textKind: "大语言模型",
       imageKind: "生图模型",
-      imageProvider: "生图供应商",
+      imageProvider: "生图协议",
       testGeneration: "测试生图",
       testGenerationWarning:
         "测试调用会产生上游费用并可能扣除积分；请使用拥有模型权限的调用密钥。",

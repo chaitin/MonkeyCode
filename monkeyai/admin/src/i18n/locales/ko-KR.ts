@@ -268,7 +268,7 @@ export const koKR = {
       kind: "모델 유형",
       textKind: "대규모 언어 모델",
       imageKind: "이미지 생성",
-      imageProvider: "이미지 공급자",
+      imageProvider: "이미지 생성 프로토콜",
       imageCapabilitiesUnavailable:
         "이 공급자의 이미지 옵션을 불러올 수 없습니다.",
       selectAllSupported: "지원 항목 모두 선택",
