@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -49,6 +50,7 @@ type App struct {
 	images          *imagegen.Service
 	inputs          *imagegen.Inputs
 	endpoints       *endpoint.Service
+	feedback        *feedback.Service
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -86,6 +88,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		images:          handler.(*applicationHandler).images,
 		inputs:          handler.(*applicationHandler).inputs,
 		endpoints:       handler.(*applicationHandler).endpoints,
+		feedback:        handler.(*applicationHandler).feedback,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -127,6 +130,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	if err != nil {
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
 	}
+	feedbacks := feedback.NewService(pool, storage)
 	imageRepo := imagegen.NewPostgres(pool)
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
 	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
@@ -171,6 +175,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	connectors.RegisterAdmin(admin)
 	experts.RegisterAdmin(admin)
 	resources.RegisterAdmin(admin)
+	feedbacks.RegisterAdmin(admin)
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
@@ -187,6 +192,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
 	charges.RegisterAgent(agent)
+	feedbacks.RegisterAgent(agent)
 
 	router := chi.NewRouter()
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges}).WithUsageRecorder(modelUsageRecorder{models: modelRepo})
@@ -211,7 +217,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
 }
 
 type modelResolver struct {
@@ -245,7 +251,16 @@ func (a *App) Run(ctx context.Context) error {
 	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
 	cleanupDone := make(chan struct{})
 	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
-	defer func() { stopWorker(); <-workerDone; <-observeDone; <-imageDone; <-cleanupDone }()
+	feedbackCleanupDone := make(chan struct{})
+	go func() { defer close(feedbackCleanupDone); _ = a.feedback.Run(workerCtx, time.Hour) }()
+	defer func() {
+		stopWorker()
+		<-workerDone
+		<-observeDone
+		<-imageDone
+		<-cleanupDone
+		<-feedbackCleanupDone
+	}()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {

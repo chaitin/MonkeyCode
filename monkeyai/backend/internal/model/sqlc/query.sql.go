@@ -17,7 +17,7 @@ INSERT INTO models (ownership_type, owner_user_id, model_id, display_name, proto
     advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing, enabled)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE)
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, kind, provider, provider_options, image_config, image_pricing, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
 `
 
 type CreateModelParams struct {
@@ -62,11 +62,6 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		&i.ModelID,
 		&i.DisplayName,
 		&i.Protocol,
-		&i.Kind,
-		&i.Provider,
-		&i.ProviderOptions,
-		&i.ImageConfig,
-		&i.ImagePricing,
 		&i.BaseUrl,
 		&i.ApiKey,
 		&i.AdvancedConfig,
@@ -75,6 +70,11 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Kind,
+		&i.Provider,
+		&i.ProviderOptions,
+		&i.ImageConfig,
+		&i.ImagePricing,
 	)
 	return i, err
 }
@@ -116,7 +116,7 @@ func (q *Queries) DeleteModel(ctx context.Context, arg DeleteModelParams) (pgcon
 
 const getModel = `-- name: GetModel :one
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, kind, provider, provider_options, image_config, image_pricing, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
 FROM
     models
 WHERE
@@ -134,11 +134,6 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Model, error) {
 		&i.ModelID,
 		&i.DisplayName,
 		&i.Protocol,
-		&i.Kind,
-		&i.Provider,
-		&i.ProviderOptions,
-		&i.ImageConfig,
-		&i.ImagePricing,
 		&i.BaseUrl,
 		&i.ApiKey,
 		&i.AdvancedConfig,
@@ -147,6 +142,11 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Model, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Kind,
+		&i.Provider,
+		&i.ProviderOptions,
+		&i.ImageConfig,
+		&i.ImagePricing,
 	)
 	return i, err
 }
@@ -225,7 +225,7 @@ WITH RECURSIVE user_groups (
             AND g.deleted_at IS NULL
 )
 SELECT
-    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at
+    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing
 FROM
     models m
 WHERE
@@ -279,11 +279,6 @@ func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([
 			&i.ModelID,
 			&i.DisplayName,
 			&i.Protocol,
-			&i.Kind,
-			&i.Provider,
-			&i.ProviderOptions,
-			&i.ImageConfig,
-			&i.ImagePricing,
 			&i.BaseUrl,
 			&i.ApiKey,
 			&i.AdvancedConfig,
@@ -292,6 +287,11 @@ func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Kind,
+			&i.Provider,
+			&i.ProviderOptions,
+			&i.ImageConfig,
+			&i.ImagePricing,
 		); err != nil {
 			return nil, err
 		}
@@ -393,7 +393,7 @@ func (q *Queries) ListGroups(ctx context.Context) ([]ListGroupsRow, error) {
 
 const listModels = `-- name: ListModels :many
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, kind, provider, provider_options, image_config, image_pricing, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
 FROM
     models
 WHERE
@@ -420,11 +420,6 @@ func (q *Queries) ListModels(ctx context.Context, dollar_1 string) ([]Model, err
 			&i.ModelID,
 			&i.DisplayName,
 			&i.Protocol,
-			&i.Kind,
-			&i.Provider,
-			&i.ProviderOptions,
-			&i.ImageConfig,
-			&i.ImagePricing,
 			&i.BaseUrl,
 			&i.ApiKey,
 			&i.AdvancedConfig,
@@ -433,6 +428,11 @@ func (q *Queries) ListModels(ctx context.Context, dollar_1 string) ([]Model, err
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Kind,
+			&i.Provider,
+			&i.ProviderOptions,
+			&i.ImageConfig,
+			&i.ImagePricing,
 		); err != nil {
 			return nil, err
 		}
@@ -641,7 +641,7 @@ WITH RECURSIVE user_groups(group_id) AS (
     JOIN groups parent ON parent.id = g.parent_id
     WHERE parent.deleted_at IS NULL AND g.deleted_at IS NULL
 )
-SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at
+SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing
 FROM models m
 JOIN users u ON u.id = $1
 WHERE (m.model_id || '@' || m.id::text = $2::text
@@ -680,11 +680,6 @@ func (q *Queries) ResolveModel(ctx context.Context, arg ResolveModelParams) (Mod
 		&i.ModelID,
 		&i.DisplayName,
 		&i.Protocol,
-		&i.Kind,
-		&i.Provider,
-		&i.ProviderOptions,
-		&i.ImageConfig,
-		&i.ImagePricing,
 		&i.BaseUrl,
 		&i.ApiKey,
 		&i.AdvancedConfig,
@@ -693,6 +688,11 @@ func (q *Queries) ResolveModel(ctx context.Context, arg ResolveModelParams) (Mod
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Kind,
+		&i.Provider,
+		&i.ProviderOptions,
+		&i.ImageConfig,
+		&i.ImagePricing,
 	)
 	return i, err
 }
@@ -708,7 +708,7 @@ WHERE
     AND ownership_type = 'system'
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, kind, provider, provider_options, image_config, image_pricing, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
 `
 
 type SetEnabledParams struct {
@@ -726,11 +726,6 @@ func (q *Queries) SetEnabled(ctx context.Context, arg SetEnabledParams) (Model, 
 		&i.ModelID,
 		&i.DisplayName,
 		&i.Protocol,
-		&i.Kind,
-		&i.Provider,
-		&i.ProviderOptions,
-		&i.ImageConfig,
-		&i.ImagePricing,
 		&i.BaseUrl,
 		&i.ApiKey,
 		&i.AdvancedConfig,
@@ -739,6 +734,11 @@ func (q *Queries) SetEnabled(ctx context.Context, arg SetEnabledParams) (Model, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Kind,
+		&i.Provider,
+		&i.ProviderOptions,
+		&i.ImageConfig,
+		&i.ImagePricing,
 	)
 	return i, err
 }
@@ -779,7 +779,7 @@ WHERE
     AND owner_user_id = $10
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, kind, provider, provider_options, image_config, image_pricing, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
 `
 
 type UpdateModelParams struct {
@@ -826,11 +826,6 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		&i.ModelID,
 		&i.DisplayName,
 		&i.Protocol,
-		&i.Kind,
-		&i.Provider,
-		&i.ProviderOptions,
-		&i.ImageConfig,
-		&i.ImagePricing,
 		&i.BaseUrl,
 		&i.ApiKey,
 		&i.AdvancedConfig,
@@ -839,6 +834,11 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.Kind,
+		&i.Provider,
+		&i.ProviderOptions,
+		&i.ImageConfig,
+		&i.ImagePricing,
 	)
 	return i, err
 }

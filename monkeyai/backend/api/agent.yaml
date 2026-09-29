@@ -2792,6 +2792,41 @@ paths:
             image/webp: {schema: {type: string, format: binary}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/v1/feedback:
+    post:
+      summary: 提交用户反馈
+      description: >-
+        使用 Agent OAuth access token 提交文字反馈和可选截图。请求使用 multipart/form-data，最多上传 3 张
+        PNG、JPEG 或 WebP 图片，单张最多 5 MiB，总请求最多 16 MiB。content 和 images 至少提供一项。
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 建议客户端为可重试请求提供；同一用户相同 Key 和请求内容只创建一条反馈。
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FeedbackMultipartInput'
+      responses:
+        '201':
+          description: 反馈已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmission'
+        '200':
+          description: 幂等键命中已有反馈
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmission'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
 components:
   securitySchemes:
     ModelInvocationKey:
@@ -2992,6 +3027,59 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    FeedbackMultipartInput:
+      type: object
+      additionalProperties: false
+      required: [category]
+      properties:
+        category:
+          type: string
+          enum: [bug, feature, experience, other]
+        content:
+          type: string
+          maxLength: 5000
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        platform:
+          type: string
+          enum: [desktop, mobile, web, other]
+          default: other
+        client_version:
+          type: string
+          maxLength: 64
+        images:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            format: binary
+          description: PNG、JPEG 或 WebP 图片；单张最多 5 MiB。
+    FeedbackSubmission:
+      type: object
+      additionalProperties: false
+      required: [id, created_at, attachments]
+      properties:
+        id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackAttachment'
+    FeedbackAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, mime_type, byte_size, width, height, downloadable]
+      properties:
+        id: {type: string, format: uuid}
+        mime_type:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        byte_size: {type: integer, format: int64, minimum: 1}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        downloadable: {type: boolean}
     Endpoint:
       type: object
       required: [machine_id, device_name, alias, display_name, platform, os_version, arch, client_version, protocol_version, status, online, created_at, updated_at, last_seen_at, revoked_at]
