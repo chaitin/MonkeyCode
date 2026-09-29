@@ -12,6 +12,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +39,15 @@ type AccountPreserver interface {
 type Service struct {
 	pool     *pgxpool.Pool
 	accounts AccountPreserver
+	members  member.GroupWriter
+}
+
+func (s *Service) WithMemberWriter(writer member.GroupWriter) *Service {
+	if writer == nil {
+		writer = member.EmptyGroupWriter{}
+	}
+	s.members = writer
+	return s
 }
 
 func (s *Service) WithAccountPreserver(accounts AccountPreserver) *Service {
@@ -45,7 +55,9 @@ func (s *Service) WithAccountPreserver(accounts AccountPreserver) *Service {
 	return s
 }
 
-func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func NewService(pool *pgxpool.Pool) *Service {
+	return &Service{pool: pool, members: member.EmptyGroupWriter{}}
+}
 
 func present(group Group) Group {
 	group.ParentID = rootgroup.ParentID(group.ParentID)
@@ -220,10 +232,8 @@ func (s *Service) SetMembers(ctx context.Context, actor, id string, ids []string
 	if count != len(ids) {
 		return Group{}, resource.Invalid("所选成员不存在或已删除")
 	}
-	if _, err = sqlc.New(tx).RemoveMembers(ctx, sqlc.RemoveMembersParams{GroupID: id, UserIds: ids}); err != nil {
-		return Group{}, err
-	}
-	if _, err = sqlc.New(tx).AddMembers(ctx, sqlc.AddMembersParams{GroupID: id, UserIds: ids, AssignedByUserID: actor}); err != nil {
+	err = s.members.SetMembers(ctx, tx, member.GroupMembers{ActorID: actor, GroupID: id, UserIDs: ids})
+	if err != nil {
 		return Group{}, err
 	}
 	if _, err = sqlc.New(tx).TouchGroup(ctx, id); err != nil {
@@ -261,7 +271,8 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 	if _, err = sqlc.New(tx).DeleteGroup(ctx, id); err != nil {
 		return err
 	}
-	if _, err = sqlc.New(tx).RemoveAllMembers(ctx, id); err != nil {
+	err = s.members.RemoveAllMembers(ctx, tx, id)
+	if err != nil {
 		return err
 	}
 	if _, err = sqlc.New(tx).DeleteGrants(ctx, new(id)); err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -215,16 +216,6 @@ func (s *Service) listUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-func (s *Service) insertUser(ctx context.Context, name, email, role, passwordHash string) (User, error) {
-	var password *string
-	if passwordHash != "" {
-		password = new(passwordHash)
-	}
-
-	row, queryErr := sqlc.New(s.db).CreateUser(ctx, sqlc.CreateUserParams{Name: name, Email: email, Role: role, PasswordHash: password})
-	return User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}, queryErr
-}
-
 func (s *Service) userByID(ctx context.Context, id string) (User, error) {
 	row, queryErr := sqlc.New(s.db).GetUser(ctx, id)
 	return User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}, queryErr
@@ -245,12 +236,8 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 			return User{}, err
 		}
 	}
-	var disabledAt *time.Time
-	if status == "disabled" {
-		disabledAt = new(s.now())
-	}
-	row, err := sqlc.New(tx).UpdateUser(ctx, sqlc.UpdateUserParams{ID: id, Name: name, Role: role, Status: status, DisabledAt: disabledAt, PasswordHash: passwordHash})
-	user := User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
+	result, err := s.writer.UpdateUser(ctx, tx, member.UpdateUser{ID: id, Name: name, Role: role, Status: status, PasswordHash: passwordHash})
+	user := userFromMember(result)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -261,110 +248,12 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 }
 
 func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, adminOnly, autoRegistrationEnabled bool) (User, error) {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return User{}, err
-	}
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚上游身份事务失败", "provider", profile.Provider, "error", err)
-		}
-	}()
-
-	identityRow, err := sqlc.New(tx).GetIdentityUser(ctx, sqlc.GetIdentityUserParams{Provider: profile.Provider, Issuer: profile.Issuer, ProviderSubject: profile.Subject})
-	user := User{ID: identityRow.ID, Name: identityRow.Name, Email: identityRow.Email, AvatarURL: identityRow.AvatarUrl, Role: identityRow.Role, Status: identityRow.Status, JoinedAt: identityRow.JoinedAt, LastLoginAt: identityRow.LastLoginAt}
-	if err == nil {
-		if err := validateUpstreamUser(user, adminOnly); err != nil {
-			return User{}, err
-		}
-
-		if profile.Provider == "baizhiyun" && profile.Email != "" {
-			if err := sqlc.New(tx).UpdateBaizhiyunEmail(ctx, sqlc.UpdateBaizhiyunEmailParams{UserID: user.ID, Issuer: profile.Issuer, ProviderSubject: profile.Subject, Email: profile.Email}); err != nil {
-				return User{}, err
-			}
-		}
-
-		var record sqlc.UpdateIdentityUserRow
-		record, err = sqlc.New(tx).UpdateIdentityUser(ctx, sqlc.UpdateIdentityUserParams{ID: user.ID, Name: profile.Name, AvatarUrl: profile.AvatarURL})
-
-		if err != nil {
-			return User{}, err
-		}
-		user.ID, user.Name, user.Email, user.AvatarURL, user.Role, user.Status, user.JoinedAt, user.LastLoginAt = record.ID, record.Name, record.Email, record.AvatarUrl, record.Role, record.Status, record.JoinedAt, record.LastLoginAt
-
-		if err := tx.Commit(ctx); err != nil {
-			return User{}, err
-		}
-		return user, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return User{}, err
-	}
-
-	if profile.Email == "" {
-		if adminOnly {
-			return User{}, ErrAdminRoleRequired
-		}
-		profile.Email = fmt.Sprintf("%s@%s.oauth.local", profile.Subject, profile.Provider)
-	}
-	if profile.Name == "" {
-		profile.Name = profile.Username
-	}
-	if profile.Name == "" {
-		profile.Name = profile.Email
-	}
-	emailRow, err := sqlc.New(tx).GetUserByEmail(ctx, profile.Email)
-	user = User{ID: emailRow.ID, Name: emailRow.Name, Email: emailRow.Email, AvatarURL: emailRow.AvatarUrl, Role: emailRow.Role, Status: emailRow.Status, JoinedAt: emailRow.JoinedAt, LastLoginAt: emailRow.LastLoginAt}
-	switch {
-	case err == nil:
-		if err := validateUpstreamUser(user, adminOnly); err != nil {
-			return User{}, err
-		}
-		var row sqlc.UpdateIdentityUserRow
-		row, err = sqlc.New(tx).UpdateIdentityUser(ctx, sqlc.UpdateIdentityUserParams{ID: user.ID, Name: profile.Name, AvatarUrl: profile.AvatarURL})
-		if err == nil {
-			user.ID, user.Name, user.Email, user.AvatarURL, user.Role, user.Status, user.JoinedAt, user.LastLoginAt = row.ID, row.Name, row.Email, row.AvatarUrl, row.Role, row.Status, row.JoinedAt, row.LastLoginAt
-		}
-		if err != nil {
-			return User{}, err
-		}
-	case errors.Is(err, pgx.ErrNoRows):
-		if adminOnly {
-			return User{}, ErrAdminRoleRequired
-		}
-		if !autoRegistrationEnabled {
-			return User{}, ErrRegistrationDisabled
-		}
-		var row sqlc.CreateIdentityUserRow
-		row, err = sqlc.New(tx).CreateIdentityUser(ctx, sqlc.CreateIdentityUserParams{Name: profile.Name, Email: profile.Email, AvatarUrl: profile.AvatarURL})
-		if err == nil {
-			user.ID, user.Name, user.Email, user.AvatarURL, user.Role, user.Status, user.JoinedAt, user.LastLoginAt = row.ID, row.Name, row.Email, row.AvatarUrl, row.Role, row.Status, row.JoinedAt, row.LastLoginAt
-		}
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrUserDisabled
-		}
-		if err != nil {
-			return User{}, err
-		}
-	case err != nil:
-		return User{}, err
-	}
-	_, err = sqlc.New(tx).UpsertIdentity(ctx, sqlc.UpsertIdentityParams{
-		UserID:            user.ID,
-		Provider:          profile.Provider,
-		Issuer:            profile.Issuer,
-		ProviderSubject:   profile.Subject,
-		ProviderUsername:  profile.Username,
-		ProviderEmail:     profile.Email,
-		ProviderAvatarUrl: profile.AvatarURL,
+	result, err := s.writer.UpsertIdentity(ctx, member.OAuthIdentity{
+		Provider: profile.Provider, Issuer: profile.Issuer, Subject: profile.Subject,
+		Username: profile.Username, Name: profile.Name, Email: profile.Email, AvatarURL: profile.AvatarURL,
+		AdminOnly: adminOnly, AutoRegistrationEnabled: autoRegistrationEnabled,
 	})
-	if err != nil {
-		return User{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return User{}, err
-	}
-	return user, nil
+	return userFromMember(result), err
 }
 
 func validateUpstreamUser(user User, adminOnly bool) error {

@@ -35,6 +35,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,12 +52,44 @@ type App struct {
 	endpoints       *endpoint.Service
 }
 
+type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
+
+type AdminRegistrar interface {
+	RegisterAdmin(chi.Router)
+}
+
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
+	return newApp(ctx, cfg, logger, func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error) {
+		return member.EmptyUserWriter{}, member.EmptyGroupWriter{}, nil
+	}, nil)
+}
+
+func NewWithMembers(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) (*App, error) {
+	if factory == nil {
+		return nil, errors.New("私有版成员实现不可为空")
+	}
+	return newApp(ctx, cfg, logger, factory, registrars)
+}
+
+func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars []AdminRegistrar) (*App, error) {
 	pool, err := database.Open(ctx, cfg.URL)
 	if err != nil {
 		return nil, err
 	}
-	handler, err := newApplicationHandler(ctx, logger, pool, cfg)
+	var users member.UserWriter
+	var groups member.GroupWriter
+	if factory != nil {
+		users, groups, err = factory(pool)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		if users == nil || groups == nil {
+			pool.Close()
+			return nil, errors.New("私有版成员实现不可为空")
+		}
+	}
+	handler, err := newApplicationHandlerWithMembers(ctx, logger, pool, cfg, users, groups, registrars)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -103,9 +136,14 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 }
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
+	return newApplicationHandlerWithMembers(ctx, logger, pool, cfg, nil, nil, nil)
+}
+
+func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter, registrars []AdminRegistrar) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
-	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
+	identities.WithUserWriter(users)
+	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}
 	charges := billing.NewService(pool)
@@ -158,7 +196,13 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	}))
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
-	group.NewService(pool).WithAccountPreserver(charges).RegisterAdmin(admin)
+	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
+	groupService.RegisterAdmin(admin)
+	for _, registrar := range registrars {
+		if registrar != nil {
+			registrar.RegisterAdmin(admin)
+		}
+	}
 	settings.RegisterAdmin(admin)
 	charges.RegisterAdmin(admin)
 	stats.NewService(pool).RegisterAdmin(admin)

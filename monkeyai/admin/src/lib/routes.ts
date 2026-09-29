@@ -17,6 +17,7 @@ export const CONSOLE_ROUTES = {
   membersAndGroups: "/console/settings/members",
   operationLogs: "/console/settings/operation-logs",
   otherSettings: "/console/settings/other",
+  license: "/console/settings/license",
 } as const
 
 export const DEFAULT_CONSOLE_PATH = CONSOLE_ROUTES.realtimeStatus
@@ -126,6 +127,13 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.membersAndGroups,
     titleKey: "pages.otherSettings.title",
     descriptionKey: "pages.otherSettings.description",
+  },
+  {
+    path: CONSOLE_ROUTES.license,
+    sectionKey: "sections.systemSettings",
+    sectionPath: CONSOLE_ROUTES.membersAndGroups,
+    titleKey: "pages.license.title",
+    descriptionKey: "pages.license.description",
   },
 ] as const
 

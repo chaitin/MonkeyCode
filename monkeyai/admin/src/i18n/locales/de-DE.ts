@@ -115,6 +115,7 @@ export const deDE = {
     systemSettings: "Systemeinstellungen",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "Live-Status",
       description:
