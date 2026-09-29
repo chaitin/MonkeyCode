@@ -111,6 +111,10 @@ export function AppSidebar({
           url: CONSOLE_ROUTES.membersAndGroups,
         },
         {
+          title: t("pages.feedback.title"),
+          url: CONSOLE_ROUTES.feedback,
+        },
+        {
           title: t("pages.operationLogs.title"),
           url: CONSOLE_ROUTES.operationLogs,
         },
