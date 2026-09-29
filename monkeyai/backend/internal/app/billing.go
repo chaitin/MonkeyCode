@@ -9,6 +9,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
@@ -23,6 +24,7 @@ type applicationHandler struct {
 	images    *imagegen.Service
 	inputs    *imagegen.Inputs
 	endpoints *endpoint.Service
+	feedback  *feedback.Service
 }
 type modelBilling struct{ service *billing.Service }
 type modelUsageRecorder struct{ models *model.Postgres }

@@ -2108,6 +2108,101 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/admin/v1/feedback:
+    get:
+      summary: 分页查询用户反馈
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
+        - name: page_size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: category
+          in: query
+          schema: {type: string, enum: [bug, feature, experience, other]}
+        - name: state
+          in: query
+          schema: {type: string, enum: [uploading, new, resolved, ignored, failed]}
+      responses:
+        '200':
+          description: 反馈分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackPage'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/admin/v1/feedback/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: 读取用户反馈详情
+      responses:
+        '200':
+          description: 反馈详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+    patch:
+      summary: 更新用户反馈状态
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [uploading, new, resolved, ignored, failed]
+      responses:
+        '200':
+          description: 更新后的反馈
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/admin/v1/feedback/{id}/attachments/{attachmentID}:
+    get:
+      summary: 下载用户反馈图片
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: attachmentID
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: 反馈图片
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
   /api/admin/v1/rules:
     get:
       summary: 查询Rule
@@ -4499,6 +4594,53 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    FeedbackPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Feedback'
+        total: {type: integer, format: int64, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
+    Feedback:
+      type: object
+      additionalProperties: false
+      required: [id, user_id, category, content, platform, client_version, state, created_at, updated_at, attachments]
+      properties:
+        id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        category: {type: string, enum: [bug, feature, experience, other]}
+        content: {type: string, maxLength: 5000}
+        rating: {type: [integer, 'null'], minimum: 1, maximum: 5}
+        platform: {type: string, enum: [desktop, mobile, web, other]}
+        client_version: {type: string, maxLength: 64}
+        state: {type: string, enum: [uploading, new, resolved, ignored, failed]}
+        request_id: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackAttachment'
+    FeedbackAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, feedback_id, mime_type, byte_size, width, height, sha256, state, downloadable, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        feedback_id: {type: string, format: uuid}
+        mime_type: {type: string, enum: [image/png, image/jpeg, image/webp]}
+        byte_size: {type: integer, format: int64, minimum: 1}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        state: {type: string, enum: [pending, ready, failed]}
+        downloadable: {type: boolean}
+        created_at: {type: string, format: date-time}
     EmailAuthError:
       type: object
       required:
