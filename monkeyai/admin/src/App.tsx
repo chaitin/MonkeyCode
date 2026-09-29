@@ -18,6 +18,7 @@ import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LoginPage } from "@/pages/login-page"
+import { LicensePage } from "@/pages/license-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelStatisticsPage } from "@/pages/model-statistics-page"
@@ -133,6 +134,8 @@ export function App() {
                     <OperationLogsPage />
                   ) : page.path === CONSOLE_ROUTES.otherSettings ? (
                     <OtherSettingsPage />
+                  ) : page.path === CONSOLE_ROUTES.license ? (
+                    <LicensePage />
                   ) : (
                     <ConsolePage />
                   )

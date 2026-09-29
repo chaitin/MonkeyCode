@@ -113,6 +113,7 @@ export const ruRU = {
     systemSettings: "Системные настройки",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "Состояние в реальном времени",
       description:

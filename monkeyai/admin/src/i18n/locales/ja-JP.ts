@@ -112,6 +112,7 @@ export const jaJP = {
     systemSettings: "システム設定",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "リアルタイム状態",
       description:

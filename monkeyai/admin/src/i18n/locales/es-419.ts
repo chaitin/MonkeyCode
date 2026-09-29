@@ -114,6 +114,7 @@ export const es419 = {
     systemSettings: "Configuración del sistema",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "Estado en tiempo real",
       description:
