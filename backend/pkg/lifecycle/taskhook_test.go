@@ -83,6 +83,10 @@ type taskHookRepoStub struct {
 	client   *db.Client
 }
 
+func (s *taskHookRepoStub) UpdateAgentResourceSelection(_ context.Context, _ uuid.UUID, _, _ []string) error {
+	return nil
+}
+
 func (s *taskHookRepoStub) GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error) {
 	return s.client.Task.Get(ctx, id)
 }

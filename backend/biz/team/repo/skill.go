@@ -9,6 +9,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,16 @@ func (r *teamSkillRepo) GetSkill(ctx context.Context, teamID, skillID uuid.UUID)
 			agentskill.IDEQ(skillID),
 			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
 			agentskill.ScopeIDEQ(teamID.String()),
+			agentskill.IsDeletedEQ(false),
+		).
+		First(ctx)
+}
+
+func (r *teamSkillRepo) GetSkillByID(ctx context.Context, skillID uuid.UUID) (*db.AgentSkill, error) {
+	return r.client.AgentSkill.Query().
+		Where(
+			agentskill.IDEQ(skillID),
+			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
 			agentskill.IsDeletedEQ(false),
 		).
 		First(ctx)
@@ -138,6 +149,240 @@ func (r *teamSkillRepo) CreateVersion(ctx context.Context, skillID uuid.UUID, ve
 	return out, err
 }
 
+func (r *teamSkillRepo) CreatePendingVersion(ctx context.Context, skillID uuid.UUID, version, s3Key string, meta domain.SkillVersionMeta, pendingGroupIDs []uuid.UUID, taskID string, deadline time.Time) (*db.AgentSkillVersion, error) {
+	groupIDs := make([]string, 0, len(pendingGroupIDs))
+	for _, id := range pendingGroupIDs {
+		groupIDs = append(groupIDs, id.String())
+	}
+
+	var out *db.AgentSkillVersion
+	err := entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		v, err := tx.AgentSkillVersion.Create().
+			SetID(uuid.New()).
+			SetResourceID(skillID).
+			SetVersion(version).
+			SetS3Key(s3Key).
+			SetParsedMeta(types.SkillParsedMeta{
+				Description:            meta.Description,
+				Categories:             meta.Categories,
+				Tags:                   meta.Tags,
+				SourceType:             meta.SourceType,
+				SourceLabel:            meta.SourceLabel,
+				PendingGroupIDs:        groupIDs,
+				PendingGuardOwner:      meta.PendingGuardOwner,
+				PendingStageKey:        meta.PendingStageKey,
+				PendingPackageFilename: meta.PendingPackageFilename,
+				PendingPackageVersion:  meta.PendingPackageVersion,
+			}).
+			SetGuardStatus(domain.SkillGuardStatusPending).
+			SetGuardTaskID(taskID).
+			SetGuardDeadline(deadline).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.AgentSkill.UpdateOneID(skillID).
+			SetUpdatedAt(time.Now()).
+			Save(ctx); err != nil {
+			return err
+		}
+		out = v
+		return nil
+	})
+	return out, err
+}
+
+func (r *teamSkillRepo) GetVersion(ctx context.Context, versionID uuid.UUID) (*db.AgentSkillVersion, error) {
+	return r.client.AgentSkillVersion.Get(ctx, versionID)
+}
+
+func (r *teamSkillRepo) ListPendingGuardVersions(ctx context.Context) ([]*db.AgentSkillVersion, error) {
+	return r.client.AgentSkillVersion.Query().
+		Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+		Order(db.Asc(agentskillversion.FieldGuardDeadline)).
+		All(ctx)
+}
+
+func (r *teamSkillRepo) ApproveVersion(ctx context.Context, teamID, skillID, versionID uuid.UUID, groupIDs []uuid.UUID) error {
+	return entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		version, err := tx.AgentSkillVersion.Get(ctx, versionID)
+		if err != nil {
+			return err
+		}
+		if version.ResourceID != skillID {
+			return fmt.Errorf("team_skill_repo: version %s does not belong to skill %s", versionID, skillID)
+		}
+		if version.GuardStatus == domain.SkillGuardStatusApproved {
+			return nil
+		}
+		if version.GuardStatus != domain.SkillGuardStatusPending {
+			return fmt.Errorf("team_skill_repo: version %s is %s, not pending", versionID, version.GuardStatus)
+		}
+		if err := replaceGroupBindingsTx(ctx, tx, teamID, skillID, groupIDs); err != nil {
+			return err
+		}
+
+		if _, err := tx.AgentSkillVersion.UpdateOneID(versionID).
+			Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+			SetGuardStatus(domain.SkillGuardStatusApproved).
+			ClearGuardDeadline().
+			ClearGuardError().
+			Save(ctx); err != nil {
+			return err
+		}
+		_, err = tx.AgentSkill.UpdateOneID(skillID).
+			SetActiveVersionID(versionID).
+			SetUpdatedAt(time.Now()).
+			Save(ctx)
+		return err
+	})
+}
+
+func (r *teamSkillRepo) RejectVersion(ctx context.Context, versionID uuid.UUID, status, reason string) error {
+	if status != domain.SkillGuardStatusRejected && status != domain.SkillGuardStatusUnavailable {
+		return fmt.Errorf("team_skill_repo: invalid guard failure status %q", status)
+	}
+	return entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		version, err := tx.AgentSkillVersion.Get(ctx, versionID)
+		if err != nil {
+			return err
+		}
+		if version.GuardStatus != domain.SkillGuardStatusPending {
+			return nil
+		}
+		if _, err := tx.AgentSkillVersion.UpdateOneID(versionID).
+			Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+			SetGuardStatus(status).
+			SetGuardError(reason).
+			Save(ctx); err != nil {
+			return err
+		}
+		_, err = tx.AgentSkill.UpdateOneID(version.ResourceID).
+			SetUpdatedAt(time.Now()).
+			Save(ctx)
+		return err
+	})
+}
+
+func (r *teamSkillRepo) ApproveGuardStage(ctx context.Context, teamID uuid.UUID, stageKey string) (int, error) {
+	stageKey = strings.TrimSpace(stageKey)
+	if stageKey == "" {
+		return 0, fmt.Errorf("team_skill_repo: empty guard stage key")
+	}
+	approved := 0
+	err := entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		versions, err := pendingGuardStageVersionsTx(ctx, tx, stageKey)
+		if err != nil {
+			return err
+		}
+		for _, version := range versions {
+			skill, err := tx.AgentSkill.Get(ctx, version.ResourceID)
+			if err != nil {
+				return err
+			}
+			if skill.ScopeType != agentskill.ScopeTypeTeam || skill.ScopeID != teamID.String() {
+				return fmt.Errorf("team_skill_repo: version %s does not belong to team %s", version.ID, teamID)
+			}
+			groupIDs, err := pendingGroupIDs(version.ParsedMeta.PendingGroupIDs)
+			if err != nil {
+				return err
+			}
+			if err := replaceGroupBindingsTx(ctx, tx, teamID, skill.ID, groupIDs); err != nil {
+				return err
+			}
+			if _, err := tx.AgentSkillVersion.UpdateOneID(version.ID).
+				Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+				SetGuardStatus(domain.SkillGuardStatusApproved).
+				ClearGuardDeadline().
+				ClearGuardError().
+				Save(ctx); err != nil {
+				return err
+			}
+			if _, err := tx.AgentSkill.UpdateOneID(skill.ID).
+				SetActiveVersionID(version.ID).
+				SetUpdatedAt(time.Now()).
+				Save(ctx); err != nil {
+				return err
+			}
+			approved++
+		}
+		return nil
+	})
+	return approved, err
+}
+
+func (r *teamSkillRepo) RejectGuardStage(ctx context.Context, stageKey, status, reason string) (int, error) {
+	stageKey = strings.TrimSpace(stageKey)
+	if stageKey == "" {
+		return 0, fmt.Errorf("team_skill_repo: empty guard stage key")
+	}
+	if status != domain.SkillGuardStatusRejected && status != domain.SkillGuardStatusUnavailable {
+		return 0, fmt.Errorf("team_skill_repo: invalid guard failure status %q", status)
+	}
+	rejected := 0
+	err := entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		versions, err := pendingGuardStageVersionsTx(ctx, tx, stageKey)
+		if err != nil {
+			return err
+		}
+		for _, version := range versions {
+			if _, err := tx.AgentSkillVersion.UpdateOneID(version.ID).
+				Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+				SetGuardStatus(status).
+				SetGuardError(reason).
+				Save(ctx); err != nil {
+				return err
+			}
+			if _, err := tx.AgentSkill.UpdateOneID(version.ResourceID).
+				SetUpdatedAt(time.Now()).
+				Save(ctx); err != nil {
+				return err
+			}
+			rejected++
+		}
+		return nil
+	})
+	return rejected, err
+}
+
+func pendingGuardStageVersionsTx(ctx context.Context, tx *db.Tx, stageKey string) ([]*db.AgentSkillVersion, error) {
+	versions, err := tx.AgentSkillVersion.Query().
+		Where(agentskillversion.GuardStatusEQ(domain.SkillGuardStatusPending)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*db.AgentSkillVersion, 0, len(versions))
+	for _, version := range versions {
+		if version.ParsedMeta.PendingGuardOwner != domain.SkillGuardOwnerExtensionPackage {
+			continue
+		}
+		if version.ParsedMeta.PendingStageKey != stageKey {
+			continue
+		}
+		out = append(out, version)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ResourceID != out[j].ResourceID {
+			return out[i].ResourceID.String() < out[j].ResourceID.String()
+		}
+		return out[i].ID.String() < out[j].ID.String()
+	})
+	return out, nil
+}
+
+func pendingGroupIDs(rawIDs []string) ([]uuid.UUID, error) {
+	groupIDs := make([]uuid.UUID, 0, len(rawIDs))
+	for _, raw := range rawIDs {
+		groupID, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("team_skill_repo: invalid pending group id %q: %w", raw, err)
+		}
+		groupIDs = append(groupIDs, groupID)
+	}
+	return groupIDs, nil
+}
+
 func (r *teamSkillRepo) UpdateMeta(ctx context.Context, teamID, skillID uuid.UUID, name string, description *string, isForceDelivery *bool) (*db.AgentSkill, error) {
 	u := r.client.AgentSkill.UpdateOneID(skillID).
 		Where(
@@ -191,9 +436,15 @@ func (r *teamSkillRepo) SoftDeleteSkill(ctx context.Context, teamID, skillID uui
 }
 
 func (r *teamSkillRepo) ReplaceGroupBindings(ctx context.Context, teamID, skillID uuid.UUID, groupIDs []uuid.UUID) error {
+	return entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		return replaceGroupBindingsTx(ctx, tx, teamID, skillID, groupIDs)
+	})
+}
+
+func replaceGroupBindingsTx(ctx context.Context, tx *db.Tx, teamID, skillID uuid.UUID, groupIDs []uuid.UUID) error {
 	// 仅在 group_id 属于该 team 时才接受,防止跨 team 越权关联。
 	if len(groupIDs) > 0 {
-		cnt, err := r.client.TeamGroup.Query().
+		cnt, err := tx.TeamGroup.Query().
 			Where(teamgroup.IDIn(groupIDs...), teamgroup.TeamIDEQ(teamID)).
 			Count(ctx)
 		if err != nil {
@@ -203,23 +454,21 @@ func (r *teamSkillRepo) ReplaceGroupBindings(ctx context.Context, teamID, skillI
 			return fmt.Errorf("team_skill_repo: some group ids do not belong to team %s", teamID)
 		}
 	}
-	return entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
-		if _, err := tx.AgentSkillGroupBinding.Delete().
-			Where(agentskillgroupbinding.SkillIDEQ(skillID)).
-			Exec(ctx); err != nil {
+	if _, err := tx.AgentSkillGroupBinding.Delete().
+		Where(agentskillgroupbinding.SkillIDEQ(skillID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	for _, gid := range groupIDs {
+		if _, err := tx.AgentSkillGroupBinding.Create().
+			SetID(uuid.New()).
+			SetSkillID(skillID).
+			SetGroupID(gid).
+			Save(ctx); err != nil {
 			return err
 		}
-		for _, gid := range groupIDs {
-			if _, err := tx.AgentSkillGroupBinding.Create().
-				SetID(uuid.New()).
-				SetSkillID(skillID).
-				SetGroupID(gid).
-				Save(ctx); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (r *teamSkillRepo) GetActiveVersion(ctx context.Context, skillID uuid.UUID) (*db.AgentSkillVersion, error) {
@@ -231,6 +480,13 @@ func (r *teamSkillRepo) GetActiveVersion(ctx context.Context, skillID uuid.UUID)
 		return nil, nil
 	}
 	return r.client.AgentSkillVersion.Get(ctx, *skill.ActiveVersionID)
+}
+
+func (r *teamSkillRepo) GetLatestVersion(ctx context.Context, skillID uuid.UUID) (*db.AgentSkillVersion, error) {
+	return r.client.AgentSkillVersion.Query().
+		Where(agentskillversion.ResourceIDEQ(skillID)).
+		Order(db.Desc(agentskillversion.FieldCreatedAt), db.Desc(agentskillversion.FieldID)).
+		First(ctx)
 }
 
 func (r *teamSkillRepo) NextVersionFor(ctx context.Context, skillID uuid.UUID) (string, error) {

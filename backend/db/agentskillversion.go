@@ -29,6 +29,14 @@ type AgentSkillVersion struct {
 	S3Key string `json:"s3_key,omitempty"`
 	// ParsedMeta holds the value of the "parsed_meta" field.
 	ParsedMeta types.SkillParsedMeta `json:"parsed_meta,omitempty"`
+	// GuardStatus holds the value of the "guard_status" field.
+	GuardStatus string `json:"guard_status,omitempty"`
+	// GuardTaskID holds the value of the "guard_task_id" field.
+	GuardTaskID *string `json:"guard_task_id,omitempty"`
+	// GuardDeadline holds the value of the "guard_deadline" field.
+	GuardDeadline *time.Time `json:"guard_deadline,omitempty"`
+	// GuardError holds the value of the "guard_error" field.
+	GuardError *string `json:"guard_error,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -64,9 +72,9 @@ func (*AgentSkillVersion) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case agentskillversion.FieldParsedMeta:
 			values[i] = new([]byte)
-		case agentskillversion.FieldVersion, agentskillversion.FieldS3Key:
+		case agentskillversion.FieldVersion, agentskillversion.FieldS3Key, agentskillversion.FieldGuardStatus, agentskillversion.FieldGuardTaskID, agentskillversion.FieldGuardError:
 			values[i] = new(sql.NullString)
-		case agentskillversion.FieldCreatedAt:
+		case agentskillversion.FieldGuardDeadline, agentskillversion.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
 		case agentskillversion.FieldID, agentskillversion.FieldResourceID:
 			values[i] = new(uuid.UUID)
@@ -116,6 +124,33 @@ func (_m *AgentSkillVersion) assignValues(columns []string, values []any) error 
 				if err := json.Unmarshal(*value, &_m.ParsedMeta); err != nil {
 					return fmt.Errorf("unmarshal field parsed_meta: %w", err)
 				}
+			}
+		case agentskillversion.FieldGuardStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guard_status", values[i])
+			} else if value.Valid {
+				_m.GuardStatus = value.String
+			}
+		case agentskillversion.FieldGuardTaskID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guard_task_id", values[i])
+			} else if value.Valid {
+				_m.GuardTaskID = new(string)
+				*_m.GuardTaskID = value.String
+			}
+		case agentskillversion.FieldGuardDeadline:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field guard_deadline", values[i])
+			} else if value.Valid {
+				_m.GuardDeadline = new(time.Time)
+				*_m.GuardDeadline = value.Time
+			}
+		case agentskillversion.FieldGuardError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guard_error", values[i])
+			} else if value.Valid {
+				_m.GuardError = new(string)
+				*_m.GuardError = value.String
 			}
 		case agentskillversion.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -175,6 +210,24 @@ func (_m *AgentSkillVersion) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("parsed_meta=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ParsedMeta))
+	builder.WriteString(", ")
+	builder.WriteString("guard_status=")
+	builder.WriteString(_m.GuardStatus)
+	builder.WriteString(", ")
+	if v := _m.GuardTaskID; v != nil {
+		builder.WriteString("guard_task_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.GuardDeadline; v != nil {
+		builder.WriteString("guard_deadline=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.GuardError; v != nil {
+		builder.WriteString("guard_error=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
