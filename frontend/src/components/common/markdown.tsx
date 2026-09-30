@@ -41,7 +41,7 @@ const Mermaid = memo(function Mermaid({ chart, isDark }: MermaidProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? "dark" : "default",
-          securityLevel: "loose",
+          securityLevel: "strict",
           suppressErrorRendering: true,
         })
         // Use a unique ID to avoid collisions.
