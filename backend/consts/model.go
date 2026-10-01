@@ -18,6 +18,7 @@ const (
 	ModelProviderMoonshot    ModelProvider = "Moonshot"
 	ModelProviderAzureOpenAI ModelProvider = "AzureOpenAI"
 	ModelProviderBaiZhiCloud ModelProvider = "BaiZhiCloud"
+	ModelProviderMiniMax     ModelProvider = "MiniMax"
 	ModelProviderHunyuan     ModelProvider = "Hunyuan"
 	ModelProviderBaiLian     ModelProvider = "BaiLian"
 	ModelProviderVolcengine  ModelProvider = "Volcengine"
