@@ -18,10 +18,20 @@ type Endpoint struct {
 	OsVersion       string
 	Arch            string
 	ClientVersion   string
-	ProtocolVersion int32
+	ProtocolVersion *int32
 	Status          string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastSeenAt      *time.Time
 	RevokedAt       *time.Time
+	ClientType      *string
+	ClientName      *string
+	Channel         *string
+	Locale          *string
+	SystemLocale    *string
+	Timezone        *string
+	RuntimeVersion  *string
+	EngineVersion   *string
+	ElectronVersion *string
+	LastReportedAt  *time.Time
 }

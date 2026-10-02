@@ -53,6 +53,17 @@ export function AppSidebar({
           title: t("pages.taskHistory.title"),
           url: CONSOLE_ROUTES.taskHistory,
         },
+        ...(
+          [
+            ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
+            ["sessionList", CONSOLE_ROUTES.sessionList],
+            ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
+            ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+          ] as const
+        ).map(([name, url]) => ({
+          title: t(`pages.sessionReporting.${name}.title`),
+          url,
+        })),
       ],
     },
     {

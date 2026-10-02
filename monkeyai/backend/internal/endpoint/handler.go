@@ -25,6 +25,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		r.Get("/connect", s.connect)
 		r.Get("/", s.list)
 		r.Get("/{machine}", s.get)
+		r.Put("/{machine}", s.register)
 		r.Patch("/{machine}", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "rename") })
 		r.Post("/{machine}/revoke", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "revoke") })
 		r.Post("/{machine}/restore", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "restore") })
@@ -49,7 +50,7 @@ func respond(w http.ResponseWriter, code int, data any) {
 	}
 }
 func failure(w http.ResponseWriter, code int, name string) {
-	respond(w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁"}[name]}})
+	respond(w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁"}[name]}})
 }
 func (s *Service) credential(w http.ResponseWriter, r *http.Request) (Credential, bool) {
 	w.Header().Set("Cache-Control", "private, no-store")

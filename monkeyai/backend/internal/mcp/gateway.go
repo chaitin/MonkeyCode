@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,10 +20,18 @@ import (
 type KeyAuthenticator interface {
 	Authenticate(context.Context, string, string) (string, error)
 }
+
+// SessionResolver 校验并确保调用会话属于指定用户。
+// 应用层负责将 session.Service 适配为此接口。
+type SessionResolver interface {
+	EnsureSession(context.Context, string, string, string, string) error
+}
+
 type Invocation struct{ UserID, ConnectorID, CredentialID, ToolID, SessionID, IdempotencyKey, RequestHash string }
 type InvocationResult struct {
 	Known             bool
 	Result, ErrorCode string
+	DurationMS        int64
 }
 type InvocationBilling interface {
 	Begin(context.Context, Invocation) (string, error)
@@ -131,6 +140,23 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 	router.HandleFunc("/mcp/connectors/{id}/credentials/{credentialID}", handler)
 }
 
+func requestSession(req *http.Request) (string, string) {
+	sessionID := strings.TrimSpace(req.Header.Get("X-MAI-Session-ID"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(req.Header.Get("X-Session-ID"))
+	}
+	return strings.ToLower(sessionID), strings.ToLower(strings.TrimSpace(req.Header.Get("X-MAI-Parent-Session-ID")))
+}
+
+func (s *Service) setCallDuration(ctx context.Context, id string, duration int64) {
+	if s.Store == nil || s.Store.Pool == nil || id == "" {
+		return
+	}
+	if err := sqlc.New(s.Store.Pool).UpdateToolCallDuration(ctx, sqlc.UpdateToolCallDurationParams{DurationMs: int32(duration), ID: id}); err != nil {
+		slog.WarnContext(ctx, "记录 MCP 工具调用耗时失败", "transaction_id", id, "error", safeMCPFailure(err))
+	}
+}
+
 func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector, credential resource.Object, user string, billing InvocationBilling) {
 	headers, credential, err := s.headers(r.Context(), connector, credential)
 	if err != nil {
@@ -179,6 +205,15 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具不存在或未启用"})
 		return
 	}
+	sessionID, parentID := requestSession(r)
+	if sessionID != "" {
+		if s.sessions != nil {
+			if err := s.sessions.EnsureSession(r.Context(), user, sessionID, parentID, ""); err != nil {
+				rpcFail(r.Context(), w, in.ID, err)
+				return
+			}
+		}
+	}
 	remote, err := openRemote(r.Context(), connector.String("url"), headers)
 	if err != nil {
 		slog.WarnContext(r.Context(), "连接 MCP 上游失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "connect", "failure", safeMCPFailure(err))
@@ -186,7 +221,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		return
 	}
 	defer remote.close()
-	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), SessionID: r.Header.Get("X-Session-ID"), IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": r.Header.Get("X-Session-ID")})})
+	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), SessionID: sessionID, IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": sessionID})})
 	if err != nil {
 		rpcFail(r.Context(), w, in.ID, err)
 		return
@@ -202,8 +237,13 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
+	startedAt := time.Now()
 	result, callErr := remote.call(r.Context(), 2, "tools/call", in.Params)
-	outcome := InvocationResult{Known: true, Result: "succeeded"}
+	durationMS := time.Since(startedAt).Milliseconds()
+	if durationMS < 0 {
+		durationMS = 0
+	}
+	outcome := InvocationResult{Known: true, Result: "succeeded", DurationMS: durationMS}
 	var rpc *rpcError
 	if callErr != nil {
 		outcome.Result = "failed"
@@ -230,6 +270,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		slog.ErrorContext(ctx, "MCP 调用结算失败", "connector_id", connector.String("id"), "operation", "finish", "failure", safeMCPFailure(err))
 		w.Header().Set("X-Billing-Status", "pending")
 	}
+	s.setCallDuration(ctx, id, outcome.DurationMS)
 	if callErr != nil {
 		if rpc == nil {
 			slog.WarnContext(r.Context(), "MCP 工具调用失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "tools/call", "failure", safeMCPFailure(callErr))

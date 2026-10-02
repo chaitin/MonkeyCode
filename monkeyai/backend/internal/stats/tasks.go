@@ -5,23 +5,31 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
-
 	"github.com/jackc/pgx/v5"
 )
 
 func tasks(ctx context.Context, tx pgx.Tx, w window) (resource.Object, error) {
-	out, err := resource.DecodeObject(sqlc.New(tx).TaskSummary(ctx, sqlc.TaskSummaryParams{FromTime: w.from, UntilTime: w.until}))
+	q := sqlc.New(tx)
+	summary, err := resource.DecodeObject(q.ReportingTaskSummary(ctx, sqlc.ReportingTaskSummaryParams{FromTime: w.from, UntilTime: w.until}))
 	if err != nil {
 		return nil, err
 	}
-	trend, err := resource.DecodeObjects(sqlc.New(tx).TaskTrend(ctx, sqlc.TaskTrendParams{FromTime: w.from, UntilTime: w.until, StepSeconds: int64(w.step.Seconds())}))
+	previousFrom := w.from.Add(-w.until.Sub(w.from))
+	previous, err := resource.DecodeObject(q.ReportingTaskSummary(ctx, sqlc.ReportingTaskSummaryParams{FromTime: previousFrom, UntilTime: w.from}))
 	if err != nil {
 		return nil, err
 	}
-	types, err := resource.DecodeObjects(sqlc.New(tx).TaskTypes(ctx, sqlc.TaskTypesParams{StartedAt: w.from, StartedAt_2: w.until}))
+	trend, err := resource.DecodeObjects(q.ReportingTaskTrend(ctx, sqlc.ReportingTaskTrendParams{FromTime: w.from, UntilTime: w.until, StepSeconds: int64(w.step.Seconds())}))
 	if err != nil {
 		return nil, err
 	}
-	out["trend"], out["types"] = trend, types
-	return out, nil
+	types, err := resource.DecodeObjects(q.ReportingTaskTypes(ctx, sqlc.ReportingTaskTypesParams{FromTime: w.from, UntilTime: w.until}))
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := q.ReportingTaskSessions(ctx, sqlc.ReportingTaskSessionsParams{FromTime: w.from, UntilTime: w.until})
+	if err != nil {
+		return nil, err
+	}
+	return resource.Object{"summary": summary, "previous": previous, "trend": trend, "types": types, "sessions": sessions}, nil
 }

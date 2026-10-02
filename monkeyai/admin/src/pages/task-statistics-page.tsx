@@ -110,14 +110,19 @@ function TaskDetails({ data }: { data: TaskStatistics }) {
       fill: "var(--chart-2)",
     },
     {
-      status: "running",
-      value: summary.running,
+      status: "interrupted",
+      value: summary.interrupted,
       fill: "var(--chart-3)",
     },
     {
       status: "failed",
       value: summary.failed,
       fill: "var(--chart-5)",
+    },
+    {
+      status: "unknown",
+      value: summary.unknown,
+      fill: "var(--chart-4)",
     },
   ]
   const trendChartConfig = {
@@ -135,9 +140,13 @@ function TaskDetails({ data }: { data: TaskStatistics }) {
       label: t("pages.taskStatistics.statuses.completed"),
       color: "var(--chart-2)",
     },
-    running: {
-      label: t("pages.taskStatistics.statuses.running"),
+    interrupted: {
+      label: t("pages.sessionReporting.outcomes.interrupted"),
       color: "var(--chart-3)",
+    },
+    unknown: {
+      label: t("pages.sessionReporting.outcomes.unknown"),
+      color: "var(--chart-4)",
     },
     failed: {
       label: t("pages.taskStatistics.statuses.failed"),
@@ -196,12 +205,20 @@ function TaskDetails({ data }: { data: TaskStatistics }) {
         <StatisticsMetricCard
           comparison={t("pages.taskStatistics.comparedToPrevious")}
           icon={Loading03Icon}
-          label={t("pages.taskStatistics.metrics.runningTasks")}
-          trend={change(summary.running, data.previous.running, locale)}
-          value={numberFormatter.format(summary.running)}
+          label={t("pages.sessionReporting.fields.interrupted")}
+          trend={change(summary.interrupted, data.previous.interrupted, locale)}
+          value={numberFormatter.format(summary.interrupted)}
         />
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        {t("pages.sessionReporting.fields.anomaly_rate")}:{" "}
+        {summary.anomaly_rate === null
+          ? "—"
+          : `${numberFormatter.format(summary.anomaly_rate)}%`}{" "}
+        · {t("pages.sessionReporting.outcomes.unknown")}:{" "}
+        {numberFormatter.format(summary.unknown)}
+      </p>
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>

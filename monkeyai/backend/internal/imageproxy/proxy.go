@@ -68,6 +68,11 @@ type KeyAuthenticator interface {
 	Authenticate(context.Context, string, string) (string, error)
 }
 
+// SessionResolver 校验并确保生图调用会话属于指定用户。
+type SessionResolver interface {
+	EnsureSession(context.Context, string, string, string, string) error
+}
+
 type Generator interface {
 	Generate(context.Context, proxy.Target, GenerateRequest) (Task, error)
 }
@@ -98,6 +103,7 @@ type OutputReader interface {
 
 type Proxy struct {
 	resolver  proxy.Resolver
+	sessions  SessionResolver
 	keys      KeyAuthenticator
 	generator Generator
 	editor    Editor
@@ -108,6 +114,11 @@ type Proxy struct {
 
 func NewProxy(resolver proxy.Resolver, keys KeyAuthenticator, generator Generator, editor Editor, tasks TaskQuerier) *Proxy {
 	return &Proxy{resolver: resolver, keys: keys, generator: generator, editor: editor, tasks: tasks}
+}
+
+func (p *Proxy) WithSessionResolver(resolver SessionResolver) *Proxy {
+	p.sessions = resolver
+	return p
 }
 
 func (p *Proxy) WithInputs(inputs InputUploader) *Proxy {
@@ -333,7 +344,25 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 		resource.Fail(w, resource.Invalid("模型不支持生图"))
 		return proxy.Target{}, false
 	}
+	sessionID, parentID := requestSession(r)
+	if sessionID != "" {
+		if p.sessions != nil {
+			if err := p.sessions.EnsureSession(r.Context(), target.UserID, sessionID, parentID, ""); err != nil {
+				resource.Fail(w, err)
+				return proxy.Target{}, false
+			}
+		}
+		target.SessionID = sessionID
+	}
 	return target, true
+}
+
+func requestSession(req *http.Request) (string, string) {
+	sessionID := strings.TrimSpace(req.Header.Get("X-MAI-Session-ID"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(req.Header.Get("X-Session-ID"))
+	}
+	return strings.ToLower(sessionID), strings.ToLower(strings.TrimSpace(req.Header.Get("X-MAI-Parent-Session-ID")))
 }
 
 func valid(model, prompt string, count *uint32) error {

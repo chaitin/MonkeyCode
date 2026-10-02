@@ -637,6 +637,22 @@ func (q *Queries) UpdateTool(ctx context.Context, arg UpdateToolParams) ([]byte,
 	return to_jsonb, err
 }
 
+const updateToolCallDuration = `-- name: UpdateToolCallDuration :exec
+UPDATE mcp_tool_calls
+SET duration_ms = $1::integer
+WHERE id = $2::uuid
+`
+
+type UpdateToolCallDurationParams struct {
+	DurationMs int32
+	ID         string
+}
+
+func (q *Queries) UpdateToolCallDuration(ctx context.Context, arg UpdateToolCallDurationParams) error {
+	_, err := q.db.Exec(ctx, updateToolCallDuration, arg.DurationMs, arg.ID)
+	return err
+}
+
 const upsertTool = `-- name: UpsertTool :execresult
 INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision, enabled)
     VALUES ($1, NULLIF ($2::text, '')::uuid,

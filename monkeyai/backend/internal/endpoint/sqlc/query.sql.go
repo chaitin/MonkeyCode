@@ -11,7 +11,7 @@ import (
 )
 
 const active = `-- name: Active :many
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at FROM endpoints WHERE user_id = $1 AND status = 'active' ORDER BY machine_id
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 AND status = 'active' ORDER BY machine_id
 `
 
 func (q *Queries) Active(ctx context.Context, userID string) ([]Endpoint, error) {
@@ -39,6 +39,16 @@ func (q *Queries) Active(ctx context.Context, userID string) ([]Endpoint, error)
 			&i.UpdatedAt,
 			&i.LastSeenAt,
 			&i.RevokedAt,
+			&i.ClientType,
+			&i.ClientName,
+			&i.Channel,
+			&i.Locale,
+			&i.SystemLocale,
+			&i.Timezone,
+			&i.RuntimeVersion,
+			&i.EngineVersion,
+			&i.ElectronVersion,
+			&i.LastReportedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -73,7 +83,7 @@ func (q *Queries) CountActive(ctx context.Context, userID string) (int64, error)
 }
 
 const get = `-- name: Get :one
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at FROM endpoints WHERE user_id = $1 AND machine_id = $2
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 AND machine_id = $2
 `
 
 type GetParams struct {
@@ -100,6 +110,16 @@ func (q *Queries) Get(ctx context.Context, arg GetParams) (Endpoint, error) {
 		&i.UpdatedAt,
 		&i.LastSeenAt,
 		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
 	)
 	return i, err
 }
@@ -115,7 +135,7 @@ func (q *Queries) LockUser(ctx context.Context, id string) (string, error) {
 }
 
 const page = `-- name: Page :many
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at FROM endpoints WHERE user_id = $1 ORDER BY created_at DESC, id DESC
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 ORDER BY created_at DESC, id DESC
 LIMIT $3::integer OFFSET $2::integer
 `
 
@@ -150,6 +170,16 @@ func (q *Queries) Page(ctx context.Context, arg PageParams) ([]Endpoint, error) 
 			&i.UpdatedAt,
 			&i.LastSeenAt,
 			&i.RevokedAt,
+			&i.ClientType,
+			&i.ClientName,
+			&i.Channel,
+			&i.Locale,
+			&i.SystemLocale,
+			&i.Timezone,
+			&i.RuntimeVersion,
+			&i.EngineVersion,
+			&i.ElectronVersion,
+			&i.LastReportedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -169,7 +199,7 @@ ON CONFLICT (user_id, machine_id) DO UPDATE SET
     os_version = EXCLUDED.os_version, arch = EXCLUDED.arch, client_version = EXCLUDED.client_version,
     protocol_version = 1, last_seen_at = now(), updated_at = now()
 WHERE endpoints.status = 'active'
-RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at
+RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
 `
 
 type RegisterParams struct {
@@ -209,13 +239,121 @@ func (q *Queries) Register(ctx context.Context, arg RegisterParams) (Endpoint, e
 		&i.UpdatedAt,
 		&i.LastSeenAt,
 		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
+	)
+	return i, err
+}
+
+const registerDevice = `-- name: RegisterDevice :one
+INSERT INTO endpoints (
+    user_id, machine_id, device_name, platform, os_version, arch, client_version,
+    protocol_version, client_type, client_name, channel, locale, system_locale,
+    timezone, runtime_version, engine_version, electron_version, last_reported_at
+) VALUES (
+    $1::uuid, $2::uuid, $3::text,
+    $4::text, $5::text, $6::text,
+    $7::text, $8::integer,
+    $9::text, $10::text, $11::text,
+    $12::text, $13::text, $14::text,
+    $15::text, $16::text,
+    $17::text, now()
+)
+ON CONFLICT (user_id, machine_id) DO UPDATE SET
+    device_name = EXCLUDED.device_name, platform = EXCLUDED.platform,
+    os_version = EXCLUDED.os_version, arch = EXCLUDED.arch,
+    client_version = EXCLUDED.client_version, protocol_version = EXCLUDED.protocol_version,
+    client_type = EXCLUDED.client_type, client_name = EXCLUDED.client_name,
+    channel = EXCLUDED.channel, locale = EXCLUDED.locale,
+    system_locale = EXCLUDED.system_locale, timezone = EXCLUDED.timezone,
+    runtime_version = EXCLUDED.runtime_version, engine_version = EXCLUDED.engine_version,
+    electron_version = EXCLUDED.electron_version, last_reported_at = now(), updated_at = now()
+WHERE endpoints.status = 'active'
+RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
+`
+
+type RegisterDeviceParams struct {
+	UserID          string
+	MachineID       string
+	DeviceName      string
+	Platform        string
+	OsVersion       string
+	Arch            string
+	ClientVersion   string
+	ProtocolVersion *int32
+	ClientType      *string
+	ClientName      *string
+	Channel         *string
+	Locale          *string
+	SystemLocale    *string
+	Timezone        *string
+	RuntimeVersion  *string
+	EngineVersion   *string
+	ElectronVersion *string
+}
+
+func (q *Queries) RegisterDevice(ctx context.Context, arg RegisterDeviceParams) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, registerDevice,
+		arg.UserID,
+		arg.MachineID,
+		arg.DeviceName,
+		arg.Platform,
+		arg.OsVersion,
+		arg.Arch,
+		arg.ClientVersion,
+		arg.ProtocolVersion,
+		arg.ClientType,
+		arg.ClientName,
+		arg.Channel,
+		arg.Locale,
+		arg.SystemLocale,
+		arg.Timezone,
+		arg.RuntimeVersion,
+		arg.EngineVersion,
+		arg.ElectronVersion,
+	)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MachineID,
+		&i.DeviceName,
+		&i.Alias,
+		&i.Platform,
+		&i.OsVersion,
+		&i.Arch,
+		&i.ClientVersion,
+		&i.ProtocolVersion,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
 	)
 	return i, err
 }
 
 const rename = `-- name: Rename :one
 UPDATE endpoints SET alias = $3::text, updated_at = now()
-WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
 `
 
 type RenameParams struct {
@@ -243,6 +381,16 @@ func (q *Queries) Rename(ctx context.Context, arg RenameParams) (Endpoint, error
 		&i.UpdatedAt,
 		&i.LastSeenAt,
 		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
 	)
 	return i, err
 }
@@ -251,7 +399,7 @@ const status = `-- name: Status :one
 UPDATE endpoints SET status = $3::text,
     revoked_at = CASE WHEN $3::text = 'revoked' THEN now() ELSE NULL END,
     updated_at = now()
-WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
 `
 
 type StatusParams struct {
@@ -279,6 +427,16 @@ func (q *Queries) Status(ctx context.Context, arg StatusParams) (Endpoint, error
 		&i.UpdatedAt,
 		&i.LastSeenAt,
 		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
 	)
 	return i, err
 }

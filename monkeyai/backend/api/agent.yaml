@@ -7,6 +7,158 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      summary: 创建或更新一期会话元数据快照
+      description: 仅接收统计元数据；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。
+      parameters:
+        - name: X-MAI-Machine-ID
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [state_seq, client, session_type, started_at]
+              properties:
+                state_seq: {type: integer, format: int64, minimum: 0}
+                client:
+                  type: object
+                  additionalProperties: false
+                  required: [type, machine_id, version]
+                  properties:
+                    type: {type: string, enum: [desktop, web, extension, mobile, unknown]}
+                    machine_id: {type: string, format: uuid}
+                    version: {type: string}
+                    engine_version: {type: [string, 'null']}
+                    runtime_version: {type: [string, 'null']}
+                session_type: {type: string, enum: [conversation, workflow, tool, scheduled]}
+                parent_session_id: {type: [string, 'null'], format: uuid}
+                expert_id: {type: [string, 'null'], format: uuid}
+                model_id: {type: [string, 'null'], format: uuid}
+                mode: {type: [string, 'null']}
+                workspace_kind: {type: [string, 'null']}
+                started_at: {type: string, format: date-time}
+                client_deleted_at: {type: [string, 'null'], format: date-time}
+      responses:
+        '200':
+          description: 已确认的会话快照及轮次游标
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state_seq, acked_turn, server_time]
+                properties:
+                  state_seq: {type: integer, format: int64}
+                  acked_turn: {type: integer}
+                  server_time: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '429': {description: 请求过于频繁，遵守 Retry-After}
+  /api/v1/sessions/{id}/turns:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      summary: 批量追加已完成的轮次报告
+      description: 一期只接受 finished 统计事实，不接受正文、工具参数、工具输出或文件。
+      parameters:
+        - name: X-MAI-Machine-ID
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: after_turn
+          in: query
+          required: true
+          schema: {type: integer, minimum: 0}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [facts_version, turns]
+              properties:
+                facts_version: {type: integer, minimum: 1}
+                snapshots:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [snapshot_id, items]
+                    properties:
+                      snapshot_id: {type: string, description: 'sha256: 前缀的规范化资源快照摘要'}
+                      revision: {type: [integer, 'null']}
+                      state_version: {type: [integer, 'null']}
+                      items: {type: array, items: {type: object}}
+                turns:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [turn_index, input_seq, started_at, ended_at, stop_reason, resources_snapshot_id, input]
+                    properties:
+                      turn_index: {type: integer, minimum: 1}
+                      input_seq: {type: integer, format: int64}
+                      started_at: {type: string, format: date-time}
+                      ended_at: {type: string, format: date-time}
+                      stop_reason: {type: string, enum: [complete, interrupted, error, max_turns, output_limit, unknown]}
+                      error_code: {type: [string, 'null']}
+                      recovered: {type: boolean}
+                      model_id: {type: [string, 'null'], format: uuid}
+                      thinking: {type: [object, 'null'], description: enabled 和 effort，不含思考内容}
+                      resources_snapshot_id: {type: string}
+                      client_version: {type: [string, 'null']}
+                      engine_version: {type: [string, 'null']}
+                      usage: {type: [object, 'null'], description: 仅四类 Token 计数，不含请求或响应正文}
+                      subagent_usage: {type: [object, 'null']}
+                      context_used: {type: [integer, 'null']}
+                      context_window: {type: [integer, 'null']}
+                      input: {type: object, description: 仅 kind、origin、command_skill_id 与数量统计}
+                      files_changed: {type: object, description: 仅 created、updated、deleted 数量}
+                      compactions: {type: integer}
+                      permissions: {type: object, description: 仅 asked、allowed、denied 数量}
+                      tools: {type: array, maxItems: 500, items: {type: object}}
+                      skill_events: {type: array, items: {type: object}}
+                      truncated: {type: boolean}
+      responses:
+        '200':
+          description: 已确认轮次和资源快照
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acked_turn, accepted, duplicates, snapshots_acked]
+                properties:
+                  acked_turn: {type: integer}
+                  accepted: {type: integer}
+                  duplicates: {type: integer}
+                  snapshots_acked: {type: array, items: {type: string}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '413': {description: 请求体超过服务端限制}
+        '422': {description: facts_version 不支持，错误响应包含 supported}
+        '429': {description: 请求过于频繁，遵守 Retry-After}
   /api/v1/endpoints:
     get:
       summary: 分页读取当前用户端点
@@ -56,6 +208,39 @@ paths:
   /api/v1/endpoints/{machine_id}:
     parameters:
       - {$ref: '#/components/parameters/EndpointMachine'}
+    put:
+      summary: 登记或更新当前用户的设备元数据
+      description: 不依赖会话上报开关；不会恢复已撤销端点；active 端点最多 20 个。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [device_name, platform, os_version, arch, client_version]
+              properties:
+                device_name: {type: string, maxLength: 128}
+                platform: {type: string, enum: [macos, windows, linux, ios, android, web]}
+                os_version: {type: string, maxLength: 64}
+                arch: {type: string, maxLength: 32}
+                client_version: {type: string, maxLength: 64}
+                protocol_version: {type: [integer, 'null']}
+                client_type: {type: [string, 'null']}
+                client_name: {type: [string, 'null']}
+                channel: {type: [string, 'null']}
+                locale: {type: [string, 'null']}
+                system_locale: {type: [string, 'null']}
+                timezone: {type: [string, 'null']}
+                runtime_version: {type: [string, 'null']}
+                engine_version: {type: [string, 'null']}
+                electron_version: {type: [string, 'null']}
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: endpoint_limit_exceeded 或 endpoint_revoked}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
     get:
       summary: 读取当前用户的单个端点
       responses:
