@@ -28,6 +28,14 @@ SELECT jsonb_build_object(
 SELECT jsonb_build_object('owner',owner_user_id,'parent',parent_session_id,'purged',purged_at,'deleted',deleted_at) AS data
 FROM sessions WHERE id = $1::uuid;
 
+-- name: LockReportingUser :one
+SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE;
+
+-- name: CountOpenPlaceholders :one
+SELECT count(*) FROM sessions
+WHERE owner_user_id = $1::uuid AND placeholder = true
+  AND deleted_at IS NULL AND purged_at IS NULL;
+
 -- name: CurrentSessionGroup :one
 SELECT COALESCE(
     (SELECT s.group_id::text FROM sessions s
@@ -40,7 +48,8 @@ SELECT COALESCE(
      ORDER BY a.period_start_at DESC LIMIT 1),
     (SELECT CASE WHEN count(*) = 1 THEN min(g.id::text) END
      FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
-     WHERE gu.user_id = sqlc.arg(user_id)::uuid AND gu.removed_at IS NULL)
+     WHERE gu.user_id = sqlc.arg(user_id)::uuid AND gu.removed_at IS NULL),
+    ''
 )::text AS group_id;
 
 -- name: InsertPlaceholder :exec

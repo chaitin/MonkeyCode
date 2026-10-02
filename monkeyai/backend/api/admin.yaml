@@ -33,7 +33,7 @@ paths:
         '410': {description: 会话统计数据已清除}
     delete:
       summary: 清除会话及子会话统计明细
-      description: 请求必须提供匹配的完整会话 ID；财务流水和会话墓碑不删除。生产启用前必须接入单独清除权限和审计。
+      description: 仅管理员可操作；必须提供匹配的顶层会话完整 ID。清除会话与子会话统计明细，并在同一事务写审计；财务流水和会话墓碑保留。
       parameters:
         - {name: X-Confirm-Session-ID, in: header, required: true, schema: {type: string, format: uuid}}
       responses:

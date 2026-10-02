@@ -524,6 +524,20 @@ func TestSessionReportingDatabase(t *testing.T) {
 	request(http.MethodPut, "/sessions/"+sessionID, otherMachine, otherPut, http.StatusConflict, "not_host")
 	request(http.MethodPost, path+"?after_turn=1", otherMachine, batch, http.StatusConflict, "not_host")
 
+	accountID, transactionID := resource.ID(), resource.ID()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO credit_accounts(id,user_id,balance,period_start_at,period_end_at,last_refreshed_at,group_id)
+VALUES($1,$2,10,now()-interval '1 day',now()+interval '1 day',now(),$3)`, accountID, userID, groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO billing_transactions(id,user_id,account_id,session_id,category,resource_id,item_name,user_name,user_email,group_id,mode,status,reserve,amount,pricing)
+VALUES($1,$2,$3,$4,'model',$5,'测试模型','会话测试用户','session-test@example.com',$6,'local','settled',0,5,'{}')`, transactionID, userID, accountID, sessionID, resource.ID(), groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO credit_ledger_entries(account_id,user_id,session_id,entry_type,category,item_name,credit_delta,balance_after,occurred_at,transaction_id,group_id)
+VALUES($1,$2,$3,'charge','model','测试模型',-5,5,now(),$4,$5)`, accountID, userID, sessionID, transactionID, groupID); err != nil {
+		t.Fatal(err)
+	}
+
 	admin := chi.NewRouter()
 	s.RegisterAdmin(admin)
 	deny := httptest.NewRecorder()
@@ -538,6 +552,76 @@ func TestSessionReportingDatabase(t *testing.T) {
 	}
 	if !placeholder {
 		t.Fatal("拒绝清除后不能改变墓碑状态")
+	}
+
+	if _, err := s.pool.Exec(ctx, `UPDATE users SET role='admin' WHERE id=$1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	adminToken := resource.ID()
+	adminHash := sha256.Sum256([]byte(adminToken))
+	if _, err := s.pool.Exec(ctx, `INSERT INTO browser_sessions(token_hash,user_id,authentication_method,expires_at)
+VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(adminHash[:]), userID); err != nil {
+		t.Fatal(err)
+	}
+	s.WithPurgeAuthorizer(func(ctx context.Context) bool {
+		admin, ok := identity.UserFromContext(ctx)
+		return ok && admin.Role == "admin"
+	})
+	protected := chi.NewRouter()
+	protected.Use(identities.RequireAdmin)
+	s.RegisterAdmin(protected)
+	clear := func(targetID, confirmation string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodDelete, "/sessions/"+targetID, nil)
+		r.AddCookie(&http.Cookie{Name: "monkeyai_session", Value: adminToken})
+		r.Header.Set("X-Confirm-Session-ID", confirmation)
+		w := httptest.NewRecorder()
+		protected.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("管理员清除 %s: HTTP %d, 期望 %d: %s", targetID, w.Code, want, w.Body.String())
+		}
+	}
+	clear(childID, childID, http.StatusBadRequest)
+	clear(sessionID, childID, http.StatusBadRequest)
+	clear(sessionID, sessionID, http.StatusNoContent)
+	var cleared, retainedBilling, retainedLedger, audits int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE id IN ($1,$2) AND purged_at IS NOT NULL`, sessionID, childID).Scan(&cleared); err != nil || cleared != 2 {
+		t.Fatalf("清除后应保留两个墓碑: %d %v", cleared, err)
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM session_turns WHERE session_id=$1`, sessionID).Scan(&turns); err != nil || turns != 0 {
+		t.Fatalf("清除后不应保留轮次明细: %d %v", turns, err)
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM billing_transactions WHERE session_id=$1`, sessionID).Scan(&retainedBilling); err != nil || retainedBilling != 1 {
+		t.Fatalf("清除不应删除计费事务: %d %v", retainedBilling, err)
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM credit_ledger_entries WHERE session_id=$1`, sessionID).Scan(&retainedLedger); err != nil || retainedLedger != 1 {
+		t.Fatalf("清除不应删除财务流水: %d %v", retainedLedger, err)
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM audits WHERE action='session.purge' AND target_id=$1`, sessionID).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("清除必须写入审计事件: %d %v", audits, err)
+	}
+	if err := s.EnsureSession(ctx, userID, sessionID, "", ""); code(err) != "session_not_registered" {
+		t.Fatalf("清除后不得重新建立占位会话: %v", err)
+	}
+}
+
+func TestPlaceholderLimit(t *testing.T) {
+	s, _, userID, _ := sessionDBFixture(t)
+	ctx := t.Context()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO sessions(id,owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,placeholder,reporting_enabled_at)
+SELECT gen_random_uuid(),$1,'','conversation','unknown','',now(),NULL,true,now()
+FROM generate_series(1,1000)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureSession(ctx, userID, resource.ID(), "", ""); code(err) != "rate_limited" {
+		t.Fatalf("占位上限应拒绝新会话: %v", err)
+	}
+	var existing string
+	if err := s.pool.QueryRow(ctx, `SELECT id::text FROM sessions WHERE owner_user_id=$1 LIMIT 1`, userID).Scan(&existing); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureSession(ctx, userID, existing, "", ""); err != nil {
+		t.Fatalf("占位上限不能阻断已存在会话: %v", err)
 	}
 }
 

@@ -309,7 +309,7 @@ func (s *Service) clearSession(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, invalidSession("会话 ID 无效"))
 		return
 	}
-	confirm := firstQuery(strings.TrimSpace(r.Header.Get("X-Confirm-Session-ID")), strings.TrimSpace(r.URL.Query().Get("confirm_session_id")))
+	confirm := strings.TrimSpace(r.Header.Get("X-Confirm-Session-ID"))
 	if confirm != id {
 		resource.Fail(w, invalidSession("必须确认要清除的会话 ID"))
 		return
@@ -329,10 +329,11 @@ func (s *Service) clearSession(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	rootID := id
 	if row.ParentSessionID != nil {
-		rootID = *row.ParentSessionID
+		resource.Fail(w, invalidSession("只能从顶层会话清除统计数据"))
+		return
 	}
+	rootID := id
 	q := sqlc.New(tx)
 	ids, err := q.LockFamily(r.Context(), rootID)
 	if err != nil {

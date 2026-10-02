@@ -318,7 +318,15 @@ export const zhCN = {
           "客户端上报 Token 与网关用量分别展示，不在页面合并或二次计费。点击轮次查看工具和技能统计。",
         callsNote:
           "会话级网关事实：后端当前仅提供按类型与状态聚合的调用量及 Token，不提供单次调用时间、费用或错误码。",
-        clearNotice: "清除操作需单独授权；权限接入前不提供清除入口。",
+        clearNotice:
+          "输入完整会话 ID 确认。将永久清除该会话及子会话的统计明细，无法恢复；财务流水会保留。",
+        clearTitle: "清除会话统计数据？",
+        clear: "清除统计数据",
+        clearing: "清除中…",
+        confirmID: "输入完整会话 ID",
+        cancel: "取消",
+        clearSuccess: "会话统计数据已清除；财务流水保留",
+        clearFailure: "清除失败，请重试",
         limit: "每类明细最多展示 {{count}} 条；当前接口不支持详情游标分页。",
       },
       fields: {

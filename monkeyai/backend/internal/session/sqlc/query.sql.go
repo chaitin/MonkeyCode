@@ -35,6 +35,19 @@ func (q *Queries) ClaimSession(ctx context.Context, arg ClaimSessionParams) erro
 	return err
 }
 
+const countOpenPlaceholders = `-- name: CountOpenPlaceholders :one
+SELECT count(*) FROM sessions
+WHERE owner_user_id = $1::uuid AND placeholder = true
+  AND deleted_at IS NULL AND purged_at IS NULL
+`
+
+func (q *Queries) CountOpenPlaceholders(ctx context.Context, dollar_1 string) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenPlaceholders, dollar_1)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countSessions = `-- name: CountSessions :one
 SELECT count(*) FROM sessions
 WHERE
@@ -105,7 +118,8 @@ SELECT COALESCE(
      ORDER BY a.period_start_at DESC LIMIT 1),
     (SELECT CASE WHEN count(*) = 1 THEN min(g.id::text) END
      FROM group_users gu JOIN groups g ON g.id = gu.group_id AND g.deleted_at IS NULL
-     WHERE gu.user_id = $2::uuid AND gu.removed_at IS NULL)
+     WHERE gu.user_id = $2::uuid AND gu.removed_at IS NULL),
+    ''
 )::text AS group_id
 `
 
@@ -464,6 +478,17 @@ func (q *Queries) LockFamily(ctx context.Context, dollar_1 string) ([]string, er
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockReportingUser = `-- name: LockReportingUser :one
+SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE
+`
+
+func (q *Queries) LockReportingUser(ctx context.Context, dollar_1 string) (string, error) {
+	row := q.db.QueryRow(ctx, lockReportingUser, dollar_1)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const lockSession = `-- name: LockSession :one

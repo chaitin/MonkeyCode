@@ -264,6 +264,27 @@ func (s *Service) ResolveSession(ctx context.Context, userID, sessionID, parentI
 			}
 		}
 	}
+	_, err = readSession(ctx, tx, sessionID, false)
+	if errors.Is(err, pgx.ErrNoRows) {
+		queries := sqlc.New(tx)
+		if _, err := queries.LockReportingUser(ctx, userID); err != nil {
+			return Session{}, err
+		}
+		_, err = readSession(ctx, tx, sessionID, false)
+		if errors.Is(err, pgx.ErrNoRows) {
+			count, err := queries.CountOpenPlaceholders(ctx, userID)
+			if err != nil {
+				return Session{}, err
+			}
+			if count >= 1000 {
+				return Session{}, sessionFailure(http.StatusTooManyRequests, "rate_limited", "未登记的会话数量已达上限")
+			}
+		} else if err != nil {
+			return Session{}, err
+		}
+	} else if err != nil {
+		return Session{}, err
+	}
 	row, err := s.ensureLocked(ctx, tx, userID, sessionID, parentID, groupID, "")
 	if err != nil {
 		return Session{}, err

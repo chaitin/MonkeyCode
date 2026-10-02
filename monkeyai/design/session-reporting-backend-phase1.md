@@ -629,7 +629,7 @@ ResolveSession(user_id, session_header, parent_header)
 
 支持按会话 ID、用户、分组、模型、客户端、结局和时间筛选；第一期不支持标题或正文搜索。会话 ID提供复制按钮，长 ID只在视觉上截断，筛选和跳转使用完整值。
 
-占位会话默认不显示，可通过“包含占位会话”筛选查看；已清除会话默认不显示，仅在拥有清除审计权限时显示墓碑摘要。
+占位会话默认不显示，可通过“包含占位会话”筛选查看；已清除会话默认不显示，管理员可通过审计日志查看清除事件及墓碑摘要。
 
 #### C. 会话详情
 
@@ -646,9 +646,9 @@ ResolveSession(user_id, session_header, parent_header)
 
 第一期禁止展示正文、思考、命令、工具参数、工具输出、文件路径和附件。客户端上报 usage 与网关用量不一致时，页面分别展示，不在页面端合并或二次计费。
 
-详情页提供“清除统计数据”按钮，但只对拥有清除权限的管理员显示。操作前要求输入完整 session ID 二次确认，并明确提示：财务流水不会被删除，清除后会话不可恢复。
+详情页仅在顶层会话展示“清除统计数据”按钮。用户已确认一期沿用现有管理员角色授权；操作前要求输入完整 session ID 二次确认，并明确提示：会话及子会话的统计明细不可恢复，财务流水不会被删除；服务端在清除事务内写入审计事件。
 
-已清除会话的详情权限分支：普通统计管理员返回 `410 session_purged`，不返回轮次、资源和调用明细；拥有清除审计权限的管理员只能查看固定墓碑摘要（session ID、用户、清除时间、操作人、审计 ID），不能恢复已删除统计明细。
+已清除会话的统计详情返回 `410 session_purged`，不返回轮次、资源和调用明细；管理员可在审计日志中查询清除操作、操作者、审计 ID 和目标会话，不能恢复已删除统计明细。
 
 #### D. 资源与客户端分析
 
@@ -670,7 +670,7 @@ ResolveSession(user_id, session_header, parent_header)
 | 会话详情 | `GET /api/admin/v1/sessions/{id}` | 会话摘要、轮次、资源、调用、子会话 |
 | 资源分析 | `GET /api/admin/v1/statistics/resources` | 资源维度指标和趋势 |
 | 客户端分析 | `GET /api/admin/v1/statistics/clients` | 客户端维度指标和趋势 |
-| 清除确认 | `DELETE /api/admin/v1/sessions/{id}?confirm={id}` | 清除结果、墓碑时间、审计 ID |
+| 清除确认 | `DELETE /api/admin/v1/sessions/{id}`，请求头 `X-Confirm-Session-ID: {id}` | 清除结果；墓碑和审计事件保留于服务端 |
 
 统计查询共用参数：
 
@@ -679,7 +679,7 @@ ResolveSession(user_id, session_header, parent_header)
 - `resource_id`、`resource_version`：资源页和会话列表可选筛选。
 - `outcome`：`complete`、`interrupted`、`error`、`max_turns`、`output_limit`、`unknown`。
 - `include_placeholders`：默认 false；仅会话列表和质量面板可用。
-- `include_purged`：默认 false；仅拥有清除审计权限时可用，且只返回墓碑摘要。
+- `include_purged`：默认 false；仅管理员可用，且只返回墓碑摘要，不返回清除前明细。
 - `limit`：默认 50，最大 100。
 - `cursor`：不使用 offset 深分页。
 
@@ -690,7 +690,7 @@ ResolveSession(user_id, session_header, parent_header)
 ### 9.3 权限和交互状态
 
 - 读取会话统计沿用管理端统计权限；会话详情属于敏感统计，不能开放给普通 Agent 用户。
-- 清除权限单独控制，不因拥有统计读取权限自动获得清除权限。
+- 一期沿用现有管理员角色授权清除；服务端要求完整 ID 二次确认并在同一事务写审计。普通 Agent 用户无权读取或清除统计数据。
 - 所有页面支持加载中、空数据、部分数据延迟、权限不足、超时和服务异常状态。
 - 查询失败不清空当前已展示的数据，显示上次更新时间和重试入口。
 - 页面不在浏览器 URL、埋点和前端错误日志中写入正文、工具参数或完整上报 payload。

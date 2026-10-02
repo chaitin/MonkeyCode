@@ -1,8 +1,20 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link, useParams, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useAppToast } from "@/components/animated-toast-provider"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import {
   Table,
   TableBody,
@@ -12,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { api } from "@/lib/api"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import {
   defaultWindow,
@@ -74,9 +87,14 @@ function DetailTable<T>({
 
 export function SessionDetailPage() {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
+  const navigate = useNavigate()
   const { sessionId = "" } = useParams()
   const [params] = useSearchParams()
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [clearOpen, setClearOpen] = useState(false)
+  const [confirmID, setConfirmID] = useState("")
+  const [clearing, setClearing] = useState(false)
   const time = defaultWindow()
   const from = params.get("from")
   const until = params.get("until")
@@ -97,6 +115,32 @@ export function SessionDetailPage() {
   )
   const data =
     valid && request.data?.id === sessionId ? request.data : undefined
+  async function clearSession() {
+    if (!valid || confirmID !== sessionId || clearing) return
+    setClearing(true)
+    try {
+      await api<void>(
+        `/api/admin/v1/sessions/${encodeURIComponent(sessionId)}`,
+        {
+          method: "DELETE",
+          headers: { "X-Confirm-Session-ID": sessionId },
+        }
+      )
+      showToast({ status: "success", title: t(`${key}.detail.clearSuccess`) })
+      setClearOpen(false)
+      navigate(CONSOLE_ROUTES.sessionList)
+    } catch (reason) {
+      showToast({
+        status: "error",
+        title:
+          reason instanceof Error
+            ? reason.message
+            : t(`${key}.detail.clearFailure`),
+      })
+    } finally {
+      setClearing(false)
+    }
+  }
   const fields: (keyof ReportDetail)[] = [
     "id",
     "owner_user_id",
@@ -166,9 +210,60 @@ export function SessionDetailPage() {
             })}{" "}
             · {t(`${key}.detail.limit`, { count: data.detail_limit })}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {t(`${key}.detail.clearNotice`)}
-          </p>
+          {!data.parent_session_id && (
+            <>
+              <Button variant="destructive" onClick={() => setClearOpen(true)}>
+                {t(`${key}.detail.clear`)}
+              </Button>
+              <AlertDialog
+                open={clearOpen}
+                onOpenChange={(open) => {
+                  if (clearing) return
+                  setClearOpen(open)
+                  if (!open) setConfirmID("")
+                }}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t(`${key}.detail.clearTitle`)}
+                    </AlertDialogTitle>
+                  </AlertDialogHeader>
+                  <AlertDialogDescription>
+                    {t(`${key}.detail.clearNotice`)}
+                  </AlertDialogDescription>
+                  <p className="text-xs break-all text-muted-foreground">
+                    {sessionId}
+                  </p>
+                  <Input
+                    aria-label={t(`${key}.detail.confirmID`)}
+                    placeholder={t(`${key}.detail.confirmID`)}
+                    value={confirmID}
+                    onChange={(event) => setConfirmID(event.target.value)}
+                    autoComplete="off"
+                    disabled={clearing}
+                  />
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={clearing}>
+                      {t(`${key}.detail.cancel`)}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={clearing || confirmID !== sessionId}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        void clearSession()
+                      }}
+                    >
+                      {clearing
+                        ? t(`${key}.detail.clearing`)
+                        : t(`${key}.detail.clear`)}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
           <Tabs defaultValue="turns">
             <TabsList>
               {(["turns", "resources", "calls", "subsessions"] as const).map(

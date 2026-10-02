@@ -337,7 +337,14 @@ export const enUS = {
         callsNote:
           "Session-level gateway facts: the current API only provides calls and tokens grouped by kind and status, not per-call times, costs, or error codes.",
         clearNotice:
-          "Clearing requires separate authorization; the action is unavailable until that permission is integrated.",
+          "Enter the full session ID to confirm. This permanently removes statistics for the session and its sub-sessions; billing ledgers remain intact.",
+        clearTitle: "Clear session statistics?",
+        clear: "Clear statistics",
+        clearing: "Clearing…",
+        confirmID: "Enter full session ID",
+        cancel: "Cancel",
+        clearSuccess: "Session statistics cleared; billing records retained",
+        clearFailure: "Could not clear statistics. Try again.",
         limit:
           "At most {{count}} entries per detail group; the current API has no detail cursor pagination.",
       },
