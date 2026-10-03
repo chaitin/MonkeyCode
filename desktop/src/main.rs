@@ -1552,6 +1552,16 @@ fn main() {
             default_linux_gdk_backend(wayland_display.as_deref(), session_type.as_deref()),
         );
     }
+    // WebKitGTK 2.46+ 在部分 AMD/Intel GPU 上启用 DMABUF 渲染器后，渲染进程
+    // (WebKitWebProcess) 首帧异常：窗口弹出但内容持续黑屏，或随机挂死不再重绘。
+    // 参见 tauri-apps/tauri#13498。设置 WEBKIT_DISABLE_DMABUF_RENDERER=1 强制
+    // 回退共享内存渲染路径，牺牲少量合成性能换取稳定性。必须在任何 GTK/WebKit
+    // 初始化之前设置；仅在用户未显式设置时生效，保留排查调优的出口。
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        eprintln!("[desktop] WEBKIT_DISABLE_DMABUF_RENDERER=1 (默认设置，避免 DMABUF 渲染黑屏)");
+    }
     let builder = tauri::Builder::default().register_uri_scheme_protocol(
         preview::ARTIFACT_SCHEME,
         |_context, request| preview::artifact_protocol_response(request),
