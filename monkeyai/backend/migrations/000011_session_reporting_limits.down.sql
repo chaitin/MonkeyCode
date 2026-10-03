@@ -1,0 +1,1 @@
+DROP TABLE session_reporting_rate_limits;

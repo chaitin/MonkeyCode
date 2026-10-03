@@ -1,3 +1,15 @@
+-- name: TakeDeviceRegistrationRateLimit :one
+INSERT INTO session_reporting_rate_limits (user_id, kind, bucket_start, request_count)
+VALUES (sqlc.arg(user_id)::uuid, 'endpoints', sqlc.arg(bucket_start)::timestamptz, 1)
+ON CONFLICT (user_id, kind) DO UPDATE SET
+    request_count = CASE
+        WHEN session_reporting_rate_limits.bucket_start = EXCLUDED.bucket_start
+            THEN session_reporting_rate_limits.request_count + 1
+        ELSE 1
+    END,
+    bucket_start = EXCLUDED.bucket_start
+RETURNING request_count;
+
 -- name: LockUser :one
 SELECT id FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL FOR UPDATE;
 

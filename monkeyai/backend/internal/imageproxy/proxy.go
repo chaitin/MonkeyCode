@@ -12,6 +12,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -348,8 +349,12 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 	if sessionID != "" {
 		if p.sessions != nil {
 			if err := p.sessions.EnsureSession(r.Context(), target.UserID, sessionID, parentID, ""); err != nil {
-				resource.Fail(w, err)
-				return proxy.Target{}, false
+				if errors.Is(err, sessionreporting.ErrReportingDisabled) {
+					sessionID = ""
+				} else {
+					resource.Fail(w, err)
+					return proxy.Target{}, false
+				}
 			}
 		}
 		target.SessionID = sessionID

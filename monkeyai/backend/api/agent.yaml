@@ -240,6 +240,7 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: endpoint_limit_exceeded 或 endpoint_revoked}
+        '429': {description: 设备登记每用户每小时最多十次，遵守 Retry-After}
         '503': {$ref: '#/components/responses/EndpointUnavailable'}
     get:
       summary: 读取当前用户的单个端点

@@ -58,6 +58,13 @@ func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	if err := s.checkReporting(r.Context()); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if !s.checkRequestLimit(w, r.Context(), user.ID, "turns", 30) {
+		return
+	}
 	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
 	if !validUUID(machineID) {
 		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必填且必须为 UUID"))

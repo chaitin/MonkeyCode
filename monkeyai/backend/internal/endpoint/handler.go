@@ -103,6 +103,10 @@ func (s *Service) manage(w http.ResponseWriter, r *http.Request, fn func(context
 	result, err := fn(ctx, credential.UserID, u)
 	if err != nil {
 		code, name := status(err)
+		if name == "rate_limited" {
+			seconds := int(time.Until(time.Now().UTC().Truncate(time.Hour).Add(time.Hour)).Seconds()) + 1
+			w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		}
 		if name == "service_unavailable" && r.Context().Err() == nil {
 			s.logger.Warn("端点管理操作失败", "user_id", credential.UserID, "operation", r.Method, "error", err)
 		}

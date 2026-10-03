@@ -28,6 +28,18 @@ SELECT jsonb_build_object(
 SELECT jsonb_build_object('owner',owner_user_id,'parent',parent_session_id,'purged',purged_at,'deleted',deleted_at) AS data
 FROM sessions WHERE id = $1::uuid;
 
+-- name: TakeReportingRateLimit :one
+INSERT INTO session_reporting_rate_limits (user_id, kind, bucket_start, request_count)
+VALUES (sqlc.arg(user_id)::uuid, sqlc.arg(kind)::text, sqlc.arg(bucket_start)::timestamptz, 1)
+ON CONFLICT (user_id, kind) DO UPDATE SET
+    request_count = CASE
+        WHEN session_reporting_rate_limits.bucket_start = EXCLUDED.bucket_start
+            THEN session_reporting_rate_limits.request_count + 1
+        ELSE 1
+    END,
+    bucket_start = EXCLUDED.bucket_start
+RETURNING request_count;
+
 -- name: LockReportingUser :one
 SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE;
 

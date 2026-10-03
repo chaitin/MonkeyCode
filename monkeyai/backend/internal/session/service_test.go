@@ -20,6 +20,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -602,6 +603,98 @@ VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(adminHash[
 	}
 	if err := s.EnsureSession(ctx, userID, sessionID, "", ""); code(err) != "session_not_registered" {
 		t.Fatalf("清除后不得重新建立占位会话: %v", err)
+	}
+}
+
+type testReportingSettings struct{ enabled bool }
+
+func (settings testReportingSettings) GetValue(_ context.Context, _ string) (json.RawMessage, error) {
+	if settings.enabled {
+		return json.RawMessage(`{"enabled":true,"level":"stats"}`), nil
+	}
+	return json.RawMessage(`{"enabled":false,"level":"stats"}`), nil
+}
+
+func TestReportingDisabled(t *testing.T) {
+	s := NewService(nil).WithReportingSettings(testReportingSettings{})
+	if err := s.EnsureSession(t.Context(), resource.ID(), resource.ID(), "", ""); !errors.Is(err, ErrReportingDisabled) {
+		t.Fatalf("关闭上报后不得创建网关占位会话: %v", err)
+	}
+}
+
+func TestReportingDisabledDatabase(t *testing.T) {
+	s, identities, userID, token := sessionDBFixture(t)
+	settings := setting.NewService(setting.NewPostgres(s.pool))
+	s.WithReportingSettings(settings)
+	id, machineID := resource.ID(), resource.ID()
+	if err := s.EnsureSession(t.Context(), userID, id, "", ""); err != nil {
+		t.Fatalf("缺失配置时默认启用上报: %v", err)
+	}
+	if _, err := settings.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":false,"level":"stats"}`), 1, userID); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Use(identities.RequireAgent)
+	s.RegisterAgent(router)
+	for _, methodPath := range []struct{ method, path string }{
+		{http.MethodPut, "/sessions/" + id},
+		{http.MethodPost, "/sessions/" + id + "/turns?after_turn=0"},
+	} {
+		r := httptest.NewRequest(methodPath.method, methodPath.path, nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("X-MAI-Machine-ID", machineID)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "reporting_disabled") {
+			t.Fatalf("关闭上报后接口应拒绝写入: %s %s -> %d %s", methodPath.method, methodPath.path, w.Code, w.Body.String())
+		}
+	}
+	if err := s.EnsureSession(t.Context(), userID, resource.ID(), "", ""); !errors.Is(err, ErrReportingDisabled) {
+		t.Fatalf("关闭上报后不得创建占位会话: %v", err)
+	}
+	if _, err := settings.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":true,"level":"stats"}`), 1, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureSession(t.Context(), userID, resource.ID(), "", ""); err != nil {
+		t.Fatalf("重新启用上报后应立即恢复: %v", err)
+	}
+}
+
+func TestReportingRequestRateLimits(t *testing.T) {
+	s, identities, _, token := sessionDBFixture(t)
+	fixed := time.Now().UTC().Truncate(time.Minute).Add(5 * time.Second)
+	s.now = func() time.Time { return fixed }
+	router := chi.NewRouter()
+	router.Use(identities.RequireAgent)
+	s.RegisterAgent(router)
+	for _, limit := range []struct {
+		method, path string
+		allowed      int
+	}{
+		{http.MethodPut, "/sessions/" + resource.ID(), 60},
+		{http.MethodPost, "/sessions/" + resource.ID() + "/turns?after_turn=0", 30},
+	} {
+		send := func() *httptest.ResponseRecorder {
+			t.Helper()
+			r := httptest.NewRequest(limit.method, limit.path, nil)
+			r.Header.Set("Authorization", "Bearer "+token)
+			r.Header.Set("X-MAI-Machine-ID", resource.ID())
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			return w
+		}
+		for range limit.allowed {
+			if w := send(); w.Code != http.StatusBadRequest {
+				t.Fatalf("未达到限额不应限速: %d %s", w.Code, w.Body.String())
+			}
+		}
+		if w := send(); w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
+			t.Fatalf("超过限额应带 Retry-After: %d %s", w.Code, w.Body.String())
+		}
+		fixed = fixed.Add(time.Minute)
+		if w := send(); w.Code != http.StatusBadRequest {
+			t.Fatalf("新时间桶应恢复请求: %d %s", w.Code, w.Body.String())
+		}
 	}
 }
 

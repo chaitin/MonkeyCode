@@ -186,10 +186,23 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 				return Config{}, fmt.Errorf("编码计费设置: %w", err)
 			}
 		}
-		config.Settings[record.Key] = value
 		if record.Key == "session_reporting" {
+			var setting struct {
+				Enabled bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(value, &setting); err != nil {
+				return Config{}, fmt.Errorf("读取会话上报设置: %w", err)
+			}
+			value, err = json.Marshal(struct {
+				Enabled bool   `json:"enabled"`
+				Level   string `json:"level"`
+			}{setting.Enabled, "stats"})
+			if err != nil {
+				return Config{}, err
+			}
 			seenSessionReporting = true
 		}
+		config.Settings[record.Key] = value
 		if record.UpdatedAt.After(config.UpdatedAt) {
 			config.UpdatedAt = record.UpdatedAt
 		}
@@ -267,7 +280,7 @@ func validate(key string, value map[string]json.RawMessage) error {
 	switch key {
 	case "session_reporting":
 		enabled, ok := value["enabled"]
-		if ok && string(enabled) != "true" && string(enabled) != "false" {
+		if !ok || (string(enabled) != "true" && string(enabled) != "false") {
 			return errors.New("session_reporting.enabled 必须为布尔值")
 		}
 		level := rawString(value["level"])

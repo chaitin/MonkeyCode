@@ -441,6 +441,31 @@ func (q *Queries) Status(ctx context.Context, arg StatusParams) (Endpoint, error
 	return i, err
 }
 
+const takeDeviceRegistrationRateLimit = `-- name: TakeDeviceRegistrationRateLimit :one
+INSERT INTO session_reporting_rate_limits (user_id, kind, bucket_start, request_count)
+VALUES ($1::uuid, 'endpoints', $2::timestamptz, 1)
+ON CONFLICT (user_id, kind) DO UPDATE SET
+    request_count = CASE
+        WHEN session_reporting_rate_limits.bucket_start = EXCLUDED.bucket_start
+            THEN session_reporting_rate_limits.request_count + 1
+        ELSE 1
+    END,
+    bucket_start = EXCLUDED.bucket_start
+RETURNING request_count
+`
+
+type TakeDeviceRegistrationRateLimitParams struct {
+	UserID      string
+	BucketStart time.Time
+}
+
+func (q *Queries) TakeDeviceRegistrationRateLimit(ctx context.Context, arg TakeDeviceRegistrationRateLimitParams) (int32, error) {
+	row := q.db.QueryRow(ctx, takeDeviceRegistrationRateLimit, arg.UserID, arg.BucketStart)
+	var request_count int32
+	err := row.Scan(&request_count)
+	return request_count, err
+}
+
 const touch = `-- name: Touch :exec
 UPDATE endpoints SET last_seen_at = greatest(last_seen_at, $3::timestamptz)
 WHERE user_id = $1 AND machine_id = $2

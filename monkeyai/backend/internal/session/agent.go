@@ -33,6 +33,13 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	if err := s.checkReporting(r.Context()); err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if !s.checkRequestLimit(w, r.Context(), user.ID, "sessions", 60) {
+		return
+	}
 	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
 	if !validUUID(machineID) {
 		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必须为 UUID"))

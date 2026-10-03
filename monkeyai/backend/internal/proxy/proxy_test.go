@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -68,6 +69,42 @@ func TestProxyForwardsRequest(t *testing.T) {
 	}
 	if gotBody != body {
 		t.Fatalf("upstream body = %q", gotBody)
+	}
+}
+
+type disabledSessionResolver struct{}
+
+func (disabledSessionResolver) EnsureSession(context.Context, string, string, string, string) error {
+	return sessionreporting.ErrReportingDisabled
+}
+
+func TestProxyIgnoresSessionWhenReportingDisabled(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-MAI-Session-ID") != "" || r.Header.Get("X-Session-ID") != "" {
+			t.Error("内部会话请求头不得透传上游")
+		}
+		_, _ = io.WriteString(w, `{"id":"chat_usage","usage":{"prompt_tokens":1}}`)
+	}))
+	t.Cleanup(upstream.Close)
+	usage := &usageRecorderStub{calls: make(chan Call, 1)}
+	gateway := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+		return testTarget(upstream.URL + "/v1"), nil
+	}), discardLogger()).WithSessionResolver(disabledSessionResolver{}).WithUsageRecorder(usage)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
+	req.Header.Set("Authorization", "Bearer runtime-secret")
+	req.Header.Set("X-MAI-Session-ID", "11111111-1111-4111-8111-111111111111")
+	w := httptest.NewRecorder()
+	gateway.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("关闭上报不应阻断模型调用: %d %s", w.Code, w.Body.String())
+	}
+	select {
+	case call := <-usage.calls:
+		if call.SessionID != "" {
+			t.Fatalf("关闭上报不应写入会话归属: %q", call.SessionID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("未收到模型用量")
 	}
 }
 

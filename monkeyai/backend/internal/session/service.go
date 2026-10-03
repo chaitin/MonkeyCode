@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrReportingDisabled = &resource.Error{Status: http.StatusForbidden, Code: "reporting_disabled", Message: "会话上报已关闭"}
+
+type ReportingSettings interface {
+	GetValue(context.Context, string) (json.RawMessage, error)
+}
 
 const (
 	maxSessionBodyBytes = 256 << 10
@@ -31,6 +38,7 @@ type Service struct {
 	pool            *pgxpool.Pool
 	now             func() time.Time
 	purgeAuthorizer func(context.Context) bool
+	settings        ReportingSettings
 }
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool, now: time.Now} }
@@ -40,8 +48,52 @@ func (s *Service) WithPurgeAuthorizer(authorize func(context.Context) bool) *Ser
 	return s
 }
 
+func (s *Service) WithReportingSettings(settings ReportingSettings) *Service {
+	s.settings = settings
+	return s
+}
+
+func (s *Service) checkReporting(ctx context.Context) error {
+	if s.settings == nil {
+		return nil
+	}
+	value, err := s.settings.GetValue(ctx, "session_reporting")
+	if err != nil {
+		return err
+	}
+	var config struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(value, &config); err != nil {
+		return err
+	}
+	if !config.Enabled {
+		return ErrReportingDisabled
+	}
+	return nil
+}
+
 func (s *Service) canPurge(ctx context.Context) bool {
 	return s.purgeAuthorizer != nil && s.purgeAuthorizer(ctx)
+}
+
+func (s *Service) checkRequestLimit(w http.ResponseWriter, ctx context.Context, userID, kind string, limit int32) bool {
+	now := s.now().UTC()
+	bucket := now.Truncate(time.Minute)
+	count, err := sqlc.New(s.pool).TakeReportingRateLimit(ctx, sqlc.TakeReportingRateLimitParams{
+		UserID: userID, Kind: kind, BucketStart: bucket,
+	})
+	if err != nil {
+		resource.Fail(w, err)
+		return false
+	}
+	if count <= limit {
+		return true
+	}
+	retry := int(bucket.Add(time.Minute).Sub(now).Seconds()) + 1
+	w.Header().Set("Retry-After", strconv.Itoa(retry))
+	resource.Fail(w, sessionFailure(http.StatusTooManyRequests, "rate_limited", "请求过于频繁"))
+	return false
 }
 
 // Session 是网关解析会话时需要的最小会话视图。
@@ -232,6 +284,9 @@ func validText(value string, limit int, required bool) bool {
 
 // ResolveSession 校验会话归属，并在合法会话尚不存在时原子创建占位会话。
 func (s *Service) ResolveSession(ctx context.Context, userID, sessionID, parentID, groupID string) (Session, error) {
+	if err := s.checkReporting(ctx); err != nil {
+		return Session{}, err
+	}
 	if !validUUID(userID) || !validUUID(sessionID) || (parentID != "" && !validUUID(parentID)) || (groupID != "" && !validUUID(groupID)) {
 		return Session{}, invalidSession("会话或关联 ID 无效")
 	}

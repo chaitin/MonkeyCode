@@ -3,6 +3,7 @@ package endpoint
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -79,15 +80,40 @@ func TestDeviceRegistration(t *testing.T) {
 	}
 }
 
-func TestDeviceLimit(t *testing.T) {
+func TestDeviceRegistrationRateLimit(t *testing.T) {
 	f := newFixture(t)
-	for range 20 {
-		code, data := call(t, f, "PUT", "/endpoints/"+uuid.New().String(), deviceBody, "owner")
+	for range 10 {
+		code, data := call(t, f, "PUT", "/endpoints/"+machineA, deviceBody, "owner")
 		if code != 200 {
-			t.Fatalf("登记未满限额: %d %s", code, data)
+			t.Fatalf("十次登记以内不应限速: %d %s", code, data)
 		}
 	}
+	req, err := http.NewRequestWithContext(t.Context(), "PUT", f.server.URL+"/endpoints/"+machineA, strings.NewReader(deviceBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer owner")
+	resp, err := f.server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("第十一次登记应限速并给出等待时间: %d %s", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+}
+
+func TestDeviceLimit(t *testing.T) {
+	f := newFixture(t)
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version,protocol_version)
+SELECT $1,gen_random_uuid(),'电脑','macos','15','arm64','1',1 FROM generate_series(1,19)`, f.user); err != nil {
+		t.Fatal(err)
+	}
 	code, data := call(t, f, "PUT", "/endpoints/"+uuid.New().String(), deviceBody, "owner")
+	if code != 200 {
+		t.Fatalf("登记未满限额: %d %s", code, data)
+	}
+	code, data = call(t, f, "PUT", "/endpoints/"+uuid.New().String(), deviceBody, "owner")
 	if code != 409 || !bytes.Contains(data, []byte("endpoint_limit_exceeded")) {
 		t.Fatalf("超过限额的结果错误: %d %s", code, data)
 	}

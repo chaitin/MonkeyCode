@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -209,8 +210,12 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	if sessionID != "" {
 		if s.sessions != nil {
 			if err := s.sessions.EnsureSession(r.Context(), user, sessionID, parentID, ""); err != nil {
-				rpcFail(r.Context(), w, in.ID, err)
-				return
+				if errors.Is(err, sessionreporting.ErrReportingDisabled) {
+					sessionID = ""
+				} else {
+					rpcFail(r.Context(), w, in.ID, err)
+					return
+				}
 			}
 		}
 	}

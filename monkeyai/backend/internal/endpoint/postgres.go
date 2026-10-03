@@ -180,6 +180,14 @@ func (p *Postgres) Register(ctx context.Context, user string, h Hello, max int) 
 	})
 }
 func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r Registration, max int) (Endpoint, error) {
+	bucket := time.Now().UTC().Truncate(time.Hour)
+	count, err := sqlc.New(p.pool).TakeDeviceRegistrationRateLimit(ctx, sqlc.TakeDeviceRegistrationRateLimitParams{UserID: user, BucketStart: bucket})
+	if err != nil {
+		return Endpoint{}, err
+	}
+	if count > 10 {
+		return Endpoint{}, fault{"rate_limited"}
+	}
 	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
 		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
 		fresh := errors.Is(err, pgx.ErrNoRows)

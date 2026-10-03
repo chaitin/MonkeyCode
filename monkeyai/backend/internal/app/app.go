@@ -108,7 +108,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
-	sessions := sessionreporting.NewService(pool).WithPurgeAuthorizer(func(ctx context.Context) bool {
+	sessions := sessionreporting.NewService(pool).WithReportingSettings(settings).WithPurgeAuthorizer(func(ctx context.Context) bool {
 		user, ok := identity.UserFromContext(ctx)
 		return ok && user.Role == "admin"
 	})

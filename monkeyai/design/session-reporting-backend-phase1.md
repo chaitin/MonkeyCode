@@ -377,6 +377,10 @@ CREATE INDEX image_jobs_session_idx
 
 财务流水仍只记录实际发生的计费事实，不因统计关联改写计费语义。
 
+### 4.9 `session_reporting_rate_limits`
+
+单独增量 migration 保存每用户、每类请求的当前时间桶计数：主键 `(user_id, kind)`，另有 `bucket_start timestamptz` 和 `request_count integer`。`kind` 仅允许 `sessions`、`turns`、`endpoints`。原子 `INSERT ... ON CONFLICT DO UPDATE` 保证多实例部署时使用同一个数据库限额；时间桶切换直接重置计数，每用户仅保留三行，避免按请求持续增长。
+
 ## 5. 设置和设备登记
 
 ### 5.1 会话上报开关
@@ -394,13 +398,13 @@ CREATE INDEX image_jobs_session_idx
 
 规则：
 
-- 配置缺失或 `enabled=false`：客户端不发送会话上报和会话请求头。
+- 旧版本服务端未返回配置段时，客户端不发送会话上报和会话请求头；新版本服务端合成默认 `enabled=true`。管理员设置 `enabled=false` 后，客户端停止上报，服务端拒绝会话 PUT/轮次 POST，并在模型、MCP、生图网关忽略会话请求头、保持调用可用。
 - `level=stats`：启用第一期。
 - `level=full`：属于第二期能力；第一期服务端将其降级为 `stats`，不开放正文接口。
 - 未知 level 按 `stats` 处理。
 - 设备登记不受该开关影响。
 - 现有 ETag 轮询支持配置热更新。
-- 新版本服务端通过配置迁移写入 `session_reporting` 默认值 `enabled=true, level=stats`；旧版本服务端没有该配置段时，客户端按关闭处理，以保证旧服务端兼容。
+- 新版本服务端在缺少配置记录时合成默认值 `enabled=true, level=stats`，不需要依赖配置行预置；旧版本服务端缺少整个配置段时，客户端按关闭处理。
 - 需要同步扩展 settings 的数据库 key 约束、白名单、校验、管理端读写和 Agent 配置输出，不能只修改响应 JSON。
 
 服务端必须通过请求字段白名单强制第一期边界，不能只依赖客户端不发送内容。
@@ -746,7 +750,10 @@ ResolveSession(user_id, session_header, parent_header)
 | 会话请求 | 每用户每分钟 60 次 |
 | 轮次请求 | 每用户每分钟 30 批、4 MiB |
 | 设备登记 | 每用户每小时 10 次 |
+| 网关未知占位 | 每用户未补齐占位会话最多 1000 个 |
 | 重试 | 5 秒起，指数退避至 5 分钟并加抖动 |
+
+请求限速通过 PostgreSQL 时间桶原子计数实现，超过限制返回 HTTP 429 和 `Retry-After`。时间桶按 UTC 分钟或小时截断；占位上限按未登记会话数量限制，新会话超过上限返回 `rate_limited`，已存在会话仍可继续调用和补登记。
 
 幂等键：
 
@@ -758,7 +765,7 @@ ResolveSession(user_id, session_header, parent_header)
 
 ## 12. 实施顺序
 
-1. 新增增量 migration，扩展 `sessions`、`endpoints`、`image_jobs`、`image_calls`，创建五张轮次和资源表。
+1. 新增增量 migration，扩展 `sessions`、`endpoints`、`image_jobs`、`image_calls`，创建五张轮次和资源表；限速表使用后续独立迁移。
 2. 增加 Agent OpenAPI 契约、设置段和设备登记字段。
 3. 实现 `internal/session`：会话 PUT、轮次批次、占位、宿主认领、快照校验和派生列重算。
 4. 接入 Agent 路由和依赖初始化。

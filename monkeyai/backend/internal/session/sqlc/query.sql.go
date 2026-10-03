@@ -656,3 +656,29 @@ func (q *Queries) SetState(ctx context.Context, payload []byte) error {
 	_, err := q.db.Exec(ctx, setState, payload)
 	return err
 }
+
+const takeReportingRateLimit = `-- name: TakeReportingRateLimit :one
+INSERT INTO session_reporting_rate_limits (user_id, kind, bucket_start, request_count)
+VALUES ($1::uuid, $2::text, $3::timestamptz, 1)
+ON CONFLICT (user_id, kind) DO UPDATE SET
+    request_count = CASE
+        WHEN session_reporting_rate_limits.bucket_start = EXCLUDED.bucket_start
+            THEN session_reporting_rate_limits.request_count + 1
+        ELSE 1
+    END,
+    bucket_start = EXCLUDED.bucket_start
+RETURNING request_count
+`
+
+type TakeReportingRateLimitParams struct {
+	UserID      string
+	Kind        string
+	BucketStart time.Time
+}
+
+func (q *Queries) TakeReportingRateLimit(ctx context.Context, arg TakeReportingRateLimitParams) (int32, error) {
+	row := q.db.QueryRow(ctx, takeReportingRateLimit, arg.UserID, arg.Kind, arg.BucketStart)
+	var request_count int32
+	err := row.Scan(&request_count)
+	return request_count, err
+}

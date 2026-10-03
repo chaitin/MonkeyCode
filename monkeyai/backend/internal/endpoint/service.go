@@ -285,6 +285,8 @@ func status(err error) (int, string) {
 			return 409, f.code
 		case "endpoint_revoked":
 			return 409, f.code
+		case "rate_limited":
+			return http.StatusTooManyRequests, f.code
 		}
 	}
 	return http.StatusServiceUnavailable, "service_unavailable"

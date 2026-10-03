@@ -1060,3 +1060,11 @@ ALTER TABLE image_calls
     ADD CONSTRAINT image_calls_job_id_key UNIQUE (job_id),
     ADD CONSTRAINT image_calls_job_id_fkey
         FOREIGN KEY (job_id) REFERENCES image_jobs(id);
+
+CREATE TABLE session_reporting_rate_limits (
+    user_id uuid NOT NULL REFERENCES users(id),
+    kind text NOT NULL CHECK (kind IN ('sessions', 'turns', 'endpoints')),
+    bucket_start timestamptz NOT NULL,
+    request_count integer NOT NULL CHECK (request_count > 0),
+    PRIMARY KEY (user_id, kind)
+);
