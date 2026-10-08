@@ -946,6 +946,28 @@ paths:
           description: 调用密钥无效
         '403':
           description: 请求来源不允许
+  /api/v1/groups:
+    get:
+      summary: 搜索可分享的真实分组
+      description: 按名称不区分大小写进行字面子串匹配，仅返回未删除分组；不包含虚拟根组及成员信息。分享给父组可覆盖后代组成员。
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 200}
+        description: 去除首尾空白后长度为 1—200 字节。
+      - in: query
+        name: limit
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 匹配的分组。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SearchGroupsResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /api/v1/users:
     get:
       summary: 按用户名或邮箱查找分享接收用户
@@ -1109,9 +1131,8 @@ paths:
           $ref: '#/components/responses/ResourceError500'
   /api/v1/resources/shares:
     post:
-      summary: 批量分享自己的资源给指定用户
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
-        1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      summary: 批量分享自己的资源给指定用户或分组
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己或虚拟根组，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效。
       requestBody:
         required: true
         content:
@@ -1130,8 +1151,8 @@ paths:
         '500':
           $ref: '#/components/responses/ResourceError500'
     delete:
-      summary: 批量撤销指定用户的资源分享
-      description: 仅所有者可以撤销。只移除本批指定资源与用户间的授权，不存在的授权视为成功；允许撤销已停用或已删除用户的授权。任一资源无权操作则整批回滚。
+      summary: 批量撤销指定用户或分组的资源分享
+      description: 仅所有者可以撤销。只移除本批指定资源与用户或分组间的直接授权，不影响其他用户/分组的授权；不存在的授权视为成功，允许撤销已停用或已删除的接收对象。任一资源无权操作则整批回滚。
       requestBody:
         required: true
         content:
@@ -3387,6 +3408,23 @@ components:
         email:
           type: string
           format: email
+    GroupSummary:
+      type: object
+      required: [id, name, parent_id]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        parent_id:
+          type: string
+          format: uuid
+          description: 顶层分组的父 ID 为虚拟根组 ID；虚拟根组自身不可分享。
+    SearchGroupsResponse:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items: {$ref: '#/components/schemas/GroupSummary'}
     SearchUsersResponse:
       type: object
       required:
@@ -3552,6 +3590,11 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 服务端管理，用户不可修改。
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 当前所有者直接分享的分组，未分享时为空数组。
         authorization:
           type: object
           required:
@@ -3574,9 +3617,9 @@ components:
           format: date-time
     ShareResourcesInput:
       type: object
+      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。虚拟根组不可作为分享对象。
       required:
       - resources
-      - user_ids
       properties:
         resources:
           type: array
@@ -3600,10 +3643,14 @@ components:
               id: *id006
         user_ids:
           type: array
-          minItems: 1
           maxItems: 100
           items: *id006
           description: 接收用户 ID，重复项自动去重。
+        group_ids:
+          type: array
+          maxItems: 100
+          items: *id006
+          description: 接收真实分组 ID，重复项自动去重；不展开成员。
     ErrorResponse:
       type: object
       required: [error]
@@ -4011,6 +4058,11 @@ components:
         creator:
           $ref: '#/components/schemas/UserSummary'
           description: 他人创建的用户模型返回创建者；自己的模型和系统模型不返回。
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           items:
@@ -4301,6 +4353,11 @@ components:
     AgentRule:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4342,6 +4399,11 @@ components:
     AgentSkill:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4393,6 +4455,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4478,6 +4545,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4653,6 +4725,11 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4717,6 +4794,11 @@ components:
     SkillResource:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4799,6 +4881,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4900,6 +4987,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true

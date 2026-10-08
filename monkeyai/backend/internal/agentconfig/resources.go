@@ -73,20 +73,10 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	if err != nil {
 		return c, err
 	}
-	personalRules := []string{}
-	for _, grant := range g {
-		if grant.String("kind") == "rule" && c.rules[grant.String("id")].String("ownership_type") == "user" {
-			personalRules = append(personalRules, grant.String("id"))
-		}
-	}
-	sharedRules, err := resource.SharedUsers(ctx, q, "rule", personalRules)
-	if err != nil {
-		return c, err
-	}
 	for _, o := range g {
 		if o.String("kind") == "rule" {
 			rule := c.rules[o.String("id")]
-			if rule == nil || (rule.String("ownership_type") == "user" && !slices.ContainsFunc(sharedRules[o.String("id")], func(shared resource.Object) bool { return shared.String("id") == user })) {
+			if rule == nil || (rule.String("ownership_type") == "user" && !o.Bool("explicit")) {
 				continue
 			}
 		}
@@ -289,10 +279,15 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 	if err != nil {
 		return nil, err
 	}
+	groups, err := resource.SharedGroups(ctx, q, resourceType, owned)
+	if err != nil {
+		return nil, err
+	}
 	for _, dto := range out {
 		dto["user"] = people[ownerIDs[dto.String("id")]]
 		if shared, ok := users[dto.String("id")]; ok {
 			dto["shared_users"] = shared
+			dto["shared_groups"] = groups[dto.String("id")]
 		}
 	}
 	resource.Stable(out)

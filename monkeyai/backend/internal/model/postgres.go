@@ -398,6 +398,19 @@ func (p *Postgres) loadGrants(ctx context.Context, models []Model) error {
 			item.Authorization.GroupIDs = append(item.Authorization.GroupIDs, *groupID)
 		}
 	}
+	personal := []string{}
+	for _, item := range models {
+		if item.OwnershipType == "user" {
+			personal = append(personal, item.ID)
+		}
+	}
+	groups, err := resource.SharedGroups(ctx, database.Reader(ctx, p.pool), "model", personal)
+	if err != nil {
+		return err
+	}
+	for id, shared := range groups {
+		byID[id].SharedGroups = &shared
+	}
 	return nil
 }
 
@@ -484,6 +497,19 @@ func (p *Postgres) loadPeople(ctx context.Context, models []Model, actor string)
 		} else {
 			byID[id].SharedUsers = append(byID[id].SharedUsers, person)
 		}
+	}
+	owned := []string{}
+	for _, item := range models {
+		if item.OwnershipType == "user" && item.OwnerUserID == actor {
+			owned = append(owned, item.ID)
+		}
+	}
+	groups, err := resource.SharedGroups(ctx, database.Reader(ctx, p.pool), "model", owned)
+	if err != nil {
+		return err
+	}
+	for id, shared := range groups {
+		byID[id].SharedGroups = &shared
 	}
 	return nil
 }

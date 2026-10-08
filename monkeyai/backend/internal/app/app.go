@@ -182,6 +182,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	endpoints := endpoint.NewService(endpoint.NewPostgres(pool), endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	identities.RegisterAgent(agent)
+	group.NewService(pool).RegisterAgent(agent)
 	keys.RegisterAgent(agent)
 	models.RegisterAgent(agent)
 	rules.RegisterAgent(agent)
