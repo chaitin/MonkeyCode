@@ -34,7 +34,7 @@ func (r modelUsageRecorder) Record(ctx context.Context, c proxy.Call) error {
 		return errors.New("模型用量无效")
 	}
 	return r.models.RecordCall(ctx, model.Call{
-		ModelID: c.ModelID, UserID: c.UserID, RequestID: c.RequestID,
+		ModelID: c.ModelID, UserID: c.UserID, SessionID: c.SessionID, RequestID: c.RequestID,
 		Status: c.Result, ErrorCode: c.ErrorCode,
 		InputTokens: int64(c.InputTokens), CachedInputTokens: int64(c.CachedInputTokens),
 		OutputTokens: int64(c.OutputTokens), StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,

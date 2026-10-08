@@ -56,6 +56,31 @@ func TestAgentConfigRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestSessionReportingSwitchRequiresExplicitBoolean(t *testing.T) {
+	service := NewService(&memoryStore{records: map[string]Record{}})
+	value, err := service.GetValue(t.Context(), "session_reporting")
+	if err != nil || !strings.Contains(string(value), `"enabled":true`) {
+		t.Fatalf("新服务端默认启用统计上报: %s %v", value, err)
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"level":"stats"}`), 1, "admin"); err == nil {
+		t.Fatal("缺少 enabled 不得误关闭上报")
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":false,"level":"stats"}`), 1, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	value, err = service.GetValue(t.Context(), "session_reporting")
+	if err != nil || !strings.Contains(string(value), `"enabled":false`) {
+		t.Fatalf("配置变更应立即生效: %s %v", value, err)
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":true,"level":"full"}`), 1, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	config, err := service.AgentConfig(t.Context())
+	if err != nil || string(config.Settings["session_reporting"]) != `{"enabled":true,"level":"stats"}` {
+		t.Fatalf("一期只能向客户端下发 stats: %s %v", config.Settings["session_reporting"], err)
+	}
+}
+
 func TestPutRejectsBrokenStoredSecrets(t *testing.T) {
 	broken := json.RawMessage(`{"smtp_password":"secret"`)
 	store := &memoryStore{records: map[string]Record{

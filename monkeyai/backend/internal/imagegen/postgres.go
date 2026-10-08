@@ -17,6 +17,7 @@ import (
 type Job struct {
 	ID                   string
 	UserID               string
+	SessionID            string
 	ModelID              string
 	Provider             string
 	Operation            string
@@ -61,7 +62,7 @@ func (p *Postgres) Create(ctx context.Context, job Job) (Job, bool, error) {
 		key = &job.IdempotencyKey
 	}
 	_, err := sqlc.New(p.pool).InsertJob(ctx, sqlc.InsertJobParams{
-		ID: job.ID, UserID: job.UserID, ModelID: job.ModelID,
+		ID: job.ID, UserID: job.UserID, SessionID: job.SessionID, ModelID: job.ModelID,
 		Provider: job.Provider, Operation: job.Operation, RequestHash: job.RequestHash,
 		IdempotencyKey: key, RequestedImages: job.RequestedImages,
 		Quality: job.Quality, AspectRatio: job.AspectRatio,
@@ -119,7 +120,7 @@ func (p *Postgres) Get(ctx context.Context, userID, id string) (Job, error) {
 		return Job{}, err
 	}
 	return Job{
-		ID: row.ID, UserID: row.UserID, ModelID: row.ModelID,
+		ID: row.ID, UserID: row.UserID, SessionID: value(row.SessionID), ModelID: row.ModelID,
 		Provider: row.Provider, Operation: row.Operation, Status: row.Status,
 		ProviderJobID: row.ProviderJobID, BillingTransactionID: row.BillingTransactionID,
 		RequestedImages: row.RequestedImages, GeneratedImages: row.GeneratedImages,
@@ -186,7 +187,7 @@ func (p *Postgres) Recover(ctx context.Context, limit int32) ([]Job, error) {
 	jobs := make([]Job, 0, len(rows))
 	for _, row := range rows {
 		jobs = append(jobs, Job{
-			ID: row.ID, UserID: row.UserID, ModelID: row.ModelID,
+			ID: row.ID, UserID: row.UserID, SessionID: value(row.SessionID), ModelID: row.ModelID,
 			Provider: row.Provider, Operation: row.Operation, Status: row.Status,
 			ProviderJobID: row.ProviderJobID, BillingTransactionID: row.BillingTransactionID,
 			RequestedImages: row.RequestedImages, GeneratedImages: row.GeneratedImages,
@@ -209,7 +210,7 @@ func (p *Postgres) PendingBilling(ctx context.Context, limit int32) ([]Job, erro
 	jobs := make([]Job, 0, len(rows))
 	for _, row := range rows {
 		jobs = append(jobs, Job{
-			ID: row.ID, UserID: row.UserID, ModelID: row.ModelID,
+			ID: row.ID, UserID: row.UserID, SessionID: value(row.SessionID), ModelID: row.ModelID,
 			Provider: row.Provider, Operation: row.Operation, Status: row.Status,
 			ProviderJobID: row.ProviderJobID, BillingTransactionID: row.BillingTransactionID,
 			RequestedImages: row.RequestedImages, GeneratedImages: row.GeneratedImages,
@@ -219,6 +220,18 @@ func (p *Postgres) PendingBilling(ctx context.Context, limit int32) ([]Job, erro
 		})
 	}
 	return jobs, nil
+}
+
+func (p *Postgres) LinkImageCall(ctx context.Context, job Job) error {
+	_, err := sqlc.New(p.pool).LinkImageCall(ctx, job.ID)
+	return err
+}
+
+func value(item *string) string {
+	if item == nil {
+		return ""
+	}
+	return *item
 }
 
 func one(count int64, err error) error {

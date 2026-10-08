@@ -33,6 +33,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
@@ -107,6 +108,10 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 
 func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
+	sessions := sessionreporting.NewService(pool).WithReportingSettings(settings).WithPurgeAuthorizer(func(ctx context.Context) bool {
+		user, ok := identity.UserFromContext(ctx)
+		return ok && user.Role == "admin"
+	})
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
@@ -176,6 +181,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	experts.RegisterAdmin(admin)
 	resources.RegisterAdmin(admin)
 	feedbacks.RegisterAdmin(admin)
+	sessions.RegisterAdmin(admin)
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
@@ -194,13 +200,19 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	resources.RegisterAgent(agent)
 	charges.RegisterAgent(agent)
 	feedbacks.RegisterAgent(agent)
+	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
-	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges}).WithUsageRecorder(modelUsageRecorder{models: modelRepo})
+	sessionResolver := sessionAdapter{service: sessions}
+	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
+		WithSessionResolver(sessionResolver).
+		WithBilling(modelBilling{service: charges}).
+		WithUsageRecorder(modelUsageRecorder{models: modelRepo})
 	modelProxy.Register(router)
 	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
+		WithSessionResolver(sessionResolver).
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
-	connectors.RegisterGateway(router, keys, toolBilling{service: charges})
+	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
@@ -219,6 +231,12 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
 	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
+}
+
+type sessionAdapter struct{ service *sessionreporting.Service }
+
+func (a sessionAdapter) EnsureSession(ctx context.Context, userID, sessionID, parentID, groupID string) error {
+	return a.service.EnsureSession(ctx, userID, sessionID, parentID, groupID)
 }
 
 type modelResolver struct {

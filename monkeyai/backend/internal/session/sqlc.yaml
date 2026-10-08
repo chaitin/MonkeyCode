@@ -1,0 +1,41 @@
+version: '2'
+sql:
+- engine: postgresql
+  schema: ../../schema/schema.sql
+  queries: query.sql
+  gen:
+    go:
+      package: sqlc
+      out: sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+overrides:
+  go:
+    overrides:
+    - db_type: uuid
+      go_type: string
+    - db_type: uuid
+      nullable: true
+      go_type:
+        type: string
+        pointer: true
+    - db_type: pg_catalog.numeric
+      go_type: string
+    - db_type: pg_catalog.numeric
+      nullable: true
+      go_type:
+        type: string
+        pointer: true
+    - db_type: timestamptz
+      go_type:
+        import: time
+        type: Time
+    - db_type: timestamptz
+      nullable: true
+      go_type:
+        import: time
+        type: Time
+        pointer: true

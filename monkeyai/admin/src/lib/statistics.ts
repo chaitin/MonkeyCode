@@ -23,15 +23,26 @@ export type TaskSummary = {
   total: number
   completed: number
   failed: number
-  running: number
+  interrupted: number
+  unknown: number
+  known_outcomes: number
+  anomaly_rate: number | null
   completion_rate: number | null
   average_duration_seconds: number | null
+  p50_duration_seconds?: number | null
+  p95_duration_seconds?: number | null
 }
 export type TaskStatistics = Period & {
   summary: TaskSummary
   previous: TaskSummary
-  trend: { at: string; completed: number; failed: number; running: number }[]
-  types: (TaskSummary & { key: string })[]
+  trend: {
+    at: string
+    completed: number
+    failed: number
+    interrupted: number
+    unknown: number
+  }[]
+  types: (Omit<TaskSummary, "known_outcomes"> & { key: string })[]
 }
 export type RealtimeStatistics = Period & {
   model_consumption: string

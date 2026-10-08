@@ -6,6 +6,11 @@ export const CONSOLE_ROUTES = {
   taskStatistics: "/console/statistics/tasks",
   modelStatistics: "/console/statistics/models",
   taskHistory: "/console/statistics/task-history",
+  sessionOverview: "/console/statistics/session-reporting",
+  sessionList: "/console/statistics/session-reporting/sessions",
+  sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
+  resourceAnalysis: "/console/statistics/session-reporting/resources",
+  clientAnalysis: "/console/statistics/session-reporting/clients",
   models: "/console/resources/models",
   knowledgeBases: "/console/resources/knowledge-bases",
   skills: "/console/resources/skills",
@@ -51,6 +56,20 @@ export const CONSOLE_PAGES = [
     titleKey: "pages.taskHistory.title",
     descriptionKey: "pages.taskHistory.description",
   },
+  ...(
+    [
+      ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
+      ["sessionList", CONSOLE_ROUTES.sessionList],
+      ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
+      ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+    ] as const
+  ).map(([name, path]) => ({
+    path,
+    sectionKey: "sections.statistics",
+    sectionPath: CONSOLE_ROUTES.realtimeStatus,
+    titleKey: `pages.sessionReporting.${name}.title`,
+    descriptionKey: `pages.sessionReporting.${name}.description`,
+  })),
   {
     path: CONSOLE_ROUTES.models,
     sectionKey: "sections.aiResources",
@@ -138,5 +157,16 @@ export const CONSOLE_PAGES = [
 ] as const
 
 export function getConsolePage(pathname: string) {
-  return CONSOLE_PAGES.find((page) => page.path === pathname)
+  return (
+    CONSOLE_PAGES.find((page) => page.path === pathname) ??
+    (pathname.startsWith(`${CONSOLE_ROUTES.sessionList}/`)
+      ? {
+          path: pathname,
+          sectionKey: "sections.statistics",
+          sectionPath: CONSOLE_ROUTES.realtimeStatus,
+          titleKey: "pages.sessionReporting.detail.title",
+          descriptionKey: "pages.sessionReporting.detail.description",
+        }
+      : undefined)
+  )
 }

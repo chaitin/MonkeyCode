@@ -1,9 +1,12 @@
 -- name: InsertJob :one
 INSERT INTO image_jobs (
-    id, user_id, model_id, provider, operation, status, request_hash, idempotency_key,
+    id, user_id, session_id, model_id, provider, operation, status, request_hash, idempotency_key,
     requested_images, quality, aspect_ratio, request_config, pricing_snapshot
 ) VALUES (
-    $1, $2, $3, $4, $5, 'created', $6, $7, $8, $9, $10, $11, $12
+    sqlc.arg(id), sqlc.arg(user_id), NULLIF(sqlc.arg(session_id)::text, '')::uuid,
+    sqlc.arg(model_id), sqlc.arg(provider), sqlc.arg(operation), 'created', sqlc.arg(request_hash),
+    sqlc.arg(idempotency_key), sqlc.arg(requested_images), sqlc.arg(quality), sqlc.arg(aspect_ratio),
+    sqlc.arg(request_config), sqlc.arg(pricing_snapshot)
 )
 ON CONFLICT DO NOTHING
 RETURNING id;
@@ -14,7 +17,7 @@ FROM image_jobs
 WHERE user_id = $1 AND idempotency_key = $2;
 
 -- name: JobByOwner :one
-SELECT id, user_id, model_id, provider, operation, provider_job_id, status,
+SELECT id, user_id, session_id, model_id, provider, operation, provider_job_id, status,
     requested_images, generated_images, quality, aspect_ratio, billing_transaction_id,
     error_code, created_at, completed_at, pricing_snapshot
 FROM image_jobs
@@ -46,7 +49,7 @@ SET status = $2, generated_images = $3, error_code = $4, completed_at = now(), u
 WHERE id = $1 AND status IN ('created', 'reserved', 'submitted', 'running', 'unknown');
 
 -- name: JobsToRecover :many
-SELECT id, user_id, model_id, provider, operation, provider_job_id, status,
+SELECT id, user_id, session_id, model_id, provider, operation, provider_job_id, status,
     requested_images, generated_images, quality, aspect_ratio, billing_transaction_id,
     error_code, created_at, completed_at, pricing_snapshot
 FROM image_jobs
@@ -57,13 +60,32 @@ ORDER BY created_at
 LIMIT $1;
 
 -- name: JobsWithPendingBilling :many
-SELECT job.id, job.user_id, job.model_id, job.provider, job.operation, job.provider_job_id, job.status,
+SELECT job.id, job.user_id, job.session_id, job.model_id, job.provider, job.operation, job.provider_job_id, job.status,
     job.requested_images, job.generated_images, job.quality, job.aspect_ratio, job.billing_transaction_id,
     job.error_code, job.created_at, job.completed_at, job.pricing_snapshot
 FROM image_jobs job JOIN billing_transactions bill ON bill.id = job.billing_transaction_id
 WHERE job.status IN ('succeeded', 'failed') AND bill.status IN ('reserved', 'running', 'unknown')
 ORDER BY job.completed_at
 LIMIT $1;
+
+-- name: LinkImageCall :execrows
+INSERT INTO image_calls (
+    id, user_id, model_id, status, generated_images, error_code,
+    started_at, completed_at, billing_transaction_id, job_id, session_id
+)
+SELECT COALESCE(job.billing_transaction_id, job.id), job.user_id, job.model_id,
+    job.status, job.generated_images, job.error_code,
+    job.created_at, job.completed_at, job.billing_transaction_id, job.id, job.session_id
+FROM image_jobs job
+WHERE job.id = sqlc.arg(job_id)::uuid AND job.status IN ('succeeded', 'failed')
+ON CONFLICT (id) DO UPDATE SET
+    job_id = EXCLUDED.job_id,
+    billing_transaction_id = EXCLUDED.billing_transaction_id,
+    session_id = EXCLUDED.session_id,
+    status = EXCLUDED.status,
+    generated_images = EXCLUDED.generated_images,
+    error_code = EXCLUDED.error_code,
+    completed_at = EXCLUDED.completed_at;
 
 -- name: LinkJobInput :one
 INSERT INTO image_job_inputs (job_id, input_id)

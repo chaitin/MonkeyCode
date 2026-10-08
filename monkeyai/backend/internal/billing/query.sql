@@ -906,16 +906,21 @@ ON CONFLICT (id)
         completed_at = EXCLUDED.completed_at;
 
 -- name: UpsertImageCall :execresult
-INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code, started_at, completed_at)
+INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code,
+    started_at, completed_at, billing_transaction_id, job_id, session_id)
 SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, sqlc.arg(generated_images)::bigint,
-    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at
+    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at, bt.id,
+    (SELECT job.id FROM image_jobs job WHERE job.billing_transaction_id = bt.id), bt.session_id
 FROM billing_transactions bt
 WHERE bt.id = sqlc.arg(id)
 ON CONFLICT (id) DO UPDATE SET
     status = EXCLUDED.status,
     generated_images = EXCLUDED.generated_images,
     error_code = EXCLUDED.error_code,
-    completed_at = EXCLUDED.completed_at;
+    completed_at = EXCLUDED.completed_at,
+    billing_transaction_id = EXCLUDED.billing_transaction_id,
+    job_id = COALESCE(EXCLUDED.job_id, image_calls.job_id),
+    session_id = COALESCE(EXCLUDED.session_id, image_calls.session_id);
 
 -- name: UpsertToolCall :execresult
 INSERT INTO mcp_tool_calls (id, session_id, user_id, connector_id, tool_id, request_id, status, error_code, started_at,
