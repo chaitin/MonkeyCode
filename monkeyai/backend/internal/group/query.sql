@@ -23,6 +23,22 @@ SELECT
         g.created_at,
         g.id;
 
+-- name: SearchGroups :many
+SELECT
+    g.id,
+    g.name,
+    g.parent_id
+FROM
+    groups g
+WHERE
+    g.deleted_at IS NULL
+    AND g.id <> sqlc.arg(root_id)::uuid
+    AND strpos(lower(g.name), lower(sqlc.arg(name_query)::text)) > 0
+ORDER BY
+    lower(g.name),
+    g.id
+LIMIT sqlc.arg(result_limit)::int;
+
 -- name: GetGroup :one
 SELECT
     g.id,
@@ -178,6 +194,26 @@ SET
 WHERE
     group_id = $1
     AND removed_at IS NULL;
+
+-- name: TouchGrantedModels :execresult
+UPDATE models SET updated_at = now()
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'model');
+
+-- name: TouchGrantedRules :execresult
+UPDATE rules SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'rule');
+
+-- name: TouchGrantedSkills :execresult
+UPDATE skills SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'skill');
+
+-- name: TouchGrantedConnectors :execresult
+UPDATE connectors SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'connector');
+
+-- name: TouchGrantedExperts :execresult
+UPDATE experts SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'expert');
 
 -- name: DeleteGrants :execresult
 DELETE FROM resource_access_grants

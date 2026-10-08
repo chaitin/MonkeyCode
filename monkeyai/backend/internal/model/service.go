@@ -208,6 +208,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 					users = []Subject{}
 				}
 				entry.SharedUsers = &users
+				entry.SharedGroups = item.SharedGroups
 			} else {
 				entry.Creator = item.Creator
 			}

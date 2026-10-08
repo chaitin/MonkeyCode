@@ -8,6 +8,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -26,6 +27,7 @@ type ShareResource struct {
 type ShareInput struct {
 	Resources []ShareResource `json:"resources"`
 	UserIDs   []string        `json:"user_ids"`
+	GroupIDs  []string        `json:"group_ids"`
 }
 
 func SharedUsers(ctx context.Context, q Queryer, kind string, ids []string) (map[string][]Object, error) {
@@ -44,6 +46,24 @@ func SharedUsers(ctx context.Context, q Queryer, kind string, ids []string) (map
 		users[row.ResourceID] = append(users[row.ResourceID], Object{"id": row.ID, "name": row.Name, "email": row.Email})
 	}
 	return users, nil
+}
+
+func SharedGroups(ctx context.Context, q Queryer, kind string, ids []string) (map[string][]Object, error) {
+	groups := make(map[string][]Object, len(ids))
+	if len(ids) == 0 {
+		return groups, nil
+	}
+	for _, id := range ids {
+		groups[id] = []Object{}
+	}
+	rows, err := sqlc.New(q).ListSharedGroups(ctx, sqlc.ListSharedGroupsParams{ResourceType: kind, ResourceIds: ids})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		groups[row.ResourceID] = append(groups[row.ResourceID], Object{"id": row.ID, "name": row.Name, "parent_id": row.ParentID})
+	}
+	return groups, nil
 }
 
 func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
@@ -65,11 +85,12 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 }
 
 func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revoke bool, kinds map[string]Shareable) error {
-	if len(input.Resources) == 0 || len(input.Resources) > 100 || len(input.UserIDs) == 0 || len(input.UserIDs) > 100 {
-		return Invalid("resources 和 user_ids 必须各包含 1—100 项")
+	if len(input.Resources) == 0 || len(input.Resources) > 100 || len(input.UserIDs)+len(input.GroupIDs) == 0 || len(input.UserIDs)+len(input.GroupIDs) > 100 {
+		return Invalid("resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项")
 	}
 	input.Resources = slices.Clone(input.Resources)
 	input.UserIDs = slices.Clone(input.UserIDs)
+	input.GroupIDs = slices.Clone(input.GroupIDs)
 	for _, item := range input.Resources {
 		if kinds[item.Type] == nil {
 			return Invalid("不支持分享此资源类型")
@@ -86,11 +107,19 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 			return Invalid("不能分享给自己")
 		}
 	}
+	for _, id := range input.GroupIDs {
+		if !validUUID(id) || strings.EqualFold(id, rootgroup.ID) {
+			return Invalid("分组 ID 必须是真实分组的 UUID")
+		}
+	}
 	for i := range input.Resources {
 		input.Resources[i].ID = strings.ToLower(input.Resources[i].ID)
 	}
 	for i := range input.UserIDs {
 		input.UserIDs[i] = strings.ToLower(input.UserIDs[i])
+	}
+	for i := range input.GroupIDs {
+		input.GroupIDs[i] = strings.ToLower(input.GroupIDs[i])
 	}
 	slices.SortFunc(input.Resources, func(a, b ShareResource) int {
 		if n := strings.Compare(a.Type, b.Type); n != 0 {
@@ -101,18 +130,29 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 	input.Resources = slices.Compact(input.Resources)
 	slices.Sort(input.UserIDs)
 	input.UserIDs = slices.Compact(input.UserIDs)
+	slices.Sort(input.GroupIDs)
+	input.GroupIDs = slices.Compact(input.GroupIDs)
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { rollback(ctx, tx, "share", input.Resources[0].ID) }()
+	if !revoke && len(input.GroupIDs) > 0 {
+		groups, err := sqlc.New(tx).LockShareGroups(ctx, input.GroupIDs)
+		if err != nil {
+			return err
+		}
+		if len(groups) != len(input.GroupIDs) {
+			return Invalid("接收分组不存在或已删除")
+		}
+	}
 	// 固定加锁顺序，批量授权和删除共享资源行锁。
 	for _, item := range input.Resources {
 		if err := kinds[item.Type].LockOwned(ctx, tx, item.ID, actor); err != nil {
 			return err
 		}
 	}
-	if !revoke {
+	if !revoke && len(input.UserIDs) > 0 {
 		rows, err := sqlc.New(tx).LockRecipients(ctx, input.UserIDs)
 		if err != nil {
 			return err
@@ -124,9 +164,19 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 	}
 	for _, item := range input.Resources {
 		if revoke {
-			_, err = sqlc.New(tx).RevokeShares(ctx, sqlc.RevokeSharesParams{ResourceType: item.Type, ResourceID: item.ID, UserIds: input.UserIDs})
+			if len(input.UserIDs) > 0 {
+				_, err = sqlc.New(tx).RevokeShares(ctx, sqlc.RevokeSharesParams{ResourceType: item.Type, ResourceID: item.ID, UserIds: input.UserIDs})
+			}
+			if err == nil && len(input.GroupIDs) > 0 {
+				_, err = sqlc.New(tx).RevokeGroupShares(ctx, sqlc.RevokeGroupSharesParams{ResourceType: item.Type, ResourceID: item.ID, GroupIds: input.GroupIDs})
+			}
 		} else {
-			_, err = sqlc.New(tx).CreateShares(ctx, sqlc.CreateSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, UserIds: input.UserIDs})
+			if len(input.UserIDs) > 0 {
+				_, err = sqlc.New(tx).CreateShares(ctx, sqlc.CreateSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, UserIds: input.UserIDs})
+			}
+			if err == nil && len(input.GroupIDs) > 0 {
+				_, err = sqlc.New(tx).CreateGroupShares(ctx, sqlc.CreateGroupSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, GroupIds: input.GroupIDs})
+			}
 		}
 		if err != nil {
 			return err

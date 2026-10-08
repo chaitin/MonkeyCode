@@ -267,6 +267,32 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	if call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
 		t.Fatal("撤销共享规则后专家仍可用")
 	}
+	groupID := resource.ID()
+	if _, err := pool.Exec(t.Context(), `INSERT INTO groups(id,name) VALUES($1,'个人资源分享测试组')`, groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, groupID, users[1], users[0]); err != nil {
+		t.Fatal(err)
+	}
+	groupRule := resource.ShareInput{Resources: ruleShare.Resources, GroupIDs: []string{groupID}}
+	call("POST", "/resources/shares", "a", "", groupRule, 204)
+	if !contains("rules", "b", ruleID) || !call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
+		t.Fatal("分组授权的规则未使专家可用")
+	}
+	ownerRule := call("GET", "/rules/"+ruleID, "a", "", nil, 200)
+	if groups := ownerRule["shared_groups"].([]any); len(groups) != 1 || groups[0].(map[string]any)["id"] != groupID {
+		t.Fatalf("规则分组授权未回显: %v", ownerRule)
+	}
+	call("DELETE", "/resources/shares", "a", "", groupRule, 204)
+	if contains("rules", "b", ruleID) || call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
+		t.Fatal("分组规则撤销后权限未收回")
+	}
+	if _, err := pool.Exec(t.Context(), `DELETE FROM group_users WHERE group_id=$1`, groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `DELETE FROM groups WHERE id=$1`, groupID); err != nil {
+		t.Fatal(err)
+	}
 	expert = call("GET", expertPath, "a", "", nil, 200)
 	expert = call("PUT", expertPath, "a", etag(expert), resource.Object{"name": expert["name"], "rule_ids": []string{}}, 200)
 

@@ -82,6 +82,30 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (pgcon
 	)
 }
 
+const createGroupShares = `-- name: CreateGroupShares :execresult
+INSERT INTO resource_access_grants (resource_type, resource_id, group_id, access_level, granted_by_user_id)
+SELECT $1, $2, g.id, 'read_only', $3
+FROM groups g
+WHERE g.id::text = ANY ($4::text[]) AND g.deleted_at IS NULL
+ON CONFLICT (resource_type, resource_id, group_id) WHERE group_id IS NOT NULL DO NOTHING
+`
+
+type CreateGroupSharesParams struct {
+	ResourceType    string
+	ResourceID      string
+	GrantedByUserID string
+	GroupIds        []string
+}
+
+func (q *Queries) CreateGroupShares(ctx context.Context, arg CreateGroupSharesParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, createGroupShares,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.GrantedByUserID,
+		arg.GroupIds,
+	)
+}
+
 const createShares = `-- name: CreateShares :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, user_id, access_level, granted_by_user_id)
 SELECT
@@ -237,10 +261,12 @@ func (q *Queries) HasAccess(ctx context.Context, arg HasAccessParams) (bool, err
 const listGrants = `-- name: ListGrants :many
 SELECT
     jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
-        'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END)
+        'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END,
+        'group', CASE WHEN g.id IS NOT NULL THEN jsonb_build_object('id', g.id, 'name', g.name, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')) END)
 FROM
     resource_access_grants rag
     LEFT JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
+    LEFT JOIN groups g ON g.id = rag.group_id AND g.deleted_at IS NULL
 WHERE
     rag.resource_type = $1
     AND rag.resource_id = $2
@@ -331,6 +357,52 @@ func (q *Queries) ListOwners(ctx context.Context, dollar_1 []string) ([]ListOwne
 	for rows.Next() {
 		var i ListOwnersRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedGroups = `-- name: ListSharedGroups :many
+SELECT rag.resource_id, g.id, g.name, COALESCE(g.parent_id, '00000000-0000-0000-0000-000000000000'::uuid) AS parent_id
+FROM resource_access_grants rag
+JOIN groups g ON g.id = rag.group_id AND g.deleted_at IS NULL
+WHERE rag.resource_type = $1
+    AND rag.resource_id::text = ANY ($2::text[])
+ORDER BY rag.resource_id, g.id
+`
+
+type ListSharedGroupsParams struct {
+	ResourceType string
+	ResourceIds  []string
+}
+
+type ListSharedGroupsRow struct {
+	ResourceID string
+	ID         string
+	Name       string
+	ParentID   *string
+}
+
+func (q *Queries) ListSharedGroups(ctx context.Context, arg ListSharedGroupsParams) ([]ListSharedGroupsRow, error) {
+	rows, err := q.db.Query(ctx, listSharedGroups, arg.ResourceType, arg.ResourceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSharedGroupsRow{}
+	for rows.Next() {
+		var i ListSharedGroupsRow
+		if err := rows.Scan(
+			&i.ResourceID,
+			&i.ID,
+			&i.Name,
+			&i.ParentID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -493,6 +565,32 @@ func (q *Queries) LockRecipients(ctx context.Context, dollar_1 []string) ([]stri
 	return items, nil
 }
 
+const lockShareGroups = `-- name: LockShareGroups :many
+SELECT id FROM groups
+WHERE id::text = ANY ($1::text[]) AND deleted_at IS NULL
+ORDER BY id FOR SHARE
+`
+
+func (q *Queries) LockShareGroups(ctx context.Context, groupIds []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockShareGroups, groupIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeResourceTags = `-- name: RemoveResourceTags :exec
 DELETE FROM resource_tags WHERE resource_type = $1 AND resource_id = $2
 `
@@ -537,6 +635,23 @@ func (q *Queries) ResourceTags(ctx context.Context, arg ResourceTagsParams) ([][
 		return nil, err
 	}
 	return items, nil
+}
+
+const revokeGroupShares = `-- name: RevokeGroupShares :execresult
+DELETE FROM resource_access_grants
+WHERE resource_type = $1
+    AND resource_id = $2
+    AND group_id::text = ANY ($3::text[])
+`
+
+type RevokeGroupSharesParams struct {
+	ResourceType string
+	ResourceID   string
+	GroupIds     []string
+}
+
+func (q *Queries) RevokeGroupShares(ctx context.Context, arg RevokeGroupSharesParams) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, revokeGroupShares, arg.ResourceType, arg.ResourceID, arg.GroupIds)
 }
 
 const revokeShares = `-- name: RevokeShares :execresult
