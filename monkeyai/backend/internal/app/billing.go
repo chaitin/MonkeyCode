@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 )
 
 type applicationHandler struct {
@@ -22,6 +23,7 @@ type applicationHandler struct {
 	billing   *billing.Service
 	proxy     *proxy.Proxy
 	images    *imagegen.Service
+	videos    *videogen.Service
 	inputs    *imagegen.Inputs
 	endpoints *endpoint.Service
 	feedback  *feedback.Service

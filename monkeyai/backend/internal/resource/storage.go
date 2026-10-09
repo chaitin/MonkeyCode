@@ -72,6 +72,13 @@ func (s *S3) Put(ctx context.Context, key string, b []byte, mime string) error {
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{Bucket: &s.bucket, Key: &key, Body: bytes.NewReader(b), ContentType: &mime})
 	return err
 }
+
+func (s *S3) PutReader(ctx context.Context, key string, body io.ReadSeeker, size int64, mime string) error {
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: &s.bucket, Key: &key, Body: body, ContentType: &mime, ContentLength: &size,
+	})
+	return err
+}
 func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	o, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &s.bucket, Key: &key})
 	if err != nil {

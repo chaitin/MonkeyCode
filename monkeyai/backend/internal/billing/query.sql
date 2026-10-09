@@ -795,6 +795,20 @@ SELECT ownership_type, display_name
 FROM models
 WHERE id = $1 AND kind = 'image' AND enabled AND deleted_at IS NULL;
 
+-- name: VideoPricingModel :one
+SELECT display_name, ownership_type FROM models
+WHERE id=$1 AND kind='video' AND enabled AND deleted_at IS NULL;
+
+-- name: VideoCharge :one
+SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
+WHERE id=$1 AND user_id=$2 AND category='video' AND status IN ('settled', 'released');
+
+-- name: UpsertVideoCall :exec
+INSERT INTO video_calls (job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms)
+SELECT j.id, t.id, t.user_id, t.resource_id, t.session_id, sqlc.arg(result)::text, sqlc.arg(duration_ms)::bigint
+FROM billing_transactions t JOIN video_jobs j ON j.billing_transaction_id=t.id WHERE t.id=sqlc.arg(transaction_id)::uuid
+ON CONFLICT (job_id) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms;
+
 -- name: ToolPricing :one
 SELECT
     t.name,

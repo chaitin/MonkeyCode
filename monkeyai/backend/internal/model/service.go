@@ -110,6 +110,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, err
 	}
+	if err := s.validateVideoCapability(item); err != nil {
+		return Model{}, err
+	}
 	item.OwnershipType = "system"
 	item.OwnerUserID = ownerUserID
 	item.GrantorUserID = ownerUserID
@@ -130,6 +133,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 		return Model{}, err
 	}
 	if err := s.validateImageCapability(item); err != nil {
+		return Model{}, err
+	}
+	if err := s.validateVideoCapability(item); err != nil {
 		return Model{}, err
 	}
 	item.ID = id
@@ -183,6 +189,17 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			}
 			imageConfig = &AgentImageConfig{ImageConfig: *item.ImageConfig, ImageCapabilities: cap}
 		}
+		var videoConfig *AgentVideoConfig
+		if item.Kind == KindVideo && item.VideoConfig != nil {
+			cap, err := VideoCapabilitiesFor(item.Provider, item.ModelID)
+			if err != nil || ValidateVideoCapabilities(item, cap) != nil {
+				continue
+			}
+			videoConfig = &AgentVideoConfig{VideoConfig: *item.VideoConfig,
+				Params: cap.Params, ParamRules: cap.ParamRules, References: cap.References,
+				ReferenceModes: cap.ReferenceModes, PromptMaxCharacters: cap.PromptMaxCharacters,
+				PromptRequiredWhen: cap.PromptRequiredWhen}
+		}
 		entry := AgentModel{
 			OwnershipType:       item.OwnershipType,
 			User:                item.User,
@@ -193,6 +210,8 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			Kind:                item.Kind,
 			ImageConfig:         imageConfig,
 			ImagePricing:        item.ImagePricing,
+			VideoConfig:         videoConfig,
+			VideoPricing:        item.VideoPricing,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
@@ -262,6 +281,8 @@ func modelFromInput(input SaveInput) (Model, error) {
 		ProviderOptions:  input.ProviderOptions,
 		ImageConfig:      input.ImageConfig,
 		ImagePricing:     input.ImagePricing,
+		VideoConfig:      input.VideoConfig,
+		VideoPricing:     input.VideoPricing,
 		BaseURL:          strings.TrimRight(strings.TrimSpace(input.BaseURL), "/"),
 		APIKey:           strings.TrimSpace(input.APIKey),
 		AdvancedConfig:   input.AdvancedConfig,
@@ -273,14 +294,18 @@ func modelFromInput(input SaveInput) (Model, error) {
 		return Model{}, errors.New("model_id、display_name 和 base_url 不能为空")
 	}
 	if kind == KindText {
-		if !slices.Contains([]Protocol{ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic}, item.Protocol) || provider != ProviderPassthrough || item.ImageConfig != nil || item.ImagePricing != nil {
+		if !slices.Contains([]Protocol{ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic}, item.Protocol) || provider != ProviderPassthrough || item.ImageConfig != nil || item.ImagePricing != nil || item.VideoConfig != nil || item.VideoPricing != nil {
 			return Model{}, errors.New("文本模型配置无效")
 		}
 	} else if kind == KindImage {
-		if item.Protocol != ProtocolImage {
-			return Model{}, errors.New("生图模型 protocol 无效")
+		if item.Protocol != ProtocolImage || item.VideoConfig != nil || item.VideoPricing != nil {
+			return Model{}, errors.New("生图模型 protocol 或配置无效")
 		}
 		if err := validateImageModel(&item); err != nil {
+			return Model{}, err
+		}
+	} else if kind == KindVideo {
+		if err := validateVideoModel(&item); err != nil {
 			return Model{}, err
 		}
 	} else {
@@ -290,10 +315,13 @@ func modelFromInput(input SaveInput) (Model, error) {
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
 		return Model{}, errors.New("base_url 必须是有效的 HTTP(S) 地址")
 	}
+	if kind == KindVideo && (parsed.Scheme != "https" || parsed.RawQuery != "" || parsed.Fragment != "") {
+		return Model{}, errors.New("视频模型 base_url 必须是无查询参数的 HTTPS 地址")
+	}
 	if kind == KindText && (item.AdvancedConfig.ContextWindowTokens <= 0 || item.AdvancedConfig.MaxOutputTokens <= 0) {
 		return Model{}, errors.New("上下文和最大输出 Token 必须大于 0")
 	}
-	if kind == KindImage && item.CreditMultiplier == 0 {
+	if (kind == KindImage || kind == KindVideo) && item.CreditMultiplier == 0 {
 		item.CreditMultiplier = 1
 	}
 	if item.CreditMultiplier <= 0 {

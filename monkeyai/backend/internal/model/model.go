@@ -12,6 +12,7 @@ type Kind string
 const (
 	KindText  Kind = "text"
 	KindImage Kind = "image"
+	KindVideo Kind = "video"
 
 	ImageQuality1K = "1K"
 	ImageQuality2K = "2K"
@@ -26,6 +27,7 @@ const (
 	ProviderOpenAIResponses Provider = "openai_responses_image"
 	ProviderVolcengine      Provider = "volcengine"
 	ProviderXAI             Provider = "xai"
+	ProviderMiniMax         Provider = "minimax"
 )
 
 type Protocol string
@@ -35,6 +37,7 @@ const (
 	ProtocolOpenAIResponses Protocol = "openai_responses"
 	ProtocolAnthropic       Protocol = "anthropic"
 	ProtocolImage           Protocol = "image_generation"
+	ProtocolVideo           Protocol = "video_generation"
 )
 
 type AdvancedConfig struct {
@@ -77,6 +80,101 @@ type ImagePricing struct {
 	QualityMultipliers  []ImageMultiplier `json:"quality_multipliers,omitempty"`
 }
 
+type VideoMode string
+
+const (
+	VideoTextToVideo           VideoMode = "text_to_video"
+	VideoImageToVideo          VideoMode = "image_to_video"
+	VideoLastFrameToVideo      VideoMode = "last_frame_to_video"
+	VideoFirstLastToVideo      VideoMode = "first_last_to_video"
+	VideoReferenceImageToVideo VideoMode = "reference_image_to_video"
+)
+
+type VideoParamSpec struct {
+	Name    string            `json:"name"`
+	Type    string            `json:"type"`
+	Choices []json.RawMessage `json:"choices,omitempty"`
+	Min     *int64            `json:"min,omitempty"`
+	Max     *int64            `json:"max,omitempty"`
+	Step    *int64            `json:"step,omitempty"`
+}
+
+type VideoCondition struct {
+	Modes       []VideoMode                `json:"modes,omitempty"`
+	ParamEquals map[string]json.RawMessage `json:"param_equals,omitempty"`
+}
+
+type VideoParamRule struct {
+	When    VideoCondition    `json:"when"`
+	Name    string            `json:"name"`
+	Choices []json.RawMessage `json:"choices,omitempty"`
+	Min     *int64            `json:"min,omitempty"`
+	Max     *int64            `json:"max,omitempty"`
+	Step    *int64            `json:"step,omitempty"`
+}
+
+type VideoReferenceSpec struct {
+	Role           string   `json:"role"`
+	MediaType      string   `json:"media_type"`
+	MaxCount       uint32   `json:"max_count"`
+	MIME           []string `json:"mime"`
+	MaxBytes       uint64   `json:"max_bytes"`
+	MinWidth       uint32   `json:"min_width,omitempty"`
+	MaxWidth       uint32   `json:"max_width,omitempty"`
+	MinHeight      uint32   `json:"min_height,omitempty"`
+	MaxHeight      uint32   `json:"max_height,omitempty"`
+	MinAspectRatio string   `json:"min_aspect_ratio,omitempty"`
+	MaxAspectRatio string   `json:"max_aspect_ratio,omitempty"`
+}
+
+type VideoModeReferences struct {
+	Mode          VideoMode `json:"mode"`
+	RequiredRoles []string  `json:"required_roles"`
+	OptionalRoles []string  `json:"optional_roles"`
+}
+
+type VideoParamLimit struct {
+	Choices []json.RawMessage `json:"choices,omitempty"`
+	Min     *int64            `json:"min,omitempty"`
+	Max     *int64            `json:"max,omitempty"`
+	Step    *int64            `json:"step,omitempty"`
+}
+
+type VideoConfig struct {
+	Modes    []VideoMode                              `json:"modes"`
+	Limits   map[VideoMode]map[string]VideoParamLimit `json:"limits,omitempty"`
+	Defaults map[VideoMode]map[string]json.RawMessage `json:"defaults"`
+}
+
+type VideoCapabilities struct {
+	Modes               []VideoMode           `json:"modes"`
+	Params              []VideoParamSpec      `json:"params"`
+	ParamRules          []VideoParamRule      `json:"param_rules,omitempty"`
+	References          []VideoReferenceSpec  `json:"references"`
+	ReferenceModes      []VideoModeReferences `json:"reference_modes"`
+	PromptMaxCharacters uint32                `json:"prompt_max_characters"`
+	PromptRequiredWhen  []VideoCondition      `json:"prompt_required_when,omitempty"`
+}
+
+type AgentVideoConfig struct {
+	VideoConfig
+	Params              []VideoParamSpec      `json:"params"`
+	ParamRules          []VideoParamRule      `json:"param_rules,omitempty"`
+	References          []VideoReferenceSpec  `json:"references"`
+	ReferenceModes      []VideoModeReferences `json:"reference_modes"`
+	PromptMaxCharacters uint32                `json:"prompt_max_characters"`
+	PromptRequiredWhen  []VideoCondition      `json:"prompt_required_when,omitempty"`
+}
+
+type VideoResolutionRate struct {
+	Resolution       string `json:"resolution"`
+	CreditsPerSecond string `json:"credits_per_second"`
+}
+
+type VideoPricing struct {
+	Rates []VideoResolutionRate `json:"rates"`
+}
+
 type Authorization struct {
 	AllUsers bool     `json:"all_users"`
 	UserIDs  []string `json:"user_ids"`
@@ -99,6 +197,8 @@ type Model struct {
 	ProviderOptions  json.RawMessage    `json:"-"`
 	ImageConfig      *ImageConfig       `json:"image_config,omitempty"`
 	ImagePricing     *ImagePricing      `json:"image_pricing,omitempty"`
+	VideoConfig      *VideoConfig       `json:"video_config,omitempty"`
+	VideoPricing     *VideoPricing      `json:"video_pricing,omitempty"`
 	BaseURL          string             `json:"base_url"`
 	APIKey           string             `json:"-"`
 	GrantorUserID    string             `json:"-"`
@@ -126,6 +226,8 @@ type AgentModel struct {
 	Kind                Kind               `json:"kind"`
 	ImageConfig         *AgentImageConfig  `json:"image_config,omitempty"`
 	ImagePricing        *ImagePricing      `json:"image_pricing,omitempty"`
+	VideoConfig         *AgentVideoConfig  `json:"video_config,omitempty"`
+	VideoPricing        *VideoPricing      `json:"video_pricing,omitempty"`
 	ContextWindowTokens int64              `json:"context_window_tokens"`
 	MaxOutputTokens     int64              `json:"max_output_tokens"`
 	SupportsVision      bool               `json:"supports_vision"`
@@ -170,6 +272,8 @@ type SaveInput struct {
 	ProviderOptions  json.RawMessage `json:"provider_options,omitempty"`
 	ImageConfig      *ImageConfig    `json:"image_config,omitempty"`
 	ImagePricing     *ImagePricing   `json:"image_pricing,omitempty"`
+	VideoConfig      *VideoConfig    `json:"video_config,omitempty"`
+	VideoPricing     *VideoPricing   `json:"video_pricing,omitempty"`
 	BaseURL          string          `json:"base_url"`
 	APIKey           string          `json:"api_key"`
 	AdvancedConfig   AdvancedConfig  `json:"advanced_config"`
@@ -186,6 +290,7 @@ type UserInput struct {
 	Kind           Kind           `json:"kind,omitempty"`
 	Provider       Provider       `json:"provider,omitempty"`
 	ImageConfig    *ImageConfig   `json:"image_config,omitempty"`
+	VideoConfig    *VideoConfig   `json:"video_config,omitempty"`
 	BaseURL        string         `json:"base_url"`
 	APIKey         string         `json:"api_key"`
 	AdvancedConfig AdvancedConfig `json:"advanced_config"`

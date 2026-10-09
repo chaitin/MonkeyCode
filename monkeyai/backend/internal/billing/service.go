@@ -27,6 +27,7 @@ type Price struct {
 	Multiplier Amount `json:"multiplier"`
 	Tool       Amount `json:"tool"`
 	ImageUnit  Amount `json:"image_unit,omitempty"`
+	VideoUnit  Amount `json:"video_unit,omitempty"`
 }
 type Policy struct {
 	RootCredits      Amount     `json:"root_credits"`

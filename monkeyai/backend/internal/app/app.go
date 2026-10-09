@@ -37,6 +37,8 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videoproxy"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,6 +51,7 @@ type App struct {
 	billing         *billing.Service
 	proxy           *proxy.Proxy
 	images          *imagegen.Service
+	videos          *videogen.Service
 	inputs          *imagegen.Inputs
 	endpoints       *endpoint.Service
 	feedback        *feedback.Service
@@ -87,6 +90,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		billing:         handler.(*applicationHandler).billing,
 		proxy:           handler.(*applicationHandler).proxy,
 		images:          handler.(*applicationHandler).images,
+		videos:          handler.(*applicationHandler).videos,
 		inputs:          handler.(*applicationHandler).inputs,
 		endpoints:       handler.(*applicationHandler).endpoints,
 		feedback:        handler.(*applicationHandler).feedback,
@@ -102,6 +106,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 	router := chi.NewRouter()
 	proxy.NewProxy(nil, logger).Register(router)
 	imageproxy.NewProxy(nil, nil, nil, nil, nil).Register(router)
+	videoproxy.New(nil, nil, nil, nil).Register(router)
 	router.Mount("/", httpapi.New(logger, database, admin, agent, auth))
 	return router
 }
@@ -150,6 +155,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	imageService.WithAdapter(model.ProviderVolcengine, imagegen.Adapter{Capabilities: seedream.Capabilities, DefaultCapabilities: seedream.DefaultCapabilities, Generator: seedream, Editor: seedream})
 	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, DefaultCapabilities: grok.DefaultCapabilities, Generator: grok, Editor: grok})
 	models.WithImageCapabilities(imageService.Capabilities)
+	videoService := videogen.NewService(pool, storage, charges, modelRepo)
 	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
@@ -212,6 +218,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
 		WithSessionResolver(sessionResolver).
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
+	videoproxy.New(modelResolver{service: models}, keys, sessionResolver, videoService).Register(router)
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
@@ -230,7 +237,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -268,6 +275,8 @@ func (a *App) Run(ctx context.Context) error {
 	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
 	imageDone := make(chan struct{})
 	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
+	videoDone := make(chan struct{})
+	go func() { defer close(videoDone); a.videos.Run(workerCtx) }()
 	cleanupDone := make(chan struct{})
 	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
 	feedbackCleanupDone := make(chan struct{})
@@ -277,6 +286,7 @@ func (a *App) Run(ctx context.Context) error {
 		<-workerDone
 		<-observeDone
 		<-imageDone
+		<-videoDone
 		<-cleanupDone
 		<-feedbackCleanupDone
 	}()
@@ -320,6 +330,9 @@ func (a *App) Run(ctx context.Context) error {
 		runErrors = append(runErrors, err)
 	}
 	if err := a.images.Wait(shutdownCtx); err != nil {
+		runErrors = append(runErrors, err)
+	}
+	if err := a.videos.Wait(shutdownCtx); err != nil {
 		runErrors = append(runErrors, err)
 	}
 	for completed < len(a.servers) {
