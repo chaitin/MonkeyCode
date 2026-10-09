@@ -162,6 +162,31 @@ func TestOAuthIDs(t *testing.T) {
 	}
 }
 
+func TestOIDCUserInfoFields(t *testing.T) {
+	store := &memoryStore{records: map[string]Record{}}
+	service := NewService(store)
+	value := json.RawMessage(`{"oauth_connections":[{"provider":"oidc","name":"OIDC","client_id":"client","client_secret":"secret","issuer_url":"https://identity.example","id_field":"id","username_field":"name","avatar_field":"picture","email_field":"email","scopes":["profile"],"enabled":true}]}`)
+	if _, err := service.Put(t.Context(), "authentication", value, 1, "user"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.AdminGet(t.Context(), "authentication")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Put(t.Context(), "authentication", record.Value, 1, "user"); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"id_field":"id"`, `"username_field":"name"`, `"avatar_field":"picture"`, `"email_field":"email"`, `"scopes":["profile"]`} {
+		if !strings.Contains(string(store.records["authentication"].Value), field) {
+			t.Fatalf("OIDC 字段映射未保留: %s", store.records["authentication"].Value)
+		}
+	}
+	invalid := json.RawMessage(`{"oauth_connections":[{"provider":"oidc","name":"OIDC","client_id":"client","client_secret":"secret","issuer_url":"https://identity.example","id_field":42}]}`)
+	if _, err := service.Put(t.Context(), "authentication", invalid, 1, "user"); err == nil {
+		t.Fatal("字段名必须是字符串")
+	}
+}
+
 func TestBaizhiyunConnection(t *testing.T) {
 	for _, issuer := range []string{"", "https://identity.example"} {
 		t.Run(issuer, func(t *testing.T) {

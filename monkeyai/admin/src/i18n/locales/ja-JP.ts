@@ -1045,6 +1045,16 @@ export const jaJP = {
         baizhiyunScopes:
           "デフォルトのスコープ： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
+        scopes: "スコープ",
+        scopesDescription:
+          "スコープは半角スペースで区切って入力してください（例：profile）。openid を追加する必要はありません。空欄の場合はデフォルトの openid profile email が使用されます。",
+        userinfoFields: "userinfo のトップレベルフィールド名",
+        userinfoDescription:
+          "userinfo の URL は発行者の OIDC Discovery にある userinfo_endpoint から自動取得されるため、手入力は不要です。userinfo の応答に含まれるトップレベルのフィールド名を入力してください。",
+        idField: "ユーザー ID のフィールド名",
+        usernameField: "ユーザー名のフィールド名",
+        avatarField: "プロフィール画像のフィールド名",
+        emailField: "メールアドレスのフィールド名",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "キャンセル",

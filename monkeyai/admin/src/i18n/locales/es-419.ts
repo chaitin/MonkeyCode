@@ -1077,6 +1077,16 @@ export const es419 = {
         baizhiyunScopes:
           "Permisos predeterminados: auth_certification openid phone user email",
         issuerUrl: "URL del emisor",
+        scopes: "Permisos (scopes)",
+        scopesDescription:
+          "Separa los permisos con espacios, por ejemplo: profile. No es necesario agregar openid. Si lo dejas vacío, se usarán los valores predeterminados openid profile email.",
+        userinfoFields: "Nombres de los campos principales de userinfo",
+        userinfoDescription:
+          "La URL de userinfo se obtiene automáticamente de userinfo_endpoint en el documento de descubrimiento OIDC del emisor; no es necesario ingresarla. Indica los nombres de los campos principales que devuelve userinfo.",
+        idField: "Nombre del campo de ID de usuario",
+        usernameField: "Nombre del campo de nombre de usuario",
+        avatarField: "Nombre del campo de foto de perfil",
+        emailField: "Nombre del campo de correo electrónico",
         clientId: "ID de cliente",
         clientSecret: "Secreto del cliente",
         cancel: "Cancelar",

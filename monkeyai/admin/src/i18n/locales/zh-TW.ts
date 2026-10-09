@@ -989,6 +989,16 @@ export const zhTW = {
         baizhiyunScopes:
           "預設授權範圍： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
+        scopes: "授權範圍（Scope）",
+        scopesDescription:
+          "多個 Scope 以空格分隔，例如：profile；不必強制加入 openid。留空時使用預設的 openid profile email。",
+        userinfoFields: "userinfo 頂層欄位名稱",
+        userinfoDescription:
+          "userinfo 網址會自動從 Issuer 的 OIDC Discovery 中的 userinfo_endpoint 取得，無須手動填寫網址。請填寫 userinfo 回傳資料中的頂層欄位名稱。",
+        idField: "使用者 ID 欄位名稱",
+        usernameField: "使用者名稱欄位名稱",
+        avatarField: "頭像欄位名稱",
+        emailField: "電子郵件欄位名稱",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "取消",

@@ -1078,6 +1078,16 @@ export const frFR = {
         baizhiyunScopes:
           "Autorisations par défaut : auth_certification openid phone user email",
         issuerUrl: "URL de l’émetteur",
+        scopes: "Portées (scopes)",
+        scopesDescription:
+          "Séparez les scopes par des espaces, par exemple : profile. Il n’est pas nécessaire d’ajouter openid. Si le champ est vide, la valeur par défaut est openid profile email.",
+        userinfoFields: "Noms des champs de premier niveau de userinfo",
+        userinfoDescription:
+          "L’URL de userinfo est obtenue automatiquement via userinfo_endpoint dans le document de découverte OIDC de l’émetteur ; aucune saisie d’URL n’est nécessaire. Indiquez les noms des champs de premier niveau renvoyés par userinfo.",
+        idField: "Nom du champ de l’identifiant utilisateur",
+        usernameField: "Nom du champ du nom d’utilisateur",
+        avatarField: "Nom du champ de la photo de profil",
+        emailField: "Nom du champ de l’adresse e-mail",
         clientId: "ID client",
         clientSecret: "Secret client",
         cancel: "Annuler",

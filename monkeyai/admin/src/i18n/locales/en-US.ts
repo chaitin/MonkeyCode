@@ -1524,6 +1524,16 @@ export const enUS = {
         baizhiyunScopes:
           "Default scopes: auth_certification openid phone user email.",
         issuerUrl: "Issuer URL",
+        scopes: "Scopes",
+        scopesDescription:
+          "Separate scopes with spaces, for example: profile. You do not need to add openid. Leave blank to use the default openid profile email.",
+        userinfoFields: "Top-level userinfo field names",
+        userinfoDescription:
+          "The userinfo URL is discovered from the issuer's OIDC discovery userinfo_endpoint; no URL entry is needed. Enter the top-level field names returned by userinfo.",
+        idField: "User ID field name",
+        usernameField: "Username field name",
+        avatarField: "Avatar field name",
+        emailField: "Email field name",
         clientId: "Client ID",
         clientSecret: "Client secret",
         cancel: "Cancel",
