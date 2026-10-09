@@ -17,7 +17,7 @@ paths:
         - {name: user_id, in: query, schema: {type: string, format: uuid}}
         - {name: group_id, in: query, schema: {type: string, format: uuid}}
       responses:
-        '200': {description: 会话分页及总数，不含对话内容}
+        '200': {description: 会话分页及总数，包含标题及来源，不含对话正文}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/sessions/{id}:
@@ -27,7 +27,7 @@ paths:
       summary: 查询会话统计详情
       description: 已清除会话仅返回固定墓碑摘要，不返回轮次或调用明细。
       responses:
-        '200': {description: 会话统计元数据}
+        '200': {description: 会话统计元数据，包含标题及来源}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '410': {description: 会话统计数据已清除}
@@ -82,7 +82,7 @@ paths:
       summary: 查询一期会话轮次和网关调用统计详情
       description: 仅统计元数据；已清除会话普通统计读取返回 410。
       responses:
-        '200': {description: 会话、轮次、工具、技能、资源、调用与子会话统计}
+        '200': {description: 会话标题及来源、轮次、工具、技能、资源、调用与子会话统计}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '410': {description: 会话统计数据已清除}
   /api/admin/v1/statistics/session-reporting/resources:

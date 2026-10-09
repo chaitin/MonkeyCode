@@ -118,6 +118,7 @@ type Session struct {
 type sessionRow struct {
 	Session
 	Title           string     `json:"title"`
+	TitleSource     *string    `json:"title_source"`
 	SessionType     string     `json:"session_type"`
 	ClientType      string     `json:"client_type"`
 	ClientName      string     `json:"client_name"`

@@ -121,7 +121,7 @@ func TestDecodeGzipBody(t *testing.T) {
 }
 
 func TestOfficialSessionSnapshot(t *testing.T) {
-	body := `{"state_seq":4,"client":{"type":"desktop","machine_id":"host","version":"26.928.1","engine_version":"1","runtime_version":"2"},"session_type":"conversation","parent_session_id":null,"expert_id":null,"model_id":null,"mode":"plan","workspace_kind":"project","started_at":"2026-09-29T10:00:00+08:00","client_deleted_at":null}`
+	body := `{"state_seq":4,"client":{"type":"desktop","machine_id":"host","version":"26.928.1","engine_version":"1","runtime_version":"2"},"session_type":"conversation","parent_session_id":null,"title":"提示内容","title_source":"prompt","expert_id":null,"model_id":null,"mode":"plan","workspace_kind":"project","started_at":"2026-09-29T10:00:00+08:00","client_deleted_at":null}`
 	r := httptest.NewRequest("PUT", "/", strings.NewReader(body))
 	var in sessionInput
 	if err := decodeBody(httptest.NewRecorder(), r, maxSessionBodyBytes, &in); err != nil {
@@ -130,7 +130,10 @@ func TestOfficialSessionSnapshot(t *testing.T) {
 	if err := validateSessionInput(in); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{`"title":"提示内容"`, `"title_source":"prompt"`, `"state_hash":"fake"`} {
+	if in.Title == nil || *in.Title != "提示内容" || in.TitleSource == nil || *in.TitleSource != "prompt" {
+		t.Fatalf("标题字段未解析: %+v", in)
+	}
+	for _, field := range []string{`"state_hash":"fake"`, `"raw_prompt":"正文"`} {
 		modified := strings.TrimSuffix(body, "}") + "," + field + "}"
 		r := httptest.NewRequest("PUT", "/", strings.NewReader(modified))
 		var invalid sessionInput
@@ -139,8 +142,20 @@ func TestOfficialSessionSnapshot(t *testing.T) {
 			err = validateSessionInput(invalid)
 		}
 		if err == nil {
-			t.Fatalf("统计模式或客户端散列字段未拒绝: %s", field)
+			t.Fatalf("未知字段未拒绝: %s", field)
 		}
+	}
+	for _, value := range []string{strings.Repeat("a", 513), "a\x00b"} {
+		in.Title = &value
+		if err := validateSessionInput(in); code(err) != "invalid_state" {
+			t.Fatalf("无效标题未拒绝: %v", err)
+		}
+	}
+	in.Title = nil
+	longSource := strings.Repeat("a", 129)
+	in.TitleSource = &longSource
+	if err := validateSessionInput(in); code(err) != "invalid_state" {
+		t.Fatalf("无效标题来源未拒绝: %v", err)
 	}
 }
 
@@ -405,6 +420,7 @@ func TestSessionReportingDatabase(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Second).Add(-2 * time.Minute)
 	put := resource.Object{
 		"state_seq": 1, "session_type": "conversation", "started_at": start,
+		"title": "首次标题", "title_source": "prompt",
 		"client": resource.Object{"type": "desktop", "machine_id": machineID, "version": "26.928.1", "engine_version": "engine-1", "runtime_version": "runtime-1"},
 	}
 	out := request(http.MethodPut, "/sessions/"+sessionID, machineID, put, http.StatusOK, "")
@@ -417,6 +433,30 @@ func TestSessionReportingDatabase(t *testing.T) {
 	if placeholder || host == nil || *host != machineID {
 		t.Fatalf("首次 PUT 没有认领宿主: placeholder=%v host=%v", placeholder, host)
 	}
+	var title string
+	var titleSource *string
+	checkTitle := func(wantTitle, wantSource string) {
+		t.Helper()
+		if err := s.pool.QueryRow(ctx, `SELECT title,title_source FROM sessions WHERE id=$1`, sessionID).Scan(&title, &titleSource); err != nil {
+			t.Fatal(err)
+		}
+		if title != wantTitle || titleSource == nil || *titleSource != wantSource {
+			t.Fatalf("会话标题未持久化: title=%q source=%v", title, titleSource)
+		}
+	}
+	checkTitle("首次标题", "prompt")
+	request(http.MethodPut, "/sessions/"+sessionID, machineID, put, http.StatusOK, "")
+	put["title"] = "更新标题"
+	request(http.MethodPut, "/sessions/"+sessionID, machineID, put, http.StatusConflict, "state_conflict")
+	put["state_seq"] = 2
+	put["title_source"] = "generated"
+	request(http.MethodPut, "/sessions/"+sessionID, machineID, put, http.StatusOK, "")
+	checkTitle("更新标题", "generated")
+	delete(put, "title")
+	delete(put, "title_source")
+	put["state_seq"] = 3
+	request(http.MethodPut, "/sessions/"+sessionID, machineID, put, http.StatusOK, "")
+	checkTitle("更新标题", "generated")
 	childID := resource.ID()
 	if err := s.EnsureSession(ctx, userID, childID, sessionID, ""); err != nil {
 		t.Fatalf("子代理首次调用未创建占位会话: %v", err)
@@ -520,7 +560,7 @@ func TestSessionReportingDatabase(t *testing.T) {
 	for key, value := range put {
 		otherPut[key] = value
 	}
-	otherPut["state_seq"] = 2
+	otherPut["state_seq"] = 4
 	otherPut["client"] = resource.Object{"type": "desktop", "machine_id": otherMachine, "version": "26.928.1"}
 	request(http.MethodPut, "/sessions/"+sessionID, otherMachine, otherPut, http.StatusConflict, "not_host")
 	request(http.MethodPost, path+"?after_turn=1", otherMachine, batch, http.StatusConflict, "not_host")
@@ -541,6 +581,13 @@ VALUES($1,$2,$3,'charge','model','测试模型',-5,5,now(),$4,$5)`, accountID, u
 
 	admin := chi.NewRouter()
 	s.RegisterAdmin(admin)
+	for _, path := range []string{"/sessions", "/sessions/" + sessionID} {
+		w := httptest.NewRecorder()
+		admin.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"title":"更新标题"`) || !strings.Contains(w.Body.String(), `"title_source":"generated"`) {
+			t.Fatalf("管理员查询 %s 未返回标题: %d %s", path, w.Code, w.Body.String())
+		}
+	}
 	deny := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/sessions/"+sessionID, nil)
 	req.Header.Set("X-Confirm-Session-ID", sessionID)
@@ -588,6 +635,9 @@ VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(adminHash[
 	var cleared, retainedBilling, retainedLedger, audits int
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE id IN ($1,$2) AND purged_at IS NOT NULL`, sessionID, childID).Scan(&cleared); err != nil || cleared != 2 {
 		t.Fatalf("清除后应保留两个墓碑: %d %v", cleared, err)
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT title,title_source FROM sessions WHERE id=$1`, sessionID).Scan(&title, &titleSource); err != nil || title != "" || titleSource != nil {
+		t.Fatalf("清除后不应保留标题: title=%q source=%v err=%v", title, titleSource, err)
 	}
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM session_turns WHERE session_id=$1`, sessionID).Scan(&turns); err != nil || turns != 0 {
 		t.Fatalf("清除后不应保留轮次明细: %d %v", turns, err)

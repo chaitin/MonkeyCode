@@ -103,7 +103,8 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 	payload, err := json.Marshal(resource.Object{
 		"id": id, "session_type": *in.SessionType, "client_type": in.Client.Type,
 		"client_version": in.Client.Version, "engine_version": in.Client.EngineVersion,
-		"runtime_version": in.Client.RuntimeVersion, "expert_id": optionalString(in.ExpertID),
+		"runtime_version": in.Client.RuntimeVersion, "title": optionalString(in.Title),
+		"title_source": optionalString(in.TitleSource), "expert_id": optionalString(in.ExpertID),
 		"model_id": optionalString(in.ModelID), "mode": optionalString(in.Mode),
 		"workspace_kind": optionalString(in.WorkspaceKind), "started_at": in.StartedAt.Time,
 		"client_deleted_at": optionalTime(in.ClientDeletedAt), "received_at": now,
@@ -133,8 +134,11 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateSessionInput(in sessionInput) error {
-	if in.Title != nil || in.TitleSource != nil {
-		return invalidState("统计模式不允许上传标题")
+	if in.Title != nil && !validText(*in.Title, 512, false) {
+		return invalidState("title 无效")
+	}
+	if in.TitleSource != nil && !validText(*in.TitleSource, 128, false) {
+		return invalidState("title_source 无效")
 	}
 	if in.StateSeq == nil || *in.StateSeq < 0 || in.StartedAt == nil || in.StartedAt.Time.IsZero() {
 		return invalidState("state_seq 和 started_at 必填")

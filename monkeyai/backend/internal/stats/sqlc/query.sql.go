@@ -55,7 +55,7 @@ func (q *Queries) CountHistory(ctx context.Context, arg CountHistoryParams) (int
 
 const listHistory = `-- name: ListHistory :many
 SELECT
-    jsonb_build_object('id', s.id, 'title', s.title, 'user_name', u.name, 'user_email', u.email,
+    jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_name', u.name, 'user_email', u.email,
         'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
             SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
 FROM
@@ -396,7 +396,7 @@ func (q *Queries) ReportingClients(ctx context.Context, filters []byte) ([][]byt
 const reportingDetail = `-- name: ReportingDetail :one
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at FROM sessions s CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
     WHERE s.id = (p.f->>'session_id')::uuid AND s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
@@ -413,7 +413,7 @@ cohort AS (
                 AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
 )
 SELECT jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,
-    'group_id',s.group_id,'expert_id',s.expert_id,'parent_session_id',s.parent_session_id,
+    'group_id',s.group_id,'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'parent_session_id',s.parent_session_id,
     'model_id',s.model_id,'client_type',s.client_type,'client_version',s.client_version,
     'engine_version',s.engine_version,'runtime_version',s.runtime_version,
     'started_at',s.started_at,'last_active_at',s.last_active_at,'ended_at',s.ended_at,
@@ -502,7 +502,7 @@ func (q *Queries) ReportingFreshness(ctx context.Context, filters []byte) (inter
 const reportingOverview = `-- name: ReportingOverview :one
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at FROM sessions s CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
@@ -620,7 +620,7 @@ func (q *Queries) ReportingRealtime(ctx context.Context, arg ReportingRealtimePa
 const reportingResources = `-- name: ReportingResources :many
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at FROM sessions s CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
@@ -710,7 +710,7 @@ func (q *Queries) ReportingSessionStatus(ctx context.Context, sessionID string) 
 const reportingSessions = `-- name: ReportingSessions :many
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at FROM sessions s CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL
         AND (s.deleted_at IS NULL OR (p.f->>'include_purged')::boolean AND s.purged_at IS NOT NULL)
         AND ((p.f->>'include_purged')::boolean OR s.purged_at IS NULL)
@@ -729,11 +729,11 @@ cohort AS (
             WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
                 AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
         AND (p.f->>'cursor_at' IS NULL OR (s.started_at,s.id) < ((p.f->>'cursor_at')::timestamptz,(p.f->>'cursor_id')::uuid))
-), page AS (SELECT id, owner_user_id, expert_id, title, session_type, client_type, client_name, device_id, turn_count, failure_code, failure_message, started_at, last_active_at, ended_at, created_at, updated_at, deleted_at, group_id, model_id, parent_session_id, mode, workspace_kind, client_version, engine_version, runtime_version, placeholder, started_at_provisional, clock_suspect, state_seq, state_hash, state_received_at, resources_snapshot_id, acked_turn, facts_version, last_stop_reason, active_seconds, client_deleted_at, purged_at, reporting_enabled_at FROM cohort ORDER BY started_at DESC,id DESC LIMIT ($1::jsonb->>'limit')::integer + 1)
+), page AS (SELECT id, owner_user_id, expert_id, title, session_type, client_type, client_name, device_id, turn_count, failure_code, failure_message, started_at, last_active_at, ended_at, created_at, updated_at, deleted_at, group_id, model_id, parent_session_id, mode, workspace_kind, client_version, engine_version, runtime_version, placeholder, started_at_provisional, clock_suspect, state_seq, state_hash, state_received_at, resources_snapshot_id, acked_turn, facts_version, last_stop_reason, active_seconds, client_deleted_at, purged_at, reporting_enabled_at, title_source FROM cohort ORDER BY started_at DESC,id DESC LIMIT ($1::jsonb->>'limit')::integer + 1)
 SELECT CASE WHEN s.purged_at IS NOT NULL THEN
     jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'purged_at',s.purged_at,'tombstone',true,'sort_at',s.started_at)
     ELSE jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'group_id',s.group_id,
-        'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
+        'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
         'client_version',s.client_version,'started_at',s.started_at,'last_active_at',s.last_active_at,
         'active_seconds',s.active_seconds,'placeholder',s.placeholder,'clock_suspect',s.clock_suspect,
         'turns',coalesce(turns.total,0),'last_outcome',s.last_stop_reason,'subsessions',coalesce(children.total,0),
