@@ -134,6 +134,53 @@ export const enUS = {
     documentTitle: "MonkeyAI Admin",
     adminConsole: "Admin Console",
   },
+  landing: {
+    title: "{{productName}} · AI Workbench for Teams",
+    positioning: "Enterprise AI Workbench",
+    promise:
+      "Tell AI what you need. It gets to work and delivers a complete result.",
+    management:
+      "A comprehensive enterprise admin panel with rich team collaboration features.",
+    modesLabel: "Multiple modes for different tasks",
+    modeNames: { coding: "Coding", work: "Work", design: "Design" },
+    modeDescriptions: {
+      coding:
+        "Design architecture, write code, fix issues, and complete development tasks",
+      work: "Create slides and documents, work with spreadsheets and files",
+      design:
+        "Create posters and short dramas, interactive and graphic designs",
+    },
+    poweredBy: "Powered by <repo>Monkey AI</repo>",
+    enterprise: {
+      title: "Enterprise management and team collaboration",
+      sharingTitle: "Shared team resources",
+      sharingDescription:
+        "Share models, knowledge bases, skills, experts, MCP services, and rules across your team.",
+      billingTitle: "Usage and billing",
+      billingDescription:
+        "Track resource usage and manage billing for what your team uses.",
+      governanceTitle: "Permissions and auditing",
+      governanceDescription:
+        "Control access to resources and audit how they are used.",
+      statisticsTitle: "Team usage statistics",
+      statisticsDescription:
+        "See how your team uses resources with clear usage statistics.",
+    },
+    downloads: {
+      title: "Download the app",
+      description: "Choose the version for your device.",
+      download: "Download",
+      unavailable: "Coming soon",
+      android: "Android",
+      ios: "iOS",
+      windows: "Windows",
+      linux: "Linux",
+      macos: "Mac",
+      appleSilicon: "Apple silicon",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS Desktop",
+    },
+  },
   statistics: {
     loading: "Loading statistics…",
     retry: "Retry",

@@ -9,11 +9,15 @@ cp .env.example .env
 docker compose up --build
 ```
 
-启动后访问 <http://localhost:8080>。Compose 会等待 PostgreSQL 就绪、执行数据库迁移，然后依次启动 Backend 和 Admin。
+启动后访问 <http://localhost:8080> 查看项目介绍，点击“管理后台”进入登录页。Compose 会等待 PostgreSQL 就绪、执行数据库迁移，然后依次启动 Backend 和 Admin。
 
 初始管理员只会在用户表为空时创建。首次启动成功后，可从 `.env` 中移除 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD`，服务不会重置已有账号或密码。
 
 `MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，也用于 OAuth 回调、元数据及登录后的页面跳转。若修改 `MONKEYAI_ADMIN_PORT`，还需将该地址改为浏览器实际访问的地址；生产环境应使用 HTTPS。
+
+## 客户端下载
+
+首页的客户端下载地址配置在 [`admin/public/downloads.json`](admin/public/downloads.json)。按平台填入 HTTPS 下载地址或同站点的绝对路径；Linux 分别配置 `linux_arm64` 和 `linux_x64`，Mac 分别配置 `macos_arm64` 和 `macos_x64`。空地址在页面上显示“敬请期待”，不会跳转。首次部署可修改该文件后重建 Admin 镜像；如需不重建镜像就更新链接，可将配置文件只读挂载到 Admin 容器的 `/usr/share/nginx/html/downloads.json`。
 
 ## 后端出站代理
 

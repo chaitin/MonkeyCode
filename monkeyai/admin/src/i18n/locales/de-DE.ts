@@ -22,6 +22,57 @@ export const deDE = {
     documentTitle: "MonkeyAI-Administration",
     adminConsole: "Administrationskonsole",
   },
+  landing: {
+    title: "{{productName}} · KI-Arbeitsplatz für Teams",
+    positioning: "KI-Arbeitsplatz für Unternehmen",
+    promise:
+      "Beschreiben Sie Ihren Bedarf: Die KI erledigt die Aufgabe und liefert ein fertiges Ergebnis.",
+    management:
+      "Eine umfassende Verwaltungsoberfläche und vielfältige Funktionen für die Zusammenarbeit im Team.",
+    modesLabel: "Verschiedene Modi für Ihre Aufgaben",
+    modeNames: {
+      coding: "Programmieren",
+      work: "Büroarbeit",
+      design: "Design",
+    },
+    modeDescriptions: {
+      coding:
+        "Architektur entwerfen, Code schreiben, Probleme beheben und Entwicklungsaufgaben abschließen",
+      work: "Präsentationen, Dokumente und Tabellen erstellen, Dateien ordnen",
+      design:
+        "Poster und Kurzdramen erstellen, Interaktions- und Grafikdesign gestalten",
+    },
+    poweredBy: "Dieses System wird von <repo>Monkey AI</repo> betrieben",
+    enterprise: {
+      title: "Unternehmensverwaltung und Teamarbeit",
+      sharingTitle: "Ressourcen im Team teilen",
+      sharingDescription:
+        "Teilen Sie Modelle, Wissensdatenbanken, Skills, Experten, MCP-Dienste und Regeln im Team.",
+      billingTitle: "Nutzung und Abrechnung",
+      billingDescription:
+        "Behalten Sie die Ressourcennutzung im Blick und verwalten Sie deren Abrechnung.",
+      governanceTitle: "Zugriffsrechte und Prüfung",
+      governanceDescription:
+        "Steuern Sie Ressourcenzugriffe und prüfen Sie die Nutzung im Audit.",
+      statisticsTitle: "Teamstatistiken",
+      statisticsDescription:
+        "Sehen Sie Statistiken zur Ressourcennutzung Ihres Teams ein.",
+    },
+    downloads: {
+      title: "App herunterladen",
+      description: "Wählen Sie die passende Version für Ihr Gerät.",
+      download: "Herunterladen",
+      unavailable: "Demnächst verfügbar",
+      android: "Android",
+      ios: "iOS",
+      windows: "Windows",
+      linux: "Linux",
+      macos: "Mac",
+      appleSilicon: "Apple Silicon",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS Desktop",
+    },
+  },
   statistics: {
     loading: "Statistik wird geladen…",
     retry: "Erneut versuchen",

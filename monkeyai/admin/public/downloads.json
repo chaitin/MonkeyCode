@@ -1,0 +1,10 @@
+{
+  "android": "",
+  "ios": "",
+  "windows": "https://release.monkeycode-ai.com/public/monkeyai/desktop/win/x64/MonkeyAI-latest-win-x64.exe",
+  "linux_arm64": "",
+  "linux_x64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/x64/MonkeyAI-latest-linux-x86_64.AppImage",
+  "macos_arm64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/mac/arm64/MonkeyAI-latest-mac-arm64.dmg",
+  "macos_x64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/mac/x64/MonkeyAI-latest-mac-x64.dmg",
+  "harmony_desktop": ""
+}

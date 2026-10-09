@@ -22,6 +22,49 @@ export const ar = {
     documentTitle: "إدارة MonkeyAI",
     adminConsole: "لوحة الإدارة",
   },
+  landing: {
+    title: "{{productName}} · مساحة عمل للذكاء الاصطناعي",
+    positioning: "مساحة عمل مؤسسية بالذكاء الاصطناعي",
+    promise:
+      "اذكر ما تحتاجه، وسينفذ الذكاء الاصطناعي المهمة ويقدم نتيجة مكتملة.",
+    management:
+      "لوحة إدارة مؤسسية متكاملة وإمكانات واسعة للتعاون بين أعضاء الفريق.",
+    modesLabel: "أوضاع متعددة لمختلف المهام",
+    modeNames: { coding: "البرمجة", work: "العمل المكتبي", design: "التصميم" },
+    modeDescriptions: {
+      coding: "تصميم البنية وكتابة الشيفرة وإصلاح المشكلات وإنجاز مهام التطوير",
+      work: "إعداد العروض والمستندات والجداول وتنظيم الملفات",
+      design: "إنشاء الملصقات والمسلسلات القصيرة والتصميم التفاعلي والجرافيكي",
+    },
+    poweredBy: "يعمل هذا النظام بواسطة <repo>Monkey AI</repo>",
+    enterprise: {
+      title: "إدارة المؤسسات وتعاون الفرق",
+      sharingTitle: "مشاركة الموارد بين أعضاء الفريق",
+      sharingDescription:
+        "شارك النماذج وقواعد المعرفة والمهارات والخبراء وخدمات MCP والقواعد داخل فريقك.",
+      billingTitle: "الاستخدام والفوترة",
+      billingDescription: "تابع استخدام الموارد وأدر الفوترة بناءً عليه.",
+      governanceTitle: "التحكم بالصلاحيات وتدقيق الاستخدام",
+      governanceDescription:
+        "تحكم في صلاحيات الوصول إلى الموارد وراجع سجل استخدامها.",
+      statisticsTitle: "إحصاءات استخدام الفريق",
+      statisticsDescription: "اطلع على إحصاءات استخدام الموارد في فريقك.",
+    },
+    downloads: {
+      title: "تنزيل التطبيق",
+      description: "اختر الإصدار المناسب لجهازك.",
+      download: "تنزيل",
+      unavailable: "قريبًا",
+      android: "أندرويد",
+      ios: "iOS",
+      windows: "Windows",
+      linux: "Linux",
+      macos: "Mac",
+      appleSilicon: "معالجات Apple",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS لسطح المكتب",
+    },
+  },
   statistics: {
     loading: "جارٍ تحميل الإحصاءات…",
     retry: "إعادة المحاولة",

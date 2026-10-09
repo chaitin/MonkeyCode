@@ -18,6 +18,7 @@ import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
 import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
+import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
@@ -38,19 +39,6 @@ import {
 } from "@/pages/session-reporting-page"
 import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
-
-function RootRedirect() {
-  const { isLoading, user } = useAuth()
-
-  if (isLoading) return <PageLoading />
-
-  return (
-    <Navigate
-      to={user?.role === "admin" ? DEFAULT_CONSOLE_PATH : LOGIN_PATH}
-      replace
-    />
-  )
-}
 
 function RequireAuth() {
   const { isLoading, user } = useAuth()
@@ -89,7 +77,7 @@ export function App() {
   const location = useLocation()
 
   useEffect(() => {
-    if (location.pathname !== LOGIN_PATH) {
+    if (location.pathname !== LOGIN_PATH && location.pathname !== "/") {
       document.title = t("app.documentTitle")
     }
   }, [location.pathname, t])
@@ -97,7 +85,7 @@ export function App() {
   return (
     <DirectionProvider direction={i18n.dir()}>
       <Routes>
-        <Route path="/" element={<RootRedirect />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path={LOGIN_PATH} element={<LoginPage />} />
         <Route path="/client-login" element={<ClientLoginPage />} />
         <Route element={<RequireAuth />}>

@@ -22,6 +22,53 @@ export const es419 = {
     documentTitle: "Administración de MonkeyAI",
     adminConsole: "Panel de administración",
   },
+  landing: {
+    title: "{{productName}} · Espacio de trabajo de IA",
+    positioning: "Espacio de trabajo de IA empresarial",
+    promise:
+      "Cuéntale lo que necesitas: la IA ejecuta la tarea y entrega un resultado completo.",
+    management:
+      "Un panel de administración empresarial completo y amplias funciones de colaboración en equipo.",
+    modesLabel: "Varios modos para cada tarea",
+    modeNames: { coding: "Programación", work: "Oficina", design: "Diseño" },
+    modeDescriptions: {
+      coding:
+        "Diseñar la arquitectura, escribir código, resolver problemas y completar tareas de desarrollo",
+      work: "Crear presentaciones y documentos, gestionar hojas de cálculo y archivos",
+      design:
+        "Crear pósteres y dramas cortos, diseñar interacciones y piezas gráficas",
+    },
+    poweredBy: "Este sistema funciona con <repo>Monkey AI</repo>",
+    enterprise: {
+      title: "Gestión empresarial y colaboración en equipo",
+      sharingTitle: "Recursos compartidos en equipo",
+      sharingDescription:
+        "Comparte modelos, bases de conocimiento, habilidades, expertos, servicios MCP y reglas con el equipo.",
+      billingTitle: "Uso y facturación",
+      billingDescription:
+        "Consulta el uso de recursos y administra la facturación correspondiente.",
+      governanceTitle: "Permisos y auditoría",
+      governanceDescription:
+        "Controla el acceso a los recursos y audita cómo se utilizan.",
+      statisticsTitle: "Estadísticas del equipo",
+      statisticsDescription:
+        "Consulta estadísticas sobre el uso de recursos del equipo.",
+    },
+    downloads: {
+      title: "Descargar la aplicación",
+      description: "Elige la versión para tu dispositivo.",
+      download: "Descargar",
+      unavailable: "Próximamente",
+      android: "Android",
+      ios: "iOS",
+      windows: "Windows",
+      linux: "Linux",
+      macos: "Mac",
+      appleSilicon: "Chip Apple",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS de escritorio",
+    },
+  },
   statistics: {
     loading: "Cargando estadísticas…",
     retry: "Reintentar",

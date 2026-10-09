@@ -23,6 +23,57 @@ export const frFR = {
     documentTitle: "Administration MonkeyAI",
     adminConsole: "Console d’administration",
   },
+  landing: {
+    title: "{{productName}} · Espace de travail IA",
+    positioning: "Espace de travail IA pour entreprises",
+    promise:
+      "Exprimez votre besoin : l’IA exécute la tâche et livre un résultat complet.",
+    management:
+      "Un panneau d’administration complet et de nombreuses fonctions de collaboration en équipe.",
+    modesLabel: "Plusieurs modes selon vos tâches",
+    modeNames: {
+      coding: "Programmation",
+      work: "Bureautique",
+      design: "Design",
+    },
+    modeDescriptions: {
+      coding:
+        "Concevoir l’architecture, écrire du code, corriger les problèmes et achever les tâches de développement",
+      work: "Créer des présentations et documents, gérer tableaux et fichiers",
+      design:
+        "Créer affiches et courtes séries, concevoir des interfaces et des visuels graphiques",
+    },
+    poweredBy: "Ce système est propulsé par <repo>Monkey AI</repo>",
+    enterprise: {
+      title: "Gestion d’entreprise et collaboration",
+      sharingTitle: "Ressources partagées en équipe",
+      sharingDescription:
+        "Partagez modèles, bases de connaissances, compétences, experts, services MCP et règles avec l’équipe.",
+      billingTitle: "Utilisation et facturation",
+      billingDescription:
+        "Suivez l’usage des ressources et gérez la facturation associée.",
+      governanceTitle: "Accès et audit",
+      governanceDescription:
+        "Contrôlez les droits d’accès aux ressources et auditez leur utilisation.",
+      statisticsTitle: "Statistiques de l’équipe",
+      statisticsDescription:
+        "Consultez les statistiques d’utilisation des ressources par l’équipe.",
+    },
+    downloads: {
+      title: "Télécharger l’application",
+      description: "Choisissez la version adaptée à votre appareil.",
+      download: "Télécharger",
+      unavailable: "Bientôt disponible",
+      android: "Android",
+      ios: "iOS",
+      windows: "Windows",
+      linux: "Linux",
+      macos: "Mac",
+      appleSilicon: "Puce Apple",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS Desktop",
+    },
+  },
   statistics: {
     loading: "Chargement des statistiques…",
     retry: "Réessayer",

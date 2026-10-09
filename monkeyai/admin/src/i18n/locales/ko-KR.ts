@@ -22,6 +22,49 @@ export const koKR = {
     documentTitle: "MonkeyAI 관리자 콘솔",
     adminConsole: "관리자 콘솔",
   },
+  landing: {
+    title: "{{productName}} · AI 업무 워크스페이스",
+    positioning: "기업용 AI 업무 워크스페이스",
+    promise:
+      "필요한 일을 말하면 AI가 작업을 실행하고 완성된 결과물을 제공합니다.",
+    management: "체계적인 기업 관리 패널과 다양한 팀 협업 기능을 제공합니다.",
+    modesLabel: "다양한 작업 모드 지원",
+    modeNames: { coding: "코딩", work: "업무", design: "디자인" },
+    modeDescriptions: {
+      coding: "아키텍처 설계, 코드 작성, 문제 해결로 개발 작업 완수",
+      work: "PPT·문서·스프레드시트를 만들고 파일을 정리",
+      design: "포스터·숏드라마 제작, 인터랙션·그래픽 디자인 등",
+    },
+    poweredBy: "현재 시스템은 <repo>Monkey AI</repo>로 구동됩니다",
+    enterprise: {
+      title: "기업 관리와 팀 협업",
+      sharingTitle: "팀 리소스 공유",
+      sharingDescription:
+        "모델, 지식 베이스, 스킬, 전문가, MCP, 규칙을 팀에서 공유합니다.",
+      billingTitle: "사용량 및 과금 관리",
+      billingDescription:
+        "리소스 사용 현황을 파악하고 사용량에 따른 과금을 관리합니다.",
+      governanceTitle: "권한 제어 및 사용 감사",
+      governanceDescription:
+        "리소스 접근 권한을 제어하고 사용 내역을 기록·감사합니다.",
+      statisticsTitle: "팀 사용 통계",
+      statisticsDescription: "팀의 리소스 사용 현황과 통계를 확인합니다.",
+    },
+    downloads: {
+      title: "앱 다운로드",
+      description: "기기에 맞는 버전을 선택하세요.",
+      download: "다운로드",
+      unavailable: "출시 예정",
+      android: "Android 버전",
+      ios: "iOS 버전",
+      windows: "Windows 버전",
+      linux: "Linux 버전",
+      macos: "Mac 버전",
+      appleSilicon: "M 시리즈",
+      intel: "Intel",
+      harmonyDesktop: "HarmonyOS 데스크톱 버전",
+    },
+  },
   statistics: {
     loading: "통계 로딩 중…",
     retry: "재시도",
