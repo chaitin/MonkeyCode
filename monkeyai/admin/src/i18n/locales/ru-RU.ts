@@ -1069,6 +1069,16 @@ export const ruRU = {
         baizhiyunScopes:
           "Разрешения по умолчанию: auth_certification openid phone user email",
         issuerUrl: "URL издателя",
+        scopes: "Области доступа (scopes)",
+        scopesDescription:
+          "Разделяйте области доступа пробелами, например: profile. Добавлять openid необязательно. Если поле пустое, используются значения по умолчанию openid profile email.",
+        userinfoFields: "Имена полей верхнего уровня в userinfo",
+        userinfoDescription:
+          "URL для userinfo определяется автоматически по userinfo_endpoint в документе OIDC Discovery издателя; вводить его вручную не нужно. Укажите имена полей верхнего уровня в ответе userinfo.",
+        idField: "Имя поля идентификатора пользователя",
+        usernameField: "Имя поля имени пользователя",
+        avatarField: "Имя поля аватара",
+        emailField: "Имя поля электронной почты",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "Отмена",

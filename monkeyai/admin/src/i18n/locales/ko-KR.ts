@@ -1032,6 +1032,16 @@ export const koKR = {
         baizhiyunScopes:
           "기본 권한 범위: auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
+        scopes: "권한 범위 (Scope)",
+        scopesDescription:
+          "권한 범위를 공백으로 구분해 입력하세요(예: profile). openid를 추가할 필요는 없습니다. 비워 두면 기본값 openid profile email이 사용됩니다.",
+        userinfoFields: "userinfo 최상위 필드 이름",
+        userinfoDescription:
+          "userinfo URL은 발급자의 OIDC Discovery에 있는 userinfo_endpoint에서 자동으로 확인하므로 직접 입력할 필요가 없습니다. userinfo 응답의 최상위 필드 이름을 입력하세요.",
+        idField: "사용자 ID 필드 이름",
+        usernameField: "사용자 이름 필드 이름",
+        avatarField: "프로필 이미지 필드 이름",
+        emailField: "이메일 필드 이름",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "취소",

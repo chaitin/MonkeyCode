@@ -1088,6 +1088,16 @@ export const deDE = {
         baizhiyunScopes:
           "Standardberechtigungen: auth_certification openid phone user email",
         issuerUrl: "Issuer-URL",
+        scopes: "Berechtigungsbereiche (Scopes)",
+        scopesDescription:
+          "Scopes durch Leerzeichen trennen, z. B. profile. openid muss nicht hinzugefügt werden. Bei leerer Eingabe gilt der Standard openid profile email.",
+        userinfoFields: "Namen der obersten userinfo-Felder",
+        userinfoDescription:
+          "Die userinfo-URL wird automatisch über userinfo_endpoint in der OIDC-Discovery des Issuers ermittelt; eine manuelle Eingabe ist nicht nötig. Geben Sie die Namen der obersten Felder der userinfo-Antwort ein.",
+        idField: "Feldname für Benutzer-ID",
+        usernameField: "Feldname für Benutzername",
+        avatarField: "Feldname für Profilbild",
+        emailField: "Feldname für E-Mail-Adresse",
         clientId: "Client-ID",
         clientSecret: "Client-Secret",
         cancel: "Abbrechen",

@@ -1032,6 +1032,16 @@ export const ar = {
         baizhiyunScopes:
           "نطاقات التفويض الافتراضية: auth_certification openid phone user email",
         issuerUrl: "عنوان URL للمُصدر",
+        scopes: "نطاقات التفويض (Scope)",
+        scopesDescription:
+          "افصل بين نطاقات التفويض بمسافات، مثل profile. لا يلزم إضافة openid. عند ترك الحقل فارغًا، تُستخدم القيم الافتراضية openid profile email.",
+        userinfoFields: "أسماء الحقول العليا في userinfo",
+        userinfoDescription:
+          "يُكتشف عنوان URL لخدمة userinfo تلقائيًا من userinfo_endpoint في مستند اكتشاف OIDC للمُصدر، ولا يلزم إدخاله يدويًا. أدخل أسماء الحقول العليا التي تُرجعها userinfo.",
+        idField: "اسم حقل معرّف المستخدم",
+        usernameField: "اسم حقل اسم المستخدم",
+        avatarField: "اسم حقل الصورة الشخصية",
+        emailField: "اسم حقل البريد الإلكتروني",
         clientId: "معرّف العميل",
         clientSecret: "سر العميل",
         cancel: "إلغاء",

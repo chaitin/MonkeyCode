@@ -1440,6 +1440,16 @@ export const zhCN = {
         baizhiyunScopes:
           "默认授权范围：auth_certification openid phone user email。",
         issuerUrl: "Issuer URL",
+        scopes: "授权范围（Scope）",
+        scopesDescription:
+          "多个 Scope 用空格分隔，例如：profile；无需强制添加 openid。留空时使用默认的 openid profile email。",
+        userinfoFields: "userinfo 顶层字段名",
+        userinfoDescription:
+          "userinfo 地址从 Issuer 的 OIDC discovery 中的 userinfo_endpoint 自动获取，无需手填 URL。请填写 userinfo 返回数据中的顶层字段名。",
+        idField: "用户 ID 字段名",
+        usernameField: "用户名字段名",
+        avatarField: "头像字段名",
+        emailField: "邮箱字段名",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "取消",

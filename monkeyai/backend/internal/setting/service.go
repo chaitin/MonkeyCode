@@ -304,6 +304,10 @@ func validate(key string, value map[string]json.RawMessage) error {
 			ClientID                string `json:"client_id"`
 			ClientSecret            string `json:"client_secret"`
 			IssuerURL               string `json:"issuer_url"`
+			IDField                 string `json:"id_field"`
+			UsernameField           string `json:"username_field"`
+			AvatarField             string `json:"avatar_field"`
+			EmailField              string `json:"email_field"`
 			AutoRegistrationEnabled *bool  `json:"auto_registration_enabled"`
 		}
 		if raw, ok := value["oauth_connections"]; ok && json.Unmarshal(raw, &connections) != nil {
