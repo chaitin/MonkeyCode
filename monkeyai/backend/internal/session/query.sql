@@ -1,7 +1,7 @@
 -- name: GetSession :one
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'model_id',model_id,'device_id',device_id,'title',title,'session_type',session_type,
+ 'model_id',model_id,'device_id',device_id,'title',title,'title_source',title_source,'session_type',session_type,
  'client_type',client_type,'client_name',client_name,'started_at',started_at,
  'last_active_at',last_active_at,'ended_at',ended_at,'deleted_at',deleted_at,'purged_at',purged_at,
  'placeholder',placeholder,'started_provis',started_at_provisional,'clock_suspect',clock_suspect,
@@ -14,7 +14,7 @@ SELECT jsonb_build_object(
 -- name: LockSession :one
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'model_id',model_id,'device_id',device_id,'title',title,'session_type',session_type,
+ 'model_id',model_id,'device_id',device_id,'title',title,'title_source',title_source,'session_type',session_type,
  'client_type',client_type,'client_name',client_name,'started_at',started_at,
  'last_active_at',last_active_at,'ended_at',ended_at,'deleted_at',deleted_at,'purged_at',purged_at,
  'placeholder',placeholder,'started_provis',started_at_provisional,'clock_suspect',clock_suspect,
@@ -90,6 +90,8 @@ WHERE id=(sqlc.arg(payload)::jsonb->>'id')::uuid;
 
 -- name: SaveSession :exec
 UPDATE sessions SET
+ title=COALESCE(sqlc.arg(payload)::jsonb->>'title',title),
+ title_source=COALESCE(sqlc.arg(payload)::jsonb->>'title_source',title_source),
  session_type=sqlc.arg(payload)::jsonb->>'session_type',
  client_type=sqlc.arg(payload)::jsonb->>'client_type',
  client_name=sqlc.arg(payload)::jsonb->>'client_type',
@@ -182,7 +184,7 @@ SELECT jsonb_build_object(
 -- name: ListSessions :many
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'session_type',session_type,'client_type',client_type,'client_name',client_name,
+ 'title',title,'title_source',title_source,'session_type',session_type,'client_type',client_type,'client_name',client_name,
  'started_at',started_at,'last_active_at',last_active_at,'ended_at',ended_at,
  'turn_count',turn_count,'acked_turn',acked_turn,'active_seconds',active_seconds,
  'facts_version',facts_version,'last_stop_reason',last_stop_reason,
@@ -253,4 +255,4 @@ DELETE FROM session_resource_snapshot_items WHERE session_id=ANY($1::uuid[]);
 DELETE FROM session_resource_snapshots WHERE session_id=ANY($1::uuid[]);
 -- name: PurgeSessions :exec
 UPDATE sessions SET deleted_at=COALESCE(deleted_at,now()),client_deleted_at=COALESCE(client_deleted_at,now()),
- purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[]);
+ title='',title_source=NULL,purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[]);

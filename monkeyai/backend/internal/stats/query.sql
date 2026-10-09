@@ -23,7 +23,7 @@ WHERE
 
 -- name: ListHistory :many
 SELECT
-    jsonb_build_object('id', s.id, 'title', s.title, 'user_name', u.name, 'user_email', u.email,
+    jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_name', u.name, 'user_email', u.email,
         'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
             SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
 FROM
@@ -370,7 +370,7 @@ cohort AS (
 SELECT CASE WHEN s.purged_at IS NOT NULL THEN
     jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'purged_at',s.purged_at,'tombstone',true,'sort_at',s.started_at)
     ELSE jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'group_id',s.group_id,
-        'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
+        'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
         'client_version',s.client_version,'started_at',s.started_at,'last_active_at',s.last_active_at,
         'active_seconds',s.active_seconds,'placeholder',s.placeholder,'clock_suspect',s.clock_suspect,
         'turns',coalesce(turns.total,0),'last_outcome',s.last_stop_reason,'subsessions',coalesce(children.total,0),
@@ -402,7 +402,7 @@ cohort AS (
                 AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
 )
 SELECT jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,
-    'group_id',s.group_id,'expert_id',s.expert_id,'parent_session_id',s.parent_session_id,
+    'group_id',s.group_id,'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'parent_session_id',s.parent_session_id,
     'model_id',s.model_id,'client_type',s.client_type,'client_version',s.client_version,
     'engine_version',s.engine_version,'runtime_version',s.runtime_version,
     'started_at',s.started_at,'last_active_at',s.last_active_at,'ended_at',s.ended_at,

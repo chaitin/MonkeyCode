@@ -222,7 +222,7 @@ func (q *Queries) GetParent(ctx context.Context, dollar_1 string) ([]byte, error
 const getSession = `-- name: GetSession :one
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'model_id',model_id,'device_id',device_id,'title',title,'session_type',session_type,
+ 'model_id',model_id,'device_id',device_id,'title',title,'title_source',title_source,'session_type',session_type,
  'client_type',client_type,'client_name',client_name,'started_at',started_at,
  'last_active_at',last_active_at,'ended_at',ended_at,'deleted_at',deleted_at,'purged_at',purged_at,
  'placeholder',placeholder,'started_provis',started_at_provisional,'clock_suspect',clock_suspect,
@@ -323,7 +323,7 @@ func (q *Queries) InsertPlaceholder(ctx context.Context, arg InsertPlaceholderPa
 const listSessions = `-- name: ListSessions :many
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'session_type',session_type,'client_type',client_type,'client_name',client_name,
+ 'title',title,'title_source',title_source,'session_type',session_type,'client_type',client_type,'client_name',client_name,
  'started_at',started_at,'last_active_at',last_active_at,'ended_at',ended_at,
  'turn_count',turn_count,'acked_turn',acked_turn,'active_seconds',active_seconds,
  'facts_version',facts_version,'last_stop_reason',last_stop_reason,
@@ -494,7 +494,7 @@ func (q *Queries) LockReportingUser(ctx context.Context, dollar_1 string) (strin
 const lockSession = `-- name: LockSession :one
 SELECT jsonb_build_object(
  'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'model_id',model_id,'device_id',device_id,'title',title,'session_type',session_type,
+ 'model_id',model_id,'device_id',device_id,'title',title,'title_source',title_source,'session_type',session_type,
  'client_type',client_type,'client_name',client_name,'started_at',started_at,
  'last_active_at',last_active_at,'ended_at',ended_at,'deleted_at',deleted_at,'purged_at',purged_at,
  'placeholder',placeholder,'started_provis',started_at_provisional,'clock_suspect',clock_suspect,
@@ -514,7 +514,7 @@ func (q *Queries) LockSession(ctx context.Context, dollar_1 string) ([]byte, err
 
 const purgeSessions = `-- name: PurgeSessions :exec
 UPDATE sessions SET deleted_at=COALESCE(deleted_at,now()),client_deleted_at=COALESCE(client_deleted_at,now()),
- purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[])
+ title='',title_source=NULL,purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[])
 `
 
 func (q *Queries) PurgeSessions(ctx context.Context, dollar_1 []string) error {
@@ -548,6 +548,8 @@ func (q *Queries) RecomputeSession(ctx context.Context, payload []byte) error {
 
 const saveSession = `-- name: SaveSession :exec
 UPDATE sessions SET
+ title=COALESCE($1::jsonb->>'title',title),
+ title_source=COALESCE($1::jsonb->>'title_source',title_source),
  session_type=$1::jsonb->>'session_type',
  client_type=$1::jsonb->>'client_type',
  client_name=$1::jsonb->>'client_type',

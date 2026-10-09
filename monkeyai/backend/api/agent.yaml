@@ -15,7 +15,7 @@ paths:
         schema: {type: string, format: uuid}
     put:
       summary: 创建或更新一期会话元数据快照
-      description: 仅接收统计元数据；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。
+      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。省略标题字段时保留已有值。
       parameters:
         - name: X-MAI-Machine-ID
           in: header
@@ -43,6 +43,8 @@ paths:
                     runtime_version: {type: [string, 'null']}
                 session_type: {type: string, enum: [conversation, workflow, tool, scheduled]}
                 parent_session_id: {type: [string, 'null'], format: uuid}
+                title: {type: [string, 'null'], description: UTF-8 最多 512 字节}
+                title_source: {type: [string, 'null'], description: UTF-8 最多 128 字节}
                 expert_id: {type: [string, 'null'], format: uuid}
                 model_id: {type: [string, 'null'], format: uuid}
                 mode: {type: [string, 'null']}

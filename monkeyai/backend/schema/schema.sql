@@ -1068,3 +1068,5 @@ CREATE TABLE session_reporting_rate_limits (
     request_count integer NOT NULL CHECK (request_count > 0),
     PRIMARY KEY (user_id, kind)
 );
+
+ALTER TABLE sessions ADD COLUMN title_source text;
