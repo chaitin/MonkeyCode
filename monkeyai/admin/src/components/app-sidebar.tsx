@@ -27,8 +27,12 @@ import { useAuth } from "@/hooks/use-auth"
 
 export function AppSidebar({
   onLogout,
+  productName,
   ...props
-}: React.ComponentProps<typeof Sidebar> & { onLogout: () => void }) {
+}: React.ComponentProps<typeof Sidebar> & {
+  onLogout: () => void
+  productName: string
+}) {
   const { i18n, t } = useTranslation()
   const { user } = useAuth()
   const navMain = [
@@ -164,7 +168,7 @@ export function AppSidebar({
                 />
               </div>
               <div className="grid flex-1 text-start text-sm leading-tight">
-                <span className="truncate font-medium">MonkeyAI</span>
+                <span className="truncate font-medium">{productName}</span>
                 <span className="truncate text-xs">
                   {t("app.adminConsole")}
                 </span>

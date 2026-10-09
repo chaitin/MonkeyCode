@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
@@ -20,6 +21,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/use-auth"
+import { api } from "@/lib/api"
 import {
   CONSOLE_PAGES,
   DEFAULT_CONSOLE_PATH,
@@ -34,6 +36,19 @@ export function Dashboard() {
   const location = useLocation()
   const navigate = useNavigate()
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
+  const [productName, setProductName] = useState("MonkeyAI")
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api<{ product_name: string }>("/api/auth/v1/branding", {
+      signal: controller.signal,
+    })
+      .then((branding) => {
+        setProductName(branding.product_name.trim() || "MonkeyAI")
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -49,7 +64,7 @@ export function Dashboard() {
 
   return (
     <SidebarProvider>
-      <AppSidebar onLogout={handleLogout} />
+      <AppSidebar onLogout={handleLogout} productName={productName} />
       <SidebarInset className="min-w-0">
         <header className="flex h-16 shrink-0 items-center gap-2">
           <div className="flex min-w-0 items-center gap-2 px-4">
@@ -62,9 +77,11 @@ export function Dashboard() {
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink
+                    className="block max-w-40 truncate lg:max-w-52"
                     render={<NavLink to={DEFAULT_CONSOLE_PATH} />}
+                    title={productName}
                   >
-                    MonkeyAI
+                    {productName}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
