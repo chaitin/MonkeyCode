@@ -17,10 +17,11 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import { CONSOLE_ROUTES, getConsolePage } from "@/lib/routes"
 import { cn } from "@/lib/utils"
 
 const mainItemClassName =
-  "h-10 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 data-active:bg-sidebar-accent data-active:font-normal data-active:text-sidebar-foreground/65 data-active:hover:bg-sidebar-accent data-active:hover:text-sidebar-foreground/85"
+  "h-10 text-sm text-foreground hover:bg-sidebar-accent/60 hover:text-foreground data-active:bg-sidebar-accent data-active:font-normal data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground"
 
 export function NavMain({
   items,
@@ -36,9 +37,24 @@ export function NavMain({
   }[]
 }) {
   const location = useLocation()
-  const [openSection, setOpenSection] = useState<string | null>(
-    () => items.find((item) => item.items?.length)?.url ?? null
-  )
+  const [expanded, setExpanded] = useState<{
+    pathname: string
+    section: string | null
+  }>(() => ({
+    pathname: location.pathname,
+    section:
+      getConsolePage(location.pathname)?.sectionPath ??
+      items.find((item) => item.items?.length)?.url ??
+      null,
+  }))
+  const openSection =
+    expanded.pathname === location.pathname
+      ? expanded.section
+      : (getConsolePage(location.pathname)?.sectionPath ?? null)
+  const isActiveSubItem = (url: string) =>
+    location.pathname === url ||
+    (url === CONSOLE_ROUTES.sessionList &&
+      location.pathname.startsWith(`${url}/`))
 
   return (
     <SidebarGroup>
@@ -48,9 +64,14 @@ export function NavMain({
             key={item.title}
             open={openSection === item.url}
             onOpenChange={(open) => {
-              setOpenSection((current) =>
-                open ? item.url : current === item.url ? null : current
-              )
+              setExpanded({
+                pathname: location.pathname,
+                section: open
+                  ? item.url
+                  : openSection === item.url
+                    ? null
+                    : openSection,
+              })
             }}
             render={<SidebarMenuItem />}
           >
@@ -62,8 +83,8 @@ export function NavMain({
                       className={mainItemClassName}
                       isActive={
                         location.pathname === item.url ||
-                        item.items.some(
-                          (subItem) => location.pathname === subItem.url
+                        item.items.some((subItem) =>
+                          isActiveSubItem(subItem.url)
                         )
                       }
                     />
@@ -87,8 +108,8 @@ export function NavMain({
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton
                           className="h-9 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 rtl:translate-x-0 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground"
-                          isActive={location.pathname === subItem.url}
-                          size="sm"
+                          isActive={isActiveSubItem(subItem.url)}
+                          size="md"
                           render={<NavLink to={subItem.url} />}
                         >
                           <HugeiconsIcon

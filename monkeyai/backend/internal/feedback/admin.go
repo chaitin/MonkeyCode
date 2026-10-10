@@ -46,9 +46,29 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
+	userIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		userIDs = append(userIDs, item.UserID)
+	}
+	usersByID := make(map[string]sqlc.FeedbackUsersRow)
+	if len(userIDs) > 0 {
+		users, err := q.FeedbackUsers(r.Context(), userIDs)
+		if err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		for _, user := range users {
+			usersByID[user.ID] = user
+		}
+	}
 	out := make([]Feedback, 0, len(items))
 	for _, item := range items {
-		out = append(out, summary(item))
+		feedback := summary(item)
+		if user, ok := usersByID[item.UserID]; ok {
+			feedback.UserName = user.Name
+			feedback.UserEmail = user.Email
+		}
+		out = append(out, feedback)
 	}
 	resource.JSON(w, http.StatusOK, map[string]any{"items": out, "total": total, "page": page, "page_size": size})
 }

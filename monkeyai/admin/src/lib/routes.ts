@@ -51,15 +51,21 @@ export const CONSOLE_PAGES = [
   },
   {
     path: CONSOLE_ROUTES.taskHistory,
-    sectionKey: "sections.statistics",
-    sectionPath: CONSOLE_ROUTES.realtimeStatus,
+    sectionKey: "sections.usageRecords",
+    sectionPath: CONSOLE_ROUTES.taskHistory,
     titleKey: "pages.taskHistory.title",
     descriptionKey: "pages.taskHistory.description",
+  },
+  {
+    path: CONSOLE_ROUTES.sessionList,
+    sectionKey: "sections.usageRecords",
+    sectionPath: CONSOLE_ROUTES.taskHistory,
+    titleKey: "pages.sessionReporting.sessionList.title",
+    descriptionKey: "pages.sessionReporting.sessionList.description",
   },
   ...(
     [
       ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
-      ["sessionList", CONSOLE_ROUTES.sessionList],
       ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
       ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
     ] as const
@@ -162,8 +168,8 @@ export function getConsolePage(pathname: string) {
     (pathname.startsWith(`${CONSOLE_ROUTES.sessionList}/`)
       ? {
           path: pathname,
-          sectionKey: "sections.statistics",
-          sectionPath: CONSOLE_ROUTES.realtimeStatus,
+          sectionKey: "sections.usageRecords",
+          sectionPath: CONSOLE_ROUTES.taskHistory,
           titleKey: "pages.sessionReporting.detail.title",
           descriptionKey: "pages.sessionReporting.detail.description",
         }

@@ -147,6 +147,7 @@ export const ar = {
   },
   sections: {
     statistics: "الإحصاءات",
+    usageRecords: "سجل الاستخدام",
     aiResources: "موارد الذكاء الاصطناعي",
     billingManagement: "إدارة الفوترة",
     systemSettings: "إعدادات النظام",

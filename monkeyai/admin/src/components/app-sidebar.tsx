@@ -18,6 +18,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ChartRingIcon,
+  Clock01Icon,
   RoboticIcon,
   Settings05Icon,
   Wallet01Icon,
@@ -53,14 +54,9 @@ export function AppSidebar({
           title: t("pages.modelStatistics.title"),
           url: CONSOLE_ROUTES.modelStatistics,
         },
-        {
-          title: t("pages.taskHistory.title"),
-          url: CONSOLE_ROUTES.taskHistory,
-        },
         ...(
           [
             ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
-            ["sessionList", CONSOLE_ROUTES.sessionList],
             ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
             ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
           ] as const
@@ -68,6 +64,21 @@ export function AppSidebar({
           title: t(`pages.sessionReporting.${name}.title`),
           url,
         })),
+      ],
+    },
+    {
+      title: t("sections.usageRecords"),
+      url: CONSOLE_ROUTES.taskHistory,
+      icon: <HugeiconsIcon icon={Clock01Icon} strokeWidth={2} />,
+      items: [
+        {
+          title: t("pages.taskHistory.title"),
+          url: CONSOLE_ROUTES.taskHistory,
+        },
+        {
+          title: t("pages.sessionReporting.sessionList.title"),
+          url: CONSOLE_ROUTES.sessionList,
+        },
       ],
     },
     {

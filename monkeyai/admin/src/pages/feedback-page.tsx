@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
+import { User02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -44,6 +46,8 @@ type Attachment = {
 type Feedback = {
   id: string
   user_id: string
+  user_name?: string
+  user_email?: string
   category: Category
   content: string
   rating?: number | null
@@ -179,10 +183,10 @@ function FeedbackDetails({
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         {[
           [
-            t("pages.feedback.columns.time"),
+            t("pages.feedback.submittedAt"),
             new Date(data.created_at).toLocaleString(locale),
           ],
-          [t("pages.feedback.columns.user"), data.user_id],
+          [t("pages.feedback.userId"), data.user_id],
           [
             t("pages.feedback.columns.category"),
             t(`pages.feedback.categories.${data.category}`),
@@ -314,8 +318,13 @@ export function FeedbackPage() {
   const formatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
       }),
     [locale]
   )
@@ -450,14 +459,24 @@ export function FeedbackPage() {
                 {rows.length ? (
                   rows.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="ps-(--card-spacing) whitespace-nowrap">
+                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
                         {formatter.format(new Date(item.created_at))}
                       </TableCell>
-                      <TableCell
-                        className="max-w-40 truncate font-mono text-xs"
-                        title={item.user_id}
-                      >
-                        {item.user_id}
+                      <TableCell>
+                        <div
+                          className="flex max-w-52 items-center gap-3"
+                          title={item.user_email || item.user_id}
+                        >
+                          <HugeiconsIcon
+                            icon={User02Icon}
+                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate">
+                            {item.user_name || item.user_id}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         {t(`pages.feedback.categories.${item.category}`)}

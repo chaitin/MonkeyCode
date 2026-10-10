@@ -11,15 +11,12 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
-test("operation log time is muted and its operations column has a fixed width", async () => {
+test("operation log time data is muted while its header uses the standard text color", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(
-    source,
-    /TableHead className="ps-\(--card-spacing\) text-muted-foreground"/
-  )
+  assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
   assert.match(
     source,
     /TableCell className="ps-\(--card-spacing\) text-muted-foreground"/

@@ -159,6 +159,7 @@ export const ruRU = {
   },
   sections: {
     statistics: "Статистика",
+    usageRecords: "История использования",
     aiResources: "Ресурсы ИИ",
     billingManagement: "Управление оплатой",
     systemSettings: "Системные настройки",

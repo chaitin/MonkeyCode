@@ -161,6 +161,7 @@ export const frFR = {
   },
   sections: {
     statistics: "Statistiques",
+    usageRecords: "Historique d'utilisation",
     aiResources: "Ressources IA",
     billingManagement: "Facturation",
     systemSettings: "Paramètres système",

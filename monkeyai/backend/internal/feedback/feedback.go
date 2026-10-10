@@ -61,6 +61,8 @@ type Request struct {
 type Feedback struct {
 	ID            string       `json:"id"`
 	UserID        string       `json:"user_id"`
+	UserName      string       `json:"user_name,omitempty"`
+	UserEmail     string       `json:"user_email,omitempty"`
 	Category      string       `json:"category"`
 	Content       string       `json:"content"`
 	Rating        *int32       `json:"rating,omitempty"`

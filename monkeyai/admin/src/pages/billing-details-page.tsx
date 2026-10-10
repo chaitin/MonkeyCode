@@ -501,7 +501,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing) text-muted-foreground">
+                      <TableHead className="ps-(--card-spacing)">
                         入账时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -647,7 +647,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing) text-muted-foreground">
+                      <TableHead className="ps-(--card-spacing)">
                         调用时间
                       </TableHead>
                       <TableHead>用户</TableHead>

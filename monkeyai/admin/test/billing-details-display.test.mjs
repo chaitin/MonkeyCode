@@ -71,11 +71,7 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.doesNotMatch(source, /billing\/summary|summary\.charges|扣费积分/)
   assert.doesNotMatch(source, /w-px|max-w-52|table-fixed/)
   assert.equal(
-    (
-      source.match(
-        /TableHead className="ps-\(--card-spacing\) text-muted-foreground"/g
-      ) ?? []
-    ).length,
+    (source.match(/TableHead className="ps-\(--card-spacing\)"/g) ?? []).length,
     2
   )
   assert.equal(

@@ -137,6 +137,7 @@ export const zhTW = {
   },
   sections: {
     statistics: "資料統計",
+    usageRecords: "使用記錄",
     aiResources: "AI 資源",
     billingManagement: "計費管理",
     systemSettings: "系統設定",

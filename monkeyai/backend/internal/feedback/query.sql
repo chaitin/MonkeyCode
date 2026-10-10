@@ -28,6 +28,11 @@ WHERE (sqlc.arg(category)::text = '' OR feedbacks.category = sqlc.arg(category):
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit)::int OFFSET sqlc.arg(page_offset)::int;
 
+-- name: FeedbackUsers :many
+SELECT id, name, email
+FROM users
+WHERE id = ANY(sqlc.arg(user_ids)::uuid[]);
+
 -- name: CountFeedbacks :one
 SELECT count(*)
 FROM feedbacks

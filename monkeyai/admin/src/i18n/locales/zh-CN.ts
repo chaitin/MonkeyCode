@@ -260,6 +260,7 @@ export const zhCN = {
   },
   sections: {
     statistics: "数据统计",
+    usageRecords: "使用记录",
     aiResources: "AI 资源",
     billingManagement: "计费管理",
     systemSettings: "系统设置",
@@ -1258,8 +1259,8 @@ export const zhCN = {
         failed: "提交失败",
       },
       columns: {
-        time: "提交时间",
-        user: "用户 ID",
+        time: "时间",
+        user: "用户",
         category: "类型",
         content: "反馈内容",
         rating: "评分",
@@ -1267,6 +1268,8 @@ export const zhCN = {
         actions: "操作",
       },
       detail: "反馈详情",
+      submittedAt: "提交时间",
+      userId: "用户 ID",
       view: "查看",
       content: "反馈内容",
       images: "反馈截图",

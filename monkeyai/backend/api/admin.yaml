@@ -4713,6 +4713,8 @@ components:
       properties:
         id: {type: string, format: uuid}
         user_id: {type: string, format: uuid}
+        user_name: {type: string, description: 提交反馈的用户名，仅管理员列表返回。}
+        user_email: {type: string, format: email, description: 提交反馈的邮箱，仅管理员列表返回。}
         category: {type: string, enum: [bug, feature, experience, other]}
         content: {type: string, maxLength: 5000}
         rating: {type: [integer, 'null'], minimum: 1, maximum: 5}

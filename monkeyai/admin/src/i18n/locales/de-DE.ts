@@ -161,6 +161,7 @@ export const deDE = {
   },
   sections: {
     statistics: "Statistiken",
+    usageRecords: "Nutzungsverlauf",
     aiResources: "KI-Ressourcen",
     billingManagement: "Abrechnung",
     systemSettings: "Systemeinstellungen",

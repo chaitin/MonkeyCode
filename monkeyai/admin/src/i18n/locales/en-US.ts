@@ -281,6 +281,7 @@ export const enUS = {
   },
   sections: {
     statistics: "Statistics",
+    usageRecords: "Usage Records",
     aiResources: "AI Resources",
     billingManagement: "Billing",
     systemSettings: "System Settings",
@@ -1332,8 +1333,8 @@ export const enUS = {
         failed: "Submission failed",
       },
       columns: {
-        time: "Submitted",
-        user: "User ID",
+        time: "Time",
+        user: "User",
         category: "Category",
         content: "Feedback",
         rating: "Rating",
@@ -1341,6 +1342,8 @@ export const enUS = {
         actions: "Actions",
       },
       detail: "Feedback details",
+      submittedAt: "Submitted",
+      userId: "User ID",
       view: "View",
       content: "Feedback",
       images: "Screenshots",

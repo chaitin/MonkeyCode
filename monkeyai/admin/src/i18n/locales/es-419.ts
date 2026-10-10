@@ -156,6 +156,7 @@ export const es419 = {
   },
   sections: {
     statistics: "Estadísticas",
+    usageRecords: "Historial de uso",
     aiResources: "Recursos de IA",
     billingManagement: "Facturación",
     systemSettings: "Configuración del sistema",

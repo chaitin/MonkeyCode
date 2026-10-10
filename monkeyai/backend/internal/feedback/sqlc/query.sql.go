@@ -223,6 +223,38 @@ func (q *Queries) FeedbackByIdempotency(ctx context.Context, arg FeedbackByIdemp
 	return i, err
 }
 
+const feedbackUsers = `-- name: FeedbackUsers :many
+SELECT id, name, email
+FROM users
+WHERE id = ANY($1::uuid[])
+`
+
+type FeedbackUsersRow struct {
+	ID    string
+	Name  string
+	Email string
+}
+
+func (q *Queries) FeedbackUsers(ctx context.Context, userIds []string) ([]FeedbackUsersRow, error) {
+	rows, err := q.db.Query(ctx, feedbackUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FeedbackUsersRow{}
+	for rows.Next() {
+		var i FeedbackUsersRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAttachments = `-- name: ListAttachments :many
 SELECT id, feedback_id, object_key, mime_type, byte_size, width, height,
        sha256, state, created_at

@@ -148,6 +148,7 @@ export const koKR = {
   },
   sections: {
     statistics: "데이터 통계",
+    usageRecords: "사용 기록",
     aiResources: "AI 리소스",
     billingManagement: "요금 관리",
     systemSettings: "시스템 설정",
