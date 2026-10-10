@@ -15,6 +15,10 @@ docker compose up --build
 
 `MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，也用于 OAuth 回调、元数据及登录后的页面跳转。若修改 `MONKEYAI_ADMIN_PORT`，还需将该地址改为浏览器实际访问的地址；生产环境应使用 HTTPS。
 
+### 前置代理与操作记录来源 IP
+
+如果 Admin 前面还有反向代理，在 `.env` 中设置 `MONKEYAI_TRUSTED_PROXY_CIDRS` 为**直接连接 Admin 的可信代理** IP/CIDR，多个地址用英文逗号分隔，例如 `192.0.2.10/32,2001:db8::/32`。仅当连接来自这些网段时，Admin Nginx 才按 X-Forwarded-For 从右向左解析来源，并将结果作为 `X-Real-IP` 转发给后端；未设置时仍记录连接方地址。前置代理应追加实际连接来源到 XFF 或覆盖客户端提交的 XFF，不要把客户端可控的整段 XFF 原样透传，也不要将所有网段或整个容器网段设为可信代理。修改后重建 Admin 镜像并运行 `docker compose up -d admin`。
+
 ## 客户端下载
 
 首页的客户端下载地址配置在 [`admin/public/downloads.json`](admin/public/downloads.json)。按平台填入 HTTPS 下载地址或同站点的绝对路径；Linux 分别配置 `linux_arm64` 和 `linux_x64`，Mac 分别配置 `macos_arm64` 和 `macos_x64`。空地址在页面上显示“敬请期待”，不会跳转。首次部署可修改该文件后重建 Admin 镜像；如需不重建镜像就更新链接，可将配置文件只读挂载到 Admin 容器的 `/usr/share/nginx/html/downloads.json`。
