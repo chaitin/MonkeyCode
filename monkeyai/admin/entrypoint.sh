@@ -37,6 +37,21 @@ origin() {
 umask 077
 mkdir -p /tmp/nginx
 
+: > /tmp/nginx/real-ip.conf
+if [ -n "${MONKEYAI_TRUSTED_PROXY_CIDRS:-}" ]; then
+    awk '
+        BEGIN {
+            count = split(ENVIRON["MONKEYAI_TRUSTED_PROXY_CIDRS"], cidrs, ",")
+            for (i = 1; i <= count; i++) {
+                if (cidrs[i] == "" || cidrs[i] ~ /[^0-9a-fA-F:.\/]/ || cidrs[i] ~ /\/0+$/) exit 1
+                printf "set_real_ip_from %s;\n", cidrs[i]
+            }
+            exit
+        }
+    ' > /tmp/nginx/real-ip.conf || fail 'MONKEYAI_TRUSTED_PROXY_CIDRS 必须是逗号分隔的可信代理 IP/CIDR'
+    printf 'real_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n' >> /tmp/nginx/real-ip.conf
+fi
+
 case "${MONKEYAI_AUTO_TLS_ENABLED:-false}" in
     false)
         cp /etc/nginx/monkeyai/http.conf /tmp/nginx/site.conf
