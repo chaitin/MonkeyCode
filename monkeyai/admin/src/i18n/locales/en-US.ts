@@ -284,6 +284,7 @@ export const enUS = {
     systemSettings: "System Settings",
   },
   pages: {
+    resourceImports: { title: "Import resource package", description: "Preview and apply a resource release" },
     realtimeStatus: {
       title: "Live Status",
       description:

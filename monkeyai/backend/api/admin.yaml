@@ -7,6 +7,61 @@ servers:
 security:
   - AdminSession: []
 paths:
+  /api/admin/v1/resource-imports/preview:
+    post:
+      summary: 校验资源发布包并预览变更
+      description: 不写入资源；校验整包、静态资源和 Agent 闭包，返回新增/更新/跳过/退役/恢复与 plan_digest。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [package]
+              properties:
+                package: {type: string, format: binary}
+                options: {type: string, description: JSON 编码的认证归属选项}
+      responses:
+        '200': {description: 预览结果与包摘要}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '409': {description: 发布版本、资源身份或依赖冲突}
+  /api/admin/v1/resource-imports:
+    post:
+      summary: 按预览确认原子导入完整 Agent 清单
+      description: 重新上传同一 ZIP，校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [package, package_sha256, plan_digest, options]
+              properties:
+                package: {type: string, format: binary}
+                package_sha256: {type: string}
+                plan_digest: {type: string}
+                options: {type: string}
+      responses:
+        '200': {description: 导入批次结果}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '409': {description: 发布版本或并发变更冲突，需重新预览}
+    get:
+      summary: 分页查询资源包导入批次
+      parameters:
+        - {name: cursor, in: query, schema: {type: string}, description: 上一页返回的 next_cursor}
+      responses:
+        '200': {description: 每页最多 20 条，返回 items 与 next_cursor}
+  /api/admin/v1/resource-imports/{id}:
+    get:
+      summary: 读取资源包导入批次详情
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      responses:
+        '200': {description: 批次详情}
+        '404': {description: 批次不存在}
   /api/admin/v1/sessions:
     get:
       summary: 查询正式顶层会话

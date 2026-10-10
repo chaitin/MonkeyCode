@@ -147,11 +147,15 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	return reply.Result, nil
 }
 
-func openRemote(ctx context.Context, target string, headers map[string]string) (*remoteClient, error) {
+func openRemote(ctx context.Context, target string, headers map[string]string, timeout ...time.Duration) (*remoteClient, error) {
 	if !validURL(target) {
 		return nil, fmt.Errorf("MCP URL 无效")
 	}
-	c := &remoteClient{http: client(), target: target, version: protocolVersion, headers: headers}
+	httpClient := client()
+	if len(timeout) > 0 && timeout[0] >= time.Second && timeout[0] <= 120*time.Second {
+		httpClient.Timeout = timeout[0]
+	}
+	c := &remoteClient{http: httpClient, target: target, version: protocolVersion, headers: headers}
 	initialized := false
 	defer func() {
 		if !initialized {

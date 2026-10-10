@@ -277,6 +277,10 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, resource.Invalid("仅集中认证工具可以设置非零积分"))
 		return
 	}
+	if err = resource.RequireEditable(r.Context(), tx, "connector", chi.URLParam(r, "id")); err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	o, err := resource.DecodeObject(sqlc.New(tx).UpdateTool(r.Context(), sqlc.UpdateToolParams{
 		ConnectorID:    chi.URLParam(r, "id"),
 		ID:             chi.URLParam(r, "toolID"),

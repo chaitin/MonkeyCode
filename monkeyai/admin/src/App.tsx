@@ -28,6 +28,7 @@ import { OperationLogsPage } from "@/pages/operation-logs-page"
 import { OtherSettingsPage } from "@/pages/other-settings-page"
 import { RealtimeStatusPage } from "@/pages/realtime-status-page"
 import { RulesPage } from "@/pages/rules-page"
+import { ResourceImportsPage } from "@/pages/resource-imports-page"
 import { SkillsPage } from "@/pages/skills-page"
 import { TaskHistoryPage } from "@/pages/task-history-page"
 import { TaskStatisticsPage } from "@/pages/task-statistics-page"
@@ -121,6 +122,8 @@ export function App() {
                     <KnowledgeBasesPage />
                   ) : page.path === CONSOLE_ROUTES.rules ? (
                     <RulesPage />
+                  ) : page.path === CONSOLE_ROUTES.resourceImports ? (
+                    <ResourceImportsPage />
                   ) : page.path === CONSOLE_ROUTES.skills ? (
                     <SkillsPage />
                   ) : page.path === CONSOLE_ROUTES.experts ? (

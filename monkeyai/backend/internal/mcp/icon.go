@@ -86,6 +86,10 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 		resource.Fail(w, err)
 		return
 	}
+	if err = resource.RequireEditable(ctx, tx, "connector", id); err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	if r.Header.Get("If-Match") == "" {
 		resource.Fail(w, &resource.Error{Status: http.StatusPreconditionRequired, Code: "precondition_required", Message: "更新需要 If-Match"})
 		return
