@@ -65,8 +65,8 @@ func providerClient() *http.Client {
 
 func providerURL(base, endpoint string) (string, error) {
 	u, err := url.Parse(base)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
-		return "", errors.New("视频上游地址必须是 HTTPS URL")
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
+		return "", errors.New("视频上游地址必须是无查询参数的 HTTP(S) URL")
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(endpoint, "/")
 	return u.String(), nil

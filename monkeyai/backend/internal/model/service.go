@@ -315,8 +315,8 @@ func modelFromInput(input SaveInput) (Model, error) {
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
 		return Model{}, errors.New("base_url 必须是有效的 HTTP(S) 地址")
 	}
-	if kind == KindVideo && (parsed.Scheme != "https" || parsed.RawQuery != "" || parsed.Fragment != "") {
-		return Model{}, errors.New("视频模型 base_url 必须是无查询参数的 HTTPS 地址")
+	if kind == KindVideo && (parsed.RawQuery != "" || parsed.Fragment != "") {
+		return Model{}, errors.New("视频模型 base_url 必须是无查询参数的 HTTP(S) 地址")
 	}
 	if kind == KindText && (item.AdvancedConfig.ContextWindowTokens <= 0 || item.AdvancedConfig.MaxOutputTokens <= 0) {
 		return Model{}, errors.New("上下文和最大输出 Token 必须大于 0")
