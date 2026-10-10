@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillImportWizard } from "@/components/skill-import-wizard"
+import { PackageGrants } from "@/components/package-grants"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
   AlertDialog,
@@ -93,6 +94,8 @@ import { cn } from "@/lib/utils"
 type SkillType = "system" | "user"
 
 type AgentSkill = {
+  origin?: ResourceRow["origin"]
+  publisher?: string
   revision: number
   id: string
   name: string
@@ -117,6 +120,8 @@ type SkillDraft = {
 function toSkill(row: ResourceRow): AgentSkill {
   return {
     id: row.id,
+    origin: row.origin,
+    publisher: row.publisher,
     revision: row.revision,
     name: row.name,
     description: row.description,
@@ -614,6 +619,7 @@ export function SkillsPage() {
                               <span className="truncate" title={skill.name}>
                                 {skill.name}
                               </span>
+                              {skill.origin === "package" && <Badge variant="outline" title={skill.publisher}>资源包导入</Badge>}
                               {!skill.enabled && (
                                 <Badge variant="outline">
                                   {t("pages.skills.disable")}
@@ -627,7 +633,7 @@ export function SkillsPage() {
                               {skill.creator}
                             </CardDescription>
                           </div>
-                          {skill.type === "system" && (
+                          {skill.type === "system" && skill.origin !== "package" && (
                             <DropdownMenu>
                               <DropdownMenuTrigger
                                 render={
@@ -701,6 +707,7 @@ export function SkillsPage() {
                         </div>
                       </CardHeader>
                       <CardContent>
+                        {skill.origin === "package" && <PackageGrants kind="skill" id={skill.id} name={skill.name} retired={!skill.enabled} subjects={subjects} onSaved={() => { void remote.reload() }} />}
                         <p
                           className="truncate text-muted-foreground"
                           title={skill.description}

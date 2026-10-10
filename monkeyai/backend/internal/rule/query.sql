@@ -104,3 +104,10 @@ SET
     revision = revision + 1
 WHERE
     id = $1;
+
+-- name: SetResourceEnabled :exec
+UPDATE rules
+SET enabled = (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean,
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = (sqlc.arg(DATA)::jsonb ->> 'id')::uuid;

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
@@ -134,7 +135,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
-	tools, discoveryErr := discover(ctx, c.String("url"), headers)
+	tools, discoveryErr := discover(ctx, c.String("url"), headers, time.Duration(c.Int("timeout_ms"))*time.Millisecond)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err

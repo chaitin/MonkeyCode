@@ -29,6 +29,12 @@ export type ResourceRow = {
   name: string
   revision: number
   ownership_type: "system" | "user"
+  origin?: "admin" | "package" | "user"
+  publisher?: string
+  source_slug?: string
+  retired?: boolean
+  name_i18n?: Record<string, string>
+  description_i18n?: Record<string, string>
   user: { id: string; name: string; email: string }
   description: string
   content: string
@@ -51,6 +57,8 @@ export type ResourceRow = {
   url: string
   authorization_mode: "none" | "centralized" | "independent"
   authorization_method: "oauth" | "http_header" | null
+  auth_header_name?: string
+  timeout_ms?: number
   credential_configured: boolean
   icon_path: string
   tool_count: number

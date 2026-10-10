@@ -26,6 +26,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { PackageGrants } from "@/components/package-grants"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -138,6 +139,9 @@ type McpToolConfig = {
 }
 
 type McpServer = {
+  origin?: ResourceRow["origin"]
+  publisher?: string
+  retired?: boolean
   iconPath: string
   revision: number
   credentials: Credential[]
@@ -150,6 +154,8 @@ type McpServer = {
   type: McpServerType
   creator: string
   url: string
+  authHeaderName?: string
+  timeoutMs?: number
   authorizationMode: McpAuthorizationMode
   authorizationMethod: McpAuthorizationMethod | null
   hasHttpHeaders: boolean
@@ -163,6 +169,9 @@ type McpServer = {
 function toServer(row: ResourceRow): McpServer {
   return {
     id: row.id,
+    origin: row.origin,
+    publisher: row.publisher,
+    retired: row.retired,
     revision: row.revision,
     iconPath: row.icon_path,
     credentials: row.credentials ?? [],
@@ -170,6 +179,8 @@ function toServer(row: ResourceRow): McpServer {
     description: row.description,
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     url: row.url,
+    authHeaderName: row.auth_header_name,
+    timeoutMs: row.timeout_ms,
     authorizationMode: row.authorization_mode,
     authorizationMethod:
       row.authorization_method === "http_header"
@@ -849,7 +860,7 @@ export function ToolsPage() {
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <CardTitle className="truncate" title={server.name}>
-                              {server.name}
+                              {server.name} {server.origin === "package" && <span title={server.publisher}>· 资源包导入</span>}
                             </CardTitle>
                             <CardDescription
                               className="truncate"
@@ -879,7 +890,7 @@ export function ToolsPage() {
                                 <DropdownMenuGroup
                                   hidden={server.type !== "system"}
                                 >
-                                  <DropdownMenuItem
+                                  {server.origin !== "package" && <DropdownMenuItem
                                     onClick={() => setConnectionEnabled(server)}
                                   >
                                     {t(
@@ -887,7 +898,7 @@ export function ToolsPage() {
                                         ? "resources.disable"
                                         : "resources.enable"
                                     )}
-                                  </DropdownMenuItem>
+                                  </DropdownMenuItem>}
                                   <DropdownMenuItem
                                     onClick={() => handleViewTools(server)}
                                   >
@@ -909,7 +920,7 @@ export function ToolsPage() {
                                       })}
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuItem
+                                  {server.origin !== "package" && <DropdownMenuItem
                                     onClick={() => handleEditServer(server)}
                                   >
                                     <HugeiconsIcon
@@ -917,7 +928,7 @@ export function ToolsPage() {
                                       strokeWidth={2}
                                     />
                                     {t("pages.tools.edit")}
-                                  </DropdownMenuItem>
+                                  </DropdownMenuItem>}
                                   <DropdownMenuItem
                                     disabled={
                                       testingServerId === server.id ||
@@ -941,7 +952,7 @@ export function ToolsPage() {
                                 <DropdownMenuSeparator
                                   hidden={server.type !== "system"}
                                 />
-                                <DropdownMenuGroup>
+                                <DropdownMenuGroup hidden={server.origin === "package"}>
                                   <DropdownMenuItem
                                     variant="destructive"
                                     onClick={() =>
@@ -964,6 +975,7 @@ export function ToolsPage() {
                         <p className="line-clamp-2 min-h-10 text-muted-foreground">
                           {server.description}
                         </p>
+                        {server.origin === "package" && <><PackageGrants kind="connector" id={server.id} name={server.name} retired={server.retired} subjects={subjects} onSaved={() => { void reload() }} /><p className="text-xs text-muted-foreground">{server.authHeaderName ? `凭证 Header：${server.authHeaderName} · ` : ""}超时：{server.timeoutMs ?? 25000} ms</p></>}
                         <div className="flex flex-wrap items-center gap-2">
                           {server.authorizationMode === "centralized" &&
                             server.authorizationMethod === "oauth" && (

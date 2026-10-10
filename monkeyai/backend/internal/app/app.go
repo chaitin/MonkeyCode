@@ -32,6 +32,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
@@ -161,7 +162,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	skills := skill.NewService(store, storage)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage)
 	go connectors.Run(ctx)
-	experts := expert.NewService(store)
+	experts := expert.NewService(store).WithStorage(storage)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
 	admin := chi.NewRouter()
@@ -181,6 +182,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)
 	store.RegisterGrants(admin, map[string]*resource.CRUD{"rule": rules, "skill": skills.CRUD, "expert": experts.CRUD, "connector": connectors.Connectors})
+	resourceimport.NewService(pool, storage).RegisterAdmin(admin)
 	rules.Register(admin)
 	skills.RegisterAdmin(admin)
 	connectors.RegisterAdmin(admin)
