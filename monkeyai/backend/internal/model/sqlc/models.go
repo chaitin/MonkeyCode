@@ -28,4 +28,6 @@ type Model struct {
 	ProviderOptions  []byte
 	ImageConfig      []byte
 	ImagePricing     []byte
+	VideoConfig      []byte
+	VideoPricing     []byte
 }

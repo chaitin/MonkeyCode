@@ -23,6 +23,9 @@ func (s *Service) CreateUser(ctx context.Context, userID string, input UserInput
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, resource.Invalid(err.Error())
 	}
+	if err := s.validateVideoCapability(item); err != nil {
+		return Model{}, resource.Invalid(err.Error())
+	}
 	item.OwnershipType = "user"
 	item.OwnerUserID = userID
 	item.Enabled = true
@@ -52,6 +55,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, resource.Invalid(err.Error())
 	}
+	if err := s.validateVideoCapability(item); err != nil {
+		return Model{}, resource.Invalid(err.Error())
+	}
 	item.ID = id
 	item.OwnershipType = "user"
 	item.OwnerUserID = userID
@@ -70,9 +76,11 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 func userModelFromInput(input UserInput) (Model, error) {
 	item, err := modelFromInput(SaveInput{
 		ModelID: input.ModelID, DisplayName: input.DisplayName, Protocol: input.Protocol,
-		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig,
+		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig, VideoConfig: input.VideoConfig,
 		BaseURL: input.BaseURL, APIKey: input.APIKey, AdvancedConfig: input.AdvancedConfig,
-		ImagePricing: userImagePricing(input.Kind), CreditMultiplier: 1, TagIDs: input.TagIDs,
+		ImagePricing:     userImagePricing(input.Kind),
+		VideoPricing:     userVideoPricing(input.Kind, input.Provider, input.ModelID, input.VideoConfig),
+		CreditMultiplier: 1, TagIDs: input.TagIDs,
 	})
 	if err != nil {
 		return Model{}, resource.Invalid(err.Error())

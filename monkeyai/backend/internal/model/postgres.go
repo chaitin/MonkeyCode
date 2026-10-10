@@ -81,10 +81,14 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	if item.Kind == KindImage {
+	if item.Kind == KindImage || item.Kind == KindVideo {
 		advanced = []byte("{}")
 	}
 	options, config, pricing, err := marshalImageFields(item)
+	if err != nil {
+		return Model{}, err
+	}
+	videoConfig, videoPricing, err := marshalVideoFields(item)
 	if err != nil {
 		return Model{}, err
 	}
@@ -104,6 +108,8 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		ProviderOptions:  options,
 		ImageConfig:      config,
 		ImagePricing:     pricing,
+		VideoConfig:      videoConfig,
+		VideoPricing:     videoPricing,
 	}))
 	if err != nil {
 		return Model{}, fmt.Errorf("创建模型: %w", err)
@@ -145,10 +151,14 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 	if err != nil {
 		return Model{}, err
 	}
-	if item.Kind == KindImage {
+	if item.Kind == KindImage || item.Kind == KindVideo {
 		advanced = []byte("{}")
 	}
 	options, config, pricing, err := marshalImageFields(item)
+	if err != nil {
+		return Model{}, err
+	}
+	videoConfig, videoPricing, err := marshalVideoFields(item)
 	if err != nil {
 		return Model{}, err
 	}
@@ -168,6 +178,8 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		ProviderOptions:  options,
 		ImageConfig:      config,
 		ImagePricing:     pricing,
+		VideoConfig:      videoConfig,
+		VideoPricing:     videoPricing,
 		OwnershipType:    ownership,
 		OwnerUserID:      item.OwnerUserID,
 	}))
@@ -337,6 +349,16 @@ func readModel(row sqlc.Model, err error) (Model, error) {
 	if len(row.ImagePricing) != 0 {
 		if err := json.Unmarshal(row.ImagePricing, &item.ImagePricing); err != nil {
 			return Model{}, fmt.Errorf("解析生图积分: %w", err)
+		}
+	}
+	if len(row.VideoConfig) != 0 {
+		if err := json.Unmarshal(row.VideoConfig, &item.VideoConfig); err != nil {
+			return Model{}, fmt.Errorf("解析视频配置: %w", err)
+		}
+	}
+	if len(row.VideoPricing) != 0 {
+		if err := json.Unmarshal(row.VideoPricing, &item.VideoPricing); err != nil {
+			return Model{}, fmt.Errorf("解析视频积分: %w", err)
 		}
 	}
 	return item, nil

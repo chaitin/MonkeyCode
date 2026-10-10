@@ -93,6 +93,13 @@ func priceImages(unit Amount, count int64) (Amount, error) {
 	return rounded(new(big.Int).Mul(big.NewInt(int64(unit)), big.NewInt(count)), big.NewInt(1))
 }
 
+func priceVideo(unit Amount, durationMs int64) (Amount, error) {
+	if unit < 0 || durationMs < 0 || durationMs > 15_000 {
+		return 0, errors.New("视频积分或时长无效")
+	}
+	return rounded(new(big.Int).Mul(big.NewInt(int64(unit)), big.NewInt(durationMs)), big.NewInt(1000))
+}
+
 func quotaAmount(a Amount, up bool) int64 {
 	n := int64(a)
 	if up {

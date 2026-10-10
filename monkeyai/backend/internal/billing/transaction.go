@@ -21,6 +21,8 @@ type Request struct {
 	OutputLimit                                          int64
 	ImageUnitPrice                                       Amount
 	ImageCount                                           int64
+	VideoUnitPrice                                       Amount
+	VideoMaxDurationMs                                   int64
 }
 type Reservation struct {
 	ID          string
@@ -31,6 +33,7 @@ type Usage struct {
 	Cached           int64  `json:"cached_input_tokens"`
 	Output           int64  `json:"output_tokens"`
 	Images           int64  `json:"generated_images,omitempty"`
+	VideoDurationMs  int64  `json:"output_duration_ms,omitempty"`
 	Known            bool   `json:"known"`
 	Stream           *bool  `json:"stream,omitempty"`
 	Result           string `json:"result"`
@@ -158,6 +161,26 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		price.ImageUnit = r.ImageUnitPrice
 		if p.Enabled {
 			reserve, err = priceImages(price.ImageUnit, r.ImageCount)
+			if err != nil {
+				return Reservation{}, err
+			}
+		}
+	case "video":
+		if r.VideoUnitPrice < 0 || r.VideoMaxDurationMs <= 0 || r.VideoMaxDurationMs > 15_000 {
+			return Reservation{}, resource.Invalid("视频积分或时长上限无效")
+		}
+		row, e := sqlc.New(tx).VideoPricingModel(ctx, r.ResourceID)
+		if e != nil {
+			return Reservation{}, e
+		}
+		item, ownership = row.DisplayName, row.OwnershipType
+		if ownership == "user" {
+			price = Price{}
+			break
+		}
+		price.VideoUnit = r.VideoUnitPrice
+		if p.Enabled {
+			reserve, err = priceVideo(price.VideoUnit, r.VideoMaxDurationMs)
 			if err != nil {
 				return Reservation{}, err
 			}
@@ -304,7 +327,7 @@ func (s *Service) finish(ctx context.Context, id string, u Usage, reviewed bool)
 	if u.Result != "succeeded" && u.Result != "failed" && u.Result != "cancelled" {
 		return resource.Invalid("调用结果无效")
 	}
-	if u.Input < 0 || u.Output < 0 || u.Cached < 0 || u.Cached > u.Input || u.Images < 0 {
+	if u.Input < 0 || u.Output < 0 || u.Cached < 0 || u.Cached > u.Input || u.Images < 0 || u.VideoDurationMs < 0 {
 		return resource.Invalid("Token 用量无效")
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -341,6 +364,8 @@ func (s *Service) finish(ctx context.Context, id string, u Usage, reviewed bool)
 		amount, err = priceTokens(u.Input, u.Cached, u.Output, p)
 	} else if category == "image" && u.Result == "succeeded" {
 		amount, err = priceImages(p.ImageUnit, u.Images)
+	} else if category == "video" && u.Result == "succeeded" {
+		amount, err = priceVideo(p.VideoUnit, u.VideoDurationMs)
 	} else if category == "tool" && u.Result == "succeeded" {
 		amount = p.Tool
 	}
@@ -388,6 +413,8 @@ func (s *Service) finish(ctx context.Context, id string, u Usage, reviewed bool)
 		_, err = sqlc.New(tx).UpsertModelCall(ctx, sqlc.UpsertModelCallParams{ID: id, InputTokens: int64(u.Input), CachedInputTokens: int64(u.Cached), OutputTokens: int64(u.Output)})
 	} else if category == "image" {
 		_, err = sqlc.New(tx).UpsertImageCall(ctx, sqlc.UpsertImageCallParams{ID: id, GeneratedImages: u.Images})
+	} else if category == "video" {
+		err = sqlc.New(tx).UpsertVideoCall(ctx, sqlc.UpsertVideoCallParams{TransactionID: id, Result: u.Result, DurationMs: u.VideoDurationMs})
 	} else {
 		_, err = sqlc.New(tx).UpsertToolCall(ctx, id)
 	}

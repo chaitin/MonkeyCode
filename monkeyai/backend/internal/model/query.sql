@@ -21,8 +21,9 @@ WHERE
 
 -- name: CreateModel :one
 INSERT INTO models (ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key,
-    advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing, enabled)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE)
+    advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing,
+    video_config, video_pricing, enabled)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, TRUE)
 RETURNING
     *;
 
@@ -42,6 +43,8 @@ SET
     provider_options = $13,
     image_config = $14,
     image_pricing = $15,
+    video_config = $16,
+    video_pricing = $17,
     updated_at = now()
 WHERE
     id = $1

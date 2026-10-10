@@ -2626,6 +2626,24 @@ func (q *Queries) UpsertToolCall(ctx context.Context, id string) (pgconn.Command
 	return q.db.Exec(ctx, upsertToolCall, id)
 }
 
+const upsertVideoCall = `-- name: UpsertVideoCall :exec
+INSERT INTO video_calls (job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms)
+SELECT j.id, t.id, t.user_id, t.resource_id, t.session_id, $1::text, $2::bigint
+FROM billing_transactions t JOIN video_jobs j ON j.billing_transaction_id=t.id WHERE t.id=$3::uuid
+ON CONFLICT (job_id) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms
+`
+
+type UpsertVideoCallParams struct {
+	Result        string
+	DurationMs    int64
+	TransactionID string
+}
+
+func (q *Queries) UpsertVideoCall(ctx context.Context, arg UpsertVideoCallParams) error {
+	_, err := q.db.Exec(ctx, upsertVideoCall, arg.Result, arg.DurationMs, arg.TransactionID)
+	return err
+}
+
 const usersWithoutAccount = `-- name: UsersWithoutAccount :many
 SELECT
     id
@@ -2663,6 +2681,40 @@ func (q *Queries) UsersWithoutAccount(ctx context.Context, periodStartAt time.Ti
 		return nil, err
 	}
 	return items, nil
+}
+
+const videoCharge = `-- name: VideoCharge :one
+SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
+WHERE id=$1 AND user_id=$2 AND category='video' AND status IN ('settled', 'released')
+`
+
+type VideoChargeParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) VideoCharge(ctx context.Context, arg VideoChargeParams) (string, error) {
+	row := q.db.QueryRow(ctx, videoCharge, arg.ID, arg.UserID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const videoPricingModel = `-- name: VideoPricingModel :one
+SELECT display_name, ownership_type FROM models
+WHERE id=$1 AND kind='video' AND enabled AND deleted_at IS NULL
+`
+
+type VideoPricingModelRow struct {
+	DisplayName   string
+	OwnershipType string
+}
+
+func (q *Queries) VideoPricingModel(ctx context.Context, id string) (VideoPricingModelRow, error) {
+	row := q.db.QueryRow(ctx, videoPricingModel, id)
+	var i VideoPricingModelRow
+	err := row.Scan(&i.DisplayName, &i.OwnershipType)
+	return i, err
 }
 
 const walletConfirmation = `-- name: WalletConfirmation :one

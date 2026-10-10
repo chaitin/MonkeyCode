@@ -14,10 +14,11 @@ import (
 
 const createModel = `-- name: CreateModel :one
 INSERT INTO models (ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key,
-    advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing, enabled)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE)
+    advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing,
+    video_config, video_pricing, enabled)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, TRUE)
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing
 `
 
 type CreateModelParams struct {
@@ -35,6 +36,8 @@ type CreateModelParams struct {
 	ProviderOptions  []byte
 	ImageConfig      []byte
 	ImagePricing     []byte
+	VideoConfig      []byte
+	VideoPricing     []byte
 }
 
 func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model, error) {
@@ -53,6 +56,8 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		arg.ProviderOptions,
 		arg.ImageConfig,
 		arg.ImagePricing,
+		arg.VideoConfig,
+		arg.VideoPricing,
 	)
 	var i Model
 	err := row.Scan(
@@ -75,6 +80,8 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		&i.ProviderOptions,
 		&i.ImageConfig,
 		&i.ImagePricing,
+		&i.VideoConfig,
+		&i.VideoPricing,
 	)
 	return i, err
 }
@@ -116,7 +123,7 @@ func (q *Queries) DeleteModel(ctx context.Context, arg DeleteModelParams) (pgcon
 
 const getModel = `-- name: GetModel :one
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing
 FROM
     models
 WHERE
@@ -147,6 +154,8 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Model, error) {
 		&i.ProviderOptions,
 		&i.ImageConfig,
 		&i.ImagePricing,
+		&i.VideoConfig,
+		&i.VideoPricing,
 	)
 	return i, err
 }
@@ -225,7 +234,7 @@ WITH RECURSIVE user_groups (
             AND g.deleted_at IS NULL
 )
 SELECT
-    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing
+    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing
 FROM
     models m
 WHERE
@@ -292,6 +301,8 @@ func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([
 			&i.ProviderOptions,
 			&i.ImageConfig,
 			&i.ImagePricing,
+			&i.VideoConfig,
+			&i.VideoPricing,
 		); err != nil {
 			return nil, err
 		}
@@ -393,7 +404,7 @@ func (q *Queries) ListGroups(ctx context.Context) ([]ListGroupsRow, error) {
 
 const listModels = `-- name: ListModels :many
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing
 FROM
     models
 WHERE
@@ -433,6 +444,8 @@ func (q *Queries) ListModels(ctx context.Context, dollar_1 string) ([]Model, err
 			&i.ProviderOptions,
 			&i.ImageConfig,
 			&i.ImagePricing,
+			&i.VideoConfig,
+			&i.VideoPricing,
 		); err != nil {
 			return nil, err
 		}
@@ -643,7 +656,7 @@ WITH RECURSIVE user_groups(group_id) AS (
     JOIN groups parent ON parent.id = g.parent_id
     WHERE parent.deleted_at IS NULL AND g.deleted_at IS NULL
 )
-SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing
+SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing
 FROM models m
 JOIN users u ON u.id = $1
 WHERE (m.model_id || '@' || m.id::text = $2::text
@@ -695,6 +708,8 @@ func (q *Queries) ResolveModel(ctx context.Context, arg ResolveModelParams) (Mod
 		&i.ProviderOptions,
 		&i.ImageConfig,
 		&i.ImagePricing,
+		&i.VideoConfig,
+		&i.VideoPricing,
 	)
 	return i, err
 }
@@ -710,7 +725,7 @@ WHERE
     AND ownership_type = 'system'
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing
 `
 
 type SetEnabledParams struct {
@@ -741,6 +756,8 @@ func (q *Queries) SetEnabled(ctx context.Context, arg SetEnabledParams) (Model, 
 		&i.ProviderOptions,
 		&i.ImageConfig,
 		&i.ImagePricing,
+		&i.VideoConfig,
+		&i.VideoPricing,
 	)
 	return i, err
 }
@@ -774,6 +791,8 @@ SET
     provider_options = $13,
     image_config = $14,
     image_pricing = $15,
+    video_config = $16,
+    video_pricing = $17,
     updated_at = now()
 WHERE
     id = $1
@@ -781,7 +800,7 @@ WHERE
     AND owner_user_id = $10
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing
 `
 
 type UpdateModelParams struct {
@@ -800,6 +819,8 @@ type UpdateModelParams struct {
 	ProviderOptions  []byte
 	ImageConfig      []byte
 	ImagePricing     []byte
+	VideoConfig      []byte
+	VideoPricing     []byte
 }
 
 func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model, error) {
@@ -819,6 +840,8 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		arg.ProviderOptions,
 		arg.ImageConfig,
 		arg.ImagePricing,
+		arg.VideoConfig,
+		arg.VideoPricing,
 	)
 	var i Model
 	err := row.Scan(
@@ -841,6 +864,8 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		&i.ProviderOptions,
 		&i.ImageConfig,
 		&i.ImagePricing,
+		&i.VideoConfig,
+		&i.VideoPricing,
 	)
 	return i, err
 }
