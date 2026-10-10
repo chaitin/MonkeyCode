@@ -1143,11 +1143,6 @@ CREATE TABLE video_jobs (
     completed_at timestamptz
 );
 
-CREATE UNIQUE INDEX video_jobs_idempotency_key_idx ON video_jobs(user_id, idempotency_key)
-    WHERE idempotency_key IS NOT NULL;
-CREATE INDEX video_jobs_pending_idx ON video_jobs(status, updated_at)
-    WHERE status IN ('created', 'reserved', 'submitted', 'running', 'unknown');
-
 CREATE TABLE video_job_inputs (
     job_id uuid NOT NULL REFERENCES video_jobs(id),
     input_id uuid NOT NULL REFERENCES video_inputs(id),

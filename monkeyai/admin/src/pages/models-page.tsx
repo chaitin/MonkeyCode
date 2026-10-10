@@ -35,6 +35,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -1220,8 +1221,8 @@ export function ModelsPage() {
                               <div className="grid gap-2 sm:grid-cols-2">
                                 {videoCapabilities.modes.map((mode) => (
                                   <label key={mode} className="flex items-center gap-2 text-sm">
-                                    <input type="checkbox" checked={videoModes.includes(mode)}
-                                      onChange={(event) => setVideoModes((current) => event.target.checked
+                                    <Checkbox checked={videoModes.includes(mode)}
+                                      onCheckedChange={(checked) => setVideoModes((current) => checked
                                         ? [...current, mode]
                                         : current.filter((value) => value !== mode))} />
                                     {mode}
