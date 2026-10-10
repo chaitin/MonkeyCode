@@ -217,7 +217,7 @@ export const frFR = {
       columns: {
         task: "Tâche",
         user: "Utilisateur",
-        startedAt: "Date de lancement",
+        startedAt: "Date de création de la tâche",
         lastActiveAt: "Dernière activité",
         conversationCount: "Conversations",
       },

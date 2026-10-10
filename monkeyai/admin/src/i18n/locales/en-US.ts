@@ -337,7 +337,7 @@ export const enUS = {
       columns: {
         task: "Task",
         user: "User",
-        startedAt: "Launch time",
+        startedAt: "Task created at",
         lastActiveAt: "Last activity",
         conversationCount: "Conversations",
       },

@@ -86,14 +86,21 @@ function formatLastActivity(
   if (!Number.isFinite(timestamp)) return "—"
 
   const elapsed = Math.max(0, now - timestamp)
-  if (elapsed < 60_000) return formatter.format(0, "second")
+  const isChinese = locale.startsWith("zh")
+  const isTraditional = locale.toLowerCase().startsWith("zh-tw")
+  if (elapsed < 60_000)
+    return isChinese
+      ? isTraditional
+        ? "剛剛"
+        : "刚刚"
+      : formatter.format(0, "second")
 
   const [unit, duration, simplified, traditional] = RELATIVE_UNITS.find(
     ([, duration]) => elapsed >= duration
   ) ?? ["minute", 60_000, "分钟", "分鐘"]
-  const count = Math.max(1, Math.round(elapsed / duration))
-  if (locale.startsWith("zh")) {
-    return `最近 ${count} ${locale.toLowerCase().startsWith("zh-tw") ? traditional : simplified}`
+  const count = Math.max(1, Math.floor(elapsed / duration))
+  if (isChinese) {
+    return `${count} ${isTraditional ? traditional : simplified}前`
   }
   return formatter.format(-count, unit)
 }
@@ -274,15 +281,15 @@ export function TaskHistoryPage() {
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
                   <TableHead className="ps-(--card-spacing)">
-                    {t("pages.operationLogs.columns.time")}
+                    {t("pages.taskHistory.columns.startedAt")}
                   </TableHead>
                   <TableHead>{t("pages.taskHistory.columns.user")}</TableHead>
                   <TableHead>{t("pages.taskHistory.columns.task")}</TableHead>
-                  <TableHead>
-                    {t("pages.taskHistory.columns.lastActiveAt")}
+                  <TableHead className="text-end">
+                    {t("pages.taskHistory.columns.conversationCount")}
                   </TableHead>
                   <TableHead className="pe-(--card-spacing) text-end">
-                    {t("pages.taskHistory.columns.conversationCount")}
+                    {t("pages.taskHistory.columns.lastActiveAt")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -316,8 +323,11 @@ export function TaskHistoryPage() {
                           </span>
                         </div>
                       </TableCell>
+                      <TableCell className="text-end tabular-nums">
+                        {numberFormatter.format(task.turn_count)}
+                      </TableCell>
                       <TableCell
-                        className="whitespace-nowrap text-muted-foreground"
+                        className="pe-(--card-spacing) text-end whitespace-nowrap text-muted-foreground"
                         title={dateFormatter.format(
                           new Date(task.last_active_at)
                         )}
@@ -328,9 +338,6 @@ export function TaskHistoryPage() {
                           locale,
                           relativeFormatter
                         )}
-                      </TableCell>
-                      <TableCell className="pe-(--card-spacing) text-end tabular-nums">
-                        {numberFormatter.format(task.turn_count)}
                       </TableCell>
                     </TableRow>
                   ))

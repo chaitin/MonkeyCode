@@ -215,7 +215,7 @@ export const ruRU = {
       columns: {
         task: "Задача",
         user: "Пользователь",
-        startedAt: "Время запуска",
+        startedAt: "Время создания задачи",
         lastActiveAt: "Последняя активность",
         conversationCount: "Диалоги",
       },

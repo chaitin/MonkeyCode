@@ -212,7 +212,7 @@ export const es419 = {
       columns: {
         task: "Tarea",
         user: "Usuario",
-        startedAt: "Hora de lanzamiento",
+        startedAt: "Fecha de creación de la tarea",
         lastActiveAt: "Última actividad",
         conversationCount: "Conversaciones",
       },

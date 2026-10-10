@@ -217,7 +217,7 @@ export const deDE = {
       columns: {
         task: "Aufgabe",
         user: "Benutzer",
-        startedAt: "Startzeit",
+        startedAt: "Erstellungszeit der Aufgabe",
         lastActiveAt: "Letzte Aktivität",
         conversationCount: "Unterhaltungen",
       },

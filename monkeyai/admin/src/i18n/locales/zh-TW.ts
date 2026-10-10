@@ -192,7 +192,7 @@ export const zhTW = {
       columns: {
         task: "任務",
         user: "使用者",
-        startedAt: "啟動時間",
+        startedAt: "任務建立時間",
         lastActiveAt: "最近活動時間",
         conversationCount: "對話數量",
       },

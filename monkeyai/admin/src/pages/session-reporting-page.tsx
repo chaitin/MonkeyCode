@@ -1,10 +1,16 @@
 import { useState, type FormEvent, type ReactNode } from "react"
+import { Search02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { Link, useNavigate } from "react-router-dom"
+import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -99,9 +105,11 @@ export function ReportNumber({
 export function ReportStatus({
   request,
   empty,
+  showGenerated = true,
 }: {
   request: ReturnType<typeof useReport<unknown>>
   empty?: boolean
+  showGenerated?: boolean
 }) {
   const { t } = useTranslation()
   return (
@@ -140,7 +148,7 @@ export function ReportStatus({
           {t("statistics.empty")}
         </p>
       )}
-      {request.data && (
+      {showGenerated && request.data && (
         <p className="text-xs text-muted-foreground">
           {t(`${key}.generated`, {
             time: request.updated?.toLocaleString() ?? "—",
@@ -170,23 +178,36 @@ export function ReportFilters({
   resource?: boolean
   session?: boolean
 }) {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const navigate = useNavigate()
   const [draft, setDraft] = useState(value)
+  const [startDay, setStartDay] = useState<Date | undefined>(
+    () => new Date(value.from)
+  )
+  const [endDay, setEndDay] = useState<Date | undefined>(
+    () => new Date(new Date(value.until).getTime() - 1)
+  )
   const [sessionId, setSessionId] = useState("")
   const [invalid, setInvalid] = useState(false)
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const selected = session
+      ? {
+          ...draft,
+          from: startDay ? startOfDay(startDay).toISOString() : "",
+          until: endDay ? startOfDay(addDays(endDay, 1)).toISOString() : "",
+        }
+      : draft
     if (
-      !draft.from ||
-      !draft.until ||
-      new Date(draft.from) >= new Date(draft.until)
+      !selected.from ||
+      !selected.until ||
+      new Date(selected.from) >= new Date(selected.until)
     ) {
       setInvalid(true)
       return
     }
     setInvalid(false)
-    onApply(draft)
+    onApply(selected)
   }
   function goToSession() {
     if (!uuid.test(sessionId.trim())) {
@@ -197,41 +218,77 @@ export function ReportFilters({
       `${CONSOLE_ROUTES.sessionDetail.replace(":sessionId", sessionId.trim())}${reportQuery({ from: value.from, until: value.until })}`
     )
   }
+  const Frame = session ? "div" : Card
+  const FrameContent = session ? "div" : CardContent
   return (
-    <Card>
-      <CardContent>
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-          {(["from", "until"] as const).map((field) => (
-            <label
-              key={field}
-              className="grid gap-1 text-xs text-muted-foreground"
-            >
-              {t(`${key}.fields.${field}`)}
-              <Input
-                required
-                type="datetime-local"
-                value={localDate(draft[field])}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    [field]: event.target.value
-                      ? new Date(event.target.value).toISOString()
-                      : "",
-                  })
-                }
+    <Frame>
+      <FrameContent className={session ? "flex flex-col gap-4" : undefined}>
+        <form
+          onSubmit={submit}
+          className={cn(
+            "flex flex-wrap items-end gap-3",
+            session && "px-(--card-spacing)"
+          )}
+        >
+          {session ? (
+            <>
+              <DatePickerField
+                id="session-list-from"
+                label={t(`${key}.fields.from`)}
+                placeholder={t(`${key}.fields.from`)}
+                locale={i18n.resolvedLanguage ?? i18n.language}
+                value={startDay}
+                onChange={setStartDay}
+                disabled={endDay ? { after: endDay } : undefined}
               />
-            </label>
-          ))}
-          {(["group_id", "user_id", "model_id", "expert_id"] as const).map(
-            (field) => (
+              <DatePickerField
+                id="session-list-until"
+                label={t(`${key}.fields.until`)}
+                placeholder={t(`${key}.fields.until`)}
+                locale={i18n.resolvedLanguage ?? i18n.language}
+                value={endDay}
+                onChange={setEndDay}
+                disabled={startDay ? { before: startDay } : undefined}
+              />
+            </>
+          ) : (
+            (["from", "until"] as const).map((field) => (
               <label
                 key={field}
                 className="grid gap-1 text-xs text-muted-foreground"
               >
                 {t(`${key}.fields.${field}`)}
                 <Input
-                  className="w-44"
-                  placeholder="UUID"
+                  required
+                  type="datetime-local"
+                  value={localDate(draft[field])}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      [field]: event.target.value
+                        ? new Date(event.target.value).toISOString()
+                        : "",
+                    })
+                  }
+                />
+              </label>
+            ))
+          )}
+          {(["group_id", "user_id", "model_id", "expert_id"] as const).map(
+            (field) => (
+              <label
+                key={field}
+                className={cn(
+                  "grid gap-1 text-xs text-muted-foreground",
+                  session && "sm:w-56"
+                )}
+              >
+                <span className={session ? "sr-only" : undefined}>
+                  {t(`${key}.fields.${field}`)}
+                </span>
+                <Input
+                  className={session ? "w-full" : "w-44"}
+                  placeholder={session ? t(`${key}.fields.${field}`) : "UUID"}
                   pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
                   value={draft[field] ?? ""}
                   onChange={(event) =>
@@ -252,10 +309,17 @@ export function ReportFilters({
               key={field}
               className="grid gap-1 text-xs text-muted-foreground"
             >
-              {t(`${key}.fields.${field}`)}
+              <span className={session ? "sr-only" : undefined}>
+                {t(`${key}.fields.${field}`)}
+              </span>
               <Select
                 items={[
-                  { value: "__all__", label: t(`${key}.all`) },
+                  {
+                    value: "__all__",
+                    label: session
+                      ? t(`${key}.fields.${field}`)
+                      : t(`${key}.all`),
+                  },
                   ...values.map((option) => ({
                     value: option,
                     label:
@@ -279,7 +343,9 @@ export function ReportFilters({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">{t(`${key}.all`)}</SelectItem>
+                  <SelectItem value="__all__">
+                    {session ? t(`${key}.fields.${field}`) : t(`${key}.all`)}
+                  </SelectItem>
                   {values.map((option) => (
                     <SelectItem key={option} value={option}>
                       {field === "outcome"
@@ -295,12 +361,18 @@ export function ReportFilters({
             (["resource_id", "resource_version"] as const).map((field) => (
               <label
                 key={field}
-                className="grid gap-1 text-xs text-muted-foreground"
+                className={cn(
+                  "grid gap-1 text-xs text-muted-foreground",
+                  session && "sm:w-56"
+                )}
               >
-                {t(`${key}.fields.${field}`)}
+                <span className={session ? "sr-only" : undefined}>
+                  {t(`${key}.fields.${field}`)}
+                </span>
                 <Input
                   maxLength={256}
-                  className="w-44"
+                  className={session ? "w-full" : "w-44"}
+                  placeholder={session ? t(`${key}.fields.${field}`) : undefined}
                   value={draft[field] ?? ""}
                   onChange={(event) =>
                     setDraft({ ...draft, [field]: event.target.value })
@@ -322,53 +394,79 @@ export function ReportFilters({
               {t(`${key}.fields.include_placeholders`)}
             </label>
           )}
-          <Button type="submit" size="sm">
-            {t(`${key}.apply`)}
+          <Button
+            type="submit"
+            size={session ? "default" : "sm"}
+            className={session ? "w-full sm:w-auto" : undefined}
+          >
+            {session && (
+              <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
+            )}
+            {session
+              ? t("pages.operationLogs.filters.search")
+              : t(`${key}.apply`)}
           </Button>
-          {session && (
-            <div className="flex items-end gap-2">
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                {t(`${key}.fields.session_id`)}
-                <Input
-                  className="w-64"
-                  value={sessionId}
-                  onChange={(event) => setSessionId(event.target.value)}
-                  placeholder="UUID"
-                />
-              </label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={goToSession}
-              >
-                {t(`${key}.open`)}
-              </Button>
-            </div>
-          )}
         </form>
+        {session && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              goToSession()
+            }}
+            className="flex flex-wrap items-end gap-2 px-(--card-spacing)"
+          >
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              {t(`${key}.fields.session_id`)}
+              <Input
+                className="w-64"
+                value={sessionId}
+                onChange={(event) => setSessionId(event.target.value)}
+                placeholder="UUID"
+              />
+            </label>
+            <Button type="submit" variant="outline" size="sm">
+              {t(`${key}.open`)}
+            </Button>
+          </form>
+        )}
         {invalid && (
-          <p role="alert" className="pt-2 text-sm text-destructive">
+          <p
+            role="alert"
+            className={cn(
+              "pt-2 text-sm text-destructive",
+              session && "px-(--card-spacing)"
+            )}
+          >
             {t(`${key}.invalidFilter`)}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </FrameContent>
+    </Frame>
   )
 }
 
 export function ReportShell({
   title,
   children,
+  fillHeight = false,
 }: {
   title: string
   children: ReactNode
+  fillHeight?: boolean
 }) {
   const { t } = useTranslation()
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+    <section
+      className={cn(
+        "flex flex-1 flex-col gap-4 p-4 pt-0",
+        fillHeight &&
+          "min-h-0 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden"
+      )}
+    >
       <h1 className="text-xl font-semibold">{title}</h1>
-      <p className="text-xs text-muted-foreground">{t(`${key}.privacy`)}</p>
+      {!fillHeight && (
+        <p className="text-xs text-muted-foreground">{t(`${key}.privacy`)}</p>
+      )}
       {children}
     </section>
   )
@@ -554,11 +652,13 @@ function PaginatedReport<T>({
   filters,
   columns,
   renderRow,
+  inline = false,
 }: {
   path: string
   filters: ReportWindow
   columns: string[]
   renderRow: (row: T) => ReactNode
+  inline?: boolean
 }) {
   const { t } = useTranslation()
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -573,32 +673,58 @@ function PaginatedReport<T>({
   const request = useReport<ReportPage<T>>(
     path + reportQuery(filters, cursors[active])
   )
+  const table = request.data && (
+    <Table
+      className={
+        inline
+          ? "[&_th:first-child]:ps-(--card-spacing) [&_td:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing) [&_td:last-child]:pe-(--card-spacing)"
+          : undefined
+      }
+    >
+      <TableHeader
+        className={
+          inline
+            ? "sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0"
+            : undefined
+        }
+      >
+        <TableRow>
+          {columns.map((column) => (
+            <TableHead key={column}>{t(`${key}.fields.${column}`)}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>{request.data.items.map(renderRow)}</TableBody>
+    </Table>
+  )
   return (
     <>
       <ReportStatus
         request={request}
         empty={request.data?.items.length === 0 && active === 0}
+        showGenerated={!inline}
       />
       {request.data && (
         <>
-          <Freshness data={request.data} />
-          <Card>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columns.map((column) => (
-                      <TableHead key={column}>
-                        {t(`${key}.fields.${column}`)}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>{request.data.items.map(renderRow)}</TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-          <div className="flex justify-end gap-2">
+          {!inline && <Freshness data={request.data} />}
+          {inline ? (
+            <ScrollArea
+              horizontal
+              className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+            >
+              {table}
+            </ScrollArea>
+          ) : (
+            <Card>
+              <CardContent className="overflow-x-auto">{table}</CardContent>
+            </Card>
+          )}
+          <div
+            className={cn(
+              "flex justify-end gap-2",
+              inline && "px-(--card-spacing)"
+            )}
+          >
             <Button
               variant="outline"
               size="sm"
@@ -638,77 +764,93 @@ function PaginatedReport<T>({
 
 export function SessionListPage() {
   const { t } = useTranslation()
-  const [filters, setFilters] = useState(defaultWindow)
+  const [filters, setFilters] = useState<ReportWindow>(() => {
+    const today = startOfDay(new Date())
+    return {
+      from: startOfDay(addDays(today, -1)).toISOString(),
+      until: startOfDay(addDays(today, 1)).toISOString(),
+    }
+  })
   return (
-    <ReportShell title={t(`${key}.sessions.title`)}>
-      <ReportFilters value={filters} onApply={setFilters} resource session />
-      <PaginatedReport<ReportSession>
-        path={reportPaths.sessions}
-        filters={filters}
-        columns={[
-          "started_at",
-          "last_active_at",
-          "session_id",
-          "user_id",
-          "group_id",
-          "client_type",
-          "platform",
-          "client_version",
-          "model_id",
-          "turns",
-          "active_seconds",
-          "last_outcome",
-          "credits",
-          "subsessions",
-          "placeholder",
-          "clock_suspect",
-        ]}
-        renderRow={(row) => (
-          <TableRow key={row.id}>
-            <TableCell>
-              <ReportTime value={row.started_at} />
-            </TableCell>
-            <TableCell>
-              <ReportTime value={row.last_active_at} />
-            </TableCell>
-            <TableCell>
-              <Link
-                className="block max-w-40 truncate text-primary underline"
-                title={row.id}
-                to={`${CONSOLE_ROUTES.sessionDetail.replace(":sessionId", row.id)}${reportQuery({ from: filters.from, until: filters.until })}`}
-              >
-                {row.id}
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void navigator.clipboard.writeText(row.id)}
-              >
-                {t(`${key}.copy`)}
-              </Button>
-            </TableCell>
-            {[
-              row.owner_user_id,
-              row.group_id,
-              row.client_type,
-              row.platform,
-              row.client_version,
-              row.model_id,
-              row.turns,
-              row.active_seconds,
-              row.last_outcome,
-              row.credits,
-              row.subsessions,
-              row.placeholder,
-              row.clock_suspect,
-            ].map((v, i) => (
-              <TableCell key={i}>
-                <ReportValue value={v} />
-              </TableCell>
-            ))}
-          </TableRow>
-        )}
-      />
+    <ReportShell title={t(`${key}.sessions.title`)} fillHeight>
+      <Card className="min-h-0 flex-1">
+        <CardContent className="min-h-0 flex-1 gap-4 px-0">
+          <ReportFilters
+            value={filters}
+            onApply={setFilters}
+            resource
+            session
+          />
+          <PaginatedReport<ReportSession>
+            inline
+            path={reportPaths.sessions}
+            filters={filters}
+            columns={[
+              "started_at",
+              "last_active_at",
+              "session_id",
+              "user_id",
+              "group_id",
+              "client_type",
+              "platform",
+              "client_version",
+              "model_id",
+              "turns",
+              "active_seconds",
+              "last_outcome",
+              "credits",
+              "subsessions",
+              "placeholder",
+              "clock_suspect",
+            ]}
+            renderRow={(row) => (
+              <TableRow key={row.id}>
+                <TableCell>
+                  <ReportTime value={row.started_at} />
+                </TableCell>
+                <TableCell>
+                  <ReportTime value={row.last_active_at} />
+                </TableCell>
+                <TableCell>
+                  <Link
+                    className="block max-w-40 truncate text-primary underline"
+                    title={row.id}
+                    to={`${CONSOLE_ROUTES.sessionDetail.replace(":sessionId", row.id)}${reportQuery({ from: filters.from, until: filters.until })}`}
+                  >
+                    {row.id}
+                  </Link>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void navigator.clipboard.writeText(row.id)}
+                  >
+                    {t(`${key}.copy`)}
+                  </Button>
+                </TableCell>
+                {[
+                  row.owner_user_id,
+                  row.group_id,
+                  row.client_type,
+                  row.platform,
+                  row.client_version,
+                  row.model_id,
+                  row.turns,
+                  row.active_seconds,
+                  row.last_outcome,
+                  row.credits,
+                  row.subsessions,
+                  row.placeholder,
+                  row.clock_suspect,
+                ].map((v, i) => (
+                  <TableCell key={i}>
+                    <ReportValue value={v} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            )}
+          />
+        </CardContent>
+      </Card>
     </ReportShell>
   )
 }

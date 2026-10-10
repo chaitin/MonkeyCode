@@ -202,7 +202,7 @@ export const ar = {
       columns: {
         task: "المهمة",
         user: "المستخدم",
-        startedAt: "وقت التشغيل",
+        startedAt: "وقت إنشاء المهمة",
         lastActiveAt: "آخر نشاط",
         conversationCount: "المحادثات",
       },

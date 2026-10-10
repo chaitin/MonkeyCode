@@ -315,7 +315,7 @@ export const zhCN = {
       columns: {
         task: "任务",
         user: "用户",
-        startedAt: "启动时间",
+        startedAt: "任务创建时间",
         lastActiveAt: "最近活动时间",
         conversationCount: "对话数量",
       },

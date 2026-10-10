@@ -203,7 +203,7 @@ export const koKR = {
       columns: {
         task: "작업",
         user: "사용자",
-        startedAt: "시작 시간",
+        startedAt: "작업 생성 시간",
         lastActiveAt: "최근 활동 시간",
         conversationCount: "대화 수",
       },

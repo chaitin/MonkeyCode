@@ -210,7 +210,7 @@ export const jaJP = {
       columns: {
         task: "タスク",
         user: "ユーザー",
-        startedAt: "起動日時",
+        startedAt: "タスク作成日時",
         lastActiveAt: "最終アクティビティ",
         conversationCount: "会話数",
       },
