@@ -264,6 +264,8 @@ export const es419 = {
       },
     },
     models: {
+      noTags: "Sin etiquetas",
+      maxOutputTokens: "Máximo de tokens de salida",
       searchAuthorization: "Buscar por nombre, correo o pinyin",
       noMatchingAuthorization: "No hay grupos ni usuarios que coincidan.",
 
@@ -275,7 +277,7 @@ export const es419 = {
       kind: "Tipo de modelo",
       textKind: "Modelo de lenguaje grande",
       imageKind: "Generación de imágenes",
-      imageProvider: "Proveedor de imágenes",
+      imageProvider: "Protocolo de generación de imágenes",
       imageCapabilitiesUnavailable:
         "No se pudieron cargar las opciones de este proveedor.",
       selectAllSupported: "Seleccionar compatibles",
@@ -299,6 +301,7 @@ export const es419 = {
       taskStatus: "Estado de la tarea",
       systemModel: "Modelos del sistema",
       userModel: "Modelos de usuario",
+      creator: "Creador",
       add: "Agregar modelo",
       dialogTitle: "Agregar modelo",
       dialogDescription:
@@ -315,6 +318,8 @@ export const es419 = {
       contextSize: "Tamaño del contexto",
       imageRecognition: "Reconocimiento de imágenes",
       supportsVision: "Reconocimiento de imágenes",
+      supportsReasoning: "Capacidad de razonamiento",
+      notRecommended: "No recomendado",
       supportsVisionDescription:
         "Permite enviar contenido de imagen a este modelo.",
       baseUrl: "Base URL",
@@ -323,6 +328,7 @@ export const es419 = {
       apiKey: "Clave de API",
       apiKeyPlaceholder: "Ingresa la clave de API del modelo",
       multiplier: "Multiplicador",
+      billingMultiplier: "Multiplicador de cobro",
       authorizedScope: "Alcance de autorización",
       authorizationPlaceholder: "Selecciona grupos o usuarios",
       authorizedGroupsDescription:
@@ -1072,6 +1078,16 @@ export const es419 = {
         baizhiyunScopes:
           "Permisos predeterminados: auth_certification openid phone user email",
         issuerUrl: "URL del emisor",
+        scopes: "Permisos (scopes)",
+        scopesDescription:
+          "Separa los permisos con espacios, por ejemplo: profile. No es necesario agregar openid. Si lo dejas vacío, se usarán los valores predeterminados openid profile email.",
+        userinfoFields: "Nombres de los campos principales de userinfo",
+        userinfoDescription:
+          "La URL de userinfo se obtiene automáticamente de userinfo_endpoint en el documento de descubrimiento OIDC del emisor; no es necesario ingresarla. Indica los nombres de los campos principales que devuelve userinfo.",
+        idField: "Nombre del campo de ID de usuario",
+        usernameField: "Nombre del campo de nombre de usuario",
+        avatarField: "Nombre del campo de foto de perfil",
+        emailField: "Nombre del campo de correo electrónico",
         clientId: "ID de cliente",
         clientSecret: "Secreto del cliente",
         cancel: "Cancelar",

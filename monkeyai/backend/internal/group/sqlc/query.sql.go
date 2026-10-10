@@ -432,6 +432,100 @@ func (q *Queries) RootUserGroups(ctx context.Context, rootID string) ([]RootUser
 	return items, nil
 }
 
+const searchGroups = `-- name: SearchGroups :many
+SELECT
+    g.id,
+    g.name,
+    g.parent_id
+FROM
+    groups g
+WHERE
+    g.deleted_at IS NULL
+    AND g.id <> $1::uuid
+    AND strpos(lower(g.name), lower($2::text)) > 0
+ORDER BY
+    lower(g.name),
+    g.id
+LIMIT $3::int
+`
+
+type SearchGroupsParams struct {
+	RootID      string
+	NameQuery   string
+	ResultLimit int32
+}
+
+type SearchGroupsRow struct {
+	ID       string
+	Name     string
+	ParentID *string
+}
+
+func (q *Queries) SearchGroups(ctx context.Context, arg SearchGroupsParams) ([]SearchGroupsRow, error) {
+	rows, err := q.db.Query(ctx, searchGroups, arg.RootID, arg.NameQuery, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchGroupsRow{}
+	for rows.Next() {
+		var i SearchGroupsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const touchGrantedConnectors = `-- name: TouchGrantedConnectors :execresult
+UPDATE connectors SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'connector')
+`
+
+func (q *Queries) TouchGrantedConnectors(ctx context.Context, groupID *string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, touchGrantedConnectors, groupID)
+}
+
+const touchGrantedExperts = `-- name: TouchGrantedExperts :execresult
+UPDATE experts SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'expert')
+`
+
+func (q *Queries) TouchGrantedExperts(ctx context.Context, groupID *string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, touchGrantedExperts, groupID)
+}
+
+const touchGrantedModels = `-- name: TouchGrantedModels :execresult
+UPDATE models SET updated_at = now()
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'model')
+`
+
+func (q *Queries) TouchGrantedModels(ctx context.Context, groupID *string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, touchGrantedModels, groupID)
+}
+
+const touchGrantedRules = `-- name: TouchGrantedRules :execresult
+UPDATE rules SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'rule')
+`
+
+func (q *Queries) TouchGrantedRules(ctx context.Context, groupID *string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, touchGrantedRules, groupID)
+}
+
+const touchGrantedSkills = `-- name: TouchGrantedSkills :execresult
+UPDATE skills SET updated_at = now(), revision = revision + 1
+WHERE id IN (SELECT resource_id FROM resource_access_grants WHERE group_id = $1 AND resource_type = 'skill')
+`
+
+func (q *Queries) TouchGrantedSkills(ctx context.Context, groupID *string) (pgconn.CommandTag, error) {
+	return q.db.Exec(ctx, touchGrantedSkills, groupID)
+}
+
 const touchGroup = `-- name: TouchGroup :execresult
 UPDATE
     GROUPS

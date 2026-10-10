@@ -184,10 +184,13 @@ func (q *Queries) InsertImageOutput(ctx context.Context, arg InsertImageOutputPa
 
 const insertJob = `-- name: InsertJob :one
 INSERT INTO image_jobs (
-    id, user_id, model_id, provider, operation, status, request_hash, idempotency_key,
+    id, user_id, session_id, model_id, provider, operation, status, request_hash, idempotency_key,
     requested_images, quality, aspect_ratio, request_config, pricing_snapshot
 ) VALUES (
-    $1, $2, $3, $4, $5, 'created', $6, $7, $8, $9, $10, $11, $12
+    $1, $2, NULLIF($3::text, '')::uuid,
+    $4, $5, $6, 'created', $7,
+    $8, $9, $10, $11,
+    $12, $13
 )
 ON CONFLICT DO NOTHING
 RETURNING id
@@ -196,6 +199,7 @@ RETURNING id
 type InsertJobParams struct {
 	ID              string
 	UserID          string
+	SessionID       string
 	ModelID         string
 	Provider        string
 	Operation       string
@@ -212,6 +216,7 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) (string, e
 	row := q.db.QueryRow(ctx, insertJob,
 		arg.ID,
 		arg.UserID,
+		arg.SessionID,
 		arg.ModelID,
 		arg.Provider,
 		arg.Operation,
@@ -252,7 +257,7 @@ func (q *Queries) JobByIdempotency(ctx context.Context, arg JobByIdempotencyPara
 }
 
 const jobByOwner = `-- name: JobByOwner :one
-SELECT id, user_id, model_id, provider, operation, provider_job_id, status,
+SELECT id, user_id, session_id, model_id, provider, operation, provider_job_id, status,
     requested_images, generated_images, quality, aspect_ratio, billing_transaction_id,
     error_code, created_at, completed_at, pricing_snapshot
 FROM image_jobs
@@ -267,6 +272,7 @@ type JobByOwnerParams struct {
 type JobByOwnerRow struct {
 	ID                   string
 	UserID               string
+	SessionID            *string
 	ModelID              string
 	Provider             string
 	Operation            string
@@ -289,6 +295,7 @@ func (q *Queries) JobByOwner(ctx context.Context, arg JobByOwnerParams) (JobByOw
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
+		&i.SessionID,
 		&i.ModelID,
 		&i.Provider,
 		&i.Operation,
@@ -308,7 +315,7 @@ func (q *Queries) JobByOwner(ctx context.Context, arg JobByOwnerParams) (JobByOw
 }
 
 const jobsToRecover = `-- name: JobsToRecover :many
-SELECT id, user_id, model_id, provider, operation, provider_job_id, status,
+SELECT id, user_id, session_id, model_id, provider, operation, provider_job_id, status,
     requested_images, generated_images, quality, aspect_ratio, billing_transaction_id,
     error_code, created_at, completed_at, pricing_snapshot
 FROM image_jobs
@@ -322,6 +329,7 @@ LIMIT $1
 type JobsToRecoverRow struct {
 	ID                   string
 	UserID               string
+	SessionID            *string
 	ModelID              string
 	Provider             string
 	Operation            string
@@ -350,6 +358,7 @@ func (q *Queries) JobsToRecover(ctx context.Context, limit int32) ([]JobsToRecov
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.SessionID,
 			&i.ModelID,
 			&i.Provider,
 			&i.Operation,
@@ -376,7 +385,7 @@ func (q *Queries) JobsToRecover(ctx context.Context, limit int32) ([]JobsToRecov
 }
 
 const jobsWithPendingBilling = `-- name: JobsWithPendingBilling :many
-SELECT job.id, job.user_id, job.model_id, job.provider, job.operation, job.provider_job_id, job.status,
+SELECT job.id, job.user_id, job.session_id, job.model_id, job.provider, job.operation, job.provider_job_id, job.status,
     job.requested_images, job.generated_images, job.quality, job.aspect_ratio, job.billing_transaction_id,
     job.error_code, job.created_at, job.completed_at, job.pricing_snapshot
 FROM image_jobs job JOIN billing_transactions bill ON bill.id = job.billing_transaction_id
@@ -388,6 +397,7 @@ LIMIT $1
 type JobsWithPendingBillingRow struct {
 	ID                   string
 	UserID               string
+	SessionID            *string
 	ModelID              string
 	Provider             string
 	Operation            string
@@ -416,6 +426,7 @@ func (q *Queries) JobsWithPendingBilling(ctx context.Context, limit int32) ([]Jo
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
+			&i.SessionID,
 			&i.ModelID,
 			&i.Provider,
 			&i.Operation,
@@ -439,6 +450,34 @@ func (q *Queries) JobsWithPendingBilling(ctx context.Context, limit int32) ([]Jo
 		return nil, err
 	}
 	return items, nil
+}
+
+const linkImageCall = `-- name: LinkImageCall :execrows
+INSERT INTO image_calls (
+    id, user_id, model_id, status, generated_images, error_code,
+    started_at, completed_at, billing_transaction_id, job_id, session_id
+)
+SELECT COALESCE(job.billing_transaction_id, job.id), job.user_id, job.model_id,
+    job.status, job.generated_images, job.error_code,
+    job.created_at, job.completed_at, job.billing_transaction_id, job.id, job.session_id
+FROM image_jobs job
+WHERE job.id = $1::uuid AND job.status IN ('succeeded', 'failed')
+ON CONFLICT (id) DO UPDATE SET
+    job_id = EXCLUDED.job_id,
+    billing_transaction_id = EXCLUDED.billing_transaction_id,
+    session_id = EXCLUDED.session_id,
+    status = EXCLUDED.status,
+    generated_images = EXCLUDED.generated_images,
+    error_code = EXCLUDED.error_code,
+    completed_at = EXCLUDED.completed_at
+`
+
+func (q *Queries) LinkImageCall(ctx context.Context, jobID string) (int64, error) {
+	result, err := q.db.Exec(ctx, linkImageCall, jobID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const linkJobInput = `-- name: LinkJobInput :one

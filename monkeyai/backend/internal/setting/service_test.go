@@ -56,6 +56,31 @@ func TestAgentConfigRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestSessionReportingSwitchRequiresExplicitBoolean(t *testing.T) {
+	service := NewService(&memoryStore{records: map[string]Record{}})
+	value, err := service.GetValue(t.Context(), "session_reporting")
+	if err != nil || !strings.Contains(string(value), `"enabled":true`) {
+		t.Fatalf("新服务端默认启用统计上报: %s %v", value, err)
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"level":"stats"}`), 1, "admin"); err == nil {
+		t.Fatal("缺少 enabled 不得误关闭上报")
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":false,"level":"stats"}`), 1, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	value, err = service.GetValue(t.Context(), "session_reporting")
+	if err != nil || !strings.Contains(string(value), `"enabled":false`) {
+		t.Fatalf("配置变更应立即生效: %s %v", value, err)
+	}
+	if _, err := service.Put(t.Context(), "session_reporting", json.RawMessage(`{"enabled":true,"level":"full"}`), 1, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	config, err := service.AgentConfig(t.Context())
+	if err != nil || string(config.Settings["session_reporting"]) != `{"enabled":true,"level":"stats"}` {
+		t.Fatalf("一期只能向客户端下发 stats: %s %v", config.Settings["session_reporting"], err)
+	}
+}
+
 func TestPutRejectsBrokenStoredSecrets(t *testing.T) {
 	broken := json.RawMessage(`{"smtp_password":"secret"`)
 	store := &memoryStore{records: map[string]Record{
@@ -134,6 +159,31 @@ func TestOAuthIDs(t *testing.T) {
 		if _, err := service.Put(t.Context(), "authentication", json.RawMessage(`{"oauth_connections":`+raw+`}`), 1, "user"); err == nil {
 			t.Fatalf("无效连接应被拒绝: %s", raw)
 		}
+	}
+}
+
+func TestOIDCUserInfoFields(t *testing.T) {
+	store := &memoryStore{records: map[string]Record{}}
+	service := NewService(store)
+	value := json.RawMessage(`{"oauth_connections":[{"provider":"oidc","name":"OIDC","client_id":"client","client_secret":"secret","issuer_url":"https://identity.example","id_field":"id","username_field":"name","avatar_field":"picture","email_field":"email","scopes":["profile"],"enabled":true}]}`)
+	if _, err := service.Put(t.Context(), "authentication", value, 1, "user"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.AdminGet(t.Context(), "authentication")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Put(t.Context(), "authentication", record.Value, 1, "user"); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"id_field":"id"`, `"username_field":"name"`, `"avatar_field":"picture"`, `"email_field":"email"`, `"scopes":["profile"]`} {
+		if !strings.Contains(string(store.records["authentication"].Value), field) {
+			t.Fatalf("OIDC 字段映射未保留: %s", store.records["authentication"].Value)
+		}
+	}
+	invalid := json.RawMessage(`{"oauth_connections":[{"provider":"oidc","name":"OIDC","client_id":"client","client_secret":"secret","issuer_url":"https://identity.example","id_field":42}]}`)
+	if _, err := service.Put(t.Context(), "authentication", invalid, 1, "user"); err == nil {
+		t.Fatal("字段名必须是字符串")
 	}
 }
 

@@ -7,6 +7,106 @@ servers:
 security:
   - AdminSession: []
 paths:
+  /api/admin/v1/sessions:
+    get:
+      summary: 查询正式顶层会话
+      description: 排除占位、已清除和功能启用前旧会话。分页使用 page/page_size；统计模块另提供游标分页视图。
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {name: group_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: 会话分页及总数，包含标题及来源，不含对话正文}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/admin/v1/sessions/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询会话统计详情
+      description: 已清除会话仅返回固定墓碑摘要，不返回轮次或调用明细。
+      responses:
+        '200': {description: 会话统计元数据，包含标题及来源}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '410': {description: 会话统计数据已清除}
+    delete:
+      summary: 清除会话及子会话统计明细
+      description: 仅管理员可操作；必须提供匹配的顶层会话完整 ID。清除会话与子会话统计明细，并在同一事务写审计；财务流水和会话墓碑保留。
+      parameters:
+        - {name: X-Confirm-Session-ID, in: header, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '204': {description: 统计明细已清除}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/statistics/session-reporting/overview:
+    get:
+      summary: 一期会话统计总览
+      description: 半开时间区间，返回会话/轮次/结局/耗时/费用/实时活跃及上报质量指标；不含正文。
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: group_id, in: query, schema: {type: string, format: uuid}}
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: 统计总览及数据新鲜度}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/admin/v1/statistics/session-reporting/sessions:
+    get:
+      summary: 游标分页查询一期会话
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: include_placeholders, in: query, schema: {type: boolean, default: false}}
+        - {name: include_purged, in: query, schema: {type: boolean, default: false}}
+        - {name: user_id, in: query, schema: {type: string, format: uuid}}
+        - {name: group_id, in: query, schema: {type: string, format: uuid}}
+        - {name: model_id, in: query, schema: {type: string, format: uuid}}
+        - {name: expert_id, in: query, schema: {type: string, format: uuid}}
+        - {name: client_type, in: query, schema: {type: string}}
+        - {name: platform, in: query, schema: {type: string}}
+        - {name: outcome, in: query, schema: {type: string}}
+      responses:
+        '200': {description: items、next_cursor 及数据新鲜度}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/admin/v1/statistics/session-reporting/sessions/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询一期会话轮次和网关调用统计详情
+      description: 仅统计元数据；已清除会话普通统计读取返回 410。
+      responses:
+        '200': {description: 会话标题及来源、轮次、工具、技能、资源、调用与子会话统计}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '410': {description: 会话统计数据已清除}
+  /api/admin/v1/statistics/session-reporting/resources:
+    get:
+      summary: 查询资源开启、使用、调用和失败指标
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: resource_id, in: query, schema: {type: string}}
+        - {name: resource_version, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        '200': {description: 资源维度指标及 next_cursor}
+  /api/admin/v1/statistics/session-reporting/clients:
+    get:
+      summary: 查询客户端平台、版本和结局指标
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        '200': {description: 客户端维度指标及 next_cursor}
   /oauth/connectors/{id}/callback:
     get:
       summary: 处理指定 MCP 的 OAuth 回调
@@ -2108,6 +2208,101 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/admin/v1/feedback:
+    get:
+      summary: 分页查询用户反馈
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
+        - name: page_size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: category
+          in: query
+          schema: {type: string, enum: [bug, feature, experience, other]}
+        - name: state
+          in: query
+          schema: {type: string, enum: [uploading, new, resolved, ignored, failed]}
+      responses:
+        '200':
+          description: 反馈分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackPage'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/admin/v1/feedback/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: 读取用户反馈详情
+      responses:
+        '200':
+          description: 反馈详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+    patch:
+      summary: 更新用户反馈状态
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [uploading, new, resolved, ignored, failed]
+      responses:
+        '200':
+          description: 更新后的反馈
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/admin/v1/feedback/{id}/attachments/{attachmentID}:
+    get:
+      summary: 下载用户反馈图片
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: attachmentID
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: 反馈图片
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
   /api/admin/v1/rules:
     get:
       summary: 查询Rule
@@ -4499,6 +4694,53 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    FeedbackPage:
+      type: object
+      additionalProperties: false
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Feedback'
+        total: {type: integer, format: int64, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
+    Feedback:
+      type: object
+      additionalProperties: false
+      required: [id, user_id, category, content, platform, client_version, state, created_at, updated_at, attachments]
+      properties:
+        id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        category: {type: string, enum: [bug, feature, experience, other]}
+        content: {type: string, maxLength: 5000}
+        rating: {type: [integer, 'null'], minimum: 1, maximum: 5}
+        platform: {type: string, enum: [desktop, mobile, web, other]}
+        client_version: {type: string, maxLength: 64}
+        state: {type: string, enum: [uploading, new, resolved, ignored, failed]}
+        request_id: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackAttachment'
+    FeedbackAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, feedback_id, mime_type, byte_size, width, height, sha256, state, downloadable, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        feedback_id: {type: string, format: uuid}
+        mime_type: {type: string, enum: [image/png, image/jpeg, image/webp]}
+        byte_size: {type: integer, format: int64, minimum: 1}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+        state: {type: string, enum: [pending, ready, failed]}
+        downloadable: {type: boolean}
+        created_at: {type: string, format: date-time}
     EmailAuthError:
       type: object
       required:
@@ -5622,6 +5864,10 @@ components:
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
+        supports_reasoning:
+          type: boolean
+          default: false
+          description: 模型是否支持推理能力；旧模型省略时视为 false。
     Authorization:
       type: object
       description: 可使用该模型的用户和分组。全零 UUID 根分组表示全员授权（包括后续新增用户），服务端入库时转为 all_users，管理端回包统一以 group_ids 中的根 UUID 表示。兼容输入 all_users=true，此时忽略其他授权 ID。

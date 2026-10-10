@@ -108,7 +108,13 @@ VALUES($1,'user',$2,'image-model','Image Model','image_generation','image','open
 	if _, err := repo.Get(ctx, otherID, created.ID); !errors.Is(err, resource.NotFound) {
 		t.Fatalf("跨用户任务查询未阻止: %v", err)
 	}
+	sessionID := resource.ID()
+	if _, err := pool.Exec(ctx, `INSERT INTO sessions(id,owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at)
+VALUES($1,$2,'','conversation','desktop','测试客户端',now(),now())`, sessionID, userID); err != nil {
+		t.Fatal(err)
+	}
 	freeJob := job
+	freeJob.SessionID = sessionID
 	freeJob.RequestHash, freeJob.IdempotencyKey = "hash-free", "request-free"
 	freeJob, _, err = repo.Create(ctx, freeJob)
 	if err != nil {
@@ -118,8 +124,21 @@ VALUES($1,'user',$2,'image-model','Image Model','image_generation','image','open
 		t.Fatal(err)
 	}
 	freeJob, err = repo.Get(ctx, userID, freeJob.ID)
-	if err != nil || freeJob.Status != "reserved" || freeJob.BillingTransactionID != nil {
-		t.Fatalf("自配生图任务应无计费交易: %+v, %v", freeJob, err)
+	if err != nil || freeJob.Status != "reserved" || freeJob.BillingTransactionID != nil || freeJob.SessionID != sessionID {
+		t.Fatalf("自配生图任务应保留会话归属且无计费交易: %+v, %v", freeJob, err)
+	}
+	if err := repo.Finish(ctx, freeJob.ID, "succeeded", "", 1, map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := repo.LinkImageCall(ctx, freeJob); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var linkedSession string
+	var calls int
+	if err := pool.QueryRow(ctx, `SELECT count(*), max(session_id::text) FROM image_calls WHERE job_id=$1 AND billing_transaction_id IS NULL`, freeJob.ID).Scan(&calls, &linkedSession); err != nil || calls != 1 || linkedSession != sessionID {
+		t.Fatalf("自配生图调用未幂等关联会话: calls=%d session=%s err=%v", calls, linkedSession, err)
 	}
 
 	var imageBytes bytes.Buffer
@@ -195,7 +214,7 @@ VALUES($1,$2,0,'image-outputs/result.png','image/png',2,3,$3,'hash',now() - inte
 				return ProviderResult{Status: "succeeded", Images: []Image{{Data: imageBytes.Bytes()}}}, nil
 			}),
 		})
-	accepted, err := service.Generate(ctx, proxy.Target{ModelID: modelID, UserID: userID, UpstreamModel: "image-model"}, imageproxy.GenerateRequest{
+	accepted, err := service.Generate(ctx, proxy.Target{ModelID: modelID, UserID: userID, SessionID: sessionID, UpstreamModel: "image-model"}, imageproxy.GenerateRequest{
 		Model: "image-model@" + modelID, Prompt: "一只猫",
 	})
 	if err != nil || accepted.ID == "" {
@@ -205,6 +224,11 @@ VALUES($1,$2,0,'image-outputs/result.png','image/png',2,3,$3,'hash',now() - inte
 		t.Fatal(err)
 	}
 	completed, err := service.Get(ctx, userID, accepted.ID)
+	var billedSession string
+	var billedCalls int
+	if scanErr := pool.QueryRow(ctx, `SELECT count(*), max(session_id::text) FROM image_calls WHERE job_id=$1 AND billing_transaction_id IS NOT NULL`, accepted.ID).Scan(&billedCalls, &billedSession); scanErr != nil || billedCalls != 1 || billedSession != sessionID {
+		t.Fatalf("计费生图调用未关联会话: calls=%d session=%s err=%v", billedCalls, billedSession, scanErr)
+	}
 	if err != nil || completed.Status != "succeeded" || completed.Usage.Credits != "7" || len(completed.Outputs) != 1 {
 		t.Fatalf("端到端积分或图片归档错误: %+v, %v", completed, err)
 	}

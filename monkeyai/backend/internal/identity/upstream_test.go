@@ -50,6 +50,7 @@ func TestBaizhiyunOIDC(t *testing.T) {
 		{"baizhiyun", nil, "auth_certification openid phone user email"},
 		{"baizhiyun", []string{"openid", "user"}, "openid user"},
 		{"oidc", nil, "openid profile email"},
+		{"oidc", []string{"profile"}, "profile"},
 	} {
 		connection.Provider, connection.Scopes = tc.provider, tc.scopes
 		target, err := s.upstreamAuthorizeURL(t.Context(), connection, "state")
@@ -67,6 +68,7 @@ func TestBaizhiyunOIDC(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		provider string
+		fields   OAuthConnection
 		body     string
 		want     upstreamProfile
 		wantErr  string
@@ -102,6 +104,20 @@ func TestBaizhiyunOIDC(t *testing.T) {
 			want:     upstreamProfile{Provider: "oidc", Issuer: issuer, Subject: "1002", Username: "user", Name: "OIDC 用户", Email: "user@example.com", AvatarURL: "https://example.com/oidc.png"},
 		},
 		{
+			name:     "oidc_custom_fields",
+			provider: "oidc",
+			fields:   OAuthConnection{IDField: "id", UsernameField: "display_name", AvatarField: "avatar", EmailField: "mail"},
+			body:     `{"sub":"other","id":9007199254740993,"name":"默认名称","display_name":"自定义名称","picture":"https://example.com/default.png","avatar":"https://example.com/custom.png","email":"default@example.com","mail":"custom@example.com"}`,
+			want:     upstreamProfile{Provider: "oidc", Issuer: issuer, Subject: "9007199254740993", Username: "自定义名称", Name: "自定义名称", Email: "custom@example.com", AvatarURL: "https://example.com/custom.png"},
+		},
+		{
+			name:     "oidc_missing_custom_id",
+			provider: "oidc",
+			fields:   OAuthConnection{IDField: "id"},
+			body:     `{"sub":"other"}`,
+			wantErr:  "上游用户缺少 subject",
+		},
+		{
 			name:     "business_error",
 			provider: "baizhiyun",
 			body:     `{"code":1001,"message":"denied","data":{"id":"1001"}}`,
@@ -128,6 +144,8 @@ func TestBaizhiyunOIDC(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			connection.Provider, userinfo = tc.provider, tc.body
+			connection.IDField, connection.UsernameField = tc.fields.IDField, tc.fields.UsernameField
+			connection.AvatarField, connection.EmailField = tc.fields.AvatarField, tc.fields.EmailField
 			profile, err := s.exchangeUpstream(t.Context(), connection, "code")
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || profile != (upstreamProfile{}) {

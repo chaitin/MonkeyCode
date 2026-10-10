@@ -257,6 +257,8 @@ export const ar = {
       },
     },
     models: {
+      noTags: "بلا وسوم",
+      maxOutputTokens: "الحد الأقصى لرموز الإخراج",
       searchAuthorization: "البحث بالاسم أو البريد الإلكتروني أو بينيين",
       noMatchingAuthorization: "لا توجد مجموعات أو مستخدمون مطابقون.",
 
@@ -267,7 +269,7 @@ export const ar = {
       kind: "نوع النموذج",
       textKind: "نموذج لغوي كبير",
       imageKind: "توليد الصور",
-      imageProvider: "مزود الصور",
+      imageProvider: "بروتوكول توليد الصور",
       imageCapabilitiesUnavailable: "تعذر تحميل خيارات الصور لهذا المزوّد.",
       selectAllSupported: "تحديد كل الخيارات المدعومة",
       imageQuality: "دقة الصورة",
@@ -290,6 +292,7 @@ export const ar = {
       taskStatus: "حالة المهمة",
       systemModel: "نماذج النظام",
       userModel: "نماذج المستخدم",
+      creator: "المنشئ",
       add: "إضافة نموذج",
       dialogTitle: "إضافة نموذج",
       dialogDescription:
@@ -305,6 +308,8 @@ export const ar = {
       contextSize: "حجم السياق",
       imageRecognition: "التعرّف على الصور",
       supportsVision: "التعرّف على الصور",
+      supportsReasoning: "القدرة على الاستدلال",
+      notRecommended: "غير موصى به",
       supportsVisionDescription: "السماح بإرسال محتوى الصور إلى هذا النموذج.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -312,6 +317,7 @@ export const ar = {
       apiKey: "مفتاح API",
       apiKeyPlaceholder: "أدخل مفتاح API للنموذج",
       multiplier: "المضاعف",
+      billingMultiplier: "معامل احتساب التكلفة",
       authorizedScope: "نطاق التفويض",
       authorizationPlaceholder: "اختر المجموعات أو المستخدمين",
       authorizedGroupsDescription:
@@ -1027,6 +1033,16 @@ export const ar = {
         baizhiyunScopes:
           "نطاقات التفويض الافتراضية: auth_certification openid phone user email",
         issuerUrl: "عنوان URL للمُصدر",
+        scopes: "نطاقات التفويض (Scope)",
+        scopesDescription:
+          "افصل بين نطاقات التفويض بمسافات، مثل profile. لا يلزم إضافة openid. عند ترك الحقل فارغًا، تُستخدم القيم الافتراضية openid profile email.",
+        userinfoFields: "أسماء الحقول العليا في userinfo",
+        userinfoDescription:
+          "يُكتشف عنوان URL لخدمة userinfo تلقائيًا من userinfo_endpoint في مستند اكتشاف OIDC للمُصدر، ولا يلزم إدخاله يدويًا. أدخل أسماء الحقول العليا التي تُرجعها userinfo.",
+        idField: "اسم حقل معرّف المستخدم",
+        usernameField: "اسم حقل اسم المستخدم",
+        avatarField: "اسم حقل الصورة الشخصية",
+        emailField: "اسم حقل البريد الإلكتروني",
         clientId: "معرّف العميل",
         clientSecret: "سر العميل",
         cancel: "إلغاء",

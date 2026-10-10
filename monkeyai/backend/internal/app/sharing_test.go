@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -71,6 +72,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	}
 	call("POST", "/models", "", input, 401)
 	call("GET", "/users?q=example", "", nil, 401)
+	call("GET", "/groups?q=example", "", nil, 401)
 	call("POST", "/resources/shares", "", resource.Object{}, 401)
 	for _, value := range []string{"null", "{} {}", "[]"} {
 		req := httptest.NewRequest("POST", "/api/v1/models", strings.NewReader(value))
@@ -224,6 +226,82 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	revoked, revokedHeaders := call("GET", "/models", "b", nil, 200)
 	if len(revoked["models"].([]any)) != 0 || revokedHeaders.Get("ETag") == newHeadB.Get("ETag") {
 		t.Fatal("撤销后配置仍包含模型或缓存未失效")
+	}
+	groupID, childID := resource.ID(), resource.ID()
+	if _, err := pool.Exec(ctx, `INSERT INTO groups(id,parent_id,name) VALUES($1,NULL,'分享功能组'),($2,$1,'分享子组')`, groupID, childID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM group_users WHERE group_id=$1`, childID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM groups WHERE id=$1`, childID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM groups WHERE id=$1`, groupID)
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, childID, users[1], adminID); err != nil {
+		t.Fatal(err)
+	}
+	call("GET", "/groups", "a", nil, 400)
+	call("GET", "/groups?q=%E5%88%86%E4%BA%AB&limit=101", "a", nil, 400)
+	foundGroups, _ := call("GET", "/groups?q=%E5%88%86%E4%BA%AB&limit=20", "a", nil, 200)
+	foundIDs := map[string]bool{}
+	for _, raw := range foundGroups["groups"].([]any) {
+		entry := raw.(map[string]any)
+		if len(entry) != 3 || entry["id"] == rootgroup.ID || entry["member_ids"] != nil {
+			t.Fatalf("组搜索返回多余信息: %v", entry)
+		}
+		foundIDs[entry["id"].(string)] = true
+	}
+	if !foundIDs[groupID] || !foundIDs[childID] {
+		t.Fatalf("组搜索未返回父子组: %v", foundGroups)
+	}
+	groupShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "model", ID: ids[1]}}, GroupIDs: []string{groupID, groupID}}
+	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, GroupIDs: []string{rootgroup.ID}}, 400)
+	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, GroupIDs: []string{groupID, resource.ID()}}, 400)
+	assertAccess(users[1], ids[1], false)
+	call("POST", "/resources/shares", "b", groupShare, 404)
+	call("POST", "/resources/shares", "a", groupShare, 204)
+	call("POST", "/resources/shares", "a", groupShare, 204)
+	assertAccess(users[1], ids[1], true)
+	owned, _ := call("GET", "/models/"+ids[1], "a", nil, 200)
+	groups := owned["shared_groups"].([]any)
+	if len(groups) != 1 || groups[0].(map[string]any)["id"] != groupID || len(owned["shared_users"].([]any)) != 0 {
+		t.Fatalf("模型详情组授权回显错误: %v", owned)
+	}
+	ownerCatalog, _ := call("GET", "/models", "a", nil, 200)
+	for _, raw := range ownerCatalog["models"].([]any) {
+		entry := raw.(map[string]any)
+		if entry["id"] == ids[1] && len(entry["shared_groups"].([]any)) != 1 {
+			t.Fatalf("模型目录组授权回显错误: %v", entry)
+		}
+	}
+	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, UserIDs: []string{users[1]}}, 204)
+	call("DELETE", "/resources/shares", "a", groupShare, 204)
+	assertAccess(users[1], ids[1], true)
+	call("DELETE", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, UserIDs: []string{users[1]}}, 204)
+	assertAccess(users[1], ids[1], false)
+	call("POST", "/resources/shares", "a", groupShare, 204)
+	if _, err := pool.Exec(ctx, `UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND user_id=$2`, childID, users[1]); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[1], false)
+	if _, err := pool.Exec(ctx, `UPDATE group_users SET removed_at=NULL WHERE group_id=$1 AND user_id=$2`, childID, users[1]); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[1], true)
+	if _, err := pool.Exec(ctx, `UPDATE groups SET parent_id=NULL WHERE id=$1`, childID); err != nil {
+		t.Fatal(err)
+	}
+	assertAccess(users[1], ids[1], false)
+	_, beforeDelete := call("GET", "/models", "a", nil, 200)
+	req := httptest.NewRequest("DELETE", "/api/admin/v1/groups/"+groupID, nil)
+	req.Header.Set("Authorization", "Bearer sharing-admin")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != 204 {
+		t.Fatalf("删除共享分组失败: %d %s", response.Code, response.Body.String())
+	}
+	_, afterDelete := call("GET", "/models", "a", nil, 200)
+	if beforeDelete.Get("ETag") == afterDelete.Get("ETag") {
+		t.Fatal("删除分组后模型目录缓存未更新")
 	}
 	call("POST", "/resources/shares", "a", share, 204)
 	call("DELETE", "/models/"+ids[0], "a", nil, 204)

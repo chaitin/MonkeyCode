@@ -3,7 +3,7 @@ import { cn } from "cn"
 
 function Card({
   className,
-  size = "default",
+  size = "sm",
   ...props
 }: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
   return (

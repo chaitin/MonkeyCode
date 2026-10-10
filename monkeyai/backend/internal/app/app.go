@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -32,6 +33,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
@@ -50,6 +52,7 @@ type App struct {
 	images          *imagegen.Service
 	inputs          *imagegen.Inputs
 	endpoints       *endpoint.Service
+	feedback        *feedback.Service
 }
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
@@ -119,6 +122,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		images:          handler.(*applicationHandler).images,
 		inputs:          handler.(*applicationHandler).inputs,
 		endpoints:       handler.(*applicationHandler).endpoints,
+		feedback:        handler.(*applicationHandler).feedback,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -141,6 +145,10 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 
 func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config, users member.UserWriter, groups member.GroupWriter, registrars []AdminRegistrar) (http.Handler, error) {
 	settings := setting.NewService(setting.NewPostgres(pool))
+	sessions := sessionreporting.NewService(pool).WithReportingSettings(settings).WithPurgeAuthorizer(func(ctx context.Context) bool {
+		user, ok := identity.UserFromContext(ctx)
+		return ok && user.Role == "admin"
+	})
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
 	identities.WithUserWriter(users)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
@@ -165,11 +173,12 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	if err != nil {
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
 	}
+	feedbacks := feedback.NewService(pool, storage)
 	imageRepo := imagegen.NewPostgres(pool)
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
 	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
 	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges)
-	upstreamClient := &http.Client{Timeout: 10 * time.Minute}
+	upstreamClient := &http.Client{Timeout: 10 * time.Minute, Transport: proxy.DirectTransport()}
 	gptImages := openaiimages.New(upstreamClient)
 	gptResponses := openairesponses.New(upstreamClient)
 	seedream := volcengine.New(upstreamClient)
@@ -215,12 +224,15 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.RegisterAdmin(admin)
 	experts.RegisterAdmin(admin)
 	resources.RegisterAdmin(admin)
+	feedbacks.RegisterAdmin(admin)
+	sessions.RegisterAdmin(admin)
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
 	endpoints := endpoint.NewService(endpoint.NewPostgres(pool), endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	identities.RegisterAgent(agent)
+	group.NewService(pool).RegisterAgent(agent)
 	keys.RegisterAgent(agent)
 	models.RegisterAgent(agent)
 	rules.RegisterAgent(agent)
@@ -231,13 +243,20 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
 	charges.RegisterAgent(agent)
+	feedbacks.RegisterAgent(agent)
+	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
-	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).WithBilling(modelBilling{service: charges}).WithUsageRecorder(modelUsageRecorder{models: modelRepo})
+	sessionResolver := sessionAdapter{service: sessions}
+	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
+		WithSessionResolver(sessionResolver).
+		WithBilling(modelBilling{service: charges}).
+		WithUsageRecorder(modelUsageRecorder{models: modelRepo})
 	modelProxy.Register(router)
 	imageproxy.NewProxy(modelResolver{service: models}, keys, imageService, imageService, imageService).
+		WithSessionResolver(sessionResolver).
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
-	connectors.RegisterGateway(router, keys, toolBilling{service: charges})
+	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
@@ -255,7 +274,13 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
+}
+
+type sessionAdapter struct{ service *sessionreporting.Service }
+
+func (a sessionAdapter) EnsureSession(ctx context.Context, userID, sessionID, parentID, groupID string) error {
+	return a.service.EnsureSession(ctx, userID, sessionID, parentID, groupID)
 }
 
 type modelResolver struct {
@@ -289,7 +314,16 @@ func (a *App) Run(ctx context.Context) error {
 	go func() { defer close(imageDone); a.images.Run(workerCtx) }()
 	cleanupDone := make(chan struct{})
 	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
-	defer func() { stopWorker(); <-workerDone; <-observeDone; <-imageDone; <-cleanupDone }()
+	feedbackCleanupDone := make(chan struct{})
+	go func() { defer close(feedbackCleanupDone); _ = a.feedback.Run(workerCtx, time.Hour) }()
+	defer func() {
+		stopWorker()
+		<-workerDone
+		<-observeDone
+		<-imageDone
+		<-cleanupDone
+		<-feedbackCleanupDone
+	}()
 
 	result := make(chan error, len(a.servers))
 	for _, server := range a.servers {

@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -96,6 +97,145 @@ func TestSmallBalanceSettlement(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestExceededReservationDoesNotBlockOtherRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name, credits string
+		canPay        bool
+	}{
+		{name: "可用积分充足", credits: "10000", canPay: true},
+		{name: "可用积分不足", credits: "0.000001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, user, model := fixture(t)
+			ctx := t.Context()
+			p := defaultPolicy()
+			p.RootCredits = amountText(tc.credits)
+			setPolicy(t, s, p)
+			req := Request{UserID: user, ResourceID: model, Category: "model"}
+			first, err := s.Begin(ctx, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Start(ctx, first.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Finish(ctx, first.ID, Usage{Input: 160000, Output: 2000, Known: true, Result: "succeeded"}); err != nil {
+				t.Fatal(err)
+			}
+			var status, code string
+			if err := s.pool.QueryRow(ctx, `SELECT status,error_code FROM billing_transactions WHERE id=$1`, first.ID).Scan(&status, &code); err != nil {
+				t.Fatal(err)
+			}
+			if status != "unknown" || code != "reservation_exceeded" {
+				t.Fatalf("超额交易应继续待核查: %s %s", status, code)
+			}
+			a, err := s.Account(ctx, user)
+			if err != nil || a.Balance != p.RootCredits || a.Frozen != amountText("14") {
+				t.Fatalf("超额交易应保持冻结且不提前扣费: %+v %v", a, err)
+			}
+			second, err := s.Begin(ctx, req)
+			if tc.canPay {
+				if err != nil {
+					t.Fatalf("待核查交易不应阻断其它有余额请求: %v", err)
+				}
+				if err := s.Release(ctx, second.ID, "not_sent"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if !errors.Is(err, insufficient) {
+					t.Fatalf("可用积分不足仍须阻断付费请求: %v", err)
+				}
+				p.Enabled = false
+				setPolicy(t, s, p)
+				free, err := s.Begin(ctx, req)
+				if err != nil {
+					t.Fatalf("待核查交易不应阻断免费请求: %v", err)
+				}
+				if err := s.Release(ctx, free.ID, "not_sent"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err = s.Account(ctx, user)
+			if err != nil || a.Balance != p.RootCredits || a.Frozen != amountText("14") {
+				t.Fatalf("其它请求不应解除旧交易冻结: %+v %v", a, err)
+			}
+		})
+	}
+}
+
+func TestReviewedLocalOverageSettlesActualCharge(t *testing.T) {
+	s, user, model := fixture(t)
+	ctx := t.Context()
+	if _, err := s.pool.Exec(ctx, `UPDATE models SET advanced_config='{"context_window_tokens":200000,"max_output_tokens":25600}', credit_multiplier=1.01 WHERE id=$1`, model); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Begin(ctx, Request{UserID: user, ResourceID: model, Category: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(ctx, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	stream := true
+	usage := Usage{Input: 347714, Cached: 1152, Output: 920, Known: true, Result: "succeeded", Stream: &stream, RequestID: "verified-request", TerminalEvent: "response.completed"}
+	if err := s.Finish(ctx, r.ID, usage); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Finish(ctx, r.ID, usage); err != nil {
+		t.Fatal(err)
+	}
+	var status, code, reserve, amount string
+	if err := s.pool.QueryRow(ctx, `SELECT status,error_code,reserve::text,amount::text FROM billing_transactions WHERE id=$1`, r.ID).Scan(&status, &code, &reserve, &amount); err != nil {
+		t.Fatal(err)
+	}
+	if status != "unknown" || code != "reservation_exceeded" || amountText(reserve) != amountText("30.5424") || amountText(amount) != amountText("35.397712") {
+		t.Fatalf("自动结算不得跳过超额核查: %s %s %s %s", status, code, reserve, amount)
+	}
+	before, err := s.Account(ctx, user)
+	if err != nil || before.Balance != amountText("10000") || before.Frozen != amountText("30.5424") {
+		t.Fatalf("核查前应保持完整冻结: %+v %v", before, err)
+	}
+	call := walletAdmin(t, s, user)
+	path := "/billing/transactions/" + r.ID + "/resolve"
+	call("POST", path, map[string]any{
+		"reason": "已核对上游 response.completed 用量及请求编号",
+		"usage":  map[string]any{"result": "succeeded", "input_tokens": 347714, "cached_input_tokens": 1152, "output_tokens": 920},
+	}, 200)
+	call("POST", path, map[string]any{
+		"reason": "重复核查", "usage": map[string]any{"result": "succeeded", "input_tokens": 347714, "cached_input_tokens": 1152, "output_tokens": 920},
+	}, 409)
+	if err := s.pool.QueryRow(ctx, `SELECT status,error_code FROM billing_transactions WHERE id=$1`, r.ID).Scan(&status, &code); err != nil {
+		t.Fatal(err)
+	}
+	if status != "settled" || code != "" {
+		t.Fatalf("人工核查应完成结算: %s %s", status, code)
+	}
+	var saved []byte
+	var requestID string
+	if err := s.pool.QueryRow(ctx, `SELECT usage,request_id FROM billing_transactions WHERE id=$1`, r.ID).Scan(&saved, &requestID); err != nil {
+		t.Fatal(err)
+	}
+	var reviewed Usage
+	if err := json.Unmarshal(saved, &reviewed); err != nil {
+		t.Fatal(err)
+	}
+	if requestID != usage.RequestID || reviewed.RequestID != usage.RequestID || reviewed.Stream == nil || !*reviewed.Stream || reviewed.TerminalEvent != usage.TerminalEvent {
+		t.Fatalf("人工核查应保留原始请求与终止事件: %s %+v", requestID, reviewed)
+	}
+	after, err := s.Account(ctx, user)
+	if err != nil || after.Balance != amountText("9964.602288") || after.Frozen != 0 {
+		t.Fatalf("应按真实金额扣费并解除原冻结: %+v %v", after, err)
+	}
+	var count int
+	var delta, balance string
+	if err := s.pool.QueryRow(ctx, `SELECT count(*),sum(credit_delta)::text,max(balance_after)::text FROM credit_ledger_entries WHERE transaction_id=$1 AND entry_type='charge'`, r.ID).Scan(&count, &delta, &balance); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || amountText(delta) != amountText("-35.397712") || amountText(balance) != after.Balance {
+		t.Fatalf("只应记录一次实际扣费流水: %d %s %s", count, delta, balance)
 	}
 }
 

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -46,6 +48,19 @@ type Resolver interface {
 	Resolve(ctx context.Context, credential, requestedModel string) (Target, error)
 }
 
+// SessionResolver 校验并确保调用会话属于指定用户。
+// 由应用层用 session.Service 适配注入，代理不依赖具体会话服务。
+type SessionResolver interface {
+	EnsureSession(context.Context, string, string, string, string) error
+}
+
+const (
+	maiSessionHeader     = "X-MAI-Session-ID"
+	legacySessionHeader  = "X-Session-ID"
+	parentSessionHeader  = "X-MAI-Parent-Session-ID"
+	machineSessionHeader = "X-MAI-Machine-ID"
+)
+
 type ResolverFunc func(context.Context, string, string) (Target, error)
 
 func (f ResolverFunc) Resolve(ctx context.Context, credential, requestedModel string) (Target, error) {
@@ -71,11 +86,18 @@ type proxyContext struct {
 
 type Proxy struct {
 	resolver Resolver
+	sessions SessionResolver
 	logger   *slog.Logger
 	recorder UsageRecorder
 	billing  Billing
 	captures sync.WaitGroup
 	reverse  *httputil.ReverseProxy
+}
+
+func DirectTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return transport
 }
 
 func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
@@ -87,7 +109,7 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		logger:   logger.With("module", "proxy"),
 	}
 	p.reverse = &httputil.ReverseProxy{
-		Transport:      http.DefaultTransport,
+		Transport:      DirectTransport(),
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.errorHandler,
@@ -98,6 +120,11 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 
 func (p *Proxy) WithUsageRecorder(recorder UsageRecorder) *Proxy {
 	p.recorder = recorder
+	return p
+}
+
+func (p *Proxy) WithSessionResolver(resolver SessionResolver) *Proxy {
+	p.sessions = resolver
 	return p
 }
 
@@ -168,9 +195,23 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	sessionID, parentID := requestSession(r)
+	if sessionID != "" {
+		if p.sessions != nil {
+			if err := p.sessions.EnsureSession(r.Context(), target.UserID, sessionID, parentID, ""); err != nil {
+				if errors.Is(err, sessionreporting.ErrReportingDisabled) {
+					sessionID = ""
+				} else {
+					resource.Fail(w, err)
+					return
+				}
+			}
+		}
+		target.SessionID = sessionID
+	}
 	var reservation Reservation
 	if p.billing != nil && target.OwnershipType != "user" {
-		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: r.Header.Get("X-Session-ID")})
+		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: sessionID})
 		if err != nil {
 			billingError(w, err)
 			return
@@ -253,7 +294,9 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	r.Out.Header.Del("Authorization")
 	r.Out.Header.Del("X-Api-Key")
 	r.Out.Header.Del("Idempotency-Key")
-	r.Out.Header.Del("X-Session-ID")
+	for _, header := range []string{maiSessionHeader, legacySessionHeader, parentSessionHeader, machineSessionHeader} {
+		r.Out.Header.Del(header)
+	}
 	if ctx.target.APIKey != "" {
 		r.Out.Header.Set("Authorization", "Bearer "+ctx.target.APIKey)
 		r.Out.Header.Set("X-Api-Key", ctx.target.APIKey)
@@ -305,6 +348,14 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	}
 	upstream.Fragment = ""
 	return upstream, nil
+}
+
+func requestSession(req *http.Request) (string, string) {
+	sessionID := strings.TrimSpace(req.Header.Get(maiSessionHeader))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(req.Header.Get(legacySessionHeader))
+	}
+	return strings.ToLower(sessionID), strings.ToLower(strings.TrimSpace(req.Header.Get(parentSessionHeader)))
 }
 
 // Credential 保持 X-Api-Key 优先于 Bearer 的模型调用凭据提取规则。

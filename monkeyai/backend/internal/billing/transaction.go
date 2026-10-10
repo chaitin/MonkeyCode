@@ -87,15 +87,6 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			return Reservation{}, e
 		}
 	}
-	var blocked bool
-	blocked, err = sqlc.New(tx).HasExceededReservation(ctx, r.UserID)
-	if err != nil {
-		return Reservation{}, err
-	}
-
-	if blocked {
-		return Reservation{}, fail(409, "billing_review_required", "有超出预留金额的交易待核查")
-	}
 	if r.SessionID != "" {
 		var ok bool
 		ok, err = sqlc.New(tx).SessionOwned(ctx, sqlc.SessionOwnedParams{ID: r.SessionID, OwnerUserID: r.UserID})
@@ -307,6 +298,9 @@ func (s *Service) Start(ctx context.Context, id string) error {
 	return err
 }
 func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
+	return s.finish(ctx, id, u, false)
+}
+func (s *Service) finish(ctx context.Context, id string, u Usage, reviewed bool) error {
 	if u.Result != "succeeded" && u.Result != "failed" && u.Result != "cancelled" {
 		return resource.Invalid("调用结果无效")
 	}
@@ -368,7 +362,7 @@ func (s *Service) Finish(ctx context.Context, id string, u Usage) error {
 			code = "usage_unknown"
 		}
 	}
-	if actual > reserve {
+	if actual > reserve && (!reviewed || !u.Known || mode != "local") {
 		state = "unknown"
 		code = "reservation_exceeded"
 	}

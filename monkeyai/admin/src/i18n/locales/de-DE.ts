@@ -265,6 +265,8 @@ export const deDE = {
       },
     },
     models: {
+      noTags: "Keine Tags",
+      maxOutputTokens: "Maximale Ausgabe-Token",
       searchAuthorization: "Nach Name, E-Mail oder Pinyin suchen",
       noMatchingAuthorization: "Keine passenden Gruppen oder Benutzer.",
 
@@ -276,7 +278,7 @@ export const deDE = {
       kind: "Modelltyp",
       textKind: "Großes Sprachmodell",
       imageKind: "Bildgenerierung",
-      imageProvider: "Bildanbieter",
+      imageProvider: "Bildgenerierungsprotokoll",
       imageCapabilitiesUnavailable:
         "Bildoptionen für diesen Anbieter konnten nicht geladen werden.",
       selectAllSupported: "Alle unterstützten auswählen",
@@ -300,6 +302,7 @@ export const deDE = {
       taskStatus: "Aufgabenstatus",
       systemModel: "Systemmodelle",
       userModel: "Benutzermodelle",
+      creator: "Erstellt von",
       add: "Modell hinzufügen",
       dialogTitle: "Modell hinzufügen",
       dialogDescription:
@@ -316,6 +319,8 @@ export const deDE = {
       contextSize: "Kontextgröße",
       imageRecognition: "Bilderkennung",
       supportsVision: "Bilderkennung",
+      supportsReasoning: "Schlussfolgerungsfähigkeit",
+      notRecommended: "Nicht empfohlen",
       supportsVisionDescription:
         "Erlaubt das Senden von Bildinhalten an dieses Modell.",
       baseUrl: "Base URL",
@@ -324,6 +329,7 @@ export const deDE = {
       apiKey: "API-Schlüssel",
       apiKeyPlaceholder: "API-Schlüssel des Modells eingeben",
       multiplier: "Multiplikator",
+      billingMultiplier: "Abrechnungsmultiplikator",
       authorizedScope: "Berechtigungsumfang",
       authorizationPlaceholder: "Gruppen oder Benutzer auswählen",
       authorizedGroupsDescription:
@@ -1083,6 +1089,16 @@ export const deDE = {
         baizhiyunScopes:
           "Standardberechtigungen: auth_certification openid phone user email",
         issuerUrl: "Issuer-URL",
+        scopes: "Berechtigungsbereiche (Scopes)",
+        scopesDescription:
+          "Scopes durch Leerzeichen trennen, z. B. profile. openid muss nicht hinzugefügt werden. Bei leerer Eingabe gilt der Standard openid profile email.",
+        userinfoFields: "Namen der obersten userinfo-Felder",
+        userinfoDescription:
+          "Die userinfo-URL wird automatisch über userinfo_endpoint in der OIDC-Discovery des Issuers ermittelt; eine manuelle Eingabe ist nicht nötig. Geben Sie die Namen der obersten Felder der userinfo-Antwort ein.",
+        idField: "Feldname für Benutzer-ID",
+        usernameField: "Feldname für Benutzername",
+        avatarField: "Feldname für Profilbild",
+        emailField: "Feldname für E-Mail-Adresse",
         clientId: "Client-ID",
         clientSecret: "Client-Secret",
         cancel: "Abbrechen",

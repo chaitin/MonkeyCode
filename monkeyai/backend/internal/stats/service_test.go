@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -179,6 +180,20 @@ func TestRealtime(t *testing.T) {
 	out = request(t, s, "/statistics/realtime?range=5m", 200)
 	number(t, out, "p95_response_time", 57050)
 }
+func TestRealtimeGroupsSubsessionsWithoutEndedAt(t *testing.T) {
+	s, user, model := fixture(t)
+	now := s.now()
+	root, child := resource.ID(), resource.ID()
+	exec(t, s, `INSERT INTO sessions(id,owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,reporting_enabled_at)
+	VALUES($1,$2,'','conversation','desktop','',$3,$3,$3,$3)`, root, user, now.Add(-time.Hour))
+	exec(t, s, `INSERT INTO sessions(id,owner_user_id,parent_session_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,reporting_enabled_at)
+	VALUES($1,$2,$3,'','conversation','desktop','',$4,$4,$4,$4)`, child, user, root, now.Add(-time.Hour))
+	exec(t, s, `INSERT INTO model_calls(session_id,user_id,model_id,status,started_at,completed_at) VALUES($1,$2,$3,'succeeded',$4,$5)`, child, user, model, now.Add(-2*time.Minute), now.Add(-time.Minute))
+	out := request(t, s, "/statistics/realtime?range=5m", 200)
+	number(t, out, "active_tasks", 1)
+	number(t, out, "new_tasks", 0)
+}
+
 func TestTasksAndHistory(t *testing.T) {
 	s, user, _ := fixture(t)
 	now := s.now()
@@ -194,14 +209,31 @@ func TestTasksAndHistory(t *testing.T) {
 		{"报告失败", now.Add(-3 * time.Minute), now.Add(-time.Minute), "upstream_failed", nil, 3},
 		{"继续处理", now.Add(-2 * time.Minute), nil, nil, nil, 1},
 		{"已删除", now.Add(-time.Minute), now, nil, now, 99},
-		{"上一周期", from.Add(-time.Second), from, nil, nil, 0},
+		{"上一周期", from.Add(-time.Second), from, nil, nil, 1},
 		{"右边界", now, nil, nil, nil, 0},
 	} {
-		exec(t, s, `INSERT INTO sessions(owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,failure_code,deleted_at,turn_count) VALUES($1,$2,'conversation','desktop','测试客户端',$3,$3,$4,$5,$6,$7)`, user, row.title, row.start, row.ended, row.failure, row.deleted, row.turns)
+		var id string
+		if err := s.pool.QueryRow(t.Context(), `INSERT INTO sessions(owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,failure_code,deleted_at,turn_count,reporting_enabled_at) VALUES($1,$2,'conversation','desktop','测试客户端',$3,$3,$4,$5,$6,$7,$3) RETURNING id::text`, user, row.title, row.start, row.ended, row.failure, row.deleted, row.turns).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if row.turns > 0 && row.turns < 10 {
+			exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, id)
+			for i := 1; i <= row.turns; i++ {
+				outcome := "complete"
+				if row.failure != nil {
+					outcome = "error"
+				}
+				if row.ended == nil {
+					outcome = "interrupted"
+				}
+				at := row.start.Add(time.Duration(i-1) * time.Second)
+				exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2,1,'hash',1,$3,$4,$5,'snapshot','text')`, id, i, at, at.Add(100*time.Second), outcome)
+			}
+		}
 	}
 	out := request(t, s, "/statistics/tasks?range=7d", 200)
 	summary := out["summary"].(map[string]any)
-	for key, want := range map[string]float64{"total": 3, "completed": 1, "failed": 1, "running": 1, "average_duration_seconds": 110, "completion_rate": 100.0 / 3} {
+	for key, want := range map[string]float64{"total": 6, "completed": 2, "failed": 3, "interrupted": 1, "average_duration_seconds": 100, "completion_rate": 200.0 / 6, "anomaly_rate": 50} {
 		number(t, summary, key, want)
 	}
 	if len(out["trend"].([]any)) != 7 || len(out["types"].([]any)) != 1 {
@@ -219,9 +251,77 @@ func TestTasksAndHistory(t *testing.T) {
 	number(t, out, "page", 2)
 	number(t, out["items"].([]any)[0].(map[string]any), "turn_count", 3)
 }
+func TestReportingFiltersAndCursor(t *testing.T) {
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	for _, path := range []string{
+		"/statistics/session-reporting/sessions?limit=101",
+		"/statistics/session-reporting/sessions?cursor=invalid",
+		"/statistics/session-reporting/sessions?page=1",
+		"/statistics/session-reporting/sessions?outcome=failed",
+		"/statistics/session-reporting/sessions?from=bad",
+		"/statistics/session-reporting/sessions?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
+	} {
+		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now)
+		if err == nil && f.cursor != "" {
+			_, err = f.decodeCursor()
+		}
+		if err == nil {
+			t.Fatalf("未拒绝无效参数: %s", path)
+		}
+	}
+	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=1", nil), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor := f.encodeCursor(reportCursor{At: now.Format(time.RFC3339Nano), ID: resource.ID()})
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=100&cursor="+cursor, nil), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.decodeCursor(); err != nil {
+		t.Fatal(err)
+	}
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?outcome=error&cursor="+cursor, nil), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.decodeCursor(); err == nil {
+		t.Fatal("筛选条件变化后不能复用游标")
+	}
+}
+
+func TestReportingDetailAndTombstone(t *testing.T) {
+	s, user, _ := fixture(t)
+	id := resource.ID()
+	now := s.now().Add(-time.Minute)
+	exec(t, s, `INSERT INTO sessions(id,owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,reporting_enabled_at) VALUES($1,$2,'隐私标题','conversation','web','测试客户端',$3,$3,$3)`, id, user, now)
+	exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, id)
+	exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,1,1,'hash',1,$2,$3,'error','snapshot','text')`, id, now, now.Add(time.Second))
+	path := "/statistics/session-reporting/sessions/" + id
+	out := request(t, s, path, 200)
+	if len(out["turns"].([]any)) != 1 {
+		t.Fatalf("轮次缺失: %v", out)
+	}
+	if _, ok := out["title"]; ok {
+		t.Fatal("会话标题不得进入统计详情")
+	}
+	list := request(t, s, "/statistics/session-reporting/sessions?limit=1", 200)
+	if list["items"].([]any)[0].(map[string]any)["id"] != id {
+		t.Fatalf("会话列表缺失: %v", list)
+	}
+	exec(t, s, `UPDATE sessions SET purged_at=$2,deleted_at=$2 WHERE id=$1`, id, s.now())
+	request(t, s, path, 410)
+	request(t, s, "/statistics/session-reporting/sessions?include_purged=true", 403)
+	s.SetSessionReportingAuditAuthorizer(func(*http.Request) bool { return true })
+	tombstone := request(t, s, path+"?include_purged=true", 200)
+	if tombstone["tombstone"] != true || tombstone["turns"] != nil {
+		t.Fatalf("墓碑泄漏统计明细: %v", tombstone)
+	}
+}
+
 func TestEmptyAndInvalid(t *testing.T) {
 	s, _, _ := fixture(t)
-	for _, path := range []string{"/statistics/models", "/statistics/tasks", "/statistics/realtime", "/statistics/history"} {
+	for _, path := range []string{"/statistics/models", "/statistics/tasks", "/statistics/realtime", "/statistics/history", "/statistics/session-reporting/overview", "/statistics/session-reporting/sessions", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients"} {
 		request(t, s, path, 200)
 	}
 	out := request(t, s, "/statistics/realtime", 200)

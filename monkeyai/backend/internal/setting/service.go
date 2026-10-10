@@ -11,7 +11,9 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
-var Keys = []string{"branding", "authentication", "email", "billing"}
+var Keys = []string{"branding", "authentication", "email", "billing", "session_reporting"}
+
+var defaultSessionReporting = json.RawMessage(`{"enabled":true,"level":"stats"}`)
 
 type Record struct {
 	Key             string          `json:"key"`
@@ -50,8 +52,13 @@ func (s *Service) Get(ctx context.Context, key string) (Record, error) {
 
 func (s *Service) GetValue(ctx context.Context, key string) (json.RawMessage, error) {
 	record, err := s.Get(ctx, key)
-	if key == "authentication" && errors.Is(err, ErrNotFound) {
-		return json.RawMessage(`{}`), nil
+	if errors.Is(err, ErrNotFound) {
+		switch key {
+		case "authentication":
+			return json.RawMessage(`{}`), nil
+		case "session_reporting":
+			return append(json.RawMessage(nil), defaultSessionReporting...), nil
+		}
 	}
 	return record.Value, err
 }
@@ -157,6 +164,7 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 	}
 
 	config := Config{Settings: make(map[string]json.RawMessage)}
+	seenSessionReporting := false
 	for _, record := range records {
 		value, err := redact(record.Key, record.Value)
 		if err != nil {
@@ -178,10 +186,29 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 				return Config{}, fmt.Errorf("编码计费设置: %w", err)
 			}
 		}
+		if record.Key == "session_reporting" {
+			var setting struct {
+				Enabled bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(value, &setting); err != nil {
+				return Config{}, fmt.Errorf("读取会话上报设置: %w", err)
+			}
+			value, err = json.Marshal(struct {
+				Enabled bool   `json:"enabled"`
+				Level   string `json:"level"`
+			}{setting.Enabled, "stats"})
+			if err != nil {
+				return Config{}, err
+			}
+			seenSessionReporting = true
+		}
 		config.Settings[record.Key] = value
 		if record.UpdatedAt.After(config.UpdatedAt) {
 			config.UpdatedAt = record.UpdatedAt
 		}
+	}
+	if !seenSessionReporting {
+		config.Settings["session_reporting"] = append(json.RawMessage(nil), defaultSessionReporting...)
 	}
 	config.Version = config.UpdatedAt.UnixMilli()
 	return config, nil
@@ -251,6 +278,15 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 
 func validate(key string, value map[string]json.RawMessage) error {
 	switch key {
+	case "session_reporting":
+		enabled, ok := value["enabled"]
+		if !ok || (string(enabled) != "true" && string(enabled) != "false") {
+			return errors.New("session_reporting.enabled 必须为布尔值")
+		}
+		level := rawString(value["level"])
+		if level != "stats" && level != "full" {
+			return errors.New("session_reporting.level 必须为 stats 或 full")
+		}
 	case "branding":
 		if rawString(value["workspace_name"]) == "" || rawString(value["product_name"]) == "" {
 			return errors.New("workspace_name 和 product_name 不能为空")
@@ -268,6 +304,10 @@ func validate(key string, value map[string]json.RawMessage) error {
 			ClientID                string `json:"client_id"`
 			ClientSecret            string `json:"client_secret"`
 			IssuerURL               string `json:"issuer_url"`
+			IDField                 string `json:"id_field"`
+			UsernameField           string `json:"username_field"`
+			AvatarField             string `json:"avatar_field"`
+			EmailField              string `json:"email_field"`
 			AutoRegistrationEnabled *bool  `json:"auto_registration_enabled"`
 		}
 		if raw, ok := value["oauth_connections"]; ok && json.Unmarshal(raw, &connections) != nil {

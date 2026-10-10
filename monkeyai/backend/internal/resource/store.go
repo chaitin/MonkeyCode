@@ -251,13 +251,17 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 	}
 	o["grants"] = g
 	if o.String("ownership_type") == "user" {
-		users := []any{}
+		users, groups := []any{}, []any{}
 		for _, grant := range g {
 			if user := grant["user"]; user != nil {
 				users = append(users, user)
 			}
+			if group := grant["group"]; group != nil {
+				groups = append(groups, group)
+			}
 		}
 		o["shared_users"] = users
+		o["shared_groups"] = groups
 	}
 	if owner := o.String("owner_user_id"); owner != "" {
 		users, err := Users(ctx, q, []string{owner})

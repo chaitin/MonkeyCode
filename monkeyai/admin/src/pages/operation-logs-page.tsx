@@ -387,10 +387,10 @@ export function OperationLogsPage() {
           )}
           <ScrollArea
             horizontal
-            className="min-h-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+            className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
           >
             <Table
-              className={cn("min-w-4xl", !visibleLogs.length && "h-full")}
+              className={!visibleLogs.length ? "h-full" : undefined}
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
@@ -466,54 +466,61 @@ export function OperationLogsPage() {
                             {t("pages.operationLogs.details")}
                           </DialogTrigger>
                           <DialogContent
-                            className="sm:max-w-2xl"
+                            className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"
                             closeLabel={t("common.close")}
                           >
                             <DialogHeader>
                               <DialogTitle>{t("audit.details")}</DialogTitle>
                             </DialogHeader>
-                            <div className="max-h-[65vh] space-y-3 overflow-auto">
-                              <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-                                {[
-                                  [
-                                    t("pages.operationLogs.columns.time"),
-                                    dateFormatter.format(
-                                      new Date(log.occurred_at)
-                                    ),
-                                  ],
-                                  [
-                                    t("pages.operationLogs.columns.operator"),
-                                    log.actor_email
-                                      ? `${log.actor_name} (${log.actor_email})`
-                                      : log.actor_name,
-                                  ],
-                                  [
-                                    t("pages.operationLogs.columns.action"),
-                                    actionLabel(log),
-                                  ],
-                                  [t("audit.target"), log.target_id],
-                                  [
-                                    t("pages.operationLogs.columns.ipAddress"),
-                                    log.source_ip,
-                                  ],
-                                  [t("audit.userAgent"), log.user_agent],
-                                  [t("audit.requestId"), log.request_id],
-                                  [
-                                    t("pages.operationLogs.columns.result"),
-                                    resultLabel(log.result),
-                                  ],
-                                  [t("audit.error"), log.error_message],
-                                ].map(([label, value]) => (
-                                  <div key={label} className="contents">
-                                    <dt className="text-muted-foreground">
-                                      {label}
-                                    </dt>
-                                    <dd className="break-all">
-                                      {value || "—"}
-                                    </dd>
-                                  </div>
-                                ))}
-                              </dl>
+                            <div className="space-y-3">
+                              <ScrollArea className="rounded-lg border [&_[data-slot=scroll-area-viewport]]:max-h-[min(40vh,24rem)]">
+                                <dl className="divide-y">
+                                  {[
+                                    [
+                                      t("pages.operationLogs.columns.time"),
+                                      dateFormatter.format(
+                                        new Date(log.occurred_at)
+                                      ),
+                                    ],
+                                    [
+                                      t("pages.operationLogs.columns.operator"),
+                                      log.actor_email
+                                        ? `${log.actor_name} (${log.actor_email})`
+                                        : log.actor_name,
+                                    ],
+                                    [
+                                      t("pages.operationLogs.columns.action"),
+                                      actionLabel(log),
+                                    ],
+                                    [t("audit.target"), log.target_id],
+                                    [
+                                      t(
+                                        "pages.operationLogs.columns.ipAddress"
+                                      ),
+                                      log.source_ip,
+                                    ],
+                                    [t("audit.userAgent"), log.user_agent],
+                                    [t("audit.requestId"), log.request_id],
+                                    [
+                                      t("pages.operationLogs.columns.result"),
+                                      resultLabel(log.result),
+                                    ],
+                                    [t("audit.error"), log.error_message],
+                                  ].map(([label, value]) => (
+                                    <div
+                                      key={label}
+                                      className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                                    >
+                                      <dt className="w-32 shrink-0 break-words text-muted-foreground sm:w-44">
+                                        {label}
+                                      </dt>
+                                      <dd className="min-w-0 text-right break-all tabular-nums">
+                                        {value || "—"}
+                                      </dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </ScrollArea>
                               <pre className="rounded-md bg-muted p-3 text-xs break-all whitespace-pre-wrap">
                                 {JSON.stringify(log.request_params, null, 2)}
                               </pre>

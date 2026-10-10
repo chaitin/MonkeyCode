@@ -813,7 +813,7 @@ export function MembersAndGroupsPage() {
             </TabsList>
             <TabsContent value="single" keepMounted className="pt-3">
               <form className="flex flex-col gap-6" onSubmit={createUser}>
-                <FieldGroup>
+                <FieldGroup className="gap-4">
                   <Field>
                     <FieldLabel htmlFor="new-user-role">
                       {t("pages.membersAndGroups.bulk.role")}

@@ -18,6 +18,10 @@ FROM
     JOIN users u ON u.id = s.owner_user_id
 WHERE
     s.deleted_at IS NULL
+    AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL
+    AND s.placeholder = false
+    AND s.parent_session_id IS NULL
     AND ($1::text = ''
         OR strpos(lower(s.title), lower($1::text)) > 0
         OR strpos(s.id::text, lower($1::text)) > 0)
@@ -51,13 +55,18 @@ func (q *Queries) CountHistory(ctx context.Context, arg CountHistoryParams) (int
 
 const listHistory = `-- name: ListHistory :many
 SELECT
-    jsonb_build_object('id', s.id, 'title', s.title, 'user_name', u.name, 'user_email', u.email,
-	'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', s.turn_count)
+    jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_name', u.name, 'user_email', u.email,
+        'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
+            SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
 FROM
     sessions s
     JOIN users u ON u.id = s.owner_user_id
 WHERE
     s.deleted_at IS NULL
+    AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL
+    AND s.placeholder = false
+    AND s.parent_session_id IS NULL
     AND ($1::text = ''
         OR strpos(lower(s.title), lower($1::text)) > 0
         OR strpos(s.id::text, lower($1::text)) > 0)
@@ -183,10 +192,10 @@ totals AS (
         n,
         (
             SELECT
-		jsonb_build_object('calls', count(*), 'input_tokens', COALESCE(sum(input_tokens), 0),
-		    'output_tokens', COALESCE(sum(output_tokens), 0), 'cache_hit_rate', 100.0 * count(*) FILTER (WHERE
-		    cache_hit) / NULLIF (count(*), 0), 'success_rate', 100.0 * count(*) FILTER (WHERE status =
-		    'succeeded') / NULLIF (count(*) FILTER (WHERE status <> 'running'), 0))
+                jsonb_build_object('calls', count(*), 'input_tokens', COALESCE(sum(input_tokens), 0),
+                    'output_tokens', COALESCE(sum(output_tokens), 0), 'cache_hit_rate', 100.0 * count(*) FILTER (WHERE
+                    cache_hit) / NULLIF (count(*), 0), 'success_rate', 100.0 * count(*) FILTER (WHERE status =
+                    'succeeded') / NULLIF (count(*) FILTER (WHERE status <> 'running'), 0))
             FROM
                 model_calls c
             WHERE
@@ -239,8 +248,8 @@ WITH bucket_times (
     AT
 ) AS (
     SELECT
-	generate_series($1::timestamptz, $2::timestamptz - interval
-	    '1 microsecond', $3::bigint * interval '1 second') AS AT
+        generate_series($1::timestamptz, $2::timestamptz - interval
+            '1 microsecond', $3::bigint * interval '1 second') AS AT
 ),
 buckets AS (
     SELECT
@@ -283,8 +292,8 @@ credits AS (
 )
 SELECT
     jsonb_build_object('at', b.at, 'calls', COALESCE(c.calls, 0), 'input_tokens',
-	COALESCE(c.input_tokens, 0), 'output_tokens', COALESCE(c.output_tokens, 0), 'credits',
-	COALESCE(e.credits, 0)::text)
+        COALESCE(c.input_tokens, 0), 'output_tokens', COALESCE(c.output_tokens, 0), 'credits',
+        COALESCE(e.credits, 0)::text)
 FROM
     buckets b
     LEFT JOIN calls c ON c.bucket = b.bucket
@@ -325,226 +334,47 @@ func (q *Queries) ModelTrend(ctx context.Context, arg ModelTrendParams) ([][]byt
 	return items, nil
 }
 
-const realtime = `-- name: Realtime :one
-WITH calls AS (
-    SELECT
-        id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens, output_tokens, cache_hit, response_duration_ms, error_code, error_message, started_at, completed_at, created_at
-    FROM
-        model_calls
-    WHERE
-        completed_at >= $1
-        AND completed_at < $2
-),
-active_users AS (
-    SELECT
-        user_id
-    FROM
-        calls
-    UNION
-    SELECT
-        user_id
-    FROM
-        mcp_tool_calls
-    WHERE
-        completed_at >= $1
-        AND completed_at < $2
-    UNION
-    SELECT
-        owner_user_id
-    FROM
-        sessions
-    WHERE
-        last_active_at >= $1
-        AND last_active_at < $2
-        AND deleted_at IS NULL
-    UNION
-    SELECT
-        user_id
-    FROM
-        billing_transactions
-    WHERE
-        status = 'running'
-        AND started_at >= $1
-        AND started_at < $2
+const reportingClients = `-- name: ReportingClients :many
+WITH opts AS (SELECT $1::jsonb AS f), facts AS (
+    SELECT s.id,t.stop_reason,t.started_at,t.ended_at,s.client_type,ep.platform,ep.os_version,ep.locale,ep.timezone,
+        t.client_version,t.engine_version,ep.runtime_version FROM session_turns t
+    JOIN sessions s ON s.id = t.session_id
+    LEFT JOIN endpoints ep ON ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id CROSS JOIN opts p
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR ep.platform = p.f->>'platform')
+        AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
+        AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
+        AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+), grouped AS (
+    SELECT client_type,platform,os_version,locale,timezone,client_version,engine_version,runtime_version,
+        count(DISTINCT id) AS sessions,count(*) AS turns,
+        count(*) FILTER (WHERE stop_reason = 'interrupted') AS interrupted,
+        100.0*count(*) FILTER (WHERE stop_reason = 'complete')/NULLIF(count(*) FILTER (WHERE stop_reason <> 'unknown'),0) AS completion_rate,
+        100.0*count(*) FILTER (WHERE stop_reason IN ('error','max_turns','output_limit'))/NULLIF(count(*) FILTER (WHERE stop_reason <> 'unknown'),0) AS anomaly_rate,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (ended_at-started_at))) AS p95_duration_seconds,
+        max(ended_at) AS last_active_at FROM facts GROUP BY 1,2,3,4,5,6,7,8
+), ordered AS (
+    SELECT client_type, platform, os_version, locale, timezone, client_version, engine_version, runtime_version, sessions, turns, interrupted, completion_rate, anomaly_rate, p95_duration_seconds, last_active_at,jsonb_build_array(client_type,platform,os_version,locale,timezone,client_version,engine_version,runtime_version)::text AS sort_key FROM grouped
 )
-SELECT
-    jsonb_build_object('model_consumption', (
-            SELECT
-                COALESCE(- sum(credit_delta), 0)::text FROM credit_ledger_entries
-        WHERE
-            occurred_at >= $1
-            AND occurred_at < $2
-            AND category = 'model'
-            AND entry_type IN ('charge', 'refund')), 'p95_response_time', (
-            SELECT
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY COALESCE(response_duration_ms, extract(epoch FROM (completed_at - started_at)) * 1000))
-        FROM calls
-    WHERE
-        status <> 'running'), 'model_success_rate', (
-        SELECT
-            100.0 * count(*) FILTER (WHERE status = 'succeeded') / NULLIF (count(*) FILTER (WHERE status <> 'running'), 0)
-        FROM calls), 'model_calls', (
-        SELECT
-            count(*)
-        FROM calls), 'tpm', (
-        SELECT
-            COALESCE(sum(input_tokens + output_tokens), 0)
-        FROM calls) / $3::numeric, 'rpm', (
-        SELECT
-            count(*)
-        FROM calls) / $3::numeric, 'input_tokens', (
-        SELECT
-            COALESCE(sum(input_tokens), 0)
-        FROM calls), 'output_tokens', (
-        SELECT
-            COALESCE(sum(output_tokens), 0)
-        FROM calls), 'active_users', (
-        SELECT
-            count(*)
-        FROM active_users), 'active_tasks', (
-        SELECT
-            count(*)
-        FROM sessions
-    WHERE
-        ended_at IS NULL
-        AND last_active_at >= $1
-        AND last_active_at < $2
-        AND deleted_at IS NULL), 'new_tasks', (
-        SELECT
-            count(*)
-        FROM sessions
-    WHERE
-        started_at >= $1
-        AND started_at < $2
-        AND deleted_at IS NULL))
+SELECT jsonb_build_object('client_type',client_type,'platform',platform,'os_version',os_version,
+    'locale',locale,'timezone',timezone,'client_version',client_version,'engine_version',engine_version,
+    'runtime_version',runtime_version,'sessions',sessions,'turns',turns,'interrupted',interrupted,
+    'completion_rate',completion_rate,'anomaly_rate',anomaly_rate,'p95_duration_seconds',p95_duration_seconds,
+    'last_active_at',last_active_at,'sort_key',sort_key)
+FROM ordered CROSS JOIN opts p WHERE sort_key > coalesce(p.f->>'cursor_key','')
+ORDER BY sort_key LIMIT ($1::jsonb->>'limit')::integer + 1
 `
 
-type RealtimeParams struct {
-	FromTime      time.Time
-	UntilTime     time.Time
-	WindowMinutes string
-}
-
-func (q *Queries) Realtime(ctx context.Context, arg RealtimeParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, realtime, arg.FromTime, arg.UntilTime, arg.WindowMinutes)
-	var jsonb_build_object []byte
-	err := row.Scan(&jsonb_build_object)
-	return jsonb_build_object, err
-}
-
-const taskSummary = `-- name: TaskSummary :one
-WITH periods AS (
-    SELECT
-        0 AS n,
-        $1::timestamptz AS start_at,
-        $2::timestamptz AS end_at
-    UNION ALL
-    SELECT
-        1,
-        $1::timestamptz - ($2::timestamptz - $1::timestamptz),
-        $1::timestamptz
-),
-totals AS (
-    SELECT
-        n,
-        (
-            SELECT
-                jsonb_build_object('total', count(*), 'completed', count(*) FILTER (WHERE ended_at IS NOT NULL
-                        AND NULLIF (failure_code, '') IS NULL
-                    AND NULLIF (failure_message, '') IS NULL), 'failed', count(*) FILTER (WHERE ended_at IS NOT NULL
-                AND (NULLIF (failure_code, '') IS NOT NULL
-	    OR NULLIF (failure_message, '') IS NOT NULL)), 'running', count(*) FILTER (WHERE ended_at IS
-		NULL), 'completion_rate', 100.0 * count(*) FILTER (WHERE ended_at IS NOT NULL
-    AND NULLIF (failure_code, '') IS NULL
-AND NULLIF (failure_message, '') IS NULL) / NULLIF (count(*), 0), 'average_duration_seconds', avg(extract(epoch FROM
-    (ended_at - started_at))))
-            FROM
-                sessions s
-            WHERE
-                s.started_at >= p.start_at
-                AND s.started_at < p.end_at
-                AND s.deleted_at IS NULL) AS SUMMARY
-    FROM
-        periods p
-)
-SELECT
-    jsonb_build_object('summary', (
-            SELECT
-                SUMMARY
-            FROM totals
-            WHERE
-                n = 0), 'previous', (
-            SELECT
-                SUMMARY
-            FROM totals
-        WHERE
-            n = 1))
-`
-
-type TaskSummaryParams struct {
-	FromTime  time.Time
-	UntilTime time.Time
-}
-
-func (q *Queries) TaskSummary(ctx context.Context, arg TaskSummaryParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, taskSummary, arg.FromTime, arg.UntilTime)
-	var jsonb_build_object []byte
-	err := row.Scan(&jsonb_build_object)
-	return jsonb_build_object, err
-}
-
-const taskTrend = `-- name: TaskTrend :many
-WITH bucket_times (
-    AT
-) AS (
-    SELECT
-	generate_series($1::timestamptz, $2::timestamptz - interval
-	    '1 microsecond', $3::bigint * interval '1 second') AS AT
-),
-buckets AS (
-    SELECT
-        AT,
-        floor(extract(epoch FROM (AT - $1::timestamptz)) / $3)::bigint AS bucket
-    FROM
-        bucket_times
-),
-totals AS (
-    SELECT
-        floor(extract(epoch FROM (started_at - $1::timestamptz)) / $3)::bigint AS bucket,
-        count(*) FILTER (WHERE ended_at IS NOT NULL
-            AND NULLIF (failure_code, '') IS NULL
-            AND NULLIF (failure_message, '') IS NULL) AS completed,
-    count(*) FILTER (WHERE ended_at IS NOT NULL
-        AND (NULLIF (failure_code, '') IS NOT NULL
-        OR NULLIF (failure_message, '') IS NOT NULL)) AS failed,
-count(*) FILTER (WHERE ended_at IS NULL) AS running
-FROM
-    sessions
-    WHERE
-        started_at >= $1
-        AND started_at < $2
-        AND deleted_at IS NULL
-    GROUP BY
-        1
-)
-SELECT
-    jsonb_build_object('at', b.at, 'completed', COALESCE(t.completed, 0), 'failed',
-	COALESCE(t.failed, 0), 'running', COALESCE(t.running, 0))
-FROM
-    buckets b
-    LEFT JOIN totals t ON t.bucket = b.bucket
-ORDER BY
-    b.at
-`
-
-type TaskTrendParams struct {
-	FromTime    time.Time
-	UntilTime   time.Time
-	StepSeconds int64
-}
-
-func (q *Queries) TaskTrend(ctx context.Context, arg TaskTrendParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, taskTrend, arg.FromTime, arg.UntilTime, arg.StepSeconds)
+func (q *Queries) ReportingClients(ctx context.Context, filters []byte) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, reportingClients, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -563,48 +393,504 @@ func (q *Queries) TaskTrend(ctx context.Context, arg TaskTrendParams) ([][]byte,
 	return items, nil
 }
 
-const taskTypes = `-- name: TaskTypes :many
-SELECT
-    (jsonb_build_object('total', count(*), 'completed', count(*) FILTER (WHERE ended_at IS NOT NULL
-                AND NULLIF (failure_code, '') IS NULL
-            AND NULLIF (failure_message, '') IS NULL), 'failed', count(*) FILTER (WHERE ended_at IS NOT NULL
-        AND (NULLIF (failure_code, '') IS NOT NULL
-    OR NULLIF (failure_message, '') IS NOT NULL)), 'running', count(*) FILTER (WHERE ended_at IS NULL),
-	'completion_rate', 100.0 * count(*) FILTER (WHERE ended_at IS NOT NULL
-    AND NULLIF (failure_code, '') IS NULL
-AND NULLIF (failure_message, '') IS NULL) / NULLIF (count(*), 0), 'average_duration_seconds', avg(extract(epoch FROM
-    (ended_at - started_at)))) || jsonb_build_object('key', session_type))::jsonb
-FROM
-    sessions
-WHERE
-    started_at >= $1
-    AND started_at < $2
-    AND deleted_at IS NULL
-GROUP BY
-    session_type
-ORDER BY
-    count(*) DESC,
-    session_type
+const reportingDetail = `-- name: ReportingDetail :one
+WITH opts AS (SELECT $1::jsonb AS f),
+cohort AS (
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
+    WHERE s.id = (p.f->>'session_id')::uuid AND s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_turns rt JOIN session_resource_snapshot_items ri ON ri.session_id = rt.session_id AND ri.snapshot_id = rt.resources_snapshot_id
+            WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+)
+SELECT jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,
+    'group_id',s.group_id,'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'parent_session_id',s.parent_session_id,
+    'model_id',s.model_id,'client_type',s.client_type,'client_version',s.client_version,
+    'engine_version',s.engine_version,'runtime_version',s.runtime_version,
+    'started_at',s.started_at,'last_active_at',s.last_active_at,'ended_at',s.ended_at,
+    'updated_at',s.updated_at,'active_seconds',s.active_seconds,'clock_suspect',s.clock_suspect,
+    'placeholder',s.placeholder,'last_outcome',s.last_stop_reason,'tombstone',false,
+    'turns', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.turn_index),'[]'::jsonb) FROM (
+        SELECT t.turn_index,jsonb_build_object('turn_index',t.turn_index,'started_at',t.started_at,'ended_at',t.ended_at,
+            'duration_seconds',extract(epoch FROM (t.ended_at-t.started_at)),'outcome',t.stop_reason,
+            'error_code',t.error_code,'model_id',t.model_id,'input_kind',t.input_kind,
+            'input_tokens',t.input_tokens,'output_tokens',t.output_tokens,'recovered',t.recovered,
+            'resources_snapshot_id',t.resources_snapshot_id,
+            'tools',(SELECT count(*) FROM session_turn_tools v WHERE v.session_id = t.session_id AND v.turn_index = t.turn_index),
+            'skills',(SELECT count(*) FROM session_skill_events e WHERE e.session_id = t.session_id AND e.turn_index = t.turn_index)) AS item
+        FROM session_turns t WHERE t.session_id = s.id AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        ORDER BY t.turn_index LIMIT ($1::jsonb->>'limit')::integer) v),
+    'tools', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.turn_index,v.category,v.resource_id),'[]'::jsonb) FROM (
+        SELECT v.turn_index,v.category,v.resource_id,jsonb_build_object('turn_index',v.turn_index,'category',v.category,
+            'resource_id',v.resource_id,'resource_version',v.resource_version,'calls',sum(v.calls),'failed',sum(v.failed),'duration_ms',sum(v.duration_ms)) AS item
+        FROM session_turn_tools v JOIN session_turns t ON t.session_id = v.session_id AND t.turn_index = v.turn_index
+        WHERE v.session_id = s.id AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        GROUP BY v.turn_index,v.category,v.resource_id,v.resource_version ORDER BY v.turn_index,v.category,v.resource_id LIMIT ($1::jsonb->>'limit')::integer) v),
+    'skills', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.turn_index,v.skill_id),'[]'::jsonb) FROM (
+        SELECT e.turn_index,e.skill_id,jsonb_build_object('turn_index',e.turn_index,'skill_id',e.skill_id,'version',e.version,
+            'trigger',e.trigger,'events',count(*),'succeeded',count(*) FILTER (WHERE e.ok)) AS item
+        FROM session_skill_events e JOIN session_turns t ON t.session_id = e.session_id AND t.turn_index = e.turn_index
+        WHERE e.session_id = s.id AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        GROUP BY e.turn_index,e.skill_id,e.version,e.trigger ORDER BY e.turn_index,e.skill_id LIMIT ($1::jsonb->>'limit')::integer) v),
+    'resources', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.resource_id,v.version),'[]'::jsonb) FROM (
+        SELECT i.resource_id,i.version,jsonb_build_object('resource_id',i.resource_id,'kind',i.kind,'version',i.version,
+            'enabled',bool_or(i.enabled),'available',bool_or(i.available),'snapshots',count(DISTINCT i.snapshot_id)) AS item
+        FROM session_resource_snapshot_items i JOIN session_turns t ON t.session_id = i.session_id AND t.resources_snapshot_id = i.snapshot_id
+        WHERE i.session_id = s.id AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        GROUP BY i.resource_id,i.kind,i.version ORDER BY i.resource_id,i.version LIMIT ($1::jsonb->>'limit')::integer) v),
+    'calls', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.kind,v.status),'[]'::jsonb) FROM (
+        SELECT kind,status,jsonb_build_object('kind',kind,'status',status,'calls',count(*),
+            'input_tokens',sum(input_tokens),'output_tokens',sum(output_tokens)) AS item
+        FROM (SELECT 'model' AS kind,status,input_tokens,output_tokens FROM model_calls WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz
+            UNION ALL SELECT 'mcp',status,0::bigint,0::bigint FROM mcp_tool_calls WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz
+            UNION ALL SELECT 'image',status,0::bigint,0::bigint FROM image_calls WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz) c
+        GROUP BY kind,status ORDER BY kind,status) v),
+    'subsessions', (SELECT coalesce(jsonb_agg(v.item ORDER BY v.started_at,v.id),'[]'::jsonb) FROM (
+        SELECT child.started_at,child.id,jsonb_build_object('id',child.id,'parent_session_id',child.parent_session_id,
+            'started_at',child.started_at,'turns',(SELECT count(*) FROM session_turns t WHERE t.session_id = child.id AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz),
+            'last_outcome',child.last_stop_reason,'active_seconds',child.active_seconds) AS item
+        FROM sessions child WHERE child.parent_session_id = s.id AND child.reporting_enabled_at IS NOT NULL
+            AND child.deleted_at IS NULL AND child.purged_at IS NULL AND child.placeholder = false
+        ORDER BY child.started_at,child.id LIMIT ($1::jsonb->>'limit')::integer) v),
+    'credits', (SELECT coalesce(-sum(credit_delta),0)::text FROM credit_ledger_entries
+        WHERE session_id IN (SELECT id FROM sessions WHERE id = s.id OR parent_session_id = s.id) AND entry_type IN ('charge','refund')),
+    'detail_limit',(p.f->>'limit')::integer)
+FROM cohort s CROSS JOIN opts p
 `
 
-type TaskTypesParams struct {
-	StartedAt   time.Time
-	StartedAt_2 time.Time
+func (q *Queries) ReportingDetail(ctx context.Context, filters []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingDetail, filters)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
 }
 
-func (q *Queries) TaskTypes(ctx context.Context, arg TaskTypesParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, taskTypes, arg.StartedAt, arg.StartedAt_2)
+const reportingFreshness = `-- name: ReportingFreshness :one
+WITH opts AS (SELECT $1::jsonb AS f)
+SELECT max(t.received_at) FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN opts p
+WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+    AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+    AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+    AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+    AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+    AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
+    AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
+    AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
+    AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+    AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+        SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+            AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+`
+
+func (q *Queries) ReportingFreshness(ctx context.Context, filters []byte) (interface{}, error) {
+	row := q.db.QueryRow(ctx, reportingFreshness, filters)
+	var max interface{}
+	err := row.Scan(&max)
+	return max, err
+}
+
+const reportingOverview = `-- name: ReportingOverview :one
+WITH opts AS (SELECT $1::jsonb AS f),
+cohort AS (
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_turns rt JOIN session_resource_snapshot_items ri ON ri.session_id = rt.session_id AND ri.snapshot_id = rt.resources_snapshot_id
+            WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+), facts AS (
+    SELECT t.session_id, t.turn_index, t.facts_version, t.report_hash, t.input_seq, t.started_at, t.ended_at, t.received_at, t.stop_reason, t.error_code, t.recovered, t.model_id, t.thinking_enabled, t.thinking_effort, t.resources_snapshot_id, t.client_version, t.engine_version, t.input_tokens, t.output_tokens, t.cache_creation_input_tokens, t.cache_read_input_tokens, t.subagent_input_tokens, t.subagent_output_tokens, t.subagent_cache_creation_input_tokens, t.subagent_cache_read_input_tokens, t.context_used, t.context_window, t.input_kind, t.input_client_type, t.input_machine_id, t.command_skill_id, t.attachments, t.canvas_nodes, t.steers, t.files_created, t.files_updated, t.files_deleted, t.compactions, t.permissions_asked, t.permissions_allowed, t.permissions_denied, t.truncated FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
+    WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
+        AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+), activity AS (
+    SELECT session_id FROM model_calls c CROSS JOIN opts p WHERE c.session_id IS NOT NULL AND (c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz OR c.completed_at >= (p.f->>'from')::timestamptz AND c.completed_at < (p.f->>'until')::timestamptz)
+    UNION SELECT session_id FROM mcp_tool_calls c CROSS JOIN opts p WHERE c.session_id IS NOT NULL AND (c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz OR c.completed_at >= (p.f->>'from')::timestamptz AND c.completed_at < (p.f->>'until')::timestamptz)
+    UNION SELECT session_id FROM image_calls c CROSS JOIN opts p WHERE c.session_id IS NOT NULL AND (c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz OR c.completed_at >= (p.f->>'from')::timestamptz AND c.completed_at < (p.f->>'until')::timestamptz)
+    UNION SELECT session_id FROM billing_transactions c CROSS JOIN opts p WHERE c.session_id IS NOT NULL AND c.status IN ('created','reserved','running','settling') AND c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz
+    UNION SELECT session_id FROM image_jobs c CROSS JOIN opts p WHERE c.session_id IS NOT NULL AND c.status IN ('created','reserved','submitted','running') AND c.created_at >= (p.f->>'from')::timestamptz AND c.created_at < (p.f->>'until')::timestamptz
+)
+SELECT jsonb_build_object(
+    'sessions', (SELECT count(*) FROM cohort s CROSS JOIN opts p WHERE s.parent_session_id IS NULL AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz),
+    'placeholders', (SELECT count(*) FROM cohort s CROSS JOIN opts p WHERE s.placeholder AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz),
+    'clock_suspect', (SELECT count(*) FROM cohort s CROSS JOIN opts p WHERE s.clock_suspect AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz),
+    'turns',count(*),'complete',count(*) FILTER (WHERE t.stop_reason = 'complete'),
+    'anomalies',count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')),
+    'interrupted',count(*) FILTER (WHERE t.stop_reason = 'interrupted'),'unknown',count(*) FILTER (WHERE t.stop_reason = 'unknown'),
+    'completion_rate',100.0*count(*) FILTER (WHERE t.stop_reason = 'complete')/NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'),0),
+    'anomaly_rate',100.0*count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit'))/NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'),0),
+    'average_duration_seconds',avg(extract(epoch FROM (t.ended_at-t.started_at))),
+    'p50_duration_seconds',percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (t.ended_at-t.started_at))),
+    'p95_duration_seconds',percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (t.ended_at-t.started_at))),
+    'input_tokens',coalesce(sum(t.input_tokens),0),'output_tokens',coalesce(sum(t.output_tokens),0),
+    'recovered',count(*) FILTER (WHERE t.recovered),
+    'average_reporting_delay_seconds',avg(extract(epoch FROM (t.received_at-t.ended_at))),
+    'last_received_at',max(t.received_at),
+    'trend', (SELECT coalesce(jsonb_agg(item ORDER BY at),'[]'::jsonb) FROM (
+        SELECT date_trunc('hour',started_at) AS at,jsonb_build_object('at',date_trunc('hour',started_at),'turns',count(*),
+            'complete',count(*) FILTER (WHERE stop_reason = 'complete'),
+            'anomalies',count(*) FILTER (WHERE stop_reason IN ('error','max_turns','output_limit'))) AS item
+        FROM facts GROUP BY date_trunc('hour',started_at)) points),
+    'outcomes', (SELECT coalesce(jsonb_agg(item ORDER BY outcome),'[]'::jsonb) FROM (
+        SELECT stop_reason AS outcome,jsonb_build_object('outcome',stop_reason,'turns',count(*)) AS item FROM facts GROUP BY stop_reason) outcomes),
+    'recent_active_tasks', (SELECT count(DISTINCT s.id) FROM activity a JOIN sessions child ON child.id = a.session_id
+        JOIN cohort s ON s.id = coalesce(child.parent_session_id,child.id)
+        WHERE child.reporting_enabled_at IS NOT NULL AND child.deleted_at IS NULL AND child.purged_at IS NULL AND child.placeholder = false),
+    'credits', (SELECT coalesce(-sum(e.credit_delta),0)::text FROM credit_ledger_entries e
+        JOIN sessions child ON child.id = e.session_id JOIN cohort s ON s.id = coalesce(child.parent_session_id,child.id) CROSS JOIN opts p
+        WHERE child.reporting_enabled_at IS NOT NULL AND child.deleted_at IS NULL AND child.purged_at IS NULL AND child.placeholder = false
+            AND e.entry_type IN ('charge','refund') AND e.occurred_at >= (p.f->>'from')::timestamptz AND e.occurred_at < (p.f->>'until')::timestamptz))
+FROM facts t
+`
+
+func (q *Queries) ReportingOverview(ctx context.Context, filters []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingOverview, filters)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const reportingRealtime = `-- name: ReportingRealtime :one
+WITH calls AS (
+    SELECT id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens, output_tokens, cache_hit, response_duration_ms, error_code, error_message, started_at, completed_at, created_at FROM model_calls WHERE completed_at >= $1::timestamptz AND completed_at < $2::timestamptz
+), activity AS (
+    SELECT session_id FROM model_calls WHERE session_id IS NOT NULL AND (completed_at >= $1::timestamptz AND completed_at < $2::timestamptz OR status = 'running' AND started_at >= $1::timestamptz AND started_at < $2::timestamptz)
+    UNION SELECT session_id FROM mcp_tool_calls WHERE session_id IS NOT NULL AND (completed_at >= $1::timestamptz AND completed_at < $2::timestamptz OR status = 'running' AND started_at >= $1::timestamptz AND started_at < $2::timestamptz)
+    UNION SELECT session_id FROM image_calls WHERE session_id IS NOT NULL AND completed_at >= $1::timestamptz AND completed_at < $2::timestamptz
+    UNION SELECT session_id FROM billing_transactions WHERE session_id IS NOT NULL AND status IN ('created','reserved','running','settling') AND started_at >= $1::timestamptz AND started_at < $2::timestamptz
+    UNION SELECT session_id FROM image_jobs WHERE session_id IS NOT NULL AND status IN ('created','reserved','submitted','running') AND created_at >= $1::timestamptz AND created_at < $2::timestamptz
+), active_tasks AS (
+    SELECT DISTINCT coalesce(s.parent_session_id,s.id) AS root FROM activity a JOIN sessions s ON s.id = a.session_id
+    JOIN sessions root ON root.id = coalesce(s.parent_session_id,s.id)
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND root.reporting_enabled_at IS NOT NULL AND root.placeholder = false AND root.deleted_at IS NULL AND root.purged_at IS NULL
+), active_users AS (
+    SELECT user_id FROM calls UNION SELECT user_id FROM mcp_tool_calls WHERE completed_at >= $1::timestamptz AND completed_at < $2::timestamptz
+    UNION SELECT s.owner_user_id FROM active_tasks a JOIN sessions s ON s.id = a.root
+    UNION SELECT user_id FROM billing_transactions WHERE status = 'running' AND started_at >= $1::timestamptz AND started_at < $2::timestamptz
+)
+SELECT jsonb_build_object(
+    'model_consumption', (SELECT coalesce(-sum(credit_delta),0)::text FROM credit_ledger_entries WHERE occurred_at >= $1::timestamptz AND occurred_at < $2::timestamptz AND category = 'model' AND entry_type IN ('charge','refund')),
+    'p95_response_time', (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY coalesce(response_duration_ms,extract(epoch FROM (completed_at-started_at))*1000)) FROM calls WHERE status <> 'running'),
+    'model_success_rate', (SELECT 100.0*count(*) FILTER (WHERE status = 'succeeded')/NULLIF(count(*) FILTER (WHERE status <> 'running'),0) FROM calls),
+    'model_calls', (SELECT count(*) FROM calls),
+    'tpm', (SELECT coalesce(sum(input_tokens+output_tokens),0) FROM calls)/$3::text::numeric,
+    'rpm', (SELECT count(*) FROM calls)/$3::text::numeric,
+    'input_tokens', (SELECT coalesce(sum(input_tokens),0) FROM calls),
+    'output_tokens', (SELECT coalesce(sum(output_tokens),0) FROM calls),
+    'active_users', (SELECT count(*) FROM active_users),
+    'active_tasks', (SELECT count(*) FROM active_tasks),
+    'new_tasks', (SELECT count(*) FROM sessions WHERE started_at >= $1::timestamptz AND started_at < $2::timestamptz AND parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL))
+`
+
+type ReportingRealtimeParams struct {
+	FromTime      time.Time
+	UntilTime     time.Time
+	WindowMinutes string
+}
+
+func (q *Queries) ReportingRealtime(ctx context.Context, arg ReportingRealtimeParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingRealtime, arg.FromTime, arg.UntilTime, arg.WindowMinutes)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const reportingResources = `-- name: ReportingResources :many
+WITH opts AS (SELECT $1::jsonb AS f),
+cohort AS (
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
+), turns AS (
+    SELECT t.session_id,t.turn_index,t.resources_snapshot_id FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
+    WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
+        AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+), enabled AS (
+    SELECT i.kind,i.resource_id,i.version,count(DISTINCT t.session_id) AS sessions,
+        count(DISTINCT t.session_id) FILTER (WHERE i.available) AS available_sessions
+    FROM turns t JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
+    WHERE i.enabled GROUP BY i.kind,i.resource_id,i.version
+), used AS (
+    SELECT v.category AS kind,v.resource_id,v.resource_version AS version,
+        count(DISTINCT v.session_id) AS sessions,sum(v.calls) AS calls,sum(v.failed) AS failed
+    FROM session_turn_tools v JOIN turns t ON t.session_id = v.session_id AND t.turn_index = v.turn_index
+    WHERE v.resource_id IS NOT NULL AND v.category NOT IN ('connector','skill') GROUP BY v.category,v.resource_id,v.resource_version
+    UNION ALL SELECT 'skill',e.skill_id,e.version,count(DISTINCT e.session_id),count(*),count(*) FILTER (WHERE NOT e.ok)
+    FROM session_skill_events e JOIN turns t ON t.session_id = e.session_id AND t.turn_index = e.turn_index
+    WHERE e.skill_id IS NOT NULL GROUP BY e.skill_id,e.version
+), gateway AS (
+    SELECT 'connector'::text AS kind,c.connector_id::text AS resource_id,NULL::text AS version,
+        count(DISTINCT c.session_id) AS sessions,count(*) AS calls,count(*) FILTER (WHERE c.status = 'failed') AS failed
+    FROM mcp_tool_calls c JOIN cohort s ON s.id = c.session_id CROSS JOIN opts p
+    WHERE c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'resource_id' IS NULL OR c.connector_id::text = p.f->>'resource_id')
+        AND p.f->>'resource_version' IS NULL GROUP BY c.connector_id
+), combined AS (
+    SELECT kind,resource_id,version,max(enabled_sessions) AS enabled_sessions,max(available_sessions) AS available_sessions,
+        sum(used_sessions) AS used_sessions,sum(calls) AS calls,sum(failed) AS failed FROM (
+        SELECT kind,resource_id,version,sessions AS enabled_sessions,available_sessions,0::bigint AS used_sessions,0::numeric AS calls,0::numeric AS failed FROM enabled
+        UNION ALL SELECT kind,resource_id,version,0,0,sessions,calls,failed FROM used
+        UNION ALL SELECT kind,resource_id,version,0,0,sessions,calls,failed FROM gateway) x CROSS JOIN opts p
+    WHERE (p.f->>'resource_id' IS NULL OR resource_id = p.f->>'resource_id')
+        AND (p.f->>'resource_version' IS NULL OR version = p.f->>'resource_version')
+    GROUP BY kind,resource_id,version
+), ordered AS (SELECT kind, resource_id, version, enabled_sessions, available_sessions, used_sessions, calls, failed,jsonb_build_array(kind,resource_id,version)::text AS sort_key FROM combined)
+SELECT jsonb_build_object('kind',kind,'resource_id',resource_id,'version',version,'sort_key',sort_key,
+    'enabled_sessions',enabled_sessions,'available_sessions',available_sessions,'used_sessions',used_sessions,
+    'calls',calls,'failed',failed,'failure_rate',100.0*failed/NULLIF(calls,0))
+FROM ordered CROSS JOIN opts p
+WHERE sort_key > coalesce(p.f->>'cursor_key','') ORDER BY sort_key LIMIT ($1::jsonb->>'limit')::integer + 1
+`
+
+func (q *Queries) ReportingResources(ctx context.Context, filters []byte) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, reportingResources, filters)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var column_1 []byte
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportingSessionStatus = `-- name: ReportingSessionStatus :one
+SELECT jsonb_build_object('id',id,'owner_user_id',owner_user_id,'purged_at',purged_at,'tombstone',purged_at IS NOT NULL)
+FROM sessions WHERE id = $1::uuid
+`
+
+func (q *Queries) ReportingSessionStatus(ctx context.Context, sessionID string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingSessionStatus, sessionID)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const reportingSessions = `-- name: ReportingSessions :many
+WITH opts AS (SELECT $1::jsonb AS f),
+cohort AS (
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
+    WHERE s.reporting_enabled_at IS NOT NULL
+        AND (s.deleted_at IS NULL OR (p.f->>'include_purged')::boolean AND s.purged_at IS NOT NULL)
+        AND ((p.f->>'include_purged')::boolean OR s.purged_at IS NULL)
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND s.parent_session_id IS NULL
+        AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_turns rt JOIN session_resource_snapshot_items ri ON ri.session_id = rt.session_id AND ri.snapshot_id = rt.resources_snapshot_id
+            WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+        AND (p.f->>'cursor_at' IS NULL OR (s.started_at,s.id) < ((p.f->>'cursor_at')::timestamptz,(p.f->>'cursor_id')::uuid))
+), page AS (SELECT id, owner_user_id, expert_id, title, session_type, client_type, client_name, device_id, turn_count, failure_code, failure_message, started_at, last_active_at, ended_at, created_at, updated_at, deleted_at, group_id, model_id, parent_session_id, mode, workspace_kind, client_version, engine_version, runtime_version, placeholder, started_at_provisional, clock_suspect, state_seq, state_hash, state_received_at, resources_snapshot_id, acked_turn, facts_version, last_stop_reason, active_seconds, client_deleted_at, purged_at, reporting_enabled_at, title_source FROM cohort ORDER BY started_at DESC,id DESC LIMIT ($1::jsonb->>'limit')::integer + 1)
+SELECT CASE WHEN s.purged_at IS NOT NULL THEN
+    jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'purged_at',s.purged_at,'tombstone',true,'sort_at',s.started_at)
+    ELSE jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'group_id',s.group_id,
+        'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
+        'client_version',s.client_version,'started_at',s.started_at,'last_active_at',s.last_active_at,
+        'active_seconds',s.active_seconds,'placeholder',s.placeholder,'clock_suspect',s.clock_suspect,
+        'turns',coalesce(turns.total,0),'last_outcome',s.last_stop_reason,'subsessions',coalesce(children.total,0),
+        'credits',coalesce(credits.net,0)::text,'tombstone',false) END
+FROM page s CROSS JOIN opts p
+LEFT JOIN LATERAL (SELECT platform FROM endpoints WHERE user_id = s.owner_user_id AND machine_id::text = s.device_id LIMIT 1) ep ON true
+LEFT JOIN LATERAL (SELECT count(*) total FROM session_turns WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz) turns ON s.purged_at IS NULL
+LEFT JOIN LATERAL (SELECT count(*) total FROM sessions WHERE parent_session_id = s.id AND deleted_at IS NULL AND purged_at IS NULL) children ON s.purged_at IS NULL
+LEFT JOIN LATERAL (SELECT -sum(credit_delta) net FROM credit_ledger_entries e WHERE e.session_id IN (SELECT id FROM sessions WHERE id = s.id OR parent_session_id = s.id) AND e.entry_type IN ('charge','refund')) credits ON s.purged_at IS NULL
+ORDER BY s.started_at DESC,s.id DESC
+`
+
+func (q *Queries) ReportingSessions(ctx context.Context, filters []byte) ([]interface{}, error) {
+	rows, err := q.db.Query(ctx, reportingSessions, filters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []interface{}{}
+	for rows.Next() {
+		var column_1 interface{}
 		if err := rows.Scan(&column_1); err != nil {
 			return nil, err
 		}
 		items = append(items, column_1)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportingTaskSessions = `-- name: ReportingTaskSessions :one
+SELECT count(*) FROM sessions
+WHERE reporting_enabled_at IS NOT NULL AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL
+    AND parent_session_id IS NULL AND started_at >= $1::timestamptz AND started_at < $2::timestamptz
+`
+
+type ReportingTaskSessionsParams struct {
+	FromTime  time.Time
+	UntilTime time.Time
+}
+
+func (q *Queries) ReportingTaskSessions(ctx context.Context, arg ReportingTaskSessionsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, reportingTaskSessions, arg.FromTime, arg.UntilTime)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const reportingTaskSummary = `-- name: ReportingTaskSummary :one
+SELECT jsonb_build_object('total', count(*), 'completed', count(*) FILTER (WHERE t.stop_reason = 'complete'),
+    'failed', count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')),
+    'interrupted', count(*) FILTER (WHERE t.stop_reason = 'interrupted'),
+    'unknown', count(*) FILTER (WHERE t.stop_reason = 'unknown'),
+    'known_outcomes', count(*) FILTER (WHERE t.stop_reason <> 'unknown'),
+    'completion_rate', 100.0 * count(*) FILTER (WHERE t.stop_reason = 'complete') / NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'), 0),
+    'anomaly_rate', 100.0 * count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')) / NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'), 0),
+    'average_duration_seconds', avg(extract(epoch FROM (t.ended_at-t.started_at))),
+    'p50_duration_seconds', percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (t.ended_at-t.started_at))),
+    'p95_duration_seconds', percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (t.ended_at-t.started_at))))
+FROM session_turns t JOIN sessions s ON s.id = t.session_id
+WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND t.started_at >= $1::timestamptz AND t.started_at < $2::timestamptz
+`
+
+type ReportingTaskSummaryParams struct {
+	FromTime  time.Time
+	UntilTime time.Time
+}
+
+func (q *Queries) ReportingTaskSummary(ctx context.Context, arg ReportingTaskSummaryParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingTaskSummary, arg.FromTime, arg.UntilTime)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const reportingTaskTrend = `-- name: ReportingTaskTrend :many
+WITH buckets AS (
+    SELECT generate_series($1::timestamptz, $3::timestamptz - interval '1 microsecond', $2::bigint * interval '1 second') AS at
+), totals AS (
+    SELECT floor(extract(epoch FROM (t.started_at - $1::timestamptz))/$2::bigint)::bigint AS bucket,
+        count(*) FILTER (WHERE t.stop_reason = 'complete') AS completed,
+        count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')) AS failed,
+        count(*) FILTER (WHERE t.stop_reason = 'interrupted') AS interrupted,
+        count(*) FILTER (WHERE t.stop_reason = 'unknown') AS unknown
+    FROM session_turns t JOIN sessions s ON s.id = t.session_id
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND t.started_at >= $1::timestamptz AND t.started_at < $3::timestamptz
+    GROUP BY 1
+)
+SELECT jsonb_build_object('at', b.at, 'completed', coalesce(v.completed,0), 'failed', coalesce(v.failed,0),
+    'interrupted', coalesce(v.interrupted,0), 'unknown', coalesce(v.unknown,0))
+FROM buckets b LEFT JOIN totals v ON v.bucket = floor(extract(epoch FROM (b.at-$1::timestamptz))/$2::bigint)::bigint
+ORDER BY b.at
+`
+
+type ReportingTaskTrendParams struct {
+	FromTime    time.Time
+	StepSeconds int64
+	UntilTime   time.Time
+}
+
+func (q *Queries) ReportingTaskTrend(ctx context.Context, arg ReportingTaskTrendParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, reportingTaskTrend, arg.FromTime, arg.StepSeconds, arg.UntilTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportingTaskTypes = `-- name: ReportingTaskTypes :many
+SELECT jsonb_build_object('key', s.session_type, 'total', count(*),
+    'completed', count(*) FILTER (WHERE t.stop_reason = 'complete'),
+    'failed', count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')),
+    'interrupted', count(*) FILTER (WHERE t.stop_reason = 'interrupted'),
+    'unknown', count(*) FILTER (WHERE t.stop_reason = 'unknown'),
+    'completion_rate', 100.0 * count(*) FILTER (WHERE t.stop_reason = 'complete') / NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'), 0),
+    'anomaly_rate', 100.0 * count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')) / NULLIF(count(*) FILTER (WHERE t.stop_reason <> 'unknown'), 0),
+    'average_duration_seconds', avg(extract(epoch FROM (t.ended_at-t.started_at))))
+FROM session_turns t JOIN sessions s ON s.id = t.session_id
+WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND t.started_at >= $1::timestamptz AND t.started_at < $2::timestamptz
+GROUP BY s.session_type ORDER BY count(*) DESC,s.session_type
+`
+
+type ReportingTaskTypesParams struct {
+	FromTime  time.Time
+	UntilTime time.Time
+}
+
+func (q *Queries) ReportingTaskTypes(ctx context.Context, arg ReportingTaskTypesParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, reportingTaskTypes, arg.FromTime, arg.UntilTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

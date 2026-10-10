@@ -244,7 +244,17 @@ func (s *Service) resolve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u, _ := identity.UserFromContext(r.Context())
+	var original Usage
+	if err = json.Unmarshal(record.Usage, &original); err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	in.Usage.Known = true
+	in.Usage.RequestID = record.RequestID
+	in.Usage.Stream = original.Stream
+	in.Usage.TerminalEvent = original.TerminalEvent
+	in.Usage.InitialErrorCode = original.InitialErrorCode
+	in.Usage.Reconciled = original.Reconciled
 	body, err := json.Marshal(in)
 	if err != nil {
 		resource.Fail(w, fmt.Errorf("序列化交易 %s 核查记录: %w", id, err))
@@ -260,7 +270,7 @@ func (s *Service) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.Finish(r.Context(), id, in.Usage); err != nil {
+	if err = s.finish(r.Context(), id, in.Usage, true); err != nil {
 		resource.Fail(w, err)
 		return
 	}

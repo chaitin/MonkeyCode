@@ -229,7 +229,7 @@ export function RulesPage() {
                         : t("pages.rules.dialogTitle")}
                     </DialogTitle>
                   </DialogHeader>
-                  <FieldGroup className="gap-5">
+                  <FieldGroup className="gap-4">
                     <Field>
                       <FieldLabel>{t("resources.availableScope")}</FieldLabel>
                       <AuthorizationSelect

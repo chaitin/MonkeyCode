@@ -7,6 +7,160 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      summary: 创建或更新一期会话元数据快照
+      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。省略标题字段时保留已有值。
+      parameters:
+        - name: X-MAI-Machine-ID
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [state_seq, client, session_type, started_at]
+              properties:
+                state_seq: {type: integer, format: int64, minimum: 0}
+                client:
+                  type: object
+                  additionalProperties: false
+                  required: [type, machine_id, version]
+                  properties:
+                    type: {type: string, enum: [desktop, web, extension, mobile, unknown]}
+                    machine_id: {type: string, format: uuid}
+                    version: {type: string}
+                    engine_version: {type: [string, 'null']}
+                    runtime_version: {type: [string, 'null']}
+                session_type: {type: string, enum: [conversation, workflow, tool, scheduled]}
+                parent_session_id: {type: [string, 'null'], format: uuid}
+                title: {type: [string, 'null'], description: UTF-8 最多 512 字节}
+                title_source: {type: [string, 'null'], description: UTF-8 最多 128 字节}
+                expert_id: {type: [string, 'null'], format: uuid}
+                model_id: {type: [string, 'null'], format: uuid}
+                mode: {type: [string, 'null']}
+                workspace_kind: {type: [string, 'null']}
+                started_at: {type: string, format: date-time}
+                client_deleted_at: {type: [string, 'null'], format: date-time}
+      responses:
+        '200':
+          description: 已确认的会话快照及轮次游标
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state_seq, acked_turn, server_time]
+                properties:
+                  state_seq: {type: integer, format: int64}
+                  acked_turn: {type: integer}
+                  server_time: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '429': {description: 请求过于频繁，遵守 Retry-After}
+  /api/v1/sessions/{id}/turns:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      summary: 批量追加已完成的轮次报告
+      description: 一期只接受 finished 统计事实，不接受正文、工具参数、工具输出或文件。
+      parameters:
+        - name: X-MAI-Machine-ID
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: after_turn
+          in: query
+          required: true
+          schema: {type: integer, minimum: 0}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [facts_version, turns]
+              properties:
+                facts_version: {type: integer, minimum: 1}
+                snapshots:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [snapshot_id, items]
+                    properties:
+                      snapshot_id: {type: string, description: 'sha256: 前缀的规范化资源快照摘要'}
+                      revision: {type: [integer, 'null']}
+                      state_version: {type: [integer, 'null']}
+                      items: {type: array, items: {type: object}}
+                turns:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [turn_index, input_seq, started_at, ended_at, stop_reason, resources_snapshot_id, input]
+                    properties:
+                      turn_index: {type: integer, minimum: 1}
+                      input_seq: {type: integer, format: int64}
+                      started_at: {type: string, format: date-time}
+                      ended_at: {type: string, format: date-time}
+                      stop_reason: {type: string, enum: [complete, interrupted, error, max_turns, output_limit, unknown]}
+                      error_code: {type: [string, 'null']}
+                      recovered: {type: boolean}
+                      model_id: {type: [string, 'null'], format: uuid}
+                      thinking: {type: [object, 'null'], description: enabled 和 effort，不含思考内容}
+                      resources_snapshot_id: {type: string}
+                      client_version: {type: [string, 'null']}
+                      engine_version: {type: [string, 'null']}
+                      usage: {type: [object, 'null'], description: 仅四类 Token 计数，不含请求或响应正文}
+                      subagent_usage: {type: [object, 'null']}
+                      context_used: {type: [integer, 'null']}
+                      context_window: {type: [integer, 'null']}
+                      input: {type: object, description: 仅 kind、origin、command_skill_id 与数量统计}
+                      files_changed: {type: object, description: 仅 created、updated、deleted 数量}
+                      compactions: {type: integer}
+                      permissions: {type: object, description: 仅 asked、allowed、denied 数量}
+                      tools: {type: array, maxItems: 500, items: {type: object}}
+                      skill_events: {type: array, items: {type: object}}
+                      truncated: {type: boolean}
+      responses:
+        '200':
+          description: 已确认轮次和资源快照
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acked_turn, accepted, duplicates, snapshots_acked]
+                properties:
+                  acked_turn: {type: integer}
+                  accepted: {type: integer}
+                  duplicates: {type: integer}
+                  snapshots_acked: {type: array, items: {type: string}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '413': {description: 请求体超过服务端限制}
+        '422': {description: facts_version 不支持，错误响应包含 supported}
+        '429': {description: 请求过于频繁，遵守 Retry-After}
   /api/v1/endpoints:
     get:
       summary: 分页读取当前用户端点
@@ -56,6 +210,40 @@ paths:
   /api/v1/endpoints/{machine_id}:
     parameters:
       - {$ref: '#/components/parameters/EndpointMachine'}
+    put:
+      summary: 登记或更新当前用户的设备元数据
+      description: 不依赖会话上报开关；不会恢复已撤销端点；active 端点最多 20 个。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [device_name, platform, os_version, arch, client_version]
+              properties:
+                device_name: {type: string, maxLength: 128}
+                platform: {type: string, enum: [macos, windows, linux, ios, android, web]}
+                os_version: {type: string, maxLength: 64}
+                arch: {type: string, maxLength: 32}
+                client_version: {type: string, maxLength: 64}
+                protocol_version: {type: [integer, 'null']}
+                client_type: {type: [string, 'null']}
+                client_name: {type: [string, 'null']}
+                channel: {type: [string, 'null']}
+                locale: {type: [string, 'null']}
+                system_locale: {type: [string, 'null']}
+                timezone: {type: [string, 'null']}
+                runtime_version: {type: [string, 'null']}
+                engine_version: {type: [string, 'null']}
+                electron_version: {type: [string, 'null']}
+      responses:
+        '200': {$ref: '#/components/responses/EndpointResult'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: endpoint_limit_exceeded 或 endpoint_revoked}
+        '429': {description: 设备登记每用户每小时最多十次，遵守 Retry-After}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
     get:
       summary: 读取当前用户的单个端点
       responses:
@@ -946,6 +1134,28 @@ paths:
           description: 调用密钥无效
         '403':
           description: 请求来源不允许
+  /api/v1/groups:
+    get:
+      summary: 搜索可分享的真实分组
+      description: 按名称不区分大小写进行字面子串匹配，仅返回未删除分组；不包含虚拟根组及成员信息。分享给父组可覆盖后代组成员。
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 200}
+        description: 去除首尾空白后长度为 1—200 字节。
+      - in: query
+        name: limit
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 匹配的分组。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SearchGroupsResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/InternalError'}
   /api/v1/users:
     get:
       summary: 按用户名或邮箱查找分享接收用户
@@ -1109,9 +1319,8 @@ paths:
           $ref: '#/components/responses/ResourceError500'
   /api/v1/resources/shares:
     post:
-      summary: 批量分享自己的资源给指定用户
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他接收用户；重复授权不会产生重复记录。每批资源和用户各
-        1—100 项，任一资源非本人所有或任一接收用户无效时整批回滚。禁止分享给自己，不允许接收方转分享。
+      summary: 批量分享自己的资源给指定用户或分组
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己或虚拟根组，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效。
       requestBody:
         required: true
         content:
@@ -1130,8 +1339,8 @@ paths:
         '500':
           $ref: '#/components/responses/ResourceError500'
     delete:
-      summary: 批量撤销指定用户的资源分享
-      description: 仅所有者可以撤销。只移除本批指定资源与用户间的授权，不存在的授权视为成功；允许撤销已停用或已删除用户的授权。任一资源无权操作则整批回滚。
+      summary: 批量撤销指定用户或分组的资源分享
+      description: 仅所有者可以撤销。只移除本批指定资源与用户或分组间的直接授权，不影响其他用户/分组的授权；不存在的授权视为成功，允许撤销已停用或已删除的接收对象。任一资源无权操作则整批回滚。
       requestBody:
         required: true
         content:
@@ -2792,6 +3001,41 @@ paths:
             image/webp: {schema: {type: string, format: binary}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/v1/feedback:
+    post:
+      summary: 提交用户反馈
+      description: >-
+        使用 Agent OAuth access token 提交文字反馈和可选截图。请求使用 multipart/form-data，最多上传 3 张
+        PNG、JPEG 或 WebP 图片，单张最多 5 MiB，总请求最多 16 MiB。content 和 images 至少提供一项。
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 建议客户端为可重试请求提供；同一用户相同 Key 和请求内容只创建一条反馈。
+          schema: {type: string, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FeedbackMultipartInput'
+      responses:
+        '201':
+          description: 反馈已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmission'
+        '200':
+          description: 幂等键命中已有反馈
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmission'
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
 components:
   securitySchemes:
     ModelInvocationKey:
@@ -2992,6 +3236,59 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    FeedbackMultipartInput:
+      type: object
+      additionalProperties: false
+      required: [category]
+      properties:
+        category:
+          type: string
+          enum: [bug, feature, experience, other]
+        content:
+          type: string
+          maxLength: 5000
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        platform:
+          type: string
+          enum: [desktop, mobile, web, other]
+          default: other
+        client_version:
+          type: string
+          maxLength: 64
+        images:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            format: binary
+          description: PNG、JPEG 或 WebP 图片；单张最多 5 MiB。
+    FeedbackSubmission:
+      type: object
+      additionalProperties: false
+      required: [id, created_at, attachments]
+      properties:
+        id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackAttachment'
+    FeedbackAttachment:
+      type: object
+      additionalProperties: false
+      required: [id, mime_type, byte_size, width, height, downloadable]
+      properties:
+        id: {type: string, format: uuid}
+        mime_type:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        byte_size: {type: integer, format: int64, minimum: 1}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        downloadable: {type: boolean}
     Endpoint:
       type: object
       required: [machine_id, device_name, alias, display_name, platform, os_version, arch, client_version, protocol_version, status, online, created_at, updated_at, last_seen_at, revoked_at]
@@ -3299,6 +3596,23 @@ components:
         email:
           type: string
           format: email
+    GroupSummary:
+      type: object
+      required: [id, name, parent_id]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        parent_id:
+          type: string
+          format: uuid
+          description: 顶层分组的父 ID 为虚拟根组 ID；虚拟根组自身不可分享。
+    SearchGroupsResponse:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items: {$ref: '#/components/schemas/GroupSummary'}
     SearchUsersResponse:
       type: object
       required:
@@ -3399,6 +3713,9 @@ components:
               minimum: 0
             supports_vision:
               type: boolean
+            supports_reasoning:
+              type: boolean
+              default: false
     CreateUserModelInput:
       allOf:
       - $ref: '#/components/schemas/UserModelInput'
@@ -3461,6 +3778,11 @@ components:
           type: number
           exclusiveMinimum: 0
           description: 服务端管理，用户不可修改。
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 当前所有者直接分享的分组，未分享时为空数组。
         authorization:
           type: object
           required:
@@ -3483,9 +3805,9 @@ components:
           format: date-time
     ShareResourcesInput:
       type: object
+      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。虚拟根组不可作为分享对象。
       required:
       - resources
-      - user_ids
       properties:
         resources:
           type: array
@@ -3509,10 +3831,14 @@ components:
               id: *id006
         user_ids:
           type: array
-          minItems: 1
           maxItems: 100
           items: *id006
           description: 接收用户 ID，重复项自动去重。
+        group_ids:
+          type: array
+          maxItems: 100
+          items: *id006
+          description: 接收真实分组 ID，重复项自动去重；不展开成员。
     ErrorResponse:
       type: object
       required: [error]
@@ -3920,6 +4246,11 @@ components:
         creator:
           $ref: '#/components/schemas/UserSummary'
           description: 他人创建的用户模型返回创建者；自己的模型和系统模型不返回。
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           items:
@@ -3959,6 +4290,9 @@ components:
         supports_vision:
           type: boolean
           description: 模型是否支持图像输入。
+        supports_reasoning:
+          type: boolean
+          description: 模型是否支持推理能力。
         credit_multiplier:
           type: number
           exclusiveMinimum: 0
@@ -4207,6 +4541,11 @@ components:
     AgentRule:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4248,6 +4587,11 @@ components:
     AgentSkill:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4299,6 +4643,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4384,6 +4733,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4559,6 +4913,11 @@ components:
     RuleResource:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4623,6 +4982,11 @@ components:
     SkillResource:
       type: object
       properties:
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4705,6 +5069,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true
@@ -4806,6 +5175,11 @@ components:
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
+        shared_groups:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/GroupSummary'}
+          description: 仅资源所有者可见的直接分享分组，未分享时为空数组；不展开成员。
         shared_users:
           type: array
           readOnly: true

@@ -263,6 +263,8 @@ export const ruRU = {
       },
     },
     models: {
+      noTags: "Без тегов",
+      maxOutputTokens: "Максимум выходных токенов",
       searchAuthorization: "Поиск по имени, почте или пиньиню",
       noMatchingAuthorization: "Подходящие группы и пользователи не найдены.",
 
@@ -274,7 +276,7 @@ export const ruRU = {
       kind: "Тип модели",
       textKind: "Большая языковая модель",
       imageKind: "Генерация изображений",
-      imageProvider: "Поставщик изображений",
+      imageProvider: "Протокол генерации изображений",
       imageCapabilitiesUnavailable:
         "Не удалось загрузить параметры этого поставщика.",
       selectAllSupported: "Выбрать все поддерживаемые",
@@ -298,6 +300,7 @@ export const ruRU = {
       taskStatus: "Статус задачи",
       systemModel: "Системные модели",
       userModel: "Пользовательские модели",
+      creator: "Автор",
       add: "Добавить модель",
       dialogTitle: "Добавить модель",
       dialogDescription:
@@ -313,6 +316,8 @@ export const ruRU = {
       contextSize: "Размер контекста",
       imageRecognition: "Распознавание изображений",
       supportsVision: "Распознавание изображений",
+      supportsReasoning: "Способность к рассуждению",
+      notRecommended: "Не рекомендуется",
       supportsVisionDescription:
         "Разрешает отправлять изображения этой модели.",
       baseUrl: "Base URL",
@@ -321,6 +326,7 @@ export const ruRU = {
       apiKey: "Ключ API",
       apiKeyPlaceholder: "Введите ключ API модели",
       multiplier: "Множитель",
+      billingMultiplier: "Множитель списания",
       authorizedScope: "Область доступа",
       authorizationPlaceholder: "Выберите группы или пользователей",
       authorizedGroupsDescription:
@@ -1064,6 +1070,16 @@ export const ruRU = {
         baizhiyunScopes:
           "Разрешения по умолчанию: auth_certification openid phone user email",
         issuerUrl: "URL издателя",
+        scopes: "Области доступа (scopes)",
+        scopesDescription:
+          "Разделяйте области доступа пробелами, например: profile. Добавлять openid необязательно. Если поле пустое, используются значения по умолчанию openid profile email.",
+        userinfoFields: "Имена полей верхнего уровня в userinfo",
+        userinfoDescription:
+          "URL для userinfo определяется автоматически по userinfo_endpoint в документе OIDC Discovery издателя; вводить его вручную не нужно. Укажите имена полей верхнего уровня в ответе userinfo.",
+        idField: "Имя поля идентификатора пользователя",
+        usernameField: "Имя поля имени пользователя",
+        avatarField: "Имя поля аватара",
+        emailField: "Имя поля электронной почты",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "Отмена",

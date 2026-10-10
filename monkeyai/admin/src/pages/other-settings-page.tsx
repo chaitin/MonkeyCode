@@ -100,6 +100,14 @@ const OAUTH_PROVIDERS = [
   { value: "oidc", labelKey: "pages.otherSettings.oauth.providers.oidc" },
 ] as const
 
+const OIDC_FIELD_DEFAULTS = {
+  idField: "sub",
+  usernameField: "name",
+  avatarField: "picture",
+  emailField: "email",
+} as const
+const DEFAULT_OIDC_SCOPES = "openid profile email"
+
 const ENCRYPTION_OPTIONS = [
   {
     value: "starttls",
@@ -138,6 +146,10 @@ type OAuthConnection = {
   clientId: string
   clientSecret: string
   issuerUrl?: string
+  idField?: string
+  usernameField?: string
+  avatarField?: string
+  emailField?: string
   scopes?: string[]
   enabled: boolean
   autoRegistrationEnabled: boolean
@@ -151,6 +163,10 @@ type OAuthPendingAction = {
 type AutoRegistrationPendingAction =
   | { type: "email"; enabled: boolean }
   | { type: "oauth"; enabled: boolean; connection: OAuthConnection }
+
+function readOidcField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined
+}
 
 function readOAuthConnections(
   value: Record<string, unknown>
@@ -169,6 +185,14 @@ function readOAuthConnections(
       issuerUrl: connection.issuer_url
         ? String(connection.issuer_url)
         : undefined,
+      ...(connection.provider === "oidc"
+        ? {
+            idField: readOidcField(connection.id_field),
+            usernameField: readOidcField(connection.username_field),
+            avatarField: readOidcField(connection.avatar_field),
+            emailField: readOidcField(connection.email_field),
+          }
+        : {}),
       scopes: Array.isArray(connection.scopes)
         ? connection.scopes.map(String)
         : undefined,
@@ -424,6 +448,22 @@ export function OtherSettingsPage() {
         client_id: connection.clientId,
         client_secret: connection.clientSecret,
         issuer_url: connection.issuerUrl ?? null,
+        ...(connection.provider === "oidc"
+          ? {
+              ...(connection.idField?.trim()
+                ? { id_field: connection.idField }
+                : {}),
+              ...(connection.usernameField?.trim()
+                ? { username_field: connection.usernameField }
+                : {}),
+              ...(connection.avatarField?.trim()
+                ? { avatar_field: connection.avatarField }
+                : {}),
+              ...(connection.emailField?.trim()
+                ? { email_field: connection.emailField }
+                : {}),
+            }
+          : {}),
         scopes: connection.scopes,
         enabled: connection.enabled,
         auto_registration_enabled: connection.autoRegistrationEnabled,
@@ -486,13 +526,23 @@ export function OtherSettingsPage() {
     const clientId = String(formData.get("clientId") ?? "").trim()
     const clientSecret = String(formData.get("clientSecret") ?? "").trim()
     const issuerUrl = String(formData.get("issuerUrl") ?? "").trim()
+    const oidcFields =
+      oauthProvider === "oidc"
+        ? {
+            idField: String(formData.get("idField") ?? "").trim(),
+            usernameField: String(formData.get("usernameField") ?? "").trim(),
+            avatarField: String(formData.get("avatarField") ?? "").trim(),
+            emailField: String(formData.get("emailField") ?? "").trim(),
+          }
+        : undefined
 
     if (
       !name ||
       !clientId ||
       (!clientSecret && !editingOauthConnection) ||
       ((oauthProvider === "oidc" || oauthProvider === "baizhiyun") &&
-        !issuerUrl)
+        !issuerUrl) ||
+      (oidcFields && Object.values(oidcFields).some((field) => !field))
     ) {
       return
     }
@@ -504,7 +554,14 @@ export function OtherSettingsPage() {
       clientId,
       clientSecret,
       issuerUrl: issuerUrl || undefined,
-      scopes: editingOauthConnection?.scopes,
+      ...oidcFields,
+      scopes:
+        oauthProvider === "oidc"
+          ? String(formData.get("scopes") ?? "")
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean)
+          : editingOauthConnection?.scopes,
       enabled: editingOauthConnection?.enabled ?? true,
       autoRegistrationEnabled:
         editingOauthConnection?.autoRegistrationEnabled ?? true,
@@ -964,7 +1021,7 @@ export function OtherSettingsPage() {
                   : t("pages.otherSettings.skillTags.addDialogTitle")}
               </DialogTitle>
             </DialogHeader>
-            <FieldGroup>
+            <FieldGroup className="gap-4">
               <Field data-invalid={Boolean(tagError)}>
                 <FieldLabel htmlFor="skill-tag-name">
                   {t("pages.otherSettings.skillTags.name")}
@@ -1114,7 +1171,7 @@ export function OtherSettingsPage() {
                                 )}
                               </DialogDescription>
                             </DialogHeader>
-                            <FieldGroup>
+                            <FieldGroup className="gap-4">
                               <Field>
                                 <FieldLabel htmlFor={`${kind}-model`}>
                                   {t("pages.otherSettings.knowledgeBase.model")}
@@ -1294,7 +1351,7 @@ export function OtherSettingsPage() {
                           )}
                         </DialogDescription>
                       </DialogHeader>
-                      <FieldGroup>
+                      <FieldGroup className="gap-4">
                         <Field>
                           <FieldLabel>
                             {t(
@@ -1426,7 +1483,7 @@ export function OtherSettingsPage() {
                           )}
                         </DialogDescription>
                       </DialogHeader>
-                      <FieldGroup className="gap-5">
+                      <FieldGroup className="gap-4">
                         <FieldGroup className="grid gap-4 sm:grid-cols-2">
                           <Field>
                             <FieldLabel htmlFor="enhancement-model-id">
@@ -1591,7 +1648,7 @@ export function OtherSettingsPage() {
                 {t("pages.otherSettings.oauth.add")}
               </DialogTrigger>
               <DialogContent
-                className="sm:max-w-lg"
+                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
                 closeLabel={t("common.close")}
               >
                 <form
@@ -1608,7 +1665,7 @@ export function OtherSettingsPage() {
                       )}
                     </DialogTitle>
                   </DialogHeader>
-                  <FieldGroup>
+                  <FieldGroup className="gap-4">
                     <Field>
                       <FieldLabel htmlFor="oauth-provider">
                         {t("pages.otherSettings.oauth.provider")}
@@ -1695,6 +1752,94 @@ export function OtherSettingsPage() {
                         required={!editingOauthConnection}
                       />
                     </Field>
+                    {oauthProvider === "oidc" && (
+                      <Field>
+                        <FieldLabel htmlFor="oauth-scopes">
+                          {t("pages.otherSettings.oauth.scopes")}
+                        </FieldLabel>
+                        <Input
+                          id="oauth-scopes"
+                          name="scopes"
+                          defaultValue={
+                            editingOauthConnection?.provider === "oidc" &&
+                            editingOauthConnection.scopes?.length
+                              ? editingOauthConnection.scopes.join(" ")
+                              : DEFAULT_OIDC_SCOPES
+                          }
+                        />
+                        <FieldDescription>
+                          {t("pages.otherSettings.oauth.scopesDescription")}
+                        </FieldDescription>
+                      </Field>
+                    )}
+                    {oauthProvider === "oidc" && (
+                      <FieldSet>
+                        <FieldLegend>
+                          {t("pages.otherSettings.oauth.userinfoFields")}
+                        </FieldLegend>
+                        <FieldDescription>
+                          {t("pages.otherSettings.oauth.userinfoDescription")}
+                        </FieldDescription>
+                        <FieldGroup className="gap-4">
+                          <Field>
+                            <FieldLabel htmlFor="oauth-id-field">
+                              {t("pages.otherSettings.oauth.idField")}
+                            </FieldLabel>
+                            <Input
+                              id="oauth-id-field"
+                              name="idField"
+                              defaultValue={
+                                editingOauthConnection?.idField ??
+                                OIDC_FIELD_DEFAULTS.idField
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="oauth-username-field">
+                              {t("pages.otherSettings.oauth.usernameField")}
+                            </FieldLabel>
+                            <Input
+                              id="oauth-username-field"
+                              name="usernameField"
+                              defaultValue={
+                                editingOauthConnection?.usernameField ??
+                                OIDC_FIELD_DEFAULTS.usernameField
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="oauth-avatar-field">
+                              {t("pages.otherSettings.oauth.avatarField")}
+                            </FieldLabel>
+                            <Input
+                              id="oauth-avatar-field"
+                              name="avatarField"
+                              defaultValue={
+                                editingOauthConnection?.avatarField ??
+                                OIDC_FIELD_DEFAULTS.avatarField
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="oauth-email-field">
+                              {t("pages.otherSettings.oauth.emailField")}
+                            </FieldLabel>
+                            <Input
+                              id="oauth-email-field"
+                              name="emailField"
+                              defaultValue={
+                                editingOauthConnection?.emailField ??
+                                OIDC_FIELD_DEFAULTS.emailField
+                              }
+                              required
+                            />
+                          </Field>
+                        </FieldGroup>
+                      </FieldSet>
+                    )}
                     {oauthProvider === "baizhiyun" && (
                       <FieldDescription>
                         {t("pages.otherSettings.oauth.baizhiyunScopes")}

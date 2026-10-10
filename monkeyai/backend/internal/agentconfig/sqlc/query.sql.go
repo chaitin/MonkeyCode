@@ -243,7 +243,7 @@ WITH RECURSIVE user_groups (
 )
 SELECT
     jsonb_build_object('kind', resource_type, 'id', resource_id, 'required',
-	bool_or(usage_requirement = 'required'))
+	bool_or(usage_requirement = 'required'), 'explicit', bool_or(NOT rag.all_users))
 FROM
     resource_access_grants rag
 WHERE

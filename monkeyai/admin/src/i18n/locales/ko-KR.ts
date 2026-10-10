@@ -257,6 +257,8 @@ export const koKR = {
       },
     },
     models: {
+      noTags: "태그 없음",
+      maxOutputTokens: "최대 출력 Token",
       searchAuthorization: "이름, 이메일 또는 병음으로 검색",
       noMatchingAuthorization: "일치하는 그룹이나 사용자가 없습니다.",
 
@@ -267,7 +269,7 @@ export const koKR = {
       kind: "모델 유형",
       textKind: "대규모 언어 모델",
       imageKind: "이미지 생성",
-      imageProvider: "이미지 공급자",
+      imageProvider: "이미지 생성 프로토콜",
       imageCapabilitiesUnavailable:
         "이 공급자의 이미지 옵션을 불러올 수 없습니다.",
       selectAllSupported: "지원 항목 모두 선택",
@@ -291,6 +293,7 @@ export const koKR = {
       taskStatus: "작업 상태",
       systemModel: "시스템 모델",
       userModel: "사용자 모델",
+      creator: "생성자",
       add: "모델 추가",
       dialogTitle: "모델 추가",
       dialogDescription:
@@ -306,6 +309,8 @@ export const koKR = {
       contextSize: "컨텍스트 크기",
       imageRecognition: "이미지 인식",
       supportsVision: "이미지 인식",
+      supportsReasoning: "추론 기능",
+      notRecommended: "권장하지 않음",
       supportsVisionDescription: "이 모델에 이미지 콘텐츠 전송을 허용합니다.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -313,6 +318,7 @@ export const koKR = {
       apiKey: "API 키",
       apiKeyPlaceholder: "모델 API 키 입력",
       multiplier: "배율",
+      billingMultiplier: "과금 배율",
       authorizedScope: "권한 범위",
       authorizationPlaceholder: "그룹 또는 사용자 선택",
       authorizedGroupsDescription:
@@ -1027,6 +1033,16 @@ export const koKR = {
         baizhiyunScopes:
           "기본 권한 범위: auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
+        scopes: "권한 범위 (Scope)",
+        scopesDescription:
+          "권한 범위를 공백으로 구분해 입력하세요(예: profile). openid를 추가할 필요는 없습니다. 비워 두면 기본값 openid profile email이 사용됩니다.",
+        userinfoFields: "userinfo 최상위 필드 이름",
+        userinfoDescription:
+          "userinfo URL은 발급자의 OIDC Discovery에 있는 userinfo_endpoint에서 자동으로 확인하므로 직접 입력할 필요가 없습니다. userinfo 응답의 최상위 필드 이름을 입력하세요.",
+        idField: "사용자 ID 필드 이름",
+        usernameField: "사용자 이름 필드 이름",
+        avatarField: "프로필 이미지 필드 이름",
+        emailField: "이메일 필드 이름",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "취소",

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import {
   AiChat02Icon,
   AiImageIcon,
+  ArrowRight01Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -13,11 +14,14 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { AuthorizationSelect } from "@/components/authorization-select"
+import {
+  GroupSelect,
+  type GroupSelectOption,
+  type GroupSelectUser,
+} from "@/components/group-select"
 import { ImageCapabilitySelector } from "@/components/image-capability-selector"
 import { ImageGenerationTest } from "@/components/image-generation-test"
 import { SkillTagSelect } from "@/components/skill-tag-select"
-import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +35,11 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Card,
   CardContent,
@@ -57,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Item, ItemActions, ItemContent, ItemGroup } from "@/components/ui/item"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -66,19 +76,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Iconfont } from "@/components/iconfont"
-import {
-  getAuthorizationNames,
-  type AuthorizationGroupNode,
-  type AuthorizationMember,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { getModelIconName } from "@/lib/model-utils"
+import type { SkillTag } from "@/lib/skill-tags"
 import { cn } from "@/lib/utils"
 
 const PROTOCOLS = [
@@ -131,9 +138,11 @@ type ModelBase = {
   id: string
   modelId: string
   displayName: string
+  owner: string
   contextSizeK: number
   maxOutputTokens: number
   supportsVision: boolean
+  supportsReasoning: boolean
   baseUrl: string
   protocol: ModelProtocol
   kind: ModelKind
@@ -151,6 +160,7 @@ type Model = ModelBase & { type: ModelType; multiplier: number }
 type ApiModel = {
   id: string
   ownership_type: ModelType
+  user: { id: string; name: string; email: string }
   model_id: string
   display_name: string
   protocol: ModelProtocol
@@ -164,6 +174,7 @@ type ApiModel = {
     context_window_tokens: number
     max_output_tokens: number
     supports_vision: boolean
+    supports_reasoning?: boolean
   }
   credit_multiplier: number
   tags?: { id: string; name: string }[]
@@ -187,9 +198,11 @@ function fromApiModel(model: ApiModel): Model {
     id: model.id,
     modelId: model.model_id,
     displayName: model.display_name,
+    owner: model.user.name || model.user.email || model.user.id,
     contextSizeK: (model.advanced_config?.context_window_tokens ?? 0) / 1000,
     maxOutputTokens: model.advanced_config?.max_output_tokens ?? 0,
     supportsVision: model.advanced_config?.supports_vision ?? false,
+    supportsReasoning: model.advanced_config?.supports_reasoning ?? false,
     baseUrl: model.base_url,
     protocol: model.protocol,
     kind: model.kind ?? "text",
@@ -208,38 +221,45 @@ function fromApiModel(model: ApiModel): Model {
   }
 }
 
-function buildGroupTree(groups: AuthorizationSubject[]) {
-  const nodes = new Map<string, AuthorizationGroupNode>()
-  groups.forEach((group) =>
-    nodes.set(group.id, { value: group.id, labelKey: group.name, children: [] })
-  )
-  const roots: AuthorizationGroupNode[] = []
-  groups.forEach((group) => {
-    const node = nodes.get(group.id)!
-    const parent = group.parent_id ? nodes.get(group.parent_id) : undefined
-    if (parent) parent.children!.push(node)
-    else roots.push(node)
-  })
-  return roots
-}
+function ModelTagBadges({
+  tagIds,
+  tags,
+}: {
+  tagIds: string[]
+  tags: SkillTag[]
+}) {
+  const { t } = useTranslation()
+  const selectedTags = tags.filter((tag) => tagIds.includes(tag.id))
 
-function flattenGroupTree(
-  groups: AuthorizationGroupNode[],
-  parentId: string | null = null
-): (AuthorizationGroupNode & { parentId: string | null })[] {
-  return groups.flatMap((group) => [
-    { ...group, parentId },
-    ...flattenGroupTree(group.children ?? [], group.value),
-  ])
+  if (!selectedTags.length) {
+    return (
+      <span className="text-muted-foreground">{t("pages.models.noTags")}</span>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap gap-2">
+      {selectedTags.map((tag) => (
+        <Badge
+          key={tag.id}
+          variant="outline"
+          className="max-w-full truncate"
+          title={tag.name}
+        >
+          {tag.name}
+        </Badge>
+      ))}
+    </div>
+  )
 }
 
 export function ModelsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
-  const [groups, setGroups] = useState<AuthorizationGroupNode[]>([])
-  const [members, setMembers] = useState<AuthorizationMember[]>([])
+  const [groups, setGroups] = useState<GroupSelectOption[]>([])
+  const [members, setMembers] = useState<GroupSelectUser[]>([])
   const [loadRevision, setLoadRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const [activeModelType, setActiveModelType] = useState<ModelType>("system")
@@ -248,9 +268,7 @@ export function ModelsPage() {
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
   const [modelToTest, setModelToTest] = useState<Model | null>(null)
-  const [protocol, setProtocol] = useState<ModelProtocol>(
-    "openai_chat_completions"
-  )
+  const [protocol, setProtocol] = useState<ModelProtocol>("openai_responses")
   const [kind, setKind] = useState<ModelKind>("text")
   const [provider, setProvider] = useState<ImageProvider>("openai_images")
   const [imageCapabilities, setImageCapabilities] =
@@ -263,9 +281,9 @@ export function ModelsPage() {
   const [qualityMultipliers, setQualityMultipliers] = useState<
     Record<string, string>
   >({})
-  const [supportsVision, setSupportsVision] = useState(false)
+  const [supportsVision, setSupportsVision] = useState(true)
+  const [supportsReasoning, setSupportsReasoning] = useState(true)
   const [tagsOpen, setTagsOpen] = useState(false)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -284,13 +302,19 @@ export function ModelsPage() {
       .then(([modelResult, subjects]) => {
         if (!active) return
         setModels(modelResult.models.map(fromApiModel))
-        setGroups(buildGroupTree(subjects.groups))
+        setGroups(
+          subjects.groups.map((group) => ({
+            id: group.id,
+            name: group.name,
+            parentId: group.parent_id ?? null,
+          }))
+        )
         setMembers(
           subjects.users.map((user) => ({
             id: user.id,
             name: user.name,
             email: user.email ?? "",
-            groupId: user.group_id ?? "",
+            groupIds: user.group_id ? [user.group_id] : [],
           }))
         )
       })
@@ -384,7 +408,7 @@ export function ModelsPage() {
   }
 
   const resetModelOptions = () => {
-    setProtocol("openai_chat_completions")
+    setProtocol("openai_responses")
     setKind("text")
     setProvider("openai_images")
     setImageCapabilities(null)
@@ -394,9 +418,9 @@ export function ModelsPage() {
     setDefaultAspectRatio("")
     setBaseCredits("10")
     setQualityMultipliers({})
-    setSupportsVision(false)
+    setSupportsVision(true)
+    setSupportsReasoning(true)
     setTagsOpen(false)
-    setAuthorizationOpen(false)
     setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
   }
@@ -434,6 +458,7 @@ export function ModelsPage() {
       )
     )
     setSupportsVision(model.supportsVision)
+    setSupportsReasoning(model.supportsReasoning)
     setTagIds(model.tagIds)
     setAuthorization(model.authorization)
     setDialogOpen(true)
@@ -564,6 +589,7 @@ export function ModelsPage() {
                 context_window_tokens: contextSizeK * 1000,
                 max_output_tokens: maxOutputTokens,
                 supports_vision: supportsVision,
+                supports_reasoning: supportsReasoning,
               },
               credit_multiplier: multiplier,
             }
@@ -655,12 +681,12 @@ export function ModelsPage() {
                 {t("pages.models.add")}
               </DialogTrigger>
               <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
                 closeLabel={t("common.close")}
               >
                 <form
                   key={editingModel?.id ?? "new-model"}
-                  className="flex flex-col gap-6"
+                  className="flex min-h-0 flex-col gap-6"
                   onSubmit={handleAddModel}
                 >
                   <DialogHeader>
@@ -670,193 +696,80 @@ export function ModelsPage() {
                         : t("pages.models.dialogTitle")}
                     </DialogTitle>
                   </DialogHeader>
-                  <Tabs
-                    value={kind}
-                    onValueChange={(value) => {
-                      const next = value as ModelKind
-                      setKind(next)
-                      setImageCapabilities(null)
-                      if (next === "text")
-                        setProtocol("openai_chat_completions")
-                    }}
-                  >
-                    <TabsList
-                      className="w-full"
-                      aria-label={t("pages.models.kind")}
+                  <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:pe-3">
+                    <Tabs
+                      value={kind}
+                      onValueChange={(value) => {
+                        const next = value as ModelKind
+                        setKind(next)
+                        setImageCapabilities(null)
+                        if (next === "text") setProtocol("openai_responses")
+                      }}
                     >
-                      <TabsTrigger type="button" value="text">
-                        <HugeiconsIcon
-                          icon={AiChat02Icon}
-                          data-icon="inline-start"
-                        />
-                        {t("pages.models.textKind")}
-                      </TabsTrigger>
-                      <TabsTrigger type="button" value="image">
-                        <HugeiconsIcon
-                          icon={AiImageIcon}
-                          data-icon="inline-start"
-                        />
-                        {t("pages.models.imageKind")}
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                  <FieldGroup className="gap-4">
-                    <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                      <Field>
-                        <FieldLabel htmlFor="model-id">
-                          {t("pages.models.modelId")}
-                        </FieldLabel>
-                        <Input
-                          id="model-id"
-                          name="modelId"
-                          defaultValue={editingModel?.modelId}
-                          placeholder={t("pages.models.modelIdPlaceholder")}
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="model-display-name">
-                          {t("pages.models.displayName")}
-                        </FieldLabel>
-                        <Input
-                          id="model-display-name"
-                          name="displayName"
-                          defaultValue={editingModel?.displayName}
-                          placeholder={t("pages.models.displayNamePlaceholder")}
-                          required
-                        />
-                      </Field>
-                    </FieldGroup>
-
-                    {kind === "image" && (
-                      <Field>
-                        <FieldLabel htmlFor="model-provider">
-                          {t("pages.models.imageProvider")}
-                        </FieldLabel>
-                        <Select
-                          items={IMAGE_PROVIDERS}
-                          value={provider}
-                          onValueChange={(value) => {
-                            setProvider(value as ImageProvider)
-                            setImageCapabilities(null)
-                          }}
-                        >
-                          <SelectTrigger className="w-full" id="model-provider">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {IMAGE_PROVIDERS.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.label}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    )}
-
-                    <Field>
-                      <FieldLabel htmlFor="model-base-url">
-                        {t("pages.models.baseUrl")}
-                      </FieldLabel>
-                      <Input
-                        id="model-base-url"
-                        name="baseUrl"
-                        defaultValue={editingModel?.baseUrl}
-                        type="url"
-                        placeholder={t("pages.models.baseUrlPlaceholder")}
-                        required
-                      />
-                    </Field>
-
-                    <Field>
-                      <FieldLabel htmlFor="model-api-key">
-                        {t("pages.models.apiKey")}
-                      </FieldLabel>
-                      <Input
-                        autoComplete="new-password"
-                        id="model-api-key"
-                        name="apiKey"
-                        defaultValue=""
-                        placeholder={t("pages.models.apiKeyPlaceholder")}
-                        type="password"
-                        required={!editingModel?.apiKeyConfigured}
-                      />
-                    </Field>
-
-                    {kind === "text" && (
-                      <FieldGroup className="grid gap-4 sm:grid-cols-4">
+                      <TabsList
+                        className="w-full"
+                        aria-label={t("pages.models.kind")}
+                      >
+                        <TabsTrigger type="button" value="text">
+                          {t("pages.models.textKind")}
+                        </TabsTrigger>
+                        <TabsTrigger type="button" value="image">
+                          {t("pages.models.imageKind")}
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                    <FieldGroup className="gap-4">
+                      <FieldGroup className="grid gap-4 sm:grid-cols-2">
                         <Field>
-                          <FieldLabel htmlFor="model-context-size">
-                            {t("pages.models.contextSize")} (K)
+                          <FieldLabel htmlFor="model-id">
+                            {t("pages.models.modelId")}
                           </FieldLabel>
                           <Input
-                            id="model-context-size"
-                            min="1"
-                            name="contextSizeK"
-                            defaultValue={editingModel?.contextSizeK}
-                            placeholder="128"
-                            step="1"
-                            type="number"
+                            id="model-id"
+                            name="modelId"
+                            defaultValue={editingModel?.modelId}
+                            placeholder={t("pages.models.modelIdPlaceholder")}
                             required
                           />
                         </Field>
                         <Field>
-                          <FieldLabel htmlFor="model-max-output-tokens">
-                            {t("pages.modelStatistics.metrics.outputTokens")}
+                          <FieldLabel htmlFor="model-display-name">
+                            {t("pages.models.displayName")}
                           </FieldLabel>
                           <Input
-                            id="model-max-output-tokens"
-                            min="1"
-                            name="maxOutputTokens"
-                            defaultValue={editingModel?.maxOutputTokens}
-                            placeholder="8192"
-                            step="1"
-                            type="number"
+                            id="model-display-name"
+                            name="displayName"
+                            defaultValue={editingModel?.displayName}
+                            placeholder={t(
+                              "pages.models.displayNamePlaceholder"
+                            )}
                             required
                           />
                         </Field>
+                      </FieldGroup>
+
+                      {kind === "image" && (
                         <Field>
-                          <FieldLabel htmlFor="model-multiplier">
-                            {t("pages.models.multiplier")}
-                          </FieldLabel>
-                          <Input
-                            id="model-multiplier"
-                            min="0.01"
-                            name="multiplier"
-                            defaultValue={
-                              editingModel?.type === "system"
-                                ? editingModel.multiplier
-                                : undefined
-                            }
-                            placeholder="1.0"
-                            step="0.01"
-                            type="number"
-                            required
-                          />
-                        </Field>
-                        <Field className="sm:col-span-2">
-                          <FieldLabel htmlFor="model-protocol">
-                            {t("pages.models.protocol")}
+                          <FieldLabel htmlFor="model-provider">
+                            {t("pages.models.imageProvider")}
                           </FieldLabel>
                           <Select
-                            items={PROTOCOLS}
-                            value={protocol}
+                            items={IMAGE_PROVIDERS}
+                            value={provider}
                             onValueChange={(value) => {
-                              setProtocol(value as ModelProtocol)
+                              setProvider(value as ImageProvider)
+                              setImageCapabilities(null)
                             }}
                           >
                             <SelectTrigger
                               className="w-full"
-                              id="model-protocol"
+                              id="model-provider"
                             >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectGroup>
-                                {PROTOCOLS.map((item) => (
+                                {IMAGE_PROVIDERS.map((item) => (
                                   <SelectItem
                                     key={item.value}
                                     value={item.value}
@@ -868,189 +781,379 @@ export function ModelsPage() {
                             </SelectContent>
                           </Select>
                         </Field>
+                      )}
+
+                      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                        <Field>
+                          <FieldLabel htmlFor="model-base-url">
+                            {t("pages.models.baseUrl")}
+                          </FieldLabel>
+                          <Input
+                            id="model-base-url"
+                            name="baseUrl"
+                            defaultValue={editingModel?.baseUrl}
+                            type="url"
+                            placeholder={t("pages.models.baseUrlPlaceholder")}
+                            required
+                          />
+                        </Field>
+
+                        <Field>
+                          <FieldLabel htmlFor="model-api-key">
+                            {t("pages.models.apiKey")}
+                          </FieldLabel>
+                          <Input
+                            autoComplete="new-password"
+                            id="model-api-key"
+                            name="apiKey"
+                            defaultValue=""
+                            placeholder={t("pages.models.apiKeyPlaceholder")}
+                            type="password"
+                            required={!editingModel?.apiKeyConfigured}
+                          />
+                        </Field>
                       </FieldGroup>
-                    )}
 
-                    {kind === "text" && (
-                      <Field orientation="horizontal">
-                        <FieldLabel htmlFor="model-vision">
-                          {t("pages.models.supportsVision")}
-                        </FieldLabel>
-                        <Switch
-                          checked={supportsVision}
-                          id="model-vision"
-                          onCheckedChange={setSupportsVision}
-                        />
-                      </Field>
-                    )}
-
-                    {kind === "image" && (
-                      <>
-                        <Separator className="my-1" />
-                        <FieldGroup className="gap-3">
-                          {!imageCapabilities && (
-                            <p className="text-sm text-muted-foreground">
-                              {t("pages.models.imageCapabilitiesUnavailable")}
-                            </p>
-                          )}
-                          {imageCapabilities && (
-                            <>
-                              <ImageCapabilitySelector
-                                aspectRatioLabel={t("pages.models.aspectRatio")}
-                                aspectRatios={imageCapabilities.aspect_ratios}
-                                onAspectRatiosChange={
-                                  handleAspectRatioSelectionChange
-                                }
-                                onQualitiesChange={handleQualitySelectionChange}
-                                qualities={imageCapabilities.qualities}
-                                qualityLabel={t("pages.models.imageQuality")}
-                                selectAllLabel={t(
-                                  "pages.models.selectAllSupported"
-                                )}
-                                selectedAspectRatios={aspectRatios}
-                                selectedQualities={qualities}
-                              />
-                              <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                <Field>
-                                  <FieldLabel>
-                                    {t("pages.models.defaultQuality")}
-                                  </FieldLabel>
-                                  <Select
-                                    items={qualities.map((value) => ({
-                                      value,
-                                      label: value,
-                                    }))}
-                                    value={defaultQuality}
-                                    onValueChange={(value) =>
-                                      setDefaultQuality(value ?? "")
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectGroup>
-                                        {qualities.map((value) => (
-                                          <SelectItem key={value} value={value}>
-                                            {value}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectGroup>
-                                    </SelectContent>
-                                  </Select>
-                                </Field>
-                                <Field>
-                                  <FieldLabel>
-                                    {t("pages.models.defaultAspectRatio")}
-                                  </FieldLabel>
-                                  <Select
-                                    items={aspectRatios.map((value) => ({
-                                      value,
-                                      label: value,
-                                    }))}
-                                    value={defaultAspectRatio}
-                                    onValueChange={(value) =>
-                                      setDefaultAspectRatio(value ?? "")
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectGroup>
-                                        {aspectRatios.map((value) => (
-                                          <SelectItem key={value} value={value}>
-                                            {value}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectGroup>
-                                    </SelectContent>
-                                  </Select>
-                                </Field>
-                              </FieldGroup>
-                              <Separator className="my-1" />
-                              <FieldGroup className="gap-3">
-                                <Field>
-                                  <FieldLabel htmlFor="model-base-credits">
-                                    {t("pages.models.baseCreditsPerImage")}
-                                  </FieldLabel>
-                                  <Input
-                                    id="model-base-credits"
-                                    value={baseCredits}
-                                    onChange={(event) =>
-                                      setBaseCredits(event.target.value)
-                                    }
-                                    inputMode="decimal"
-                                    required
-                                  />
-                                </Field>
-                                <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                  {qualities.map((value) => (
-                                    <Field key={value}>
-                                      <FieldLabel
-                                        htmlFor={`quality-price-${value}`}
-                                      >
-                                        {value}{" "}
-                                        {t("pages.models.qualityMultiplier")}
-                                      </FieldLabel>
-                                      <Input
-                                        id={`quality-price-${value}`}
-                                        value={qualityMultipliers[value] ?? "1"}
-                                        onChange={(event) =>
-                                          setQualityMultipliers((current) => ({
-                                            ...current,
-                                            [value]: event.target.value,
-                                          }))
-                                        }
-                                        inputMode="decimal"
-                                      />
-                                    </Field>
+                      {kind === "text" && (
+                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                          <Field>
+                            <FieldLabel htmlFor="model-context-size">
+                              {t("pages.models.contextSize")} (K)
+                            </FieldLabel>
+                            <Input
+                              id="model-context-size"
+                              min="1"
+                              name="contextSizeK"
+                              defaultValue={editingModel?.contextSizeK}
+                              placeholder="256"
+                              step="1"
+                              type="number"
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="model-max-output-tokens">
+                              {t("pages.models.maxOutputTokens")}
+                            </FieldLabel>
+                            <Input
+                              id="model-max-output-tokens"
+                              min="1"
+                              name="maxOutputTokens"
+                              defaultValue={editingModel?.maxOutputTokens}
+                              placeholder="16384"
+                              step="1"
+                              type="number"
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="model-multiplier">
+                              {t("pages.models.billingMultiplier")}
+                            </FieldLabel>
+                            <Input
+                              id="model-multiplier"
+                              min="0.01"
+                              name="multiplier"
+                              defaultValue={
+                                editingModel?.type === "system"
+                                  ? editingModel.multiplier
+                                  : undefined
+                              }
+                              placeholder="1.0"
+                              step="0.01"
+                              type="number"
+                              required
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="model-protocol">
+                              {t("pages.models.protocol")}
+                            </FieldLabel>
+                            <Select
+                              items={PROTOCOLS}
+                              value={protocol}
+                              onValueChange={(value) => {
+                                setProtocol(value as ModelProtocol)
+                              }}
+                            >
+                              <SelectTrigger
+                                className="w-full"
+                                id="model-protocol"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {PROTOCOLS.map((item) => (
+                                    <SelectItem
+                                      key={item.value}
+                                      value={item.value}
+                                      label={item.label}
+                                    >
+                                      {item.label}
+                                      {item.value ===
+                                        "openai_chat_completions" && (
+                                        <Badge variant="secondary">
+                                          {t("pages.models.notRecommended")}
+                                        </Badge>
+                                      )}
+                                    </SelectItem>
                                   ))}
-                                </FieldGroup>
-                              </FieldGroup>
-                            </>
-                          )}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </Field>
                         </FieldGroup>
-                      </>
-                    )}
+                      )}
 
-                    <Separator className="my-1" />
-                    <FieldGroup className="gap-3">
-                      <Field>
-                        <FieldLabel htmlFor="model-tags">
-                          {t("pages.skills.tags")}
-                        </FieldLabel>
-                        <SkillTagSelect
-                          id="model-tags"
-                          open={tagsOpen}
-                          options={availableTags}
-                          placeholder={t("pages.skills.tagsPlaceholder")}
-                          value={tagIds}
-                          onOpenChange={setTagsOpen}
-                          onValueChange={setTagIds}
-                        />
-                      </Field>
+                      {kind === "text" && (
+                        <ItemGroup className="grid grid-cols-2 gap-4 has-data-[size=sm]:gap-4">
+                          <Item
+                            variant="outline"
+                            size="sm"
+                            className="min-w-0 flex-nowrap px-2"
+                          >
+                            <ItemContent className="min-w-0">
+                              <FieldLabel
+                                htmlFor="model-vision"
+                                className="min-w-0 break-words"
+                              >
+                                {t("pages.models.supportsVision")}
+                              </FieldLabel>
+                            </ItemContent>
+                            <ItemActions>
+                              <Switch
+                                checked={supportsVision}
+                                id="model-vision"
+                                onCheckedChange={setSupportsVision}
+                              />
+                            </ItemActions>
+                          </Item>
+                          <Item
+                            variant="outline"
+                            size="sm"
+                            className="min-w-0 flex-nowrap px-2"
+                          >
+                            <ItemContent className="min-w-0">
+                              <FieldLabel
+                                htmlFor="model-reasoning"
+                                className="min-w-0 break-words"
+                              >
+                                {t("pages.models.supportsReasoning")}
+                              </FieldLabel>
+                            </ItemContent>
+                            <ItemActions>
+                              <Switch
+                                checked={supportsReasoning}
+                                id="model-reasoning"
+                                onCheckedChange={setSupportsReasoning}
+                              />
+                            </ItemActions>
+                          </Item>
+                        </ItemGroup>
+                      )}
 
-                      <Field>
-                        <FieldLabel htmlFor="model-authorization">
-                          {t("pages.models.authorizedScope")}
-                        </FieldLabel>
-                        <AuthorizationSelect
-                          groups={groups}
-                          members={members}
-                          id="model-authorization"
-                          open={authorizationOpen}
-                          placeholder={t(
-                            "pages.models.authorizationPlaceholder"
-                          )}
-                          title={t("pages.models.authorizedScope")}
-                          value={authorization}
-                          onOpenChange={setAuthorizationOpen}
-                          onValueChange={setAuthorization}
-                        />
-                      </Field>
+                      {kind === "image" && (
+                        <>
+                          <Separator className="my-1" />
+                          <FieldGroup className="gap-3">
+                            {!imageCapabilities && (
+                              <p className="text-sm text-muted-foreground">
+                                {t("pages.models.imageCapabilitiesUnavailable")}
+                              </p>
+                            )}
+                            {imageCapabilities && (
+                              <>
+                                <ImageCapabilitySelector
+                                  aspectRatioLabel={t(
+                                    "pages.models.aspectRatio"
+                                  )}
+                                  aspectRatios={imageCapabilities.aspect_ratios}
+                                  onAspectRatiosChange={
+                                    handleAspectRatioSelectionChange
+                                  }
+                                  onQualitiesChange={
+                                    handleQualitySelectionChange
+                                  }
+                                  qualities={imageCapabilities.qualities}
+                                  qualityLabel={t("pages.models.imageQuality")}
+                                  selectAllLabel={t(
+                                    "pages.models.selectAllSupported"
+                                  )}
+                                  selectedAspectRatios={aspectRatios}
+                                  selectedQualities={qualities}
+                                />
+                                <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                  <Field>
+                                    <FieldLabel>
+                                      {t("pages.models.defaultQuality")}
+                                    </FieldLabel>
+                                    <Select
+                                      items={qualities.map((value) => ({
+                                        value,
+                                        label: value,
+                                      }))}
+                                      value={defaultQuality}
+                                      onValueChange={(value) =>
+                                        setDefaultQuality(value ?? "")
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectGroup>
+                                          {qualities.map((value) => (
+                                            <SelectItem
+                                              key={value}
+                                              value={value}
+                                            >
+                                              {value}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      </SelectContent>
+                                    </Select>
+                                  </Field>
+                                  <Field>
+                                    <FieldLabel>
+                                      {t("pages.models.defaultAspectRatio")}
+                                    </FieldLabel>
+                                    <Select
+                                      items={aspectRatios.map((value) => ({
+                                        value,
+                                        label: value,
+                                      }))}
+                                      value={defaultAspectRatio}
+                                      onValueChange={(value) =>
+                                        setDefaultAspectRatio(value ?? "")
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectGroup>
+                                          {aspectRatios.map((value) => (
+                                            <SelectItem
+                                              key={value}
+                                              value={value}
+                                            >
+                                              {value}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      </SelectContent>
+                                    </Select>
+                                  </Field>
+                                </FieldGroup>
+                                <Separator className="my-1" />
+                                <FieldGroup className="gap-3">
+                                  <Field>
+                                    <FieldLabel htmlFor="model-base-credits">
+                                      {t("pages.models.baseCreditsPerImage")}
+                                    </FieldLabel>
+                                    <Input
+                                      id="model-base-credits"
+                                      value={baseCredits}
+                                      onChange={(event) =>
+                                        setBaseCredits(event.target.value)
+                                      }
+                                      inputMode="decimal"
+                                      required
+                                    />
+                                  </Field>
+                                  <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                    {qualities.map((value) => (
+                                      <Field key={value}>
+                                        <FieldLabel
+                                          htmlFor={`quality-price-${value}`}
+                                        >
+                                          {value}{" "}
+                                          {t("pages.models.qualityMultiplier")}
+                                        </FieldLabel>
+                                        <Input
+                                          id={`quality-price-${value}`}
+                                          value={
+                                            qualityMultipliers[value] ?? "1"
+                                          }
+                                          onChange={(event) =>
+                                            setQualityMultipliers(
+                                              (current) => ({
+                                                ...current,
+                                                [value]: event.target.value,
+                                              })
+                                            )
+                                          }
+                                          inputMode="decimal"
+                                        />
+                                      </Field>
+                                    ))}
+                                  </FieldGroup>
+                                </FieldGroup>
+                              </>
+                            )}
+                          </FieldGroup>
+                        </>
+                      )}
+
+                      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                        <Field>
+                          <FieldLabel htmlFor="model-tags">
+                            {t("pages.skills.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="model-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t("pages.skills.tagsPlaceholder")}
+                            value={tagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setTagIds}
+                          />
+                        </Field>
+
+                        <Field>
+                          <FieldLabel htmlFor="model-authorization">
+                            {t("pages.models.authorizedScope")}
+                          </FieldLabel>
+                          <GroupSelect
+                            id="model-authorization"
+                            options={groups}
+                            users={members}
+                            value={{
+                              groupIds: authorization.groupIds,
+                              userIds: authorization.memberIds,
+                            }}
+                            onValueChange={(next) =>
+                              setAuthorization({
+                                groupIds: [...next.groupIds],
+                                memberIds: [...next.userIds],
+                              })
+                            }
+                            label={t("pages.models.authorizedScope")}
+                            placeholder={t(
+                              "pages.models.authorizationPlaceholder"
+                            )}
+                            emptyText={t(
+                              "pages.models.noMatchingAuthorization"
+                            )}
+                            locale={i18n.resolvedLanguage ?? i18n.language}
+                            multiple
+                            selectionMode="both"
+                            cascadeGroups
+                            searchable
+                            searchPlaceholder={t(
+                              "pages.models.searchAuthorization"
+                            )}
+                            noResultsText={t(
+                              "pages.models.noMatchingAuthorization"
+                            )}
+                          />
+                        </Field>
+                      </FieldGroup>
                     </FieldGroup>
-                  </FieldGroup>
+                  </ScrollArea>
                   <DialogFooter>
                     <DialogClose
                       render={<Button type="button" variant="outline" />}
@@ -1070,247 +1173,245 @@ export function ModelsPage() {
         </div>
 
         {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {models
-                .filter((model) => model.type === tabType)
-                .map((model) => (
-                  <Card
-                    className={cn(!model.enabled && "bg-muted")}
-                    key={model.id}
-                  >
-                    <CardHeader>
-                      <div className="flex min-w-0 items-start gap-3">
-                        <Avatar size="lg">
-                          <AvatarFallback>
-                            <Iconfont
-                              className="size-7"
-                              name={getModelIconName(model.modelId)}
-                            />
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="flex min-w-0 items-center gap-2">
-                            <span
-                              className="truncate"
-                              title={model.displayName}
-                            >
-                              {model.displayName}
-                            </span>
-                            <Badge variant="outline">
-                              <HugeiconsIcon
-                                icon={
-                                  model.kind === "image"
-                                    ? AiImageIcon
-                                    : AiChat02Icon
-                                }
-                                data-icon="inline-start"
-                              />
-                              {t(
-                                model.kind === "image"
-                                  ? "pages.models.imageKind"
-                                  : "pages.models.textKind"
-                              )}
-                            </Badge>
-                            {!model.enabled && (
-                              <Badge variant="outline">
-                                {t("pages.models.disable")}
-                              </Badge>
+          <TabsContent className="space-y-4" key={tabType} value={tabType}>
+            {(["text", "image"] as const).map((kind) => {
+              const kindModels = models.filter(
+                (model) => model.type === tabType && model.kind === kind
+              )
+
+              return (
+                <Collapsible
+                  key={kind}
+                  className="overflow-hidden rounded-lg border bg-card"
+                  defaultOpen
+                >
+                  <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset">
+                    <HugeiconsIcon
+                      icon={kind === "text" ? AiChat02Icon : AiImageIcon}
+                      strokeWidth={2}
+                    />
+                    <span className="font-medium">
+                      {t(
+                        kind === "text"
+                          ? "pages.models.textKind"
+                          : "pages.models.imageKind"
+                      )}
+                    </span>
+                    <Badge className="ms-auto" variant="secondary">
+                      {kindModels.length}
+                    </Badge>
+                    <HugeiconsIcon
+                      className="size-4 transition-transform group-aria-expanded:rotate-90 rtl:rotate-180 rtl:group-aria-expanded:-rotate-90"
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="border-t p-4">
+                    {kindModels.length > 0 ? (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {kindModels.map((model) => (
+                          <Card
+                            size="sm"
+                            className={cn(
+                              model.kind === "text"
+                                ? "bg-blue-50 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800"
+                                : "bg-purple-50 ring-purple-200 dark:bg-purple-950 dark:ring-purple-800",
+                              !model.enabled &&
+                                "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
                             )}
-                          </CardTitle>
-                          <CardDescription
-                            className="truncate"
-                            title={model.baseUrl}
+                            key={model.id}
                           >
-                            {model.baseUrl}
-                          </CardDescription>
-                        </div>
-                        {model.type === "system" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  aria-label={t("common.more")}
-                                  size="icon-sm"
-                                  type="button"
-                                  variant="ghost"
-                                />
-                              }
-                            >
-                              <HugeiconsIcon
-                                icon={MoreHorizontalIcon}
-                                strokeWidth={2}
-                              />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  disabled={model.enabled}
-                                  onClick={() =>
-                                    setModelEnabled(model.id, true)
-                                  }
-                                >
-                                  <HugeiconsIcon
-                                    icon={PlayIcon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.enable")}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  disabled={!model.enabled}
-                                  onClick={() =>
-                                    setModelEnabled(model.id, false)
-                                  }
-                                >
-                                  <HugeiconsIcon
-                                    icon={PauseIcon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.disable")}
-                                </DropdownMenuItem>
-                                {model.kind === "image" &&
-                                  model.enabled &&
-                                  model.imageConfig && (
-                                    <DropdownMenuItem
-                                      onClick={() => setModelToTest(model)}
+                            <CardHeader>
+                              <div className="flex min-w-0 items-start gap-3">
+                                <Avatar size="lg">
+                                  <AvatarFallback>
+                                    <Iconfont
+                                      className="size-7"
+                                      name={getModelIconName(model.modelId)}
+                                    />
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className="truncate"
+                                      title={model.displayName}
+                                    >
+                                      {model.displayName}
+                                    </span>
+                                    {!model.enabled && (
+                                      <Badge variant="outline">
+                                        {t("pages.models.disable")}
+                                      </Badge>
+                                    )}
+                                  </CardTitle>
+                                  <CardDescription
+                                    className="truncate"
+                                    title={model.baseUrl}
+                                  >
+                                    {model.baseUrl}
+                                  </CardDescription>
+                                </div>
+                                {model.type === "system" && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                      render={
+                                        <Button
+                                          aria-label={t("common.more")}
+                                          size="icon-sm"
+                                          type="button"
+                                          variant="ghost"
+                                        />
+                                      }
                                     >
                                       <HugeiconsIcon
-                                        icon={PlayIcon}
+                                        icon={MoreHorizontalIcon}
                                         strokeWidth={2}
                                       />
-                                      {t("pages.models.testGeneration")}
-                                    </DropdownMenuItem>
-                                  )}
-                                <DropdownMenuItem
-                                  onClick={() => handleEditModel(model)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Edit02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.edit")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuGroup>
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setModelPendingDeletion(model)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Delete02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.models.delete")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-3">
-                      <dl className="flex flex-col gap-3">
-                        {model.kind === "image" ? (
-                          <>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.imageQuality")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imageConfig?.qualities.join(", ") ?? "-"}
-                              </dd>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.aspectRatio")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imageConfig?.aspect_ratios.join(", ") ??
-                                  "-"}
-                              </dd>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.models.baseCreditsPerImage")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.imagePricing?.base_credits_per_image ??
-                                  "0"}
-                              </dd>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt
-                                className="w-2/5 truncate text-muted-foreground"
-                                title={t("pages.models.contextSize")}
-                              >
-                                {t("pages.models.contextSize")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.contextSizeK}K
-                              </dd>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <dt
-                                className="w-2/5 truncate text-muted-foreground"
-                                title={t("pages.models.imageRecognition")}
-                              >
-                                {t("pages.models.imageRecognition")}
-                              </dt>
-                              <dd className="w-3/5 truncate text-end font-medium">
-                                {model.supportsVision
-                                  ? t("pages.models.supported")
-                                  : t("pages.models.unsupported")}
-                              </dd>
-                            </div>
-                            {model.type === "system" && (
-                              <div className="flex min-w-0 items-center gap-4">
-                                <dt
-                                  className="w-2/5 truncate text-muted-foreground"
-                                  title={t("pages.models.multiplier")}
-                                >
-                                  {t("pages.models.multiplier")}
-                                </dt>
-                                <dd className="w-3/5 truncate text-end font-medium">
-                                  {model.multiplier.toFixed(1)}×
-                                </dd>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuGroup>
+                                        <DropdownMenuItem
+                                          disabled={model.enabled}
+                                          onClick={() =>
+                                            setModelEnabled(model.id, true)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={PlayIcon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.enable")}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={!model.enabled}
+                                          onClick={() =>
+                                            setModelEnabled(model.id, false)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={PauseIcon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.disable")}
+                                        </DropdownMenuItem>
+                                        {model.kind === "image" &&
+                                          model.enabled &&
+                                          model.imageConfig && (
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                setModelToTest(model)
+                                              }
+                                            >
+                                              <HugeiconsIcon
+                                                icon={PlayIcon}
+                                                strokeWidth={2}
+                                              />
+                                              {t("pages.models.testGeneration")}
+                                            </DropdownMenuItem>
+                                          )}
+                                        <DropdownMenuItem
+                                          onClick={() => handleEditModel(model)}
+                                        >
+                                          <HugeiconsIcon
+                                            icon={Edit02Icon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.edit")}
+                                        </DropdownMenuItem>
+                                      </DropdownMenuGroup>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuGroup>
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() =>
+                                            setModelPendingDeletion(model)
+                                          }
+                                        >
+                                          <HugeiconsIcon
+                                            icon={Delete02Icon}
+                                            strokeWidth={2}
+                                          />
+                                          {t("pages.models.delete")}
+                                        </DropdownMenuItem>
+                                      </DropdownMenuGroup>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
                               </div>
-                            )}
-                          </>
-                        )}
-                      </dl>
-                      <ResourceTagSummary tagIds={model.tagIds} />
-                    </CardContent>
-                    <CardFooter className="min-w-0 gap-4 border-t">
-                      <span
-                        className="w-2/5 truncate text-muted-foreground"
-                        title={t("pages.models.authorizedScope")}
-                      >
-                        {t("pages.models.authorizedScope")}
-                      </span>
-                      <span
-                        className="w-3/5 truncate text-end font-medium"
-                        title={getAuthorizationNames(
-                          model.authorization,
-                          t,
-                          flattenGroupTree(groups),
-                          members
-                        )}
-                      >
-                        {getAuthorizationNames(
-                          model.authorization,
-                          t,
-                          flattenGroupTree(groups),
-                          members
-                        )}
-                      </span>
-                    </CardFooter>
-                  </Card>
-                ))}
-            </div>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-3">
+                              <dl className="flex flex-col gap-3">
+                                {model.kind === "image" && (
+                                  <div className="flex min-w-0 items-center gap-4">
+                                    <dt className="w-2/5 truncate text-muted-foreground">
+                                      {t("pages.models.baseCreditsPerImage")}
+                                    </dt>
+                                    <dd className="w-3/5 truncate text-end font-medium">
+                                      {model.imagePricing
+                                        ?.base_credits_per_image ?? "0"}
+                                    </dd>
+                                  </div>
+                                )}
+                                {model.kind === "text" &&
+                                  model.type === "system" && (
+                                    <div className="flex min-w-0 items-center gap-4">
+                                      <dt
+                                        className="w-2/5 truncate text-muted-foreground"
+                                        title={t("pages.models.multiplier")}
+                                      >
+                                        {t("pages.models.multiplier")}
+                                      </dt>
+                                      <dd className="w-3/5 truncate text-end font-medium">
+                                        {model.multiplier.toFixed(2)}×
+                                      </dd>
+                                    </div>
+                                  )}
+                                {model.type === "user" && (
+                                  <div className="flex min-w-0 items-center gap-4">
+                                    <dt
+                                      className="w-2/5 truncate text-muted-foreground"
+                                      title={t("pages.models.creator")}
+                                    >
+                                      {t("pages.models.creator")}
+                                    </dt>
+                                    <dd
+                                      className="w-3/5 truncate text-end font-medium"
+                                      title={model.owner}
+                                    >
+                                      {model.owner}
+                                    </dd>
+                                  </div>
+                                )}
+                              </dl>
+                            </CardContent>
+                            <CardFooter
+                              className={cn(
+                                "min-w-0 border-t",
+                                !model.enabled
+                                  ? "border-gray-300 dark:border-gray-700"
+                                  : model.kind === "text"
+                                    ? "border-blue-200 dark:border-blue-800"
+                                    : "border-purple-200 dark:border-purple-800"
+                              )}
+                            >
+                              <ModelTagBadges
+                                tagIds={model.tagIds}
+                                tags={availableTags}
+                              />
+                            </CardFooter>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">
+                        {t("pages.models.count", { count: 0 })}
+                      </p>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              )
+            })}
           </TabsContent>
         ))}
       </Tabs>

@@ -29,7 +29,7 @@ type ResponseReconciler struct {
 
 func NewResponseReconciler() *ResponseReconciler {
 	return &ResponseReconciler{client: &http.Client{
-		Transport: http.DefaultTransport,
+		Transport: DirectTransport(),
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

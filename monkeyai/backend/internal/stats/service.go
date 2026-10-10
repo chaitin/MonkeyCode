@@ -15,12 +15,24 @@ import (
 )
 
 type Service struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
+	pool            *pgxpool.Pool
+	now             func() time.Time
+	auditAuthorizer func(*http.Request) bool
 }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool, now: time.Now}
+}
+
+// SetSessionReportingAuditAuthorizer 为清除审计权限预留接入边界。
+// TODO(app): 接入清除审计角色后注入权限判断；未注入时拒绝读取墓碑详情。
+// 清除操作人和审计 ID 须待清除方持久化审计元数据后才能加入墓碑摘要。
+func (s *Service) SetSessionReportingAuditAuthorizer(authorizer func(*http.Request) bool) {
+	s.auditAuthorizer = authorizer
+}
+
+func (s *Service) canReadPurged(r *http.Request) bool {
+	return s.auditAuthorizer != nil && s.auditAuthorizer(r)
 }
 
 type window struct {
@@ -62,6 +74,11 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/statistics/models", s.read(false, models))
 	r.Get("/statistics/tasks", s.read(false, tasks))
 	r.Get("/statistics/history", s.history)
+	r.Get("/statistics/session-reporting/overview", s.reportingOverview)
+	r.Get("/statistics/session-reporting/sessions", s.reportingSessions)
+	r.Get("/statistics/session-reporting/sessions/{id}", s.reportingDetail)
+	r.Get("/statistics/session-reporting/resources", s.reportingResources)
+	r.Get("/statistics/session-reporting/clients", s.reportingClients)
 }
 
 func rollbackStats(ctx context.Context, tx pgx.Tx, operation string) {

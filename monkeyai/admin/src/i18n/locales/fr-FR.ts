@@ -265,6 +265,8 @@ export const frFR = {
       },
     },
     models: {
+      noTags: "Aucune étiquette",
+      maxOutputTokens: "Nombre maximal de jetons de sortie",
       searchAuthorization: "Rechercher par nom, e-mail ou pinyin",
       noMatchingAuthorization: "Aucun groupe ou utilisateur correspondant.",
 
@@ -276,7 +278,7 @@ export const frFR = {
       kind: "Type de modèle",
       textKind: "Grand modèle de langage",
       imageKind: "Génération d’images",
-      imageProvider: "Fournisseur d’images",
+      imageProvider: "Protocole de génération d’images",
       imageCapabilitiesUnavailable:
         "Impossible de charger les options de ce fournisseur.",
       selectAllSupported: "Tout sélectionner",
@@ -300,6 +302,7 @@ export const frFR = {
       taskStatus: "État de la tâche",
       systemModel: "Modèles système",
       userModel: "Modèles utilisateur",
+      creator: "Créateur",
       add: "Ajouter un modèle",
       dialogTitle: "Ajouter un modèle",
       dialogDescription:
@@ -315,6 +318,8 @@ export const frFR = {
       contextSize: "Taille du contexte",
       imageRecognition: "Reconnaissance d’images",
       supportsVision: "Reconnaissance d’images",
+      supportsReasoning: "Capacité de raisonnement",
+      notRecommended: "Déconseillé",
       supportsVisionDescription: "Autorise l’envoi d’images à ce modèle.",
       baseUrl: "Base URL",
       baseUrlPlaceholder: "https://api.example.com/v1",
@@ -322,6 +327,7 @@ export const frFR = {
       apiKey: "Clé API",
       apiKeyPlaceholder: "Saisissez la clé API du modèle",
       multiplier: "Multiplicateur",
+      billingMultiplier: "Multiplicateur de facturation",
       authorizedScope: "Portée de l’autorisation",
       authorizationPlaceholder: "Sélectionnez des groupes ou des utilisateurs",
       authorizedGroupsDescription:
@@ -1073,6 +1079,16 @@ export const frFR = {
         baizhiyunScopes:
           "Autorisations par défaut : auth_certification openid phone user email",
         issuerUrl: "URL de l’émetteur",
+        scopes: "Portées (scopes)",
+        scopesDescription:
+          "Séparez les scopes par des espaces, par exemple : profile. Il n’est pas nécessaire d’ajouter openid. Si le champ est vide, la valeur par défaut est openid profile email.",
+        userinfoFields: "Noms des champs de premier niveau de userinfo",
+        userinfoDescription:
+          "L’URL de userinfo est obtenue automatiquement via userinfo_endpoint dans le document de découverte OIDC de l’émetteur ; aucune saisie d’URL n’est nécessaire. Indiquez les noms des champs de premier niveau renvoyés par userinfo.",
+        idField: "Nom du champ de l’identifiant utilisateur",
+        usernameField: "Nom du champ du nom d’utilisateur",
+        avatarField: "Nom du champ de la photo de profil",
+        emailField: "Nom du champ de l’adresse e-mail",
         clientId: "ID client",
         clientSecret: "Secret client",
         cancel: "Annuler",

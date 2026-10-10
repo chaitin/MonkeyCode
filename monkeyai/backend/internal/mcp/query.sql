@@ -1,3 +1,8 @@
+-- name: UpdateToolCallDuration :exec
+UPDATE mcp_tool_calls
+SET duration_ms = sqlc.arg(duration_ms)::integer
+WHERE id = sqlc.arg(id)::uuid;
+
 -- name: CountTools :one
 SELECT
     count(*)

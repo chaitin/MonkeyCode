@@ -1,3 +1,15 @@
+-- name: TakeDeviceRegistrationRateLimit :one
+INSERT INTO session_reporting_rate_limits (user_id, kind, bucket_start, request_count)
+VALUES (sqlc.arg(user_id)::uuid, 'endpoints', sqlc.arg(bucket_start)::timestamptz, 1)
+ON CONFLICT (user_id, kind) DO UPDATE SET
+    request_count = CASE
+        WHEN session_reporting_rate_limits.bucket_start = EXCLUDED.bucket_start
+            THEN session_reporting_rate_limits.request_count + 1
+        ELSE 1
+    END,
+    bucket_start = EXCLUDED.bucket_start
+RETURNING request_count;
+
 -- name: LockUser :one
 SELECT id FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL FOR UPDATE;
 
@@ -24,6 +36,32 @@ ON CONFLICT (user_id, machine_id) DO UPDATE SET
     device_name = EXCLUDED.device_name, platform = EXCLUDED.platform,
     os_version = EXCLUDED.os_version, arch = EXCLUDED.arch, client_version = EXCLUDED.client_version,
     protocol_version = 1, last_seen_at = now(), updated_at = now()
+WHERE endpoints.status = 'active'
+RETURNING *;
+
+-- name: RegisterDevice :one
+INSERT INTO endpoints (
+    user_id, machine_id, device_name, platform, os_version, arch, client_version,
+    protocol_version, client_type, client_name, channel, locale, system_locale,
+    timezone, runtime_version, engine_version, electron_version, last_reported_at
+) VALUES (
+    sqlc.arg(user_id)::uuid, sqlc.arg(machine_id)::uuid, sqlc.arg(device_name)::text,
+    sqlc.arg(platform)::text, sqlc.arg(os_version)::text, sqlc.arg(arch)::text,
+    sqlc.arg(client_version)::text, sqlc.narg(protocol_version)::integer,
+    sqlc.narg(client_type)::text, sqlc.narg(client_name)::text, sqlc.narg(channel)::text,
+    sqlc.narg(locale)::text, sqlc.narg(system_locale)::text, sqlc.narg(timezone)::text,
+    sqlc.narg(runtime_version)::text, sqlc.narg(engine_version)::text,
+    sqlc.narg(electron_version)::text, now()
+)
+ON CONFLICT (user_id, machine_id) DO UPDATE SET
+    device_name = EXCLUDED.device_name, platform = EXCLUDED.platform,
+    os_version = EXCLUDED.os_version, arch = EXCLUDED.arch,
+    client_version = EXCLUDED.client_version, protocol_version = EXCLUDED.protocol_version,
+    client_type = EXCLUDED.client_type, client_name = EXCLUDED.client_name,
+    channel = EXCLUDED.channel, locale = EXCLUDED.locale,
+    system_locale = EXCLUDED.system_locale, timezone = EXCLUDED.timezone,
+    runtime_version = EXCLUDED.runtime_version, engine_version = EXCLUDED.engine_version,
+    electron_version = EXCLUDED.electron_version, last_reported_at = now(), updated_at = now()
 WHERE endpoints.status = 'active'
 RETURNING *;
 

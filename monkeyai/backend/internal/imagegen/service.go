@@ -86,6 +86,12 @@ type Jobs interface {
 	PendingBilling(context.Context, int32) ([]Job, error)
 }
 
+// ImageCallLinker 将计费生成的 image_calls 绑定到异步任务和会话。
+// 旧 Jobs 实现不提供时保持原有行为。
+type ImageCallLinker interface {
+	LinkImageCall(context.Context, Job) error
+}
+
 type InputReader interface {
 	Read(context.Context, string, string) (Input, error)
 }
@@ -270,7 +276,7 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		return imageproxy.Task{}, err
 	}
 	job, created, err := s.jobs.Create(ctx, Job{
-		UserID: target.UserID, ModelID: item.ID, Provider: string(item.Provider), Operation: operation,
+		UserID: target.UserID, SessionID: target.SessionID, ModelID: item.ID, Provider: string(item.Provider), Operation: operation,
 		RequestHash: hex.EncodeToString(hash[:]), IdempotencyKey: idempotency, RequestedImages: int32(imageCount),
 		Quality: quality, AspectRatio: aspect, RequestConfig: config, PricingSnapshot: pricing,
 	})
@@ -287,7 +293,7 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 	var reservationID string
 	if item.OwnershipType != "user" {
 		reservation, err := s.billing.Begin(ctx, billing.Request{
-			UserID: target.UserID, ResourceID: item.ID, Category: "image", ImageCount: int64(imageCount),
+			UserID: target.UserID, ResourceID: item.ID, SessionID: job.SessionID, Category: "image", ImageCount: int64(imageCount),
 			ImageUnitPrice: unit, IdempotencyKey: job.ID, RequestHash: job.RequestHash,
 		})
 		if err != nil {
@@ -340,6 +346,17 @@ func (s *Service) failUnsubmitted(ctx context.Context, job Job, code string) {
 		if err := s.billing.Finish(finishCtx, *job.BillingTransactionID, billing.Usage{Known: true, Result: "failed", ErrorCode: code}); err != nil {
 			slog.Error("生图任务预留失败后释放积分失败", "job", job.ID, "error", err)
 		}
+	}
+	s.linkImageCall(finishCtx, job)
+}
+
+func (s *Service) linkImageCall(ctx context.Context, job Job) {
+	linker, ok := s.jobs.(ImageCallLinker)
+	if !ok {
+		return
+	}
+	if err := linker.LinkImageCall(ctx, job); err != nil {
+		slog.Error("绑定生图调用归属失败", "job", job.ID, "error", err)
 	}
 }
 
@@ -401,6 +418,7 @@ func (s *Service) finish(ctx context.Context, job Job, status, code string, imag
 			slog.Error("生图积分结算失败，等待恢复", "job", job.ID, "error", err)
 		}
 	}
+	s.linkImageCall(finishCtx, job)
 }
 
 func (s *Service) markUnknown(ctx context.Context, job Job, code string) {
@@ -414,6 +432,7 @@ func (s *Service) markUnknown(ctx context.Context, job Job, code string) {
 			billing.Usage{Known: false, Result: "failed", ErrorCode: code}); err != nil {
 			slog.Error("生图未知状态计费记录失败", "job", job.ID, "error", err)
 		}
+		s.linkImageCall(finishCtx, job)
 	}
 }
 
@@ -525,6 +544,7 @@ func (s *Service) recover(ctx context.Context) {
 		if err := s.billing.Finish(ctx, *job.BillingTransactionID, u); err != nil {
 			slog.Error("恢复生图积分结算失败", "job", job.ID, "error", err)
 		}
+		s.linkImageCall(ctx, job)
 	}
 }
 

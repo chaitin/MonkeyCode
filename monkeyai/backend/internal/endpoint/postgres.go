@@ -15,12 +15,12 @@ import (
 
 type View struct {
 	MachineID string `json:"machine_id"`
-	Profile
-	Alias           *string `json:"alias"`
-	DisplayName     string  `json:"display_name"`
-	ProtocolVersion int32   `json:"protocol_version"`
-	Online          bool    `json:"online"`
-	LastSeenAt      *int64  `json:"last_seen_at"`
+	Registration
+	Alias          *string `json:"alias"`
+	DisplayName    string  `json:"display_name"`
+	Online         bool    `json:"online"`
+	LastSeenAt     *int64  `json:"last_seen_at"`
+	LastReportedAt *int64  `json:"last_reported_at"`
 }
 
 type Endpoint struct {
@@ -63,7 +63,18 @@ func fromRow(row sqlc.Endpoint) Endpoint {
 	if row.Alias != nil {
 		name = *row.Alias
 	}
-	return Endpoint{MachineID: row.MachineID, Profile: Profile{row.DeviceName, row.Platform, row.OsVersion, row.Arch, row.ClientVersion}, Alias: row.Alias, DisplayName: name, ProtocolVersion: row.ProtocolVersion, LastSeenAt: millis(row.LastSeenAt), Status: row.Status, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt)}
+	return Endpoint{
+		View: View{
+			MachineID: row.MachineID,
+			Registration: Registration{
+				Profile:         Profile{row.DeviceName, row.Platform, row.OsVersion, row.Arch, row.ClientVersion},
+				Details:         Details{row.ClientType, row.ClientName, row.Channel, row.Locale, row.SystemLocale, row.Timezone, row.RuntimeVersion, row.EngineVersion, row.ElectronVersion},
+				ProtocolVersion: row.ProtocolVersion,
+			},
+			Alias: row.Alias, DisplayName: name, LastSeenAt: millis(row.LastSeenAt), LastReportedAt: millis(row.LastReportedAt),
+		},
+		Status: row.Status, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt),
+	}
 }
 func missing(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -164,6 +175,45 @@ func (p *Postgres) Register(ctx context.Context, user string, h Hello, max int) 
 		}
 		if fresh {
 			err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "endpoint.register", Category: "security", TargetType: "endpoint", TargetID: row.ID, Params: map[string]string{"machine_id": h.MachineID}})
+		}
+		return row, err
+	})
+}
+func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r Registration, max int) (Endpoint, error) {
+	bucket := time.Now().UTC().Truncate(time.Hour)
+	count, err := sqlc.New(p.pool).TakeDeviceRegistrationRateLimit(ctx, sqlc.TakeDeviceRegistrationRateLimitParams{UserID: user, BucketStart: bucket})
+	if err != nil {
+		return Endpoint{}, err
+	}
+	if count > 10 {
+		return Endpoint{}, fault{"rate_limited"}
+	}
+	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
+		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
+		fresh := errors.Is(err, pgx.ErrNoRows)
+		if err != nil && !fresh {
+			return old, err
+		}
+		if !fresh && old.Status == "revoked" {
+			return old, fault{"endpoint_revoked"}
+		}
+		if fresh {
+			if err = limit(ctx, q, user, max); err != nil {
+				return old, err
+			}
+		}
+		row, err := q.RegisterDevice(ctx, sqlc.RegisterDeviceParams{
+			UserID: user, MachineID: machine, DeviceName: r.DeviceName, Platform: r.Platform,
+			OsVersion: r.OSVersion, Arch: r.Arch, ClientVersion: r.ClientVersion,
+			ProtocolVersion: r.ProtocolVersion, ClientType: r.ClientType, ClientName: r.ClientName,
+			Channel: r.Channel, Locale: r.Locale, SystemLocale: r.SystemLocale, Timezone: r.Timezone,
+			RuntimeVersion: r.RuntimeVersion, EngineVersion: r.EngineVersion, ElectronVersion: r.ElectronVersion,
+		})
+		if err != nil {
+			return row, err
+		}
+		if fresh {
+			err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "endpoint.register", Category: "security", TargetType: "endpoint", TargetID: row.ID, Params: map[string]string{"machine_id": machine}})
 		}
 		return row, err
 	})

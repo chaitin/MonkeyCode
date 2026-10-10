@@ -260,6 +260,8 @@ export const jaJP = {
       },
     },
     models: {
+      noTags: "タグなし",
+      maxOutputTokens: "最大出力 Token 数",
       searchAuthorization: "名前、メールアドレス、ピンインで検索",
       noMatchingAuthorization: "一致するグループまたはユーザーがありません。",
 
@@ -270,7 +272,7 @@ export const jaJP = {
       kind: "モデル種別",
       textKind: "大規模言語モデル",
       imageKind: "画像生成",
-      imageProvider: "画像プロバイダー",
+      imageProvider: "画像生成プロトコル",
       imageCapabilitiesUnavailable:
         "このプロバイダーの画像設定を読み込めませんでした。",
       selectAllSupported: "対応項目をすべて選択",
@@ -294,6 +296,7 @@ export const jaJP = {
       taskStatus: "タスク状態",
       systemModel: "システムモデル",
       userModel: "ユーザーモデル",
+      creator: "作成者",
       add: "モデルを追加",
       dialogTitle: "モデルを追加",
       dialogDescription:
@@ -309,6 +312,8 @@ export const jaJP = {
       contextSize: "コンテキストサイズ",
       imageRecognition: "画像認識",
       supportsVision: "画像認識",
+      supportsReasoning: "推論機能",
+      notRecommended: "非推奨",
       supportsVisionDescription:
         "このモデルへの画像コンテンツの送信を許可します。",
       baseUrl: "Base URL",
@@ -317,6 +322,7 @@ export const jaJP = {
       apiKey: "API キー",
       apiKeyPlaceholder: "モデルの API キーを入力",
       multiplier: "倍率",
+      billingMultiplier: "課金倍率",
       authorizedScope: "許可範囲",
       authorizationPlaceholder: "グループまたはユーザーを選択",
       authorizedGroupsDescription:
@@ -1040,6 +1046,16 @@ export const jaJP = {
         baizhiyunScopes:
           "デフォルトのスコープ： auth_certification openid phone user email",
         issuerUrl: "Issuer URL",
+        scopes: "スコープ",
+        scopesDescription:
+          "スコープは半角スペースで区切って入力してください（例：profile）。openid を追加する必要はありません。空欄の場合はデフォルトの openid profile email が使用されます。",
+        userinfoFields: "userinfo のトップレベルフィールド名",
+        userinfoDescription:
+          "userinfo の URL は発行者の OIDC Discovery にある userinfo_endpoint から自動取得されるため、手入力は不要です。userinfo の応答に含まれるトップレベルのフィールド名を入力してください。",
+        idField: "ユーザー ID のフィールド名",
+        usernameField: "ユーザー名のフィールド名",
+        avatarField: "プロフィール画像のフィールド名",
+        emailField: "メールアドレスのフィールド名",
         clientId: "Client ID",
         clientSecret: "Client Secret",
         cancel: "キャンセル",

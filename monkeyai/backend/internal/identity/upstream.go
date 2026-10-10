@@ -23,6 +23,10 @@ type OAuthConnection struct {
 	AuthorizationURL        string   `json:"authorization_url,omitempty"`
 	TokenURL                string   `json:"token_url,omitempty"`
 	UserInfoURL             string   `json:"userinfo_url,omitempty"`
+	IDField                 string   `json:"id_field,omitempty"`
+	UsernameField           string   `json:"username_field,omitempty"`
+	AvatarField             string   `json:"avatar_field,omitempty"`
+	EmailField              string   `json:"email_field,omitempty"`
 	Scopes                  []string `json:"scopes,omitempty"`
 	Enabled                 bool     `json:"enabled"`
 	AutoRegistrationEnabled *bool    `json:"auto_registration_enabled,omitempty"`
@@ -243,6 +247,7 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 		}
 	} else {
 		var raw map[string]any
+		decoder.UseNumber()
 		if err := decoder.Decode(&raw); err != nil {
 			return upstreamProfile{}, err
 		}
@@ -267,6 +272,21 @@ func normalizeProfile(connection OAuthConnection, raw map[string]any) upstreamPr
 		Name:      stringValue(raw, "name", "displayName", "login", "username"),
 		Email:     stringValue(raw, "email", "mail", "userPrincipalName"),
 		AvatarURL: stringValue(raw, "picture", "avatar_url"),
+	}
+	if connection.Provider == "oidc" {
+		if connection.IDField != "" {
+			profile.Subject = stringValue(raw, connection.IDField)
+		}
+		if connection.UsernameField != "" {
+			profile.Username = stringValue(raw, connection.UsernameField)
+			profile.Name = profile.Username
+		}
+		if connection.AvatarField != "" {
+			profile.AvatarURL = stringValue(raw, connection.AvatarField)
+		}
+		if connection.EmailField != "" {
+			profile.Email = stringValue(raw, connection.EmailField)
+		}
 	}
 	if profile.Name == "" {
 		profile.Name = profile.Username

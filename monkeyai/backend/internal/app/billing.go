@@ -9,6 +9,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
@@ -23,6 +24,7 @@ type applicationHandler struct {
 	images    *imagegen.Service
 	inputs    *imagegen.Inputs
 	endpoints *endpoint.Service
+	feedback  *feedback.Service
 }
 type modelBilling struct{ service *billing.Service }
 type modelUsageRecorder struct{ models *model.Postgres }
@@ -32,7 +34,7 @@ func (r modelUsageRecorder) Record(ctx context.Context, c proxy.Call) error {
 		return errors.New("模型用量无效")
 	}
 	return r.models.RecordCall(ctx, model.Call{
-		ModelID: c.ModelID, UserID: c.UserID, RequestID: c.RequestID,
+		ModelID: c.ModelID, UserID: c.UserID, SessionID: c.SessionID, RequestID: c.RequestID,
 		Status: c.Result, ErrorCode: c.ErrorCode,
 		InputTokens: int64(c.InputTokens), CachedInputTokens: int64(c.CachedInputTokens),
 		OutputTokens: int64(c.OutputTokens), StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,

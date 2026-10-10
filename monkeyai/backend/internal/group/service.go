@@ -275,6 +275,9 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 	if err != nil {
 		return err
 	}
+	if err = touchShared(ctx, tx, id); err != nil {
+		return err
+	}
 	if _, err = sqlc.New(tx).DeleteGrants(ctx, new(id)); err != nil {
 		return err
 	}
@@ -282,6 +285,24 @@ func (s *Service) Delete(ctx context.Context, actor, id string) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func touchShared(ctx context.Context, tx pgx.Tx, groupID string) error {
+	q := sqlc.New(tx)
+	if _, err := q.TouchGrantedModels(ctx, new(groupID)); err != nil {
+		return err
+	}
+	if _, err := q.TouchGrantedRules(ctx, new(groupID)); err != nil {
+		return err
+	}
+	if _, err := q.TouchGrantedSkills(ctx, new(groupID)); err != nil {
+		return err
+	}
+	if _, err := q.TouchGrantedConnectors(ctx, new(groupID)); err != nil {
+		return err
+	}
+	_, err := q.TouchGrantedExperts(ctx, new(groupID))
+	return err
 }
 
 func rollbackGroup(ctx context.Context, tx pgx.Tx, operation, id string) {

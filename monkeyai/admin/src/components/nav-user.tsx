@@ -2,7 +2,7 @@
 
 import { useTranslation } from "react-i18next"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,7 @@ import {
   CheckmarkBadgeIcon,
   LogoutIcon,
   UnfoldMoreIcon,
+  UserCircleIcon,
 } from "@hugeicons/core-free-icons"
 
 export function NavUser({
@@ -32,7 +33,6 @@ export function NavUser({
   user: {
     name: string
     email: string
-    avatar: string
   }
   onLogout: () => void
 }) {
@@ -48,8 +48,14 @@ export function NavUser({
             }
           >
             <Avatar>
-              <AvatarImage src={user.avatar} alt={user.name} />
-              <AvatarFallback>MA</AvatarFallback>
+              <AvatarFallback>
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={UserCircleIcon}
+                  className="size-6"
+                  strokeWidth={2}
+                />
+              </AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-start text-sm leading-tight">
               <span className="truncate font-medium">{user.name}</span>
@@ -71,8 +77,14 @@ export function NavUser({
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
                   <Avatar>
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>MA</AvatarFallback>
+                    <AvatarFallback>
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={UserCircleIcon}
+                        className="size-6"
+                        strokeWidth={2}
+                      />
+                    </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-start text-sm leading-tight">
                     <span className="truncate font-medium">{user.name}</span>

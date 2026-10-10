@@ -782,26 +782,6 @@ func (q *Queries) GetTransaction(ctx context.Context, id string) ([]byte, error)
 	return column_1, err
 }
 
-const hasExceededReservation = `-- name: HasExceededReservation :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            billing_transactions
-        WHERE
-            user_id = $1
-            AND status = 'unknown'
-            AND error_code = 'reservation_exceeded')
-`
-
-func (q *Queries) HasExceededReservation(ctx context.Context, userID string) (bool, error) {
-	row := q.db.QueryRow(ctx, hasExceededReservation, userID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const hasOtherWalletTransactions = `-- name: HasOtherWalletTransactions :one
 SELECT EXISTS (
     SELECT 1
@@ -1482,7 +1462,9 @@ const lockTransactionStatus = `-- name: LockTransactionStatus :one
 SELECT
     status,
     MODE,
-    category
+    category,
+    usage,
+    request_id
 FROM
     billing_transactions
 WHERE
@@ -1491,15 +1473,23 @@ FOR UPDATE
 `
 
 type LockTransactionStatusRow struct {
-	Status   string
-	Mode     string
-	Category string
+	Status    string
+	Mode      string
+	Category  string
+	Usage     []byte
+	RequestID string
 }
 
 func (q *Queries) LockTransactionStatus(ctx context.Context, id string) (LockTransactionStatusRow, error) {
 	row := q.db.QueryRow(ctx, lockTransactionStatus, id)
 	var i LockTransactionStatusRow
-	err := row.Scan(&i.Status, &i.Mode, &i.Category)
+	err := row.Scan(
+		&i.Status,
+		&i.Mode,
+		&i.Category,
+		&i.Usage,
+		&i.RequestID,
+	)
 	return i, err
 }
 
@@ -2533,16 +2523,21 @@ func (q *Queries) UpdatePeriodEnd(ctx context.Context, arg UpdatePeriodEndParams
 }
 
 const upsertImageCall = `-- name: UpsertImageCall :execresult
-INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code, started_at, completed_at)
+INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code,
+    started_at, completed_at, billing_transaction_id, job_id, session_id)
 SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, $1::bigint,
-    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at
+    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at, bt.id,
+    (SELECT job.id FROM image_jobs job WHERE job.billing_transaction_id = bt.id), bt.session_id
 FROM billing_transactions bt
 WHERE bt.id = $2
 ON CONFLICT (id) DO UPDATE SET
     status = EXCLUDED.status,
     generated_images = EXCLUDED.generated_images,
     error_code = EXCLUDED.error_code,
-    completed_at = EXCLUDED.completed_at
+    completed_at = EXCLUDED.completed_at,
+    billing_transaction_id = EXCLUDED.billing_transaction_id,
+    job_id = COALESCE(EXCLUDED.job_id, image_calls.job_id),
+    session_id = COALESCE(EXCLUDED.session_id, image_calls.session_id)
 `
 
 type UpsertImageCallParams struct {

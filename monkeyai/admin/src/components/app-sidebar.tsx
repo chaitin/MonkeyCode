@@ -53,6 +53,17 @@ export function AppSidebar({
           title: t("pages.taskHistory.title"),
           url: CONSOLE_ROUTES.taskHistory,
         },
+        ...(
+          [
+            ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
+            ["sessionList", CONSOLE_ROUTES.sessionList],
+            ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
+            ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+          ] as const
+        ).map(([name, url]) => ({
+          title: t(`pages.sessionReporting.${name}.title`),
+          url,
+        })),
       ],
     },
     {
@@ -109,6 +120,10 @@ export function AppSidebar({
         {
           title: t("pages.membersAndGroups.title"),
           url: CONSOLE_ROUTES.membersAndGroups,
+        },
+        {
+          title: t("pages.feedback.title"),
+          url: CONSOLE_ROUTES.feedback,
         },
         {
           title: t("pages.operationLogs.title"),
@@ -170,7 +185,6 @@ export function AppSidebar({
           user={{
             name: user?.name ?? "MonkeyAI Admin",
             email: user?.email ?? "",
-            avatar: user?.avatar_url ?? "/placeholder.svg",
           }}
           onLogout={onLogout}
         />

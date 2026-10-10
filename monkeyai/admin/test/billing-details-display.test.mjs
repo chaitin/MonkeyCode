@@ -53,7 +53,7 @@ test("billing views use tabs and tables scroll inside the available page height"
     source,
     /<TabsTrigger value="pending">待处理与对账<\/TabsTrigger>/
   )
-  assert.equal((source.match(/<ScrollArea/g) ?? []).length, 2)
+  assert.equal((source.match(/<ScrollArea/g) ?? []).length, 3)
   assert.equal((source.match(/sticky top-0 z-10 bg-card/g) ?? []).length, 2)
   assert.equal(
     (source.match(/data-slot=table-container\]\]:h-full/g) ?? []).length,
@@ -173,49 +173,40 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
   assert.match(source, /className="rtl:rotate-180"/)
 })
 
-test("billing transaction details use the audit details key-value layout", async () => {
+test("billing transaction details follow the credit account key-value layout", async () => {
   const billingSource = await readFile(
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  const auditSource = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+  const accountSource = await readFile(
+    new URL("../src/pages/billing-settings-page.tsx", import.meta.url),
     "utf8"
   )
-  const keyValueLayout =
-    "grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm"
-  assert.ok(billingSource.includes(keyValueLayout))
-  assert.ok(auditSource.includes(keyValueLayout))
-  assert.doesNotMatch(
-    billingSource,
-    /grid grid-cols-3 gap-3 rounded-lg bg-muted\/50 p-4/
-  )
-  assert.match(
-    billingSource,
-    /<dt className="text-muted-foreground">用户<\/dt>\s*<dd className="break-all">\{data\.user_name\}<\/dd>/
-  )
-  assert.match(
-    billingSource,
-    /<dt className="text-muted-foreground">内容<\/dt>\s*<dd className="break-all">\{data\.item_name\}<\/dd>/
-  )
-  assert.match(
-    billingSource,
-    /<dt className="text-muted-foreground">状态<\/dt>\s*<dd className="break-all">\{stateNames\[data\.status\]\}<\/dd>/
-  )
-  assert.doesNotMatch(
-    billingSource,
-    /`\$\{data\.user_name\} · \$\{data\.item_name\}`/
-  )
-  const detailValues = billingSource
-    .split('<dl className="grid grid-cols-[9rem_minmax(0,1fr)]')[1]
-    .split("</dl>")[0]
-  assert.doesNotMatch(detailValues, /font-mono|text-xs/)
-  assert.match(detailValues, /<dd className="break-all">\{data\.id\}<\/dd>/)
-  assert.match(
-    detailValues,
-    /<dd className="break-all">\{data\.request_id\}<\/dd>/
-  )
   const transactionDialog = billingSource.split("function TransactionDialog")[1]
+  const rowLayout =
+    'className="flex items-center justify-between gap-4 px-4 py-3 text-sm"'
+  assert.match(
+    transactionDialog,
+    /<ScrollArea className="rounded-lg border [^"]*max-h-\[min\(40vh,24rem\)\]">\s*<dl className="divide-y">/
+  )
+  assert.ok(accountSource.includes('className="divide-y rounded-lg border"'))
+  assert.ok(transactionDialog.includes(rowLayout))
+  assert.ok(accountSource.includes(rowLayout))
+  assert.match(transactionDialog, /min-w-0 text-right break-all tabular-nums/)
+  assert.match(transactionDialog, /label: "用户", value: data\.user_name/)
+  assert.match(transactionDialog, /label: "内容", value: data\.item_name/)
+  assert.match(
+    transactionDialog,
+    /label: "状态", value: stateNames\[data\.status\]/
+  )
+  assert.match(transactionDialog, /label: "交易 ID", value: data\.id/)
+  assert.match(
+    transactionDialog,
+    /label: "上游响应 ID", value: data\.request_id/
+  )
+  assert.match(transactionDialog, /label: "普通输入 Token"/)
+  assert.match(transactionDialog, /label: "缓存输入 Token"/)
+  assert.match(transactionDialog, /label: "输出 Token"/)
   assert.doesNotMatch(
     transactionDialog,
     /act\("refund"\)|refund-reason|全额退款原因|退回原周期账户|退款保留原始扣款流水/
@@ -223,18 +214,6 @@ test("billing transaction details use the audit details key-value layout", async
   assert.doesNotMatch(
     transactionDialog,
     /每次调用：|模型倍率：|每百万 Token 积分/
-  )
-  assert.match(
-    transactionDialog,
-    /<dt className="text-muted-foreground">普通输入 Token<\/dt>/
-  )
-  assert.match(
-    transactionDialog,
-    /<dt className="text-muted-foreground">缓存输入 Token<\/dt>/
-  )
-  assert.match(
-    transactionDialog,
-    /<dt className="text-muted-foreground">输出 Token<\/dt>/
   )
 })
 

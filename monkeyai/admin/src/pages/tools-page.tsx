@@ -94,10 +94,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  getAuthorizationNames,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
 type McpServerType = "system" | "user"
 type McpAuthorizationMode = "none" | "independent" | "centralized"
@@ -502,7 +499,7 @@ export function ToolsPage() {
                     </DialogDescription>
                   </DialogHeader>
 
-                  <FieldGroup className="gap-5">
+                  <FieldGroup className="gap-4">
                     <Field>
                       <FieldLabel htmlFor="mcp-name">
                         {t("pages.tools.name")}
@@ -821,12 +818,6 @@ export function ToolsPage() {
               {servers
                 .filter((server) => server.type === tabType)
                 .map((server) => {
-                  const authorizationNames = getAuthorizationNames(
-                    server.authorization,
-                    t,
-                    subjects.flatGroups,
-                    subjects.members
-                  )
                   const connectionLabel = t(
                     `pages.tools.statuses.${server.connectionStatus}`
                   )
@@ -999,21 +990,9 @@ export function ToolsPage() {
                             })}
                           </Badge>
                         </div>
-                        <ResourceTagSummary tagIds={server.tagIds} />
                       </CardContent>
-                      <CardFooter className="min-w-0 gap-4 border-t">
-                        <span
-                          className="w-2/5 truncate text-muted-foreground"
-                          title={t("pages.tools.availabilityScope")}
-                        >
-                          {t("pages.tools.availabilityScope")}
-                        </span>
-                        <span
-                          className="w-3/5 truncate text-end font-medium"
-                          title={authorizationNames}
-                        >
-                          {authorizationNames}
-                        </span>
+                      <CardFooter className="min-w-0 border-t">
+                        <ResourceTagSummary tagIds={server.tagIds} />
                       </CardFooter>
                     </Card>
                   )

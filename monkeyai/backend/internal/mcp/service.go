@@ -18,9 +18,15 @@ import (
 
 type Service struct {
 	storage    resource.Storage
+	sessions   SessionResolver
 	Connectors *resource.CRUD
 	Store      *resource.Store
 	PublicURL  string
+}
+
+func (s *Service) WithSessionResolver(resolver SessionResolver) *Service {
+	s.sessions = resolver
+	return s
 }
 
 func NewService(store *resource.Store, publicURL string) *Service {

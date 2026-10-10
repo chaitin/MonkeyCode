@@ -16,6 +16,7 @@ import { ConsolePage } from "@/pages/console-page"
 import { BillingDetailsPage } from "@/pages/billing-details-page"
 import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
+import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LoginPage } from "@/pages/login-page"
 import { LicensePage } from "@/pages/license-page"
@@ -30,6 +31,13 @@ import { RulesPage } from "@/pages/rules-page"
 import { SkillsPage } from "@/pages/skills-page"
 import { TaskHistoryPage } from "@/pages/task-history-page"
 import { TaskStatisticsPage } from "@/pages/task-statistics-page"
+import {
+  ClientAnalysisPage,
+  ResourceAnalysisPage,
+  SessionListPage,
+  SessionOverviewPage,
+} from "@/pages/session-reporting-page"
+import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
 
 function RootRedirect() {
@@ -112,6 +120,14 @@ export function App() {
                     <ModelStatisticsPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />
+                  ) : page.path === CONSOLE_ROUTES.sessionOverview ? (
+                    <SessionOverviewPage />
+                  ) : page.path === CONSOLE_ROUTES.sessionList ? (
+                    <SessionListPage />
+                  ) : page.path === CONSOLE_ROUTES.resourceAnalysis ? (
+                    <ResourceAnalysisPage />
+                  ) : page.path === CONSOLE_ROUTES.clientAnalysis ? (
+                    <ClientAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.models ? (
                     <ModelsPage />
                   ) : page.path === CONSOLE_ROUTES.knowledgeBases ? (
@@ -130,6 +146,8 @@ export function App() {
                     <BillingSettingsPage />
                   ) : page.path === CONSOLE_ROUTES.membersAndGroups ? (
                     <MembersAndGroupsPage />
+                  ) : page.path === CONSOLE_ROUTES.feedback ? (
+                    <FeedbackPage />
                   ) : page.path === CONSOLE_ROUTES.operationLogs ? (
                     <OperationLogsPage />
                   ) : page.path === CONSOLE_ROUTES.otherSettings ? (
@@ -142,6 +160,10 @@ export function App() {
                 }
               />
             ))}
+            <Route
+              path={CONSOLE_ROUTES.sessionDetail.slice(CONSOLE_PATH.length + 1)}
+              element={<SessionDetailPage />}
+            />
             <Route
               path="*"
               element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}

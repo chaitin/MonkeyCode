@@ -82,10 +82,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useSkillTags } from "@/hooks/use-skill-tags"
-import {
-  getAuthorizationNames,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import {
   inspectSkillPackage,
   SkillPackageError,
@@ -389,7 +386,7 @@ export function SkillsPage() {
                           : t("pages.skills.dialogTitle")}
                       </DialogTitle>
                     </DialogHeader>
-                    <FieldGroup className="gap-5">
+                    <FieldGroup className="gap-4">
                       <Field data-invalid={Boolean(packageError)}>
                         <FieldLabel htmlFor="skill-package">
                           {t("pages.skills.skillPackage")}
@@ -589,16 +586,9 @@ export function SkillsPage() {
               {skills
                 .filter((skill) => skill.type === tabType)
                 .map((skill) => {
-                  const authorizationNames = getAuthorizationNames(
-                    skill.authorization,
-                    t,
-                    subjects.flatGroups,
-                    subjects.members
+                  const selectedTags = availableTags.filter((tag) =>
+                    skill.tagIds.includes(tag.id)
                   )
-                  const tagNames = availableTags
-                    .filter((tag) => skill.tagIds.includes(tag.id))
-                    .map((tag) => tag.name)
-                    .join(", ")
 
                   return (
                     <Card
@@ -710,38 +700,33 @@ export function SkillsPage() {
                           )}
                         </div>
                       </CardHeader>
-                      <CardContent className="flex flex-col gap-3">
+                      <CardContent>
                         <p
                           className="truncate text-muted-foreground"
                           title={skill.description}
                         >
                           {skill.description}
                         </p>
-                        <div className="flex min-w-0 items-center gap-4">
-                          <span className="w-2/5 truncate text-muted-foreground">
-                            {t("pages.skills.tags")}
-                          </span>
-                          <span
-                            className="w-3/5 truncate text-end font-medium"
-                            title={tagNames || t("pages.skills.noTags")}
-                          >
-                            {tagNames || t("pages.skills.noTags")}
-                          </span>
-                        </div>
                       </CardContent>
-                      <CardFooter className="min-w-0 gap-4 border-t">
-                        <span
-                          className="w-2/5 truncate text-muted-foreground"
-                          title={t("pages.skills.authorizedUsers")}
-                        >
-                          {t("pages.skills.authorizedUsers")}
-                        </span>
-                        <span
-                          className="w-3/5 truncate text-end font-medium"
-                          title={authorizationNames}
-                        >
-                          {authorizationNames}
-                        </span>
+                      <CardFooter className="min-w-0 border-t">
+                        {selectedTags.length ? (
+                          <div className="flex min-w-0 flex-wrap gap-2">
+                            {selectedTags.map((tag) => (
+                              <Badge
+                                key={tag.id}
+                                variant="outline"
+                                className="max-w-full truncate"
+                                title={tag.name}
+                              >
+                                {tag.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {t("pages.skills.noTags")}
+                          </span>
+                        )}
                       </CardFooter>
                     </Card>
                   )

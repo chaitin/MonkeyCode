@@ -86,11 +86,6 @@ CREATE TABLE models (
     model_id text NOT NULL,
     display_name text NOT NULL,
     protocol text NOT NULL,
-    kind text NOT NULL DEFAULT 'text',
-    provider text NOT NULL DEFAULT 'passthrough',
-    provider_options jsonb NOT NULL DEFAULT '{}'::jsonb,
-    image_config jsonb,
-    image_pricing jsonb,
     base_url text NOT NULL,
     api_key text NOT NULL,
     advanced_config jsonb NOT NULL,
@@ -101,18 +96,7 @@ CREATE TABLE models (
     deleted_at timestamptz,
     CONSTRAINT models_ownership_type_check CHECK (ownership_type IN ('system', 'user')),
     CONSTRAINT models_protocol_check CHECK (
-        protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic', 'image_generation')
-    ),
-    CONSTRAINT models_kind_check CHECK (kind IN ('text', 'image')),
-    CONSTRAINT models_provider_options_check CHECK (jsonb_typeof(provider_options) = 'object'),
-    CONSTRAINT models_image_config_check CHECK (image_config IS NULL OR jsonb_typeof(image_config) = 'object'),
-    CONSTRAINT models_image_pricing_check CHECK (image_pricing IS NULL OR jsonb_typeof(image_pricing) = 'object'),
-    CONSTRAINT models_kind_config_check CHECK (
-        (kind = 'text' AND provider = 'passthrough' AND protocol <> 'image_generation'
-            AND image_config IS NULL AND image_pricing IS NULL)
-        OR (kind = 'image' AND provider <> 'passthrough' AND protocol = 'image_generation'
-            AND image_config IS NOT NULL AND image_pricing IS NOT NULL
-            AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
+        protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic')
     ),
     CONSTRAINT models_advanced_config_check CHECK (jsonb_typeof(advanced_config) = 'object'),
     CONSTRAINT models_credit_multiplier_check CHECK (credit_multiplier > 0)
@@ -451,7 +435,7 @@ CREATE TABLE billing_transactions (
     user_id uuid NOT NULL REFERENCES users(id),
     account_id uuid NOT NULL REFERENCES credit_accounts(id),
     session_id uuid REFERENCES sessions(id),
-    category text NOT NULL CHECK(category IN ('model','tool','image')),
+    category text NOT NULL CHECK(category IN ('model','tool')),
     resource_id uuid NOT NULL,
     connector_id uuid REFERENCES connectors(id),
     item_name text NOT NULL,
@@ -477,85 +461,6 @@ CREATE TABLE billing_transactions (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CHECK(amount IS NULL OR amount >= 0)
 );
-
-CREATE TABLE image_calls (
-    id uuid PRIMARY KEY REFERENCES billing_transactions(id),
-    user_id uuid NOT NULL REFERENCES users(id),
-    model_id uuid NOT NULL REFERENCES models(id),
-    request_id text,
-    status text NOT NULL CHECK (status IN ('succeeded', 'failed', 'cancelled')),
-    generated_images bigint NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
-    error_code text,
-    started_at timestamptz NOT NULL,
-    completed_at timestamptz
-);
-
-CREATE TABLE image_inputs (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES users(id),
-    object_key text NOT NULL UNIQUE,
-    mime_type text NOT NULL,
-    width integer NOT NULL CHECK (width > 0),
-    height integer NOT NULL CHECK (height > 0),
-    byte_size bigint NOT NULL CHECK (byte_size > 0),
-    sha256 text NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    expires_at timestamptz NOT NULL
-);
-
-CREATE TABLE image_jobs (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES users(id),
-    model_id uuid NOT NULL REFERENCES models(id),
-    billing_transaction_id uuid UNIQUE REFERENCES billing_transactions(id),
-    provider text NOT NULL,
-    operation text NOT NULL CHECK (operation IN ('generate', 'edit')),
-    provider_job_id text,
-    provider_request_id text,
-    status text NOT NULL CHECK (status IN ('created', 'reserved', 'submitted', 'running', 'succeeded', 'failed', 'unknown')),
-    request_hash text NOT NULL,
-    idempotency_key text,
-    requested_images integer NOT NULL CHECK (requested_images > 0),
-    generated_images integer NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
-    quality text NOT NULL,
-    aspect_ratio text NOT NULL,
-    request_config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(request_config) = 'object'),
-    pricing_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(pricing_snapshot) = 'object'),
-    usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage) = 'object'),
-    error_code text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    submitted_at timestamptz,
-    completed_at timestamptz
-);
-
-CREATE TABLE image_job_inputs (
-    job_id uuid NOT NULL REFERENCES image_jobs(id),
-    input_id uuid NOT NULL REFERENCES image_inputs(id),
-    PRIMARY KEY (job_id, input_id)
-);
-
-CREATE TABLE image_outputs (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_id uuid NOT NULL REFERENCES image_jobs(id),
-    ordinal integer NOT NULL CHECK (ordinal >= 0),
-    object_key text NOT NULL UNIQUE,
-    UNIQUE (job_id, ordinal),
-    mime_type text NOT NULL,
-    width integer NOT NULL CHECK (width > 0),
-    height integer NOT NULL CHECK (height > 0),
-    byte_size bigint NOT NULL CHECK (byte_size > 0),
-    sha256 text NOT NULL,
-    seed bigint,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    expires_at timestamptz NOT NULL,
-    purged_at timestamptz
-);
-CREATE INDEX image_calls_user_started_idx ON image_calls(user_id, started_at DESC);
-CREATE INDEX image_inputs_user_expires_idx ON image_inputs(user_id, expires_at);
-CREATE INDEX image_inputs_expiration_idx ON image_inputs(expires_at);
-CREATE UNIQUE INDEX image_jobs_idempotency_idx ON image_jobs(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
-CREATE INDEX image_jobs_pending_idx ON image_jobs(status, created_at) WHERE status IN ('created', 'reserved', 'submitted', 'running', 'unknown');
-CREATE INDEX image_outputs_expiration_idx ON image_outputs(expires_at) WHERE purged_at IS NULL;
 
 CREATE TABLE credit_ledger_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -590,7 +495,7 @@ CREATE TABLE credit_ledger_entries (
         entry_type IN ('charge', 'grant', 'refund', 'reset', 'adjustment')
     ),
     CONSTRAINT credit_ledger_entries_category_check CHECK (
-        category IN ('model', 'tool', 'image', 'other')
+        category IN ('model', 'tool', 'other')
     ),
     CONSTRAINT credit_ledger_entries_source_type_check CHECK (
         source_type IS NULL
@@ -801,3 +706,367 @@ ALTER TABLE users DROP COLUMN billing_group_id;
 ALTER TABLE credit_accounts
     DROP CONSTRAINT credit_accounts_amount_check,
     ADD CONSTRAINT credit_accounts_amount_check CHECK (frozen >= 0);
+
+ALTER TABLE models
+    ADD COLUMN kind text NOT NULL DEFAULT 'text',
+    ADD COLUMN provider text NOT NULL DEFAULT 'passthrough',
+    ADD COLUMN provider_options jsonb NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN image_config jsonb,
+    ADD COLUMN image_pricing jsonb;
+
+ALTER TABLE models
+    DROP CONSTRAINT models_protocol_check,
+    ADD CONSTRAINT models_protocol_check CHECK (
+        protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic', 'image_generation')
+    ),
+    ADD CONSTRAINT models_kind_check CHECK (kind IN ('text', 'image')),
+    ADD CONSTRAINT models_provider_options_check CHECK (jsonb_typeof(provider_options) = 'object'),
+    ADD CONSTRAINT models_image_config_check CHECK (image_config IS NULL OR jsonb_typeof(image_config) = 'object'),
+    ADD CONSTRAINT models_image_pricing_check CHECK (image_pricing IS NULL OR jsonb_typeof(image_pricing) = 'object'),
+    ADD CONSTRAINT models_kind_config_check CHECK (
+        (kind = 'text' AND provider = 'passthrough' AND protocol <> 'image_generation'
+            AND image_config IS NULL AND image_pricing IS NULL)
+        OR (kind = 'image' AND provider <> 'passthrough' AND protocol = 'image_generation'
+            AND image_config IS NOT NULL AND image_pricing IS NOT NULL
+            AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
+    );
+
+ALTER TABLE billing_transactions DROP CONSTRAINT billing_transactions_category_check;
+
+ALTER TABLE billing_transactions ADD CONSTRAINT billing_transactions_category_check CHECK (category IN ('model', 'tool', 'image'));
+
+ALTER TABLE credit_ledger_entries DROP CONSTRAINT credit_ledger_entries_category_check;
+
+ALTER TABLE credit_ledger_entries ADD CONSTRAINT credit_ledger_entries_category_check CHECK (category IN ('model', 'tool', 'image', 'other'));
+
+CREATE TABLE image_calls (
+    id uuid PRIMARY KEY REFERENCES billing_transactions(id),
+    user_id uuid NOT NULL REFERENCES users(id),
+    model_id uuid NOT NULL REFERENCES models(id),
+    request_id text,
+    status text NOT NULL CHECK (status IN ('succeeded', 'failed', 'cancelled')),
+    generated_images bigint NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
+    error_code text,
+    started_at timestamptz NOT NULL,
+    completed_at timestamptz
+);
+
+CREATE TABLE image_inputs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    object_key text NOT NULL UNIQUE,
+    mime_type text NOT NULL,
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    byte_size bigint NOT NULL CHECK (byte_size > 0),
+    sha256 text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+);
+
+CREATE TABLE image_jobs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    model_id uuid NOT NULL REFERENCES models(id),
+    billing_transaction_id uuid UNIQUE REFERENCES billing_transactions(id),
+    provider text NOT NULL,
+    operation text NOT NULL CHECK (operation IN ('generate', 'edit')),
+    provider_job_id text,
+    provider_request_id text,
+    status text NOT NULL CHECK (status IN ('created', 'reserved', 'submitted', 'running', 'succeeded', 'failed', 'unknown')),
+    request_hash text NOT NULL,
+    idempotency_key text,
+    requested_images integer NOT NULL CHECK (requested_images > 0),
+    generated_images integer NOT NULL DEFAULT 0 CHECK (generated_images >= 0),
+    quality text NOT NULL,
+    aspect_ratio text NOT NULL,
+    request_config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(request_config) = 'object'),
+    pricing_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(pricing_snapshot) = 'object'),
+    usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage) = 'object'),
+    error_code text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    submitted_at timestamptz,
+    completed_at timestamptz
+);
+
+CREATE TABLE image_job_inputs (
+    job_id uuid NOT NULL REFERENCES image_jobs(id),
+    input_id uuid NOT NULL REFERENCES image_inputs(id),
+    PRIMARY KEY (job_id, input_id)
+);
+
+CREATE TABLE image_outputs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id uuid NOT NULL REFERENCES image_jobs(id),
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    object_key text NOT NULL UNIQUE,
+    UNIQUE (job_id, ordinal),
+    mime_type text NOT NULL,
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    byte_size bigint NOT NULL CHECK (byte_size > 0),
+    sha256 text NOT NULL,
+    seed bigint,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    purged_at timestamptz
+);
+
+CREATE TABLE feedbacks (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users (id),
+    category text NOT NULL CHECK (category IN ('bug', 'feature', 'experience', 'other')),
+    content text NOT NULL DEFAULT '' CHECK (char_length(content) <= 5000),
+    rating integer CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
+    platform text NOT NULL CHECK (platform IN ('desktop', 'mobile', 'web', 'other')),
+    client_version text NOT NULL DEFAULT '' CHECK (char_length(client_version) <= 64),
+    state text NOT NULL DEFAULT 'uploading' CHECK (state IN ('uploading', 'new', 'resolved', 'ignored', 'failed')),
+    request_id text NOT NULL DEFAULT '',
+    idempotency_key text NOT NULL DEFAULT '',
+    request_hash text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE feedback_attachments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    feedback_id uuid NOT NULL REFERENCES feedbacks (id) ON DELETE CASCADE,
+    object_key text NOT NULL,
+    mime_type text NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg', 'image/webp')),
+    byte_size bigint NOT NULL CHECK (byte_size > 0 AND byte_size <= 5242880),
+    width integer NOT NULL CHECK (width > 0),
+    height integer NOT NULL CHECK (height > 0),
+    sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'ready', 'failed')),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE settings
+    DROP CONSTRAINT settings_key_check,
+    ADD CONSTRAINT settings_key_check CHECK (
+        key IN ('branding', 'authentication', 'email', 'billing', 'session_reporting')
+    );
+
+ALTER TABLE sessions
+    ADD COLUMN group_id uuid,
+    ADD COLUMN model_id uuid,
+    ADD COLUMN parent_session_id uuid,
+    ADD COLUMN mode text,
+    ADD COLUMN workspace_kind text,
+    ADD COLUMN client_version text,
+    ADD COLUMN engine_version text,
+    ADD COLUMN runtime_version text,
+    ADD COLUMN placeholder boolean NOT NULL DEFAULT false,
+    ADD COLUMN started_at_provisional boolean NOT NULL DEFAULT false,
+    ADD COLUMN clock_suspect boolean NOT NULL DEFAULT false,
+    ADD COLUMN state_seq bigint NOT NULL DEFAULT 0,
+    ADD COLUMN state_hash bytea,
+    ADD COLUMN state_received_at timestamptz,
+    ADD COLUMN resources_snapshot_id text,
+    ADD COLUMN acked_turn integer NOT NULL DEFAULT 0,
+    ADD COLUMN facts_version integer,
+    ADD COLUMN last_stop_reason text,
+    ADD COLUMN active_seconds bigint NOT NULL DEFAULT 0,
+    ADD COLUMN client_deleted_at timestamptz,
+    ADD COLUMN purged_at timestamptz,
+    ADD COLUMN reporting_enabled_at timestamptz,
+    ADD CONSTRAINT sessions_group_id_fkey FOREIGN KEY (group_id) REFERENCES groups (id),
+    ADD CONSTRAINT sessions_model_id_fkey FOREIGN KEY (model_id) REFERENCES models (id),
+    ADD CONSTRAINT sessions_parent_session_id_fkey FOREIGN KEY (parent_session_id) REFERENCES sessions (id),
+    ADD CONSTRAINT sessions_parent_session_id_check CHECK (parent_session_id IS DISTINCT FROM id),
+    ADD CONSTRAINT sessions_state_seq_check CHECK (state_seq >= 0),
+    ADD CONSTRAINT sessions_acked_turn_check CHECK (acked_turn >= 0),
+    ADD CONSTRAINT sessions_active_seconds_check CHECK (active_seconds >= 0);
+
+ALTER TABLE sessions
+    ALTER COLUMN last_active_at DROP NOT NULL,
+    DROP CONSTRAINT sessions_client_type_check,
+    DROP CONSTRAINT sessions_time_check,
+    ADD CONSTRAINT sessions_client_type_check CHECK (
+        client_type IN ('desktop', 'web', 'extension', 'mobile', 'unknown')
+    ),
+    ADD CONSTRAINT sessions_time_check CHECK (
+        ended_at IS NULL OR ended_at >= started_at
+    );
+
+CREATE TABLE session_resource_snapshots (
+    session_id uuid NOT NULL REFERENCES sessions(id),
+    snapshot_id text NOT NULL,
+    revision bigint,
+    state_version bigint,
+    items jsonb NOT NULL CHECK (jsonb_typeof(items) = 'array'),
+    first_seen_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (session_id, snapshot_id)
+);
+
+CREATE TABLE session_resource_snapshot_items (
+    session_id uuid NOT NULL,
+    snapshot_id text NOT NULL,
+    resource_id text NOT NULL,
+    kind text NOT NULL,
+    name text,
+    source text,
+    version text,
+    digest text,
+    enabled boolean NOT NULL,
+    available boolean NOT NULL,
+    status text,
+    reason text,
+    PRIMARY KEY (session_id, snapshot_id, resource_id),
+    FOREIGN KEY (session_id, snapshot_id)
+        REFERENCES session_resource_snapshots(session_id, snapshot_id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE session_turns (
+    session_id uuid NOT NULL REFERENCES sessions(id),
+    turn_index integer NOT NULL CHECK (turn_index > 0),
+    facts_version integer NOT NULL,
+    report_hash bytea NOT NULL,
+    input_seq bigint NOT NULL,
+    started_at timestamptz NOT NULL,
+    ended_at timestamptz NOT NULL,
+    received_at timestamptz NOT NULL DEFAULT now(),
+    stop_reason text NOT NULL CHECK (
+        stop_reason IN (
+            'complete', 'interrupted', 'error',
+            'max_turns', 'output_limit', 'unknown'
+        )
+    ),
+    error_code text,
+    recovered boolean NOT NULL DEFAULT false,
+
+    model_id uuid REFERENCES models(id),
+    thinking_enabled boolean,
+    thinking_effort text,
+    resources_snapshot_id text NOT NULL,
+    client_version text,
+    engine_version text,
+
+    input_tokens bigint,
+    output_tokens bigint,
+    cache_creation_input_tokens bigint,
+    cache_read_input_tokens bigint,
+    subagent_input_tokens bigint,
+    subagent_output_tokens bigint,
+    subagent_cache_creation_input_tokens bigint,
+    subagent_cache_read_input_tokens bigint,
+    context_used bigint,
+    context_window bigint,
+
+    input_kind text NOT NULL,
+    input_client_type text,
+    input_machine_id text,
+    command_skill_id text,
+    attachments integer NOT NULL DEFAULT 0,
+    canvas_nodes integer NOT NULL DEFAULT 0,
+    steers integer NOT NULL DEFAULT 0,
+    files_created integer NOT NULL DEFAULT 0,
+    files_updated integer NOT NULL DEFAULT 0,
+    files_deleted integer NOT NULL DEFAULT 0,
+    compactions integer NOT NULL DEFAULT 0,
+    permissions_asked integer NOT NULL DEFAULT 0,
+    permissions_allowed integer NOT NULL DEFAULT 0,
+    permissions_denied integer NOT NULL DEFAULT 0,
+    truncated boolean NOT NULL DEFAULT false,
+
+    PRIMARY KEY (session_id, turn_index),
+    FOREIGN KEY (session_id, resources_snapshot_id)
+        REFERENCES session_resource_snapshots(session_id, snapshot_id),
+    CHECK (ended_at >= started_at),
+    CHECK (input_tokens IS NULL OR input_tokens >= 0),
+    CHECK (output_tokens IS NULL OR output_tokens >= 0),
+    CHECK (context_used IS NULL OR context_used >= 0),
+    CHECK (context_window IS NULL OR context_window >= 0),
+    CHECK (attachments >= 0 AND canvas_nodes >= 0 AND steers >= 0),
+    CHECK (files_created >= 0 AND files_updated >= 0 AND files_deleted >= 0),
+    CHECK (compactions >= 0 AND permissions_asked >= 0),
+    CHECK (permissions_allowed >= 0 AND permissions_denied >= 0)
+);
+
+CREATE TABLE session_turn_tools (
+    session_id uuid NOT NULL,
+    turn_index integer NOT NULL,
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    category text NOT NULL CHECK (
+        category IN ('builtin', 'skill', 'workflow', 'agent',
+                     'connector', 'local_mcp')
+    ),
+    name text,
+    resource_id text,
+    resource_origin text,
+    resource_version text,
+    server text,
+    target text,
+    calls integer NOT NULL CHECK (calls > 0),
+    failed integer NOT NULL CHECK (failed >= 0 AND failed <= calls),
+    duration_ms bigint NOT NULL CHECK (duration_ms >= 0),
+    PRIMARY KEY (session_id, turn_index, ordinal),
+    FOREIGN KEY (session_id, turn_index)
+        REFERENCES session_turns(session_id, turn_index)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE session_skill_events (
+    session_id uuid NOT NULL,
+    turn_index integer NOT NULL,
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    skill_id text,
+    name text,
+    origin text,
+    version text,
+    digest text,
+    trigger text NOT NULL CHECK (trigger IN ('user', 'model', 'workflow')),
+    ok boolean NOT NULL,
+    reason text,
+    PRIMARY KEY (session_id, turn_index, ordinal),
+    FOREIGN KEY (session_id, turn_index)
+        REFERENCES session_turns(session_id, turn_index)
+        ON DELETE CASCADE
+);
+
+ALTER TABLE endpoints
+    DROP CONSTRAINT endpoints_platform_check,
+    ALTER COLUMN protocol_version DROP NOT NULL,
+    ADD CONSTRAINT endpoints_platform_check CHECK (
+        platform IN ('macos', 'windows', 'linux', 'ios', 'android', 'web')
+    );
+
+ALTER TABLE endpoints
+    ADD COLUMN client_type text,
+    ADD COLUMN client_name text,
+    ADD COLUMN channel text,
+    ADD COLUMN locale text,
+    ADD COLUMN system_locale text,
+    ADD COLUMN timezone text,
+    ADD COLUMN runtime_version text,
+    ADD COLUMN engine_version text,
+    ADD COLUMN electron_version text,
+    ADD COLUMN last_reported_at timestamptz;
+
+ALTER TABLE image_jobs
+    ADD COLUMN session_id uuid REFERENCES sessions(id);
+
+ALTER TABLE image_calls
+    DROP CONSTRAINT image_calls_id_fkey,
+    ADD COLUMN billing_transaction_id uuid,
+    ADD COLUMN job_id uuid,
+    ADD COLUMN session_id uuid REFERENCES sessions(id);
+
+ALTER TABLE image_calls
+    ADD CONSTRAINT image_calls_billing_transaction_id_key UNIQUE (billing_transaction_id),
+    ADD CONSTRAINT image_calls_billing_transaction_id_fkey
+        FOREIGN KEY (billing_transaction_id) REFERENCES billing_transactions(id),
+    ADD CONSTRAINT image_calls_job_id_key UNIQUE (job_id),
+    ADD CONSTRAINT image_calls_job_id_fkey
+        FOREIGN KEY (job_id) REFERENCES image_jobs(id);
+
+CREATE TABLE session_reporting_rate_limits (
+    user_id uuid NOT NULL REFERENCES users(id),
+    kind text NOT NULL CHECK (kind IN ('sessions', 'turns', 'endpoints')),
+    bucket_start timestamptz NOT NULL,
+    request_count integer NOT NULL CHECK (request_count > 0),
+    PRIMARY KEY (user_id, kind)
+);
+
+ALTER TABLE sessions ADD COLUMN title_source text;

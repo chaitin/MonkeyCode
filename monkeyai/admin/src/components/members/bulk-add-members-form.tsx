@@ -144,7 +144,7 @@ export function BulkAddMembersForm({
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex flex-col gap-4"
       onSubmit={rows === null ? preview : submit}
     >
       <Field>
@@ -290,7 +290,7 @@ export function BulkAddMembersForm({
           {t(`${key}.progress`, progress)}
         </p>
       )}
-      <DialogFooter>
+      <DialogFooter className="mt-2">
         {rows !== null && rows.length > 0 && (
           <Button
             type="button"
