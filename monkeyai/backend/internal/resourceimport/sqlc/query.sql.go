@@ -240,11 +240,15 @@ func (q *Queries) ListImportBindings(ctx context.Context, publisher string) ([][
 }
 
 const listImportHistory = `-- name: ListImportHistory :many
-SELECT to_jsonb(i) FROM resource_imports i ORDER BY created_at DESC, id DESC LIMIT 100
+SELECT to_jsonb(i) FROM resource_imports i
+WHERE $1::jsonb = '{}'::jsonb
+   OR (i.created_at, i.id) < (($1::jsonb->>'created_at')::timestamptz, ($1::jsonb->>'id')::uuid)
+ORDER BY i.created_at DESC, i.id DESC
+LIMIT 21
 `
 
-func (q *Queries) ListImportHistory(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listImportHistory)
+func (q *Queries) ListImportHistory(ctx context.Context, cursor []byte) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listImportHistory, cursor)
 	if err != nil {
 		return nil, err
 	}

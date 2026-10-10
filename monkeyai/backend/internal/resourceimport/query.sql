@@ -7,7 +7,11 @@ FROM resource_imports WHERE publisher = $1 AND status = 'succeeded'
 ORDER BY version DESC LIMIT 1;
 
 -- name: ListImportHistory :many
-SELECT to_jsonb(i) FROM resource_imports i ORDER BY created_at DESC, id DESC LIMIT 100;
+SELECT to_jsonb(i) FROM resource_imports i
+WHERE sqlc.arg(cursor)::jsonb = '{}'::jsonb
+   OR (i.created_at, i.id) < ((sqlc.arg(cursor)::jsonb->>'created_at')::timestamptz, (sqlc.arg(cursor)::jsonb->>'id')::uuid)
+ORDER BY i.created_at DESC, i.id DESC
+LIMIT 21;
 
 -- name: GetImportHistory :one
 SELECT to_jsonb(i) FROM resource_imports i WHERE id = $1::uuid;

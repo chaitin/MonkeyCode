@@ -46,9 +46,11 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '409': {description: 发布版本或并发变更冲突，需重新预览}
     get:
-      summary: 查询最近的资源包导入批次
+      summary: 分页查询资源包导入批次
+      parameters:
+        - {name: cursor, in: query, schema: {type: string}, description: 上一页返回的 next_cursor}
       responses:
-        '200': {description: 批次历史}
+        '200': {description: 每页最多 20 条，返回 items 与 next_cursor}
   /api/admin/v1/resource-imports/{id}:
     get:
       summary: 读取资源包导入批次详情
