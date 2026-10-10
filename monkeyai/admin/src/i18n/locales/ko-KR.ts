@@ -75,9 +75,6 @@ export const koKR = {
       "호출은 시작 시각, 크레딧은 청구 및 환불 시각 기준입니다. 캐시 적중률은 적중한 호출의 비율입니다.",
     taskScope:
       "기간 내 시작한 세션입니다. 완료율은 성공 수 / 전체 수이며 평균 시간은 종료된 세션만 포함합니다. 클라이언트 보고가 필요합니다.",
-    realtimeScope:
-      "30초마다 갱신합니다. 처리량은 기간 내 완료된 호출, 활성 작업은 최근 활동한 미종료 세션 기준입니다.",
-    updated: "{{time}} 업데이트",
   },
   common: {
     breadcrumb: "이동 경로",
@@ -156,13 +153,14 @@ export const koKR = {
   pages: {
     realtimeStatus: {
       title: "실시간 상태",
-      description: "최근 1시간의 모델 성능과 서비스 활동을 확인합니다.",
+      description: "선택한 기간의 모델 성능과 서비스 활동을 확인합니다.",
       timeRange: "실시간 통계 기간",
       ranges: {
-        "5m": "5분",
         "15m": "15분",
-        "30m": "30분",
-        "60m": "60분",
+        "1h": "1시간",
+        "4h": "4시간",
+        "1d": "1일",
+        "7d": "7일",
       },
       sections: {
         modelHealth: "모델 성능",
@@ -178,6 +176,7 @@ export const koKR = {
         rpm: "모델 RPM",
         inputTokens: "입력 Token 수",
         outputTokens: "출력 Token 수",
+        totalUsers: "전체 사용자 수",
         activeUsers: "활성 사용자 수",
         activeTasks: "활성 작업 수",
         newTasks: "새 작업 수",
@@ -185,7 +184,7 @@ export const koKR = {
       },
       units: {
         credits: "{{count}} 크레딧",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}}초",
       },
     },
     taskHistory: {

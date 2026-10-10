@@ -800,7 +800,7 @@ paths:
         - name: range
           in: query
           required: false
-          description: 以服务端当前时间为终点的滚动窗口。
+          description: 以服务端当前时间为终点的滚动窗口；5m、30m、60m 仅为旧版调用保留。
           schema:
             type: string
             enum:
@@ -808,7 +808,11 @@ paths:
               - 15m
               - 30m
               - 60m
-            default: 15m
+              - 1h
+              - 4h
+              - 1d
+              - 7d
+            default: 1d
       responses:
         "200":
           description: 统计结果。
@@ -5142,6 +5146,7 @@ components:
         - rpm
         - input_tokens
         - output_tokens
+        - total_users
         - active_users
         - active_tasks
         - new_tasks
@@ -5177,6 +5182,10 @@ components:
           type: integer
           minimum: 0
           description: 窗口内完成调用的输出 Token。
+        total_users:
+          type: integer
+          minimum: 0
+          description: 当前系统未删除的用户总数，包含已停用用户及管理员，不受时间范围影响。
         active_users:
           type: integer
           minimum: 0
@@ -5184,11 +5193,11 @@ components:
         active_tasks:
           type: integer
           minimum: 0
-          description: 最近活动时间在窗口内且未结束、未删除的会话数。
+          description: 窗口内有网关活动的未删除、非占位顶层任务去重数；可能已结束，并非正在运行的任务数。
         new_tasks:
           type: integer
           minimum: 0
-          description: 窗口内创建且未删除的会话数。
+          description: 窗口内开始的未删除、非占位、已上报顶层任务数。
     StatisticsHistory:
       type: object
       required:

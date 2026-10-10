@@ -79,9 +79,6 @@ export const jaJP = {
       "呼び出しは開始時刻、クレジットは課金・返金時刻で集計します。キャッシュヒット率はヒットした呼び出しの割合です。",
     taskScope:
       "期間内に開始したセッション。完了率は成功数 / 総数、平均時間は終了したセッションのみです。クライアントからの報告が必要です。",
-    realtimeScope:
-      "30 秒ごとに更新。スループットは期間内に完了した呼び出し、アクティブタスクは最近活動した未終了セッションです。",
-    updated: "更新時刻 {{time}}",
   },
   common: {
     breadcrumb: "パンくずリスト",
@@ -163,13 +160,14 @@ export const jaJP = {
     realtimeStatus: {
       title: "リアルタイム状態",
       description:
-        "過去 1 時間のモデル稼働状況とサービスの利用状況を確認します。",
+        "選択した期間のモデル稼働状況とサービスの利用状況を確認します。",
       timeRange: "リアルタイム集計期間",
       ranges: {
-        "5m": "5 分",
         "15m": "15 分",
-        "30m": "30 分",
-        "60m": "60 分",
+        "1h": "1 時間",
+        "4h": "4 時間",
+        "1d": "1 日",
+        "7d": "7 日",
       },
       sections: {
         modelHealth: "モデルパフォーマンス",
@@ -185,6 +183,7 @@ export const jaJP = {
         rpm: "モデル RPM",
         inputTokens: "入力 Token 数",
         outputTokens: "出力 Token 数",
+        totalUsers: "総ユーザー数",
         activeUsers: "アクティブユーザー数",
         activeTasks: "アクティブタスク数",
         newTasks: "新規タスク数",
@@ -192,7 +191,7 @@ export const jaJP = {
       },
       units: {
         credits: "{{count}} クレジット",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} 秒",
       },
     },
     taskHistory: {

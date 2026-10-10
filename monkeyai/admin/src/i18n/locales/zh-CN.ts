@@ -181,9 +181,6 @@ export const zhCN = {
       "调用按开始时间统计，积分按扣费与退款发生时间统计；缓存命中率为命中缓存的调用占比。",
     taskScope:
       "按窗口内已上报轮次统计；完成率和异常率以已知结局为分母，中断单独统计，未知结局不计入分母。",
-    realtimeScope:
-      "每 30 秒刷新。吞吐按窗口内完成的调用计算；最近活跃任务指窗口内有网关活动的顶层任务，不代表仍在运行。",
-    updated: "更新于 {{time}}",
   },
   common: {
     breadcrumb: "面包屑导航",
@@ -268,13 +265,14 @@ export const zhCN = {
   pages: {
     realtimeStatus: {
       title: "实时状态",
-      description: "查看最近一小时内的模型运行与业务活跃状态。",
+      description: "查看所选时间范围内的模型运行与业务活跃状态。",
       timeRange: "实时统计周期",
       ranges: {
-        "5m": "5 分钟",
         "15m": "15 分钟",
-        "30m": "30 分钟",
-        "60m": "60 分钟",
+        "1h": "1 小时",
+        "4h": "4 小时",
+        "1d": "1 天",
+        "7d": "7 天",
       },
       sections: {
         modelHealth: "模型运行质量",
@@ -286,18 +284,19 @@ export const zhCN = {
         p95ResponseTime: "模型 P95 响应时间",
         modelSuccessRate: "模型调用成功率",
         modelCalls: "模型调用次数",
-        tpm: "模型 TPM",
-        rpm: "模型 RPM",
-        inputTokens: "输入 Token 数量",
-        outputTokens: "输出 Token 数量",
-        activeUsers: "活跃用户数量",
-        activeTasks: "最近活跃任务数量",
-        newTasks: "新建任务数量",
+        tpm: "大模型 TPM",
+        rpm: "大模型 RPM",
+        inputTokens: "输入 Token",
+        outputTokens: "输出 Token",
+        totalUsers: "总用户量",
+        activeUsers: "活跃用户",
+        activeTasks: "活跃任务",
+        newTasks: "新建任务",
         conversations: "对话次数",
       },
       units: {
         credits: "{{count}} 积分",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} 秒",
       },
     },
     taskHistory: {

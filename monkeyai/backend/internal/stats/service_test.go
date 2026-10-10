@@ -166,19 +166,49 @@ func TestModels(t *testing.T) {
 	all := request(t, s, "/statistics/models?range=24h", 200)
 	number(t, all["summary"].(map[string]any), "calls", 3)
 }
+func TestRealtimeRanges(t *testing.T) {
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	for value, duration := range map[string]time.Duration{
+		"5m":  5 * time.Minute,
+		"15m": 15 * time.Minute,
+		"30m": 30 * time.Minute,
+		"60m": time.Hour,
+		"1h":  time.Hour,
+		"4h":  4 * time.Hour,
+		"1d":  24 * time.Hour,
+		"7d":  7 * 24 * time.Hour,
+	} {
+		w, err := period(httptest.NewRequest("GET", "/statistics/realtime?range="+value, nil), now, true)
+		if err != nil || !w.from.Equal(now.Add(-duration)) || !w.until.Equal(now) {
+			t.Fatalf("range=%s: window=%+v error=%v", value, w, err)
+		}
+	}
+	w, err := period(httptest.NewRequest("GET", "/statistics/realtime", nil), now, true)
+	if err != nil || !w.from.Equal(now.Add(-24*time.Hour)) {
+		t.Fatalf("默认应为 1 天: window=%+v error=%v", w, err)
+	}
+	if _, err := period(httptest.NewRequest("GET", "/statistics/realtime?range=8d", nil), now, true); err == nil {
+		t.Fatal("无效窗口应被拒绝")
+	}
+}
+
 func TestRealtime(t *testing.T) {
 	s, user, model := fixture(t)
 	now := s.now()
+	exec(t, s, `INSERT INTO users(name,email,status,disabled_at) VALUES('停用用户','disabled@example.com','disabled',$1)`, now)
+	exec(t, s, `INSERT INTO users(name,email,deleted_at) VALUES('已删除用户','deleted@example.com',$1)`, now)
 	call(t, s, user, model, "succeeded", now.Add(-time.Hour), now.Add(-2*time.Minute), 100, 0, 20, 1000)
 	call(t, s, user, model, "failed", now.Add(-2*time.Minute), now.Add(-time.Minute), 50, 0, 30, 9000)
 	call(t, s, user, model, "succeeded", now.Add(-2*time.Hour), now.Add(-time.Hour), 999, 0, 999, 999)
-	out := request(t, s, "/statistics/realtime?range=5m", 200)
-	for key, want := range map[string]float64{"model_calls": 2, "model_success_rate": 50, "p95_response_time": 8600, "rpm": 0.4, "tpm": 40, "active_users": 1} {
+	out := request(t, s, "/statistics/realtime?range=15m", 200)
+	for key, want := range map[string]float64{"model_calls": 2, "model_success_rate": 50, "p95_response_time": 8600, "rpm": 2.0 / 15, "tpm": 200.0 / 15, "total_users": 2, "active_users": 1} {
 		number(t, out, key, want)
 	}
 	exec(t, s, `UPDATE model_calls SET response_duration_ms=NULL WHERE completed_at=$1`, now.Add(-time.Minute))
-	out = request(t, s, "/statistics/realtime?range=5m", 200)
+	out = request(t, s, "/statistics/realtime?range=15m", 200)
 	number(t, out, "p95_response_time", 57050)
+	out = request(t, s, "/statistics/realtime?range=1h", 200)
+	number(t, out, "total_users", 2)
 }
 func TestRealtimeGroupsSubsessionsWithoutEndedAt(t *testing.T) {
 	s, user, model := fixture(t)
@@ -189,7 +219,7 @@ func TestRealtimeGroupsSubsessionsWithoutEndedAt(t *testing.T) {
 	exec(t, s, `INSERT INTO sessions(id,owner_user_id,parent_session_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,reporting_enabled_at)
 	VALUES($1,$2,$3,'','conversation','desktop','',$4,$4,$4,$4)`, child, user, root, now.Add(-time.Hour))
 	exec(t, s, `INSERT INTO model_calls(session_id,user_id,model_id,status,started_at,completed_at) VALUES($1,$2,$3,'succeeded',$4,$5)`, child, user, model, now.Add(-2*time.Minute), now.Add(-time.Minute))
-	out := request(t, s, "/statistics/realtime?range=5m", 200)
+	out := request(t, s, "/statistics/realtime?range=15m", 200)
 	number(t, out, "active_tasks", 1)
 	number(t, out, "new_tasks", 0)
 }
@@ -328,7 +358,7 @@ func TestEmptyAndInvalid(t *testing.T) {
 	if out["p95_response_time"] != nil || out["model_success_rate"] != nil {
 		t.Fatalf("空样本不能产生百分比或时延: %v", out)
 	}
-	for _, path := range []string{"/statistics/models?range=invalid", "/statistics/realtime?range=7d", "/statistics/models?model_id=bad", "/statistics/history?page=0", "/statistics/history?page_size=501", "/statistics/history?from=bad", "/statistics/history?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z"} {
+	for _, path := range []string{"/statistics/models?range=invalid", "/statistics/realtime?range=8d", "/statistics/models?model_id=bad", "/statistics/history?page=0", "/statistics/history?page_size=501", "/statistics/history?from=bad", "/statistics/history?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z"} {
 		request(t, s, path, 400)
 	}
 }

@@ -21,7 +21,7 @@ import { CONSOLE_ROUTES, getConsolePage } from "@/lib/routes"
 import { cn } from "@/lib/utils"
 
 const mainItemClassName =
-  "h-10 text-sm text-foreground hover:bg-sidebar-accent/60 hover:text-foreground data-active:bg-sidebar-accent data-active:font-normal data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground"
+  "h-11 text-sm text-foreground hover:bg-sidebar-accent/60 hover:text-foreground data-active:bg-sidebar-accent data-active:font-normal data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground"
 
 export function NavMain({
   items,
@@ -107,7 +107,7 @@ export function NavMain({
                     {item.items.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton
-                          className="h-9 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 rtl:translate-x-0 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground"
+                          className="h-10 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 rtl:translate-x-0 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground"
                           isActive={isActiveSubItem(subItem.url)}
                           size="md"
                           render={<NavLink to={subItem.url} />}

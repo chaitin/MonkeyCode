@@ -45,9 +45,13 @@ func period(r *http.Request, now time.Time, realtime bool) (window, error) {
 	ranges := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour}
 	value := r.URL.Query().Get("range")
 	if realtime {
-		ranges = map[string]time.Duration{"5m": 5 * time.Minute, "15m": 15 * time.Minute, "30m": 30 * time.Minute, "60m": time.Hour}
+		ranges = map[string]time.Duration{
+			"5m": 5 * time.Minute, "15m": 15 * time.Minute, "30m": 30 * time.Minute,
+			"60m": time.Hour, "1h": time.Hour, "4h": 4 * time.Hour,
+			"1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour,
+		}
 		if value == "" {
-			value = "15m"
+			value = "1d"
 		}
 	} else if value == "" {
 		value = "30d"

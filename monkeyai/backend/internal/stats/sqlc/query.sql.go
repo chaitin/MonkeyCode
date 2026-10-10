@@ -599,6 +599,7 @@ SELECT jsonb_build_object(
     'rpm', (SELECT count(*) FROM calls)/$3::text::numeric,
     'input_tokens', (SELECT coalesce(sum(input_tokens),0) FROM calls),
     'output_tokens', (SELECT coalesce(sum(output_tokens),0) FROM calls),
+    'total_users', (SELECT count(*) FROM users WHERE deleted_at IS NULL),
     'active_users', (SELECT count(*) FROM active_users),
     'active_tasks', (SELECT count(*) FROM active_tasks),
     'new_tasks', (SELECT count(*) FROM sessions WHERE started_at >= $1::timestamptz AND started_at < $2::timestamptz AND parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL))

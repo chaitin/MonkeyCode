@@ -191,9 +191,6 @@ export const enUS = {
       "Calls use start time; credits use charge and refund time. Cache hit rate is the share of calls with cache hits.",
     taskScope:
       "Based on reported turns in the selected window. Completion and anomaly rates exclude unknown outcomes; interruptions are counted separately.",
-    realtimeScope:
-      "Refreshes every 30 seconds. Throughput uses calls completed in the window; recently active tasks had gateway activity in the window, not necessarily running now.",
-    updated: "Updated {{time}}",
   },
   common: {
     breadcrumb: "Breadcrumb",
@@ -290,13 +287,14 @@ export const enUS = {
     realtimeStatus: {
       title: "Live Status",
       description:
-        "Monitor model performance and product activity from the last hour.",
+        "Monitor model performance and product activity for the selected period.",
       timeRange: "Live statistics period",
       ranges: {
-        "5m": "5 minutes",
         "15m": "15 minutes",
-        "30m": "30 minutes",
-        "60m": "60 minutes",
+        "1h": "1 hour",
+        "4h": "4 hours",
+        "1d": "1 day",
+        "7d": "7 days",
       },
       sections: {
         modelHealth: "Model performance",
@@ -308,18 +306,19 @@ export const enUS = {
         p95ResponseTime: "Model P95 response time",
         modelSuccessRate: "Model call success rate",
         modelCalls: "Model calls",
-        tpm: "Model TPM",
-        rpm: "Model RPM",
+        tpm: "LLM TPM",
+        rpm: "LLM RPM",
         inputTokens: "Input tokens",
         outputTokens: "Output tokens",
+        totalUsers: "Total users",
         activeUsers: "Active users",
-        activeTasks: "Recently active tasks",
+        activeTasks: "Active tasks",
         newTasks: "New tasks",
         conversations: "Conversations",
       },
       units: {
         credits: "{{count}} credits",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} s",
       },
     },
     taskHistory: {

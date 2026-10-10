@@ -84,9 +84,6 @@ export const frFR = {
       "Appels par heure de début ; crédits par heure de débit et de remboursement. Le taux de cache est la part des appels avec un cache utilisé.",
     taskScope:
       "Sessions démarrées sur la période. Taux de réussite : réussies / total ; durée moyenne des sessions terminées uniquement. Nécessite les rapports du client.",
-    realtimeScope:
-      "Actualisation toutes les 30 secondes. Débit des appels terminés ; tâches actives : sessions ouvertes avec une activité récente.",
-    updated: "Mis à jour à {{time}}",
   },
   common: {
     breadcrumb: "Fil d’Ariane",
@@ -170,13 +167,14 @@ export const frFR = {
     realtimeStatus: {
       title: "État en temps réel",
       description:
-        "Consultez les performances des modèles et l’activité du produit au cours de la dernière heure.",
+        "Consultez les performances des modèles et l’activité du produit sur la période sélectionnée.",
       timeRange: "Période des statistiques en temps réel",
       ranges: {
-        "5m": "5 minutes",
         "15m": "15 minutes",
-        "30m": "30 minutes",
-        "60m": "60 minutes",
+        "1h": "1 heure",
+        "4h": "4 heures",
+        "1d": "1 jour",
+        "7d": "7 jours",
       },
       sections: {
         modelHealth: "Performances des modèles",
@@ -192,6 +190,7 @@ export const frFR = {
         rpm: "RPM des modèles",
         inputTokens: "Tokens d’entrée",
         outputTokens: "Tokens de sortie",
+        totalUsers: "Total des utilisateurs",
         activeUsers: "Utilisateurs actifs",
         activeTasks: "Tâches actives",
         newTasks: "Nouvelles tâches",
@@ -199,7 +198,7 @@ export const frFR = {
       },
       units: {
         credits: "{{count}} crédits",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} s",
       },
     },
     taskHistory: {

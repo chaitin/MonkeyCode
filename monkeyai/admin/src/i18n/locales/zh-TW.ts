@@ -72,9 +72,6 @@ export const zhTW = {
       "呼叫按開始時間統計，積分按扣費與退款時間統計；快取命中率為命中快取的呼叫比例。",
     taskScope:
       "期間內建立的工作階段；完成率為成功結束數 / 總數，平均耗時僅含已結束工作階段。資料須由用戶端回報。",
-    realtimeScope:
-      "每 30 秒更新。吞吐量依期間內完成的呼叫計算；活躍任務為近期有活動的未結束工作階段。",
-    updated: "更新於 {{time}}",
   },
   common: {
     breadcrumb: "麵包屑導覽",
@@ -145,13 +142,14 @@ export const zhTW = {
   pages: {
     realtimeStatus: {
       title: "即時狀態",
-      description: "查看最近一小時內的模型運行與業務活躍狀態。",
+      description: "查看所選時間範圍內的模型運行與業務活躍狀態。",
       timeRange: "即時統計週期",
       ranges: {
-        "5m": "5 分鐘",
         "15m": "15 分鐘",
-        "30m": "30 分鐘",
-        "60m": "60 分鐘",
+        "1h": "1 小時",
+        "4h": "4 小時",
+        "1d": "1 天",
+        "7d": "7 天",
       },
       sections: {
         modelHealth: "模型運行品質",
@@ -163,18 +161,19 @@ export const zhTW = {
         p95ResponseTime: "模型 P95 回應時間",
         modelSuccessRate: "模型呼叫成功率",
         modelCalls: "模型呼叫次數",
-        tpm: "模型 TPM",
-        rpm: "模型 RPM",
-        inputTokens: "輸入 Token 數量",
-        outputTokens: "輸出 Token 數量",
-        activeUsers: "活躍使用者數量",
-        activeTasks: "活躍任務數量",
-        newTasks: "新建任務數量",
+        tpm: "大模型 TPM",
+        rpm: "大模型 RPM",
+        inputTokens: "輸入 Token",
+        outputTokens: "輸出 Token",
+        totalUsers: "使用者總數",
+        activeUsers: "活躍使用者",
+        activeTasks: "活躍任務",
+        newTasks: "新建任務",
         conversations: "對話次數",
       },
       units: {
         credits: "{{count}} 點數",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} 秒",
       },
     },
     taskHistory: {

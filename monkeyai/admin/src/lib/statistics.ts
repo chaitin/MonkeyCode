@@ -53,6 +53,7 @@ export type RealtimeStatistics = Period & {
   rpm: number
   input_tokens: number
   output_tokens: number
+  total_users: number
   active_users: number
   active_tasks: number
   new_tasks: number

@@ -83,9 +83,6 @@ export const deDE = {
       "Aufrufe nach Startzeit, Credits nach Buchungs- und Erstattungszeit. Cache-Trefferquote: Anteil der Aufrufe mit Cache-Treffern.",
     taskScope:
       "Im Zeitraum gestartete Sitzungen. Abschlussquote: erfolgreich / gesamt. Durchschnittsdauer nur für beendete Sitzungen. Erfordert Client-Meldungen.",
-    realtimeScope:
-      "Aktualisierung alle 30 Sekunden. Durchsatz aus abgeschlossenen Aufrufen; aktive Aufgaben sind kürzlich aktive, offene Sitzungen.",
-    updated: "Aktualisiert: {{time}}",
   },
   common: {
     breadcrumb: "Brotkrümelnavigation",
@@ -170,13 +167,14 @@ export const deDE = {
     realtimeStatus: {
       title: "Live-Status",
       description:
-        "Überwachen Sie Modellleistung und Produktaktivität der letzten Stunde.",
+        "Überwachen Sie Modellleistung und Produktaktivität im gewählten Zeitraum.",
       timeRange: "Zeitraum der Live-Statistik",
       ranges: {
-        "5m": "5 Minuten",
         "15m": "15 Minuten",
-        "30m": "30 Minuten",
-        "60m": "60 Minuten",
+        "1h": "1 Stunde",
+        "4h": "4 Stunden",
+        "1d": "1 Tag",
+        "7d": "7 Tage",
       },
       sections: {
         modelHealth: "Modellleistung",
@@ -192,6 +190,7 @@ export const deDE = {
         rpm: "Modell-RPM",
         inputTokens: "Eingabe-Token",
         outputTokens: "Ausgabe-Token",
+        totalUsers: "Benutzer insgesamt",
         activeUsers: "Aktive Benutzer",
         activeTasks: "Aktive Aufgaben",
         newTasks: "Neue Aufgaben",
@@ -199,7 +198,7 @@ export const deDE = {
       },
       units: {
         credits: "{{count}} Punkte",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} s",
       },
     },
     taskHistory: {

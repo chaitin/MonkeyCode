@@ -10,6 +10,7 @@ import {
   Task01Icon,
   TaskDone01Icon,
   TokenCircleIcon,
+  User02Icon,
   UserMultiple02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
@@ -23,14 +24,23 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useStatistics } from "@/hooks/use-statistics"
+import { credits } from "@/lib/billing"
 import { type RealtimeStatistics } from "@/lib/statistics"
 import { StatisticsFeedback } from "@/components/statistics-feedback"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-type RealtimeRange = "5m" | "15m" | "30m" | "60m"
+type RealtimeRange = "15m" | "1h" | "4h" | "1d" | "7d"
 
 type MetricKey = Exclude<keyof RealtimeStatistics, "from" | "until">
+
+function formatTokenAmount(value: number, formatter: Intl.NumberFormat) {
+  const absolute = Math.abs(value)
+  if (absolute < 1_000) return formatter.format(value)
+  if (absolute < 999_950) return `${formatter.format(value / 1_000)}K`
+  if (absolute < 999_950_000) return `${formatter.format(value / 1_000_000)}M`
+  return `${formatter.format(value / 1_000_000_000)}G`
+}
 
 const METRICS = [
   {
@@ -74,9 +84,14 @@ const METRICS = [
     icon: AiChat02Icon,
   },
   {
+    key: "total_users",
+    labelKey: "pages.realtimeStatus.metrics.totalUsers",
+    icon: UserMultiple02Icon,
+  },
+  {
     key: "active_users",
     labelKey: "pages.realtimeStatus.metrics.activeUsers",
-    icon: UserMultiple02Icon,
+    icon: User02Icon,
   },
   {
     key: "active_tasks",
@@ -123,11 +138,14 @@ function RealtimeMetricCard({
 
 export function RealtimeStatusPage() {
   const { i18n, t } = useTranslation()
-  const [timeRange, setTimeRange] = useState<RealtimeRange>("15m")
+  const [timeRange, setTimeRange] = useState<RealtimeRange>("1d")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const numberFormatter = new Intl.NumberFormat(locale)
-  const compactNumberFormatter = new Intl.NumberFormat(locale, {
-    notation: "compact",
+  const secondsFormatter = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  const tokenFormatter = new Intl.NumberFormat(locale, {
     maximumFractionDigits: 1,
   })
   const percentFormatter = new Intl.NumberFormat(locale, {
@@ -135,32 +153,35 @@ export function RealtimeStatusPage() {
     maximumFractionDigits: 1,
   })
   const request = useStatistics<RealtimeStatistics>(
-    `/api/admin/v1/statistics/realtime?range=${timeRange}`,
-    30000
+    `/api/admin/v1/statistics/realtime?range=${timeRange}`
   )
   const snapshot = request.data
   const valueLabels: Record<MetricKey, string> | undefined = snapshot
     ? {
         model_consumption: t("pages.realtimeStatus.units.credits", {
-          count: new Intl.NumberFormat(locale, {
-            maximumFractionDigits: 6,
-          }).format(Number(snapshot.model_consumption)),
+          count: credits(snapshot.model_consumption, locale, 0, "ceil"),
         }),
         p95_response_time:
           snapshot.p95_response_time === null
             ? "—"
-            : t("pages.realtimeStatus.units.milliseconds", {
-                count: numberFormatter.format(snapshot.p95_response_time),
+            : t("pages.realtimeStatus.units.seconds", {
+                count: secondsFormatter.format(
+                  snapshot.p95_response_time / 1000
+                ),
               }),
         model_success_rate:
           snapshot.model_success_rate === null
             ? "—"
             : `${percentFormatter.format(snapshot.model_success_rate)}%`,
         model_calls: numberFormatter.format(snapshot.model_calls),
-        tpm: compactNumberFormatter.format(snapshot.tpm),
-        rpm: numberFormatter.format(snapshot.rpm),
-        input_tokens: compactNumberFormatter.format(snapshot.input_tokens),
-        output_tokens: compactNumberFormatter.format(snapshot.output_tokens),
+        tpm: formatTokenAmount(snapshot.tpm, tokenFormatter),
+        rpm: numberFormatter.format(Math.ceil(snapshot.rpm)),
+        input_tokens: formatTokenAmount(snapshot.input_tokens, tokenFormatter),
+        output_tokens: formatTokenAmount(
+          snapshot.output_tokens,
+          tokenFormatter
+        ),
+        total_users: numberFormatter.format(snapshot.total_users),
         active_users: numberFormatter.format(snapshot.active_users),
         active_tasks: numberFormatter.format(snapshot.active_tasks),
         new_tasks: numberFormatter.format(snapshot.new_tasks),
@@ -170,6 +191,18 @@ export function RealtimeStatusPage() {
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs
+          value={timeRange}
+          onValueChange={(value) => setTimeRange(value as RealtimeRange)}
+        >
+          <TabsList aria-label={t("pages.realtimeStatus.timeRange")}>
+            {(["15m", "1h", "4h", "1d", "7d"] as const).map((range) => (
+              <TabsTrigger key={range} value={range}>
+                {t(`pages.realtimeStatus.ranges.${range}`)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         <Button
           variant="outline"
           size="sm"
@@ -178,25 +211,7 @@ export function RealtimeStatusPage() {
         >
           {t("statistics.refresh")}
         </Button>
-        <Tabs
-          value={timeRange}
-          onValueChange={(value) => setTimeRange(value as RealtimeRange)}
-        >
-          <TabsList aria-label={t("pages.realtimeStatus.timeRange")}>
-            {(["5m", "15m", "30m", "60m"] as const).map((range) => (
-              <TabsTrigger key={range} value={range}>
-                {t(`pages.realtimeStatus.ranges.${range}`)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        {t("statistics.realtimeScope")}
-        {snapshot &&
-          ` · ${t("statistics.updated", { time: new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(snapshot.until)) })}`}
-      </p>
       <StatisticsFeedback {...request} />
       {valueLabels && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -79,9 +79,6 @@ export const es419 = {
       "Llamadas por hora de inicio; créditos por hora de cobro y reembolso. La tasa de caché es la proporción de llamadas con aciertos.",
     taskScope:
       "Sesiones iniciadas en el período. Tasa de finalización: exitosas / total; duración media solo de sesiones terminadas. Requiere informes del cliente.",
-    realtimeScope:
-      "Se actualiza cada 30 segundos. Rendimiento de llamadas terminadas; tareas activas: sesiones abiertas con actividad reciente.",
-    updated: "Actualizado a las {{time}}",
   },
   common: {
     breadcrumb: "Ruta de navegación",
@@ -165,13 +162,14 @@ export const es419 = {
     realtimeStatus: {
       title: "Estado en tiempo real",
       description:
-        "Consulta el rendimiento de los modelos y la actividad del producto durante la última hora.",
+        "Consulta el rendimiento de los modelos y la actividad del producto durante el periodo seleccionado.",
       timeRange: "Periodo de estadísticas en tiempo real",
       ranges: {
-        "5m": "5 minutos",
         "15m": "15 minutos",
-        "30m": "30 minutos",
-        "60m": "60 minutos",
+        "1h": "1 hora",
+        "4h": "4 horas",
+        "1d": "1 día",
+        "7d": "7 días",
       },
       sections: {
         modelHealth: "Rendimiento de los modelos",
@@ -187,6 +185,7 @@ export const es419 = {
         rpm: "RPM del modelo",
         inputTokens: "Tokens de entrada",
         outputTokens: "Tokens de salida",
+        totalUsers: "Usuarios totales",
         activeUsers: "Usuarios activos",
         activeTasks: "Tareas activas",
         newTasks: "Tareas nuevas",
@@ -194,7 +193,7 @@ export const es419 = {
       },
       units: {
         credits: "{{count}} créditos",
-        milliseconds: "{{count}} ms",
+        seconds: "{{count}} s",
       },
     },
     taskHistory: {
