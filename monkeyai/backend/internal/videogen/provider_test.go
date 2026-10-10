@@ -16,6 +16,29 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func TestProviderURLHTTP(t *testing.T) {
+	for _, base := range []string{"http://provider.example/v1", "https://provider.example/v1"} {
+		address, err := providerURL(base, "/videos/generations")
+		if err != nil || address != base+"/videos/generations" {
+			t.Fatalf("上游地址 %q: %q, %v", base, address, err)
+		}
+	}
+	for _, base := range []string{"http://provider.example/v1?token=secret", "http://provider.example/v1#part", "ftp://provider.example/v1"} {
+		if _, err := providerURL(base, "/videos/generations"); err == nil {
+			t.Fatalf("不应允许上游地址 %q", base)
+		}
+	}
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Scheme != "http" || r.URL.Path != "/v1/videos/generations" || r.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("HTTP 视频请求无效: %s", r.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{}`)), Header: http.Header{}}, nil
+	})}
+	if _, _, err := providerJSON(t.Context(), client, http.MethodPost, "http://provider.example/v1", "/videos/generations", "secret", nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProviderQuery(t *testing.T) {
 	for _, tc := range []struct {
 		model, path, body string

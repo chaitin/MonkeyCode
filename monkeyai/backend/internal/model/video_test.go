@@ -5,6 +5,45 @@ import (
 	"testing"
 )
 
+func TestVideoModelHTTPBaseURL(t *testing.T) {
+	input := SaveInput{
+		ModelID: "grok-imagine-video-1.5", DisplayName: "Grok Video",
+		Kind: KindVideo, Protocol: ProtocolVideo, Provider: ProviderXAI,
+		BaseURL: "http://provider.example/v1/", APIKey: "secret",
+		VideoConfig: &VideoConfig{
+			Modes: []VideoMode{VideoTextToVideo},
+			Defaults: map[VideoMode]map[string]json.RawMessage{
+				VideoTextToVideo: {
+					"resolution": json.RawMessage(`"720p"`), "aspect_ratio": json.RawMessage(`"16:9"`),
+					"duration_seconds": json.RawMessage(`6`),
+				},
+			},
+		},
+		VideoPricing: &VideoPricing{Rates: []VideoResolutionRate{
+			{Resolution: "480p", CreditsPerSecond: "1"},
+			{Resolution: "720p", CreditsPerSecond: "1"},
+			{Resolution: "1080p", CreditsPerSecond: "1"},
+		}},
+		Authorization: Authorization{UserIDs: []string{"user-1"}},
+	}
+	service := NewService(&repositoryStub{})
+	item, err := service.Create(t.Context(), "admin-1", input)
+	if err != nil || item.BaseURL != "http://provider.example/v1" {
+		t.Fatalf("创建 HTTP 视频模型: %+v, %v", item, err)
+	}
+	input.BaseURL = "http://provider.example/v2"
+	item, err = service.Update(t.Context(), item.ID, "admin-1", input)
+	if err != nil || item.BaseURL != input.BaseURL {
+		t.Fatalf("更新 HTTP 视频模型: %+v, %v", item, err)
+	}
+	for _, address := range []string{"http://provider.example/v1?token=secret", "http://provider.example/v1#part", "ftp://provider.example/v1"} {
+		input.BaseURL = address
+		if _, err := service.Create(t.Context(), "admin-1", input); err == nil {
+			t.Fatalf("不应允许视频模型地址 %q", address)
+		}
+	}
+}
+
 func TestVideoCapabilitiesForTargetModels(t *testing.T) {
 	cases := []struct {
 		provider Provider
