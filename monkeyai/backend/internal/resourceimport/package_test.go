@@ -120,6 +120,33 @@ func TestParsePackageAndResources(t *testing.T) {
 	}
 }
 
+func TestIgnoresReleaseCounts(t *testing.T) {
+	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var release Release
+	if err = json.Unmarshal(files["release.json"], &release); err != nil {
+		t.Fatal(err)
+	}
+	release.Counts = map[string]int{"skill": 99, "rule": 42}
+	files["release.json"], err = json.Marshal(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := makeZIP(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := Parse(archive)
+	if err != nil {
+		t.Fatalf("release.json 的展示数量不应影响解析: %v", err)
+	}
+	if len(pkg.Manifest.AgentResources.Skills) != 1 {
+		t.Fatal("应以 manifest 的资源清单为准")
+	}
+}
+
 func TestNormalizeInvalidSkillName(t *testing.T) {
 	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
 		z, err := makeZIP(map[string][]byte{

@@ -1,11 +1,15 @@
-import { useEffect, useState, type InputHTMLAttributes } from "react"
+import { useEffect, useRef, useState, type InputHTMLAttributes } from "react"
+import { ArrowDown01Icon, FileArchiveIcon, FolderOpenIcon, Upload04Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { api } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -20,6 +24,14 @@ const counts = [
   ["restore", "恢复"],
   ["ignored_static", "忽略静态资源"],
 ] as const
+
+const actionLabels = {
+  create: "新增",
+  update: "更新",
+  skip: "跳过",
+  retire: "停用",
+  restore: "恢复",
+} as const
 
 type Change = {
   type: string
@@ -104,6 +116,9 @@ export function ResourceImportsPage() {
   const { i18n } = useTranslation()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [sourceName, setSourceName] = useState("")
+  const archiveInputRef = useRef<HTMLInputElement | null>(null)
+  const directoryInputRef = useRef<HTMLInputElement | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [request, setRequest] = useState<HistoryRequest | null>(null)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -139,6 +154,7 @@ export function ResourceImportsPage() {
     setDialogOpen(open)
     if (!open) {
       setFile(null)
+      setSourceName("")
       setPreview(null)
       setModes({})
       setConfirmed(false)
@@ -248,37 +264,93 @@ export function ResourceImportsPage() {
         </CardContent>
       </Card>
       <Dialog open={dialogOpen} onOpenChange={closeDialog}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-3xl" closeLabel="关闭">
-          <DialogHeader><DialogTitle>导入资源包</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">上传的资源包将作为该 publisher 的最终 Agent 资源集合。旧资源若不在包内，将在预览确认后停用；独立静态资源仅校验、不导入。</p>
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="space-y-1 text-sm">选择 ZIP
-              <input accept=".zip,application/zip" type="file" onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null); setPreview(null); setConfirmed(false); setModes({}); setNormalization(false)
-              }} />
-            </label>
-            <label className="space-y-1 text-sm">或选择解压目录
-              <input type="file" {...({ webkitdirectory: "" } as InputHTMLAttributes<HTMLInputElement>)} onChange={async (event) => {
-                if (!event.target.files) return
-                try {
-                  const packed = await archiveDirectory(event.target.files)
-                  setFile(packed); setPreview(null); setConfirmed(false); setModes({}); setNormalization(false); setError("")
-                } catch (reason) {
-                  setError(reason instanceof Error ? reason.message : "目录打包失败")
-                }
-              }} />
-            </label>
+        <DialogContent className={`max-h-[90svh] overflow-y-auto ${preview ? "sm:max-w-3xl" : "sm:max-w-xl"}`} closeLabel="关闭">
+          <DialogHeader>
+            <DialogTitle>导入资源包</DialogTitle>
+            <p className="text-sm text-muted-foreground">选择发布包 ZIP，或选择包含 release.json 的解压目录。</p>
+          </DialogHeader>
+          <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6">
+            <span className="font-medium">全量同步：</span>本次资源包是该发布者最终的 Agent 资源集合，缺失资源将在确认后停用。独立静态资源只校验、不导入。
           </div>
-          {file && <p className="text-sm">已选择：{file.name}（{(file.size / 1024 / 1024).toFixed(2)} MiB）</p>}
-          <Button type="button" className="w-fit" disabled={!file || busy} onClick={() => { void upload(false) }}>校验并预览</Button>
+          <input accept=".zip,application/zip" className="hidden" disabled={busy} ref={archiveInputRef} type="file" onChange={(event) => {
+            const selected = event.currentTarget.files?.[0]
+            if (!selected) return
+            setFile(selected)
+            setSourceName(selected.name)
+            setPreview(null)
+            setConfirmed(false)
+            setModes({})
+            setNormalization(false)
+            setError("")
+            event.currentTarget.value = ""
+            if (directoryInputRef.current) directoryInputRef.current.value = ""
+          }} />
+          <input className="hidden" disabled={busy} ref={directoryInputRef} type="file" {...({ webkitdirectory: "" } as InputHTMLAttributes<HTMLInputElement>)} onChange={async (event) => {
+            const input = event.currentTarget
+            const selected = input.files
+            if (!selected?.length) return
+            const directoryName = selected[0].webkitRelativePath.split("/")[0]
+            setBusy(true)
+            setFile(null)
+            setPreview(null)
+            setError("")
+            try {
+              setFile(await archiveDirectory(selected))
+              setSourceName(directoryName)
+              setConfirmed(false)
+              setModes({})
+              setNormalization(false)
+              if (archiveInputRef.current) archiveInputRef.current.value = ""
+            } catch (reason) {
+              setSourceName("")
+              setError(reason instanceof Error ? reason.message : "目录打包失败")
+            } finally {
+              input.value = ""
+              setBusy(false)
+            }
+          }} />
+          <Item variant="outline" className="min-w-0">
+            <ItemMedia variant="icon" className="text-muted-foreground">
+              <HugeiconsIcon icon={file ? FileArchiveIcon : Upload04Icon} />
+            </ItemMedia>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="max-w-full truncate" title={sourceName || undefined}>{sourceName || "尚未选择资源包"}</ItemTitle>
+              <ItemDescription>{file ? `${sourceName === file.name ? "ZIP 文件" : "解压目录"} · ${(file.size / 1024 / 1024).toFixed(2)} MiB` : "支持 ZIP 文件或解压目录，包体不超过 100 MiB"}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button disabled={busy} type="button" variant="outline" />}>
+                  <HugeiconsIcon data-icon="inline-start" icon={Upload04Icon} />
+                  选择来源
+                  <HugeiconsIcon data-icon="inline-end" icon={ArrowDown01Icon} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem closeOnClick onClick={() => archiveInputRef.current?.click()}><HugeiconsIcon icon={FileArchiveIcon} />选择 ZIP</DropdownMenuItem>
+                    <DropdownMenuItem closeOnClick onClick={() => directoryInputRef.current?.click()}><HugeiconsIcon icon={FolderOpenIcon} />选择解压目录</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ItemActions>
+          </Item>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          {preview && <div className="space-y-4 border-t pt-4">
-            <h2 className="font-medium">预览 · {preview.publisher} / v{preview.version}</h2>
+          {!preview && <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => closeDialog(false)}>取消</Button>
+            <Button type="button" disabled={!file || busy} onClick={() => { void upload(false) }}>{busy ? "校验中…" : "校验并预览"}</Button>
+          </DialogFooter>}
+          {preview && <div className="space-y-4 border-t pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-medium">预览 · {preview.publisher} / v{preview.version}</h2>
+              <span className="text-xs text-muted-foreground">共 {preview.changes.length} 项资源</span>
+            </div>
             {preview.already_imported && <p>此发布版本已经导入。</p>}
             {preview.ignored_static.length > 0 && <p className="text-sm">已校验但忽略 {preview.ignored_static.length} 个静态资源：{preview.ignored_static.join("、")}</p>}
-            <div className="max-h-80 space-y-2 overflow-y-auto">
-              {preview.changes.map((item) => <div key={`${item.type}:${item.slug}`} className="rounded border p-2 text-sm">
-                <span className="font-medium">{item.action.toUpperCase()}</span> · {item.type} · {item.name}（{item.slug}）
+            <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border p-2">
+              {preview.changes.map((item) => <div key={`${item.type}:${item.slug}`} className="rounded-md bg-muted/50 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 break-all font-medium">{item.name} <span className="font-normal text-muted-foreground">· {item.type} / {item.slug}</span></span>
+                  <Badge variant={item.action === "retire" ? "destructiveOutline" : item.action === "restore" ? "successOutline" : "outline"}>{actionLabels[item.action]}</Badge>
+                </div>
                 {item.warnings?.map((warning) => <p key={warning} className="text-amber-700">{warning}</p>)}
                 {(item.warnings?.length ?? 0) > 0 && item.storage_sha256 && <p className="break-all text-xs text-muted-foreground">原产物：{item.source_sha256} → 存储包：{item.storage_sha256}</p>}
                 {item.type === "connector" && item.action !== "retire" && <label className="ml-4">认证归属：
@@ -294,7 +366,10 @@ export function ResourceImportsPage() {
             {changed.some((item) => item.action === "retire") && <p className="font-medium text-amber-700">此操作将停用上表中的移除项；恢复项的旧授权或凭证可能重新生效。</p>}
             {needsNormalization && <label className="block text-sm"><input checked={normalization} type="checkbox" onChange={(event) => setNormalization(event.target.checked)} /> 我已确认上述技能 frontmatter 规范化（名称或描述引号）</label>}
             <label className="block text-sm"><input checked={confirmed} type="checkbox" onChange={(event) => setConfirmed(event.target.checked)} /> 我确认此包是该 publisher 的最终 Agent 资源清单，缺失项将被停用</label>
-            <Button type="button" disabled={busy || !confirmed || (needsNormalization && !normalization)} onClick={() => { void upload(true) }}>确认导入</Button>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => { void upload(false) }}>重新校验</Button>
+              <Button type="button" disabled={busy || !confirmed || (needsNormalization && !normalization)} onClick={() => { void upload(true) }}>{busy ? "导入中…" : "确认导入"}</Button>
+            </DialogFooter>
           </div>}
         </DialogContent>
       </Dialog>
