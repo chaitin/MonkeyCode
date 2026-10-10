@@ -225,9 +225,6 @@ func Parse(data []byte) (Package, error) {
 	seenSlugs := map[string]bool{}
 	referenced := map[string]bool{"manifest.json": true}
 	for _, section := range sections {
-		if p.Release.Counts != nil && p.Release.Counts[section.kind] != len(section.items) {
-			return Package{}, fmt.Errorf("%s 数量与 release.json 不一致", section.kind)
-		}
 		for _, entry := range section.items {
 			if entry.Type != section.kind || !slugPattern.MatchString(entry.Slug) || seenSlugs[entry.Slug] ||
 				strings.TrimSpace(entry.Name) == "" || len(entry.Name) > 200 ||
