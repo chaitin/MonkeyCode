@@ -2,6 +2,7 @@ package resourceimport
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 	"uuid"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -19,6 +21,32 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
+
+type historyCursor struct {
+	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+}
+
+func decodeHistoryCursor(value string) ([]byte, error) {
+	if value == "" {
+		return []byte("{}"), nil
+	}
+	if len(value) > 512 {
+		return nil, resource.Invalid("分页游标无效")
+	}
+	data, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(data) > 256 {
+		return nil, resource.Invalid("分页游标无效")
+	}
+	var cursor historyCursor
+	if json.Unmarshal(data, &cursor) != nil || cursor.CreatedAt.IsZero() {
+		return nil, resource.Invalid("分页游标无效")
+	}
+	if _, err = uuid.Parse(cursor.ID); err != nil {
+		return nil, resource.Invalid("分页游标无效")
+	}
+	return json.Marshal(cursor)
+}
 
 func (s *Service) RegisterAdmin(router chi.Router) {
 	load := func(w http.ResponseWriter, r *http.Request) (Package, Resources, Options, string, error) {
@@ -89,10 +117,19 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		resource.JSON(w, http.StatusOK, out)
 	})
 	router.Get("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := sqlc.New(s.Pool).ListImportHistory(r.Context())
+		cursor, err := decodeHistoryCursor(r.URL.Query().Get("cursor"))
 		if err != nil {
 			resource.Fail(w, err)
 			return
+		}
+		rows, err := sqlc.New(s.Pool).ListImportHistory(r.Context(), cursor)
+		if err != nil {
+			resource.Fail(w, err)
+			return
+		}
+		hasMore := len(rows) > 20
+		if hasMore {
+			rows = rows[:20]
 		}
 		list := []resource.Object{}
 		for _, data := range rows {
@@ -103,7 +140,22 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			}
 			list = append(list, item)
 		}
-		resource.JSON(w, http.StatusOK, resource.Object{"items": list})
+		var nextCursor any
+		if hasMore {
+			last := list[len(list)-1]
+			createdAt, parseErr := time.Parse(time.RFC3339Nano, last.String("created_at"))
+			if parseErr != nil {
+				resource.Fail(w, parseErr)
+				return
+			}
+			data, marshalErr := json.Marshal(historyCursor{CreatedAt: createdAt, ID: last.String("id")})
+			if marshalErr != nil {
+				resource.Fail(w, marshalErr)
+				return
+			}
+			nextCursor = base64.RawURLEncoding.EncodeToString(data)
+		}
+		resource.JSON(w, http.StatusOK, resource.Object{"items": list, "next_cursor": nextCursor})
 	})
 	router.Get("/resource-imports/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
