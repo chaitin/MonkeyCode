@@ -16,6 +16,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { MoveMembersDialog } from "@/components/members/move-members-dialog"
 import {
   DropdownMenu,
@@ -142,6 +143,7 @@ export function MembersAndGroupsPage() {
   } | null>(null)
   const [passwordResetUser, setPasswordResetUser] =
     useState<MemberActionUser | null>(null)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -557,6 +559,7 @@ export function MembersAndGroupsPage() {
                       savingID={savingID}
                       currentUserID={currentUser?.id}
                       onAction={setActiveGroupAction}
+                      onViewDetails={setAccountUserID}
                       onToggleStatus={toggleUserStatus}
                       onToggleRole={toggleUserRole}
                       onResetPassword={setPasswordResetUser}
@@ -682,6 +685,7 @@ export function MembersAndGroupsPage() {
                           user={user}
                           savingID={savingID}
                           currentUserID={currentUser?.id}
+                          onViewDetails={setAccountUserID}
                           onToggleStatus={toggleUserStatus}
                           onToggleRole={toggleUserRole}
                           onResetPassword={setPasswordResetUser}
@@ -745,6 +749,13 @@ export function MembersAndGroupsPage() {
           key={passwordResetUser.id}
           user={passwordResetUser}
           onClose={() => setPasswordResetUser(null)}
+        />
+      )}
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
         />
       )}
 

@@ -273,8 +273,8 @@ func TestTasksAndHistory(t *testing.T) {
 	out = request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
 	number(t, out, "total", 1)
 	number(t, out, "page", 1)
-	if out["items"].([]any)[0].(map[string]any)["title"] != "报告 100%" {
-		t.Fatalf("文本过滤错误: %v", out)
+	if item := out["items"].([]any)[0].(map[string]any); item["title"] != "报告 100%" || item["user_id"] != user {
+		t.Fatalf("历史记录标题或用户 ID 错误: %v", item)
 	}
 	out = request(t, s, "/statistics/history?from="+from.Format(time.RFC3339)+"&until="+now.Format(time.RFC3339)+"&page_size=1&page=2", 200)
 	number(t, out, "total", 3)

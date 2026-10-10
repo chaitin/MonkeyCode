@@ -1322,6 +1322,13 @@ paths:
                 properties:
                   account:
                     $ref: '#/components/schemas/CreditAccount'
+                  user_name:
+                    type: string
+                    description: 积分账户所属用户的当前姓名。
+                  user_email:
+                    type: string
+                    format: email
+                    description: 积分账户所属用户的当前邮箱。
                   external_user_id:
                     type: string
                   wallet:
@@ -1818,6 +1825,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/admin/v1/users/{userID}:
+    parameters:
+      - in: path
+        name: userID
+        required: true
+        description: 成员 UUID。
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: 根据 ID 查询成员资料
+      description: 返回当前成员的姓名、邮箱、角色、状态、加入时间和最近登录时间。已删除或不存在的成员返回 404。
+      responses:
+        '200':
+          description: 成员资料。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailAuthUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '500':
+          $ref: '#/components/responses/ResourceError500'
   /api/admin/v1/users/{userID}/reset-password:
     parameters:
       - in: path
@@ -5213,6 +5247,7 @@ components:
             required:
               - id
               - title
+              - user_id
               - user_name
               - user_email
               - started_at
@@ -5225,6 +5260,10 @@ components:
               title:
                 type: string
                 description: 会话标题。
+              user_id:
+                type: string
+                format: uuid
+                description: 所属用户 ID。
               user_name:
                 type: string
                 description: 所属用户当前姓名。

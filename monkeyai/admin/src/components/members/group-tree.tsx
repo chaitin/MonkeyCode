@@ -71,6 +71,7 @@ type Props = {
   savingID: string
   currentUserID?: string
   onAction: (action: ActiveGroupAction) => void
+  onViewDetails: (userID: string) => void
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
   onResetPassword: (user: MemberActionUser) => void
@@ -94,6 +95,7 @@ export function GroupTreeItem({
   savingID,
   currentUserID,
   onAction,
+  onViewDetails,
   onToggleStatus,
   onToggleRole,
   onResetPassword,
@@ -151,6 +153,7 @@ export function GroupTreeItem({
       level={level + 1}
       savingID={savingID}
       currentUserID={currentUserID}
+      onViewDetails={onViewDetails}
       onToggleStatus={onToggleStatus}
       onToggleRole={onToggleRole}
       onResetPassword={onResetPassword}
@@ -315,6 +318,7 @@ export function GroupTreeItem({
                   savingID={savingID}
                   currentUserID={currentUserID}
                   onAction={onAction}
+                  onViewDetails={onViewDetails}
                   onToggleStatus={onToggleStatus}
                   onToggleRole={onToggleRole}
                   onResetPassword={onResetPassword}
@@ -344,6 +348,7 @@ function GroupTreeMemberRow({
   level,
   savingID,
   currentUserID,
+  onViewDetails,
   onToggleStatus,
   onToggleRole,
   onResetPassword,
@@ -357,6 +362,7 @@ function GroupTreeMemberRow({
   Props,
   | "savingID"
   | "currentUserID"
+  | "onViewDetails"
   | "onToggleStatus"
   | "onToggleRole"
   | "onResetPassword"
@@ -461,6 +467,7 @@ function GroupTreeMemberRow({
             currentUserID={currentUserID}
             treeActionsVisible={showActions}
             onMenuOpenChange={setMenuOpen}
+            onViewDetails={onViewDetails}
             onToggleStatus={onToggleStatus}
             onToggleRole={onToggleRole}
             onResetPassword={onResetPassword}

@@ -55,7 +55,7 @@ func (q *Queries) CountHistory(ctx context.Context, arg CountHistoryParams) (int
 
 const listHistory = `-- name: ListHistory :many
 SELECT
-    jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_name', u.name, 'user_email', u.email,
+    jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_id', s.owner_user_id, 'user_name', u.name, 'user_email', u.email,
         'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
             SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
 FROM

@@ -689,6 +689,7 @@ export const es419 = {
         "Organiza a los miembros en grupos y administra el acceso.",
       membersTitle: "Miembros",
       memberActions: "Acciones para {{member}}",
+      viewDetails: "Ver detalles",
       confirmMemberAction:
         "¿Confirmas «{{action}}» para {{member}} ({{email}})?",
       resetPassword: "Restablecer contraseña",

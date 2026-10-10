@@ -688,6 +688,7 @@ export const ruRU = {
         "Объединяйте участников в группы и управляйте доступом.",
       membersTitle: "Участники",
       memberActions: "Действия для {{member}}",
+      viewDetails: "Посмотреть детали",
       confirmMemberAction:
         "Подтвердить действие «{{action}}» для {{member}} ({{email}})?",
       resetPassword: "Сбросить пароль",

@@ -663,6 +663,7 @@ export const koKR = {
       groupsDescription: "구성원을 그룹으로 구성하고 접근 권한을 관리합니다.",
       membersTitle: "구성원",
       memberActions: "{{member}} 구성원 작업",
+      viewDetails: "상세 보기",
       confirmMemberAction:
         "{{member}} ({{email}})에 대해 ‘{{action}}’ 작업을 진행할까요?",
       resetPassword: "비밀번호 재설정",

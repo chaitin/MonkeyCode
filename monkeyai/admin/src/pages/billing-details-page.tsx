@@ -10,6 +10,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -131,6 +132,7 @@ export function BillingDetailsPage() {
   const [refresh, setRefresh] = useState(0)
   const searchRefreshRef = useRef<number | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const view = params.get("view") ?? "entries"
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
@@ -525,9 +527,11 @@ export function BillingDetailsPage() {
                           {dateTime(e.occurred_at)}
                         </TableCell>
                         <TableCell>
-                          <div
-                            className="flex items-center gap-3"
+                          <button
+                            type="button"
+                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             title={e.user_email}
+                            onClick={() => setAccountUserID(e.user_id)}
                           >
                             <HugeiconsIcon
                               icon={User02Icon}
@@ -536,7 +540,7 @@ export function BillingDetailsPage() {
                               aria-hidden="true"
                             />
                             <span className="truncate">{e.user_name}</span>
-                          </div>
+                          </button>
                         </TableCell>
                         <TableCell>
                           {entryLabel(e.entry_type)} -{" "}
@@ -671,9 +675,11 @@ export function BillingDetailsPage() {
                           {dateTime(tx.started_at)}
                         </TableCell>
                         <TableCell>
-                          <div
-                            className="flex items-center gap-3"
+                          <button
+                            type="button"
+                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                             title={tx.user_email}
+                            onClick={() => setAccountUserID(tx.user_id)}
                           >
                             <HugeiconsIcon
                               icon={User02Icon}
@@ -682,7 +688,7 @@ export function BillingDetailsPage() {
                               aria-hidden="true"
                             />
                             <span className="truncate">{tx.user_name}</span>
-                          </div>
+                          </button>
                         </TableCell>
                         <TableCell>{tx.item_name}</TableCell>
                         <TableCell>
@@ -730,6 +736,14 @@ export function BillingDetailsPage() {
         <TransactionDialog
           id={selected}
           onClose={() => setSelected(null)}
+          onChanged={reload}
+        />
+      )}
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
           onChanged={reload}
         />
       )}

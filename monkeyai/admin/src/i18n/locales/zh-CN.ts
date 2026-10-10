@@ -1029,6 +1029,7 @@ export const zhCN = {
       groupsDescription: "对成员进行分组并管理访问权限。",
       membersTitle: "成员",
       memberActions: "{{member}}的成员操作",
+      viewDetails: "查看详情",
       confirmMemberAction: "确定要{{action}} {{member}}（{{email}}）吗？",
       resetPassword: "重置密码",
       confirmResetPassword:

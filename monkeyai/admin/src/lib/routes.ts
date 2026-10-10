@@ -121,14 +121,14 @@ export const CONSOLE_PAGES = [
   {
     path: CONSOLE_ROUTES.billingDetails,
     sectionKey: "sections.billingManagement",
-    sectionPath: CONSOLE_ROUTES.billingDetails,
+    sectionPath: CONSOLE_ROUTES.billingSettings,
     titleKey: "pages.billingDetails.title",
     descriptionKey: "pages.billingDetails.description",
   },
   {
     path: CONSOLE_ROUTES.billingSettings,
     sectionKey: "sections.billingManagement",
-    sectionPath: CONSOLE_ROUTES.billingDetails,
+    sectionPath: CONSOLE_ROUTES.billingSettings,
     titleKey: "pages.billingSettings.title",
     descriptionKey: "pages.billingSettings.description",
   },

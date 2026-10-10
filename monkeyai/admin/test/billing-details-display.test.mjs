@@ -175,7 +175,7 @@ test("billing transaction details follow the credit account key-value layout", a
     "utf8"
   )
   const accountSource = await readFile(
-    new URL("../src/pages/billing-settings-page.tsx", import.meta.url),
+    new URL("../src/components/billing/account-dialog.tsx", import.meta.url),
     "utf8"
   )
   const transactionDialog = billingSource.split("function TransactionDialog")[1]

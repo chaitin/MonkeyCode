@@ -94,6 +94,8 @@ export type Account = {
 }
 export type AccountDetails = {
   account: Account
+  user_name: string
+  user_email: string
   wallet: WalletInfo
   external_user_id: string
   wallet_available?: string
@@ -117,6 +119,7 @@ export type Entry = {
 }
 export type Transaction = {
   id: string
+  user_id: string
   user_name: string
   user_email: string
   category: string

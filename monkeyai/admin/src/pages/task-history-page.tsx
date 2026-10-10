@@ -9,6 +9,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
 
+import { AccountDialog } from "@/components/billing/account-dialog"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { useStatistics } from "@/hooks/use-statistics"
 import { StatisticsFeedback } from "@/components/statistics-feedback"
 import { DatePickerField } from "@/components/date-picker-field"
@@ -37,6 +39,7 @@ import {
 type TaskHistoryEntry = {
   id: string
   title: string
+  user_id?: string
   user_name: string
   user_email: string
   started_at: string
@@ -107,12 +110,14 @@ function formatLastActivity(
 
 export function TaskHistoryPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const [filterInput, setFilterInput] =
     useState<TaskHistoryFilters>(EMPTY_FILTERS)
   const [filters, setFilters] = useState<TaskHistoryFilters>(EMPTY_FILTERS)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [now, setNow] = useState(() => Date.now())
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const locale = i18n.resolvedLanguage ?? i18n.language
 
   useEffect(() => {
@@ -175,6 +180,16 @@ export function TaskHistoryPage() {
     setFilters(filterInput)
     request.reload()
     resetPage()
+  }
+  const openAccount = (task: TaskHistoryEntry) => {
+    if (!task.user_id) {
+      showToast({
+        status: "error",
+        title: "任务历史缺少用户 ID，请更新后端服务",
+      })
+      return
+    }
+    setAccountUserID(task.user_id)
   }
 
   return (
@@ -303,9 +318,11 @@ export function TaskHistoryPage() {
                         {dateFormatter.format(new Date(task.started_at))}
                       </TableCell>
                       <TableCell>
-                        <div
-                          className="flex max-w-52 items-center gap-3"
+                        <button
+                          type="button"
+                          className="flex max-w-52 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={task.user_email}
+                          onClick={() => openAccount(task)}
                         >
                           <HugeiconsIcon
                             icon={User02Icon}
@@ -314,7 +331,7 @@ export function TaskHistoryPage() {
                             aria-hidden="true"
                           />
                           <span className="truncate">{task.user_name}</span>
-                        </div>
+                        </button>
                       </TableCell>
                       <TableCell>
                         <div className="max-w-72">
@@ -435,6 +452,13 @@ export function TaskHistoryPage() {
           </div>
         </CardContent>
       </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

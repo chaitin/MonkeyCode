@@ -676,6 +676,7 @@ export const jaJP = {
       groupsDescription: "メンバーをグループに整理し、アクセス権を管理します。",
       membersTitle: "メンバー",
       memberActions: "{{member}} のメンバー操作",
+      viewDetails: "詳細を見る",
       confirmMemberAction:
         "{{member}}（{{email}}）に「{{action}}」を実行しますか？",
       resetPassword: "パスワードをリセット",

@@ -1093,6 +1093,7 @@ export const enUS = {
       groupsDescription: "Organize members into groups and manage access.",
       membersTitle: "Members",
       memberActions: "Actions for {{member}}",
+      viewDetails: "View details",
       confirmMemberAction:
         "Are you sure you want to {{action}} {{member}} ({{email}})?",
       resetPassword: "Reset password",

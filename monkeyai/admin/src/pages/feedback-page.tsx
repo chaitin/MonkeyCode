@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -309,6 +310,7 @@ export function FeedbackPage() {
   const [page, setPage] = useState(1)
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [response, setResponse] = useState<{
     key: string
     data?: FeedbackPageData
@@ -463,9 +465,11 @@ export function FeedbackPage() {
                         {formatter.format(new Date(item.created_at))}
                       </TableCell>
                       <TableCell>
-                        <div
-                          className="flex max-w-52 items-center gap-3"
+                        <button
+                          type="button"
+                          className="flex max-w-52 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={item.user_email || item.user_id}
+                          onClick={() => setAccountUserID(item.user_id)}
                         >
                           <HugeiconsIcon
                             icon={User02Icon}
@@ -476,7 +480,7 @@ export function FeedbackPage() {
                           <span className="truncate">
                             {item.user_name || item.user_id}
                           </span>
-                        </div>
+                        </button>
                       </TableCell>
                       <TableCell>
                         {t(`pages.feedback.categories.${item.category}`)}
@@ -585,6 +589,13 @@ export function FeedbackPage() {
           </DialogContent>
         )}
       </Dialog>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

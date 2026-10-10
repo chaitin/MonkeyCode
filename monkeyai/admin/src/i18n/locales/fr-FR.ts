@@ -693,6 +693,7 @@ export const frFR = {
         "Organisez les membres en groupes et gérez leurs accès.",
       membersTitle: "Membres",
       memberActions: "Actions pour {{member}}",
+      viewDetails: "Voir les détails",
       confirmMemberAction:
         "Confirmer « {{action}} » pour {{member}} ({{email}}) ?",
       resetPassword: "Réinitialiser le mot de passe",

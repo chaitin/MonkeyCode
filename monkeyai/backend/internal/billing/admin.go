@@ -491,7 +491,13 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	external, err := sqlc.New(s.pool).WalletUser(r.Context(), user)
+	q := sqlc.New(s.pool)
+	profile, err := q.BillingUser(r.Context(), user)
+	if err != nil {
+		resource.Fail(w, fmt.Errorf("查询用户 %s 资料: %w", user, err))
+		return
+	}
+	external, err := q.WalletUser(r.Context(), user)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		resource.Fail(w, fmt.Errorf("查询用户 %s 钱包绑定: %w", user, err))
 		return
@@ -502,7 +508,10 @@ func (s *Service) account(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	out := map[string]any{"account": a, "external_user_id": external, "wallet": wallet.info()}
+	out := map[string]any{
+		"account": a, "user_name": profile.Name, "user_email": profile.Email,
+		"external_user_id": external, "wallet": wallet.info(),
+	}
 	if external != "" && wallet.ready() {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()

@@ -96,8 +96,22 @@ test("billing settings use equal left and right columns on desktop", async () =>
 
 test("member account uses integer key-value balances and dedicated actions", async () => {
   const page = await source("pages/billing-settings-page.tsx")
-  const accountDialog = page.split("function AccountDialog")[1]
+  const accountDialog = await source("components/billing/account-dialog.tsx")
 
+  assert.match(
+    page,
+    /<AccountDialog\s+key=\{accountUserID\}\s+userId=\{accountUserID\}/
+  )
+  assert.match(accountDialog, /export function AccountDialog/)
+  assert.match(accountDialog, /api<AccountMember>\(memberPath\)/)
+  assert.doesNotMatch(accountDialog, /\/api\/admin\/v1\/users"/)
+  assert.match(accountDialog, /api<AccountDetails>\(accountPath\)/)
+  assert.match(
+    accountDialog,
+    /成员信息[\s\S]*?member\.name[\s\S]*?member\.email[\s\S]*?member\.role[\s\S]*?member\.status/
+  )
+  assert.match(accountDialog, /setExternal\(value\.external_user_id\)/)
+  assert.match(accountDialog, /feeSearch = member\?\.email \|\| member\?\.name/)
   assert.match(accountDialog, /credits\(value, i18n\.language, 0, "floor"\)/)
   assert.equal((accountDialog.match(/displayCredits\(/g) ?? []).length, 2)
   assert.match(
@@ -106,7 +120,7 @@ test("member account uses integer key-value balances and dedicated actions", asy
   )
   assert.match(
     accountDialog,
-    /调整积分[\s\S]*?CONSOLE_ROUTES\.billingDetails\}\?view=entries&user=\$\{encodeURIComponent\(user\.name\)\}[\s\S]*?费用明细/
+    /调整积分[\s\S]*?CONSOLE_ROUTES\.billingDetails\}\?view=entries&user=\$\{encodeURIComponent\(feeSearch\)\}[\s\S]*?费用明细/
   )
   assert.doesNotMatch(accountDialog, /查看费用明细/)
   assert.match(accountDialog, /\["add", "增加积分"\]/)
@@ -203,8 +217,12 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(groupRows, /group-aria-expanded:hidden/)
   assert.match(groupRows, /group-aria-expanded:block/)
   assert.match(groupRows, /const children = quotas\.groups\.filter/)
-  assert.match(groupRows, /\{children\.length > 0 && \(/)
-  assert.match(groupRows, /<CollapsibleContent className="pt-1">/)
+  assert.doesNotMatch(groupRows, /\{children\.length > 0 && \(/)
+  assert.match(
+    groupRows,
+    /<CollapsibleContent\s+className=\{children\.length > 0 \? "pt-1" : undefined\}/
+  )
+  assert.doesNotMatch(groupRows, /groupQuota\.noSubgroups/)
   assert.match(groupRows, /children\.map\(\(child\) =>/)
   assert.match(groupRows, /<div className="flex flex-col gap-1">/)
   assert.doesNotMatch(
@@ -220,7 +238,7 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(userItem, /<Item\s+size="sm"\s+variant="outline"\s+render=/)
   assert.match(
     userItem,
-    /<Button\s+type="button"\s+variant="ghost"\s+className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"\s+onClick=\{\(\) => setAccountUser\(user\)\}/
+    /<Button\s+type="button"\s+variant="ghost"\s+className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
   )
   assert.match(userItem, /<ItemMedia>/)
   assert.match(userItem, /<ItemContent className="min-w-0">/)
@@ -240,7 +258,7 @@ test("billing settings separate the group tree and member item list", async () =
   )
   assert.match(
     page,
-    /onClose=\{\(\) => \{\s*setAccountUser\(null\)\s*refreshQuotas\(\)\s*\}\}/
+    /onClose=\{\(\) => \{\s*setAccountUserID\(null\)\s*refreshQuotas\(\)\s*\}\}/
   )
   assert.match(page, /onChanged=\{refreshQuotas\}/)
   assert.doesNotMatch(

@@ -10,6 +10,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
 import { api } from "@/lib/api"
 import { endOfLocalDay, startOfLocalDay } from "@/lib/date-range"
@@ -58,6 +59,7 @@ type LogResult = "success" | "failed"
 type AuditLog = {
   id: string
   occurred_at: string
+  actor_user_id: string | null
   actor_name: string
   actor_email: string | null
   action: string
@@ -115,6 +117,7 @@ export function OperationLogsPage() {
   const searchRevisionRef = useRef<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
 
   const categoryLabel = (value: LogCategory) => t(`audit.categories.${value}`)
   const resultLabel = (value: LogResult) =>
@@ -424,9 +427,15 @@ export function OperationLogsPage() {
                         {dateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
                       <TableCell>
-                        <div
-                          className="flex max-w-52 items-center gap-3"
+                        <button
+                          type="button"
+                          className="flex max-w-52 items-center gap-3 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer enabled:hover:underline"
                           title={log.actor_email ?? undefined}
+                          disabled={!log.actor_user_id}
+                          onClick={() => {
+                            if (log.actor_user_id)
+                              setAccountUserID(log.actor_user_id)
+                          }}
                         >
                           <HugeiconsIcon
                             icon={User02Icon}
@@ -435,7 +444,7 @@ export function OperationLogsPage() {
                             aria-hidden="true"
                           />
                           <span className="truncate">{log.actor_name}</span>
-                        </div>
+                        </button>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -624,6 +633,13 @@ export function OperationLogsPage() {
           </div>
         </CardContent>
       </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

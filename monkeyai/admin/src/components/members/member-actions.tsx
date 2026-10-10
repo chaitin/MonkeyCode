@@ -6,6 +6,7 @@ import {
   ResetPasswordIcon,
   UserRoundCogIcon,
   UserRoundIcon,
+  ViewIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -34,6 +35,7 @@ export function MemberActions({
   currentUserID,
   treeActionsVisible,
   onMenuOpenChange,
+  onViewDetails,
   onToggleStatus,
   onToggleRole,
   onResetPassword,
@@ -43,6 +45,7 @@ export function MemberActions({
   currentUserID?: string
   treeActionsVisible?: boolean
   onMenuOpenChange?: (open: boolean) => void
+  onViewDetails: (userID: string) => void
   onToggleStatus: (user: MemberActionUser) => void
   onToggleRole: (user: MemberActionUser) => void
   onResetPassword: (user: MemberActionUser) => void
@@ -86,6 +89,10 @@ export function MemberActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => onViewDetails(user.id)}>
+            <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
+            {t("pages.membersAndGroups.viewDetails")}
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={isCurrentUser}
             onClick={() => onToggleStatus(user)}

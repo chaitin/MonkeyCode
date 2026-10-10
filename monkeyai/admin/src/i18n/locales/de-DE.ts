@@ -699,6 +699,7 @@ export const deDE = {
         "Organisieren Sie Mitglieder in Gruppen und verwalten Sie Zugriffsrechte.",
       membersTitle: "Mitglieder",
       memberActions: "Aktionen für {{member}}",
+      viewDetails: "Details anzeigen",
       confirmMemberAction:
         "Aktion „{{action}}“ für {{member}} ({{email}}) bestätigen?",
       resetPassword: "Passwort zurücksetzen",

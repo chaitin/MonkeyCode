@@ -661,6 +661,7 @@ export const ar = {
       groupsDescription: "نظّم الأعضاء في مجموعات وأدِر صلاحيات الوصول.",
       membersTitle: "الأعضاء",
       memberActions: "إجراءات العضو {{member}}",
+      viewDetails: "عرض التفاصيل",
       confirmMemberAction:
         "هل تريد تنفيذ «{{action}}» للعضو {{member}} ({{email}})؟",
       resetPassword: "إعادة تعيين كلمة المرور",

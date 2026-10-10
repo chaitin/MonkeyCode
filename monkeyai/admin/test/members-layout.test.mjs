@@ -352,6 +352,35 @@ test("group rows swap the count for actions in the same slot on hover", async ()
   assert.match(memberActions, /onMenuOpenChange\?\.\(nextOpen\)/)
 })
 
+test("member menus open account details with only the user ID", async () => {
+  const [page, tree, actions, dialog] = await Promise.all(
+    [
+      "pages/members-and-groups-page.tsx",
+      "components/members/group-tree.tsx",
+      "components/members/member-actions.tsx",
+      "components/billing/account-dialog.tsx",
+    ].map((path) =>
+      readFile(new URL(`../src/${path}`, import.meta.url), "utf8")
+    )
+  )
+  assert.equal(
+    (page.match(/onViewDetails=\{setAccountUserID\}/g) ?? []).length,
+    2
+  )
+  assert.match(
+    page,
+    /<AccountDialog\s+key=\{accountUserID\}\s+userId=\{accountUserID\}/
+  )
+  assert.match(tree, /onViewDetails=\{onViewDetails\}/)
+  assert.match(actions, /onClick=\{\(\) => onViewDetails\(user\.id\)\}/)
+  assert.ok(
+    actions.indexOf("pages.membersAndGroups.viewDetails") <
+      actions.indexOf("pages.membersAndGroups.disableMember")
+  )
+  assert.match(dialog, /userId: string/)
+  assert.doesNotMatch(dialog, /user: AccountDialogUser/)
+})
+
 test("tree and list share the same member action menu", async () => {
   const tree = await readFile(
     new URL("../src/components/members/group-tree.tsx", import.meta.url),

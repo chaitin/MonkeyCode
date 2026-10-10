@@ -28,6 +28,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		writeJSON(w, http.StatusOK, map[string]any{"users": users})
 	})
 	router.Post("/users", s.createUser)
+	router.Get("/users/{userID}", s.getUser)
 	router.Patch("/users/{userID}", s.patchUser)
 	router.Post("/users/{userID}/reset-password", s.resetUserPassword)
 }
@@ -38,6 +39,21 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		user, _ := UserFromContext(r.Context())
 		writeJSON(w, http.StatusOK, user)
 	})
+}
+
+func (s *Service) getUser(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+	user, err := s.userByID(r.Context(), userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "读取用户失败", "user_id", userID, "error", err)
+		writeError(w, http.StatusInternalServerError, "server_error", "读取用户失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
 }
 
 func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {

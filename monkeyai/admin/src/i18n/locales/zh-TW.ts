@@ -633,6 +633,7 @@ export const zhTW = {
       groupsDescription: "將成員加入群組並管理存取權限。",
       membersTitle: "成員",
       memberActions: "{{member}} 的成員操作",
+      viewDetails: "查看詳情",
       confirmMemberAction:
         "確定要對 {{member}}（{{email}}）執行「{{action}}」嗎？",
       resetPassword: "重設密碼",

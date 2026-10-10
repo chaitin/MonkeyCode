@@ -11,6 +11,36 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func TestAdminGetUserByID(t *testing.T) {
+	pool := emailDatabase(t)
+	service := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true}`)}, "http://localhost")
+	user, err := service.insertUser(t.Context(), "账户详情成员", "account-details@example.com", "user", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	service.RegisterAdmin(router)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users/"+user.ID, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("读取成员失败: %d %s", response.Code, response.Body.String())
+	}
+	var fetched User
+	if err := json.Unmarshal(response.Body.Bytes(), &fetched); err != nil {
+		t.Fatal(err)
+	}
+	if fetched.ID != user.ID || fetched.Name != user.Name || fetched.Email != user.Email || fetched.Role != user.Role || fetched.Status != user.Status || fetched.JoinedAt.IsZero() {
+		t.Fatalf("成员资料不完整: %+v", fetched)
+	}
+
+	missing := httptest.NewRecorder()
+	router.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/users/00000000-0000-4000-8000-000000000001", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("不存在的成员应返回 404: %d %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestPatchUserPromotesWithoutChangingPassword(t *testing.T) {
 	pool := emailDatabase(t)
 	service := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true}`)}, "http://localhost")
