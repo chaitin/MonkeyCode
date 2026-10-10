@@ -196,6 +196,30 @@ func (q *Queries) DeleteTag(ctx context.Context, id string) ([]byte, error) {
 	return jsonb_build_object, err
 }
 
+const getResourceImport = `-- name: GetResourceImport :one
+SELECT publisher, slug, retired_at IS NOT NULL AS retired
+FROM resource_import_bindings
+WHERE resource_type = $1 AND resource_id = $2
+`
+
+type GetResourceImportParams struct {
+	ResourceType string
+	ResourceID   string
+}
+
+type GetResourceImportRow struct {
+	Publisher string
+	Slug      string
+	Retired   interface{}
+}
+
+func (q *Queries) GetResourceImport(ctx context.Context, arg GetResourceImportParams) (GetResourceImportRow, error) {
+	row := q.db.QueryRow(ctx, getResourceImport, arg.ResourceType, arg.ResourceID)
+	var i GetResourceImportRow
+	err := row.Scan(&i.Publisher, &i.Slug, &i.Retired)
+	return i, err
+}
+
 const hasAccess = `-- name: HasAccess :one
 WITH RECURSIVE user_groups (
     group_id
@@ -563,6 +587,25 @@ func (q *Queries) LockRecipients(ctx context.Context, dollar_1 []string) ([]stri
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockResourceImport = `-- name: LockResourceImport :one
+SELECT retired_at IS NOT NULL AS retired
+FROM resource_import_bindings
+WHERE resource_type = $1 AND resource_id = $2
+FOR UPDATE
+`
+
+type LockResourceImportParams struct {
+	ResourceType string
+	ResourceID   string
+}
+
+func (q *Queries) LockResourceImport(ctx context.Context, arg LockResourceImportParams) (interface{}, error) {
+	row := q.db.QueryRow(ctx, lockResourceImport, arg.ResourceType, arg.ResourceID)
+	var retired interface{}
+	err := row.Scan(&retired)
+	return retired, err
 }
 
 const lockShareGroups = `-- name: LockShareGroups :many

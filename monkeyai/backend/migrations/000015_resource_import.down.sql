@@ -1,0 +1,19 @@
+ALTER TABLE experts
+    DROP COLUMN description_i18n,
+    DROP COLUMN name_i18n,
+    DROP COLUMN avatar_s3_key;
+ALTER TABLE connectors
+    DROP COLUMN description_i18n,
+    DROP COLUMN name_i18n,
+    DROP COLUMN auth_header_name,
+    DROP COLUMN timeout_ms;
+ALTER TABLE rules
+    DROP COLUMN description_i18n,
+    DROP COLUMN name_i18n,
+    DROP COLUMN enabled;
+ALTER TABLE skills
+    DROP COLUMN description_i18n,
+    DROP COLUMN name_i18n;
+
+DROP TABLE resource_import_bindings;
+DROP TABLE resource_imports;

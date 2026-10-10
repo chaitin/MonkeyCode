@@ -29,6 +29,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { PackageGrants } from "@/components/package-grants"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -84,6 +85,9 @@ import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { cn } from "@/lib/utils"
 
 type Expert = {
+  origin?: ResourceRow["origin"]
+  publisher?: string
+  retired?: boolean
   ownership: ResourceRow["ownership_type"]
   owner: string
   revision: number
@@ -117,6 +121,9 @@ type AssociationOption = {
 function toExpert(row: ResourceRow): Expert {
   return {
     id: row.id,
+    origin: row.origin,
+    publisher: row.publisher,
+    retired: row.retired,
     ownership: row.ownership_type,
     owner: row.user.name || row.user.email || row.user.id,
     revision: row.revision,
@@ -508,6 +515,7 @@ export function ExpertsPage() {
                       <span className="truncate" title={expert.name}>
                         {expert.name}
                       </span>
+                      {expert.origin === "package" && <Badge variant="outline" title={expert.publisher}>资源包导入</Badge>}
                       {expert.ownership === "user" && (
                         <Badge variant="outline">
                           {t("pages.experts.personalExpert")}
@@ -519,6 +527,7 @@ export function ExpertsPage() {
                         </Badge>
                       )}
                     </CardTitle>
+                    {expert.origin === "package" && <PackageGrants kind="expert" id={expert.id} name={expert.name} retired={expert.retired} subjects={subjects} onSaved={() => { void remote.reload() }} />}
                     <CardDescription
                       className="truncate"
                       title={expert.description}
@@ -534,7 +543,7 @@ export function ExpertsPage() {
                       </CardDescription>
                     )}
                   </div>
-                  <DropdownMenu>
+                  {expert.origin !== "package" && <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
                         <Button
@@ -600,7 +609,7 @@ export function ExpertsPage() {
                         </DropdownMenuItem>
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               </CardHeader>
               <CardContent>

@@ -4572,6 +4572,12 @@ components:
           format: uuid
         name:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         content:
           type: string
         sha256:
@@ -4620,6 +4626,12 @@ components:
           type: string
         description:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         package_sha256:
           type: string
         package_size_bytes:
@@ -4678,6 +4690,12 @@ components:
           type: string
         description:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         authorization_mode:
           type: string
           enum:
@@ -4766,6 +4784,14 @@ components:
           type: string
         description:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
+        avatar_path:
+          type: string
         version:
           type: string
         manifest_path:
@@ -4789,6 +4815,14 @@ components:
         expert_id:
           type: string
         name:
+          type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
+        avatar_path:
           type: string
         prompt:
           type: string

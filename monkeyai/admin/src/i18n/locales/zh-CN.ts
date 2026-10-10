@@ -263,6 +263,7 @@ export const zhCN = {
     systemSettings: "系统设置",
   },
   pages: {
+    resourceImports: { title: "导入资源包", description: "预览并导入资源发布包" },
     realtimeStatus: {
       title: "实时状态",
       description: "查看所选时间范围内的模型运行与业务活跃状态。",

@@ -112,14 +112,14 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	return (o.String("ownership_type") == "user" && o.String("owner_user_id") == user) || c.grants[kind+":"+o.String("id")]
 }
 func ruleDTO(o resource.Object, required bool) resource.Object {
-	return resource.Object{"id": o["id"], "name": o["name"], "content": o["content"], "sha256": resource.Hash(o["content"]), "required": required}
+	return resource.Object{"id": o["id"], "name": o["name"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "content": o["content"], "sha256": resource.Hash(o["content"]), "required": required}
 }
 func skillDTO(o resource.Object, expert string) resource.Object {
 	path := "/api/v1/skills/" + o.String("id") + "/package"
 	if expert != "" {
 		path = "/api/v1/experts/" + expert + "/skills/" + o.String("id") + "/package"
 	}
-	return resource.Object{"id": o["id"], "name": o["name"], "description": o["description"], "package_size_bytes": o["package_size_bytes"], "package_sha256": o["package_sha256"], "file_count": o["file_count"], "download_path": path + "?sha256=" + o.String("package_sha256")}
+	return resource.Object{"id": o["id"], "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "package_size_bytes": o["package_size_bytes"], "package_sha256": o["package_sha256"], "file_count": o["file_count"], "download_path": path + "?sha256=" + o.String("package_sha256")}
 }
 func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c catalog, o resource.Object, user string) (resource.Object, error) {
 	return r.mcp.Catalog(ctx, q, o, user)
@@ -165,7 +165,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	rules, skills, connectors, issues := []resource.Object{}, []resource.Object{}, []resource.Object{}, []resource.Object{}
 	for _, link := range c.links[expert+":expert_rules"] {
 		o := c.rules[link.String("rule_id")]
-		if o == nil || (e.String("ownership_type") == "user" && !c.allowed("rule", o, user)) {
+		if o == nil || !o.Bool("enabled") || (e.String("ownership_type") == "user" && !c.allowed("rule", o, user)) {
 			issues = append(issues, resource.Object{"code": "rule_missing", "blocking": true})
 			continue
 		}
@@ -201,7 +201,10 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	resource.Stable(skills)
 	resource.Stable(connectors)
 	slices.SortFunc(issues, func(a, b resource.Object) int { return strings.Compare(resource.Hash(a), resource.Hash(b)) })
-	out := resource.Object{"expert_id": expert, "name": e["name"], "prompt": e["prompt"], "rules": rules, "skills": skills, "connectors": connectors, "issues": issues, "available": true}
+	out := resource.Object{"expert_id": expert, "name": e["name"], "description": e["description"], "name_i18n": e["name_i18n"], "description_i18n": e["description_i18n"], "prompt": e["prompt"], "rules": rules, "skills": skills, "connectors": connectors, "issues": issues, "available": true}
+	if key := e.String("avatar_s3_key"); key != "" {
+		out["avatar_path"] = "/api/v1/experts/" + expert + "/avatar?v=" + resource.Hash(key)
+	}
 	for _, issue := range issues {
 		if issue.Bool("blocking") {
 			out["available"] = false
@@ -210,6 +213,25 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 	out["version"] = resource.Hash(out)
 	return out, nil
 }
+func searchable(o resource.Object) (string, string) {
+	name, description := o.String("name"), o.String("description")
+	if translated, ok := o["name_i18n"].(map[string]any); ok {
+		for _, value := range translated {
+			if text, ok := value.(string); ok {
+				name += " " + text
+			}
+		}
+	}
+	if translated, ok := o["description_i18n"].(map[string]any); ok {
+		for _, value := range translated {
+			if text, ok := value.(string); ok {
+				description += " " + text
+			}
+		}
+	}
+	return name, description
+}
+
 func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string, filter resource.CatalogFilter) ([]resource.Object, error) {
 	c, err := r.load(ctx, q, user, kind)
 	if err != nil {
@@ -234,7 +256,8 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 	owners := []string{}
 	ownerIDs := map[string]string{}
 	for id, o := range items {
-		if !c.allowed(resourceType, o, user) || !filter.Matches(o.String("ownership_type"), o.String("owner_user_id"), user, o.String("name"), o.String("description")) {
+		name, description := searchable(o)
+		if !c.allowed(resourceType, o, user) || !filter.Matches(o.String("ownership_type"), o.String("owner_user_id"), user, name, description) {
 			continue
 		}
 		var dto resource.Object
@@ -248,7 +271,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			var manifest resource.Object
 			manifest, err = r.manifest(ctx, q, c, id, user)
 			if err == nil {
-				dto = resource.Object{"id": id, "name": o["name"], "description": o["description"], "version": manifest["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": manifest["available"], "issues": manifest["issues"]}
+				dto = resource.Object{"id": id, "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "avatar_path": manifest["avatar_path"], "version": manifest["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": manifest["available"], "issues": manifest["issues"]}
 			}
 		case "connectors":
 			dto, err = r.connectorDTO(ctx, q, c, o, user)

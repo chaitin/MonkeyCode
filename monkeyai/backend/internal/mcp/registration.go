@@ -28,10 +28,14 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 		return err
 	}
 	if o.Mode == "dynamic" && o.ClientID == "" {
+		requestedScopes := o.Scopes
 		o, err = discoverOAuthWithClient(ctx, c.String("url"), h)
 		if err != nil {
 			slog.WarnContext(ctx, "OAuth 自动发现失败", "connector_id", c.String("id"), "operation", "discovery", "error", err)
 			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
+		}
+		if requestedScopes != "" {
+			o.Scopes = requestedScopes
 		}
 	}
 	registered, err := registerOAuthClientWithClient(ctx, o, redirect, h)

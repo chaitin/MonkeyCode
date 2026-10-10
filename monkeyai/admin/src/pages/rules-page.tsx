@@ -22,6 +22,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import { PackageGrants } from "@/components/package-grants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,6 +78,9 @@ import {
 type RuleType = "system" | "user"
 
 type AgentRule = {
+  origin?: ResourceRow["origin"]
+  publisher?: string
+  retired?: boolean
   revision: number
   id: string
   name: string
@@ -91,6 +95,9 @@ type AgentRule = {
 function toRule(row: ResourceRow): AgentRule {
   return {
     id: row.id,
+    origin: row.origin,
+    publisher: row.publisher,
+    retired: row.retired,
     revision: row.revision,
     name: row.name,
     content: row.content,
@@ -344,7 +351,7 @@ export function RulesPage() {
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <CardTitle className="truncate" title={rule.name}>
-                              {rule.name}
+                              {rule.name} {rule.origin === "package" && <span title={rule.publisher}>· 资源包导入</span>}
                             </CardTitle>
                             <CardDescription
                               className="truncate"
@@ -353,7 +360,7 @@ export function RulesPage() {
                               {rule.creator}
                             </CardDescription>
                           </div>
-                          {
+                          {rule.origin !== "package" && (
                             <DropdownMenu>
                               <DropdownMenuTrigger
                                 render={
@@ -401,10 +408,11 @@ export function RulesPage() {
                                 </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          }
+                          )}
                         </div>
                       </CardHeader>
                       <CardContent className="flex-1">
+                        {rule.origin === "package" && <PackageGrants kind="rule" id={rule.id} name={rule.name} retired={rule.retired} subjects={subjects} onSaved={() => { void remote.reload() }} />}
                         <p
                           className="line-clamp-3 min-h-16 whitespace-pre-wrap text-muted-foreground"
                           title={rule.content}

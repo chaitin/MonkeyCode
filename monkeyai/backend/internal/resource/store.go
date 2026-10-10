@@ -243,8 +243,18 @@ func (c *CRUD) Get(ctx context.Context, q Queryer, id string) (Object, error) {
 	return c.decorate(ctx, q, o)
 }
 func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error) {
+	imported, err := sqlc.New(q).GetResourceImport(ctx, sqlc.GetResourceImportParams{ResourceType: c.Def.Kind, ResourceID: o.String("id")})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		o["origin"], o["publisher"], o["source_slug"], o["retired"] = "package", imported.Publisher, imported.Slug, imported.Retired
+	} else if o.String("ownership_type") == "system" {
+		o["origin"] = "admin"
+	} else {
+		o["origin"] = "user"
+	}
 	g := []Object{}
-	var err error
 	g, err = Grants(ctx, q, c.Def.Kind, o.String("id"))
 	if err != nil {
 		return nil, err
@@ -328,6 +338,9 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 		}
 		if personal && !owned(old, actor) {
 			return nil, NotFound
+		}
+		if err = RequireEditable(ctx, tx, c.Def.Kind, id); err != nil {
+			return nil, err
 		}
 		if !personal && old.String("ownership_type") == "user" {
 			return nil, Invalid("个人资源仅允许治理删除")
@@ -422,6 +435,9 @@ func (c *CRUD) delete(ctx context.Context, actor, id, match string, personal boo
 	}
 	if personal && !owned(o, actor) {
 		return NotFound
+	}
+	if err = RequireEditable(ctx, tx, c.Def.Kind, id); err != nil {
+		return err
 	}
 	if personal && match == "" {
 		return &Error{Status: 428, Code: "precondition_required", Message: "删除需要 If-Match"}
@@ -599,6 +615,9 @@ func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled 
 	}
 	if o.String("ownership_type") == "user" {
 		return nil, Invalid("个人资源仅允许治理删除")
+	}
+	if err = RequireEditable(ctx, tx, c.Def.Kind, id); err != nil {
+		return nil, err
 	}
 	if match != fmt.Sprintf(`"%v"`, o["revision"]) {
 		return nil, Conflict

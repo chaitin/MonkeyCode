@@ -179,6 +179,19 @@ func (q *Queries) PageResources(ctx context.Context, filter []byte) ([][]byte, e
 	return items, nil
 }
 
+const setResourceEnabled = `-- name: SetResourceEnabled :exec
+UPDATE rules
+SET enabled = ($1::jsonb ->> 'enabled')::boolean,
+    revision = revision + 1,
+    updated_at = now()
+WHERE id = ($1::jsonb ->> 'id')::uuid
+`
+
+func (q *Queries) SetResourceEnabled(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, setResourceEnabled, data)
+	return err
+}
+
 const touchResource = `-- name: TouchResource :exec
 UPDATE
     rules

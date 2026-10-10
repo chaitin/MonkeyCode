@@ -17,13 +17,19 @@ import (
 )
 
 type Service struct {
-	CRUD  *resource.CRUD
-	Store *resource.Store
+	CRUD    *resource.CRUD
+	Store   *resource.Store
+	storage resource.Storage
+}
+
+func (s *Service) WithStorage(storage resource.Storage) *Service {
+	s.storage = storage
+	return s
 }
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors", "tag_ids"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors", "tag_ids"}, Hidden: []string{"avatar_s3_key"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
@@ -100,6 +106,9 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 
 func (s *Service) RegisterAgent(r chi.Router) {
 	s.CRUD.RegisterAgent(r)
+	if s.storage != nil {
+		r.Get("/experts/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, false) })
+	}
 }
 
 func connectorLinks(v any) []resource.Object {
@@ -171,12 +180,18 @@ func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.O
 		return err
 	}
 	o["rule_ids"], o["skill_ids"] = rules, skills
+	if key := o.String("avatar_s3_key"); key != "" {
+		o["avatar_path"] = "/api/admin/v1/experts/" + o.String("id") + "/avatar?v=" + resource.Hash(key)
+	}
 	p, err := resource.DecodeObjects(sqlc.New(q).ListConnectorLinks(ctx, o.String("id")))
 	o["connectors"] = p
 	return err
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.CRUD.Register(r)
+	if s.storage != nil {
+		r.Get("/experts/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, true) })
+	}
 	r.Post("/experts/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
 		o, err := s.CRUD.Get(r.Context(), s.Store.Pool, chi.URLParam(r, "id"))
 		if err != nil {

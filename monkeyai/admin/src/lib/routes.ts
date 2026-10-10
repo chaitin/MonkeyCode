@@ -17,6 +17,7 @@ export const CONSOLE_ROUTES = {
   experts: "/console/resources/experts",
   tools: "/console/resources/tools",
   rules: "/console/resources/rules",
+  resourceImports: "/console/resources/imports",
   billingDetails: "/console/billing/details",
   billingSettings: "/console/billing/settings",
   membersAndGroups: "/console/settings/members",
@@ -117,6 +118,13 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.models,
     titleKey: "pages.rules.title",
     descriptionKey: "pages.rules.description",
+  },
+  {
+    path: CONSOLE_ROUTES.resourceImports,
+    sectionKey: "sections.aiResources",
+    sectionPath: CONSOLE_ROUTES.models,
+    titleKey: "pages.resourceImports.title",
+    descriptionKey: "pages.resourceImports.description",
   },
   {
     path: CONSOLE_ROUTES.billingDetails,
