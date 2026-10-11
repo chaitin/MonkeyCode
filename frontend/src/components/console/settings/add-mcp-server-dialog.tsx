@@ -139,6 +139,33 @@ export default function AddMcpServerDialog({
         </DialogHeader>
 
         <div className="grid gap-4">
+          {!isEditMode && (
+            <div className="rounded-md border p-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => {
+                  setName("Parallel Search")
+                  setUrl("https://search.parallel.ai/mcp")
+                  setHeadersJson(JSON.stringify({ "User-Agent": "MonkeyCode" }, null, 2))
+                }}
+              >
+                {t("consoleSettings.mcp.parallel.usePreset")}
+              </Button>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {t("consoleSettings.mcp.parallel.description")}{" "}
+                <a
+                  href="https://docs.parallel.ai/integrations/mcp/search-mcp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4"
+                >
+                  {t("consoleSettings.mcp.parallel.docs")}
+                </a>
+              </p>
+            </div>
+          )}
           <Field>
             <FieldLabel>{t("consoleSettings.mcp.labels.name")}</FieldLabel>
             <FieldContent>
