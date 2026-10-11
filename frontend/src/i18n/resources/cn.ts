@@ -879,6 +879,11 @@ const cn = {
       pricePerUse: "{{price}} 积分/次",
       toolEnabledAria: "{{name}} 启用状态",
       builtInService: "内置 MCP 服务",
+      parallel: {
+        usePreset: "使用 Parallel Search",
+        description: "免费网页搜索与内容提取，无需账号或 API Key。搜索使用 Fast 模式，有请求频率限制。",
+        docs: "配置指南",
+      },
       labels: {
         name: "名称",
         url: "MCP 服务器地址",
