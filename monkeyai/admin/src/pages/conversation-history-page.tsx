@@ -513,17 +513,21 @@ export function ConversationHistoryPage() {
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
           >
             <Table
-              className={!visible.length ? "h-full min-w-4xl" : "min-w-4xl"}
+              className={
+                !visible.length
+                  ? "h-full min-w-4xl table-fixed"
+                  : "min-w-4xl table-fixed"
+              }
               aria-label={t("pages.conversationHistory.title")}
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="w-44 ps-(--card-spacing)">
                     {copy.time}
                   </TableHead>
-                  <TableHead>{copy.user}</TableHead>
-                  <TableHead>{copy.task}</TableHead>
-                  <TableHead>{copy.turn}</TableHead>
+                  <TableHead className="w-36">{copy.user}</TableHead>
+                  <TableHead className="w-48">{copy.task}</TableHead>
+                  <TableHead className="w-20">{copy.turn}</TableHead>
                   <TableHead className="pe-(--card-spacing)">
                     {copy.content}
                   </TableHead>
@@ -533,12 +537,17 @@ export function ConversationHistoryPage() {
                 {visible.length ? (
                   visible.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
-                        {formatter.format(new Date(entry.at))}
+                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                        <span
+                          className="block truncate"
+                          title={formatter.format(new Date(entry.at))}
+                        >
+                          {formatter.format(new Date(entry.at))}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div
-                          className="flex max-w-44 items-center gap-2"
+                          className="flex w-full min-w-0 items-center gap-2"
                           title={entry.userEmail}
                         >
                           <HugeiconsIcon
@@ -547,24 +556,30 @@ export function ConversationHistoryPage() {
                             strokeWidth={2}
                             aria-hidden="true"
                           />
-                          <span className="truncate">{entry.userName}</span>
+                          <span className="min-w-0 truncate">
+                            {entry.userName}
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-56">
+                      <TableCell>
                         <button
                           type="button"
-                          className="block max-w-56 cursor-pointer truncate text-start hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                          className="block w-full min-w-0 cursor-pointer truncate text-start hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                           title={entry.taskTitle}
                           onClick={() => filterByTask(entry)}
                         >
                           {entry.taskTitle}
                         </button>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {copy.turnNumber(entry.turn)}
+                      <TableCell className="text-muted-foreground">
+                        <span className="block truncate">
+                          {copy.turnNumber(entry.turn)}
+                        </span>
                       </TableCell>
-                      <TableCell className="max-w-xl pe-(--card-spacing) break-words whitespace-pre-wrap">
-                        {entry.content}
+                      <TableCell className="pe-(--card-spacing)">
+                        <span className="block truncate" title={entry.content}>
+                          {entry.content}
+                        </span>
                       </TableCell>
                     </TableRow>
                   ))

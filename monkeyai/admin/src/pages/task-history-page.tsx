@@ -199,7 +199,7 @@ export function TaskHistoryPage() {
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form onSubmit={applySearch} className="px-(--card-spacing)">
             <FieldGroup className="flex-row flex-wrap items-end gap-3">
-              <Field className="sm:w-56">
+              <Field className="sm:w-44">
                 <FieldLabel
                   htmlFor="task-history-task-name"
                   className="sr-only"
@@ -217,7 +217,7 @@ export function TaskHistoryPage() {
                   )}
                 />
               </Field>
-              <Field className="sm:w-56">
+              <Field className="sm:w-44">
                 <FieldLabel
                   htmlFor="task-history-user-name"
                   className="sr-only"
@@ -237,6 +237,7 @@ export function TaskHistoryPage() {
               </Field>
               <DatePickerField
                 id="task-history-start-time"
+                className="sm:w-40"
                 label={t("pages.taskHistory.filters.startTime")}
                 placeholder={t("pages.taskHistory.filters.startTime")}
                 locale={locale}
@@ -255,6 +256,7 @@ export function TaskHistoryPage() {
               />
               <DatePickerField
                 id="task-history-end-time"
+                className="sm:w-40"
                 label={t("pages.taskHistory.filters.endTime")}
                 placeholder={t("pages.taskHistory.filters.endTime")}
                 locale={locale}
@@ -288,22 +290,26 @@ export function TaskHistoryPage() {
           >
             <Table
               className={
-                !visibleTasks.length ? "h-full min-w-3xl" : "min-w-3xl"
+                !visibleTasks.length
+                  ? "h-full min-w-4xl table-fixed"
+                  : "min-w-4xl table-fixed"
               }
               aria-label={t("pages.taskHistory.title")}
               aria-busy={request.loading}
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="w-52 ps-(--card-spacing)">
                     {t("pages.taskHistory.columns.startedAt")}
                   </TableHead>
-                  <TableHead>{t("pages.taskHistory.columns.user")}</TableHead>
+                  <TableHead className="w-44">
+                    {t("pages.taskHistory.columns.user")}
+                  </TableHead>
                   <TableHead>{t("pages.taskHistory.columns.task")}</TableHead>
-                  <TableHead className="text-end">
+                  <TableHead className="w-28">
                     {t("pages.taskHistory.columns.conversationCount")}
                   </TableHead>
-                  <TableHead className="pe-(--card-spacing) text-end">
+                  <TableHead className="w-40 pe-(--card-spacing)">
                     {t("pages.taskHistory.columns.lastActiveAt")}
                   </TableHead>
                 </TableRow>
@@ -315,12 +321,19 @@ export function TaskHistoryPage() {
                   visibleTasks.map((task) => (
                     <TableRow key={task.id}>
                       <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                        {dateFormatter.format(new Date(task.started_at))}
+                        <span
+                          className="block truncate"
+                          title={dateFormatter.format(
+                            new Date(task.started_at)
+                          )}
+                        >
+                          {dateFormatter.format(new Date(task.started_at))}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           title={task.user_email}
                           onClick={() => openAccount(task)}
                         >
@@ -330,31 +343,35 @@ export function TaskHistoryPage() {
                             strokeWidth={2}
                             aria-hidden="true"
                           />
-                          <span className="truncate">{task.user_name}</span>
+                          <span className="min-w-0 truncate">
+                            {task.user_name}
+                          </span>
                         </button>
                       </TableCell>
                       <TableCell>
-                        <div className="max-w-72">
+                        <div className="min-w-0">
                           <span className="block truncate" title={task.title}>
                             {task.title}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-end tabular-nums">
+                      <TableCell className="truncate tabular-nums">
                         {numberFormatter.format(task.turn_count)}
                       </TableCell>
                       <TableCell
-                        className="pe-(--card-spacing) text-end whitespace-nowrap text-muted-foreground"
+                        className="pe-(--card-spacing) whitespace-nowrap text-muted-foreground"
                         title={dateFormatter.format(
                           new Date(task.last_active_at)
                         )}
                       >
-                        {formatLastActivity(
-                          task.last_active_at,
-                          now,
-                          locale,
-                          relativeFormatter
-                        )}
+                        <span className="block truncate">
+                          {formatLastActivity(
+                            task.last_active_at,
+                            now,
+                            locale,
+                            relativeFormatter
+                          )}
+                        </span>
                       </TableCell>
                     </TableRow>
                   ))
