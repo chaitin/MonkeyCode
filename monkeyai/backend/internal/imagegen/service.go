@@ -108,7 +108,12 @@ type Billing interface {
 	ImageCharge(context.Context, string, string) (billing.Amount, error)
 }
 
+type ProxyResolver interface {
+	ProxyURL(context.Context, string) (string, error)
+}
+
 type Service struct {
+	proxies   ProxyResolver
 	models    ModelReader
 	jobs      Jobs
 	inputs    InputReader
@@ -123,6 +128,11 @@ type Service struct {
 func NewService(models ModelReader, jobs Jobs, inputs InputReader, outputs OutputStore, charges Billing) *Service {
 	return &Service{models: models, jobs: jobs, inputs: inputs, outputs: outputs,
 		billing: charges, providers: make(map[model.Provider]Adapter), slots: make(chan struct{}, 4)}
+}
+
+func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
+	s.proxies = proxies
+	return s
 }
 
 func (s *Service) WithAdapter(provider model.Provider, adapter Adapter) *Service {
@@ -517,7 +527,19 @@ func (s *Service) recover(ctx context.Context) {
 			if adapter.TaskQuerier == nil {
 				continue
 			}
-			target := proxy.Target{ModelID: item.ID, UserID: job.UserID, UpstreamModel: item.ModelID,
+			proxyURL := ""
+			if item.ProxyID != "" {
+				if s.proxies == nil {
+					slog.Warn("系统代理不可用", "job", job.ID)
+					continue
+				}
+				proxyURL, err = s.proxies.ProxyURL(ctx, item.ProxyID)
+				if err != nil {
+					slog.Warn("读取系统代理失败", "job", job.ID, "error", err)
+					continue
+				}
+			}
+			target := proxy.Target{ModelID: item.ID, UserID: job.UserID, UpstreamModel: item.ModelID, ProxyURL: proxyURL,
 				BaseURL: item.BaseURL, APIKey: item.APIKey, Protocol: string(item.Protocol)}
 			callCtx, cancel := context.WithTimeout(ctx, time.Minute)
 			result, err := adapter.TaskQuerier.QueryTask(callCtx, target, *job.ProviderJobID)

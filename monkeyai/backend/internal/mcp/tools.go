@@ -134,7 +134,11 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
-	tools, discoveryErr := discover(ctx, c.String("url"), headers)
+	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	if err != nil {
+		return nil, err
+	}
+	tools, discoveryErr := discoverWithClient(ctx, c.String("url"), headers, h)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err

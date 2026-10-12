@@ -269,7 +269,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	result, err := exchange(ctx, c, url.Values{"grant_type": {"authorization_code"}, "code": {r.URL.Query().Get("code")}, "redirect_uri": {request.String("redirect_uri")}, "code_verifier": {request.String("verifier")}})
+	result, err := s.exchange(ctx, c, url.Values{"grant_type": {"authorization_code"}, "code": {r.URL.Query().Get("code")}, "redirect_uri": {request.String("redirect_uri")}, "code_verifier": {request.String("verifier")}})
 	if err != nil {
 		slog.WarnContext(ctx, "OAuth Token 交换失败", "connector_id", id, "operation", "exchange", "failure", safeMCPFailure(err))
 		resource.Fail(w, &resource.Error{Status: 502, Code: "oauth_exchange_failed", Message: "OAuth Token 交换失败，请重新发起授权"})
@@ -406,6 +406,22 @@ func safeMCPFailure(err error) []any {
 	return []any{"reason", "internal_error", "error_type", fmt.Sprintf("%T", err)}
 }
 
+type configuredProxyKey struct{}
+
+func (s *Service) exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
+	if id := c.String("proxy_id"); id != "" {
+		if s.proxies == nil {
+			return tokens{}, fmt.Errorf("系统代理不可用")
+		}
+		address, err := s.proxies.ProxyURL(ctx, id)
+		if err != nil {
+			return tokens{}, err
+		}
+		ctx = context.WithValue(ctx, configuredProxyKey{}, address)
+	}
+	return exchange(ctx, c, v)
+}
+
 func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
 	return exchangeWithProxy(ctx, c, v, http.ProxyFromEnvironment)
 }
@@ -434,9 +450,15 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	h, req, err := tokenClient(req, proxy, net.DefaultResolver.LookupNetIP)
-	if err != nil {
-		return tokens{}, err
+	var h *http.Client
+	if configured, ok := ctx.Value(configuredProxyKey{}).(string); ok && configured != "" {
+		h = client()
+		h.Transport = checkedProxy{address: configured}
+	} else {
+		h, req, err = tokenClient(req, proxy, net.DefaultResolver.LookupNetIP)
+		if err != nil {
+			return tokens{}, err
+		}
 	}
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
@@ -527,7 +549,7 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 		}
 		return nil, authorizationRequired
 	}
-	result, err := exchange(ctx, current, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cred.String("oauth_refresh_token")}})
+	result, err := s.exchange(ctx, current, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cred.String("oauth_refresh_token")}})
 	if errors.Is(err, invalidGrant) {
 		if err = sqlc.New(tx).ExpireCredential(ctx, cred.String("id")); err != nil {
 			return nil, err

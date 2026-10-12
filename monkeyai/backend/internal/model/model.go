@@ -200,6 +200,7 @@ type Model struct {
 	VideoConfig      *VideoConfig       `json:"video_config,omitempty"`
 	VideoPricing     *VideoPricing      `json:"video_pricing,omitempty"`
 	BaseURL          string             `json:"base_url"`
+	ProxyID          string             `json:"proxy_id"`
 	APIKey           string             `json:"-"`
 	GrantorUserID    string             `json:"-"`
 	APIKeyConfigured bool               `json:"api_key_configured"`
@@ -247,6 +248,7 @@ type Target struct {
 	Provider        Provider
 	ProviderOptions json.RawMessage
 	BaseURL         string
+	ProxyURL        string
 	APIKey          string
 }
 
@@ -275,6 +277,7 @@ type SaveInput struct {
 	VideoConfig      *VideoConfig    `json:"video_config,omitempty"`
 	VideoPricing     *VideoPricing   `json:"video_pricing,omitempty"`
 	BaseURL          string          `json:"base_url"`
+	ProxyID          string          `json:"proxy_id"`
 	APIKey           string          `json:"api_key"`
 	AdvancedConfig   AdvancedConfig  `json:"advanced_config"`
 	CreditMultiplier float64         `json:"credit_multiplier"`

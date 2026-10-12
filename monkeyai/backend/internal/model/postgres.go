@@ -110,6 +110,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		ImagePricing:     pricing,
 		VideoConfig:      videoConfig,
 		VideoPricing:     videoPricing,
+		ProxyID:          item.ProxyID,
 	}))
 	if err != nil {
 		return Model{}, fmt.Errorf("创建模型: %w", err)
@@ -180,6 +181,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		ImagePricing:     pricing,
 		VideoConfig:      videoConfig,
 		VideoPricing:     videoPricing,
+		ProxyID:          item.ProxyID,
 		OwnershipType:    ownership,
 		OwnerUserID:      item.OwnerUserID,
 	}))
@@ -336,7 +338,7 @@ func readModel(row sqlc.Model, err error) (Model, error) {
 	item := Model{ID: row.ID, OwnershipType: row.OwnershipType, OwnerUserID: row.OwnerUserID,
 		ModelID: row.ModelID, DisplayName: row.DisplayName, Protocol: Protocol(row.Protocol),
 		Kind: Kind(row.Kind), Provider: Provider(row.Provider), ProviderOptions: row.ProviderOptions,
-		BaseURL: row.BaseUrl, APIKey: row.ApiKey, APIKeyConfigured: row.ApiKey != "",
+		BaseURL: row.BaseUrl, ProxyID: row.ProxyID, APIKey: row.ApiKey, APIKeyConfigured: row.ApiKey != "",
 		CreditMultiplier: row.CreditMultiplier, Enabled: row.Enabled, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 	if err := json.Unmarshal(row.AdvancedConfig, &item.AdvancedConfig); err != nil {
 		return Model{}, fmt.Errorf("解析模型高级配置: %w", err)

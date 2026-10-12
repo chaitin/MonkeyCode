@@ -256,7 +256,7 @@ func TestModelTransportsIgnoreEnvironmentProxy(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
 	for _, transport := range []*http.Transport{
-		NewProxy(nil, discardLogger()).reverse.Transport.(*http.Transport),
+		NewProxy(nil, discardLogger()).reverse.Transport.(outboundTransport).direct.(*http.Transport),
 		NewResponseReconciler().client.Transport.(*http.Transport),
 		DirectTransport(),
 	} {

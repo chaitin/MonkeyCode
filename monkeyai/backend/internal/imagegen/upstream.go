@@ -45,6 +45,14 @@ func CallBody(ctx context.Context, client *http.Client, target proxy.Target, end
 	}
 	clientCopy := *client
 	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if target.ProxyURL != "" {
+		transport, err := proxy.TransportFor(target.ProxyURL)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer transport.CloseIdleConnections()
+		clientCopy.Transport = transport
+	}
 	response, err := clientCopy.Do(request)
 	if err != nil {
 		return nil, 0, err

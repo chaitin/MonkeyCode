@@ -56,6 +56,51 @@ func TestAgentConfigRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestProxySettingRedactsAndResolves(t *testing.T) {
+	store := &memoryStore{records: map[string]Record{}}
+	s := NewService(store)
+	for _, address := range []string{"http://proxy.example:8080", "https://proxy.example:8443", "socks5://proxy.example:1080"} {
+		record, err := s.Put(t.Context(), "proxies", json.RawMessage(`{"proxies":[{"name":"outbound","url":"`+address+`","username":"user","password":"secret"}]}`), 1, "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config struct {
+			Proxies []outboundProxy `json:"proxies"`
+		}
+		if err := json.Unmarshal(record.Value, &config); err != nil {
+			t.Fatal(err)
+		}
+		id := config.Proxies[0].ID
+		got, err := s.ProxyURL(t.Context(), id)
+		if err != nil || got != strings.Replace(address, "://", "://user:secret@", 1) {
+			t.Fatalf("代理解析错误: %s %v", got, err)
+		}
+		admin, err := s.AdminGet(t.Context(), "proxies")
+		if err != nil || strings.Contains(string(admin.Value), "secret") {
+			t.Fatalf("管理员响应泄露密码: %s %v", admin.Value, err)
+		}
+		if _, err := s.Put(t.Context(), "proxies", json.RawMessage(`{"proxies":[{"id":"`+id+`","name":"outbound","url":"`+address+`","username":"user"}]}`), 1, "admin"); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := s.ProxyURL(t.Context(), id); err != nil || !strings.Contains(got, "secret@") {
+			t.Fatalf("更新时丢失密码: %s %v", got, err)
+		}
+	}
+	if _, err := s.Put(t.Context(), "proxies", json.RawMessage(`{"proxies":[{"name":"invalid","url":"http://localhost:8080/path"}]}`), 1, "admin"); err == nil {
+		t.Fatal("不应接受带路径的代理地址")
+	}
+	if _, err := s.ProxyURL(t.Context(), "missing"); err == nil {
+		t.Fatal("失效代理不得回退直连")
+	}
+	config, err := s.AgentConfig(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := config.Settings["proxies"]; ok {
+		t.Fatal("不应向 Agent 下发代理凭据")
+	}
+}
+
 func TestSessionReportingSwitchRequiresExplicitBoolean(t *testing.T) {
 	service := NewService(&memoryStore{records: map[string]Record{}})
 	value, err := service.GetValue(t.Context(), "session_reporting")

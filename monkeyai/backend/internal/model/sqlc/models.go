@@ -30,4 +30,5 @@ type Model struct {
 	ImagePricing     []byte
 	VideoConfig      []byte
 	VideoPricing     []byte
+	ProxyID          string
 }

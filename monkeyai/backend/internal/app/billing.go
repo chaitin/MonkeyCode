@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 )
 
@@ -48,6 +49,7 @@ type reconciliationModels interface {
 }
 
 type modelUsageReconciler struct {
+	proxies   *setting.Service
 	models    reconciliationModels
 	responses *proxy.ResponseReconciler
 }
@@ -60,7 +62,18 @@ func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.Rec
 	if err != nil {
 		return billing.ReconciliationResult{}, err
 	}
+	proxyURL := ""
+	if item.ProxyID != "" {
+		if r.proxies == nil {
+			return billing.ReconciliationResult{}, errors.New("系统代理不可用")
+		}
+		proxyURL, err = r.proxies.ProxyURL(ctx, item.ProxyID)
+		if err != nil {
+			return billing.ReconciliationResult{}, err
+		}
+	}
 	result, err := r.responses.Reconcile(ctx, proxy.Target{
+		ProxyURL:      proxyURL,
 		ModelID:       item.ID,
 		UpstreamModel: item.ModelID,
 		Protocol:      string(item.Protocol),

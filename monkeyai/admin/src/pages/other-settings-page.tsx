@@ -84,6 +84,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
+import { ProxySettings } from "@/components/proxy-settings"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -872,6 +873,7 @@ export function OtherSettingsPage() {
 
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <ProxySettings />
       <Card>
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.brandInfo.title")}</CardTitle>

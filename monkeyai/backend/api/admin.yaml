@@ -548,6 +548,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmailAuthError"
+  /api/admin/v1/settings/proxies:
+    get:
+      summary: 读取系统代理资源
+      description: 管理员读取代理列表；密码不返回。未配置时返回 404。
+      responses:
+        "200":
+          description: 系统代理设置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxySetting"
+    put:
+      summary: 保存系统代理资源
+      description: 完整替换代理列表。代理 ID 省略时自动生成；编辑时密码省略或留空则保持旧密码；正在被模型或连接器引用的代理不可删除。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schema_version, value]
+              properties:
+                schema_version: {type: integer, minimum: 1}
+                value:
+                  type: object
+                  required: [proxies]
+                  properties:
+                    proxies:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/SystemProxy"
+      responses:
+        "200":
+          description: 保存成功，密码已脱敏
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxySetting"
   /api/admin/v1/settings/email/test:
     post:
       summary: 使用已保存 SMTP 配置发送测试邮件
@@ -5773,6 +5811,27 @@ components:
           description: 按创建时间倒序排列的模型。
           items:
             $ref: "#/components/schemas/Model"
+    SystemProxy:
+      type: object
+      required: [name, url]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        url: {type: string, pattern: "^(http|https|socks5)://"}
+        username: {type: string}
+        password: {type: string, writeOnly: true}
+    ProxySetting:
+      type: object
+      properties:
+        key: {type: string, const: proxies}
+        schema_version: {type: integer}
+        value:
+          type: object
+          properties:
+            proxies:
+              type: array
+              items:
+                $ref: "#/components/schemas/SystemProxy"
     Model:
       type: object
       required:
@@ -5823,6 +5882,9 @@ components:
           type: string
           format: uri
           description: 上游模型服务的 HTTP(S) 基础地址。
+        proxy_id:
+          type: string
+          description: 系统代理资源 ID；空字符串表示直连。
         api_key_configured:
           type: boolean
           description: 是否已配置上游 API Key；响应不会返回密钥原文。
@@ -5976,6 +6038,9 @@ components:
           format: uri
           pattern: "^https?://"
           description: 上游模型服务的 HTTP(S) 基础地址。
+        proxy_id:
+          type: string
+          description: 系统代理资源 ID；空字符串表示直连。
         api_key:
           type: string
           description: 上游 API Key；更新时传空字符串可保留原密钥。
@@ -6832,6 +6897,9 @@ components:
         url:
           type: string
           format: uri
+        proxy_id:
+          type: string
+          description: 系统代理资源 ID；空字符串表示直连。
         authorization_mode:
           type: string
           enum:

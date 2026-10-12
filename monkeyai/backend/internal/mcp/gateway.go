@@ -219,7 +219,12 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			}
 		}
 	}
-	remote, err := openRemote(r.Context(), connector.String("url"), headers)
+	h, err := s.clientFor(r.Context(), connector.String("proxy_id"))
+	if err != nil {
+		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "系统代理不可用"})
+		return
+	}
+	remote, err := openRemoteWithClient(r.Context(), connector.String("url"), headers, h)
 	if err != nil {
 		slog.WarnContext(r.Context(), "连接 MCP 上游失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "connect", "failure", safeMCPFailure(err))
 		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})

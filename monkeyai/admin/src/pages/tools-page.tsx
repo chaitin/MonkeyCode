@@ -1,5 +1,6 @@
 import { ConnectorCredentials } from "@/components/connector-credentials"
 import { api } from "@/lib/api"
+import { loadProxies, SystemProxySelect, type SystemProxy } from "@/components/proxy-settings"
 import {
   base,
   grants,
@@ -12,7 +13,7 @@ import {
   type Credential,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
   Edit02Icon,
@@ -150,6 +151,7 @@ type McpServer = {
   type: McpServerType
   creator: string
   url: string
+  proxyId: string
   authorizationMode: McpAuthorizationMode
   authorizationMethod: McpAuthorizationMethod | null
   hasHttpHeaders: boolean
@@ -170,6 +172,7 @@ function toServer(row: ResourceRow): McpServer {
     description: row.description,
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     url: row.url,
+    proxyId: row.proxy_id ?? "",
     authorizationMode: row.authorization_mode,
     authorizationMethod:
       row.authorization_method === "http_header"
@@ -203,6 +206,9 @@ export function ToolsPage() {
   const reload = remote.reload
   const subjects = useSubjects()
   const [activeType, setActiveType] = useState<McpServerType>("system")
+  const [proxies, setProxies] = useState<SystemProxy[]>([])
+  const [proxyError, setProxyError] = useState("")
+  useEffect(() => { loadProxies().then(setProxies).catch((reason: Error) => setProxyError(reason.message)) }, [])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServerId, setEditingServerId] = useState<string | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
@@ -321,6 +327,7 @@ export function ToolsPage() {
           name,
           description,
           url,
+          proxy_id: String(formData.get("proxyId") ?? "").replace(/^__direct__$/, ""),
           tag_ids: tagIds,
           grants: grants(authorization),
           authorization_mode: authorizationMode,
@@ -562,6 +569,11 @@ export function ToolsPage() {
                         required
                         type="url"
                       />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="mcp-proxy">{t("pages.otherSettings.proxies.title", { defaultValue: "系统代理" })}</FieldLabel>
+                      <SystemProxySelect id="mcp-proxy" selected={editingServer?.proxyId ?? ""} proxies={proxies} />
+                      {proxyError && <p role="alert" className="text-destructive">{proxyError}</p>}
                     </Field>
                     <Field>
                       <FieldLabel>{t("pages.tools.authorization")}</FieldLabel>

@@ -104,9 +104,13 @@ type remoteTool struct {
 }
 
 func discover(ctx context.Context, target string, headers map[string]string) ([]remoteTool, error) {
+	return discoverWithClient(ctx, target, headers, client())
+}
+
+func discoverWithClient(ctx context.Context, target string, headers map[string]string, httpClient *http.Client) ([]remoteTool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	rpc, err := openRemote(ctx, target, headers)
+	rpc, err := openRemoteWithClient(ctx, target, headers, httpClient)
 	if err != nil {
 		return nil, err
 	}

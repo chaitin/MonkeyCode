@@ -975,6 +975,7 @@ export const frFR = {
       },
     },
     otherSettings: {
+      proxies: { title: "Proxys système", description: "Configurez les proxys sortants pour les modèles et connecteurs. Un proxy utilisé ne peut pas être supprimé.", name: "Nom", username: "Nom d’utilisateur (facultatif)", password: "Mot de passe (laisser vide pour conserver)", add: "Ajouter un proxy", direct: "Connexion directe", confirmDelete: "Supprimer ce proxy ?" },
       title: "Autres paramètres",
       description:
         "Configurez l’identité visuelle, OAuth et les autres fonctions de la plateforme.",

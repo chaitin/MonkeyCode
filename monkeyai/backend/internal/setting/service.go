@@ -11,7 +11,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
-var Keys = []string{"branding", "authentication", "email", "billing", "session_reporting"}
+var Keys = []string{"branding", "authentication", "email", "billing", "session_reporting", "proxies"}
 
 var defaultSessionReporting = json.RawMessage(`{"enabled":true,"level":"stats"}`)
 
@@ -111,6 +111,22 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 			}
 		}
 	}
+	if key == "proxies" {
+		var proxies []map[string]json.RawMessage
+		if err := json.Unmarshal(object["proxies"], &proxies); err != nil || proxies == nil {
+			return Record{}, errors.New("proxies 必须是数组")
+		}
+		for _, proxy := range proxies {
+			if proxy == nil {
+				return Record{}, errors.New("代理配置无效")
+			}
+			if rawString(proxy["id"]) == "" {
+				proxy["id"], _ = json.Marshal(resource.ID())
+			}
+		}
+		object["proxies"], _ = json.Marshal(proxies)
+		value, _ = json.Marshal(object)
+	}
 	value, err := s.mergeSecrets(ctx, key, value)
 	if err != nil {
 		return Record{}, err
@@ -120,6 +136,15 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 	}
 	if err := validate(key, object); err != nil {
 		return Record{}, err
+	}
+	if key == "proxies" {
+		if checker, ok := s.store.(interface {
+			CheckProxyRemoval(context.Context, json.RawMessage) error
+		}); ok {
+			if err := checker.CheckProxyRemoval(ctx, value); err != nil {
+				return Record{}, err
+			}
+		}
 	}
 
 	record, err := s.store.Put(ctx, Record{
@@ -166,6 +191,9 @@ func (s *Service) AgentConfig(ctx context.Context) (Config, error) {
 	config := Config{Settings: make(map[string]json.RawMessage)}
 	seenSessionReporting := false
 	for _, record := range records {
+		if record.Key == "proxies" {
+			continue
+		}
 		value, err := redact(record.Key, record.Value)
 		if err != nil {
 			return Config{}, fmt.Errorf("过滤 %s 配置: %w", record.Key, err)
@@ -232,6 +260,12 @@ func redact(key string, value json.RawMessage) (json.RawMessage, error) {
 	case "billing":
 		delete(object, "remote_billing_api_key")
 		delete(object, "wallet")
+	case "proxies":
+		for _, entry := range anySlice(object["proxies"]) {
+			if proxy, ok := entry.(map[string]any); ok {
+				delete(proxy, "password")
+			}
+		}
 	}
 	return json.Marshal(object)
 }
@@ -272,12 +306,26 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 		if stringAny(next["remote_billing_api_key"]) == "" {
 			next["remote_billing_api_key"] = previous["remote_billing_api_key"]
 		}
+	case "proxies":
+		byID := map[string]map[string]any{}
+		for _, entry := range anySlice(previous["proxies"]) {
+			proxy, _ := entry.(map[string]any)
+			byID[stringAny(proxy["id"])] = proxy
+		}
+		for _, entry := range anySlice(next["proxies"]) {
+			proxy, _ := entry.(map[string]any)
+			if stringAny(proxy["password"]) == "" {
+				proxy["password"] = byID[stringAny(proxy["id"])]["password"]
+			}
+		}
 	}
 	return json.Marshal(next)
 }
 
 func validate(key string, value map[string]json.RawMessage) error {
 	switch key {
+	case "proxies":
+		return validateProxies(value["proxies"])
 	case "session_reporting":
 		enabled, ok := value["enabled"]
 		if !ok || (string(enabled) != "true" && string(enabled) != "false") {
