@@ -84,6 +84,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Iconfont } from "@/components/iconfont"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
+import { loadProxies, SystemProxySelect, type SystemProxy } from "@/components/proxy-settings"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { getModelIconName } from "@/lib/model-utils"
 import type { SkillTag } from "@/lib/skill-tags"
@@ -177,6 +178,7 @@ type ModelBase = {
   supportsVision: boolean
   supportsReasoning: boolean
   baseUrl: string
+  proxyId: string
   protocol: ModelProtocol
   kind: ModelKind
   provider: ModelProvider
@@ -206,6 +208,7 @@ type ApiModel = {
   video_config?: VideoConfig
   video_pricing?: VideoPricing
   base_url: string
+  proxy_id: string
   api_key_configured: boolean
   advanced_config?: {
     context_window_tokens: number
@@ -241,6 +244,7 @@ function fromApiModel(model: ApiModel): Model {
     supportsVision: model.advanced_config?.supports_vision ?? false,
     supportsReasoning: model.advanced_config?.supports_reasoning ?? false,
     baseUrl: model.base_url,
+    proxyId: model.proxy_id ?? "",
     protocol: model.protocol,
     kind: model.kind ?? "text",
     provider: model.provider ?? "passthrough",
@@ -297,6 +301,9 @@ export function ModelsPage() {
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const [models, setModels] = useState<Model[]>([])
+  const [proxies, setProxies] = useState<SystemProxy[]>([])
+  const [proxyError, setProxyError] = useState("")
+  useEffect(() => { loadProxies().then(setProxies).catch((reason: Error) => setProxyError(reason.message)) }, [])
   const [groups, setGroups] = useState<GroupSelectOption[]>([])
   const [members, setMembers] = useState<GroupSelectUser[]>([])
   const [loadRevision, setLoadRevision] = useState(0)
@@ -641,6 +648,7 @@ export function ModelsPage() {
         model_id: modelId,
         display_name: displayName,
         base_url: baseUrl,
+        proxy_id: String(formData.get("proxyId") ?? "").replace(/^__direct__$/, ""),
         api_key: apiKey,
         tag_ids: tagIds,
         authorization: {
@@ -911,6 +919,11 @@ export function ModelsPage() {
                           />
                         </Field>
 
+                        <Field>
+                          <FieldLabel htmlFor="model-proxy">{t("pages.otherSettings.proxies.title", { defaultValue: "系统代理" })}</FieldLabel>
+                          <SystemProxySelect id="model-proxy" selected={editingModel?.proxyId ?? ""} proxies={proxies} />
+                          {proxyError && <p role="alert" className="text-destructive">{proxyError}</p>}
+                        </Field>
                         <Field>
                           <FieldLabel htmlFor="model-api-key">
                             {t("pages.models.apiKey")}

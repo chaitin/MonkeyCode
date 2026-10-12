@@ -49,6 +49,7 @@ export type ResourceRow = {
   updated_at: string
   credentials: Credential[]
   url: string
+  proxy_id?: string
   authorization_mode: "none" | "centralized" | "independent"
   authorization_method: "oauth" | "http_header" | null
   credential_configured: boolean

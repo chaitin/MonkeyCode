@@ -96,6 +96,10 @@ func metadataURLs(issuer, kind string) []string {
 }
 
 func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
+	return discoverOAuthWithClient(ctx, target, client())
+}
+
+func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client) (oauthConfig, error) {
 	fail := func() (oauthConfig, error) {
 		return oauthConfig{}, fmt.Errorf("OAuth 自动发现元数据无效或不支持动态注册")
 	}
@@ -104,7 +108,6 @@ func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	h := client()
 	defer h.CloseIdleConnections()
 
 	// 不附带现有凭证；所有发现请求复用 MCP 的地址限制及禁止重定向策略。

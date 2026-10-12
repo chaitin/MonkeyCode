@@ -40,6 +40,7 @@ type Target struct {
 	UserID        string
 	SessionID     string
 	BaseURL       string
+	ProxyURL      string
 	APIKey        string
 }
 
@@ -109,7 +110,7 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		logger:   logger.With("module", "proxy"),
 	}
 	p.reverse = &httputil.ReverseProxy{
-		Transport:      DirectTransport(),
+		Transport:      outboundTransport{direct: DirectTransport()},
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.errorHandler,

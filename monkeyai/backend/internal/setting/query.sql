@@ -22,6 +22,13 @@ FROM
 ORDER BY
     KEY;
 
+-- name: ProxyInUse :one
+SELECT EXISTS (
+    SELECT 1 FROM models m WHERE m.proxy_id = $1 AND m.deleted_at IS NULL
+    UNION ALL
+    SELECT 1 FROM connectors c WHERE c.proxy_id = $1 AND c.deleted_at IS NULL
+);
+
 -- name: PutSetting :one
 INSERT INTO settings (KEY, value, schema_version, updated_by_user_id)
     VALUES ($1, $2, $3, $4)

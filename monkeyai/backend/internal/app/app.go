@@ -128,8 +128,8 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	identities.WithAccountPreserver(charges)
 	keys := apikey.NewService(apikey.NewPostgres(pool))
 	modelRepo := model.NewPostgres(pool)
-	charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, responses: proxy.NewResponseReconciler()})
-	models := model.NewService(modelRepo).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
+	charges.WithUsageReconciler(modelUsageReconciler{models: modelRepo, proxies: settings, responses: proxy.NewResponseReconciler()})
+	models := model.NewService(modelRepo).WithProxyResolver(settings).WithKeyAuthenticator(keys).WithGatewayURL(strings.TrimRight(cfg.PublicURL, "/") + "/v1")
 	storage, err := resource.NewS3(ctx)
 	if err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	imageRepo := imagegen.NewPostgres(pool)
 	imageInputs := imagegen.NewInputs(imageRepo, storage)
 	imageOutputs := imagegen.NewOutputs(imageRepo, storage)
-	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges)
+	imageService := imagegen.NewService(modelRepo, imageRepo, imageInputs, imageOutputs, charges).WithProxyResolver(settings)
 	upstreamClient := &http.Client{Timeout: 10 * time.Minute, Transport: proxy.DirectTransport()}
 	gptImages := openaiimages.New(upstreamClient)
 	gptResponses := openairesponses.New(upstreamClient)
@@ -155,11 +155,11 @@ func newApplicationHandler(ctx context.Context, logger *slog.Logger, pool *pgxpo
 	imageService.WithAdapter(model.ProviderVolcengine, imagegen.Adapter{Capabilities: seedream.Capabilities, DefaultCapabilities: seedream.DefaultCapabilities, Generator: seedream, Editor: seedream})
 	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, DefaultCapabilities: grok.DefaultCapabilities, Generator: grok, Editor: grok})
 	models.WithImageCapabilities(imageService.Capabilities)
-	videoService := videogen.NewService(pool, storage, charges, modelRepo)
+	videoService := videogen.NewService(pool, storage, charges, modelRepo).WithProxyResolver(settings)
 	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
-	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage)
+	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
 	go connectors.Run(ctx)
 	experts := expert.NewService(store)
 	resources := agentconfig.NewResources(store, connectors, skills)
@@ -262,6 +262,7 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 		Protocol:      string(target.Protocol),
 		UserID:        target.UserID,
 		BaseURL:       target.BaseURL,
+		ProxyURL:      target.ProxyURL,
 		APIKey:        target.APIKey,
 	}, nil
 }

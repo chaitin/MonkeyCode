@@ -932,6 +932,7 @@ export const koKR = {
       },
     },
     otherSettings: {
+      proxies: { title: "시스템 프록시", description: "모델 및 커넥터용 아웃바운드 프록시를 설정합니다. 사용 중인 프록시는 삭제할 수 없습니다.", name: "이름", username: "사용자 이름(선택)", password: "비밀번호(비워 두면 유지)", add: "프록시 추가", direct: "직접 연결", confirmDelete: "이 프록시를 삭제하시겠습니까?" },
       title: "기타 설정",
       description: "브랜드 정보, OAuth 및 기타 플랫폼 기능을 설정합니다.",
       brandInfo: {

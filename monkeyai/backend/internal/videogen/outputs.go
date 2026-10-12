@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -31,8 +32,8 @@ type streamStorage interface {
 	PutReader(context.Context, string, io.ReadSeeker, int64, string) error
 }
 
-func (s *Service) saveOutput(ctx context.Context, jobID, address string, upstreamDurationMs int64) (VideoOutput, error) {
-	stream, expected, err := providerMedia(ctx, s.client, address)
+func (s *Service) saveOutput(ctx context.Context, client *http.Client, jobID, address string, upstreamDurationMs int64) (VideoOutput, error) {
+	stream, expected, err := providerMedia(ctx, client, address)
 	if err != nil {
 		return VideoOutput{}, err
 	}

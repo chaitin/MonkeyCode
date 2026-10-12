@@ -23,15 +23,18 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	if o.ClientID != "" && !o.clientSecretExpired() {
 		return nil
 	}
+	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	if err != nil {
+		return err
+	}
 	if o.Mode == "dynamic" && o.ClientID == "" {
-		var err error
-		o, err = discoverOAuth(ctx, c.String("url"))
+		o, err = discoverOAuthWithClient(ctx, c.String("url"), h)
 		if err != nil {
 			slog.WarnContext(ctx, "OAuth 自动发现失败", "connector_id", c.String("id"), "operation", "discovery", "error", err)
 			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
 		}
 	}
-	registered, err := registerOAuthClient(ctx, o, redirect)
+	registered, err := registerOAuthClientWithClient(ctx, o, redirect, h)
 	if err != nil {
 		slog.WarnContext(ctx, "OAuth 客户端注册失败", "connector_id", c.String("id"), "operation", "registration", "error", err)
 		return &resource.Error{Status: 502, Code: "oauth_registration_failed", Message: "OAuth 动态客户端注册失败，请检查注册端点或手动配置 Client ID"}
@@ -70,6 +73,10 @@ func (o oauthConfig) clientSecretExpired() bool {
 }
 
 func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (oauthRegistration, error) {
+	return registerOAuthClientWithClient(ctx, o, redirect, client())
+}
+
+func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect string, h *http.Client) (oauthRegistration, error) {
 	fail := func() (oauthRegistration, error) {
 		return oauthRegistration{}, fmt.Errorf("OAuth 动态客户端注册响应无效")
 	}
@@ -98,7 +105,6 @@ func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (o
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	h := client()
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
 	if err != nil {

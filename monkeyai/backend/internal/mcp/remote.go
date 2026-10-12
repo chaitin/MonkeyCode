@@ -148,10 +148,14 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 }
 
 func openRemote(ctx context.Context, target string, headers map[string]string) (*remoteClient, error) {
+	return openRemoteWithClient(ctx, target, headers, client())
+}
+
+func openRemoteWithClient(ctx context.Context, target string, headers map[string]string, httpClient *http.Client) (*remoteClient, error) {
 	if !validURL(target) {
 		return nil, fmt.Errorf("MCP URL 无效")
 	}
-	c := &remoteClient{http: client(), target: target, version: protocolVersion, headers: headers}
+	c := &remoteClient{http: httpClient, target: target, version: protocolVersion, headers: headers}
 	initialized := false
 	defer func() {
 		if !initialized {

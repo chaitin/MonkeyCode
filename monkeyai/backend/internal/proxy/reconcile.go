@@ -61,7 +61,16 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 		req.Header.Set("Authorization", "Bearer "+target.APIKey)
 		req.Header.Set("X-Api-Key", target.APIKey)
 	}
-	response, err := r.client.Do(req)
+	client := *r.client
+	if target.ProxyURL != "" {
+		transport, err := TransportFor(target.ProxyURL)
+		if err != nil {
+			return ResponseReconciliation{}, err
+		}
+		defer transport.CloseIdleConnections()
+		client.Transport = transport
+	}
+	response, err := client.Do(req)
 	if err != nil {
 		return ResponseReconciliation{}, err
 	}

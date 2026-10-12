@@ -2,6 +2,7 @@ package setting
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -55,6 +56,42 @@ func (p *Postgres) Put(ctx context.Context, record Record) (Record, error) {
 		return Record{}, fmt.Errorf("保存设置: %w", err)
 	}
 	return stored, nil
+}
+
+func (p *Postgres) CheckProxyRemoval(ctx context.Context, next json.RawMessage) error {
+	var value struct {
+		Proxies []outboundProxy `json:"proxies"`
+	}
+	if err := json.Unmarshal(next, &value); err != nil {
+		return err
+	}
+	ids := map[string]bool{}
+	for _, item := range value.Proxies {
+		ids[item.ID] = true
+	}
+	previous, err := p.Get(ctx, "proxies")
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(previous.Value, &value); err != nil {
+		return err
+	}
+	for _, item := range value.Proxies {
+		if ids[item.ID] {
+			continue
+		}
+		used, err := sqlc.New(database.Reader(ctx, p.pool)).ProxyInUse(ctx, item.ID)
+		if err != nil {
+			return err
+		}
+		if used {
+			return fmt.Errorf("代理 %s 正被模型或连接器使用", item.Name)
+		}
+	}
+	return nil
 }
 
 var ErrNotFound = errors.New("设置不存在")

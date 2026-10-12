@@ -16,12 +16,22 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type ProxyResolver interface {
+	ProxyURL(context.Context, string) (string, error)
+}
+
 type Service struct {
+	proxies    ProxyResolver
 	storage    resource.Storage
 	sessions   SessionResolver
 	Connectors *resource.CRUD
 	Store      *resource.Store
 	PublicURL  string
+}
+
+func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
+	s.proxies = proxies
+	return s
 }
 
 func (s *Service) WithSessionResolver(resolver SessionResolver) *Service {
@@ -34,7 +44,7 @@ func NewService(store *resource.Store, publicURL string) *Service {
 	s.Connectors = resource.NewCRUD(store, resource.Definition{
 		Kind: "connector", Path: "/connectors",
 		Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) },
-		Fields:     []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "enabled", "config_revision", "connection_status"},
+		Fields:     []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "proxy_id", "enabled", "config_revision", "connection_status"},
 		UserFields: []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
 		Hidden:     []string{"oauth_client_secret", "icon_s3_key"},
 		Validate:   s.validateConnector, Decorate: s.decorateConnector, UserDecorate: userIcon,
@@ -49,7 +59,7 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	if _, exists := in["provider_id"]; exists {
 		return resource.Invalid("连接不再使用 Provider，请直接配置连接地址和认证方式")
 	}
-	fields := []string{"url", "authorization_mode", "authorization_method", "oauth_config"}
+	fields := []string{"url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config"}
 	for _, key := range fields {
 		if _, ok := in[key]; !ok {
 			in[key] = old[key]
@@ -57,6 +67,17 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	}
 	if !validURL(in.String("url")) {
 		return resource.Invalid("MCP URL 无效")
+	}
+	if id := in.String("proxy_id"); id != "" {
+		if in.String("ownership_type") == "user" {
+			return resource.Invalid("个人连接不能使用系统代理")
+		}
+		if s.proxies == nil {
+			return resource.Invalid("系统代理不可用")
+		}
+		if _, err := s.proxies.ProxyURL(ctx, id); err != nil {
+			return resource.Invalid("系统代理不存在")
+		}
 	}
 	mode, method := in.String("authorization_mode"), in.String("authorization_method")
 	if in.String("ownership_type") == "user" && mode != "none" && mode != "independent" {

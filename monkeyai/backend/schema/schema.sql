@@ -1177,3 +1177,10 @@ CREATE TABLE video_calls (
     output_duration_ms bigint NOT NULL DEFAULT 0 CHECK (output_duration_ms >= 0),
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE settings DROP CONSTRAINT settings_key_check,
+    ADD CONSTRAINT settings_key_check CHECK (key IN ('branding', 'authentication', 'email', 'billing', 'session_reporting', 'proxies'));
+
+ALTER TABLE models ADD COLUMN proxy_id text NOT NULL DEFAULT '';
+
+ALTER TABLE connectors ADD COLUMN proxy_id text NOT NULL DEFAULT '';

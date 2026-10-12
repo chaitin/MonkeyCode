@@ -45,7 +45,7 @@ LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
 INSERT INTO connectors (name, description, url, authorization_mode, authorization_method, oauth_config,
-    oauth_client_secret, enabled, config_revision, connection_status, id, owner_user_id, ownership_type)
+    oauth_client_secret, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
@@ -68,7 +68,7 @@ INSERT INTO connectors (name, description, url, authorization_mode, authorizatio
         ELSE
             'unknown'
 	END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->>
-	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'));
+	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'), COALESCE(sqlc.arg(DATA)::jsonb ->> 'proxy_id', ''));
 
 -- name: UpdateResource :exec
 UPDATE
@@ -104,6 +104,9 @@ SET
     ELSE
         oauth_config
     END,
+    proxy_id = CASE WHEN sqlc.arg(DATA)::jsonb ? 'proxy_id' THEN
+        (sqlc.arg(DATA)::jsonb ->> 'proxy_id')::text
+    ELSE proxy_id END,
     oauth_client_secret = CASE WHEN sqlc.arg(DATA)::jsonb ? 'oauth_client_secret' THEN
         (sqlc.arg(DATA)::jsonb ->> 'oauth_client_secret')::text
     ELSE

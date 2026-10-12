@@ -985,6 +985,7 @@ export const deDE = {
       },
     },
     otherSettings: {
+      proxies: { title: "System-Proxys", description: "Ausgehende Proxys für Modelle und Konnektoren konfigurieren. Verwendete Proxys können nicht gelöscht werden.", name: "Name", username: "Benutzername (optional)", password: "Passwort (leer lassen zum Beibehalten)", add: "Proxy hinzufügen", direct: "Direkte Verbindung", confirmDelete: "Diesen Proxy löschen?" },
       title: "Weitere Einstellungen",
       description:
         "Konfigurieren Sie Branding, OAuth und weitere Plattformfunktionen.",

@@ -25,7 +25,12 @@ type ModelReader interface {
 	Get(context.Context, string) (model.Model, error)
 }
 
+type ProxyResolver interface {
+	ProxyURL(context.Context, string) (string, error)
+}
+
 type Service struct {
+	proxies ProxyResolver
 	pool    *pgxpool.Pool
 	storage resource.Storage
 	billing *billing.Service
@@ -36,6 +41,11 @@ type Service struct {
 
 func NewService(pool *pgxpool.Pool, storage resource.Storage, bills *billing.Service, models ModelReader) *Service {
 	return &Service{pool: pool, storage: storage, billing: bills, models: models, client: providerClient()}
+}
+
+func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
+	s.proxies = proxies
+	return s
 }
 
 type pricingSnapshot struct {
@@ -311,7 +321,7 @@ func (s *Service) dispatch(ctx context.Context, target proxy.Target, jobID, rese
 		s.fail(ctx, jobID, reservationID, "billing_start_failed")
 		return
 	}
-	providerID, err := submitProvider(ctx, s.client, target, input)
+	providerID, err := submitProvider(ctx, s.clientFor(target.ProxyURL), target, input)
 	if err != nil {
 		var rejected providerRejected
 		if errors.As(err, &rejected) {
@@ -399,8 +409,19 @@ func (s *Service) process(ctx context.Context, id, modelID, providerID, transact
 	if err != nil {
 		return err
 	}
-	target := proxy.Target{UpstreamModel: item.ModelID, BaseURL: item.BaseURL, APIKey: item.APIKey}
-	result, err := queryProvider(ctx, s.client, target, providerID)
+	proxyURL := ""
+	if item.ProxyID != "" {
+		if s.proxies == nil {
+			return errors.New("系统代理不可用")
+		}
+		proxyURL, err = s.proxies.ProxyURL(ctx, item.ProxyID)
+		if err != nil {
+			return err
+		}
+	}
+	client := s.clientFor(proxyURL)
+	target := proxy.Target{UpstreamModel: item.ModelID, BaseURL: item.BaseURL, APIKey: item.APIKey, ProxyURL: proxyURL}
+	result, err := queryProvider(ctx, client, target, providerID)
 	if err != nil {
 		return err
 	}
@@ -413,7 +434,7 @@ func (s *Service) process(ctx context.Context, id, modelID, providerID, transact
 	}
 	duration, err := sqlc.New(s.pool).VideoJobOutputDuration(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		output, err := s.saveOutput(ctx, id, result.URL, result.DurationMs)
+		output, err := s.saveOutput(ctx, client, id, result.URL, result.DurationMs)
 		if err != nil {
 			return err
 		}

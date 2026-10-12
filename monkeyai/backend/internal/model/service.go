@@ -34,7 +34,12 @@ type KeyAuthenticator interface {
 	Authenticate(context.Context, string, string) (string, error)
 }
 
+type ProxyResolver interface {
+	ProxyURL(context.Context, string) (string, error)
+}
+
 type Service struct {
+	proxies           ProxyResolver
 	repository        Repository
 	keys              KeyAuthenticator
 	gatewayURL        string
@@ -43,6 +48,22 @@ type Service struct {
 
 func NewService(repository Repository) *Service {
 	return &Service{repository: repository}
+}
+
+func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {
+	s.proxies = proxies
+	return s
+}
+
+func (s *Service) validateProxy(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	if s.proxies == nil {
+		return errors.New("系统代理不可用")
+	}
+	_, err := s.proxies.ProxyURL(ctx, id)
+	return err
 }
 
 func (s *Service) WithKeyAuthenticator(keys KeyAuthenticator) *Service {
@@ -107,6 +128,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	if item.APIKey == "" {
 		return Model{}, errors.New("api_key 不能为空")
 	}
+	if err := s.validateProxy(ctx, item.ProxyID); err != nil {
+		return Model{}, err
+	}
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, err
 	}
@@ -136,6 +160,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 		return Model{}, err
 	}
 	if err := s.validateVideoCapability(item); err != nil {
+		return Model{}, err
+	}
+	if err := s.validateProxy(ctx, item.ProxyID); err != nil {
 		return Model{}, err
 	}
 	item.ID = id
@@ -249,7 +276,18 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 	if err != nil {
 		return Target{}, err
 	}
+	proxyURL := ""
+	if item.ProxyID != "" {
+		if s.proxies == nil {
+			return Target{}, errors.New("系统代理不可用")
+		}
+		proxyURL, err = s.proxies.ProxyURL(ctx, item.ProxyID)
+		if err != nil {
+			return Target{}, err
+		}
+	}
 	return Target{
+		ProxyURL:        proxyURL,
 		ID:              item.ID,
 		UserID:          userID,
 		OwnershipType:   item.OwnershipType,
@@ -284,6 +322,7 @@ func modelFromInput(input SaveInput) (Model, error) {
 		VideoConfig:      input.VideoConfig,
 		VideoPricing:     input.VideoPricing,
 		BaseURL:          strings.TrimRight(strings.TrimSpace(input.BaseURL), "/"),
+		ProxyID:          input.ProxyID,
 		APIKey:           strings.TrimSpace(input.APIKey),
 		AdvancedConfig:   input.AdvancedConfig,
 		CreditMultiplier: input.CreditMultiplier,
