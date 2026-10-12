@@ -1,6 +1,7 @@
 import { ConnectorCredentials } from "@/components/connector-credentials"
 import { api } from "@/lib/api"
-import { loadProxies, SystemProxySelect, type SystemProxy } from "@/components/proxy-settings"
+import { SystemProxySelect } from "@/components/proxy-settings"
+import { loadProxies, type SystemProxy } from "@/lib/proxy-settings"
 import {
   base,
   grants,

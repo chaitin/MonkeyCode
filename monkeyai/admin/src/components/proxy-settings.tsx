@@ -5,14 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
+import { loadProxies, type SystemProxy } from "@/lib/proxy-settings"
 
-export type SystemProxy = { id: string; name: string; url: string; username?: string; password?: string }
 type Setting = { value: { proxies: SystemProxy[] } }
-
-export async function loadProxies(): Promise<SystemProxy[]> {
-  const result = await api<{ settings: (Setting & { key: string })[] }>("/api/admin/v1/settings")
-  return result.settings.find((item) => item.key === "proxies")?.value.proxies ?? []
-}
 
 export function SystemProxySelect({ id, selected, proxies }: { id: string; selected: string; proxies: SystemProxy[] }) {
   const { t } = useTranslation()
