@@ -2,13 +2,16 @@ package resourceimport
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"slices"
 	"strings"
@@ -49,49 +52,71 @@ func decodeHistoryCursor(value string) ([]byte, error) {
 }
 
 func (s *Service) RegisterAdmin(router chi.Router) {
-	load := func(w http.ResponseWriter, r *http.Request) (Package, Resources, Options, string, error) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(1<<20))
-		if err := r.ParseMultipartForm(8 << 20); err != nil {
-			return Package{}, Resources{}, Options{}, "", resource.Invalid("资源包上传格式或大小无效")
+	load := func(w http.ResponseWriter, r *http.Request) (pkg Package, items Resources, options Options, sha string, cleanup func(), err error) {
+		r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(16<<20))
+		if err = r.ParseMultipartForm(8 << 20); err != nil {
+			if r.MultipartForm != nil {
+				r.MultipartForm.RemoveAll()
+			}
+			err = resource.Invalid("资源包上传格式或大小无效")
+			return
 		}
-		if r.MultipartForm != nil {
-			defer func() {
-				if err := r.MultipartForm.RemoveAll(); err != nil {
-					slog.WarnContext(r.Context(), "清理导入临时文件失败", "error", err)
+		var file multipart.File
+		cleanup = func() {
+			if file != nil {
+				file.Close()
+			}
+			if r.MultipartForm != nil {
+				if removeErr := r.MultipartForm.RemoveAll(); removeErr != nil {
+					slog.WarnContext(r.Context(), "清理导入临时文件失败", "error", removeErr)
 				}
-			}()
-		}
-		file, _, err := r.FormFile("package")
-		if err != nil {
-			return Package{}, Resources{}, Options{}, "", resource.Invalid("缺少资源包文件")
-		}
-		defer file.Close()
-		data, err := io.ReadAll(io.LimitReader(file, MaxPackage+1))
-		if err != nil || len(data) > MaxPackage {
-			return Package{}, Resources{}, Options{}, "", resource.Invalid("资源包超过大小限制")
-		}
-		var options Options
-		if value := r.FormValue("options"); value != "" {
-			if err := json.Unmarshal([]byte(value), &options); err != nil {
-				return Package{}, Resources{}, Options{}, "", resource.Invalid("导入选项无效")
 			}
 		}
-		pkg, err := Parse(data)
+		defer func() {
+			if err != nil {
+				cleanup()
+				cleanup = nil
+			}
+		}()
+		var header *multipart.FileHeader
+		file, header, err = r.FormFile("package")
 		if err != nil {
-			return Package{}, Resources{}, Options{}, "", resource.Invalid(err.Error())
+			err = resource.Invalid("缺少资源包文件")
+			return
 		}
-		items, err := ParseResources(pkg)
+		if header.Size <= 0 || header.Size > MaxPackage {
+			err = resource.Invalid("资源包超过大小限制")
+			return
+		}
+		if value := r.FormValue("options"); value != "" {
+			if json.Unmarshal([]byte(value), &options) != nil {
+				err = resource.Invalid("导入选项无效")
+				return
+			}
+		}
+		hash := sha256.New()
+		if _, err = io.Copy(hash, io.NewSectionReader(file, 0, header.Size)); err != nil {
+			return
+		}
+		sha = "sha256:" + hex.EncodeToString(hash.Sum(nil))
+		pkg, err = ParseReader(file, header.Size)
 		if err != nil {
-			return Package{}, Resources{}, Options{}, "", resource.Invalid(err.Error())
+			err = resource.Invalid(err.Error())
+			return
 		}
-		return pkg, items, options, digest(data), nil
+		items, err = ParseResources(pkg)
+		if err != nil {
+			err = resource.Invalid(err.Error())
+		}
+		return
 	}
 	router.Post("/resource-imports/preview", func(w http.ResponseWriter, r *http.Request) {
-		pkg, items, options, sha, err := load(w, r)
+		pkg, items, options, sha, cleanup, err := load(w, r)
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
+		defer cleanup()
 		out, err := s.Evaluate(r.Context(), s.Pool, pkg, items, options, sha)
 		if err != nil {
 			resource.Fail(w, &resource.Error{Status: 409, Code: "import_conflict", Message: err.Error()})
@@ -100,11 +125,12 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		resource.JSON(w, http.StatusOK, out)
 	})
 	router.Post("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
-		pkg, items, options, sha, err := load(w, r)
+		pkg, items, options, sha, cleanup, err := load(w, r)
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
+		defer cleanup()
 		if r.FormValue("package_sha256") != sha || r.FormValue("plan_digest") == "" || !options.ConfirmFinal {
 			resource.Fail(w, resource.Invalid("必须先预览并确认本包是最终 Agent 资源集合"))
 			return
@@ -226,7 +252,7 @@ func (s *Service) lockBindings(ctx context.Context, tx pgx.Tx, publisher string)
 	return nil
 }
 
-func (s *Service) prepareObjects(ctx context.Context, p Preview, r Resources) (map[string]string, func(), error) {
+func (s *Service) prepareObjects(ctx context.Context, pkg Package, p Preview, r Resources) (map[string]string, func(), error) {
 	keys := map[string]string{}
 	written := []string{}
 	cleanup := func() {
@@ -251,16 +277,26 @@ func (s *Service) prepareObjects(ctx context.Context, p Preview, r Resources) (m
 					continue
 				}
 			}
+			body, err := pkg.SkillBytes(item)
+			if err != nil {
+				cleanup()
+				return nil, nil, err
+			}
 			key := "resource-import/skills/" + resource.ID() + ".zip"
-			if err := s.Storage.Put(ctx, key, item.Package.Bytes, "application/zip"); err != nil {
+			if err := s.Storage.Put(ctx, key, body, "application/zip"); err != nil {
 				cleanup()
 				return nil, nil, err
 			}
 			keys["skill:"+c.Slug], written = key, append(written, key)
 		}
-		if item, ok := r.Experts[c.Slug]; ok && c.Type == "expert" && len(item.Avatar) != 0 {
+		if item, ok := r.Experts[c.Slug]; ok && c.Type == "expert" && item.HasAvatar {
+			body, err := pkg.AvatarBytes(item)
+			if err != nil {
+				cleanup()
+				return nil, nil, err
+			}
 			key := "resource-import/experts/" + resource.ID() + ".webp"
-			if err := s.Storage.Put(ctx, key, item.Avatar, "image/webp"); err != nil {
+			if err := s.Storage.Put(ctx, key, body, "image/webp"); err != nil {
 				cleanup()
 				return nil, nil, err
 			}
@@ -288,7 +324,7 @@ func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Option
 			}
 		}
 	}
-	objects, cleanup, err := s.prepareObjects(ctx, pre, r)
+	objects, cleanup, err := s.prepareObjects(ctx, p, pre, r)
 	if err != nil {
 		return pre, fmt.Errorf("预写资源包对象失败: %w", err)
 	}
@@ -420,7 +456,7 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 		data := payload(resource.Object{"id": id, "actor_id": actor, "name": p.Name, "description": p.Description,
 			"name_i18n": mapOrEmpty(item.Entry.NameI18n), "description_i18n": mapOrEmpty(item.Entry.DescriptionI18n),
 			"package_file_name": change.Slug + ".zip", "package_s3_key": objects["skill:"+change.Slug],
-			"package_size_bytes": len(p.Bytes), "package_sha256": p.SHA, "file_count": len(p.Files)})
+			"package_size_bytes": item.StoredSize, "package_sha256": p.SHA, "file_count": item.FileCount})
 		if create {
 			return sqlc.New(tx).CreateImportSkill(ctx, data)
 		}

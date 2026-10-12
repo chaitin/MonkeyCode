@@ -108,7 +108,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 	for _, s := range r.Skills {
 		warning := slices.Clone(s.Normalizations)
 		out = append(out, desired{Kind: "skill", Slug: s.Entry.Slug, Name: s.Entry.Name, Source: s.SourceSHA, StoredSHA: "sha256:" + s.Package.SHA, Warnings: warning,
-			Fields: resource.Object{"name": s.Package.Name, "description": s.Package.Description, "file_tree_sha256": fileHash(s.Package.Files), "name_i18n": s.Entry.NameI18n, "description_i18n": s.Entry.DescriptionI18n}})
+			Fields: resource.Object{"name": s.Package.Name, "description": s.Package.Description, "file_tree_sha256": s.StoredFileSHA, "name_i18n": s.Entry.NameI18n, "description_i18n": s.Entry.DescriptionI18n}})
 	}
 	for _, r := range r.Rules {
 		source := r.Entry.SHA256
@@ -150,7 +150,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 		slices.Sort(rules)
 		slices.Sort(connectors)
 		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256,
-			Fields: resource.Object{"name": e.Entry.Name, "prompt": e.Prompt, "avatar_sha256": digest(e.Avatar),
+			Fields: resource.Object{"name": e.Entry.Name, "prompt": e.Prompt, "avatar_sha256": e.AvatarSHA,
 				"skills": skills, "rules": rules, "connectors": connectors,
 				"name_i18n": e.Entry.NameI18n, "description_i18n": e.Entry.DescriptionI18n}})
 	}
@@ -213,7 +213,7 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		PackageSHA256: packageSHA, Changes: []Change{}, IgnoredStatic: []string{}}
 	for _, a := range p.Manifest.StaticAssets {
 		prefix := "static/" + a.Slug + "/"
-		for name := range p.Files {
+		for _, name := range p.Names() {
 			if strings.HasPrefix(name, prefix) {
 				result.IgnoredStatic = append(result.IgnoredStatic, name)
 			}

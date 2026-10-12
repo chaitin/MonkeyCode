@@ -4,17 +4,21 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { api } from "@/lib/api"
+import { stageDirectoryZip } from "@/lib/stream-zip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const base = "/api/admin/v1/resource-imports"
-const maxPackage = 100 * 1024 * 1024
+const maxPackage = 2 * 1024 * 1024 * 1024
 
 const counts = [
   ["create", "新增"],
@@ -76,16 +80,12 @@ type HistoryRequest = {
   error?: string
 }
 
-async function archiveDirectory(list: FileList) {
-  if (list.length === 0 || list.length > 5000) {
-    throw new Error("目录文件数量超限")
-  }
-  const files = Array.from(list)
-  if (files.reduce((sum, file) => sum + file.size, 0) > 200 * 1024 * 1024) {
-    throw new Error("目录文件总大小超限")
-  }
+type StagedArchive = { file: File; cleanup?: () => Promise<void> }
+
+async function archiveDirectory(list: FileList): Promise<StagedArchive> {
+  if (list.length === 0) throw new Error("目录没有文件")
   const byPath = new Map<string, File>()
-  for (const file of files) {
+  for (const file of Array.from(list)) {
     const parts = file.webkitRelativePath.split("/")
     const relativePath = parts.slice(1).join("/")
     if (!relativePath || relativePath.split("/").some((part) => part === ".." || !part)) {
@@ -94,22 +94,31 @@ async function archiveDirectory(list: FileList) {
     byPath.set(relativePath, file)
   }
   const checksum = byPath.get("CHECKSUMS.sha256")
-  if (!checksum) throw new Error("目录缺少 CHECKSUMS.sha256")
+  if (!checksum || checksum.size > 8 * 1024 * 1024) throw new Error("目录缺少有效的 CHECKSUMS.sha256")
   const declared = (await checksum.text()).trim().split("\n").map((line) => line.trimEnd().slice(66))
-  const { default: JSZip } = await import("jszip")
-  const zip = new JSZip()
-  for (const path of new Set(["release.json", "manifest.json", "CHECKSUMS.sha256", ...declared])) {
+  const paths = new Set(["release.json", "manifest.json", "CHECKSUMS.sha256", ...declared])
+  if (paths.size > 5000) throw new Error("目录文件数量超限")
+  const selected = new Map<string, File>()
+  let size = 0
+  for (const path of paths) {
     const file = byPath.get(path)
     if (!file || path.split("/").some((part) => part === ".." || !part)) {
       throw new Error(`目录缺少发布包声明的文件：${path}`)
     }
-    zip.file(path, file)
+    size += file.size
+    if (size > maxPackage) throw new Error("目录文件总大小超过 2 GiB，请选择现成 ZIP")
+    selected.set(path, file)
   }
-  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" })
-  if (blob.size > maxPackage) {
-    throw new Error("资源包超过 100 MiB")
+  if (!navigator.storage?.getDirectory) {
+    if (size > 200 * 1024 * 1024) throw new Error("当前浏览器不支持大目录磁盘暂存，请选择现成 ZIP")
+    const { default: JSZip } = await import("jszip")
+    const zip = new JSZip()
+    for (const [path, file] of selected) zip.file(path, file)
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" })
+    if (blob.size > maxPackage) throw new Error("资源包超过 2 GiB")
+    return { file: new File([blob], "release.zip", { type: "application/zip" }) }
   }
-  return new File([blob], "release.zip", { type: "application/zip" })
+  return stageDirectoryZip(selected, maxPackage)
 }
 
 export function ResourceImportsPage() {
@@ -119,6 +128,7 @@ export function ResourceImportsPage() {
   const [sourceName, setSourceName] = useState("")
   const archiveInputRef = useRef<HTMLInputElement | null>(null)
   const directoryInputRef = useRef<HTMLInputElement | null>(null)
+  const stagedCleanupRef = useRef<StagedArchive["cleanup"]>(undefined)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [request, setRequest] = useState<HistoryRequest | null>(null)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -149,10 +159,21 @@ export function ResourceImportsPage() {
     return () => { activeRequest = false }
   }, [cursor, refresh])
 
+  useEffect(() => () => {
+    if (stagedCleanupRef.current) void stagedCleanupRef.current().catch(() => {})
+  }, [])
+
+  const cleanupStaged = () => {
+    const cleanup = stagedCleanupRef.current
+    stagedCleanupRef.current = undefined
+    if (cleanup) void cleanup().catch(() => {})
+  }
+
   const closeDialog = (open: boolean) => {
     if (busy && !open) return
     setDialogOpen(open)
     if (!open) {
+      cleanupStaged()
       setFile(null)
       setSourceName("")
       setPreview(null)
@@ -183,6 +204,7 @@ export function ResourceImportsPage() {
       }
       const result = await api<Preview>(apply ? base : `${base}/preview`, { method: "POST", body: form })
       if (apply) {
+        cleanupStaged()
         setDialogOpen(false)
         setFile(null)
         setPreview(null)
@@ -272,9 +294,16 @@ export function ResourceImportsPage() {
           <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6">
             <span className="font-medium">全量同步：</span>本次资源包是该发布者最终的 Agent 资源集合，缺失资源将在确认后停用。独立静态资源只校验、不导入。
           </div>
-          <input accept=".zip,application/zip" className="hidden" disabled={busy} ref={archiveInputRef} type="file" onChange={(event) => {
+          <Input accept=".zip,application/zip" className="hidden" disabled={busy} ref={archiveInputRef} type="file" onChange={(event) => {
             const selected = event.currentTarget.files?.[0]
             if (!selected) return
+            cleanupStaged()
+            if (selected.size > maxPackage) {
+              setFile(null)
+              setError("资源包超过 2 GiB")
+              event.currentTarget.value = ""
+              return
+            }
             setFile(selected)
             setSourceName(selected.name)
             setPreview(null)
@@ -285,17 +314,20 @@ export function ResourceImportsPage() {
             event.currentTarget.value = ""
             if (directoryInputRef.current) directoryInputRef.current.value = ""
           }} />
-          <input className="hidden" disabled={busy} ref={directoryInputRef} type="file" {...({ webkitdirectory: "" } as InputHTMLAttributes<HTMLInputElement>)} onChange={async (event) => {
+          <Input className="hidden" disabled={busy} ref={directoryInputRef} type="file" {...({ webkitdirectory: "" } as InputHTMLAttributes<HTMLInputElement>)} onChange={async (event) => {
             const input = event.currentTarget
             const selected = input.files
             if (!selected?.length) return
             const directoryName = selected[0].webkitRelativePath.split("/")[0]
             setBusy(true)
+            cleanupStaged()
             setFile(null)
             setPreview(null)
             setError("")
             try {
-              setFile(await archiveDirectory(selected))
+              const archive = await archiveDirectory(selected)
+              stagedCleanupRef.current = archive.cleanup
+              setFile(archive.file)
               setSourceName(directoryName)
               setConfirmed(false)
               setModes({})
@@ -315,7 +347,7 @@ export function ResourceImportsPage() {
             </ItemMedia>
             <ItemContent className="min-w-0">
               <ItemTitle className="max-w-full truncate" title={sourceName || undefined}>{sourceName || "尚未选择资源包"}</ItemTitle>
-              <ItemDescription>{file ? `${sourceName === file.name ? "ZIP 文件" : "解压目录"} · ${(file.size / 1024 / 1024).toFixed(2)} MiB` : "支持 ZIP 文件或解压目录，包体不超过 100 MiB"}</ItemDescription>
+              <ItemDescription>{file ? `${sourceName === file.name ? "ZIP 文件" : "解压目录"} · ${(file.size / 1024 / 1024).toFixed(2)} MiB` : "支持 ZIP 文件或解压目录，包体不超过 2 GiB"}</ItemDescription>
             </ItemContent>
             <ItemActions>
               <DropdownMenu>
@@ -353,19 +385,31 @@ export function ResourceImportsPage() {
                 </div>
                 {item.warnings?.map((warning) => <p key={warning} className="text-amber-700">{warning}</p>)}
                 {(item.warnings?.length ?? 0) > 0 && item.storage_sha256 && <p className="break-all text-xs text-muted-foreground">原产物：{item.source_sha256} → 存储包：{item.storage_sha256}</p>}
-                {item.type === "connector" && item.action !== "retire" && <label className="ml-4">认证归属：
-                  <select value={modes[item.slug] ?? "independent"} onChange={(event) => {
-                    setModes((old) => ({ ...old, [item.slug]: event.target.value }))
+                {item.type === "connector" && item.action !== "retire" && <div className="mt-2 flex items-center gap-2">
+                  <span>认证归属：</span>
+                  <Select value={modes[item.slug] ?? "independent"} onValueChange={(value) => {
+                    if (!value) return
+                    setModes((old) => ({ ...old, [item.slug]: value }))
                     setPreview(null); setConfirmed(false)
                   }}>
-                    <option value="independent">独立凭证</option><option value="centralized">集中凭证</option>
-                  </select>
-                </label>}
+                    <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      <SelectItem value="independent">独立凭证</SelectItem>
+                      <SelectItem value="centralized">集中凭证</SelectItem>
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </div>}
               </div>)}
             </div>
             {changed.some((item) => item.action === "retire") && <p className="font-medium text-amber-700">此操作将停用上表中的移除项；恢复项的旧授权或凭证可能重新生效。</p>}
-            {needsNormalization && <label className="block text-sm"><input checked={normalization} type="checkbox" onChange={(event) => setNormalization(event.target.checked)} /> 我已确认上述技能 frontmatter 规范化（名称或描述引号）</label>}
-            <label className="block text-sm"><input checked={confirmed} type="checkbox" onChange={(event) => setConfirmed(event.target.checked)} /> 我确认此包是该 publisher 的最终 Agent 资源清单，缺失项将被停用</label>
+            {needsNormalization && <div className="flex items-center gap-2 text-sm">
+              <Checkbox id="import-normalization" checked={normalization} onCheckedChange={setNormalization} />
+              <label htmlFor="import-normalization">我已确认上述技能 frontmatter 规范化（名称或描述引号）</label>
+            </div>}
+            <div className="flex items-center gap-2 text-sm">
+              <Checkbox id="import-final" checked={confirmed} onCheckedChange={setConfirmed} />
+              <label htmlFor="import-final">我确认此包是该 publisher 的最终 Agent 资源清单，缺失项将被停用</label>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" disabled={busy} onClick={() => { void upload(false) }}>重新校验</Button>
               <Button type="button" disabled={busy || !confirmed || (needsNormalization && !normalization)} onClick={() => { void upload(true) }}>{busy ? "导入中…" : "确认导入"}</Button>

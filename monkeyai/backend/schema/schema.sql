@@ -1236,3 +1236,15 @@ ALTER TABLE experts
     ADD COLUMN avatar_s3_key text NOT NULL DEFAULT '',
     ADD COLUMN name_i18n jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(name_i18n) = 'object'),
     ADD COLUMN description_i18n jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(description_i18n) = 'object');
+
+ALTER TABLE skills ADD COLUMN origin text NOT NULL DEFAULT 'local'
+    CHECK (origin IN ('local', 'package') AND (origin = 'local' OR ownership_type = 'system'));
+
+ALTER TABLE rules ADD COLUMN origin text NOT NULL DEFAULT 'local'
+    CHECK (origin IN ('local', 'package') AND (origin = 'local' OR ownership_type = 'system'));
+
+ALTER TABLE connectors ADD COLUMN origin text NOT NULL DEFAULT 'local'
+    CHECK (origin IN ('local', 'package') AND (origin = 'local' OR ownership_type = 'system'));
+
+ALTER TABLE experts ADD COLUMN origin text NOT NULL DEFAULT 'local'
+    CHECK (origin IN ('local', 'package') AND (origin = 'local' OR ownership_type = 'system'));

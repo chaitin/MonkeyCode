@@ -26,6 +26,12 @@ type Skill struct {
 	Entry          Entry
 	Package        skill.Package
 	SourceSHA      string
+	RawFileSHA     string
+	StoredFileSHA  string
+	StoredSize     int
+	FileCount      int
+	SourcePath     string
+	ExpertPath     string
 	Normalized     bool
 	Normalizations []string
 	Files          map[string][]byte
@@ -70,6 +76,8 @@ type Expert struct {
 	Entry      Entry
 	Prompt     string
 	Avatar     []byte
+	AvatarSHA  string
+	HasAvatar  bool
 	Skills     []string
 	Rules      []string
 	Connectors []string
@@ -81,6 +89,7 @@ type Resources struct {
 	Connectors map[string]Connector
 	Experts    map[string]Expert
 	types      map[string]string
+	streamed   bool
 }
 
 func decodeStrict(data []byte, out any) error {
@@ -305,6 +314,10 @@ func parseSkill(entry Entry, data []byte, sourceSHA string, files map[string][]b
 	if err != nil {
 		return result, fmt.Errorf("技能包无效: %w", err)
 	}
+	result.RawFileSHA = fileHash(files)
+	result.StoredFileSHA = fileHash(result.Package.Files)
+	result.StoredSize = len(result.Package.Bytes)
+	result.FileCount = len(result.Package.Files)
 	return result, nil
 }
 
@@ -328,7 +341,7 @@ func embeddedSkill(entry Entry, files map[string][]byte) (Skill, error) {
 
 func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error) {
 	out := Expert{Entry: entry}
-	files, err := readZIP(data, MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	files, err := readZIP(data, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
 	if err != nil {
 		return out, fmt.Errorf("专家 ZIP 无效: %w", err)
 	}
@@ -371,7 +384,7 @@ func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error)
 			return out, fmt.Errorf("专家依赖的技能缺失: %s", slug)
 		}
 		if existing, ok := resources.Skills[slug]; ok {
-			if fileHash(existing.Files) != fileHash(flat) {
+			if existing.RawFileSHA != fileHash(flat) {
 				return out, fmt.Errorf("专家技能与同 slug 资源内容不一致: %s", slug)
 			}
 			continue
@@ -383,6 +396,10 @@ func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error)
 		item, err := embeddedSkill(private, flat)
 		if err != nil {
 			return out, fmt.Errorf("专家技能无效 %s: %w", slug, err)
+		}
+		item.ExpertPath = entry.Path
+		if resources.streamed {
+			item.Files, item.Package.Files, item.Package.Bytes = nil, nil, nil
 		}
 		resources.Skills[slug] = item
 		resources.types[slug] = "skill"
@@ -404,6 +421,11 @@ func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error)
 		resources.Rules[slug] = Rule{Entry: Entry{Type: "rule", Slug: slug, Name: slug}, Content: string(content)}
 		resources.types[slug] = "rule"
 	}
+	out.HasAvatar = len(out.Avatar) != 0
+	out.AvatarSHA = digest(out.Avatar)
+	if resources.streamed {
+		out.Avatar = nil
+	}
 	for name := range files {
 		if name == "expert.json" || name == info.Prompt || name == info.Avatar {
 			continue
@@ -422,38 +444,118 @@ func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error)
 	return out, nil
 }
 
+func parseEntrySkill(entry Entry, archive []byte) (Skill, error) {
+	files, err := zipSkillFiles(archive)
+	if err != nil {
+		return Skill{}, err
+	}
+	original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, 500, skill.MaxExpanded)
+	if err != nil {
+		return Skill{}, err
+	}
+	if _, rootSkill := original["SKILL.md"]; !rootSkill {
+		archive, err = makeZIP(files)
+		if err != nil {
+			return Skill{}, err
+		}
+	}
+	return parseSkill(entry, archive, entry.SHA256, files)
+}
+
+func (p Package) SkillBytes(item Skill) ([]byte, error) {
+	if !p.streamed {
+		return item.Package.Bytes, nil
+	}
+	var parsed Skill
+	if item.SourcePath != "" {
+		archive, err := p.ReadFile(item.SourcePath)
+		if err != nil {
+			return nil, err
+		}
+		parsed, err = parseEntrySkill(item.Entry, archive)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		archive, err := p.ReadFile(item.ExpertPath)
+		if err != nil {
+			return nil, err
+		}
+		files, err := readZIP(archive, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
+		if err != nil {
+			return nil, err
+		}
+		flat := map[string][]byte{}
+		prefix := "skills/" + item.Entry.Slug + "/"
+		for name, content := range files {
+			if strings.HasPrefix(name, prefix) {
+				flat[strings.TrimPrefix(name, prefix)] = content
+			}
+		}
+		parsed, err = embeddedSkill(item.Entry, flat)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if parsed.Package.SHA != item.Package.SHA {
+		return nil, fmt.Errorf("技能产物在预览后发生变化: %s", item.Entry.Slug)
+	}
+	return parsed.Package.Bytes, nil
+}
+
+func (p Package) AvatarBytes(item Expert) ([]byte, error) {
+	if !p.streamed {
+		return item.Avatar, nil
+	}
+	archive, err := p.ReadFile(item.Entry.Path)
+	if err != nil {
+		return nil, err
+	}
+	files, err := readZIP(archive, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
+	if err != nil {
+		return nil, err
+	}
+	avatar := files["avatar.webp"]
+	if !item.HasAvatar || digest(avatar) != item.AvatarSHA {
+		return nil, fmt.Errorf("专家头像在预览后发生变化: %s", item.Entry.Slug)
+	}
+	return avatar, nil
+}
+
 func ParseResources(p Package) (Resources, error) {
-	out := Resources{Skills: map[string]Skill{}, Rules: map[string]Rule{}, Connectors: map[string]Connector{}, Experts: map[string]Expert{}, types: map[string]string{}}
+	out := Resources{Skills: map[string]Skill{}, Rules: map[string]Rule{}, Connectors: map[string]Connector{}, Experts: map[string]Expert{}, types: map[string]string{}, streamed: p.streamed}
+	retainedText := 0
 	for _, entry := range append(append(append(append([]Entry{}, p.Manifest.AgentResources.Skills...), p.Manifest.AgentResources.Rules...), p.Manifest.AgentResources.Connectors...), p.Manifest.AgentResources.Experts...) {
 		out.types[entry.Slug] = entry.Type
 	}
 	for _, entry := range p.Manifest.AgentResources.Skills {
-		files, err := zipSkillFiles(p.Files[entry.Path])
+		archive, err := p.ReadFile(entry.Path)
 		if err != nil {
 			return out, fmt.Errorf("技能 %s: %w", entry.Slug, err)
 		}
-		archive := p.Files[entry.Path]
-		original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, 500, skill.MaxExpanded)
-		if err != nil {
-			return out, err
-		}
-		if _, rootSkill := original["SKILL.md"]; !rootSkill {
-			archive, err = makeZIP(files)
-			if err != nil {
-				return out, err
-			}
-		}
-		item, err := parseSkill(entry, archive, entry.SHA256, files)
+		item, err := parseEntrySkill(entry, archive)
 		if err != nil {
 			return out, fmt.Errorf("技能 %s: %w", entry.Slug, err)
+		}
+		item.SourcePath = entry.Path
+		retainedText += len(item.Package.Content)
+		if retainedText > MaxRetainedText {
+			return out, fmt.Errorf("资源文本总量超限")
+		}
+		if p.streamed {
+			item.Files, item.Package.Files, item.Package.Bytes = nil, nil, nil
 		}
 		out.Skills[entry.Slug] = item
 	}
 	for _, entry := range p.Manifest.AgentResources.Rules {
+		if p.entries[entry.Path].UncompressedSize64 > 2<<20 {
+			return out, fmt.Errorf("规则产物过大: %s", entry.Slug)
+		}
 		var info struct {
 			Slug, Name, Content string
 		}
-		if err := json.Unmarshal(p.Files[entry.Path], &info); err != nil || info.Slug != entry.Slug || info.Name != entry.Name || strings.TrimSpace(info.Content) == "" {
+		data, err := p.ReadFile(entry.Path)
+		if err != nil || json.Unmarshal(data, &info) != nil || info.Slug != entry.Slug || info.Name != entry.Name || strings.TrimSpace(info.Content) == "" {
 			return out, fmt.Errorf("规则产物无效: %s", entry.Slug)
 		}
 		if err := translations(entry.NameI18n); err != nil {
@@ -462,21 +564,28 @@ func ParseResources(p Package) (Resources, error) {
 		if err := translations(entry.DescriptionI18n); err != nil {
 			return out, err
 		}
+		retainedText += len(info.Content)
+		if retainedText > MaxRetainedText {
+			return out, fmt.Errorf("资源文本总量超限")
+		}
 		out.Rules[entry.Slug] = Rule{Entry: entry, Content: info.Content}
 	}
 	for _, entry := range p.Manifest.AgentResources.Connectors {
+		if p.entries[entry.Path].UncompressedSize64 > 1<<20 {
+			return out, fmt.Errorf("连接器产物过大: %s", entry.Slug)
+		}
 		var info struct {
 			Slug, Name string
 			Config     ConnectorConfig
 		}
-		if err := json.Unmarshal(p.Files[entry.Path], &info); err != nil || info.Slug != entry.Slug || info.Name != entry.Name || info.Config.Transport != "http" || info.Config.URL == "" || info.Config.TimeoutMs < 1000 || info.Config.TimeoutMs > 120000 {
+		data, err := p.ReadFile(entry.Path)
+		if err != nil || json.Unmarshal(data, &info) != nil || info.Slug != entry.Slug || info.Name != entry.Name || info.Config.Transport != "http" || info.Config.URL == "" || info.Config.TimeoutMs < 1000 || info.Config.TimeoutMs > 120000 {
 			return out, fmt.Errorf("连接器产物无效: %s", entry.Slug)
 		}
 		var headers []json.RawMessage
 		if len(info.Config.HeaderSchema) > 0 && (json.Unmarshal(info.Config.HeaderSchema, &headers) != nil || len(headers) != 0) {
 			return out, fmt.Errorf("连接器 Header Schema 暂不支持: %s", entry.Slug)
 		}
-		var err error
 		entry.NameI18n, err = agreeTranslations(entry.NameI18n, info.Config.NameI18n)
 		if err != nil {
 			return out, err
@@ -523,9 +632,22 @@ func ParseResources(p Package) (Resources, error) {
 		if err := translations(entry.DescriptionI18n); err != nil {
 			return out, err
 		}
-		item, err := parseExpert(entry, p.Files[entry.Path], &out)
+		data, err := p.ReadFile(entry.Path)
+		if err != nil {
+			return out, fmt.Errorf("专家 %s: %w", entry.Slug, err)
+		}
+		item, err := parseExpert(entry, data, &out)
 		if err != nil {
 			return out, err
+		}
+		retainedText += len(item.Prompt)
+		for _, slug := range item.Skills {
+			if embedded := out.Skills[slug]; embedded.ExpertPath == entry.Path {
+				retainedText += len(embedded.Package.Content)
+			}
+		}
+		if retainedText > MaxRetainedText {
+			return out, fmt.Errorf("资源文本总量超限")
 		}
 		out.Experts[entry.Slug] = item
 	}

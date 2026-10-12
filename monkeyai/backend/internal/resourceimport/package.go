@@ -17,10 +17,14 @@ import (
 )
 
 const (
-	MaxPackage  = 100 << 20
-	MaxExpanded = 200 << 20
-	MaxFiles    = 5000
-	MaxFile     = 50 << 20
+	MaxPackage        = 2 << 30
+	MaxExpanded       = 4 << 30
+	MaxFiles          = 5000
+	MaxFile           = MaxPackage
+	MaxMetadata       = 8 << 20
+	MaxExpertPackage  = 100 << 20
+	MaxExpertExpanded = 200 << 20
+	MaxRetainedText   = 256 << 20
 )
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
@@ -94,6 +98,36 @@ type Package struct {
 	Release  Release
 	Manifest Manifest
 	Files    map[string][]byte
+	entries  map[string]*zip.File
+	streamed bool
+}
+
+func (p Package) Names() []string {
+	names := make([]string, 0, len(p.entries))
+	for name := range p.entries {
+		names = append(names, name)
+	}
+	return names
+}
+
+func (p Package) ReadFile(name string) ([]byte, error) {
+	if data, ok := p.Files[name]; ok {
+		return data, nil
+	}
+	entry := p.entries[name]
+	if entry == nil {
+		return nil, fmt.Errorf("资源包中缺少文件: %s", name)
+	}
+	reader, err := entry.Open()
+	if err != nil {
+		return nil, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(reader, int64(entry.UncompressedSize64)+1))
+	closeErr := reader.Close()
+	if readErr != nil || closeErr != nil || uint64(len(data)) != entry.UncompressedSize64 {
+		return nil, fmt.Errorf("资源包中文件损坏: %s", name)
+	}
+	return data, nil
 }
 
 func digest(data []byte) string {
@@ -164,20 +198,33 @@ func canonicalManifest(m Manifest) ([]byte, error) {
 	}{m.ReleaseID, m.Version, m.GeneratedAt, m.AgentResources, m.DesignResources, m.StaticAssets})
 }
 
-func checkSums(files map[string][]byte) error {
-	lines := strings.Split(strings.TrimSuffix(string(files["CHECKSUMS.sha256"]), "\n"), "\n")
-	if len(lines) != len(files)-2 {
+func checkSums(p Package) error {
+	data, err := p.ReadFile("CHECKSUMS.sha256")
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	if len(lines) != len(p.entries)-2 {
 		return fmt.Errorf("CHECKSUMS.sha256 条目数量不符")
 	}
-	paths := make([]string, 0, len(files)-2)
-	for name := range files {
+	paths := make([]string, 0, len(p.entries)-2)
+	for name := range p.entries {
 		if name != "release.json" && name != "CHECKSUMS.sha256" {
 			paths = append(paths, name)
 		}
 	}
 	slices.Sort(paths)
 	for i, name := range paths {
-		if lines[i] != strings.TrimPrefix(digest(files[name]), "sha256:")+"  "+name {
+		entry := p.entries[name]
+		reader, openErr := entry.Open()
+		if openErr != nil {
+			return fmt.Errorf("打开资源文件 %s: %w", name, openErr)
+		}
+		hash := sha256.New()
+		length, readErr := io.Copy(hash, io.LimitReader(reader, int64(entry.UncompressedSize64)+1))
+		closeErr := reader.Close()
+		if readErr != nil || closeErr != nil || length != int64(entry.UncompressedSize64) ||
+			lines[i] != hex.EncodeToString(hash.Sum(nil))+"  "+name {
 			return fmt.Errorf("CHECKSUMS.sha256 校验失败: %s", name)
 		}
 	}
@@ -185,23 +232,69 @@ func checkSums(files map[string][]byte) error {
 }
 
 func Parse(data []byte) (Package, error) {
-	p := Package{}
-	files, err := readZIP(data, MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	p, err := ParseReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return p, err
 	}
-	for _, name := range []string{"release.json", "manifest.json", "CHECKSUMS.sha256"} {
-		if len(files[name]) == 0 {
-			return p, fmt.Errorf("缺少 %s", name)
+	for name := range p.entries {
+		p.Files[name], err = p.ReadFile(name)
+		if err != nil {
+			return Package{}, err
 		}
 	}
-	if err = checkSums(files); err != nil {
+	p.streamed = false
+	return p, nil
+}
+
+func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
+	p := Package{Files: map[string][]byte{}, entries: map[string]*zip.File{}, streamed: true}
+	if size <= 0 || size > MaxPackage {
+		return p, fmt.Errorf("压缩包大小超限")
+	}
+	z, err := zip.NewReader(reader, size)
+	if err != nil || len(z.File) > MaxFiles {
+		return p, fmt.Errorf("ZIP 无效或条目数超限")
+	}
+	seen := make(map[string]bool, len(z.File))
+	var total uint64
+	for _, f := range z.File {
+		name := strings.TrimSuffix(f.Name, "/")
+		if !safePath(name) || seen[strings.ToLower(name)] || f.Mode()&os.ModeSymlink != 0 {
+			return Package{}, fmt.Errorf("ZIP 存在不安全或重复路径: %q", f.Name)
+		}
+		seen[strings.ToLower(name)] = true
+		if f.FileInfo().IsDir() {
+			if !strings.HasSuffix(f.Name, "/") {
+				return Package{}, fmt.Errorf("ZIP 目录路径无效: %q", f.Name)
+			}
+			continue
+		}
+		limit := uint64(MaxFile)
+		if name == "release.json" || name == "manifest.json" || name == "CHECKSUMS.sha256" {
+			limit = MaxMetadata
+		}
+		if !f.Mode().IsRegular() || f.UncompressedSize64 > limit || f.UncompressedSize64 > uint64(MaxExpanded)-total {
+			return Package{}, fmt.Errorf("ZIP 文件类型或解压大小无效: %q", name)
+		}
+		total += f.UncompressedSize64
+		p.entries[name] = f
+	}
+	for _, name := range []string{"release.json", "manifest.json", "CHECKSUMS.sha256"} {
+		if p.entries[name] == nil || p.entries[name].UncompressedSize64 == 0 {
+			return p, fmt.Errorf("缺少 %s", name)
+		}
+		p.Files[name], err = p.ReadFile(name)
+		if err != nil {
+			return Package{}, err
+		}
+	}
+	if err = checkSums(p); err != nil {
 		return p, err
 	}
-	if err = json.Unmarshal(files["release.json"], &p.Release); err != nil {
+	if err = json.Unmarshal(p.Files["release.json"], &p.Release); err != nil {
 		return p, fmt.Errorf("release.json 无效: %w", err)
 	}
-	if err = json.Unmarshal(files["manifest.json"], &p.Manifest); err != nil {
+	if err = json.Unmarshal(p.Files["manifest.json"], &p.Manifest); err != nil {
 		return p, fmt.Errorf("manifest.json 无效: %w", err)
 	}
 	m := p.Manifest
@@ -225,12 +318,23 @@ func Parse(data []byte) (Package, error) {
 	seenSlugs := map[string]bool{}
 	referenced := map[string]bool{"manifest.json": true}
 	for _, section := range sections {
+		maxArtifact := uint64(MaxFile)
+		switch section.kind {
+		case "skill":
+			maxArtifact = 20 << 20
+		case "expert":
+			maxArtifact = MaxExpertPackage
+		case "rule":
+			maxArtifact = 2 << 20
+		case "connector":
+			maxArtifact = 1 << 20
+		}
 		for _, entry := range section.items {
+			file := p.entries[entry.Path]
 			if entry.Type != section.kind || !slugPattern.MatchString(entry.Slug) || seenSlugs[entry.Slug] ||
 				strings.TrimSpace(entry.Name) == "" || len(entry.Name) > 200 ||
 				!safePath(entry.Path) || !strings.HasPrefix(entry.Path, "agent/"+section.directory+"/") ||
-				!shaPattern.MatchString(entry.SHA256) || referenced[entry.Path] || len(files[entry.Path]) == 0 ||
-				digest(files[entry.Path]) != entry.SHA256 {
+				!shaPattern.MatchString(entry.SHA256) || referenced[entry.Path] || file == nil || file.UncompressedSize64 == 0 || file.UncompressedSize64 > maxArtifact {
 				return Package{}, fmt.Errorf("%s 资源路径、slug 或摘要无效: %q", section.kind, entry.Slug)
 			}
 			seenSlugs[entry.Slug], referenced[entry.Path] = true, true
@@ -241,9 +345,9 @@ func Parse(data []byte) (Package, error) {
 			return Package{}, fmt.Errorf("静态资源清单无效: %s", asset.Slug)
 		}
 		prefix, count := "static/"+asset.Slug+"/", 0
-		for name, content := range files {
+		for name, file := range p.entries {
 			if strings.HasPrefix(name, prefix) {
-				if referenced[name] || len(content) != int(asset.Size) {
+				if referenced[name] || file.UncompressedSize64 != uint64(asset.Size) {
 					return Package{}, fmt.Errorf("静态资源文件无效: %s", name)
 				}
 				referenced[name] = true
@@ -254,11 +358,10 @@ func Parse(data []byte) (Package, error) {
 			return Package{}, fmt.Errorf("静态资源应恰有一个文件: %s", asset.Slug)
 		}
 	}
-	for name := range files {
+	for name := range p.entries {
 		if name != "release.json" && name != "CHECKSUMS.sha256" && !referenced[name] {
 			return Package{}, fmt.Errorf("发布包包含未声明的文件: %s", name)
 		}
 	}
-	p.Files = files
 	return p, nil
 }

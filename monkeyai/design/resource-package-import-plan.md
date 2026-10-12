@@ -16,7 +16,7 @@
 
 根目录要求 `release.json`、`manifest.json`、`CHECKSUMS.sha256`；以 `manifest.agent_resources` 中的 `path` 定位 Skill、Rule、Connector、Expert 产物，不从 slug 推测文件路径。解析并验证：
 
-1. 上传压缩大小、ZIP 文件数、单文件/累计解压大小与嵌套 ZIP 总预算均须有**非零上限**；拒绝绝对路径、`..`、反斜杠、链接、重复文件名及跨平台等价路径冲突。读取时流式限额，不仅依赖 ZIP 声明大小。浏览器打包目录也须限制文件数和总字节数，不把目录中的文件逐个直传给应用接口。
+1. 整包压缩大小上限 **2 GiB**、累计展开上限 **4 GiB**，ZIP 文件数、单个产物与嵌套 ZIP 另有独立上限；拒绝绝对路径、`..`、反斜杠、链接、重复文件名及跨平台等价路径冲突。上传文件经磁盘暂存，以 `ReaderAt` 按需解析并流式校验，不将整个包或全部解压文件读入内存。浏览器选目录时仅打包校验清单列出的文件，支持浏览器用本地磁盘暂存 ZIP；不支持大目录磁盘暂存的浏览器应提示改用现成 ZIP，不把目录中的文件逐个直传给应用接口。
 2. `release_id`、`version` 与两个 JSON 的 `manifest_sha256` 对齐；按发布端 `canonicalManifest` 的确切字段顺序与 JSON 编码重算摘要。规范化字段包括 `release_id, version, generated_at, agent_resources, design_resources, static_assets`；**不能因为不导入设计资源就省略 `design_resources`**，也不能把空数组改成 `null`。用发布端生成的黄金样本验证字节级兼容性。
 3. 每个 manifest 产物条目的 `sha256` 与其实际 ZIP 条目字节一致；`CHECKSUMS.sha256` 的路径集合、排序及摘要与所有内容条目、`manifest.json` 一致，不含 `release.json` 与自身。检查 manifest 路径唯一、类型/slug 与产物元数据一致、ZIP 条目存在且无未声明的内容。协议中产物 `sha256` 存在 `content_hash` 回退描述：若无法按实际文件字节验证则报协议不兼容，不能把业务指纹当文件摘要放行。
 4. Skill ZIP 解析 `skill.json` 和 `SKILL.md`，复用现有技能包限制与 frontmatter 校验；校验 slug 及显示名称/Skill frontmatter 的各自语义，不要求不同语言的展示名称字面相同。若 `SKILL.md` 的 `name` 不符合现有解析器的安全名称规则（如 r0016 中的空格），在校验原始产物后按第 4 节确定性规范化，并在预览中要求管理员确认；合法名称不改。Rule 取 JSON 中的 `content`；Expert 校验 `expert.json`、`prompt_path`、依赖文件和可选头像。所有文本做编码/长度校验。
@@ -28,7 +28,7 @@
 
 导入资源的唯一身份是 **`(publisher, slug)`**，跨 Skill、Rule、Connector、Expert 共用一个命名空间；`publisher` 取 `release.json.publisher.name`，manifest 条目本身没有该字段。`resource_type` 只是定位目标表，不参与唯一键。同一包内相同 `(publisher, slug)` 若对应类型或有效内容不一致，预检报错；跨版本同类型内容变化则由导入器正常更新，不自动改名或跨类型覆盖。r0016 的 39 个顶层资源没有跨类型重名。管理员权限允许提交包，但摘要并不能认证 publisher；如将来开放不可信来源，须额外验证发布者身份。
 
-新增两张表：`resource_import_bindings` 以 `(publisher, slug)` 主键记录资源类型、对应系统资源 ID、来源摘要、已应用内容摘要和批次 ID，并约束同一系统资源 ID 只绑定一次；`resource_imports` 记录 publisher、release_id、version、manifest_sha256、上传者、状态、计数、脱敏失败码及时间，用于版本冲突判定与历史查询。**不新增 `resource_sources` 表**。无绑定的资源是本地资源，个人资源不可绑定。普通接口不得软删除绑定资源；若因历史数据或外部写入造成目标异常丢失，绑定仍占位，重导入返回冲突，不创建同名新行。
+新增两张表：`resource_import_bindings` 以 `(publisher, slug)` 主键记录资源类型、对应系统资源 ID、来源摘要、已应用内容摘要和批次 ID，并约束同一系统资源 ID 只绑定一次；`resource_imports` 记录 publisher、release_id、version、manifest_sha256、上传者、状态、计数、脱敏失败码及时间，用于版本冲突判定与历史查询。**不新增 `resource_sources` 表**。四类资源表另加 `origin=local/package`（默认 `local`），只作为本表名称唯一索引的判定字段：管理员本地资源仍按名称唯一，资源包资源允许与本地及其他导入资源同名，身份仍以绑定表中的 `(publisher, slug)` 为准。无绑定的资源是本地资源，个人资源不可绑定。普通接口不得软删除绑定资源；若因历史数据或外部写入造成目标异常丢失，绑定仍占位，重导入返回冲突，不创建同名新行。
 
 同一 `(publisher, slug)` 命中现有绑定才允许更新；只凭名称相同不合并。重复 `(publisher, release_id, version, manifest_sha256)` 返回已导入结果；同版本不同摘要或倒退版本返回冲突，不能静默回滚。即使发布版本不同，也按规范化后的已应用内容判断逐项跳过，不能只比较产物文件摘要；Expert 的依赖 ID/关联变化也要纳入判断。按 publisher 串行化并用绑定表唯一约束防止并发双写。
 
@@ -108,7 +108,7 @@ CREATE TABLE resource_import_bindings (
 
 ### 3.4 资源来源展示与不可人工修改
 
-`resource_import_bindings` 是来源真值：按 `(resource_type, resource_id)` 查询，有绑定即 `origin=package`，同时返回只读 `publisher`、`slug`、`retired`；无绑定的系统资源显示 `origin=admin`，个人资源保留其所有者来源。来源字段由服务端装饰 List/Get 响应，**不得接受客户端提交或通过普通 CRUD 伪造**。管理端导入资源只提供查看、下载、授权和凭证操作入口，编辑、替换技能包/Connector 图标、标签、启停、删除和 MCP 工具配置按钮均隐藏/禁用，退役资源另显示状态。
+`resource_import_bindings` 是来源真值：按 `(resource_type, resource_id)` 查询，有绑定即 `origin=package`，同时返回只读 `publisher`、`slug`、`retired`；无绑定的系统资源显示 `origin=admin`，个人资源保留其所有者来源。来源字段由服务端装饰 List/Get 响应，**不得接受客户端提交或通过普通 CRUD 伪造**。管理端导入资源只提供查看、下载、授权和凭证操作入口，编辑、替换技能包/Connector 图标、标签、启停、删除和 MCP 工具配置按钮均隐藏/禁用，退役资源另显示状态。Agent resolve 仅按 ID 去重，不再按名称丢弃来自管理员和资源包的两个不同资源；Agent 客户端如何以不同安装路径消费同名 Skill 属客户端后续工作。
 
 后端必须在与目标资源锁定的**同一个事务**内检查绑定：`resource.CRUD.Save/Delete/SetEnabled`、技能包替换、Connector 图标上传、工具配置、Expert 关联等所有人工写入口，对有绑定的目标统一返回只读冲突；个人资源也不得冒用绑定 ID。仅导入服务经过包校验和 publisher 级锁后，使用内部事务接口更新本体和绑定；不要公开可由客户端传入的 `force`、`origin` 或 `is_import` 绕过开关。复制导入资源为新的管理员本地资源如需支持，必须新建 ID 且不复制绑定，不影响原资源。
 
@@ -139,7 +139,7 @@ CREATE TABLE resource_import_bindings (
 - **本次不实施 Agent 客户端**。服务端向 Agent API 下发全部可用翻译，并保留基础字段及兼容旧客户端的响应；未来客户端提供显式语言选择并持久保存到设备，未选择时可用设备当前 `locale`，再用 `system_locale`，最后默认 `en-US`。未来客户端渲染时按“规范化后的完整标签 → 对应主语言标签（例如 `en-US` 可匹配样本中的 `en`）→ `en-US`/`en` → 基础字段”取值；缺少翻译不自动生成。样本 Expert 使用 `en` 而非 `en-US`，Skill 描述主要是 `en-US`/`zh-CN`，因此需同时覆盖。切换语言只改变目录/卡片/详情的展示文案，不变更授权、`publisher + slug` 身份、关联 ID，也不修改 `SKILL.md`、Rule `content` 或 Expert `prompt` 的实际指令语言。
 - 本期 Agent 列表搜索如果由服务端执行，需在授权过滤后把翻译名称/描述纳入匹配，不能只搜基础名称；未来客户端自行搜索时由客户端按当前语言展示值过滤。仅翻译变化也应更新目录响应的缓存/ETag 和 Expert manifest `version`，以便 Agent 同步新文案；Rule 内容 `sha256`、Skill `package_sha256` 及技能下载路径不因翻译变化而变。返回全部语言映射，语言切换无须重新下载技能包。
 
-数据库变更以新增迁移并同步 `backend/schema/schema.sql` 为准；四类资源各加 `name_i18n`、`description_i18n` JSONB（默认 `{}`），另加 Rule 的 `enabled` 与 Expert 头像键。Rule 当前没有基础 `description`，其翻译描述缺失时以空字符串兜底，不把 `content` 当描述。publisher、slug、摘要与退役状态放在绑定表中，不把导入身份加入普通 Admin CRUD 可写字段。按各资源 SQL 查询与 API 展示需求更新 sqlc 生成物；管理端资源列表和详情显示“管理员创建 / 资源包导入”、publisher/slug 和只读状态。多语言的 Agent API 下发见第 4.2 节；客户端选择语言是后续独立任务，本期不宣称 Agent 界面已支持切换。
+数据库变更以新增迁移并同步 `backend/schema/schema.sql` 为准；四类资源各加 `name_i18n`、`description_i18n` JSONB（默认 `{}`），另加 Rule 的 `enabled` 与 Expert 头像键。`000017_resource_import` 增加导入批次/绑定及资源字段，`000018_resource_origin` 在四张资源表添加默认 `local` 的 `origin`，按已有绑定回填 `package`，把系统资源名称唯一索引缩小到 `origin=local`；导入写入时显式设 `package`，不可将此字段交给普通 CRUD 客户端填写。Rule 当前没有基础 `description`，其翻译描述缺失时以空字符串兜底，不把 `content` 当描述。publisher、slug、摘要与退役状态放在绑定表中，不把导入身份加入普通 Admin CRUD 可写字段。按各资源 SQL 查询与 API 展示需求更新 sqlc 生成物；管理端资源列表和详情显示“管理员创建 / 资源包导入”、publisher/slug 和只读状态。多语言的 Agent API 下发见第 4.2 节；客户端选择语言是后续独立任务，本期不宣称 Agent 界面已支持切换。
 
 ## 5. 写入一致性与安全
 

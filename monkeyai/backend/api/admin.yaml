@@ -10,7 +10,7 @@ paths:
   /api/admin/v1/resource-imports/preview:
     post:
       summary: 校验资源发布包并预览变更
-      description: 不写入资源；校验整包、静态资源和 Agent 闭包，返回新增/更新/跳过/退役/恢复与 plan_digest。
+      description: ZIP 包体最大 2 GiB；磁盘暂存并校验整包、静态资源和 Agent 闭包，不写入资源，返回新增/更新/跳过/退役/恢复与 plan_digest。
       requestBody:
         required: true
         content:
@@ -28,7 +28,7 @@ paths:
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认原子导入完整 Agent 清单
-      description: 重新上传同一 ZIP，校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。
+      description: 重新上传同一 ZIP（最大 2 GiB），校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。
       requestBody:
         required: true
         content:

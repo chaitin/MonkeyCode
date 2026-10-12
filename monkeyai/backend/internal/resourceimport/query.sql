@@ -65,38 +65,38 @@ VALUES ((sqlc.arg(data)::jsonb->>'id')::uuid,sqlc.arg(data)::jsonb->>'publisher'
         'succeeded',sqlc.arg(data)::jsonb->'result_counts');
 
 -- name: CreateImportSkill :exec
-INSERT INTO skills (id,owner_user_id,ownership_type,name,description,name_i18n,description_i18n,
+INSERT INTO skills (id,owner_user_id,ownership_type,origin,name,description,name_i18n,description_i18n,
                     package_file_name,package_s3_key,package_size_bytes,package_sha256,file_count)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system',d->>'name',d->>'description',d->'name_i18n',d->'description_i18n',
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->'name_i18n',d->'description_i18n',
        d->>'package_file_name',d->>'package_s3_key',(d->>'package_size_bytes')::bigint,d->>'package_sha256',(d->>'file_count')::int
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
 
 -- name: UpdateImportSkill :exec
-UPDATE skills SET name=d->>'name',description=d->>'description',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+UPDATE skills SET origin='package',name=d->>'name',description=d->>'description',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        package_file_name=d->>'package_file_name',package_s3_key=CASE WHEN d->>'package_s3_key'='' THEN package_s3_key ELSE d->>'package_s3_key' END,
        package_size_bytes=(d->>'package_size_bytes')::bigint,package_sha256=d->>'package_sha256',file_count=(d->>'file_count')::int,
        enabled=true,revision=revision+1,updated_at=now()
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 
 -- name: CreateImportRule :exec
-INSERT INTO rules (id,owner_user_id,ownership_type,name,content,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system',d->>'name',d->>'content',d->'name_i18n',d->'description_i18n'
+INSERT INTO rules (id,owner_user_id,ownership_type,origin,name,content,name_i18n,description_i18n)
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'content',d->'name_i18n',d->'description_i18n'
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
 
 -- name: UpdateImportRule :exec
-UPDATE rules SET name=d->>'name',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+UPDATE rules SET origin='package',name=d->>'name',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        enabled=true,revision=revision+1,updated_at=now()
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 
 -- name: CreateImportConnector :exec
-INSERT INTO connectors (id,owner_user_id,ownership_type,name,description,url,
+INSERT INTO connectors (id,owner_user_id,ownership_type,origin,name,description,url,
                         authorization_mode,authorization_method,oauth_config,timeout_ms,auth_header_name,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system',d->>'name','',d->>'url',d->>'authorization_mode',
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name','',d->>'url',d->>'authorization_mode',
        NULLIF(d->>'authorization_method',''),d->'oauth_config',(d->>'timeout_ms')::int,d->>'auth_header_name',d->'name_i18n',d->'description_i18n'
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
 
 -- name: UpdateImportConnector :exec
-UPDATE connectors SET name=d->>'name',description='',url=d->>'url',authorization_mode=d->>'authorization_mode',
+UPDATE connectors SET origin='package',name=d->>'name',description='',url=d->>'url',authorization_mode=d->>'authorization_mode',
        authorization_method=NULLIF(d->>'authorization_method',''),oauth_config=d->'oauth_config',timeout_ms=(d->>'timeout_ms')::int,
        auth_header_name=d->>'auth_header_name',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        config_revision=(d->>'config_revision')::bigint,connection_status=d->>'connection_status',
@@ -113,14 +113,14 @@ UPDATE connector_credentials SET revoked_at=now(),revision=revision+1,updated_at
 WHERE connector_id=$1::uuid AND revoked_at IS NULL;
 
 -- name: CreateImportExpert :exec
-INSERT INTO experts (id,created_by_user_id,owner_user_id,ownership_type,name,description,prompt,
+INSERT INTO experts (id,created_by_user_id,owner_user_id,ownership_type,origin,name,description,prompt,
                      avatar_s3_key,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,(d->>'actor_id')::uuid,'system',d->>'name',d->>'description',d->>'prompt',
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->>'prompt',
        d->>'avatar_s3_key',d->'name_i18n',d->'description_i18n'
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
 
 -- name: UpdateImportExpert :exec
-UPDATE experts SET name=d->>'name',description=d->>'description',prompt=d->>'prompt',avatar_s3_key=d->>'avatar_s3_key',
+UPDATE experts SET origin='package',name=d->>'name',description=d->>'description',prompt=d->>'prompt',avatar_s3_key=d->>'avatar_s3_key',
        name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',enabled=true,revision=revision+1,updated_at=now()
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 

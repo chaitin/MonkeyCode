@@ -105,6 +105,45 @@ func TestPublishedReleaseFixture(t *testing.T) {
 	}
 }
 
+func TestParseReaderKeepsArtifactsOnDisk(t *testing.T) {
+	data := packageFixture(t, nil)
+	name := filepath.Join(t.TempDir(), "release.zip")
+	if err := os.WriteFile(name, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	pkg, err := ParseReader(file, int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkg.Files) != 3 {
+		t.Fatalf("外层产物不应全部加载到内存: %d", len(pkg.Files))
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Skills["demo-skill"]
+	if len(item.Package.Bytes) != 0 || len(item.Package.Files) != 0 || item.StoredSize == 0 {
+		t.Fatal("预览阶段不应保留技能包字节")
+	}
+	stored, err := pkg.SkillBytes(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := pkg.ReadFile("agent/skills/demo.zip")
+	if err != nil || !bytes.Equal(stored, original) {
+		t.Fatalf("按需读取的技能包不一致: %v", err)
+	}
+	if _, err := ParseReader(bytes.NewReader(nil), MaxPackage+1); err == nil {
+		t.Fatal("应提前拒绝超过 2 GiB 的压缩包")
+	}
+}
+
 func TestParsePackageAndResources(t *testing.T) {
 	data := packageFixture(t, nil)
 	pkg, err := Parse(data)

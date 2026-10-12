@@ -27,6 +27,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	if err != nil {
 		return err
 	}
+	setConnectorTimeout(h, c.Int("timeout_ms"))
 	if o.Mode == "dynamic" && o.ClientID == "" {
 		requestedScopes := o.Scopes
 		o, err = discoverOAuthWithClient(ctx, c.String("url"), h)

@@ -464,6 +464,20 @@ func (r *Resources) resolve(w http.ResponseWriter, req *http.Request) {
 	}
 	resource.JSON(w, 200, out)
 }
+func uniqueIDs(items []resource.Object) []resource.Object {
+	result := make([]resource.Object, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
+		id := item.String("id")
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		result = append(result, item)
+	}
+	return result
+}
+
 func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object) (resource.Object, error) {
 	tx, err := r.transaction(ctx)
 	if err != nil {
@@ -524,23 +538,8 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 	for _, o := range selected {
 		skills = append(skills, skillDTO(o, ""))
 	}
-	dedup := func(items []resource.Object) []resource.Object {
-		result := []resource.Object{}
-		names := map[string]bool{}
-		ids := map[string]bool{}
-		for _, o := range items {
-			name := strings.ToLower(strings.TrimSpace(o.String("name")))
-			if names[name] || ids[o.String("id")] {
-				continue
-			}
-			names[name] = true
-			ids[o.String("id")] = true
-			result = append(result, o)
-		}
-		return result
-	}
-	out["rules"] = dedup(rules)
-	out["skills"] = dedup(skills)
+	out["rules"] = uniqueIDs(rules)
+	out["skills"] = uniqueIDs(skills)
 	selectedConnectors := out["connectors"].([]resource.Object)
 	seenConnectors := map[string]bool{}
 	for _, conn := range selectedConnectors {
