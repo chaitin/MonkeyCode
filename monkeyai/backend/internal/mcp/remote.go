@@ -147,8 +147,12 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	return reply.Result, nil
 }
 
-func openRemote(ctx context.Context, target string, headers map[string]string) (*remoteClient, error) {
-	return openRemoteWithClient(ctx, target, headers, client())
+func openRemote(ctx context.Context, target string, headers map[string]string, timeout ...time.Duration) (*remoteClient, error) {
+	h := client()
+	if len(timeout) > 0 && timeout[0] >= time.Second && timeout[0] <= 120*time.Second {
+		h.Timeout = timeout[0]
+	}
+	return openRemoteWithClient(ctx, target, headers, h)
 }
 
 func openRemoteWithClient(ctx context.Context, target string, headers map[string]string, httpClient *http.Client) (*remoteClient, error) {

@@ -22,6 +22,18 @@ func TestSharedPersonalRuleAccess(t *testing.T) {
 	}
 }
 
+func TestUniqueIDsPreservesSameNameResources(t *testing.T) {
+	items := []resource.Object{
+		{"id": "admin-id", "name": "同名", "origin": "local"},
+		{"id": "package-id", "name": "同名", "origin": "package"},
+		{"id": "admin-id", "name": "同名", "origin": "local"},
+	}
+	result := uniqueIDs(items)
+	if len(result) != 2 || result[0].String("id") != "admin-id" || result[1].String("id") != "package-id" {
+		t.Fatalf("应保留不同 ID 的同名资源: %v", result)
+	}
+}
+
 func TestRuleDTORequirement(t *testing.T) {
 	rule := resource.Object{"id": "rule-id", "name": "规则", "content": "正文"}
 	for _, forced := range []bool{false, true} {

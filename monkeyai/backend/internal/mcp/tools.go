@@ -138,6 +138,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
+	setConnectorTimeout(h, c.Int("timeout_ms"))
 	tools, discoveryErr := discoverWithClient(ctx, c.String("url"), headers, h)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {

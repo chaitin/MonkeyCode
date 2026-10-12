@@ -179,6 +179,17 @@ SELECT
                     FROM
                         user_groups)));
 
+-- name: GetResourceImport :one
+SELECT publisher, slug, retired_at IS NOT NULL AS retired
+FROM resource_import_bindings
+WHERE resource_type = sqlc.arg(resource_type) AND resource_id = sqlc.arg(resource_id);
+
+-- name: LockResourceImport :one
+SELECT retired_at IS NOT NULL AS retired
+FROM resource_import_bindings
+WHERE resource_type = sqlc.arg(resource_type) AND resource_id = sqlc.arg(resource_id)
+FOR UPDATE;
+
 -- name: ListGrants :many
 SELECT
     jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,

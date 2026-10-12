@@ -103,12 +103,26 @@ type remoteTool struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-func discover(ctx context.Context, target string, headers map[string]string) ([]remoteTool, error) {
-	return discoverWithClient(ctx, target, headers, client())
+func setConnectorTimeout(h *http.Client, timeoutMS int64) {
+	if timeoutMS >= 1000 && timeoutMS <= 120000 {
+		h.Timeout = time.Duration(timeoutMS) * time.Millisecond
+	}
+}
+
+func discover(ctx context.Context, target string, headers map[string]string, timeout ...time.Duration) ([]remoteTool, error) {
+	h := client()
+	if len(timeout) > 0 {
+		setConnectorTimeout(h, int64(timeout[0]/time.Millisecond))
+	}
+	return discoverWithClient(ctx, target, headers, h)
 }
 
 func discoverWithClient(ctx context.Context, target string, headers map[string]string, httpClient *http.Client) ([]remoteTool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	budget := 45 * time.Second
+	if httpClient.Timeout >= time.Second && httpClient.Timeout <= 120*time.Second && httpClient.Timeout+15*time.Second > budget {
+		budget = httpClient.Timeout + 15*time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	rpc, err := openRemoteWithClient(ctx, target, headers, httpClient)
 	if err != nil {

@@ -110,6 +110,10 @@ export function AppSidebar({
           title: t("pages.rules.title"),
           url: CONSOLE_ROUTES.rules,
         },
+        {
+          title: t("pages.resourceImports.title"),
+          url: CONSOLE_ROUTES.resourceImports,
+        },
       ],
     },
     {
