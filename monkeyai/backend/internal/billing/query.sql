@@ -77,7 +77,7 @@ SELECT
         'effective_credits', COALESCE(g.credits, sqlc.arg(root_credits)::numeric)::text,
         'balance_credits', COALESCE(a.balance,
             g.credits, sqlc.arg(root_credits)::numeric)::text,
-        'available_credits', COALESCE(a.balance - a.frozen,
+        'available_credits', COALESCE(a.balance,
             g.credits, sqlc.arg(root_credits)::numeric)::text,
         'inherited_from', COALESCE(g.source, sqlc.arg(root_group)::text),
         'external_user_id', wb.external_user_id)
@@ -91,7 +91,7 @@ FROM
         LIMIT 1
     ) g ON TRUE
     LEFT JOIN LATERAL (
-        SELECT balance, frozen
+        SELECT balance
         FROM credit_accounts
         WHERE user_id = u.id
             AND period_start_at = sqlc.arg(period_start_at)
@@ -435,8 +435,7 @@ WHERE
 -- name: AccountDifferences :many
 SELECT
     jsonb_build_object('account_id', a.id, 'user_id', a.user_id, 'balance', a.balance::text,
-	'ledger_balance', COALESCE(l.balance, 0)::text, 'frozen', a.frozen::text, 'reserved',
-	COALESCE(t.reserved, 0)::text)
+	'ledger_balance', COALESCE(l.balance, 0)::text, 'frozen', a.frozen::text)
 FROM
     credit_accounts a
     LEFT JOIN (
@@ -447,19 +446,9 @@ FROM
             credit_ledger_entries
         GROUP BY
             account_id) l ON l.account_id = a.id
-    LEFT JOIN (
-        SELECT
-            account_id,
-            sum(reserve) reserved
-        FROM
-            billing_transactions
-        WHERE
-            status NOT IN ('settled', 'released', 'rejected')
-        GROUP BY
-            account_id) t ON t.account_id = a.id
 WHERE
     a.balance <> COALESCE(l.balance, 0)
-    OR a.frozen <> COALESCE(t.reserved, 0)
+    OR a.frozen <> 0
 ORDER BY
     a.created_at
 LIMIT 100;
@@ -825,15 +814,6 @@ WHERE
     AND t.deleted_at IS NULL
     AND c.deleted_at IS NULL;
 
--- name: FreezeBalance :execresult
-UPDATE
-    credit_accounts
-SET
-    frozen = frozen + $2,
-    updated_at = now()
-WHERE
-    id = $1;
-
 -- name: CreateTransaction :execresult
 INSERT INTO billing_transactions (id, user_id, account_id, session_id, category, resource_id, connector_id, item_name,
     user_name, user_email, group_id, MODE, status, reserve, pricing, idempotency_key, request_hash, started_at)
@@ -991,7 +971,6 @@ SELECT
     item_name,
     category,
     amount::text,
-    reserve::text,
     status
 FROM
     billing_transactions
@@ -1004,7 +983,6 @@ UPDATE
     credit_accounts
 SET
     balance = balance - $2,
-    frozen = frozen - $3,
     updated_at = now()
 WHERE
     id = $1;
@@ -1157,17 +1135,6 @@ SET
     updated_at = now()
 WHERE
     id = $1;
-
--- name: ReleaseFrozenBalance :execresult
-UPDATE
-    credit_accounts a
-SET
-    frozen = a.frozen - t.reserve
-FROM
-    billing_transactions t
-WHERE
-    t.id = $1
-    AND a.id = t.account_id;
 
 -- name: MarkWalletReserved :execresult
 UPDATE

@@ -593,7 +593,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, resource.Invalid("账户余额超出允许范围"))
 		return
 	}
-	if in.Delta < 0 && a.Available < -in.Delta {
+	if in.Delta < 0 && a.Balance < -in.Delta {
 		resource.Fail(w, insufficient)
 		return
 	}

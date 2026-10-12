@@ -233,8 +233,8 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		}
 		reserve = Amount(quotaAmount(reserve, true) * 10000)
 	}
-	// 零头余额允许完成一次付费调用；完整冻结预留额，阻止并发继续透支。
-	if reserve > 0 && a.Available <= 0 {
+	// 预估费用仅用于超额核查；账面余额为正即可发起付费调用。
+	if reserve > 0 && a.Balance <= 0 {
 		return Reservation{}, insufficient
 	}
 	var walletUser, team, biz string
@@ -258,10 +258,6 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 	}
 	id := resource.ID()
 
-	_, err = sqlc.New(tx).FreezeBalance(ctx, sqlc.FreezeBalanceParams{ID: a.ID, Frozen: reserve.String()})
-	if err != nil {
-		return Reservation{}, err
-	}
 	state := "reserved"
 	if mode == "remote" {
 		state = "created"
@@ -476,14 +472,14 @@ func (s *Service) Settle(ctx context.Context, id string) error {
 		return err
 	}
 	defer rollback(ctx, tx, "settle", id)
-	var account, item, category, amountText, reserveText string
+	var account, item, category, amountText string
 	var settlement sqlc.LockSettlementRow
 	settlement, err = sqlc.New(tx).LockSettlement(ctx, id)
 
 	if err != nil {
 		return err
 	}
-	account, item, category, amountText, reserveText, status = settlement.AccountID, settlement.ItemName, settlement.Category, settlement.Amount, settlement.Reserve, settlement.Status
+	account, item, category, amountText, status = settlement.AccountID, settlement.ItemName, settlement.Category, settlement.Amount, settlement.Status
 
 	if status != "settling" {
 		return nil
@@ -492,11 +488,7 @@ func (s *Service) Settle(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	reserve, err := ParseAmount(reserveText)
-	if err != nil {
-		return err
-	}
-	_, err = sqlc.New(tx).ChargeBalance(ctx, sqlc.ChargeBalanceParams{ID: account, Balance: amount.String(), Frozen: reserve.String()})
+	_, err = sqlc.New(tx).ChargeBalance(ctx, sqlc.ChargeBalanceParams{ID: account, Balance: amount.String()})
 	if err != nil {
 		return err
 	}

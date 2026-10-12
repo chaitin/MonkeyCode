@@ -213,7 +213,7 @@ func accountRow(ctx context.Context, q resource.Queryer, user string, start time
 		return a, e
 	}
 	a.Quota, e = ParseAmount(v)
-	a.Available = a.Balance - a.Frozen
+	a.Available = a.Balance
 	return a, e
 }
 func effectiveQuota(ctx context.Context, q resource.Queryer, user string) (Amount, string, string, error) {

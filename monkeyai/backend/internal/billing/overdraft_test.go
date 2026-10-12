@@ -49,11 +49,19 @@ func TestSmallBalanceSettlement(t *testing.T) {
 						t.Fatalf("正余额不足预留额时仍应获准执行: %v", err)
 					}
 					a, err := s.Account(ctx, user)
-					if err != nil || a.Balance != p.RootCredits || a.Frozen != reserve || a.Available != p.RootCredits-reserve {
-						t.Fatalf("应完整冻结预留额: %+v %v", a, err)
+					if err != nil || a.Balance != p.RootCredits || a.Frozen != 0 || a.Available != p.RootCredits {
+						t.Fatalf("预留不应冻结积分: %+v %v", a, err)
 					}
-					if _, err := s.Begin(ctx, req); !errors.Is(err, insufficient) {
-						t.Fatalf("超额冻结期间不能继续透支: %v", err)
+					var reserved string
+					if err := s.pool.QueryRow(ctx, `SELECT reserve::text FROM billing_transactions WHERE id=$1`, r.ID).Scan(&reserved); err != nil || amountText(reserved) != reserve {
+						t.Fatalf("预估金额仍须保留用于结算核查: %s %v", reserved, err)
+					}
+					second, err := s.Begin(ctx, req)
+					if err != nil {
+						t.Fatalf("未结算请求不应占用积分: %v", err)
+					}
+					if err := s.Release(ctx, second.ID, "not_sent"); err != nil {
+						t.Fatal(err)
 					}
 					if err := s.Start(ctx, r.ID); err != nil {
 						t.Fatal(err)
@@ -65,7 +73,7 @@ func TestSmallBalanceSettlement(t *testing.T) {
 					}
 					a, err = s.Account(ctx, user)
 					if err != nil || a.Balance != p.RootCredits-charge || a.Frozen != 0 || a.Available != a.Balance {
-						t.Fatalf("应按实际费用结算且释放冻结: %+v %v", a, err)
+						t.Fatalf("应仅按实际费用扣除余额: %+v %v", a, err)
 					}
 					var status, total string
 					if err := s.pool.QueryRow(ctx, `SELECT status FROM billing_transactions WHERE id=$1`, r.ID).Scan(&status); err != nil {
@@ -103,10 +111,9 @@ func TestSmallBalanceSettlement(t *testing.T) {
 func TestExceededReservationDoesNotBlockOtherRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name, credits string
-		canPay        bool
 	}{
-		{name: "可用积分充足", credits: "10000", canPay: true},
-		{name: "可用积分不足", credits: "0.000001"},
+		{name: "积分充足", credits: "10000"},
+		{name: "仅有零头", credits: "0.000001"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, user, model := fixture(t)
@@ -133,34 +140,19 @@ func TestExceededReservationDoesNotBlockOtherRequests(t *testing.T) {
 				t.Fatalf("超额交易应继续待核查: %s %s", status, code)
 			}
 			a, err := s.Account(ctx, user)
-			if err != nil || a.Balance != p.RootCredits || a.Frozen != amountText("14") {
-				t.Fatalf("超额交易应保持冻结且不提前扣费: %+v %v", a, err)
+			if err != nil || a.Balance != p.RootCredits || a.Frozen != 0 {
+				t.Fatalf("超额交易不应提前扣费或冻结: %+v %v", a, err)
 			}
 			second, err := s.Begin(ctx, req)
-			if tc.canPay {
-				if err != nil {
-					t.Fatalf("待核查交易不应阻断其它有余额请求: %v", err)
-				}
-				if err := s.Release(ctx, second.ID, "not_sent"); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if !errors.Is(err, insufficient) {
-					t.Fatalf("可用积分不足仍须阻断付费请求: %v", err)
-				}
-				p.Enabled = false
-				setPolicy(t, s, p)
-				free, err := s.Begin(ctx, req)
-				if err != nil {
-					t.Fatalf("待核查交易不应阻断免费请求: %v", err)
-				}
-				if err := s.Release(ctx, free.ID, "not_sent"); err != nil {
-					t.Fatal(err)
-				}
+			if err != nil {
+				t.Fatalf("待核查交易不应阻断其它正余额请求: %v", err)
+			}
+			if err := s.Release(ctx, second.ID, "not_sent"); err != nil {
+				t.Fatal(err)
 			}
 			a, err = s.Account(ctx, user)
-			if err != nil || a.Balance != p.RootCredits || a.Frozen != amountText("14") {
-				t.Fatalf("其它请求不应解除旧交易冻结: %+v %v", a, err)
+			if err != nil || a.Balance != p.RootCredits || a.Frozen != 0 {
+				t.Fatalf("其它请求不应改变旧交易的账面余额: %+v %v", a, err)
 			}
 		})
 	}
@@ -195,8 +187,8 @@ func TestReviewedLocalOverageSettlesActualCharge(t *testing.T) {
 		t.Fatalf("自动结算不得跳过超额核查: %s %s %s %s", status, code, reserve, amount)
 	}
 	before, err := s.Account(ctx, user)
-	if err != nil || before.Balance != amountText("10000") || before.Frozen != amountText("30.5424") {
-		t.Fatalf("核查前应保持完整冻结: %+v %v", before, err)
+	if err != nil || before.Balance != amountText("10000") || before.Frozen != 0 {
+		t.Fatalf("核查前不应提前扣费或冻结: %+v %v", before, err)
 	}
 	call := walletAdmin(t, s, user)
 	path := "/billing/transactions/" + r.ID + "/resolve"
@@ -227,7 +219,7 @@ func TestReviewedLocalOverageSettlesActualCharge(t *testing.T) {
 	}
 	after, err := s.Account(ctx, user)
 	if err != nil || after.Balance != amountText("9964.602288") || after.Frozen != 0 {
-		t.Fatalf("应按真实金额扣费并解除原冻结: %+v %v", after, err)
+		t.Fatalf("应按真实金额扣费: %+v %v", after, err)
 	}
 	var count int
 	var delta, balance string
@@ -279,6 +271,43 @@ func TestOverdraftMigration(t *testing.T) {
 	after, err = s.Account(ctx, user)
 	if err != nil || after.Balance != amountText("-0.48") || after.Frozen != 0 {
 		t.Fatalf("回滚失败不应截断余额: %+v %v", after, err)
+	}
+}
+
+func TestRemoveCreditFreezeMigrationKeepsPendingSettlement(t *testing.T) {
+	s, user, model := fixture(t)
+	ctx := t.Context()
+	r, err := s.Begin(ctx, Request{UserID: user, ResourceID: model, Category: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.Account(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE credit_accounts SET frozen=14 WHERE id=$1`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	up, err := os.ReadFile("../../migrations/000015_billing_remove_credit_freeze.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, string(up)); err != nil {
+		t.Fatal(err)
+	}
+	a, err = s.Account(ctx, user)
+	if err != nil || a.Frozen != 0 || a.Available != a.Balance {
+		t.Fatalf("升级后应清除旧冻结但保留余额: %+v %v", a, err)
+	}
+	if err := s.Start(ctx, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Finish(ctx, r.ID, Usage{Known: true, Result: "succeeded", Input: 10000, Cached: 4000, Output: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	a, err = s.Account(ctx, user)
+	if err != nil || a.Balance != amountText("9998.52") || a.Frozen != 0 {
+		t.Fatalf("升级前的未完成交易应按实际费用结算: %+v %v", a, err)
 	}
 }
 

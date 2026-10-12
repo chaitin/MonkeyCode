@@ -213,8 +213,7 @@ func TestImmediateQuotaReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.pool.Exec(ctx, `UPDATE credit_accounts SET balance=CASE id WHEN $1 THEN 100 WHEN $2 THEN 3 WHEN $3 THEN 2 END,
-		frozen=CASE WHEN id=$1 THEN 20 ELSE 0 END WHERE id IN ($1,$2,$3)`,
+	if _, err = s.pool.Exec(ctx, `UPDATE credit_accounts SET balance=CASE id WHEN $1 THEN 100 WHEN $2 THEN 3 WHEN $3 THEN 2 END WHERE id IN ($1,$2,$3)`,
 		adminAccount.ID, explicitAccount.ID, unselectedAccount.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +227,7 @@ func TestImmediateQuotaReset(t *testing.T) {
 		t.Fatalf("立即重置响应错误: %+v %v", result, err)
 	}
 	resetAdmin, err := s.Account(ctx, admin)
-	if err != nil || resetAdmin.Balance != amountText("500") || resetAdmin.Quota != amountText("500") || resetAdmin.Frozen != amountText("20") || resetAdmin.Available != amountText("480") || resetAdmin.GroupID != child {
+	if err != nil || resetAdmin.Balance != amountText("500") || resetAdmin.Quota != amountText("500") || resetAdmin.Frozen != 0 || resetAdmin.Available != amountText("500") || resetAdmin.GroupID != child {
 		t.Fatalf("后代分组成员重置错误: %+v %v", resetAdmin, err)
 	}
 	resetExplicit, err := s.Account(ctx, explicit)
@@ -331,8 +330,8 @@ func TestQuotaListUsesCurrentAccountBalances(t *testing.T) {
 	if got := amountText(users[0].String("balance_credits")); got != amountText("150") {
 		t.Fatalf("账面剩余应读取当前账户并忽略过期账户: got=%s", got)
 	}
-	if got := amountText(users[0].String("available_credits")); got != amountText("120") {
-		t.Fatalf("可用积分应扣除冻结额: got=%s", got)
+	if got := amountText(users[0].String("available_credits")); got != amountText("150") {
+		t.Fatalf("可用积分应等于账面余额: got=%s", got)
 	}
 }
 

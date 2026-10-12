@@ -1115,7 +1115,7 @@ paths:
                           description: 当前周期账户的账面剩余；尚未开户时等于有效周期额度。
                         available_credits:
                           $ref: '#/components/schemas/CreditAmount'
-                          description: 当前周期账户的可用积分（账面剩余减冻结积分）；尚未开户时等于有效周期额度。
+                          description: 当前周期账户的可用积分（等于账面剩余）；尚未开户时等于有效周期额度。
                         inherited_from:
                           type: string
                           description: 最高有效额度的来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
@@ -1195,7 +1195,7 @@ paths:
                           description: 当前周期账户的账面剩余；尚未开户时等于有效周期额度。
                         available_credits:
                           $ref: '#/components/schemas/CreditAmount'
-                          description: 当前周期账户的可用积分（账面剩余减冻结积分）；尚未开户时等于有效周期额度。
+                          description: 当前周期账户的可用积分（等于账面剩余）；尚未开户时等于有效周期额度。
                         inherited_from:
                           type: string
                           description: 最高有效额度的来源分组 UUID（含虚拟根的全零 UUID）。额度相同时按直接所属分组的创建时间、ID 稳定选取。
@@ -1251,7 +1251,7 @@ paths:
   /api/admin/v1/billing/quotas/reset:
     post:
       summary: 立即重置所选分组和成员的当前周期额度
-      description: 分组包含所有后代分组的成员；成员自动去重。仅直接计费模式可用。重置当前余额和周期额度快照，保留冻结积分，并记录重置流水与审计。
+      description: 分组包含所有后代分组的成员；成员自动去重。仅直接计费模式可用。重置当前余额和周期额度快照，并记录重置流水与审计。
       responses:
         '200':
           description: 重置成功或幂等重放成功
@@ -1357,7 +1357,7 @@ paths:
         format: uuid
       required: true
     post:
-      summary: 幂等调整当期积分，回收不侵占冻结额
+      summary: 幂等调整当期积分
       responses:
         '200':
           description: 请求成功
@@ -1620,8 +1620,7 @@ paths:
                           $ref: '#/components/schemas/CreditAmount'
                         frozen:
                           $ref: '#/components/schemas/CreditAmount'
-                        reserved:
-                          $ref: '#/components/schemas/CreditAmount'
+                          description: 遗留冻结额，迁移后通常为零；非零时作为账目异常报告。
                   migration_issues:
                     type: array
                     items:
@@ -5550,6 +5549,7 @@ components:
           $ref: '#/components/schemas/CreditAmount'
         frozen:
           $ref: '#/components/schemas/CreditAmount'
+          description: 兼容字段，迁移后为零。
         available:
           $ref: '#/components/schemas/CreditAmount'
         quota:

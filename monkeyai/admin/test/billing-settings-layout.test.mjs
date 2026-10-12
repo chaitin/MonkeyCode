@@ -116,7 +116,7 @@ test("member account uses integer key-value balances and dedicated actions", asy
   assert.equal((accountDialog.match(/displayCredits\(/g) ?? []).length, 2)
   assert.match(
     accountDialog,
-    /<dl className="divide-y rounded-lg border">[\s\S]*?\["可用", data\.account\.available\][\s\S]*?\["冻结", data\.account\.frozen\][\s\S]*?\["账面剩余", data\.account\.balance\][\s\S]*?\["满额度", data\.account\.quota\]/
+    /<dl className="divide-y rounded-lg border">[\s\S]*?\["可用", data\.account\.available\][\s\S]*?\["账面剩余", data\.account\.balance\][\s\S]*?\["满额度", data\.account\.quota\]/
   )
   assert.match(
     accountDialog,

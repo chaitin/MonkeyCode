@@ -79,7 +79,6 @@ type Pending = {
     balance: string
     ledger_balance: string
     frozen: string
-    reserved: string
   }[]
   migration_issues: { id: number; subject: string; reason: string }[]
 }
@@ -610,9 +609,10 @@ export function BillingDetailsPage() {
                 <p key={d.account_id} className="mt-2 text-xs">
                   账户 {d.account_id}：余额{" "}
                   {billingCredits(d.balance, i18n.language)} / 流水合计{" "}
-                  {billingCredits(d.ledger_balance, i18n.language)}；冻结{" "}
-                  {billingCredits(d.frozen, i18n.language)} / 未完成预留{" "}
-                  {billingCredits(d.reserved, i18n.language)}
+                  {billingCredits(d.ledger_balance, i18n.language)}
+                  {Number(d.frozen) !== 0 && (
+                    <>；遗留冻结 {billingCredits(d.frozen, i18n.language)}</>
+                  )}
                 </p>
               ))}
             </div>

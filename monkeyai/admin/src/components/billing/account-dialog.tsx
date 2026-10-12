@@ -187,7 +187,6 @@ export function AccountDialog({
                 <dl className="divide-y rounded-lg border">
                   {[
                     ["可用", data.account.available],
-                    ["冻结", data.account.frozen],
                     ["账面剩余", data.account.balance],
                     ["满额度", data.account.quota],
                   ].map(([label, value]) => (

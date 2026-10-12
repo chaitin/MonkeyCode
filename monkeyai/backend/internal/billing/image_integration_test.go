@@ -16,7 +16,7 @@ func TestImageReservationSettlementAndReconciliation(t *testing.T) {
 	}{
 		{"部分成功按一张扣费", "succeeded", true, 1, "12.5"},
 		{"审核拒绝不扣费", "failed", true, 0, "0"},
-		{"未知先冻结后确认", "failed", false, 0, "0"},
+		{"未知状态后确认", "failed", false, 0, "0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, user, id := fixture(t)
@@ -37,8 +37,8 @@ func TestImageReservationSettlementAndReconciliation(t *testing.T) {
 				t.Fatal(err)
 			}
 			reserved, err := s.Account(ctx, user)
-			if err != nil || reserved.Frozen-before.Frozen != amountText("25") {
-				t.Fatalf("必须预留两张费用: %+v -> %+v, %v", before, reserved, err)
+			if err != nil || reserved.Frozen != before.Frozen || reserved.Balance != before.Balance {
+				t.Fatalf("图片预估费用不应冻结积分: %+v -> %+v, %v", before, reserved, err)
 			}
 			if err := s.Start(ctx, r.ID); err != nil {
 				t.Fatal(err)
