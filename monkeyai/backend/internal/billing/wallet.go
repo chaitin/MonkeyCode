@@ -107,12 +107,6 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		if e != nil {
 			return e
 		}
-		if definite {
-			_, e = sqlc.New(tx).ReleaseFrozenBalance(finalCtx, id)
-			if e != nil {
-				return e
-			}
-		}
 		if e = tx.Commit(finalCtx); e != nil {
 			return e
 		}

@@ -746,7 +746,7 @@ paths:
   /api/v1/billing/account:
     get:
       summary: 查询当前用户积分状态
-      description: 使用 Bearer access token 确定用户，返回当前周期额度、余额、冻结积分及可用积分（余额减冻结积分）；周期到期后按最新额度创建新账户。余额和可用积分可能为负数，不应截断为零。
+      description: 使用 Bearer access token 确定用户，返回当前周期额度、余额及可用积分（等于余额）；冻结字段为兼容旧客户端保留，迁移后为零；周期到期后按最新额度创建新账户。余额和可用积分可能为负数，不应截断为零。
       responses:
         '200':
           description: 请求成功
@@ -3521,6 +3521,7 @@ components:
           $ref: '#/components/schemas/CreditAmount'
         frozen:
           $ref: '#/components/schemas/CreditAmount'
+          description: 兼容字段，迁移后为零。
         available:
           $ref: '#/components/schemas/CreditAmount'
         quota:

@@ -299,11 +299,11 @@ func TestConcurrentReservations(t *testing.T) {
 	for err := range failures {
 		t.Error(err)
 	}
-	if len(ids) != 3 {
-		t.Fatalf("应允许第三笔用完零头，之后不再透支，实际 %d", len(ids))
+	if len(ids) != 20 {
+		t.Fatalf("未结算请求不应冻结账户，实际放行 %d", len(ids))
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Frozen != amountText("12") || a.Available != amountText("-2") {
+	if err != nil || a.Frozen != 0 || a.Available != amountText("10") {
 		t.Fatal(a, err)
 	}
 	for id := range ids {
@@ -398,7 +398,7 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 		t.Fatal("远程确认失败应保持待结算")
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Balance != amountText("10000") || a.Frozen == 0 {
+	if err != nil || a.Balance != amountText("10000") || a.Frozen != 0 {
 		t.Fatal(a, err)
 	}
 	stub.failConfirm = false
@@ -418,12 +418,11 @@ func TestRemoteConfirmationRecovery(t *testing.T) {
 
 func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		err    error
-		frozen bool
+		name string
+		err  error
 	}{
-		{"明确余额不足", opensdk.ErrInsufficientBalance, false},
-		{"远程返回前连接中断", errors.New("connection lost"), true},
+		{"明确余额不足", opensdk.ErrInsufficientBalance},
+		{"远程返回前连接中断", errors.New("connection lost")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, user, model := fixture(t)
@@ -445,7 +444,7 @@ func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (a.Frozen > 0) != tc.frozen || a.Balance != amountText("10000") {
+			if a.Frozen != 0 || a.Balance != amountText("10000") {
 				t.Fatalf("错误释放或扣款: %+v", a)
 			}
 		})
@@ -470,7 +469,7 @@ func TestMissingUsageKeepsReservation(t *testing.T) {
 		t.Fatal(state, err)
 	}
 	a, err := s.Account(ctx, user)
-	if err != nil || a.Frozen <= 0 || a.Balance != amountText("10000") {
+	if err != nil || a.Frozen != 0 || a.Balance != amountText("10000") {
 		t.Fatal(a, err)
 	}
 	if err = s.Finish(ctx, r.ID, Usage{Known: true, Input: 10000, Cached: 4000, Output: 2000, Result: "failed"}); err != nil {

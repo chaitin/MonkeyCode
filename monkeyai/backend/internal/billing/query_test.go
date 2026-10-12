@@ -37,8 +37,8 @@ func TestAccountDifferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	differences := check(1)
-	if differences[0].String("account_id") != account.ID || differences[0].String("frozen") == differences[0].String("reserved") {
-		t.Fatalf("未识别冻结额差异: %v", differences[0])
+	if differences[0].String("account_id") != account.ID || amountText(differences[0].String("frozen")) != amountText("1") {
+		t.Fatalf("未识别遗留冻结额: %v", differences[0])
 	}
 
 	if _, err = s.pool.Exec(ctx, `UPDATE credit_accounts SET frozen = frozen - 1, balance = balance - 1 WHERE id = $1`, account.ID); err != nil {

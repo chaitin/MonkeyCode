@@ -89,9 +89,9 @@ func TestAgentBilling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frozen := call("account", user, http.StatusOK)
-	if frozen.String("frozen") != "14" || frozen.String("available") != "9986" {
-		t.Fatalf("状态应反映预留积分: %v", frozen)
+	pending := call("account", user, http.StatusOK)
+	if pending.String("frozen") != "0" || pending.String("available") != "10000" {
+		t.Fatalf("未结算不应冻结积分: %v", pending)
 	}
 	if err := s.Start(ctx, reservation.ID); err != nil {
 		t.Fatal(err)

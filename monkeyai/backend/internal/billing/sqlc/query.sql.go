@@ -15,8 +15,7 @@ import (
 const accountDifferences = `-- name: AccountDifferences :many
 SELECT
     jsonb_build_object('account_id', a.id, 'user_id', a.user_id, 'balance', a.balance::text,
-	'ledger_balance', COALESCE(l.balance, 0)::text, 'frozen', a.frozen::text, 'reserved',
-	COALESCE(t.reserved, 0)::text)
+	'ledger_balance', COALESCE(l.balance, 0)::text, 'frozen', a.frozen::text)
 FROM
     credit_accounts a
     LEFT JOIN (
@@ -27,19 +26,9 @@ FROM
             credit_ledger_entries
         GROUP BY
             account_id) l ON l.account_id = a.id
-    LEFT JOIN (
-        SELECT
-            account_id,
-            sum(reserve) reserved
-        FROM
-            billing_transactions
-        WHERE
-            status NOT IN ('settled', 'released', 'rejected')
-        GROUP BY
-            account_id) t ON t.account_id = a.id
 WHERE
     a.balance <> COALESCE(l.balance, 0)
-    OR a.frozen <> COALESCE(t.reserved, 0)
+    OR a.frozen <> 0
 ORDER BY
     a.created_at
 LIMIT 100
@@ -249,7 +238,6 @@ UPDATE
     credit_accounts
 SET
     balance = balance - $2,
-    frozen = frozen - $3,
     updated_at = now()
 WHERE
     id = $1
@@ -258,11 +246,10 @@ WHERE
 type ChargeBalanceParams struct {
 	ID      string
 	Balance string
-	Frozen  string
 }
 
 func (q *Queries) ChargeBalance(ctx context.Context, arg ChargeBalanceParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, chargeBalance, arg.ID, arg.Balance, arg.Frozen)
+	return q.db.Exec(ctx, chargeBalance, arg.ID, arg.Balance)
 }
 
 const completeSettlement = `-- name: CompleteSettlement :execresult
@@ -651,25 +638,6 @@ func (q *Queries) EventID(ctx context.Context, eventKey *string) (string, error)
 	var id string
 	err := row.Scan(&id)
 	return id, err
-}
-
-const freezeBalance = `-- name: FreezeBalance :execresult
-UPDATE
-    credit_accounts
-SET
-    frozen = frozen + $2,
-    updated_at = now()
-WHERE
-    id = $1
-`
-
-type FreezeBalanceParams struct {
-	ID     string
-	Frozen string
-}
-
-func (q *Queries) FreezeBalance(ctx context.Context, arg FreezeBalanceParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, freezeBalance, arg.ID, arg.Frozen)
 }
 
 const getAdjustment = `-- name: GetAdjustment :one
@@ -1224,7 +1192,7 @@ SELECT
         'effective_credits', COALESCE(g.credits, $1::numeric)::text,
         'balance_credits', COALESCE(a.balance,
             g.credits, $1::numeric)::text,
-        'available_credits', COALESCE(a.balance - a.frozen,
+        'available_credits', COALESCE(a.balance,
             g.credits, $1::numeric)::text,
         'inherited_from', COALESCE(g.source, $2::text),
         'external_user_id', wb.external_user_id)
@@ -1238,7 +1206,7 @@ FROM
         LIMIT 1
     ) g ON TRUE
     LEFT JOIN LATERAL (
-        SELECT balance, frozen
+        SELECT balance
         FROM credit_accounts
         WHERE user_id = u.id
             AND period_start_at = $3
@@ -1426,7 +1394,6 @@ SELECT
     item_name,
     category,
     amount::text,
-    reserve::text,
     status
 FROM
     billing_transactions
@@ -1440,7 +1407,6 @@ type LockSettlementRow struct {
 	ItemName  string
 	Category  string
 	Amount    string
-	Reserve   string
 	Status    string
 }
 
@@ -1452,7 +1418,6 @@ func (q *Queries) LockSettlement(ctx context.Context, id string) (LockSettlement
 		&i.ItemName,
 		&i.Category,
 		&i.Amount,
-		&i.Reserve,
 		&i.Status,
 	)
 	return i, err
@@ -1735,22 +1700,6 @@ func (q *Queries) PendingTransactions(ctx context.Context, arg PendingTransactio
 		return nil, err
 	}
 	return items, nil
-}
-
-const releaseFrozenBalance = `-- name: ReleaseFrozenBalance :execresult
-UPDATE
-    credit_accounts a
-SET
-    frozen = a.frozen - t.reserve
-FROM
-    billing_transactions t
-WHERE
-    t.id = $1
-    AND a.id = t.account_id
-`
-
-func (q *Queries) ReleaseFrozenBalance(ctx context.Context, id string) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, releaseFrozenBalance, id)
 }
 
 const releaseReconciliationLock = `-- name: ReleaseReconciliationLock :execresult
