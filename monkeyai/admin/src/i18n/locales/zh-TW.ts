@@ -176,6 +176,10 @@ export const zhTW = {
         seconds: "{{count}} 秒",
       },
     },
+    conversationHistory: {
+      title: "對話歷史",
+      description: "按輪次查看使用者的對話內容。",
+    },
     taskHistory: {
       title: "任務歷史",
       description: "查看所有用戶端執行過的任務記錄。",

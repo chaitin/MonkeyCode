@@ -6,6 +6,7 @@ export const CONSOLE_ROUTES = {
   taskStatistics: "/console/statistics/tasks",
   modelStatistics: "/console/statistics/models",
   taskHistory: "/console/statistics/task-history",
+  conversationHistory: "/console/statistics/conversation-history",
   sessionOverview: "/console/statistics/session-reporting",
   sessionList: "/console/statistics/session-reporting/sessions",
   sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
@@ -56,6 +57,13 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.taskHistory,
     titleKey: "pages.taskHistory.title",
     descriptionKey: "pages.taskHistory.description",
+  },
+  {
+    path: CONSOLE_ROUTES.conversationHistory,
+    sectionKey: "sections.usageRecords",
+    sectionPath: CONSOLE_ROUTES.taskHistory,
+    titleKey: "pages.conversationHistory.title",
+    descriptionKey: "pages.conversationHistory.description",
   },
   {
     path: CONSOLE_ROUTES.sessionList,

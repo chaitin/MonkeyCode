@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import {
-  ArrowLeft02Icon,
+  ArrowLeft01Icon,
   ArrowRight01Icon,
   Search02Icon,
   User02Icon,
@@ -393,7 +393,7 @@ export function TaskHistoryPage() {
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent align="start" alignItemWithTrigger={false}>
+                <SelectContent alignItemWithTrigger={false} align="start">
                   <SelectGroup>
                     {pageSizeItems.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
@@ -422,14 +422,12 @@ export function TaskHistoryPage() {
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                disabled={
-                  request.loading || !!request.error || currentPage === 1
-                }
-                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                disabled={request.loading || currentPage === 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
                 aria-label={t("pages.operationLogs.pagination.previous")}
               >
                 <HugeiconsIcon
-                  icon={ArrowLeft02Icon}
+                  icon={ArrowLeft01Icon}
                   className="rtl:rotate-180"
                 />
               </Button>
@@ -438,9 +436,13 @@ export function TaskHistoryPage() {
                 variant="outline"
                 size="icon-sm"
                 disabled={
-                  request.loading || !!request.error || currentPage >= pageCount
+                  request.loading ||
+                  Boolean(request.error) ||
+                  currentPage >= pageCount
                 }
-                onClick={() => setPage(Math.min(pageCount, currentPage + 1))}
+                onClick={() =>
+                  setPage((value) => Math.min(pageCount, value + 1))
+                }
                 aria-label={t("pages.operationLogs.pagination.next")}
               >
                 <HugeiconsIcon

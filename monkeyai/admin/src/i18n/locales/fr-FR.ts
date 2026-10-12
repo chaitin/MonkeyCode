@@ -201,6 +201,10 @@ export const frFR = {
         seconds: "{{count}} s",
       },
     },
+    conversationHistory: {
+      title: "Historique des conversations",
+      description: "Consultez les messages de chaque tâche.",
+    },
     taskHistory: {
       title: "Historique des tâches",
       description: "Consultez les tâches exécutées par tous les clients.",

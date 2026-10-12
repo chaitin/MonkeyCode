@@ -196,6 +196,10 @@ export const es419 = {
         seconds: "{{count}} s",
       },
     },
+    conversationHistory: {
+      title: "Historial de conversaciones",
+      description: "Consulta los mensajes de cada tarea.",
+    },
     taskHistory: {
       title: "Historial de tareas",
       description: "Consulta las tareas ejecutadas por todos los clientes.",

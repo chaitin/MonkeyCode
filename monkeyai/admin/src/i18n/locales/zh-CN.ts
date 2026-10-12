@@ -300,6 +300,10 @@ export const zhCN = {
         seconds: "{{count}} 秒",
       },
     },
+    conversationHistory: {
+      title: "对话历史",
+      description: "按轮次查看用户的对话内容。",
+    },
     taskHistory: {
       title: "任务历史",
       description: "查看所有客户端执行过的任务记录。",

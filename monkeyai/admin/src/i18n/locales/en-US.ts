@@ -322,6 +322,10 @@ export const enUS = {
         seconds: "{{count}} s",
       },
     },
+    conversationHistory: {
+      title: "Conversation History",
+      description: "Review messages from each task turn.",
+    },
     taskHistory: {
       title: "Task History",
       description: "Review tasks executed by every client.",

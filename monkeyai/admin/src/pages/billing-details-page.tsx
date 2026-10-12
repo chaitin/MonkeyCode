@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
   User02Icon,
@@ -82,6 +83,7 @@ type Pending = {
   }[]
   migration_issues: { id: number; subject: string; reason: string }[]
 }
+type SearchField = "user" | "content" | "dateRange" | "category" | "entryType"
 const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
 const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
   credits(value, locale, 0)
@@ -122,6 +124,13 @@ export function BillingDetailsPage() {
     delete values.page
     delete values.page_size
     return values
+  })
+  const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(() => {
+    const initial: SearchField[] = ["user", "dateRange"]
+    if (params.get("content")) initial.push("content")
+    if (params.get("category")) initial.push("category")
+    if (params.get("entry_type")) initial.push("entryType")
+    return new Set(initial)
   })
   const [entries, setEntries] = useState<Entries | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
@@ -260,6 +269,16 @@ export function BillingDetailsPage() {
     t(`pages.billingDetails.entryTypes.${value}`, {
       defaultValue: entryNames[value] ?? value,
     })
+  const fieldOptions: { key: SearchField; label: string }[] = [
+    { key: "user", label: t("pages.billingDetails.filters.userPlaceholder") },
+    {
+      key: "content",
+      label: t("pages.billingDetails.filters.itemPlaceholder"),
+    },
+    { key: "dateRange", label: `${t("audit.since")} – ${t("audit.until")}` },
+    { key: "category", label: t("pages.billingDetails.filters.category") },
+    { key: "entryType", label: t("pages.billingDetails.filters.entryType") },
+  ]
   const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
@@ -359,121 +378,170 @@ export function BillingDetailsPage() {
                 onSubmit={search}
                 className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
               >
-                <Input
-                  id="billing-user"
-                  className="w-32"
-                  placeholder={t(
-                    "pages.billingDetails.filters.userPlaceholder"
-                  )}
-                  aria-label={t("pages.billingDetails.filters.userPlaceholder")}
-                  value={draft.user ?? ""}
-                  onChange={(event) => field("user", event.target.value)}
-                />
-                <Input
-                  id="billing-content"
-                  className="w-32"
-                  placeholder={t(
-                    "pages.billingDetails.filters.itemPlaceholder"
-                  )}
-                  aria-label={t("pages.billingDetails.filters.itemPlaceholder")}
-                  value={draft.content ?? ""}
-                  onChange={(event) => field("content", event.target.value)}
-                />
-                <DatePickerField
-                  id="billing-from"
-                  className="w-32 sm:w-32"
-                  label={t("audit.since")}
-                  placeholder={t("audit.since")}
-                  locale={locale}
-                  value={fromInput}
-                  onChange={(value) =>
-                    field(
-                      "from",
-                      value ? startOfLocalDay(value).toISOString() : ""
-                    )
-                  }
-                  disabled={untilInput ? { after: untilInput } : undefined}
-                />
-                <DatePickerField
-                  id="billing-until"
-                  className="w-32 sm:w-32"
-                  label={t("audit.until")}
-                  placeholder={t("audit.until")}
-                  locale={locale}
-                  value={untilInput}
-                  onChange={(value) =>
-                    field(
-                      "until",
-                      value ? endOfLocalDay(value).toISOString() : ""
-                    )
-                  }
-                  disabled={fromInput ? { before: fromInput } : undefined}
-                />
+                {visibleFields.has("user") && (
+                  <Input
+                    id="billing-user"
+                    className="w-32"
+                    placeholder={t(
+                      "pages.billingDetails.filters.userPlaceholder"
+                    )}
+                    aria-label={t(
+                      "pages.billingDetails.filters.userPlaceholder"
+                    )}
+                    value={draft.user ?? ""}
+                    onChange={(event) => field("user", event.target.value)}
+                  />
+                )}
+                {visibleFields.has("content") && (
+                  <Input
+                    id="billing-content"
+                    className="w-32"
+                    placeholder={t(
+                      "pages.billingDetails.filters.itemPlaceholder"
+                    )}
+                    aria-label={t(
+                      "pages.billingDetails.filters.itemPlaceholder"
+                    )}
+                    value={draft.content ?? ""}
+                    onChange={(event) => field("content", event.target.value)}
+                  />
+                )}
+                {visibleFields.has("dateRange") && (
+                  <>
+                    <DatePickerField
+                      id="billing-from"
+                      className="w-32 sm:w-32"
+                      label={t("audit.since")}
+                      placeholder={t("audit.since")}
+                      locale={locale}
+                      value={fromInput}
+                      onChange={(value) =>
+                        field(
+                          "from",
+                          value ? startOfLocalDay(value).toISOString() : ""
+                        )
+                      }
+                      disabled={untilInput ? { after: untilInput } : undefined}
+                    />
+                    <DatePickerField
+                      id="billing-until"
+                      className="w-32 sm:w-32"
+                      label={t("audit.until")}
+                      placeholder={t("audit.until")}
+                      locale={locale}
+                      value={untilInput}
+                      onChange={(value) =>
+                        field(
+                          "until",
+                          value ? endOfLocalDay(value).toISOString() : ""
+                        )
+                      }
+                      disabled={fromInput ? { before: fromInput } : undefined}
+                    />
+                  </>
+                )}
+                {visibleFields.has("category") && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={
+                            draft.category ? undefined : "text-muted-foreground"
+                          }
+                        />
+                      }
+                    >
+                      {draft.category
+                        ? categoryLabel(draft.category)
+                        : t("pages.billingDetails.filters.category")}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>
+                          {t("pages.billingDetails.filters.category")}
+                        </DropdownMenuLabel>
+                        {CATEGORY_FILTERS.map((value) => (
+                          <DropdownMenuCheckboxItem
+                            key={value}
+                            checked={draft.category === value}
+                            onCheckedChange={(checked) =>
+                              field("category", checked ? value : "")
+                            }
+                          >
+                            {categoryLabel(value)}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {visibleFields.has("entryType") && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={
+                            draft.entry_type
+                              ? undefined
+                              : "text-muted-foreground"
+                          }
+                        />
+                      }
+                    >
+                      {draft.entry_type
+                        ? entryLabel(draft.entry_type)
+                        : t("pages.billingDetails.filters.entryType")}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>
+                          {t("pages.billingDetails.filters.entryType")}
+                        </DropdownMenuLabel>
+                        {ENTRY_FILTERS.map((value) => (
+                          <DropdownMenuCheckboxItem
+                            key={value}
+                            checked={draft.entry_type === value}
+                            onCheckedChange={(checked) =>
+                              field("entry_type", checked ? value : "")
+                            }
+                          >
+                            {entryLabel(value)}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={
-                          draft.category ? undefined : "text-muted-foreground"
-                        }
-                      />
-                    }
+                    render={<Button type="button" variant="outline" />}
                   >
-                    {draft.category
-                      ? categoryLabel(draft.category)
-                      : t("pages.billingDetails.filters.category")}
+                    <HugeiconsIcon
+                      icon={FilterHorizontalIcon}
+                      data-icon="inline-start"
+                    />
+                    {t("common.more")}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel>
-                        {t("pages.billingDetails.filters.category")}
-                      </DropdownMenuLabel>
-                      {CATEGORY_FILTERS.map((value) => (
+                      {fieldOptions.map(({ key, label }) => (
                         <DropdownMenuCheckboxItem
-                          key={value}
-                          checked={draft.category === value}
+                          key={key}
+                          checked={visibleFields.has(key)}
                           onCheckedChange={(checked) =>
-                            field("category", checked ? value : "")
+                            setVisibleFields((current) => {
+                              const next = new Set(current)
+                              if (checked) next.add(key)
+                              else next.delete(key)
+                              return next
+                            })
                           }
                         >
-                          {categoryLabel(value)}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={
-                          draft.entry_type ? undefined : "text-muted-foreground"
-                        }
-                      />
-                    }
-                  >
-                    {draft.entry_type
-                      ? entryLabel(draft.entry_type)
-                      : t("pages.billingDetails.filters.entryType")}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>
-                        {t("pages.billingDetails.filters.entryType")}
-                      </DropdownMenuLabel>
-                      {ENTRY_FILTERS.map((value) => (
-                        <DropdownMenuCheckboxItem
-                          key={value}
-                          checked={draft.entry_type === value}
-                          onCheckedChange={(checked) =>
-                            field("entry_type", checked ? value : "")
-                          }
-                        >
-                          {entryLabel(value)}
+                          {label}
                         </DropdownMenuCheckboxItem>
                       ))}
                     </DropdownMenuGroup>

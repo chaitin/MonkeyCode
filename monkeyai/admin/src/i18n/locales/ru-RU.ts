@@ -199,6 +199,10 @@ export const ruRU = {
         seconds: "{{count}} с",
       },
     },
+    conversationHistory: {
+      title: "История диалогов",
+      description: "Просмотр сообщений по задачам.",
+    },
     taskHistory: {
       title: "История задач",
       description: "Просматривайте задачи, выполненные всеми клиентами.",

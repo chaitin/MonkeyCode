@@ -194,6 +194,10 @@ export const jaJP = {
         seconds: "{{count}} 秒",
       },
     },
+    conversationHistory: {
+      title: "会話履歴",
+      description: "タスクごとの発言を確認します。",
+    },
     taskHistory: {
       title: "タスク履歴",
       description: "すべてのクライアントで実行されたタスクを確認します。",

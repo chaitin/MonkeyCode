@@ -187,6 +187,10 @@ export const koKR = {
         seconds: "{{count}}초",
       },
     },
+    conversationHistory: {
+      title: "대화 기록",
+      description: "작업의 각 대화 내용을 확인합니다.",
+    },
     taskHistory: {
       title: "작업 기록",
       description: "모든 클라이언트에서 실행된 작업을 확인합니다.",

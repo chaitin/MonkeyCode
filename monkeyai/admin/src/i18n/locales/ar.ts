@@ -186,6 +186,10 @@ export const ar = {
         seconds: "{{count}} ثانية",
       },
     },
+    conversationHistory: {
+      title: "سجل المحادثات",
+      description: "عرض رسائل كل مهمة.",
+    },
     taskHistory: {
       title: "سجل المهام",
       description: "راجع المهام التي نفّذتها جميع تطبيقات العميل.",

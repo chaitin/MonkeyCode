@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
   User02Icon,
@@ -81,6 +82,7 @@ type AuditPage = {
 }
 type CategoryFilter = LogCategory | null
 type ResultFilter = LogResult | null
+type SearchField = "operator" | "ip" | "dateRange" | "category" | "result"
 const DEFAULT_PAGE_SIZE = 50
 const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
 const CATEGORY_FILTERS: LogCategory[] = [
@@ -100,6 +102,9 @@ export function OperationLogsPage() {
   const [ipInput, setIpInput] = useState("")
   const [categoryInput, setCategoryInput] = useState<CategoryFilter>(null)
   const [resultInput, setResultInput] = useState<ResultFilter>(null)
+  const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
+    () => new Set(["operator", "dateRange"])
+  )
   const [operatorQuery, setOperatorQuery] = useState("")
   const [ipQuery, setIpQuery] = useState("")
   const [category, setCategory] = useState<CategoryFilter>(null)
@@ -122,6 +127,16 @@ export function OperationLogsPage() {
   const categoryLabel = (value: LogCategory) => t(`audit.categories.${value}`)
   const resultLabel = (value: LogResult) =>
     t(`pages.operationLogs.results.${value}`)
+  const fieldOptions: { key: SearchField; label: string }[] = [
+    {
+      key: "operator",
+      label: t("pages.operationLogs.filters.operatorSearchPlaceholder"),
+    },
+    { key: "ip", label: t("pages.operationLogs.filters.ipSearchPlaceholder") },
+    { key: "dateRange", label: `${t("audit.since")} – ${t("audit.until")}` },
+    { key: "category", label: t("pages.operationLogs.filters.actionType") },
+    { key: "result", label: t("pages.operationLogs.filters.result") },
+  ]
 
   const query = new URLSearchParams({
     page: String(page),
@@ -248,105 +263,152 @@ export function OperationLogsPage() {
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <div className="flex flex-wrap items-center gap-2 px-(--card-spacing)">
-            <Input
-              className="w-32"
-              value={operatorInput}
-              onChange={(event) => setOperatorInput(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder={t(
-                "pages.operationLogs.filters.operatorSearchPlaceholder"
-              )}
-              aria-label={t(
-                "pages.operationLogs.filters.operatorSearchPlaceholder"
-              )}
-            />
-            <Input
-              className="w-32"
-              value={ipInput}
-              onChange={(event) => setIpInput(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder={t("pages.operationLogs.filters.ipSearchPlaceholder")}
-              aria-label={t("pages.operationLogs.filters.ipSearchPlaceholder")}
-            />
-            <DatePickerField
-              id="audit-start-date"
-              className="w-32 sm:w-32"
-              label={t("audit.since")}
-              placeholder={t("audit.since")}
-              locale={locale}
-              value={sinceInput}
-              onChange={setSinceInput}
-              disabled={untilInput ? { after: untilInput } : undefined}
-            />
-            <DatePickerField
-              id="audit-end-date"
-              className="w-32 sm:w-32"
-              label={t("audit.until")}
-              placeholder={t("audit.until")}
-              locale={locale}
-              value={untilInput}
-              onChange={setUntilInput}
-              disabled={sinceInput ? { before: sinceInput } : undefined}
-            />
+            {visibleFields.has("operator") && (
+              <Input
+                className="w-32"
+                value={operatorInput}
+                onChange={(event) => setOperatorInput(event.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder={t(
+                  "pages.operationLogs.filters.operatorSearchPlaceholder"
+                )}
+                aria-label={t(
+                  "pages.operationLogs.filters.operatorSearchPlaceholder"
+                )}
+              />
+            )}
+            {visibleFields.has("ip") && (
+              <Input
+                className="w-32"
+                value={ipInput}
+                onChange={(event) => setIpInput(event.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder={t(
+                  "pages.operationLogs.filters.ipSearchPlaceholder"
+                )}
+                aria-label={t(
+                  "pages.operationLogs.filters.ipSearchPlaceholder"
+                )}
+              />
+            )}
+            {visibleFields.has("dateRange") && (
+              <>
+                <DatePickerField
+                  id="audit-start-date"
+                  className="w-32 sm:w-32"
+                  label={t("audit.since")}
+                  placeholder={t("audit.since")}
+                  locale={locale}
+                  value={sinceInput}
+                  onChange={setSinceInput}
+                  disabled={untilInput ? { after: untilInput } : undefined}
+                />
+                <DatePickerField
+                  id="audit-end-date"
+                  className="w-32 sm:w-32"
+                  label={t("audit.until")}
+                  placeholder={t("audit.until")}
+                  locale={locale}
+                  value={untilInput}
+                  onChange={setUntilInput}
+                  disabled={sinceInput ? { before: sinceInput } : undefined}
+                />
+              </>
+            )}
+            {visibleFields.has("category") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className={cn(!categoryInput && "text-muted-foreground")}
+                    />
+                  }
+                >
+                  {categoryInput
+                    ? categoryLabel(categoryInput)
+                    : t("pages.operationLogs.filters.actionType")}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      {t("pages.operationLogs.filters.actionType")}
+                    </DropdownMenuLabel>
+                    {CATEGORY_FILTERS.map((value) => (
+                      <DropdownMenuCheckboxItem
+                        key={value}
+                        checked={categoryInput === value}
+                        onCheckedChange={(checked) =>
+                          setCategoryInput(checked ? value : null)
+                        }
+                      >
+                        {categoryLabel(value)}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {visibleFields.has("result") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className={cn(!resultInput && "text-muted-foreground")}
+                    />
+                  }
+                >
+                  {resultInput
+                    ? resultLabel(resultInput)
+                    : t("pages.operationLogs.filters.result")}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      {t("pages.operationLogs.filters.result")}
+                    </DropdownMenuLabel>
+                    {RESULT_FILTERS.map((value) => (
+                      <DropdownMenuCheckboxItem
+                        key={value}
+                        checked={resultInput === value}
+                        onCheckedChange={(checked) =>
+                          setResultInput(checked ? value : null)
+                        }
+                      >
+                        {resultLabel(value)}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    className={cn(!categoryInput && "text-muted-foreground")}
-                  />
-                }
+                render={<Button type="button" variant="outline" />}
               >
-                {categoryInput
-                  ? categoryLabel(categoryInput)
-                  : t("pages.operationLogs.filters.actionType")}
+                <HugeiconsIcon
+                  icon={FilterHorizontalIcon}
+                  data-icon="inline-start"
+                />
+                {t("common.more")}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>
-                    {t("pages.operationLogs.filters.actionType")}
-                  </DropdownMenuLabel>
-                  {CATEGORY_FILTERS.map((value) => (
+                  {fieldOptions.map(({ key, label }) => (
                     <DropdownMenuCheckboxItem
-                      key={value}
-                      checked={categoryInput === value}
+                      key={key}
+                      checked={visibleFields.has(key)}
                       onCheckedChange={(checked) =>
-                        setCategoryInput(checked ? value : null)
+                        setVisibleFields((current) => {
+                          const next = new Set(current)
+                          if (checked) next.add(key)
+                          else next.delete(key)
+                          return next
+                        })
                       }
                     >
-                      {categoryLabel(value)}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    className={cn(!resultInput && "text-muted-foreground")}
-                  />
-                }
-              >
-                {resultInput
-                  ? resultLabel(resultInput)
-                  : t("pages.operationLogs.filters.result")}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>
-                    {t("pages.operationLogs.filters.result")}
-                  </DropdownMenuLabel>
-                  {RESULT_FILTERS.map((value) => (
-                    <DropdownMenuCheckboxItem
-                      key={value}
-                      checked={resultInput === value}
-                      onCheckedChange={(checked) =>
-                        setResultInput(checked ? value : null)
-                      }
-                    >
-                      {resultLabel(value)}
+                      {label}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuGroup>

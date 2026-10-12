@@ -201,6 +201,10 @@ export const deDE = {
         seconds: "{{count}} s",
       },
     },
+    conversationHistory: {
+      title: "Gesprächsverlauf",
+      description: "Nachrichten aus den einzelnen Aufgaben anzeigen.",
+    },
     taskHistory: {
       title: "Aufgabenverlauf",
       description: "Prüfen Sie die von allen Clients ausgeführten Aufgaben.",

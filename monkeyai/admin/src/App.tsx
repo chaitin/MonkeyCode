@@ -21,6 +21,7 @@ import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
+import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelStatisticsPage } from "@/pages/model-statistics-page"
 import { ModelsPage } from "@/pages/models-page"
@@ -108,6 +109,8 @@ export function App() {
                     <ModelStatisticsPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />
+                  ) : page.path === CONSOLE_ROUTES.conversationHistory ? (
+                    <ConversationHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.sessionOverview ? (
                     <SessionOverviewPage />
                   ) : page.path === CONSOLE_ROUTES.sessionList ? (
