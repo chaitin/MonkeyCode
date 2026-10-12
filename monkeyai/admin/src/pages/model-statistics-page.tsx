@@ -104,7 +104,7 @@ function ModelTrendCard({
 
 export function ModelStatisticsPage() {
   const { i18n, t } = useTranslation()
-  const [timeRange, setTimeRange] = useState<TimeRange>("30d")
+  const [timeRange, setTimeRange] = useState<TimeRange>("24h")
   const [model, setModel] = useState<string>("all")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const numberFormatter = new Intl.NumberFormat(locale)

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState, type FormEvent } from "react"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  FilterHorizontalIcon,
   Search02Icon,
   User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { Link } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -17,7 +19,15 @@ import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { CONSOLE_ROUTES } from "@/lib/routes"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -53,6 +63,8 @@ type TaskHistory = {
   page: number
   page_size: number
 }
+
+type SearchField = "taskName" | "userName" | "dateRange"
 
 type TaskHistoryFilters = {
   taskName: string
@@ -114,6 +126,9 @@ export function TaskHistoryPage() {
   const [filterInput, setFilterInput] =
     useState<TaskHistoryFilters>(EMPTY_FILTERS)
   const [filters, setFilters] = useState<TaskHistoryFilters>(EMPTY_FILTERS)
+  const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
+    () => new Set(["taskName", "userName"])
+  )
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [now, setNow] = useState(() => Date.now())
@@ -168,6 +183,14 @@ export function TaskHistoryPage() {
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))
+  const fieldOptions: { key: SearchField; label: string }[] = [
+    { key: "taskName", label: t("pages.taskHistory.filters.taskName") },
+    { key: "userName", label: t("pages.taskHistory.filters.userName") },
+    {
+      key: "dateRange",
+      label: `${t("pages.taskHistory.filters.startTime")} – ${t("pages.taskHistory.filters.endTime")}`,
+    },
+  ]
   const resetPage = () => setPage(1)
   const updateTextFilterInput = (
     key: "taskName" | "userName",
@@ -199,80 +222,119 @@ export function TaskHistoryPage() {
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form onSubmit={applySearch} className="px-(--card-spacing)">
             <FieldGroup className="flex-row flex-wrap items-end gap-3">
-              <Field className="sm:w-44">
-                <FieldLabel
-                  htmlFor="task-history-task-name"
-                  className="sr-only"
+              {visibleFields.has("taskName") && (
+                <Field className="sm:w-44">
+                  <FieldLabel
+                    htmlFor="task-history-task-name"
+                    className="sr-only"
+                  >
+                    {t("pages.taskHistory.filters.taskName")}
+                  </FieldLabel>
+                  <Input
+                    id="task-history-task-name"
+                    value={filterInput.taskName}
+                    onChange={(event) =>
+                      updateTextFilterInput("taskName", event.target.value)
+                    }
+                    placeholder={t(
+                      "pages.taskHistory.filters.taskNamePlaceholder"
+                    )}
+                  />
+                </Field>
+              )}
+              {visibleFields.has("userName") && (
+                <Field className="sm:w-44">
+                  <FieldLabel
+                    htmlFor="task-history-user-name"
+                    className="sr-only"
+                  >
+                    {t("pages.taskHistory.filters.userName")}
+                  </FieldLabel>
+                  <Input
+                    id="task-history-user-name"
+                    value={filterInput.userName}
+                    onChange={(event) =>
+                      updateTextFilterInput("userName", event.target.value)
+                    }
+                    placeholder={t(
+                      "pages.taskHistory.filters.userNamePlaceholder"
+                    )}
+                  />
+                </Field>
+              )}
+              {visibleFields.has("dateRange") && (
+                <>
+                  <DatePickerField
+                    id="task-history-start-time"
+                    className="sm:w-40"
+                    label={t("pages.taskHistory.filters.startTime")}
+                    placeholder={t("pages.taskHistory.filters.startTime")}
+                    locale={locale}
+                    value={filterInput.startTime}
+                    onChange={(value) =>
+                      setFilterInput((current) => ({
+                        ...current,
+                        startTime: value,
+                      }))
+                    }
+                    disabled={
+                      filterInput.endTime
+                        ? { after: filterInput.endTime }
+                        : undefined
+                    }
+                  />
+                  <DatePickerField
+                    id="task-history-end-time"
+                    className="sm:w-40"
+                    label={t("pages.taskHistory.filters.endTime")}
+                    placeholder={t("pages.taskHistory.filters.endTime")}
+                    locale={locale}
+                    value={filterInput.endTime}
+                    onChange={(value) =>
+                      setFilterInput((current) => ({
+                        ...current,
+                        endTime: value,
+                      }))
+                    }
+                    disabled={
+                      filterInput.startTime
+                        ? { before: filterInput.startTime }
+                        : undefined
+                    }
+                  />
+                </>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button type="button" variant="outline" />}
                 >
-                  {t("pages.taskHistory.filters.taskName")}
-                </FieldLabel>
-                <Input
-                  id="task-history-task-name"
-                  value={filterInput.taskName}
-                  onChange={(event) =>
-                    updateTextFilterInput("taskName", event.target.value)
-                  }
-                  placeholder={t(
-                    "pages.taskHistory.filters.taskNamePlaceholder"
-                  )}
-                />
-              </Field>
-              <Field className="sm:w-44">
-                <FieldLabel
-                  htmlFor="task-history-user-name"
-                  className="sr-only"
-                >
-                  {t("pages.taskHistory.filters.userName")}
-                </FieldLabel>
-                <Input
-                  id="task-history-user-name"
-                  value={filterInput.userName}
-                  onChange={(event) =>
-                    updateTextFilterInput("userName", event.target.value)
-                  }
-                  placeholder={t(
-                    "pages.taskHistory.filters.userNamePlaceholder"
-                  )}
-                />
-              </Field>
-              <DatePickerField
-                id="task-history-start-time"
-                className="sm:w-40"
-                label={t("pages.taskHistory.filters.startTime")}
-                placeholder={t("pages.taskHistory.filters.startTime")}
-                locale={locale}
-                value={filterInput.startTime}
-                onChange={(value) =>
-                  setFilterInput((current) => ({
-                    ...current,
-                    startTime: value,
-                  }))
-                }
-                disabled={
-                  filterInput.endTime
-                    ? { after: filterInput.endTime }
-                    : undefined
-                }
-              />
-              <DatePickerField
-                id="task-history-end-time"
-                className="sm:w-40"
-                label={t("pages.taskHistory.filters.endTime")}
-                placeholder={t("pages.taskHistory.filters.endTime")}
-                locale={locale}
-                value={filterInput.endTime}
-                onChange={(value) =>
-                  setFilterInput((current) => ({
-                    ...current,
-                    endTime: value,
-                  }))
-                }
-                disabled={
-                  filterInput.startTime
-                    ? { before: filterInput.startTime }
-                    : undefined
-                }
-              />
+                  <HugeiconsIcon
+                    icon={FilterHorizontalIcon}
+                    data-icon="inline-start"
+                  />
+                  {t("common.more")}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuGroup>
+                    {fieldOptions.map(({ key, label }) => (
+                      <DropdownMenuCheckboxItem
+                        key={key}
+                        checked={visibleFields.has(key)}
+                        onCheckedChange={(checked) =>
+                          setVisibleFields((current) => {
+                            const next = new Set(current)
+                            if (checked) next.add(key)
+                            else next.delete(key)
+                            return next
+                          })
+                        }
+                      >
+                        {label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Field className="sm:w-auto">
                 <FieldLabel className="sr-only">
                   {t("pages.taskHistory.filters.search")}
@@ -309,7 +371,7 @@ export function TaskHistoryPage() {
                   <TableHead className="w-28">
                     {t("pages.taskHistory.columns.conversationCount")}
                   </TableHead>
-                  <TableHead className="w-40 pe-(--card-spacing)">
+                  <TableHead className="w-36 pe-(--card-spacing)">
                     {t("pages.taskHistory.columns.lastActiveAt")}
                   </TableHead>
                 </TableRow>
@@ -349,11 +411,13 @@ export function TaskHistoryPage() {
                         </button>
                       </TableCell>
                       <TableCell>
-                        <div className="min-w-0">
-                          <span className="block truncate" title={task.title}>
-                            {task.title}
-                          </span>
-                        </div>
+                        <Link
+                          to={`${CONSOLE_ROUTES.conversationHistory}?task_id=${encodeURIComponent(task.id)}`}
+                          className="block min-w-0 truncate rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          title={task.title}
+                        >
+                          {task.title}
+                        </Link>
                       </TableCell>
                       <TableCell className="truncate tabular-nums">
                         {numberFormatter.format(task.turn_count)}
