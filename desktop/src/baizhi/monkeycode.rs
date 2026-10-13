@@ -216,8 +216,39 @@ pub fn mc_host(svc: &Service) -> String {
 
 /// 钱包(积分余额 + 每日免费模型 token 额度)。官方云才有这个端点,
 /// 私有化部署会 404。
-async fn mc_wallet(svc: &Service) -> BzResult<Value> {
+pub(crate) async fn mc_wallet(svc: &Service) -> BzResult<Value> {
     mc_call(svc, reqwest::Method::GET, "/api/v1/users/wallet", None).await
+}
+
+/// 当天的真实积分消费：只计模型、主机和工具消费的余额部分，不计免费额度、充值或罚款。
+/// 固定查询结束时间，完整翻页后才返回数值；不完整/不支持的结果保持未知。
+pub(crate) async fn mc_pet_used_credits(svc: &Service, start: i64, end: u64) -> BzResult<f64> {
+    let mut total = 0.0;
+    for page in 1..=50 {
+        let value = mc_call(svc, reqwest::Method::GET,
+            &format!("/api/v1/users/wallet/transaction?start={start}&end={end}&page={page}&size=100&sort=asc"), None).await?;
+        total += pet_consumption_page(&value, start, end).ok_or_else(|| other("积分流水字段不完整"))?;
+        match value.pointer("/page/has_next_page").and_then(Value::as_bool) {
+            Some(false) => return Ok(total / 1000.0),
+            Some(true) => {},
+            None => return Err(other("积分流水分页信息缺失")),
+        }
+    }
+    Err(other("今日流水过多，暂无法完整汇总"))
+}
+
+fn pet_consumption_page(value: &Value, start: i64, end: u64) -> Option<f64> {
+    let mut sum = 0.0;
+    for row in value.get("transactions")?.as_array()? {
+        let at = row.get("created_at")?.as_i64()?;
+        if at < start || at as u64 > end { continue; }
+        if !["model_consumption", "vm_consumption", "mcp_tool_consumption"].contains(&row.get("kind")?.as_str()?) { continue; }
+        if row.get("inout_type").and_then(Value::as_str) == Some("in") { continue; }
+        let amount = row.get("amount_balance")?.as_f64()?;
+        if !amount.is_finite() { return None; }
+        sum += amount.abs();
+    }
+    Some(sum)
 }
 
 /// 会员订阅(等级/到期/续费来源)。开源版后端固定返回基础状态。

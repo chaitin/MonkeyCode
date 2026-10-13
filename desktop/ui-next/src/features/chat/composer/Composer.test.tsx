@@ -1001,6 +1001,7 @@ describe("会话技能 server revision", () => {
 
   it("同会话快速点击严格按意图顺序调用，逆序延迟 mock 下后端最终仍是最新选择", async () => {
     const invocations: string[][] = [];
+    let completeFirst: () => void = () => { throw new Error("第一笔技能请求尚未发出"); };
     let activeCalls = 0;
     let maxActiveCalls = 0;
     let backendSkills: string[] = [];
@@ -1013,13 +1014,17 @@ describe("会话技能 server revision", () => {
         invocations.push(next);
         activeCalls += 1;
         maxActiveCalls = Math.max(maxActiveCalls, activeCalls);
-        // 若并发，第二次会先完成，随后旧调用覆盖后端；只有 invocation
-        // 本身串行，最终后端才会保持最后一次用户意图。
-        return new Promise((resolve) => window.setTimeout(() => {
-          backendSkills = next;
-          activeCalls -= 1;
-          resolve({ result: { skills: next, skills_revision: callIndex === 0 ? 3 : 4 } });
-        }, callIndex === 0 ? 30 : 0));
+        // 第一笔由测试显式放行，避免真实计时在 CI 负载下先于点击结束。
+        // 若并发，第二笔会先完成并暴露旧调用覆盖最新选择的问题。
+        return new Promise((resolve) => {
+          const complete = () => {
+            backendSkills = next;
+            activeCalls -= 1;
+            resolve({ result: { skills: next, skills_revision: callIndex === 0 ? 3 : 4 } });
+          };
+          if (callIndex === 0) completeFirst = complete;
+          else complete();
+        });
       },
     });
     render(<ChatView meta={{ ...META, skills: ["a"], skills_revision: 2 }} />);
@@ -1032,6 +1037,7 @@ describe("会话技能 server revision", () => {
     await userEvent.click(within(menu).getByRole("checkbox", { name: "a" })); // op2(latest): b
     expect(invocations).toEqual([["a", "b"]]);
     expect(within(menu).getByRole("checkbox", { name: "a" }).getAttribute("aria-checked")).toBe("false");
+    await act(async () => completeFirst());
     await waitFor(() => expect(invocations).toEqual([["a", "b"], ["b"]]));
     await waitFor(() => expect(backendSkills).toEqual(["b"]));
     expect(maxActiveCalls).toBe(1);

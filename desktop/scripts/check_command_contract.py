@@ -85,6 +85,7 @@ def check(root: pathlib.Path = ROOT) -> list[str]:
         pet = root / name / "public/pet.html"
         if pet.is_file():
             pet_paths.append(pet)
+            pet_paths += sorted(pet.parent.glob("pet-*.mjs"))
     if not ui_paths:
         raise ValueError(f"未找到任何 UI 源码目录({'/'.join(UI_ROOTS)})")
     main_invokes = literal_invokes(ui_paths)

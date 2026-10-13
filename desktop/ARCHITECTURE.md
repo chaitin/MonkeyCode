@@ -135,6 +135,51 @@ folded.jsonl",TS 钉住 `reduceBatch(raw) ≡ reduceBatch(folded)`
 `sound-enabled` 事件广播,音效本身由桌宠页 pet.html 播放(桌宠隐藏后
 webview 仍在跑,所以"关桌宠"不等于"静音",两个开关独立)。
 
+桌宠扩展偏好位于 `pet_preferences`（`src/pet.rs::Preferences`），独立于
+模型配置表单，用字段补丁原子合并；旧配置自动采用默认值，主设置保存也须
+保留它。`pet-preferences` 广播同步设置页、托盘和桌宠；大小默认 100%，
+不更换既有精灵图及逐帧动画，猴子保持 88×88；透明画布扩大至 180×164 以容纳多行气泡。`public/pet-core.mjs` 是无 DOM
+状态模型，`pet-runtime.mjs` 负责事件、音效及窗口交互。Windows 的隐藏
+`pet-service` 共用该模型，通过 `pet_native_render` 驱动原生透明窗口，
+右键菜单在两种窗口后端使用同一命令列表。
+
+单击猴子是摸摸互动：按下短暂压缩原图外层、松开回弹，默认显示积分余额与今日消费（可改为循环短句或关闭，可设 0–60 秒，0 常驻）；
+双击进入当前任务/主窗口，点击任务气泡仍使用该条提示的目标，右键保留菜单。
+拖动、失焦及取消手势不触发点击。两种触摸音效分别位于
+`sounds.press/release`，沿用音量、总静音与勿扰设置；旧配置自动补齐这两项。
+播放由 `pet-audio.mjs` 的 Web Audio 解码缓存驱动；触摸、通知、试听各最多一个当前声部，
+替换时短淡出。异步加载只保留最新有效点击，静音取消待播请求；不反复 seek。
+回弹使用 Web Animations API，不强制布局；原生绘制 IPC 保持最多一个在途请求。
+默认触摸改为轻柔弹音，另有玩具音和铃音；内置 WAV 由
+`scripts/generate_pet_touch_sounds.py` 生成。每个事件有独立 `source/enabled/volume`。
+设置页通过文件选择器导入音频，最大 10 MB / 30 秒，Web Audio 解码并转换为
+PCM16 WAV；`pet_audio.rs` 再校验通道、采样率、长度和头部，复制到私有
+`pet-sounds` 目录，以 SHA-256 标识访问。库上限 20 个，只能移除未被引用的音效。
+外部原文件不会改动；桌宠页只有受控读取权限，无导入/删除权限。
+Windows 原生窗口经 `pet-touch` 把按下/松开/取消/双击传给状态页，回传的
+`pressed/bounce` 驱动原图变换；交互反馈不修改任务状态，不遮住待处理与错误提醒。
+
+会话快照和 `session-ask` 事件均带 `waiting_items: [{id,kind}]`，`kind`
+为 approval/question/design；关闭一个交互不能清除同一任务的其他等待项。
+桌宠按请求 ID 去重声音，事件修订号防止慢快照覆盖新事件。提醒优先级为
+待处理 → 错误/中断 → 额度 → 回复/完成，队列逐条展示并保留各自点击目标；
+重连快照不重放历史音效。勿扰按电脑本地时间抑制声音和主动提示，仍可查看
+待处理任务。`bubble=none` 只关闭日常信息，不屏蔽任务事件。
+
+`pet_wallet` 从既有 MonkeyCode 钱包读取账号积分及每日免费 Token 额度，
+普通刷新缓存 60 秒，主动刷新最低间隔 5 秒，并合并并发请求。首次识别
+账号时查询用户身份，以站点+用户 ID 的摘要隔离每日提醒（按北京时间），
+Cookie 仅留壳内用于缓存身份校验，账号切换期间的旧响应会丢弃。主界面
+账号会话改变后调用 `pet_account_changed`，广播 `pet-wallet-invalidated`
+清空旧数据；服务地址变化走既有 `monkeycode-transport-changed`。
+缺失数据展示未知值，失败可展示带标记的缓存；缓存不触发低额度提醒。
+今日消费额从 `/api/v1/users/wallet/transaction` 按北京时间固定区间完整翻页汇总
+模型/主机/MCP 工具消费的 `amount_balance`，同余额除以 1000 转积分；不把
+`amount_daily` 或免费 Token、充值、罚款和订阅购买计入。查询最多 50 页、
+10 秒，字段不完整/接口缺失/中途失败均返回未知，跨日不复用昨日消费。
+该接口不把上下文 Token 当成计费用量，也不估算人民币费用。
+历史累计到账积分暂无聚合字段，UI 明确标注“积分余额”，不称作“累计总积分”。
+
 模型物化按**别名**作键,每条恒写 8 键:`type/model/base_url/api_key/
 context_window/supports_images/max_output/thinking`。桌面缺省显式压过
 引擎兜底:context_window 200000(引擎 128000)、max_output 32768(引擎
