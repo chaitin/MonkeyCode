@@ -315,8 +315,10 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 			if createErr != nil {
 				switch {
 				case errors.Is(createErr, member.ErrSeatsExceeded):
-					writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
-				case errors.Is(createErr, member.ErrSeatsUnavailable), errors.Is(createErr, member.ErrWriterUnavailable):
+					writeError(w, http.StatusConflict, "seats_exceeded", member.ErrSeatsExceeded.Error())
+				case errors.Is(createErr, member.ErrSeatsUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "seats_unavailable", member.ErrSeatsUnavailable.Error())
+				case errors.Is(createErr, member.ErrWriterUnavailable):
 					writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 				default:
 					slog.ErrorContext(ctx, "自动注册邮件登录用户失败", "error", createErr)

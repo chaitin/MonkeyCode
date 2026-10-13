@@ -5,6 +5,7 @@ import {
   ComputerIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { EmailAuthForm } from "@/components/email-auth-form"
@@ -37,6 +38,12 @@ const callbackErrorMessages: Record<string, string> = {
 }
 
 export function ClientLoginPage() {
+  const { t } = useTranslation()
+  const errorMessages: Record<string, string> = {
+    ...callbackErrorMessages,
+    seats_exceeded: t("login.seatsExceeded"),
+    seats_unavailable: t("login.seatsUnavailable"),
+  }
   const [search] = useSearchParams()
   const requestId = search.get("request_id") ?? ""
   const callbackError = search.get("error") ?? ""
@@ -45,9 +52,9 @@ export function ClientLoginPage() {
   const [error, setError] = useState("")
   const completionStarted = useRef(false)
   const requestError = !requestId
-    ? (callbackErrorMessages[callbackError] ?? "缺少授权请求参数。")
+    ? (errorMessages[callbackError] ?? "缺少授权请求参数。")
     : callbackError
-      ? (callbackErrorMessages[callbackError] ?? "登录失败，请重试。")
+      ? (errorMessages[callbackError] ?? "登录失败，请重试。")
       : error
 
   useEffect(() => {
