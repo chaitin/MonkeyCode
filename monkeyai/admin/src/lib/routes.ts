@@ -4,7 +4,6 @@ export const CONSOLE_PATH = "/console"
 export const CONSOLE_ROUTES = {
   realtimeStatus: "/console/statistics/realtime",
   taskStatistics: "/console/statistics/tasks",
-  modelStatistics: "/console/statistics/models",
   taskHistory: "/console/statistics/task-history",
   conversationHistory: "/console/statistics/conversation-history",
   sessionOverview: "/console/statistics/session-reporting",
@@ -44,13 +43,6 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.realtimeStatus,
     titleKey: "pages.taskStatistics.title",
     descriptionKey: "pages.taskStatistics.description",
-  },
-  {
-    path: CONSOLE_ROUTES.modelStatistics,
-    sectionKey: "sections.statistics",
-    sectionPath: CONSOLE_ROUTES.realtimeStatus,
-    titleKey: "pages.modelStatistics.title",
-    descriptionKey: "pages.modelStatistics.description",
   },
   {
     path: CONSOLE_ROUTES.taskHistory,

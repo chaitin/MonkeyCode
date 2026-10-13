@@ -15,20 +15,21 @@ import (
 )
 
 type Call struct {
-	ModelID           string
-	UserID            string
-	SessionID         string
-	RequestID         string
-	Known             bool
-	Stream            bool
-	Result            string
-	ErrorCode         string
-	TerminalEvent     string
-	InputTokens       uint64
-	OutputTokens      uint64
-	CachedInputTokens uint64
-	StartedAt         time.Time
-	CompletedAt       time.Time
+	ModelID              string
+	UserID               string
+	SessionID            string
+	RequestID            string
+	Known                bool
+	Stream               bool
+	Result               string
+	ErrorCode            string
+	TerminalEvent        string
+	InputTokens          uint64
+	OutputTokens         uint64
+	CachedInputTokens    uint64
+	FirstTokenDurationMs *int32
+	StartedAt            time.Time
+	CompletedAt          time.Time
 }
 
 type usageResult struct {
@@ -42,6 +43,7 @@ type usageResult struct {
 	Result                   string
 	ErrorCode                string
 	TerminalEvent            string
+	FirstTokenDurationMs     *int32
 }
 
 func (r usageResult) totalTokens() uint64 {
@@ -133,13 +135,14 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 		SessionID: target.SessionID,
 		RequestID: result.ResponseID,
 		Known:     result.Known, Stream: proxyCtx.stream, Result: result.Result,
-		ErrorCode:         result.ErrorCode,
-		TerminalEvent:     result.TerminalEvent,
-		InputTokens:       result.InputTokens + result.CacheReadInputTokens + result.CacheCreationInputTokens,
-		OutputTokens:      result.OutputTokens,
-		CachedInputTokens: result.CacheReadInputTokens + result.CachedTokens,
-		StartedAt:         proxyCtx.startedAt,
-		CompletedAt:       completedAt,
+		ErrorCode:            result.ErrorCode,
+		TerminalEvent:        result.TerminalEvent,
+		InputTokens:          result.InputTokens + result.CacheReadInputTokens + result.CacheCreationInputTokens,
+		OutputTokens:         result.OutputTokens,
+		CachedInputTokens:    result.CacheReadInputTokens + result.CachedTokens,
+		FirstTokenDurationMs: result.FirstTokenDurationMs,
+		StartedAt:            proxyCtx.startedAt,
+		CompletedAt:          completedAt,
 	}
 	if call.Result == "" {
 		call.Result = "succeeded"
@@ -194,6 +197,13 @@ func (c *usageCapture) handleStream() usageResult {
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	for decoder.Next() {
 		event := decoder.Event()
+		if result.FirstTokenDurationMs == nil && c.ctx.proxyCtx != nil && firstOutputEvent(c.ctx.path, event) {
+			elapsed := time.Since(c.ctx.proxyCtx.startedAt).Milliseconds()
+			if elapsed >= 0 && elapsed <= 1<<31-1 {
+				measured := int32(elapsed)
+				result.FirstTokenDurationMs = &measured
+			}
+		}
 		switch event.Type {
 		case "response.created", "response.in_progress", "response.completed", "response.failed", "response.incomplete":
 			isTerminal := event.Type == "response.completed" || event.Type == "response.failed" || event.Type == "response.incomplete"

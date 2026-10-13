@@ -606,28 +606,29 @@ func (q *Queries) LockOwned(ctx context.Context, arg LockOwnedParams) (string, e
 
 const recordModelCall = `-- name: RecordModelCall :execresult
 INSERT INTO model_calls (session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
-    output_tokens, cache_hit, error_code, started_at, completed_at)
+    output_tokens, cache_hit, error_code, started_at, completed_at, first_token_duration_ms)
 SELECT NULLIF($1::text, '')::uuid, $2::uuid, m.id, NULLIF($3::text, ''),
     $4::text, $5::bigint, $6::bigint,
     $7::bigint, $6::bigint > 0,
     NULLIF($8::text, ''), $9::timestamptz,
-    $10::timestamptz
+    $10::timestamptz, $11::integer
 FROM models m
-WHERE m.id = $11::uuid AND m.ownership_type = 'user'
+WHERE m.id = $12::uuid AND m.ownership_type = 'user'
 `
 
 type RecordModelCallParams struct {
-	SessionID         string
-	UserID            string
-	RequestID         string
-	Status            string
-	InputTokens       int64
-	CachedInputTokens int64
-	OutputTokens      int64
-	ErrorCode         string
-	StartedAt         time.Time
-	CompletedAt       time.Time
-	ModelID           string
+	SessionID            string
+	UserID               string
+	RequestID            string
+	Status               string
+	InputTokens          int64
+	CachedInputTokens    int64
+	OutputTokens         int64
+	ErrorCode            string
+	StartedAt            time.Time
+	CompletedAt          time.Time
+	FirstTokenDurationMs *int32
+	ModelID              string
 }
 
 func (q *Queries) RecordModelCall(ctx context.Context, arg RecordModelCallParams) (pgconn.CommandTag, error) {
@@ -642,6 +643,7 @@ func (q *Queries) RecordModelCall(ctx context.Context, arg RecordModelCallParams
 		arg.ErrorCode,
 		arg.StartedAt,
 		arg.CompletedAt,
+		arg.FirstTokenDurationMs,
 		arg.ModelID,
 	)
 }

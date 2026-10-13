@@ -10,7 +10,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -38,7 +37,6 @@ func (s *Service) canReadPurged(r *http.Request) bool {
 type window struct {
 	from, until time.Time
 	step        time.Duration
-	model       string
 }
 
 func period(r *http.Request, now time.Time, realtime bool) (window, error) {
@@ -60,22 +58,18 @@ func period(r *http.Request, now time.Time, realtime bool) (window, error) {
 	if !ok {
 		return window{}, resource.Invalid("统计周期无效")
 	}
-	w := window{from: now.Add(-duration), until: now, step: 24 * time.Hour, model: r.URL.Query().Get("model_id")}
+	w := window{from: now.Add(-duration), until: now, step: 24 * time.Hour}
 	if duration <= 24*time.Hour {
 		w.step = time.Hour
-	}
-	if w.model != "" {
-		var id pgtype.UUID
-		if err := id.Scan(w.model); err != nil || !id.Valid {
-			return window{}, resource.Invalid("模型 ID 无效")
-		}
 	}
 	return w, nil
 }
 
 func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/statistics/realtime", s.read(true, realtime))
-	r.Get("/statistics/models", s.read(false, models))
+	r.Get("/statistics/users", s.usersOverview)
+	r.Get("/statistics/tasks/overview", s.tasksOverview)
+	r.Get("/statistics/models/overview", s.modelsOverview)
 	r.Get("/statistics/tasks", s.read(false, tasks))
 	r.Get("/statistics/history", s.history)
 	r.Get("/statistics/session-reporting/overview", s.reportingOverview)

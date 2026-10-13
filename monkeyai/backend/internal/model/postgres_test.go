@@ -140,15 +140,16 @@ func TestResolveModelName(t *testing.T) {
 		})
 	}
 	t.Run("自配模型独立记录用量", func(t *testing.T) {
+		firstToken := int32(420)
 		call := Call{ModelID: private.ID, UserID: owner, RequestID: "own_response", Status: "succeeded",
-			InputTokens: 11, CachedInputTokens: 5, OutputTokens: 7,
+			InputTokens: 11, CachedInputTokens: 5, OutputTokens: 7, FirstTokenDurationMs: &firstToken,
 			StartedAt: time.Now().Add(-time.Second), CompletedAt: time.Now()}
 		if err := repo.RecordCall(ctx, call); err != nil {
 			t.Fatal(err)
 		}
-		var count, input, cached, output int
-		if err := pool.QueryRow(ctx, `SELECT count(*),sum(input_tokens),sum(cached_input_tokens),sum(output_tokens) FROM model_calls WHERE model_id=$1`, private.ID).Scan(&count, &input, &cached, &output); err != nil || count != 1 || input != 11 || cached != 5 || output != 7 {
-			t.Fatalf("独立用量记录不正确: %d %d %d %d, %v", count, input, cached, output, err)
+		var count, input, cached, output, firstTokenDuration int
+		if err := pool.QueryRow(ctx, `SELECT count(*),sum(input_tokens),sum(cached_input_tokens),sum(output_tokens),max(first_token_duration_ms) FROM model_calls WHERE model_id=$1`, private.ID).Scan(&count, &input, &cached, &output, &firstTokenDuration); err != nil || count != 1 || input != 11 || cached != 5 || output != 7 || firstTokenDuration != 420 {
+			t.Fatalf("独立用量记录不正确: %d %d %d %d %d, %v", count, input, cached, output, firstTokenDuration, err)
 		}
 		var transactions int
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM billing_transactions WHERE resource_id=$1`, private.ID).Scan(&transactions); err != nil || transactions != 0 {

@@ -40,7 +40,8 @@ func (r modelUsageRecorder) Record(ctx context.Context, c proxy.Call) error {
 		ModelID: c.ModelID, UserID: c.UserID, SessionID: c.SessionID, RequestID: c.RequestID,
 		Status: c.Result, ErrorCode: c.ErrorCode,
 		InputTokens: int64(c.InputTokens), CachedInputTokens: int64(c.CachedInputTokens),
-		OutputTokens: int64(c.OutputTokens), StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+		OutputTokens: int64(c.OutputTokens), FirstTokenDurationMs: c.FirstTokenDurationMs,
+		StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 	})
 }
 
@@ -148,6 +149,7 @@ func (b modelBilling) Finish(ctx context.Context, id string, c proxy.Call) error
 		Input: int64(c.InputTokens), Cached: int64(c.CachedInputTokens), Output: int64(c.OutputTokens),
 		Known: c.Known, Stream: &stream, Result: c.Result, ErrorCode: c.ErrorCode,
 		RequestID: c.RequestID, TerminalEvent: c.TerminalEvent,
+		FirstTokenDurationMs: c.FirstTokenDurationMs,
 	})
 }
 

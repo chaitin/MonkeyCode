@@ -146,6 +146,9 @@ func TestProxyRecordsUsage(t *testing.T) {
 		if call.StartedAt.IsZero() || call.CompletedAt.Before(call.StartedAt) {
 			t.Fatalf("call time = %s - %s", call.StartedAt, call.CompletedAt)
 		}
+		if call.FirstTokenDurationMs != nil {
+			t.Fatalf("非流式调用不应推算首字耗时: %d", *call.FirstTokenDurationMs)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("未收到模型调用用量")
 	}

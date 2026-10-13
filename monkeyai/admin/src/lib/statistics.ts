@@ -1,19 +1,19 @@
 export type Period = { from: string; until: string }
-export type ModelSummary = {
-  calls: number
-  input_tokens: number
-  output_tokens: number
-  cache_hit_rate: number | null
-  success_rate: number | null
-  credits: string
-}
-export type ModelStatistics = Period & {
-  summary: ModelSummary
-  previous: ModelSummary
-  models: { id: string; name: string; deleted: boolean }[]
-  trend: {
-    at: string
-    calls: number
+export type ModelOverview = {
+  timezone: "UTC"
+  generated_at: string
+  last_24h: { model_calls: number; input_tokens: number; output_tokens: number }
+  last_30m: {
+    tpm: number
+    rpm: number
+    cache_hit_rate: number | null
+    p95_response_time: number | null
+    p95_first_token_time: number | null
+    model_success_rate: number | null
+  }
+  days: {
+    date: string
+    model_calls: number
     input_tokens: number
     output_tokens: number
     credits: string
@@ -44,19 +44,22 @@ export type TaskStatistics = Period & {
   }[]
   types: (Omit<TaskSummary, "known_outcomes"> & { key: string })[]
 }
-export type RealtimeStatistics = Period & {
-  model_consumption: string
-  p95_response_time: number | null
-  model_success_rate: number | null
-  model_calls: number
-  tpm: number
-  rpm: number
-  input_tokens: number
-  output_tokens: number
+export type TaskOverview = {
+  total_tasks: number
+  new_tasks_24h: number
+  active_tasks_24h: number
+  timezone: "UTC"
+  generated_at: string
+  days: { date: string; new_tasks: number; active_tasks: number }[]
+}
+
+export type UserStatistics = {
   total_users: number
-  active_users: number
-  active_tasks: number
-  new_tasks: number
+  new_users_24h: number
+  active_users_24h: number
+  timezone: "UTC"
+  generated_at: string
+  days: { date: string; new_users: number; active_users: number }[]
 }
 
 export function change(

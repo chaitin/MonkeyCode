@@ -870,7 +870,7 @@ WHERE
 
 -- name: UpsertModelCall :execresult
 INSERT INTO model_calls (id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
-    output_tokens, cache_hit, error_code, started_at, completed_at)
+    output_tokens, cache_hit, error_code, started_at, completed_at, first_token_duration_ms)
 SELECT
     id,
     session_id,
@@ -884,7 +884,8 @@ SELECT
     sqlc.arg(cached_input_tokens)::bigint > 0,
     NULLIF (error_code, ''),
     started_at,
-    completed_at
+    completed_at,
+    sqlc.narg(first_token_duration_ms)::integer
 FROM
     billing_transactions bt
 WHERE
@@ -897,7 +898,8 @@ ON CONFLICT (id)
         output_tokens = EXCLUDED.output_tokens,
         cache_hit = EXCLUDED.cache_hit,
         error_code = EXCLUDED.error_code,
-        completed_at = EXCLUDED.completed_at;
+        completed_at = EXCLUDED.completed_at,
+        first_token_duration_ms = COALESCE(EXCLUDED.first_token_duration_ms, model_calls.first_token_duration_ms);
 
 -- name: UpsertImageCall :execresult
 INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code,

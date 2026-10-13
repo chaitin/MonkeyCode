@@ -25,7 +25,6 @@ import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { ClientAnalysisPage } from "@/pages/client-analysis-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
-import { ModelStatisticsPage } from "@/pages/model-statistics-page"
 import { ModelsPage } from "@/pages/models-page"
 import { OperationLogsPage } from "@/pages/operation-logs-page"
 import { OtherSettingsPage } from "@/pages/other-settings-page"
@@ -97,6 +96,10 @@ export function App() {
               index
               element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
             />
+            <Route
+              path="statistics/models"
+              element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
+            />
             {CONSOLE_PAGES.map((page) => (
               <Route
                 key={page.path}
@@ -106,8 +109,6 @@ export function App() {
                     <RealtimeStatusPage />
                   ) : page.path === CONSOLE_ROUTES.taskStatistics ? (
                     <TaskStatisticsPage />
-                  ) : page.path === CONSOLE_ROUTES.modelStatistics ? (
-                    <ModelStatisticsPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.conversationHistory ? (

@@ -10,6 +10,7 @@ import (
 type Call struct {
 	ModelID, UserID, SessionID, RequestID, Status, ErrorCode string
 	InputTokens, CachedInputTokens, OutputTokens             int64
+	FirstTokenDurationMs                                     *int32
 	StartedAt, CompletedAt                                   time.Time
 }
 
@@ -18,7 +19,8 @@ func (p *Postgres) RecordCall(ctx context.Context, call Call) error {
 		ModelID: call.ModelID, UserID: call.UserID, SessionID: call.SessionID, RequestID: call.RequestID,
 		Status: call.Status, ErrorCode: call.ErrorCode,
 		InputTokens: call.InputTokens, CachedInputTokens: call.CachedInputTokens,
-		OutputTokens: call.OutputTokens, StartedAt: call.StartedAt, CompletedAt: call.CompletedAt,
+		OutputTokens: call.OutputTokens, FirstTokenDurationMs: call.FirstTokenDurationMs,
+		StartedAt: call.StartedAt, CompletedAt: call.CompletedAt,
 	})
 	if err != nil {
 		return err

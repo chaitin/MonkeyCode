@@ -804,33 +804,13 @@ paths:
           $ref: "#/components/responses/ResourceError403"
         "500":
           $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/statistics/models:
+  /api/admin/v1/statistics/models/overview:
     get:
-      summary: 模型统计与真实环比
-      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
-      parameters:
-        - name: range
-          in: query
-          required: false
-          description: 以服务端当前时间为终点的滚动窗口。
-          schema:
-            type: string
-            enum:
-              - 24h
-              - 7d
-              - 30d
-              - 90d
-            default: 30d
-        - name: model_id
-          in: query
-          required: false
-          description: 模型 UUID，省略时汇总全部模型；支持已有历史事实的软删除模型。
-          schema:
-            type: string
-            format: uuid
+      summary: 模型调用的固定窗口汇总与近 90 天每日趋势
+      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为 UTC 自然日，今天仅统计到 generated_at。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
       responses:
         "200":
-          description: 统计结果。
+          description: 同一数据库快照下的模型总览。
           headers:
             Cache-Control:
               schema:
@@ -839,7 +819,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatisticsModels"
+                $ref: "#/components/schemas/StatisticsModelsOverview"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -885,6 +865,30 @@ paths:
           $ref: "#/components/responses/ResourceError403"
         "500":
           $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/tasks/overview:
+    get:
+      summary: 任务总量、近 24 小时新增和活跃任务及近 90 天每日趋势
+      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按 UTC 自然日，包含当天部分数据。
+      responses:
+        "200":
+          description: 任务统计及完整的 90 天日序列。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsTasksOverview"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/realtime:
     get:
       summary: 实时运行统计
@@ -918,6 +922,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatisticsRealtime"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/users:
+    get:
+      summary: 用户总量、近 24 小时新增和活跃用户及近 90 天每日趋势
+      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按 UTC 自然日，包含当天部分数据。
+      responses:
+        "200":
+          description: 用户统计及完整的 90 天日序列。
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsUsersOverview"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -5059,111 +5087,18 @@ components:
         request_id:
           type: [string, "null"]
           description: "服务端生成的请求关联标识，同一批量操作可关联多个目标；历史或独立业务事件为空。"
-    StatisticsModelSummary:
-      type: object
-      required:
-        - calls
-        - input_tokens
-        - output_tokens
-        - cache_hit_rate
-        - success_rate
-        - credits
-      properties:
-        calls:
-          type: integer
-          minimum: 0
-          description: 按开始时间计数，包含成功、失败和取消调用。
-        input_tokens:
-          type: integer
-          minimum: 0
-          description: 输入 Token 总量，包含缓存输入。
-        output_tokens:
-          type: integer
-          minimum: 0
-          description: 输出 Token 总量。
-        cache_hit_rate:
-          type:
-            - number
-            - "null"
-          description: 命中缓存的调用次数 / 调用总数 × 100；没有调用时为 null。
-        success_rate:
-          type:
-            - number
-            - "null"
-          description: 成功调用 / 已结束调用 × 100；没有已结束调用时为 null。
-        credits: &statisticsCredits
-          type: string
-          pattern: ^-?[0-9]+(\.[0-9]{1,6})?$
-          description: 扣费减退款后的积分净消费，十进制字符串；纯退款周期可为负值。
-    StatisticsModels:
-      type: object
-      required:
-        - from
-        - until
-        - summary
-        - previous
-        - models
-        - trend
-      properties:
-        from: &statisticsFrom
-          type: string
-          format: date-time
-          description: 查询窗口起点，包含。
-        until: &statisticsUntil
-          type: string
-          format: date-time
-          description: 查询窗口终点，不包含；由服务端统一确定。
-        summary:
-          $ref: "#/components/schemas/StatisticsModelSummary"
-        previous:
-          $ref: "#/components/schemas/StatisticsModelSummary"
-          description: 紧邻当前窗口之前的等长周期。
-        models:
-          type: array
-          items:
-            type: object
-            required:
-              - id
-              - name
-              - deleted
-            properties:
-              id:
-                type: string
-                format: uuid
-              name:
-                type: string
-                description: 模型显示名。
-              deleted:
-                type: boolean
-                description: 模型是否已软删除；历史调用和消费仍保留。
-        trend:
-          type: array
-          items:
-            type: object
-            required:
-              - at
-              - calls
-              - input_tokens
-              - output_tokens
-              - credits
-            properties:
-              at:
-                type: string
-                format: date-time
-                description: 分桶起点，从窗口起点每 1 小时（24h）或 24 小时递增，不按自然日对齐；空桶补零。
-              calls:
-                type: integer
-                minimum: 0
-                description: 本桶调用数。
-              input_tokens:
-                type: integer
-                minimum: 0
-                description: 本桶输入 Token。
-              output_tokens:
-                type: integer
-                minimum: 0
-                description: 本桶输出 Token。
-              credits: *statisticsCredits
+    StatisticsCredits: &statisticsCredits
+      type: string
+      pattern: ^-?[0-9]+(\.[0-9]{1,6})?$
+      description: 扣费减退款后的积分净消费，十进制字符串；纯退款周期可为负值。
+    StatisticsFrom: &statisticsFrom
+      type: string
+      format: date-time
+      description: 查询窗口起点，包含。
+    StatisticsUntil: &statisticsUntil
+      type: string
+      format: date-time
+      description: 查询窗口终点，不包含；由服务端统一确定。
     StatisticsTaskSummary:
       type: object
       required:
@@ -5259,6 +5194,85 @@ components:
                       - workflow
                       - tool
                       - scheduled
+    StatisticsModelsOverview:
+      type: object
+      required: [timezone, generated_at, last_24h, last_30m, days]
+      properties:
+        timezone: {type: string, const: UTC}
+        generated_at: {type: string, format: date-time}
+        last_24h:
+          type: object
+          required: [model_calls, input_tokens, output_tokens]
+          properties:
+            model_calls: {type: integer, minimum: 0}
+            input_tokens: {type: integer, minimum: 0}
+            output_tokens: {type: integer, minimum: 0}
+        last_30m:
+          type: object
+          required: [tpm, rpm, cache_hit_rate, model_success_rate, p95_response_time, p95_first_token_time]
+          properties:
+            tpm: {type: number, minimum: 0, description: 近 30 分钟完成调用的输入和输出 Token 总量除以 30。}
+            rpm: {type: number, minimum: 0, description: 近 30 分钟完成调用数除以 30。}
+            cache_hit_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
+            model_success_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
+            p95_response_time: {type: [number, 'null'], minimum: 0, description: 成功调用总响应耗时的 P95，毫秒；无样本时为 null。}
+            p95_first_token_time: {type: [number, 'null'], minimum: 0, description: 成功的流式调用中已采集首字耗时的 P95，毫秒；历史和非流式调用不计入，无样本时为 null。}
+        days:
+          type: array
+          minItems: 90
+          maxItems: 90
+          description: 从 89 天前到今天，按日期升序；空白日期补零。
+          items:
+            type: object
+            required: [date, model_calls, input_tokens, output_tokens, credits]
+            properties:
+              date: {type: string, format: date}
+              model_calls: {type: integer, minimum: 0}
+              input_tokens: {type: integer, minimum: 0}
+              output_tokens: {type: integer, minimum: 0}
+              credits: {type: string, description: 模型扣费与退款的净积分，可能为负值，按十进制字符串返回。}
+    StatisticsTasksOverview:
+      type: object
+      required: [total_tasks, new_tasks_24h, active_tasks_24h, timezone, generated_at, days]
+      properties:
+        total_tasks: {type: integer, minimum: 0, description: 当前上报启用且未删除的根任务总量。}
+        new_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内开始的根任务数。}
+        active_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内有上报轮次的去重根任务数。}
+        timezone: {type: string, const: UTC}
+        generated_at: {type: string, format: date-time}
+        days:
+          type: array
+          minItems: 90
+          maxItems: 90
+          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          items:
+            type: object
+            required: [date, new_tasks, active_tasks]
+            properties:
+              date: {type: string, format: date}
+              new_tasks: {type: integer, minimum: 0}
+              active_tasks: {type: integer, minimum: 0, description: 当日有上报轮次的去重根任务数。}
+    StatisticsUsersOverview:
+      type: object
+      required: [total_users, new_users_24h, active_users_24h, timezone, generated_at, days]
+      properties:
+        total_users: {type: integer, minimum: 0, description: users 表的全部用户行数，包含软删除和停用用户。}
+        new_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内创建的用户数，包含此后软删除的用户。}
+        active_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内存在 session_turns 记录的去重任务所属用户数。}
+        timezone: {type: string, const: UTC}
+        generated_at: {type: string, format: date-time}
+        days:
+          type: array
+          minItems: 90
+          maxItems: 90
+          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          items:
+            type: object
+            required: [date, new_users, active_users]
+            properties:
+              date: {type: string, format: date}
+              new_users: {type: integer, minimum: 0}
+              active_users: {type: integer, minimum: 0, description: 当日存在 session_turns 记录的去重任务所属用户数。}
     StatisticsRealtime:
       type: object
       required:

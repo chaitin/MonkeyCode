@@ -50,147 +50,6 @@ ORDER BY
     s.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
--- name: ModelSummary :one
-WITH periods AS (
-    SELECT
-        0 AS n,
-        sqlc.arg(from_time)::timestamptz AS start_at,
-        sqlc.arg(until_time)::timestamptz AS end_at
-    UNION ALL
-    SELECT
-        1,
-        sqlc.arg(from_time)::timestamptz - (sqlc.arg(until_time)::timestamptz - sqlc.arg(from_time)::timestamptz),
-        sqlc.arg(from_time)::timestamptz
-),
-totals AS (
-    SELECT
-        n,
-        (
-            SELECT
-                jsonb_build_object('calls', count(*), 'input_tokens', COALESCE(sum(input_tokens), 0),
-                    'output_tokens', COALESCE(sum(output_tokens), 0), 'cache_hit_rate', 100.0 * count(*) FILTER (WHERE
-                    cache_hit) / NULLIF (count(*), 0), 'success_rate', 100.0 * count(*) FILTER (WHERE status =
-                    'succeeded') / NULLIF (count(*) FILTER (WHERE status <> 'running'), 0))
-            FROM
-                model_calls c
-            WHERE
-                c.started_at >= p.start_at
-                AND c.started_at < p.end_at
-                AND (sqlc.arg(model_id)::text = ''
-                    OR c.model_id = NULLIF (sqlc.arg(model_id)::text, '')::uuid)) || jsonb_build_object('credits', (
-                    SELECT
-                        COALESCE(- sum(credit_delta), 0)::text
-                    FROM credit_ledger_entries e
-                WHERE
-                    e.occurred_at >= p.start_at
-                    AND e.occurred_at < p.end_at
-                    AND e.category = 'model'
-                    AND e.entry_type IN ('charge', 'refund')
-                    AND (sqlc.arg(model_id)::text = ''
-                        OR e.resource_id = NULLIF (sqlc.arg(model_id)::text, '')::uuid))) AS SUMMARY
-    FROM
-        periods p
-)
-SELECT
-    jsonb_build_object('summary', (
-            SELECT
-                SUMMARY
-            FROM totals
-        WHERE
-            n = 0), 'previous', (
-        SELECT
-            SUMMARY
-        FROM totals
-    WHERE
-        n = 1));
-
--- name: ModelTrend :many
-WITH bucket_times (
-    AT
-) AS (
-    SELECT
-        generate_series(sqlc.arg(from_time)::timestamptz, sqlc.arg(until_time)::timestamptz - interval
-            '1 microsecond', sqlc.arg(step_seconds)::bigint * interval '1 second') AS AT
-),
-buckets AS (
-    SELECT
-        AT,
-        floor(extract(epoch FROM (AT - sqlc.arg(from_time)::timestamptz)) / sqlc.arg(step_seconds))::bigint AS bucket
-    FROM
-        bucket_times
-),
-calls AS (
-    SELECT
-        floor(extract(epoch FROM (started_at - sqlc.arg(from_time)::timestamptz)) / sqlc.arg(step_seconds))::bigint AS bucket,
-        count(*) AS calls,
-    sum(input_tokens) AS input_tokens,
-    sum(output_tokens) AS output_tokens
-FROM
-    model_calls
-    WHERE
-        started_at >= sqlc.arg(from_time)
-        AND started_at < sqlc.arg(until_time)
-        AND (sqlc.arg(model_id)::text = ''
-            OR model_id = NULLIF (sqlc.arg(model_id)::text, '')::uuid)
-    GROUP BY
-        1
-),
-credits AS (
-    SELECT
-        floor(extract(epoch FROM (occurred_at - sqlc.arg(from_time)::timestamptz)) / sqlc.arg(step_seconds))::bigint AS bucket,
-        - sum(credit_delta) AS credits
-    FROM
-        credit_ledger_entries
-    WHERE
-        occurred_at >= sqlc.arg(from_time)
-        AND occurred_at < sqlc.arg(until_time)
-        AND category = 'model'
-        AND entry_type IN ('charge', 'refund')
-        AND (sqlc.arg(model_id)::text = ''
-            OR resource_id = NULLIF (sqlc.arg(model_id)::text, '')::uuid)
-    GROUP BY
-        1
-)
-SELECT
-    jsonb_build_object('at', b.at, 'calls', COALESCE(c.calls, 0), 'input_tokens',
-        COALESCE(c.input_tokens, 0), 'output_tokens', COALESCE(c.output_tokens, 0), 'credits',
-        COALESCE(e.credits, 0)::text)
-FROM
-    buckets b
-    LEFT JOIN calls c ON c.bucket = b.bucket
-    LEFT JOIN credits e ON e.bucket = b.bucket
-ORDER BY
-    b.at;
-
--- name: ModelOptions :many
-SELECT
-    jsonb_build_object('id', id, 'name', display_name, 'deleted', deleted_at IS NOT NULL)
-FROM
-    models
-WHERE
-    deleted_at IS NULL
-    OR id = NULLIF (sqlc.arg(model_id)::text, '')::uuid
-    OR id IN (
-        SELECT
-            model_id
-        FROM
-            model_calls
-        WHERE
-            started_at >= sqlc.arg(from_time)
-            AND started_at < sqlc.arg(until_time))
-    OR id IN (
-        SELECT
-            resource_id
-        FROM
-            credit_ledger_entries
-        WHERE
-            category = 'model'
-            AND occurred_at >= sqlc.arg(from_time)
-            AND occurred_at < sqlc.arg(until_time))
-ORDER BY
-    display_name,
-    id;
-
 -- name: ReportingTaskSummary :one
 SELECT jsonb_build_object('total', count(*), 'completed', count(*) FILTER (WHERE t.stop_reason = 'complete'),
     'failed', count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')),
@@ -276,6 +135,112 @@ SELECT jsonb_build_object(
     'active_users', (SELECT count(*) FROM active_users),
     'active_tasks', (SELECT count(*) FROM active_tasks),
     'new_tasks', (SELECT count(*) FROM sessions WHERE started_at >= sqlc.arg(from_time)::timestamptz AND started_at < sqlc.arg(until_time)::timestamptz AND parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL));
+
+-- name: ReportingModelsOverview :one
+WITH bounds AS (
+    SELECT sqlc.arg(at)::timestamptz AS now_at,
+           (sqlc.arg(at)::timestamptz AT TIME ZONE 'UTC')::date AS today
+), days AS (
+    SELECT d.day::date AS day
+    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
+), calls AS (
+    SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit,
+           c.response_duration_ms, c.first_token_duration_ms, c.started_at
+    FROM model_calls c CROSS JOIN bounds b
+    WHERE c.completed_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC')
+        AND c.completed_at < b.now_at AND c.status <> 'running'
+), calls_by_day AS (
+    SELECT (completed_at AT TIME ZONE 'UTC')::date AS day, count(*) AS calls,
+           coalesce(sum(input_tokens),0) AS input_tokens, coalesce(sum(output_tokens),0) AS output_tokens
+    FROM calls GROUP BY 1
+), credits_by_day AS (
+    SELECT (e.occurred_at AT TIME ZONE 'UTC')::date AS day, -sum(e.credit_delta) AS credits
+    FROM credit_ledger_entries e CROSS JOIN bounds b
+    WHERE e.occurred_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC')
+        AND e.occurred_at < b.now_at AND e.category = 'model' AND e.entry_type IN ('charge','refund')
+    GROUP BY 1
+)
+SELECT jsonb_build_object(
+    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'last_24h', (SELECT jsonb_build_object('model_calls', count(*),
+        'input_tokens', coalesce(sum(input_tokens),0), 'output_tokens', coalesce(sum(output_tokens),0))
+        FROM calls CROSS JOIN bounds b WHERE completed_at >= b.now_at - interval '24 hours'),
+    'last_30m', (SELECT jsonb_build_object(
+        'tpm', coalesce(sum(input_tokens + output_tokens),0) / 30.0,
+        'rpm', count(*) / 30.0,
+        'cache_hit_rate', 100.0 * count(*) FILTER (WHERE cache_hit) / nullif(count(*),0),
+        'model_success_rate', 100.0 * count(*) FILTER (WHERE status = 'succeeded') / nullif(count(*),0),
+        'p95_response_time', percentile_cont(0.95) WITHIN GROUP (ORDER BY coalesce(response_duration_ms, extract(epoch FROM (completed_at - started_at)) * 1000)) FILTER (WHERE status = 'succeeded'),
+        'p95_first_token_time', percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_duration_ms) FILTER (WHERE status = 'succeeded' AND first_token_duration_ms IS NOT NULL))
+        FROM calls CROSS JOIN bounds b WHERE completed_at >= b.now_at - interval '30 minutes'),
+    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text,
+        'model_calls', coalesce(c.calls,0), 'input_tokens', coalesce(c.input_tokens,0),
+        'output_tokens', coalesce(c.output_tokens,0), 'credits', coalesce(e.credits,0)::text) ORDER BY d.day)
+        FROM days d LEFT JOIN calls_by_day c ON c.day = d.day LEFT JOIN credits_by_day e ON e.day = d.day)
+);
+
+-- name: ReportingTasksOverview :one
+WITH bounds AS (
+    SELECT sqlc.arg(at)::timestamptz AS now_at,
+           (sqlc.arg(at)::timestamptz AT TIME ZONE 'UTC')::date AS today
+), roots AS (
+    SELECT id, started_at FROM sessions
+    WHERE parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL
+        AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL
+), days AS (
+    SELECT d.day::date AS day
+    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
+), turns AS (
+    SELECT t.started_at, root.id AS root_id
+    FROM session_turns t JOIN sessions s ON s.id = t.session_id
+        JOIN roots root ON root.id = coalesce(s.parent_session_id, s.id)
+        CROSS JOIN bounds b
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND t.started_at < b.now_at
+), new_by_day AS (
+    SELECT (root.started_at AT TIME ZONE 'UTC')::date AS day, count(*) AS total
+    FROM roots root CROSS JOIN bounds b
+    WHERE root.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND root.started_at < b.now_at
+    GROUP BY 1
+), active_by_day AS (
+    SELECT (t.started_at AT TIME ZONE 'UTC')::date AS day, count(DISTINCT t.root_id) AS total
+    FROM turns t GROUP BY 1
+)
+SELECT jsonb_build_object(
+    'total_tasks', (SELECT count(*) FROM roots),
+    'new_tasks_24h', (SELECT count(*) FROM roots root CROSS JOIN bounds b WHERE root.started_at >= b.now_at - interval '24 hours' AND root.started_at < b.now_at),
+    'active_tasks_24h', (SELECT count(DISTINCT t.root_id) FROM turns t CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours'),
+    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_tasks', coalesce(n.total, 0), 'active_tasks', coalesce(a.total, 0)) ORDER BY d.day)
+             FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
+);
+
+-- name: ReportingUsersOverview :one
+WITH bounds AS (
+    SELECT sqlc.arg(at)::timestamptz AS now_at,
+           (sqlc.arg(at)::timestamptz AT TIME ZONE 'UTC')::date AS today
+), days AS (
+    SELECT d.day::date AS day
+    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
+), new_by_day AS (
+    SELECT (u.created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS total
+    FROM users u CROSS JOIN bounds b
+    WHERE u.created_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND u.created_at < b.now_at
+    GROUP BY 1
+), active_by_day AS (
+    SELECT (t.started_at AT TIME ZONE 'UTC')::date AS day, count(DISTINCT s.owner_user_id) AS total
+    FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b
+    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND t.started_at < b.now_at
+    GROUP BY 1
+)
+SELECT jsonb_build_object(
+    'total_users', (SELECT count(*) FROM users),
+    'new_users_24h', (SELECT count(*) FROM users u CROSS JOIN bounds b WHERE u.created_at >= b.now_at - interval '24 hours' AND u.created_at < b.now_at),
+    'active_users_24h', (SELECT count(DISTINCT s.owner_user_id) FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at),
+    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_users', coalesce(n.total, 0), 'active_users', coalesce(a.total, 0)) ORDER BY d.day)
+             FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
+);
 
 -- name: ReportingOverview :one
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f),

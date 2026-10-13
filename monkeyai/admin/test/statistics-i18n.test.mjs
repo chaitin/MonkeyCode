@@ -46,7 +46,6 @@ test("billing details describe the item and usage in one content column", async 
 for (const page of [
   "realtimeStatus",
   "taskStatistics",
-  "modelStatistics",
   "taskHistory",
   "billingDetails",
   "billingSettings",

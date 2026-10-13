@@ -503,8 +503,8 @@ func TestBillingIntegration(t *testing.T) {
 	if reconciliation["items"].([]any)[0].(map[string]any)["error_code"] != "mcp_invalid_result" {
 		t.Fatalf("无效结果未保留供核查: %v", reconciliation)
 	}
-	modelStats := must("GET", "/api/admin/v1/statistics/models?range=24h", nil, "")
-	if modelStats["summary"].(map[string]any)["calls"].(float64) == 0 {
+	modelStats := must("GET", "/api/admin/v1/statistics/models/overview", nil, "")
+	if modelStats["last_24h"].(map[string]any)["model_calls"].(float64) == 0 {
 		t.Fatal("真实模型调用未进入统计")
 	}
 	for _, path := range []string{"realtime", "tasks", "history"} {
@@ -512,7 +512,7 @@ func TestBillingIntegration(t *testing.T) {
 	}
 	savedCookie := cookie
 	cookie = nil
-	if code, _, _ := call("GET", "/api/admin/v1/statistics/models", nil, "billing-oauth-test", ""); code != 401 {
+	if code, _, _ := call("GET", "/api/admin/v1/statistics/models/overview", nil, "billing-oauth-test", ""); code != 401 {
 		t.Fatalf("Agent token 不应获得管理统计: %d", code)
 	}
 	cookie = savedCookie

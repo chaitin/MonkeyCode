@@ -51,10 +51,6 @@ export function AppSidebar({
           title: t("pages.taskStatistics.title"),
           url: CONSOLE_ROUTES.taskStatistics,
         },
-        {
-          title: t("pages.modelStatistics.title"),
-          url: CONSOLE_ROUTES.modelStatistics,
-        },
         ...(
           [
             ["sessionOverview", CONSOLE_ROUTES.sessionOverview],

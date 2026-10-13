@@ -96,8 +96,13 @@ func TestAgentBilling(t *testing.T) {
 	if err := s.Start(ctx, reservation.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Finish(ctx, reservation.ID, Usage{Input: 10000, Cached: 4000, Output: 2000, Known: true, Result: "succeeded"}); err != nil {
+	firstToken := int32(750)
+	if err := s.Finish(ctx, reservation.ID, Usage{Input: 10000, Cached: 4000, Output: 2000, Known: true, Result: "succeeded", FirstTokenDurationMs: &firstToken}); err != nil {
 		t.Fatal(err)
+	}
+	var recorded int32
+	if err := s.pool.QueryRow(ctx, `SELECT first_token_duration_ms FROM model_calls WHERE id=$1`, reservation.ID).Scan(&recorded); err != nil || recorded != firstToken {
+		t.Fatalf("模型首字耗时未写入结算记录: %d, %v", recorded, err)
 	}
 	after := call("account", user, http.StatusOK)
 	if after.String("balance") != "9998.52" || after.String("frozen") != "0" || after.String("available") != "9998.52" {

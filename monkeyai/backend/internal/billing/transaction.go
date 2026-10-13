@@ -29,19 +29,20 @@ type Reservation struct {
 	OutputLimit int64
 }
 type Usage struct {
-	Input            int64  `json:"input_tokens"`
-	Cached           int64  `json:"cached_input_tokens"`
-	Output           int64  `json:"output_tokens"`
-	Images           int64  `json:"generated_images,omitempty"`
-	VideoDurationMs  int64  `json:"output_duration_ms,omitempty"`
-	Known            bool   `json:"known"`
-	Stream           *bool  `json:"stream,omitempty"`
-	Result           string `json:"result"`
-	RequestID        string `json:"request_id,omitempty"`
-	ErrorCode        string `json:"error_code,omitempty"`
-	TerminalEvent    string `json:"terminal_event,omitempty"`
-	InitialErrorCode string `json:"initial_error_code,omitempty"`
-	Reconciled       bool   `json:"reconciled,omitempty"`
+	Input                int64  `json:"input_tokens"`
+	Cached               int64  `json:"cached_input_tokens"`
+	Output               int64  `json:"output_tokens"`
+	FirstTokenDurationMs *int32 `json:"first_token_duration_ms,omitempty"`
+	Images               int64  `json:"generated_images,omitempty"`
+	VideoDurationMs      int64  `json:"output_duration_ms,omitempty"`
+	Known                bool   `json:"known"`
+	Stream               *bool  `json:"stream,omitempty"`
+	Result               string `json:"result"`
+	RequestID            string `json:"request_id,omitempty"`
+	ErrorCode            string `json:"error_code,omitempty"`
+	TerminalEvent        string `json:"terminal_event,omitempty"`
+	InitialErrorCode     string `json:"initial_error_code,omitempty"`
+	Reconciled           bool   `json:"reconciled,omitempty"`
 }
 
 func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
@@ -406,7 +407,10 @@ func (s *Service) finish(ctx context.Context, id string, u Usage, reviewed bool)
 		return err
 	}
 	if category == "model" {
-		_, err = sqlc.New(tx).UpsertModelCall(ctx, sqlc.UpsertModelCallParams{ID: id, InputTokens: int64(u.Input), CachedInputTokens: int64(u.Cached), OutputTokens: int64(u.Output)})
+		_, err = sqlc.New(tx).UpsertModelCall(ctx, sqlc.UpsertModelCallParams{
+			ID: id, InputTokens: u.Input, CachedInputTokens: u.Cached, OutputTokens: u.Output,
+			FirstTokenDurationMs: u.FirstTokenDurationMs,
+		})
 	} else if category == "image" {
 		_, err = sqlc.New(tx).UpsertImageCall(ctx, sqlc.UpsertImageCallParams{ID: id, GeneratedImages: u.Images})
 	} else if category == "video" {

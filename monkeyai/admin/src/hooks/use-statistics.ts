@@ -4,7 +4,11 @@ import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
 
-export function useStatistics<T>(path: string, interval = 0) {
+export function useStatistics<T>(
+  path: string,
+  interval = 0,
+  { retryAction = true }: { retryAction?: boolean } = {}
+) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
   const [revision, setRevision] = useState(0)
@@ -39,7 +43,9 @@ export function useStatistics<T>(path: string, interval = 0) {
             showToast({
               status: "error",
               title: message,
-              action: { label: t("statistics.retry"), onClick: reload },
+              ...(retryAction
+                ? { action: { label: t("statistics.retry"), onClick: reload } }
+                : {}),
             })
           }
         }
@@ -59,7 +65,7 @@ export function useStatistics<T>(path: string, interval = 0) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [path, revision, interval, reload, showToast, t])
+  }, [path, revision, interval, reload, showToast, t, retryAction])
 
   const current =
     result?.path === path && result.revision === revision ? result : undefined

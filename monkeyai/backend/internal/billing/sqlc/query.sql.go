@@ -2500,7 +2500,7 @@ func (q *Queries) UpsertImageCall(ctx context.Context, arg UpsertImageCallParams
 
 const upsertModelCall = `-- name: UpsertModelCall :execresult
 INSERT INTO model_calls (id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
-    output_tokens, cache_hit, error_code, started_at, completed_at)
+    output_tokens, cache_hit, error_code, started_at, completed_at, first_token_duration_ms)
 SELECT
     id,
     session_id,
@@ -2514,11 +2514,12 @@ SELECT
     $2::bigint > 0,
     NULLIF (error_code, ''),
     started_at,
-    completed_at
+    completed_at,
+    $4::integer
 FROM
     billing_transactions bt
 WHERE
-    bt.id = $4
+    bt.id = $5
 ON CONFLICT (id)
     DO UPDATE SET
         status = EXCLUDED.status,
@@ -2527,14 +2528,16 @@ ON CONFLICT (id)
         output_tokens = EXCLUDED.output_tokens,
         cache_hit = EXCLUDED.cache_hit,
         error_code = EXCLUDED.error_code,
-        completed_at = EXCLUDED.completed_at
+        completed_at = EXCLUDED.completed_at,
+        first_token_duration_ms = COALESCE(EXCLUDED.first_token_duration_ms, model_calls.first_token_duration_ms)
 `
 
 type UpsertModelCallParams struct {
-	InputTokens       int64
-	CachedInputTokens int64
-	OutputTokens      int64
-	ID                string
+	InputTokens          int64
+	CachedInputTokens    int64
+	OutputTokens         int64
+	FirstTokenDurationMs *int32
+	ID                   string
 }
 
 func (q *Queries) UpsertModelCall(ctx context.Context, arg UpsertModelCallParams) (pgconn.CommandTag, error) {
@@ -2542,6 +2545,7 @@ func (q *Queries) UpsertModelCall(ctx context.Context, arg UpsertModelCallParams
 		arg.InputTokens,
 		arg.CachedInputTokens,
 		arg.OutputTokens,
+		arg.FirstTokenDurationMs,
 		arg.ID,
 	)
 }

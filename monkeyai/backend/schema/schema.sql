@@ -1254,3 +1254,7 @@ ALTER TABLE session_turns
   ADD COLUMN input_text_truncated boolean NOT NULL DEFAULT false,
   ADD COLUMN title text,
   ADD COLUMN title_source text;
+
+ALTER TABLE model_calls
+    ADD COLUMN first_token_duration_ms integer
+    CHECK (first_token_duration_ms IS NULL OR first_token_duration_ms >= 0);
