@@ -157,7 +157,7 @@ export const ruRU = {
   sections: {
     statistics: "Статистика",
     usageRecords: "История использования",
-    aiResources: "Ресурсы ИИ",
+    aiResources: "Управление ресурсами",
     billingManagement: "Управление оплатой",
     systemSettings: "Системные настройки",
   },

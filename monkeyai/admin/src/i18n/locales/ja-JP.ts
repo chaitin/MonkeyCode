@@ -152,7 +152,7 @@ export const jaJP = {
   sections: {
     statistics: "データ統計",
     usageRecords: "利用履歴",
-    aiResources: "AI リソース",
+    aiResources: "リソース管理",
     billingManagement: "課金管理",
     systemSettings: "システム設定",
   },

@@ -145,7 +145,7 @@ export const ar = {
   sections: {
     statistics: "الإحصاءات",
     usageRecords: "سجل الاستخدام",
-    aiResources: "موارد الذكاء الاصطناعي",
+    aiResources: "إدارة الموارد",
     billingManagement: "إدارة الفوترة",
     systemSettings: "إعدادات النظام",
   },

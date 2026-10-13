@@ -265,7 +265,7 @@ export const zhCN = {
   sections: {
     statistics: "数据统计",
     usageRecords: "使用记录",
-    aiResources: "AI 资源",
+    aiResources: "资源管理",
     billingManagement: "计费管理",
     systemSettings: "系统设置",
   },

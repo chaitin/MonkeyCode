@@ -288,7 +288,7 @@ export const enUS = {
   sections: {
     statistics: "Statistics",
     usageRecords: "Usage Records",
-    aiResources: "AI Resources",
+    aiResources: "Resource Management",
     billingManagement: "Billing",
     systemSettings: "System Settings",
   },
