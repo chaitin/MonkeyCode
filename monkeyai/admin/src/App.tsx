@@ -20,6 +20,7 @@ import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
+import { LicensePage } from "@/pages/license-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
@@ -145,6 +146,8 @@ export function App() {
                     <OperationLogsPage />
                   ) : page.path === CONSOLE_ROUTES.otherSettings ? (
                     <OtherSettingsPage />
+                  ) : page.path === CONSOLE_ROUTES.license ? (
+                    <LicensePage />
                   ) : (
                     <ConsolePage />
                   )

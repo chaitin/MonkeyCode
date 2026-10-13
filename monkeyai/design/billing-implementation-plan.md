@@ -150,7 +150,7 @@ flowchart TD
 
 ### 5.1 SDK、身份和配置
 
-- 使用 `git.in.chaitin.net/ai/baizhiyun/opensdk` 的 `OpenClienter`。应用启动装配单个客户端，在内部钱包适配层封装 `CreateBillingCharge`、`ConfirmBillingCharge` 和 `GetUserCreditBalance`。
+- 当前仅保留使用方的 `WalletClient` 接口和显式不可用的 `EmptyWalletClient`；远程模式不能启用，本地计费不受影响。后续将 `opensdk` 能力迁入开源库，再实现钱包适配器，恢复 `CreateBillingCharge`、`ConfirmBillingCharge` 和 `GetUserCreditBalance`。
 - 后台「计费设置」配置服务 URL（base_url）、应用 ID、客户端证书、私钥和 CA，保存后无需重启；部署环境变量作为兼容回退。后台只展示配置状态、服务 URL 和证书到期时间，不回显凭据；取消“API Key 就能完成远程计费”的旧表单假设。
 - dev/prod 分别配置实际应用 ID 和证书，不使用占位值启动远程模式。方案阶段不读取证书秘密，也不需要立即提供这些部署信息。
 - 新增本地用户与百智云用户的已验证绑定。不能用邮箱或本地 UUID 猜钱包用户 ID；未绑定用户返回可操作的提示。多用户不得未经明确业务设计共享同一个钱包身份。

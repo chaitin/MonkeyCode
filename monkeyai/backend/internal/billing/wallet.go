@@ -12,16 +12,71 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 
-	"git.in.chaitin.net/ai/baizhiyun/opensdk"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type WalletClient interface {
-	GetUserByID(context.Context, string) (*opensdk.User, error)
-	CreateBillingCharge(context.Context, string, *opensdk.CreateBillingChargeReq) error
-	ConfirmBillingCharge(context.Context, *opensdk.ConfirmBillingChargeReq) error
-	GetUserCreditBalance(context.Context, string) (*opensdk.UserCreditBalance, error)
+var (
+	ErrWalletClientUnavailable   = errors.New("百智云远程钱包客户端尚未接入")
+	ErrWalletInsufficientBalance = errors.New("百智云钱包余额不足")
+	ErrWalletAccountSuspended    = errors.New("百智云钱包账户已停用")
+)
+
+type WalletUser struct {
+	ID   string
+	Team *WalletTeam
 }
+
+type WalletTeam struct {
+	Slug string
+}
+
+type WalletBalance struct {
+	AvailableCreditCents int64
+}
+
+type WalletCharge struct {
+	BizID                   string
+	FrozenAmountCreditCents int64
+}
+
+type WalletConfirmation struct {
+	BizID                   string
+	UserID                  string
+	TeamSlug                string
+	Status                  string
+	ActualAmountCreditCents int64
+	Subject                 string
+}
+
+type walletTraceError interface {
+	error
+	WalletTraceID() string
+}
+
+type WalletClient interface {
+	GetUserByID(context.Context, string) (*WalletUser, error)
+	CreateBillingCharge(context.Context, string, *WalletCharge) error
+	ConfirmBillingCharge(context.Context, *WalletConfirmation) error
+	GetUserCreditBalance(context.Context, string) (*WalletBalance, error)
+}
+
+type EmptyWalletClient struct{}
+
+func (EmptyWalletClient) GetUserByID(context.Context, string) (*WalletUser, error) {
+	return nil, ErrWalletClientUnavailable
+}
+func (EmptyWalletClient) CreateBillingCharge(context.Context, string, *WalletCharge) error {
+	return ErrWalletClientUnavailable
+}
+func (EmptyWalletClient) ConfirmBillingCharge(context.Context, *WalletConfirmation) error {
+	return ErrWalletClientUnavailable
+}
+func (EmptyWalletClient) GetUserCreditBalance(context.Context, string) (*WalletBalance, error) {
+	return nil, ErrWalletClientUnavailable
+}
+
+var _ WalletClient = EmptyWalletClient{}
+
 type Wallet struct {
 	Client               WalletClient
 	BaseURL              string
@@ -42,15 +97,15 @@ func (w *Wallet) BizID() (string, error) {
 }
 func walletFailure(err error) (string, string) {
 	code := "wallet_unavailable"
-	if errors.Is(err, opensdk.ErrInsufficientBalance) {
+	if errors.Is(err, ErrWalletInsufficientBalance) {
 		code = "wallet_insufficient_balance"
 	}
-	if errors.Is(err, opensdk.ErrCreditAccountSuspended) {
+	if errors.Is(err, ErrWalletAccountSuspended) {
 		code = "wallet_account_suspended"
 	}
 	trace := ""
-	if e, ok := errors.AsType[*opensdk.WalletError](err); ok {
-		trace = e.TraceID
+	if e, ok := errors.AsType[walletTraceError](err); ok {
+		trace = e.WalletTraceID()
 	}
 	return code, trace
 }
@@ -83,13 +138,13 @@ func (s *Service) reserveRemote(ctx context.Context, id string) error {
 		_, err = sqlc.New(s.pool).SetWalletTeam(c, sqlc.SetWalletTeamParams{TransactionID: id, TeamSlug: team})
 	}
 	if err == nil {
-		err = wallet.Client.CreateBillingCharge(c, user, &opensdk.CreateBillingChargeReq{BizID: biz, FrozenAmountCreditCents: amount})
+		err = wallet.Client.CreateBillingCharge(c, user, &WalletCharge{BizID: biz, FrozenAmountCreditCents: amount})
 	}
 	finalCtx, finish := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finish()
 	if err != nil {
 		code, trace := walletFailure(err)
-		definite := errors.Is(err, opensdk.ErrInsufficientBalance) || errors.Is(err, opensdk.ErrCreditAccountSuspended)
+		definite := errors.Is(err, ErrWalletInsufficientBalance) || errors.Is(err, ErrWalletAccountSuspended)
 		tx, e := s.pool.Begin(finalCtx)
 		if e != nil {
 			return e
@@ -169,7 +224,7 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	if err != nil {
 		return err
 	}
-	err = wallet.Client.ConfirmBillingCharge(ctx, &opensdk.ConfirmBillingChargeReq{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
+	err = wallet.Client.ConfirmBillingCharge(ctx, &WalletConfirmation{BizID: biz, UserID: user, TeamSlug: team, Status: "success", ActualAmountCreditCents: quotaAmount(amount, false), Subject: item})
 	if err != nil {
 		code, trace := walletFailure(err)
 		if _, markErr := sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace}); markErr != nil {

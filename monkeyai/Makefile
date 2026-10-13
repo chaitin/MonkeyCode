@@ -6,6 +6,9 @@ ADMIN_IMAGE ?= $(REGISTRY)/monkeyai-admin:$(TAG)
 BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.6-acme0.4.1-r1
+PRIVATE_ROOT ?= ../..
+MONKEYAI_PUBLIC_KEY_FILE ?=
+MONKEYAI_AES_KEY_FILE ?=
 
 .PHONY: image image-admin image-backend image-migrate image-nginx-acme push push-admin push-backend push-migrate push-nginx-acme images
 
@@ -16,25 +19,27 @@ image-admin:
 	  --platform $(PLATFORM) \
 	  --tag $(ADMIN_IMAGE) \
 	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) \
-	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
 	  ./admin
 	@echo "Admin image: $(ADMIN_IMAGE)"
 
 image-backend:
+	@test -s "$(MONKEYAI_PUBLIC_KEY_FILE)" && test -s "$(MONKEYAI_AES_KEY_FILE)" || { echo "构建私有 Backend 需要 MONKEYAI_PUBLIC_KEY_FILE 和 MONKEYAI_AES_KEY_FILE" >&2; exit 1; }
 	docker buildx build \
 	  --platform $(PLATFORM) \
+	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
-	  --secret id=netrc,src=${HOME}/.netrc \
+	  --build-arg VERSION=$(TAG) \
+	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
+	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
 	  --load \
-	  ./backend
+	  $(PRIVATE_ROOT)
 	@echo "Backend image: $(BACKEND_IMAGE)"
 
 image-migrate:
 	docker buildx build \
 	  --platform $(PLATFORM) \
 	  --tag $(MIGRATE_IMAGE) \
-	  --secret id=netrc,src=${HOME}/.netrc \
 	  --load \
 	  ./backend/migrations
 	@echo "Migrate image: $(MIGRATE_IMAGE)"
@@ -55,24 +60,26 @@ push-admin:
 	  --platform $(PLATFORM) \
 	  --tag $(ADMIN_IMAGE) \
 	  --build-arg NGINX_ACME_IMAGE=$(NGINX_ACME_IMAGE) \
-	  --secret id=netrc,src=${HOME}/.netrc \
 	  --push \
 	  ./admin
 	@echo "Pushed: $(ADMIN_IMAGE)"
 
 push-backend:
+	@test -s "$(MONKEYAI_PUBLIC_KEY_FILE)" && test -s "$(MONKEYAI_AES_KEY_FILE)" || { echo "发布私有 Backend 需要 MONKEYAI_PUBLIC_KEY_FILE 和 MONKEYAI_AES_KEY_FILE" >&2; exit 1; }
 	docker buildx build \
 	  --platform $(PLATFORM) \
+	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
-	  --secret id=netrc,src=${HOME}/.netrc \
+	  --build-arg VERSION=$(TAG) \
+	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
+	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
 	  --push \
-	  ./backend
+	  $(PRIVATE_ROOT)
 	@echo "Pushed: $(BACKEND_IMAGE)"
 
 push-migrate:
 	docker buildx build \
 	  --platform $(PLATFORM) \
-	  --secret id=netrc,src=${HOME}/.netrc \
 	  --tag $(MIGRATE_IMAGE) \
 	  --push \
 	  ./backend/migrations
