@@ -205,6 +205,7 @@ export function AppSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>
+        <ServiceVersion />
         <NavUser
           user={{
             name: user?.name ?? "MonkeyAI Admin",
@@ -212,7 +213,6 @@ export function AppSidebar({
           }}
           onLogout={onLogout}
         />
-        <ServiceVersion />
       </SidebarFooter>
     </Sidebar>
   )

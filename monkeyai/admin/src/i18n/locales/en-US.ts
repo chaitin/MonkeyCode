@@ -135,7 +135,8 @@ export const enUS = {
     adminConsole: "Admin Console",
   },
   version: {
-    current: "Version {{version}}",
+    current: "Current version",
+    available: "Update available",
     upgrade: "Upgrade to {{version}}",
   },
   landing: {
