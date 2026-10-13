@@ -132,7 +132,8 @@ export const zhCN = {
     adminConsole: "管理后台",
   },
   version: {
-    current: "当前版本 {{version}}",
+    current: "当前版本",
+    available: "发现新版本",
     upgrade: "升级到 {{version}}",
   },
   landing: {
