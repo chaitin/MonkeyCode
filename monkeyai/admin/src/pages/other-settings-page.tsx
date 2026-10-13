@@ -86,6 +86,7 @@ import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
 import { ProxySettings } from "@/components/proxy-settings"
 import { PaidLicenseCard } from "@/components/paid-license-card"
+import { AboutCard } from "@/components/about-card"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -2559,6 +2560,7 @@ export function OtherSettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
       <PaidLicenseCard className="order-6" />
+      <AboutCard className="order-7" />
     </section>
   )
 }

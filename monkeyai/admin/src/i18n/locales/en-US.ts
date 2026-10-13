@@ -1431,6 +1431,7 @@ export const enUS = {
       },
     },
     otherSettings: {
+      about: "About",
       proxies: { title: "System proxies", description: "Configure outbound proxies for models and connectors. Proxies in use cannot be deleted.", name: "Name", url: "Proxy URL", username: "Username (optional)", password: "Password (leave blank to keep)", newPassword: "Password (optional)", add: "Add proxy", edit: "Edit proxy", editAction: "Edit", delete: "Delete", cancel: "Cancel", save: "Save", direct: "Direct connection", confirmDelete: "Delete this proxy?" },
       title: "Other Settings",
       description:

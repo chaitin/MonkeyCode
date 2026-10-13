@@ -885,6 +885,7 @@ export const zhTW = {
       },
     },
     otherSettings: {
+      about: "關於",
       proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", url: "代理位址", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", newPassword: "密碼（選填）", add: "新增代理", edit: "編輯代理", editAction: "編輯", delete: "刪除", cancel: "取消", save: "儲存", direct: "直接連線", confirmDelete: "確定刪除此代理？" },
       title: "其他設定",
       description: "設定品牌資訊、OAuth 與其他平台功能。",

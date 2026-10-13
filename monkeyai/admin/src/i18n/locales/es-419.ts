@@ -935,6 +935,7 @@ export const es419 = {
       },
     },
     otherSettings: {
+      about: "Acerca de",
       proxies: { title: "Proxies del sistema", description: "Configura proxies de salida para modelos y conectores. Los proxies en uso no se pueden eliminar.", name: "Nombre", url: "URL del proxy", username: "Usuario (opcional)", password: "Contraseña (dejar en blanco para conservar)", newPassword: "Contraseña (opcional)", add: "Agregar proxy", edit: "Editar proxy", editAction: "Editar", delete: "Eliminar", cancel: "Cancelar", save: "Guardar", direct: "Conexión directa", confirmDelete: "¿Eliminar este proxy?" },
       title: "Otras configuraciones",
       description:

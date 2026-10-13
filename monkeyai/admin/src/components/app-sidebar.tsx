@@ -6,7 +6,6 @@ import { NavLink } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { ServiceVersion } from "@/components/service-version"
 import {
   Sidebar,
   SidebarContent,
@@ -197,7 +196,6 @@ export function AppSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>
-        <ServiceVersion />
         <NavUser
           user={{
             name: user?.name ?? "MonkeyAI Admin",

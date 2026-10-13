@@ -1355,6 +1355,7 @@ export const zhCN = {
       },
     },
     otherSettings: {
+      about: "关于",
       proxies: { title: "系统代理", description: "配置可供模型和连接器选择的出站代理。使用中的代理不可删除。", name: "名称", url: "代理地址", username: "用户名（可选）", password: "密码（留空保持不变）", newPassword: "密码（可选）", add: "添加代理", edit: "编辑代理", editAction: "编辑", delete: "删除", cancel: "取消", save: "保存", direct: "直连", confirmDelete: "确认删除该代理？" },
       title: "其他设置",
       description: "配置品牌信息、OAuth 及其他平台级能力。",
