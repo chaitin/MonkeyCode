@@ -10,6 +10,14 @@ type SkillParsedMeta struct {
 	// SourceType ∈ {"zip","markdown","text"};SourceLabel 是文件名或 "粘贴文本"。
 	SourceType  string `json:"source_type,omitempty"`
 	SourceLabel string `json:"source_label,omitempty"`
+	// PendingGroupIDs keeps the requested group bindings off the old active
+	// version until a pending security scan has been approved. The IDs are
+	// encoded as strings because parsed_meta is also consumed as JSON.
+	PendingGroupIDs        []string `json:"pending_group_ids,omitempty"`
+	PendingGuardOwner      string   `json:"pending_guard_owner,omitempty"`
+	PendingStageKey        string   `json:"pending_stage_key,omitempty"`
+	PendingPackageFilename string   `json:"pending_package_filename,omitempty"`
+	PendingPackageVersion  string   `json:"pending_package_version,omitempty"`
 }
 
 // PluginParsedMeta is the parsed_meta jsonb payload for agent_plugin_versions.
