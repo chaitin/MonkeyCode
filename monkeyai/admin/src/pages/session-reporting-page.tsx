@@ -32,7 +32,6 @@ import {
   reportPaths,
   reportQuery,
   useReport,
-  type ReportClient,
   type ReportOverview,
   type ReportPage,
   type ReportResourceRow,
@@ -896,73 +895,6 @@ export function ResourceAnalysisPage() {
             ))}
             <TableCell>
               <ReportNumber value={row.failure_rate} suffix="%" />
-            </TableCell>
-          </TableRow>
-        )}
-      />
-    </ReportShell>
-  )
-}
-
-export function ClientAnalysisPage() {
-  const { t } = useTranslation()
-  const [filters, setFilters] = useState(defaultWindow)
-  return (
-    <ReportShell title={t(`${key}.clients.title`)}>
-      <ReportFilters value={filters} onApply={setFilters} />
-      <p className="text-xs text-muted-foreground">
-        {t(`${key}.clients.note`)}
-      </p>
-      <PaginatedReport<ReportClient>
-        path={reportPaths.clients}
-        filters={filters}
-        columns={[
-          "client_type",
-          "platform",
-          "os_version",
-          "client_version",
-          "engine_version",
-          "runtime_version",
-          "locale",
-          "timezone",
-          "sessions",
-          "turns",
-          "interrupted",
-          "completion_rate",
-          "anomaly_rate",
-          "p95_duration_seconds",
-          "last_active_at",
-        ]}
-        renderRow={(row) => (
-          <TableRow key={row.sort_key}>
-            {[
-              row.client_type,
-              row.platform,
-              row.os_version,
-              row.client_version,
-              row.engine_version,
-              row.runtime_version,
-              row.locale,
-              row.timezone,
-              row.sessions,
-              row.turns,
-              row.interrupted,
-            ].map((v, i) => (
-              <TableCell key={i}>
-                <ReportValue value={v} />
-              </TableCell>
-            ))}
-            {[
-              row.completion_rate,
-              row.anomaly_rate,
-              row.p95_duration_seconds,
-            ].map((v, i) => (
-              <TableCell key={i}>
-                <ReportNumber value={v} suffix={i < 2 ? "%" : "s"} />
-              </TableCell>
-            ))}
-            <TableCell>
-              <ReportTime value={row.last_active_at} />
             </TableCell>
           </TableRow>
         )}

@@ -23,6 +23,7 @@ import { LoginPage } from "@/pages/login-page"
 import { LicensePage } from "@/pages/license-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
+import { ClientAnalysisPage } from "@/pages/client-analysis-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelStatisticsPage } from "@/pages/model-statistics-page"
 import { ModelsPage } from "@/pages/models-page"
@@ -35,7 +36,6 @@ import { SkillsPage } from "@/pages/skills-page"
 import { TaskHistoryPage } from "@/pages/task-history-page"
 import { TaskStatisticsPage } from "@/pages/task-statistics-page"
 import {
-  ClientAnalysisPage,
   ResourceAnalysisPage,
   SessionListPage,
   SessionOverviewPage,

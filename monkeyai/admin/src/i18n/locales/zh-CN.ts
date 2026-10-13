@@ -370,7 +370,7 @@ export const zhCN = {
         description: "查看资源开启与使用统计。",
       },
       clientAnalysis: {
-        title: "客户端分析",
+        title: "客户端",
         description: "查看客户端维度统计。",
       },
       sessions: { title: "会话列表" },
@@ -381,6 +381,9 @@ export const zhCN = {
       clients: {
         title: "客户端分析",
         note: "系统、语言、时区和 runtime 版本为当前设备属性，客户端与引擎版本来自轮次固化事实，不能用于历史回溯。",
+        selectColumns: "选择列",
+        cursorSummary: "显示 {{from}}–{{to}} 条",
+        cursorPage: "第 {{page}} 页",
       },
       detail: {
         title: "会话详情",

@@ -49,6 +49,21 @@ function DropdownMenuContent({
   )
 }
 
+function DropdownMenuOptionsContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuContent>) {
+  return (
+    <DropdownMenuContent
+      className={cn(
+        "w-max min-w-64 max-w-[calc(100vw-2rem)] overflow-x-auto whitespace-nowrap",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
 }
@@ -252,6 +267,7 @@ export {
   DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuItem,

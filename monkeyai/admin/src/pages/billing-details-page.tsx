@@ -31,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -526,7 +527,7 @@ export function BillingDetailsPage() {
                     />
                     {t("common.more")}
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
+                  <DropdownMenuOptionsContent align="start">
                     <DropdownMenuGroup>
                       {fieldOptions.map(({ key, label }) => (
                         <DropdownMenuCheckboxItem
@@ -545,7 +546,7 @@ export function BillingDetailsPage() {
                         </DropdownMenuCheckboxItem>
                       ))}
                     </DropdownMenuGroup>
-                  </DropdownMenuContent>
+                  </DropdownMenuOptionsContent>
                 </DropdownMenu>
                 <Button type="submit" disabled={loading || searching}>
                   <HugeiconsIcon

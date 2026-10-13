@@ -406,6 +406,9 @@ export const enUS = {
       clients: {
         title: "Clients",
         note: "OS, language, timezone and runtime version are current device properties; client and engine versions come from turn facts, not historical device snapshots.",
+        selectColumns: "Select columns",
+        cursorSummary: "Showing {{from}}–{{to}}",
+        cursorPage: "Page {{page}}",
       },
       detail: {
         title: "Session details",

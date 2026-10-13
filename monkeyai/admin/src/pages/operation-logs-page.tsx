@@ -31,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -393,7 +394,7 @@ export function OperationLogsPage() {
                 />
                 {t("common.more")}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuOptionsContent align="start">
                 <DropdownMenuGroup>
                   {fieldOptions.map(({ key, label }) => (
                     <DropdownMenuCheckboxItem
@@ -412,7 +413,7 @@ export function OperationLogsPage() {
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuGroup>
-              </DropdownMenuContent>
+              </DropdownMenuOptionsContent>
             </DropdownMenu>
             <Button
               type="button"

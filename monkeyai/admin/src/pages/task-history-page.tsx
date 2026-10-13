@@ -22,7 +22,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
-  DropdownMenuContent,
+  DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -314,7 +314,7 @@ export function TaskHistoryPage() {
                   />
                   {t("common.more")}
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
+                <DropdownMenuOptionsContent align="start">
                   <DropdownMenuGroup>
                     {fieldOptions.map(({ key, label }) => (
                       <DropdownMenuCheckboxItem
@@ -333,7 +333,7 @@ export function TaskHistoryPage() {
                       </DropdownMenuCheckboxItem>
                     ))}
                   </DropdownMenuGroup>
-                </DropdownMenuContent>
+                </DropdownMenuOptionsContent>
               </DropdownMenu>
               <Field className="sm:w-auto">
                 <FieldLabel className="sr-only">

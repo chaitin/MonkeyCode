@@ -17,7 +17,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
-  DropdownMenuContent,
+  DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -482,7 +482,7 @@ export function ConversationHistoryPage() {
                 />
                 {copy.fields}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuOptionsContent align="start">
                 <DropdownMenuGroup>
                   {fieldOptions.map(({ key, label }) => (
                     <DropdownMenuCheckboxItem
@@ -501,7 +501,7 @@ export function ConversationHistoryPage() {
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuGroup>
-              </DropdownMenuContent>
+              </DropdownMenuOptionsContent>
             </DropdownMenu>
             <Button type="submit">
               <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
