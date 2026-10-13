@@ -150,6 +150,7 @@ export const ar = {
     systemSettings: "إعدادات النظام",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "الحالة المباشرة",
       description: "راقب أداء النماذج ونشاط المنتج خلال الفترة المحددة.",

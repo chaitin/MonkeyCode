@@ -151,6 +151,7 @@ export const koKR = {
     systemSettings: "시스템 설정",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "실시간 상태",
       description: "선택한 기간의 모델 성능과 서비스 활동을 확인합니다.",

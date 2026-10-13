@@ -9,7 +9,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"git.in.chaitin.net/ai/baizhiyun/opensdk"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
@@ -137,30 +135,11 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 	if count == 0 {
 		return nil, resource.Invalid("CA 证书不能为空")
 	}
-	// SDK 仅接收文件路径，构造完成后证书已加载到内存。
-	dir, err := os.MkdirTemp("", "monkeyai-wallet-")
-	if err != nil {
-		return nil, fmt.Errorf("创建钱包证书临时目录失败: %w", err)
-	}
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			slog.Error("清理钱包证书临时目录失败", "operation", "remove_wallet_temp_dir", "error", err)
-		}
-	}()
-	for name, content := range map[string]string{"app.crt": cfg.Certificate, "app.key": cfg.PrivateKey, "ca.crt": cfg.CACertificate} {
-		if err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
-			return nil, fmt.Errorf("写入钱包证书临时文件 %s 失败: %w", name, err)
-		}
-	}
-	openURL, walletURL := walletEndpoints(cfg.BaseURL)
-	client, err := opensdk.NewOpenClientWithConfig(opensdk.OpenClientConfig{
-		Env: opensdk.OpenClientEnvProd, AppID: cfg.AppID, OpenAPIURL: openURL, WalletURL: walletURL,
-		PrivateKeyPath: filepath.Join(dir, "app.key"), CertPath: filepath.Join(dir, "app.crt"), CAFile: filepath.Join(dir, "ca.crt"),
-	})
-	if err != nil {
-		return nil, resource.Invalid("初始化百智云客户端失败，请检查证书配置")
-	}
-	return &Wallet{Client: client, BaseURL: cfg.BaseURL, AppID: cfg.AppID, CertificateExpiresAt: cert.NotAfter, validUntil: validUntil, config: cfg, source: "admin"}, nil
+	return &Wallet{
+		Client: EmptyWalletClient{}, BaseURL: cfg.BaseURL, AppID: cfg.AppID,
+		CertificateExpiresAt: cert.NotAfter, validUntil: validUntil,
+		config: cfg, source: "admin", error: ErrWalletClientUnavailable.Error(),
+	}, nil
 }
 
 func (s *Service) walletConfig(ctx context.Context, q resource.Queryer) (*WalletConfig, error) {
@@ -198,7 +177,15 @@ func (s *Service) wallet(ctx context.Context, q resource.Queryer) (*Wallet, erro
 }
 
 func (w *Wallet) ready() bool {
-	return w != nil && w.Client != nil && (w.validUntil.IsZero() || time.Now().Before(w.validUntil))
+	if w == nil || w.Client == nil || (!w.validUntil.IsZero() && !time.Now().Before(w.validUntil)) {
+		return false
+	}
+	switch w.Client.(type) {
+	case EmptyWalletClient, *EmptyWalletClient:
+		return false
+	default:
+		return true
+	}
 }
 
 func (w *Wallet) info() WalletInfo {
@@ -210,7 +197,7 @@ func (w *Wallet) info() WalletInfo {
 	if !w.CertificateExpiresAt.IsZero() {
 		info.CertificateExpiresAt = &w.CertificateExpiresAt
 	}
-	if w.Client != nil && !w.ready() {
+	if w.Client != nil && !w.ready() && info.Error == "" {
 		info.Error = "客户端证书或 CA 证书已过期，请更新证书"
 	}
 	return info
@@ -283,15 +270,4 @@ func normalizeWalletURL(raw string) (string, error) {
 		host = "[" + host + "]"
 	}
 	return "https://" + host, nil
-}
-
-func walletEndpoints(baseURL string) (string, string) {
-	switch baseURL {
-	case "https://baizhi.cloud":
-		return opensdk.ProdOpenAPIURL, opensdk.ProdWalletURL
-	case "https://baizhiyun.vip":
-		return opensdk.DevOpenAPIURL, opensdk.DevWalletURL
-	default:
-		return baseURL, baseURL
-	}
 }

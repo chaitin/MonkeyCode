@@ -8,6 +8,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -55,7 +56,7 @@ func (s *Service) Move(ctx context.Context, actor string, in MoveInput) error {
 	if len(in.GroupIDs) > 0 {
 		err = moveGroups(ctx, tx, actor, target, in.GroupIDs)
 	} else {
-		err = moveMembers(ctx, tx, actor, target, in.Members)
+		err = moveMembers(ctx, tx, s.members, actor, target, in.Members)
 	}
 	if err != nil {
 		return err
@@ -126,7 +127,7 @@ func moveGroups(ctx context.Context, tx pgx.Tx, actor string, target *string, id
 	return nil
 }
 
-func moveMembers(ctx context.Context, tx pgx.Tx, actor string, target *string, members []MoveMember) error {
+func moveMembers(ctx context.Context, tx pgx.Tx, writer member.GroupWriter, actor string, target *string, members []MoveMember) error {
 	ids := make([]string, 0, len(members))
 	seen := map[string]bool{}
 	for _, member := range members {
@@ -186,20 +187,18 @@ func moveMembers(ctx context.Context, tx pgx.Tx, actor string, target *string, m
 		}
 	}
 	changed := map[string]bool{}
-	for _, member := range members {
-		if member.SourceGroupID != nil && *member.SourceGroupID != rootgroup.ID {
-			id := *member.SourceGroupID
-			if _, err := queries.RemoveMember(ctx, sqlc.RemoveMemberParams{GroupID: id, UserID: member.ID}); err != nil {
-				return err
-			}
-			changed[id] = true
+	input := member.MoveMembers{ActorID: actor, TargetGroupID: target, Members: make([]member.MoveMember, 0, len(members))}
+	for _, entry := range members {
+		input.Members = append(input.Members, member.MoveMember{ID: entry.ID, SourceGroupID: entry.SourceGroupID})
+		if entry.SourceGroupID != nil && *entry.SourceGroupID != rootgroup.ID {
+			changed[*entry.SourceGroupID] = true
 		}
 		if target != nil {
-			if _, err := queries.AddMember(ctx, sqlc.AddMemberParams{GroupID: *target, UserID: member.ID, AssignedByUserID: actor}); err != nil {
-				return err
-			}
 			changed[*target] = true
 		}
+	}
+	if err := writer.MoveMembers(ctx, tx, input); err != nil {
+		return err
 	}
 	for id := range changed {
 		if _, err := queries.TouchGroup(ctx, id); err != nil {

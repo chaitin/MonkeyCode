@@ -140,6 +140,7 @@ export const zhTW = {
     systemSettings: "系統設定",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "即時狀態",
       description: "查看所選時間範圍內的模型運行與業務活躍狀態。",

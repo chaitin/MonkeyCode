@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -289,24 +290,38 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 			writeError(w, 500, "server_error", "密码重置失败")
 			return
 		}
-		id, resetErr := q.ResetPassword(ctx, sqlc.ResetPasswordParams{Email: input.Email, PasswordHash: &hash})
+		var id string
+		var resetErr error
+		id, resetErr = s.writer.ResetPassword(ctx, tx, member.PasswordReset{Email: input.Email, PasswordHash: hash})
 		if resetErr == nil {
 			resetErr = revokePasswordAccess(ctx, q, id, input.Email)
 		}
 		if resetErr != nil {
-			if !errors.Is(resetErr, pgx.ErrNoRows) {
-				slog.ErrorContext(ctx, "重置密码并撤销旧凭据失败", "error", resetErr)
+			if errors.Is(resetErr, member.ErrWriterUnavailable) {
+				writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
+			} else {
+				if !errors.Is(resetErr, pgx.ErrNoRows) {
+					slog.ErrorContext(ctx, "重置密码并撤销旧凭据失败", "error", resetErr)
+				}
+				writeError(w, 400, "reset_failed", "密码重置失败，请重新获取验证码")
 			}
-			writeError(w, 400, "reset_failed", "密码重置失败，请重新获取验证码")
 			return
 		}
 	default:
 		row, lookupErr := q.GetUserByEmail(ctx, input.Email)
 		admin := strings.HasPrefix(r.URL.Path, "/admin/") || strings.Contains(r.URL.Path, "/v1/admin/")
 		if errors.Is(lookupErr, pgx.ErrNoRows) && methods.EmailCodeAutoRegistrationEnabled && !admin {
-			if err := q.CreateEmailUser(ctx, sqlc.CreateEmailUserParams{Name: input.Email, Email: input.Email}); err != nil {
-				slog.ErrorContext(ctx, "自动注册邮件登录用户失败", "error", err)
-				writeError(w, 500, "server_error", "创建账号失败")
+			_, createErr := s.writer.RegisterEmailUser(ctx, tx, input.Email)
+			if createErr != nil {
+				switch {
+				case errors.Is(createErr, member.ErrSeatsExceeded):
+					writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
+				case errors.Is(createErr, member.ErrSeatsUnavailable), errors.Is(createErr, member.ErrWriterUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
+				default:
+					slog.ErrorContext(ctx, "自动注册邮件登录用户失败", "error", createErr)
+					writeError(w, http.StatusInternalServerError, "server_error", "创建账号失败")
+				}
 				return
 			}
 			row, lookupErr = q.GetUserByEmail(ctx, input.Email)

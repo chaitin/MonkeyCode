@@ -6,12 +6,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log/slog"
 	"math/big"
@@ -22,12 +22,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	auditlog "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/go-chi/chi/v5"
 )
@@ -85,8 +85,8 @@ func TestWalletCertificates(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
 	wallet, err := newWallet(cfg)
-	if err != nil || !wallet.ready() {
-		t.Fatal("有效配置初始化失败", err)
+	if err != nil || wallet.ready() || wallet.info().Error != ErrWalletClientUnavailable.Error() {
+		t.Fatal("占位钱包应验证配置但保持不可用", err)
 	}
 	files, err := os.ReadDir(dir)
 	if err != nil || len(files) != 0 {
@@ -106,8 +106,8 @@ func TestWalletCertificates(t *testing.T) {
 	t.Setenv("BAIZHIYUN_APP_ID", "4")
 	t.Setenv("MONKEYAI_WALLET_CERT_DIR", dir)
 	wallet, err = WalletFromEnv()
-	if err != nil || !wallet.ready() || wallet.info().Source != "environment" {
-		t.Fatal("部署配置不兼容", err)
+	if err != nil || wallet.ready() || wallet.info().Source != "environment" {
+		t.Fatal("部署配置未返回不可用的占位钱包", err)
 	}
 	t.Setenv("BAIZHIYUN_ENV", "prod")
 	wallet, err = WalletFromEnv()
@@ -174,7 +174,7 @@ func TestWalletSettings(t *testing.T) {
 	if err := json.Unmarshal(call("PATCH", "/billing/settings/wallet", input, 200), &out); err != nil {
 		t.Fatal(err)
 	}
-	if !out.Wallet.Configured || !out.Wallet.CredentialsConfigured || out.Policy.Revision != 2 || out.Wallet.Source != "admin" || out.Wallet.BaseURL != cfg.BaseURL {
+	if out.Wallet.Configured || !out.Wallet.CredentialsConfigured || out.Wallet.Error != ErrWalletClientUnavailable.Error() || out.Policy.Revision != 2 || out.Wallet.Source != "admin" || out.Wallet.BaseURL != cfg.BaseURL {
 		t.Fatal("保存后状态错误")
 	}
 	original, err := s.walletConfig(t.Context(), s.pool)
@@ -197,27 +197,27 @@ func TestWalletSettings(t *testing.T) {
 		t.Fatal("后台配置未优先于环境变量", err)
 	}
 	wallet, err := restarted.wallet(t.Context(), s.pool)
-	if err != nil || !wallet.ready() || wallet.AppID != 4 {
-		t.Fatal("重启后未恢复配置", err)
+	if err != nil || wallet.ready() || wallet.AppID != 4 {
+		t.Fatal("重启后应恢复配置但不能启用远程计费", err)
 	}
 	call("PATCH", "/billing/settings/wallet", map[string]any{"revision": 4, "base_url": "https://baizhi.private.example:8443", "app_id": 5}, 200)
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			wallet, err := restarted.wallet(t.Context(), s.pool)
-			if err != nil || !wallet.ready() || wallet.AppID != 5 || wallet.BaseURL != "https://baizhi.private.example:8443" {
+			if err != nil || wallet.ready() || wallet.AppID != 5 || wallet.BaseURL != "https://baizhi.private.example:8443" {
 				t.Error("其他实例未读取最新配置", err)
 			}
 		})
 	}
 	wg.Wait()
-	call("PATCH", "/billing/settings/mode", map[string]any{"revision": 5, "charging_mode": "remote", "enabled": true}, 200)
+	call("PATCH", "/billing/settings/mode", map[string]any{"revision": 5, "charging_mode": "remote", "enabled": true}, 422)
 	call("GET", "/billing/settings", nil, 200)
-	call("PATCH", "/billing/settings/cycle", map[string]any{"revision": 6, "quota_refresh_cycle": "daily"}, 200)
-	call("PATCH", "/billing/settings/cycle", map[string]any{"revision": 7, "quota_refresh_cycle": "monthly"}, 200)
+	call("PATCH", "/billing/settings/cycle", map[string]any{"revision": 5, "quota_refresh_cycle": "daily"}, 200)
+	call("PATCH", "/billing/settings/cycle", map[string]any{"revision": 6, "quota_refresh_cycle": "monthly"}, 200)
 	policy, err := s.Policy(t.Context())
-	if err != nil || policy.PendingCycle != "" || policy.CycleEffectiveAt != nil {
-		t.Fatal("保留钱包配置时未清除已撤销的待生效周期", err)
+	if err != nil || policy.Mode != "local" {
+		t.Fatal("占位钱包不应启用远程计费", err)
 	}
 	for _, path := range []string{"/settings", "/settings/billing"} {
 		if strings.Contains(string(call("GET", path, nil, 200)), "\"wallet\"") {
@@ -284,45 +284,53 @@ func TestWalletURLs(t *testing.T) {
 	}
 }
 
-func TestWalletCustomURLs(t *testing.T) {
-	cfg := walletFixture(t, time.Now().Add(time.Hour))
-	pair, err := tls.X509KeyPair([]byte(cfg.Certificate), []byte(cfg.PrivateKey))
+func TestEmptyWalletClientFailsClosed(t *testing.T) {
+	wallet, err := newWallet(walletFixture(t, time.Now().Add(time.Hour)))
+	if err != nil || wallet.ready() || wallet.info().Error != ErrWalletClientUnavailable.Error() {
+		t.Fatalf("未实现的远程钱包必须不可用: %+v，错误: %v", wallet, err)
+	}
+	client := wallet.Client
+	if _, err := client.GetUserByID(t.Context(), "1001"); !errors.Is(err, ErrWalletClientUnavailable) {
+		t.Fatalf("用户查询未拒绝: %v", err)
+	}
+	if _, err := client.GetUserCreditBalance(t.Context(), "1001"); !errors.Is(err, ErrWalletClientUnavailable) {
+		t.Fatalf("余额查询未拒绝: %v", err)
+	}
+	if err := client.CreateBillingCharge(t.Context(), "1001", &WalletCharge{}); !errors.Is(err, ErrWalletClientUnavailable) {
+		t.Fatalf("钱包预扣未拒绝: %v", err)
+	}
+	if err := client.ConfirmBillingCharge(t.Context(), &WalletConfirmation{}); !errors.Is(err, ErrWalletClientUnavailable) {
+		t.Fatalf("钱包确认未拒绝: %v", err)
+	}
+}
+
+func TestRemoteModeFailsClosedWithoutClient(t *testing.T) {
+	s, user, model := fixture(t)
+	wallet, err := newWallet(walletFixture(t, time.Now().Add(time.Hour)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM([]byte(cfg.CACertificate))
-	var users, balances atomic.Int32
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-			t.Error("缺少客户端证书")
-			http.Error(w, "无效请求", http.StatusBadRequest)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/api/v1/user":
-			users.Add(1)
-			io.WriteString(w, `{"code":0,"data":{"id":"1001"}}`)
-		case "/api/v1/billing/users/1001/balance":
-			balances.Add(1)
-			io.WriteString(w, `{"code":0,"data":{"permanent_credit_cents":1234}}`)
-		default:
-			t.Error("请求路径错误", r.URL.Path)
-			http.NotFound(w, r)
-		}
-	}))
-	srv.TLS = &tls.Config{Certificates: []tls.Certificate{pair}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: roots}
-	srv.StartTLS()
-	t.Cleanup(srv.Close)
-	cfg.BaseURL = srv.URL
-	wallet, err := newWallet(cfg)
-	if err != nil {
+	s.WithWallet(wallet)
+	addWalletIdentity(t, s, user, "1001")
+	policy := defaultPolicy()
+	policy.Mode = "remote"
+	setPolicy(t, s, policy)
+	var before, after int
+	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM billing_transactions`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	balance, err := wallet.Client.GetUserCreditBalance(t.Context(), "1001")
-	if err != nil || balance.AvailableCreditCents != 1234 || users.Load() != 1 || balances.Load() != 1 {
-		t.Fatal("用户查询和钱包请求未使用同一个自定义服务地址", err)
+	_, err = s.Begin(t.Context(), Request{UserID: user, ResourceID: model, Category: "model"})
+	failure, ok := errors.AsType[*resource.Error](err)
+	if !ok || failure.Status != 503 || failure.Code != "wallet_unavailable" {
+		t.Fatalf("空钱包未在交易前拒绝远程计费: %v", err)
+	}
+	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM billing_transactions`).Scan(&after); err != nil || before != after {
+		t.Fatalf("远程钱包不可用时不应保存交易: %d -> %d，错误: %v", before, after, err)
+	}
+	policy.Mode = "local"
+	setPolicy(t, s, policy)
+	if _, err := s.Begin(t.Context(), Request{UserID: user, ResourceID: model, Category: "model"}); err != nil {
+		t.Fatalf("本地计费不应受影响: %v", err)
 	}
 }
 
@@ -350,7 +358,7 @@ func TestWalletURLPersistence(t *testing.T) {
 				t.Fatal(err)
 			}
 			wallet, err := s.wallet(t.Context(), s.pool)
-			if err != nil || !wallet.ready() || wallet.config != cfg {
+			if err != nil || wallet.ready() || wallet.config != cfg {
 				t.Fatal("钱包地址配置未正确保存", err)
 			}
 			var baseURL string
@@ -360,18 +368,6 @@ func TestWalletURLPersistence(t *testing.T) {
 			call := walletAdmin(t, s, user)
 			call("PATCH", "/billing/settings/wallet", map[string]any{"revision": 1, "base_url": cfg.BaseURL, "app_id": cfg.AppID}, 200)
 		})
-	}
-}
-
-func TestWalletPublicURLs(t *testing.T) {
-	for _, tc := range []struct{ base, open, wallet string }{
-		{"https://baizhi.cloud", "https://open.baizhi.cloud", "https://wallet.baizhi.cloud"},
-		{"https://baizhiyun.vip", "https://open.baizhiyun.vip", "https://wallet.baizhiyun.vip"},
-	} {
-		open, wallet := walletEndpoints(tc.base)
-		if open != tc.open || wallet != tc.wallet {
-			t.Errorf("公有云地址映射错误：%s，%s", open, wallet)
-		}
 	}
 }
 

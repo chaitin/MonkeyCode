@@ -6,6 +6,7 @@ import { NavLink } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { ServiceVersion } from "@/components/service-version"
 import {
   Sidebar,
   SidebarContent,
@@ -156,6 +157,10 @@ export function AppSidebar({
           title: t("pages.otherSettings.title"),
           url: CONSOLE_ROUTES.otherSettings,
         },
+        {
+          title: t("pages.license.title"),
+          url: CONSOLE_ROUTES.license,
+        },
       ],
     },
   ]
@@ -207,6 +212,7 @@ export function AppSidebar({
           }}
           onLogout={onLogout}
         />
+        <ServiceVersion />
       </SidebarFooter>
     </Sidebar>
   )

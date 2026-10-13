@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"git.in.chaitin.net/ai/baizhiyun/opensdk"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -353,19 +352,19 @@ type walletStub struct {
 	creates, confirms []string
 }
 
-func (w *walletStub) GetUserByID(_ context.Context, id string) (*opensdk.User, error) {
-	return &opensdk.User{ID: id}, nil
+func (w *walletStub) GetUserByID(_ context.Context, id string) (*WalletUser, error) {
+	return &WalletUser{ID: id}, nil
 }
-func (w *walletStub) GetUserCreditBalance(context.Context, string) (*opensdk.UserCreditBalance, error) {
-	return &opensdk.UserCreditBalance{AvailableCreditCents: 1000000}, nil
+func (w *walletStub) GetUserCreditBalance(context.Context, string) (*WalletBalance, error) {
+	return &WalletBalance{AvailableCreditCents: 1000000}, nil
 }
-func (w *walletStub) CreateBillingCharge(_ context.Context, _ string, r *opensdk.CreateBillingChargeReq) error {
+func (w *walletStub) CreateBillingCharge(_ context.Context, _ string, r *WalletCharge) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.creates = append(w.creates, r.BizID)
 	return w.createErr
 }
-func (w *walletStub) ConfirmBillingCharge(_ context.Context, r *opensdk.ConfirmBillingChargeReq) error {
+func (w *walletStub) ConfirmBillingCharge(_ context.Context, r *WalletConfirmation) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.confirms = append(w.confirms, r.BizID)
@@ -421,7 +420,7 @@ func TestUnknownAndRejectedRemoteReservation(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"明确余额不足", opensdk.ErrInsufficientBalance},
+		{"明确余额不足", ErrWalletInsufficientBalance},
 		{"远程返回前连接中断", errors.New("connection lost")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

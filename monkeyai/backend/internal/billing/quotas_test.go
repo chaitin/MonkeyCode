@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"slices"
@@ -11,7 +12,27 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
 	groupsqlc "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
+	"github.com/jackc/pgx/v5"
 )
+
+type quotaTestGroupWriter struct{ member.GroupWriter }
+
+func (quotaTestGroupWriter) SetMembers(ctx context.Context, tx pgx.Tx, change member.GroupMembers) error {
+	if _, err := tx.Exec(ctx, `UPDATE group_users SET removed_at=now()
+		WHERE group_id=$1 AND removed_at IS NULL AND NOT (user_id = ANY($2::uuid[]))`, change.GroupID, change.UserIDs); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id)
+		SELECT $1, unnest($2::uuid[]), $3
+		ON CONFLICT (group_id,user_id) WHERE removed_at IS NULL DO NOTHING`, change.GroupID, change.UserIDs, change.ActorID)
+	return err
+}
+
+func (quotaTestGroupWriter) RemoveAllMembers(ctx context.Context, tx pgx.Tx, groupID string) error {
+	_, err := tx.Exec(ctx, `UPDATE group_users SET removed_at=now() WHERE group_id=$1 AND removed_at IS NULL`, groupID)
+	return err
+}
 
 func TestQuotaGroupsMatchMemberGroups(t *testing.T) {
 	s, user, _ := fixture(t)
@@ -155,7 +176,7 @@ func TestUserQuotaChangesAreRejected(t *testing.T) {
 			"id":           user,
 			"credits":      "123",
 		}},
-	}, 422)
+	}, 400)
 
 	var count int
 	if err := s.pool.QueryRow(t.Context(), `SELECT count(*) FROM billing_quotas WHERE user_id=$1 AND deleted_at IS NULL`, user).Scan(&count); err != nil || count != 0 {
@@ -173,7 +194,7 @@ func TestGroupQuotaChangesRequireIntegers(t *testing.T) {
 			"id":           rootGroup,
 			"credits":      "123.5",
 		}},
-	}, 422)
+	}, 400)
 
 	policy, err := s.Policy(t.Context())
 	if err != nil || policy.RootCredits != amountText("10000") {
@@ -338,7 +359,7 @@ func TestQuotaListUsesCurrentAccountBalances(t *testing.T) {
 func TestGroupChangesPreserveCurrentAccount(t *testing.T) {
 	s, user, _ := fixture(t)
 	ctx := t.Context()
-	groups := group.NewService(s.pool).WithAccountPreserver(s)
+	groups := group.NewService(s.pool).WithAccountPreserver(s).WithMemberWriter(quotaTestGroupWriter{})
 	low, high := resource.ID(), resource.ID()
 	if _, err := s.pool.Exec(ctx, `INSERT INTO groups(id,name) VALUES($1,'低额度'),($2,'高额度')`, low, high); err != nil {
 		t.Fatal(err)

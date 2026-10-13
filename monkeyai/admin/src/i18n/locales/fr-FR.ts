@@ -164,6 +164,7 @@ export const frFR = {
     systemSettings: "Paramètres système",
   },
   pages: {
+    license: enUS.pages.license,
     realtimeStatus: {
       title: "État en temps réel",
       description:
