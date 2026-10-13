@@ -158,7 +158,7 @@ MIGRATE_IMAGE=registry.example.com/team/monkeyai-migrate:v1.0.0 \
 docker compose up --no-build
 ```
 
-当前迁移已收敛为完整初始化版本 `000001`，需连接全新的 PostgreSQL 数据库或数据目录。不能复用已执行旧版迁移的数据目录，也不能通过 `force 1` 完成升级；需要保留旧数据时应另行制定迁移方案。验证要求见 [数据库迁移说明](backend/migrations/README.md)。
+首次部署从完整初始化迁移 `000001` 开始，需连接全新的 PostgreSQL 数据库或数据目录。曾执行收敛前旧迁移历史的数据库不能直接升级，也不能通过 `force 1` 完成升级；需要保留旧数据时应另行制定迁移方案。使用收敛后迁移历史、当前为 `14, dirty=false` 的环境支持直接 `up` 升级到 `19`，无需重建数据库。升级步骤与验证要求见 [数据库迁移说明](backend/migrations/README.md)。
 
 迁移 SQL 已打包在 Migrate 镜像中。远程部署无需同步 `backend/migrations` 目录，但必须为 `MIGRATE_IMAGE` 指定与 Backend 相同发布版本的已推送镜像。
 
