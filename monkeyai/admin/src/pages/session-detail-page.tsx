@@ -115,6 +115,7 @@ export function SessionDetailPage() {
   )
   const data =
     valid && request.data?.id === sessionId ? request.data : undefined
+  const expandedTurn = data?.turns.find((turn) => turn.turn_index === expanded)
   async function clearSession() {
     if (!valid || confirmID !== sessionId || clearing) return
     setClearing(true)
@@ -310,6 +311,10 @@ export function SessionDetailPage() {
                         variant="ghost"
                         size="sm"
                         aria-expanded={expanded === row.turn_index}
+                        aria-controls="turn-details"
+                        aria-label={t(`${key}.detail.turnDetails`, {
+                          turn: row.turn_index,
+                        })}
                       >
                         {row.turn_index}
                       </Button>
@@ -340,8 +345,53 @@ export function SessionDetailPage() {
                   </TableRow>
                 )}
               />
-              {expanded !== null && (
-                <div className="grid gap-4 lg:grid-cols-2">
+              {expandedTurn && (
+                <div
+                  id="turn-details"
+                  className="grid min-w-0 gap-4 lg:grid-cols-2"
+                >
+                  <Card className="min-w-0 lg:col-span-2">
+                    <CardHeader>
+                      <CardTitle>
+                        {t(`${key}.detail.turnDetails`, {
+                          turn: expandedTurn.turn_index,
+                        })}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <dl className="grid min-w-0 gap-4 text-sm sm:grid-cols-2">
+                        <div className="min-w-0">
+                          <dt className="text-xs text-muted-foreground">
+                            {t(`${key}.fields.title`)}
+                          </dt>
+                          <dd className="[overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {expandedTurn.title ?? "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">
+                            {t(`${key}.fields.title_source`)}
+                          </dt>
+                          <dd>
+                            <ReportValue value={expandedTurn.title_source} />
+                          </dd>
+                        </div>
+                        <div className="min-w-0 sm:col-span-2">
+                          <dt className="text-xs text-muted-foreground">
+                            {t(`${key}.fields.input_text`)}
+                          </dt>
+                          <dd className="mt-1 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {expandedTurn.input_text ?? "—"}
+                          </dd>
+                          {expandedTurn.input_text_truncated && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {t(`${key}.detail.textTruncated`)}
+                            </p>
+                          )}
+                        </div>
+                      </dl>
+                    </CardContent>
+                  </Card>
                   <DetailTable
                     title={t(`${key}.detail.tools`)}
                     columns={[

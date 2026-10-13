@@ -293,6 +293,15 @@ func prepareTurn(in turnInput, batchFacts *int32) (preparedTurn, error) {
 	if in.Input == nil || !requiredString(in.Input.Kind, 128) {
 		return preparedTurn{}, invalidState("input.kind 必填")
 	}
+	if in.Input.Text != nil && !validText(*in.Input.Text, maxInputTextLength, false) {
+		return preparedTurn{}, invalidState("input.text 过长或非法")
+	}
+	if in.Title != nil && !validText(*in.Title, 512, false) {
+		return preparedTurn{}, invalidState("title 无效")
+	}
+	if in.TitleSource != nil && !contains([]string{"prompt", "agent", "user"}, *in.TitleSource) {
+		return preparedTurn{}, invalidState("title_source 无效")
+	}
 	in.InputKind = in.Input.Kind
 	if in.Input.Origin != nil {
 		in.InputClientType, in.InputMachineID = in.Input.Origin.ClientType, in.Input.Origin.MachineID
@@ -555,6 +564,8 @@ func insertTurn(ctx context.Context, tx pgx.Tx, sessionID string, prepared prepa
 		"subagent_cache_creation_input_tokens": in.SubagentCacheCreation, "subagent_cache_read_input_tokens": in.SubagentCacheRead,
 		"context_used": in.ContextUsed, "context_window": in.ContextWindow,
 		"input_kind": in.InputKind, "input_client_type": in.InputClientType,
+		"input_text": in.Input.Text, "input_text_truncated": boolValue(in.Input.TextTruncated),
+		"title": in.Title, "title_source": in.TitleSource,
 		"input_machine_id": in.InputMachineID, "command_skill_id": in.CommandSkillID,
 		"attachments": in.Attachments, "canvas_nodes": in.CanvasNodes, "steers": in.Steers,
 		"files_created": in.FilesCreated, "files_updated": in.FilesUpdated, "files_deleted": in.FilesDeleted,

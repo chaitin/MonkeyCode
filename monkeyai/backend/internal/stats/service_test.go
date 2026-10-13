@@ -326,14 +326,30 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 	now := s.now().Add(-time.Minute)
 	exec(t, s, `INSERT INTO sessions(id,owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,reporting_enabled_at) VALUES($1,$2,'隐私标题','conversation','web','测试客户端',$3,$3,$3)`, id, user, now)
 	exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, id)
-	exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,1,1,'hash',1,$2,$3,'error','snapshot','text')`, id, now, now.Add(time.Second))
+	exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind,input_text,input_text_truncated,title,title_source) VALUES($1,1,1,'hash',1,$2,$3,'error','snapshot','prompt',$4,true,'本轮标题','user')`, id, now, now.Add(time.Second), "第一行\n第二行")
+	exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,2,1,'hash',2,$2,$3,'complete','snapshot','prompt')`, id, now.Add(2*time.Second), now.Add(3*time.Second))
 	path := "/statistics/session-reporting/sessions/" + id
 	out := request(t, s, path, 200)
-	if len(out["turns"].([]any)) != 1 {
+	turns := out["turns"].([]any)
+	if len(turns) != 2 {
 		t.Fatalf("轮次缺失: %v", out)
 	}
-	if _, ok := out["title"]; ok {
-		t.Fatal("会话标题不得进入统计详情")
+	turn := turns[0].(map[string]any)
+	for key, want := range map[string]any{
+		"input_text": "第一行\n第二行", "input_text_truncated": true, "title": "本轮标题", "title_source": "user",
+	} {
+		if turn[key] != want {
+			t.Fatalf("轮次字段 %s 未返回: got=%v want=%v", key, turn[key], want)
+		}
+	}
+	legacy := turns[1].(map[string]any)
+	for key, want := range map[string]any{"input_text": nil, "input_text_truncated": false, "title": nil, "title_source": nil} {
+		if got, ok := legacy[key]; !ok || got != want {
+			t.Fatalf("旧轮次字段 %s 默认值错误: got=%v want=%v", key, got, want)
+		}
+	}
+	if out["title"] != "隐私标题" {
+		t.Fatalf("会话标题未返回: %v", out)
 	}
 	list := request(t, s, "/statistics/session-reporting/sessions?limit=1", 200)
 	if list["items"].([]any)[0].(map[string]any)["id"] != id {
