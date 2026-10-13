@@ -140,7 +140,26 @@ export const zhTW = {
     systemSettings: "系統設定",
   },
   pages: {
-    license: enUS.pages.license,
+    license: {
+      title: "付費授權",
+      description: "用於查看與管理付費授權",
+      seats: "授權席位",
+      seatsAllowed: "最多允許 {{count}} 位使用者使用",
+      unavailable: "授權不可用",
+      client: "授權客戶",
+      validityPeriod: "授權時間",
+      loading: "正在讀取授權資訊…",
+      machineTitle: "機器碼",
+      copy: "複製機器碼",
+      machineCodeCopied: "機器碼已複製",
+      copyFailed: "複製失敗，請手動複製機器碼",
+      applyForTrial: "申請試用",
+      importAuthorization: "匯入授權",
+      importTitle: "匯入授權檔案",
+      chooseFile: "選擇檔案",
+      import: "匯入",
+      importSuccess: "付費授權匯入成功",
+    },
     realtimeStatus: {
       title: "數據總覽",
       description: "查看所選時間範圍內的模型運行與業務活躍狀態。",
@@ -866,7 +885,7 @@ export const zhTW = {
       },
     },
     otherSettings: {
-      proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", add: "新增代理", direct: "直接連線", confirmDelete: "確定刪除此代理？" },
+      proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", url: "代理位址", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", newPassword: "密碼（選填）", add: "新增代理", edit: "編輯代理", editAction: "編輯", delete: "刪除", cancel: "取消", save: "儲存", direct: "直接連線", confirmDelete: "確定刪除此代理？" },
       title: "其他設定",
       description: "設定品牌資訊、OAuth 與其他平台功能。",
       brandInfo: {

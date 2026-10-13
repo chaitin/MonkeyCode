@@ -85,6 +85,7 @@ import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
 import { ProxySettings } from "@/components/proxy-settings"
+import { PaidLicenseCard } from "@/components/paid-license-card"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -2557,6 +2558,7 @@ export function OtherSettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <PaidLicenseCard className="order-6" />
     </section>
   )
 }

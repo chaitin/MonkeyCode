@@ -3,11 +3,10 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 
 const root = new URL("../", import.meta.url)
-const source = async (path) =>
-  readFile(new URL(path, root), "utf8")
+const source = async (path) => readFile(new URL(path, root), "utf8")
 
-test("license page exposes all license management operations", async () => {
-  const page = await source("src/pages/license-page.tsx")
+test("paid license card exposes all license management operations", async () => {
+  const page = await source("src/components/paid-license-card.tsx")
   assert.match(page, /\/api\/admin\/v1\/license\/status/)
   assert.match(page, /\/api\/admin\/v1\/license\/machine-code/)
   assert.match(page, /\/api\/admin\/v1\/license\/import/)
@@ -18,15 +17,17 @@ test("license page exposes all license management operations", async () => {
   assert.match(page, /max_members/)
 })
 
-test("license page is routed and visible in system settings", async () => {
-  const [routes, app, sidebar] = await Promise.all([
+test("paid license card is last in other settings without a standalone page", async () => {
+  const [settings, routes, app, sidebar] = await Promise.all([
+    source("src/pages/other-settings-page.tsx"),
     source("src/lib/routes.ts"),
     source("src/App.tsx"),
     source("src/components/app-sidebar.tsx"),
   ])
-  assert.match(routes, /license: "\/console\/settings\/license"/)
-  assert.match(app, /<LicensePage \/>/)
-  assert.match(sidebar, /pages\.license\.title/)
+  assert.match(settings, /<PaidLicenseCard className="order-6" \/>/)
+  assert.doesNotMatch(routes, /license: "\/console\/settings\/license"/)
+  assert.doesNotMatch(app, /<LicensePage \/>/)
+  assert.doesNotMatch(sidebar, /pages\.license\.title/)
 })
 
 test("license page has primary locale translations", async () => {

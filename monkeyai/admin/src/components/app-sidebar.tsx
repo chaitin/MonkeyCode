@@ -153,10 +153,6 @@ export function AppSidebar({
           title: t("pages.otherSettings.title"),
           url: CONSOLE_ROUTES.otherSettings,
         },
-        {
-          title: t("pages.license.title"),
-          url: CONSOLE_ROUTES.license,
-        },
       ],
     },
   ]

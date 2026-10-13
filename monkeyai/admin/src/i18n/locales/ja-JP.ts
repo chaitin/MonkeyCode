@@ -915,7 +915,7 @@ export const jaJP = {
       },
     },
     otherSettings: {
-      proxies: { title: "システムプロキシ", description: "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。", name: "名前", username: "ユーザー名（任意）", password: "パスワード（空欄で維持）", add: "プロキシを追加", direct: "直接接続", confirmDelete: "このプロキシを削除しますか？" },
+      proxies: { title: "システムプロキシ", description: "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。", name: "名前", url: "プロキシURL", username: "ユーザー名（任意）", password: "パスワード（空欄で維持）", newPassword: "パスワード（任意）", add: "プロキシを追加", edit: "プロキシを編集", editAction: "編集", delete: "削除", cancel: "キャンセル", save: "保存", direct: "直接接続", confirmDelete: "このプロキシを削除しますか？" },
       title: "その他の設定",
       description:
         "ブランド情報、OAuth、その他のプラットフォーム機能を設定します。",

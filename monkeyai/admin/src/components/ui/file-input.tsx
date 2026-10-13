@@ -19,11 +19,12 @@ export function FileInput({
   const inputRef = useRef<HTMLInputElement>(null)
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="w-full max-w-full min-w-0 overflow-hidden">
       <input
         ref={inputRef}
         id={inputId}
         className="sr-only"
+        tabIndex={-1}
         type="file"
         accept={accept}
         onChange={(event) => onChange(event.target.files?.[0] ?? null)}
@@ -31,13 +32,17 @@ export function FileInput({
       <Button
         type="button"
         variant="outline"
+        className="w-full max-w-full min-w-0 overflow-hidden"
+        aria-label={file ? `${chooseLabel}: ${file.name}` : undefined}
         onClick={() => inputRef.current?.click()}
       >
-        {chooseLabel}
+        <span
+          className="block max-w-full min-w-0 flex-1 truncate text-start"
+          title={file?.name}
+        >
+          {file?.name ?? chooseLabel}
+        </span>
       </Button>
-      <span className="min-w-0 truncate text-sm text-muted-foreground">
-        {file?.name ?? "—"}
-      </span>
     </div>
   )
 }
