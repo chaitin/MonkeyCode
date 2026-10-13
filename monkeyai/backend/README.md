@@ -111,7 +111,7 @@ migrations/<唯一版本>_<feature>_*.sql
 - 路由使用 `chi/v5` 组织版本、调用方和中间件，处理器保持标准 `http.Handler` 接口。
 - HTTP DTO 不直接充当业务对象。
 - 测试与对应 Go 源码放在同一目录；暂不创建独立测试树。
-- 本次重新部署将原 1–13 版收敛为完整初始化版本 `000001`，仅用于全新数据库；不能直接升级旧库或通过 `force 1` 切换。详见 [迁移说明](migrations/README.md)。
+- 首次部署从收敛后的完整初始化版本 `000001` 开始；收敛前的旧迁移历史不能直接升级或通过 `force 1` 切换。使用收敛后迁移历史且状态为 `14, dirty=false` 的现有数据库支持直接 `up` 升级至 `19`。详见 [迁移说明](migrations/README.md)。
 - 后续迁移文件使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成，采用默认六位递增序号。合并前必须检查序号未被其他分支占用；如有冲突，重新生成序号。已经发布的迁移不可改写。
 - 不创建 `pkg`、`utils` 或 `common`；出现明确复用对象后再决定归属。
 
