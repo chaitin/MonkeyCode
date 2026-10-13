@@ -243,6 +243,8 @@ export const zhCN = {
     loginWith: "使用 {{provider}} 登录",
     oauthAdminRequired: "该 OAuth 账号未关联到启用状态的管理员账户",
     oauthFailed: "OAuth 登录失败，请重试",
+    seatsExceeded: "席位不足，请联系管理员导入有效 License 或增加授权席位。",
+    seatsUnavailable: "席位授权不可用，请联系管理员导入有效 License。",
     workspacePreview: "MonkeyAI 工作区预览",
     legal: "<terms>服务条款</terms> 和 <privacy>隐私政策</privacy>",
   },

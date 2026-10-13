@@ -83,8 +83,10 @@ func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrNotFound), errors.Is(err, pgx.ErrNoRows):
 			writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		case errors.Is(err, member.ErrSeatsExceeded):
-			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
-		case errors.Is(err, member.ErrSeatsUnavailable), errors.Is(err, member.ErrWriterUnavailable):
+			writeError(w, http.StatusConflict, "seats_exceeded", member.ErrSeatsExceeded.Error())
+		case errors.Is(err, member.ErrSeatsUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", member.ErrSeatsUnavailable.Error())
+		case errors.Is(err, member.ErrWriterUnavailable):
 			writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 		default:
 			slog.ErrorContext(r.Context(), "更新用户失败", "user_id", chi.URLParam(r, "userID"), "error", err)
@@ -197,8 +199,10 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		var dbError *pgconn.PgError
 		switch {
 		case errors.Is(err, member.ErrSeatsExceeded):
-			writeError(w, http.StatusConflict, "seats_exceeded", "成员席位已满")
-		case errors.Is(err, member.ErrSeatsUnavailable), errors.Is(err, member.ErrWriterUnavailable):
+			writeError(w, http.StatusConflict, "seats_exceeded", member.ErrSeatsExceeded.Error())
+		case errors.Is(err, member.ErrSeatsUnavailable):
+			writeError(w, http.StatusServiceUnavailable, "seats_unavailable", member.ErrSeatsUnavailable.Error())
+		case errors.Is(err, member.ErrWriterUnavailable):
 			writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 		case errors.Is(err, errCreationGroupUnavailable), errors.Is(err, member.ErrGroupUnavailable):
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())

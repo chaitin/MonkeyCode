@@ -263,6 +263,10 @@ export const enUS = {
     oauthAdminRequired:
       "This OAuth account is not linked to an active administrator",
     oauthFailed: "OAuth sign-in failed. Please try again",
+    seatsExceeded:
+      "Not enough member seats. Please contact your administrator to import a valid License or increase the licensed seats.",
+    seatsUnavailable:
+      "Member seat licensing is unavailable. Please contact your administrator to import a valid License.",
     workspacePreview: "MonkeyAI workspace preview",
     legal:
       "<terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",

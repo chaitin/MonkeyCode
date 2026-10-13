@@ -11,8 +11,8 @@ import (
 const RootGroupID = "00000000-0000-0000-0000-000000000000"
 
 var (
-	ErrSeatsExceeded      = errors.New("成员席位已满")
-	ErrSeatsUnavailable   = errors.New("成员席位授权不可用")
+	ErrSeatsExceeded      = errors.New("席位不足，请联系管理员导入有效 License 或增加授权席位。")
+	ErrSeatsUnavailable   = errors.New("席位授权不可用，请联系管理员导入有效 License。")
 	ErrGroupUnavailable   = errors.New("所选分组不存在或已删除")
 	ErrUserDisabled       = errors.New("用户已停用")
 	ErrAdminRoleRequired  = errors.New("需要管理员角色")

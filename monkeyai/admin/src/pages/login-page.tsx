@@ -23,6 +23,8 @@ const DEFAULT_LOGIN_BRANDING: LoginBranding = {
 const oauthErrorKeys: Record<string, string> = {
   admin_role_required: "login.oauthAdminRequired",
   user_disabled: "login.oauthAdminRequired",
+  seats_exceeded: "login.seatsExceeded",
+  seats_unavailable: "login.seatsUnavailable",
 }
 
 export function LoginPage() {
