@@ -408,15 +408,17 @@ export const enUS = {
       },
       detail: {
         title: "Session details",
-        description: "Statistics metadata only.",
+        description: "Reported turn text, titles and statistics.",
         turns: "Turns",
+        turnDetails: "Turn {{turn}} details",
+        textTruncated: "The client truncated this text.",
         resources: "Resources",
         calls: "Calls",
         subsessions: "Child sessions",
         tools: "Tool statistics",
         skills: "Skill statistics",
         usageNote:
-          "Client-reported tokens and gateway tokens are shown separately; no client-side reconciliation or billing. Select a turn to see tool and skill statistics.",
+          "Client-reported tokens and gateway tokens are shown separately; no client-side reconciliation or billing. Select a turn to see text, titles, tool and skill statistics.",
         callsNote:
           "Session-level gateway facts: the current API only provides calls and tokens grouped by kind and status, not per-call times, costs, or error codes.",
         clearNotice:
@@ -492,6 +494,9 @@ export const enUS = {
         timezone: "Timezone",
         turn_index: "Turn",
         input_kind: "Input kind",
+        input_text: "User text",
+        title: "Session title for this turn",
+        title_source: "Title source",
         duration_seconds: "Duration (s)",
         error_code: "Error code",
         tools: "Tools",
@@ -524,7 +529,7 @@ export const enUS = {
         general: "Statistics service unavailable. Please retry.",
       },
       privacy:
-        "Only statistics metadata is shown; no conversation text, attachments, tool parameters, or file paths.",
+        "Session details may show client-reported user text and titles; no attachments, tool parameters, tool outputs, or files.",
       all: "All",
       apply: "Apply",
       open: "View",

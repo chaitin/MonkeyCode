@@ -76,7 +76,7 @@ paths:
         schema: {type: string, format: uuid}
     post:
       summary: 批量追加已完成的轮次报告
-      description: 一期只接受 finished 统计事实，不接受正文、工具参数、工具输出或文件。
+      description: 接收已完成轮次的统计事实、可选用户正文及封存本轮时的会话标题；不接受附件、工具参数、工具输出或文件。
       parameters:
         - name: X-MAI-Machine-ID
           in: header
@@ -125,6 +125,8 @@ paths:
                       error_code: {type: [string, 'null']}
                       recovered: {type: boolean}
                       model_id: {type: [string, 'null'], format: uuid}
+                      title: {type: [string, 'null'], description: 封存本轮时的会话标题，UTF-8 最多 512 字节，不得含 NUL}
+                      title_source: {type: [string, 'null'], enum: [prompt, agent, user, null]}
                       thinking: {type: [object, 'null'], description: enabled 和 effort，不含思考内容}
                       resources_snapshot_id: {type: string}
                       client_version: {type: [string, 'null']}
@@ -133,7 +135,25 @@ paths:
                       subagent_usage: {type: [object, 'null']}
                       context_used: {type: [integer, 'null']}
                       context_window: {type: [integer, 'null']}
-                      input: {type: object, description: 仅 kind、origin、command_skill_id 与数量统计}
+                      input:
+                        type: object
+                        additionalProperties: false
+                        required: [kind]
+                        description: 输入类型、来源、正文、截断标记及数量统计；正文去掉附件行，可含换行。
+                        properties:
+                          kind: {type: string}
+                          text: {type: [string, 'null'], description: 客户端最多保留 2000 个 Unicode 码点，服务端上限为 8192 UTF-8 字节，不得含 NUL}
+                          text_truncated: {type: boolean, default: false, description: 正文被截断时为 true，未截断时可省略}
+                          origin:
+                            type: [object, 'null']
+                            additionalProperties: false
+                            properties:
+                              client_type: {type: [string, 'null']}
+                              machine_id: {type: [string, 'null']}
+                          command_skill_id: {type: [string, 'null']}
+                          attachments: {type: integer, minimum: 0}
+                          canvas_nodes: {type: integer, minimum: 0}
+                          steers: {type: integer, minimum: 0}
                       files_changed: {type: object, description: 仅 created、updated、deleted 数量}
                       compactions: {type: integer}
                       permissions: {type: object, description: 仅 asked、allowed、denied 数量}

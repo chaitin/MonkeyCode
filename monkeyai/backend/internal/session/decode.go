@@ -93,6 +93,8 @@ type turnInput struct {
 	ErrorCode             *string           `json:"error_code"`
 	Recovered             bool              `json:"recovered"`
 	ModelID               *string           `json:"model_id"`
+	Title                 *string           `json:"title,omitempty"`
+	TitleSource           *string           `json:"title_source,omitempty"`
 	Thinking              *thinkingInput    `json:"thinking"`
 	ThinkingEnabled       *bool             `json:"-"`
 	ThinkingEffort        *string           `json:"-"`
@@ -152,6 +154,8 @@ type inputOrigin struct {
 
 type inputInfo struct {
 	Kind           string       `json:"kind"`
+	Text           *string      `json:"text,omitempty"`
+	TextTruncated  *bool        `json:"text_truncated,omitempty"`
 	Origin         *inputOrigin `json:"origin"`
 	CommandSkillID *string      `json:"command_skill_id"`
 	Attachments    int32        `json:"attachments"`

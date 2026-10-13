@@ -31,6 +31,7 @@ const (
 	maxToolsPerTurn     = 500
 	maxSkillsPerTurn    = 200
 	maxTextLength       = 4096
+	maxInputTextLength  = 8192
 )
 
 // Service 提供会话事实写入、查询和清除能力。

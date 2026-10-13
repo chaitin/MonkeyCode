@@ -192,9 +192,90 @@ func TestOfficialTurnBatch(t *testing.T) {
 	}
 }
 
-func TestTurnPayloadRejectsNestedContentAndExcessTools(t *testing.T) {
+func TestTurnTextValidation(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		text        *string
+		title       *string
+		titleSource *string
+		wantCode    string
+	}{
+		{name: "旧客户端"},
+		{name: "空正文和标题", text: stringPtr(""), title: stringPtr("")},
+		{name: "中文两千码点", text: stringPtr(strings.Repeat("中", 2000))},
+		{name: "四字节两千码点", text: stringPtr(strings.Repeat("😀", 2000))},
+		{name: "正文保留换行", text: stringPtr("第一行\n第二行\r\n第三行")},
+		{name: "正文8192字节", text: stringPtr(strings.Repeat("a", 8192))},
+		{name: "正文超限", text: stringPtr(strings.Repeat("a", 8193)), wantCode: "invalid_state"},
+		{name: "正文包含NUL", text: stringPtr("正文\x00内容"), wantCode: "invalid_state"},
+		{name: "标题512字节", title: stringPtr(strings.Repeat("中", 170) + "ab")},
+		{name: "标题超限", title: stringPtr(strings.Repeat("中", 171)), wantCode: "invalid_state"},
+		{name: "标题包含NUL", title: stringPtr("标题\x00内容"), wantCode: "invalid_state"},
+		{name: "提示标题", titleSource: stringPtr("prompt")},
+		{name: "智能体标题", titleSource: stringPtr("agent")},
+		{name: "用户标题", titleSource: stringPtr("user")},
+		{name: "未知标题来源", titleSource: stringPtr("generated"), wantCode: "invalid_state"},
+		{name: "空标题来源", titleSource: stringPtr(""), wantCode: "invalid_state"},
+		{name: "标题来源不能有空白", titleSource: stringPtr(" user "), wantCode: "invalid_state"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			facts := int32(1)
+			in := turnInput{
+				TurnIndex: 1, StartedAt: &timeValue{Time: time.Now()}, EndedAt: &timeValue{Time: time.Now()},
+				StopReason: "complete", ResourcesID: "snapshot",
+				Input: &inputInfo{Kind: "prompt", Text: tt.text}, Title: tt.title, TitleSource: tt.titleSource,
+			}
+			prepared, err := prepareTurn(in, &facts)
+			if code(err) != tt.wantCode || (tt.wantCode == "" && err != nil) {
+				t.Fatalf("轮次校验错误: %v，期望错误码 %q", err, tt.wantCode)
+			}
+			if err == nil && (prepared.input.Input.Text != tt.text || prepared.input.Title != tt.title || prepared.input.TitleSource != tt.titleSource) {
+				t.Fatal("正文和标题不应在校验时被改写")
+			}
+		})
+	}
+}
+
+func TestTurnHashCompatibility(t *testing.T) {
+	in := turnInput{
+		TurnIndex: 1, InputSeq: 1,
+		StartedAt:  &timeValue{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		EndedAt:    &timeValue{Time: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC)},
+		StopReason: "complete", ResourcesID: "snapshot", Input: &inputInfo{Kind: "prompt"},
+	}
+	hash, err := turnHash(in, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 使用新增字段前的实现计算，保证服务端升级不影响旧轮次重试。
+	if hex.EncodeToString(hash) != "e377c917fa281fb23bbbb21a43264925bbdbe2a2f3f012c8e07d50b112951e11" {
+		t.Fatalf("旧客户端报告摘要发生变化: %x", hash)
+	}
+	for _, tt := range []struct {
+		name   string
+		change func(*turnInput)
+	}{
+		{"text", func(in *turnInput) { in.Input.Text = stringPtr("正文") }},
+		{"text_truncated", func(in *turnInput) { in.Input.TextTruncated = boolPtr(true) }},
+		{"title", func(in *turnInput) { in.Title = stringPtr("标题") }},
+		{"title_source", func(in *turnInput) { in.TitleSource = stringPtr("user") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			changed := in
+			input := *in.Input
+			changed.Input = &input
+			tt.change(&changed)
+			got, err := turnHash(changed, 1)
+			if err != nil || bytes.Equal(hash, got) {
+				t.Fatalf("新增字段未进入摘要: %x %v", got, err)
+			}
+		})
+	}
+}
+
+func TestTurnPayloadRejectsUnknownFieldsAndExcessTools(t *testing.T) {
 	for _, body := range []string{
-		`{"facts_version":1,"turns":[{"turn_index":1,"input":{"kind":"prompt","text":"正文"}}]}`,
+		`{"facts_version":1,"turns":[{"turn_index":1,"input":{"kind":"prompt","raw_prompt":"正文"}}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"usage":{"input_tokens":2,"raw":"输出"}}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"tools":[{"category":"builtin","calls":1,"failed":0,"duration_ms":0,"arguments":"参数"}]}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"input":{"kind":"prompt","origin":{"machine_id":"m","unknown":"内容"}}}]}`,
@@ -353,6 +434,104 @@ VALUES($1,'monkeyai-desktop',$2,$3,now()+interval '1 hour',now()+interval '1 day
 		t.Fatal(err)
 	}
 	return NewService(pool), identity.NewService(pool, nil, "http://localhost"), userID, token
+}
+
+func TestTurnTextDatabase(t *testing.T) {
+	text := "  第一行\n" + strings.Repeat("中", 1990) + "  "
+	for _, tt := range []struct {
+		name      string
+		input     resource.Object
+		fields    resource.Object
+		wantText  *string
+		truncated bool
+		wantTitle *string
+		source    *string
+	}{
+		{
+			name: "新客户端", input: resource.Object{"text": text, "text_truncated": true},
+			fields:   resource.Object{"title": "本轮标题", "title_source": "agent"},
+			wantText: &text, truncated: true, wantTitle: stringPtr("本轮标题"), source: stringPtr("agent"),
+		},
+		{name: "旧客户端"},
+		{name: "显式空值", input: resource.Object{"text": nil}, fields: resource.Object{"title": nil, "title_source": nil}},
+		{name: "未截断正文", input: resource.Object{"text": "正文"}, wantText: stringPtr("正文")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, identities, _, token := sessionDBFixture(t)
+			sessionID, machineID := resource.ID(), resource.ID()
+			router := chi.NewRouter()
+			router.Use(identities.RequireAgent)
+			s.RegisterAgent(router)
+			send := func(method, path string, body resource.Object) resource.Object {
+				t.Helper()
+				data, err := json.Marshal(body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r := httptest.NewRequest(method, path, bytes.NewReader(data))
+				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("X-MAI-Machine-ID", machineID)
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, r)
+				if w.Code != http.StatusOK {
+					t.Fatalf("%s %s: HTTP %d: %s", method, path, w.Code, w.Body.String())
+				}
+				var out resource.Object
+				if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+					t.Fatal(err)
+				}
+				return out
+			}
+			start := time.Now().UTC().Truncate(time.Second).Add(-time.Minute)
+			send(http.MethodPut, "/sessions/"+sessionID, resource.Object{
+				"state_seq": 1, "session_type": "conversation", "started_at": start,
+				"client": resource.Object{"type": "desktop", "machine_id": machineID, "version": "1"},
+			})
+			digest := sha256.Sum256([]byte("[]"))
+			snapshotID := "sha256:" + hex.EncodeToString(digest[:])
+			input := resource.Object{"kind": "prompt"}
+			for key, value := range tt.input {
+				input[key] = value
+			}
+			turn := resource.Object{
+				"turn_index": 1, "input_seq": 1, "started_at": start, "ended_at": start.Add(time.Second),
+				"stop_reason": "complete", "resources_snapshot_id": snapshotID, "input": input,
+			}
+			for key, value := range tt.fields {
+				turn[key] = value
+			}
+			batch := resource.Object{
+				"facts_version": 1, "turns": []any{turn},
+				"snapshots": []any{resource.Object{"snapshot_id": snapshotID, "items": []any{}}},
+			}
+			path := "/sessions/" + sessionID + "/turns"
+			out := send(http.MethodPost, path+"?after_turn=0", batch)
+			if out["accepted"] != float64(1) || out["acked_turn"] != float64(1) {
+				t.Fatalf("轮次未被确认: %v", out)
+			}
+			var storedText, storedTitle, storedSource *string
+			var truncated bool
+			if err := s.pool.QueryRow(t.Context(), `SELECT input_text,input_text_truncated,title,title_source FROM session_turns WHERE session_id=$1 AND turn_index=1`, sessionID).Scan(&storedText, &truncated, &storedTitle, &storedSource); err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range []struct {
+				name      string
+				got, want *string
+			}{{"input_text", storedText, tt.wantText}, {"title", storedTitle, tt.wantTitle}, {"title_source", storedSource, tt.source}} {
+				if (field.got == nil) != (field.want == nil) || (field.got != nil && field.want != nil && *field.got != *field.want) {
+					t.Fatalf("%s 读回值不一致: got=%v want=%v", field.name, field.got, field.want)
+				}
+			}
+			if truncated != tt.truncated {
+				t.Fatalf("截断标记不一致: got=%v want=%v", truncated, tt.truncated)
+			}
+			out = send(http.MethodPost, path+"?after_turn=1", batch)
+			if out["accepted"] != float64(0) || out["duplicates"] != float64(1) {
+				t.Fatalf("轮次重试不幂等: %v", out)
+			}
+		})
+	}
 }
 
 func TestSessionReportingDatabase(t *testing.T) {

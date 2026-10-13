@@ -423,6 +423,8 @@ SELECT jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,
         SELECT t.turn_index,jsonb_build_object('turn_index',t.turn_index,'started_at',t.started_at,'ended_at',t.ended_at,
             'duration_seconds',extract(epoch FROM (t.ended_at-t.started_at)),'outcome',t.stop_reason,
             'error_code',t.error_code,'model_id',t.model_id,'input_kind',t.input_kind,
+            'input_text',t.input_text,'input_text_truncated',t.input_text_truncated,
+            'title',t.title,'title_source',t.title_source,
             'input_tokens',t.input_tokens,'output_tokens',t.output_tokens,'recovered',t.recovered,
             'resources_snapshot_id',t.resources_snapshot_id,
             'tools',(SELECT count(*) FROM session_turn_tools v WHERE v.session_id = t.session_id AND v.turn_index = t.turn_index),
@@ -517,7 +519,7 @@ cohort AS (
             WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
                 AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
 ), facts AS (
-    SELECT t.session_id, t.turn_index, t.facts_version, t.report_hash, t.input_seq, t.started_at, t.ended_at, t.received_at, t.stop_reason, t.error_code, t.recovered, t.model_id, t.thinking_enabled, t.thinking_effort, t.resources_snapshot_id, t.client_version, t.engine_version, t.input_tokens, t.output_tokens, t.cache_creation_input_tokens, t.cache_read_input_tokens, t.subagent_input_tokens, t.subagent_output_tokens, t.subagent_cache_creation_input_tokens, t.subagent_cache_read_input_tokens, t.context_used, t.context_window, t.input_kind, t.input_client_type, t.input_machine_id, t.command_skill_id, t.attachments, t.canvas_nodes, t.steers, t.files_created, t.files_updated, t.files_deleted, t.compactions, t.permissions_asked, t.permissions_allowed, t.permissions_denied, t.truncated FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
+    SELECT t.session_id, t.turn_index, t.facts_version, t.report_hash, t.input_seq, t.started_at, t.ended_at, t.received_at, t.stop_reason, t.error_code, t.recovered, t.model_id, t.thinking_enabled, t.thinking_effort, t.resources_snapshot_id, t.client_version, t.engine_version, t.input_tokens, t.output_tokens, t.cache_creation_input_tokens, t.cache_read_input_tokens, t.subagent_input_tokens, t.subagent_output_tokens, t.subagent_cache_creation_input_tokens, t.subagent_cache_read_input_tokens, t.context_used, t.context_window, t.input_kind, t.input_client_type, t.input_machine_id, t.command_skill_id, t.attachments, t.canvas_nodes, t.steers, t.files_created, t.files_updated, t.files_deleted, t.compactions, t.permissions_asked, t.permissions_allowed, t.permissions_denied, t.truncated, t.input_text, t.input_text_truncated, t.title, t.title_source FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
     WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
         AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
         AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')

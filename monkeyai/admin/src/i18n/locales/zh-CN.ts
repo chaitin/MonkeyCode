@@ -383,15 +383,17 @@ export const zhCN = {
       },
       detail: {
         title: "会话详情",
-        description: "仅展示统计元数据。",
+        description: "查看轮次正文、标题及统计明细。",
         turns: "轮次",
+        turnDetails: "第 {{turn}} 轮详情",
+        textTruncated: "正文已由客户端截断。",
         resources: "资源",
         calls: "调用",
         subsessions: "子会话",
         tools: "工具统计",
         skills: "技能统计",
         usageNote:
-          "客户端上报 Token 与网关用量分别展示，不在页面合并或二次计费。点击轮次查看工具和技能统计。",
+          "客户端上报 Token 与网关用量分别展示，不在页面合并或二次计费。点击轮次查看正文、标题及工具和技能统计。",
         callsNote:
           "会话级网关事实：后端当前仅提供按类型与状态聚合的调用量及 Token，不提供单次调用时间、费用或错误码。",
         clearNotice:
@@ -466,6 +468,9 @@ export const zhCN = {
         timezone: "时区",
         turn_index: "轮次",
         input_kind: "输入来源",
+        input_text: "用户正文",
+        title: "本轮会话标题",
+        title_source: "标题来源",
         duration_seconds: "耗时（秒）",
         error_code: "错误码",
         tools: "工具数",
@@ -497,7 +502,7 @@ export const zhCN = {
         timeout: "请求超时，请重试。",
         general: "统计服务暂不可用，请重试。",
       },
-      privacy: "仅展示统计元数据，不包含对话正文、附件、工具参数或文件路径。",
+      privacy: "会话详情可展示客户端上报的用户正文和标题，不包含附件、工具参数、工具输出或文件。",
       all: "全部",
       apply: "查询",
       open: "查看",

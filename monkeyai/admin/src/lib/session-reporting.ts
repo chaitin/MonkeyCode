@@ -78,6 +78,10 @@ export type ReportTurn = {
   outcome: string
   error_code: string | null
   input_kind: string | null
+  input_text: string | null
+  input_text_truncated: boolean
+  title: string | null
+  title_source: "prompt" | "agent" | "user" | null
   input_tokens: number | null
   output_tokens: number | null
   recovered: boolean

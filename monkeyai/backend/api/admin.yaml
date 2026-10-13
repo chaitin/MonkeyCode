@@ -135,9 +135,9 @@ paths:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
     get:
       summary: 查询一期会话轮次和网关调用统计详情
-      description: 仅统计元数据；已清除会话普通统计读取返回 410。
+      description: 返回会话统计及客户端上报的轮次正文、标题和标题来源；已清除会话普通统计读取返回 410。
       responses:
-        '200': {description: 会话标题及来源、轮次、工具、技能、资源、调用与子会话统计}
+        '200': {description: 会话标题及来源、轮次正文与截断标记、轮次标题及来源，以及工具、技能、资源、调用与子会话统计}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '410': {description: 会话统计数据已清除}
   /api/admin/v1/statistics/session-reporting/resources:
