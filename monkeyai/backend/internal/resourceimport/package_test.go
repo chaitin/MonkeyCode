@@ -59,6 +59,63 @@ func packageFixture(t *testing.T, mutate func(*Manifest, map[string][]byte)) []b
 	return archive
 }
 
+func TestCanonicalManifestWithTags(t *testing.T) {
+	const data = `{
+		"release_id":"ad77973a-6e66-4ff3-a78e-823ab715a9ef",
+		"version":8,
+		"generated_at":"2026-10-14T06:55:37.369472Z",
+		"agent_resources":{
+			"skills":[{
+				"type":"skill","slug":"copywriter","name":"copywriter","tags":["百智办公"],
+				"path":"agent/skills/copywriter.zip",
+				"sha256":"sha256:c196165f838102d71030304ce4750f647468b6016220db43e00a9c26a2089a2f",
+				"description_i18n":{"zh-CN":"撰写引人入胜的 UX 文案、营销内容和产品信息。适用于编写按钮标签、错误提示、落地页、电子邮件、CTA、空状态、工具提示或任何面向用户的文本。"}
+			}],
+			"rules":[],"connectors":[],"experts":null
+		},
+		"design_resources":{"templates":[],"design_systems":[],"styles":[],"directions":[]},
+		"static_assets":[]
+	}`
+	var manifest Manifest
+	if err := json.Unmarshal([]byte(data), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := canonicalManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "sha256:7caadd417ae5063f7a00dbf09c829c080e1153d28f44e25684297885e7e4466a"
+	if got := digest(canonical); got != want {
+		t.Fatalf("带标签的发布端 manifest 摘要不匹配: got %s, want %s", got, want)
+	}
+}
+
+func TestPublishedReleaseZIP(t *testing.T) {
+	name := os.Getenv("MONKEYAI_RELEASE_FIXTURE_ZIP")
+	if name == "" {
+		t.Skip("未指定本地发布 ZIP")
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(file, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("发布包 v%d 解析通过: %d Skill, %d Rule, %d Connector, %d Expert",
+		pkg.Manifest.Version, len(resources.Skills), len(resources.Rules), len(resources.Connectors), len(resources.Experts))
+}
+
 func TestPublishedReleaseFixture(t *testing.T) {
 	root := os.Getenv("MONKEYAI_RELEASE_FIXTURE_DIR")
 	if root == "" {

@@ -50,6 +50,7 @@ type Entry struct {
 	Type            string            `json:"type"`
 	Slug            string            `json:"slug"`
 	Name            string            `json:"name"`
+	Tags            []string          `json:"tags,omitempty"`
 	Path            string            `json:"path"`
 	SHA256          string            `json:"sha256"`
 	NameI18n        map[string]string `json:"name_i18n,omitempty"`
