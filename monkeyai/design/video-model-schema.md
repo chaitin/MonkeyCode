@@ -159,7 +159,7 @@ type VideoGenerateInput struct {
 
 请求先验证模式和提示词，再补齐该模式的默认参数并计算参数条件，然后检查该模式的必填/可选参考角色与文件属性，最后计算报价。`prompt` 是否必填由 `prompt_required_when` 对该模式求值决定，不能在所有图片/视频/音频输入场景下一刀切；未声明的角色、参数或价目禁止调用。条件的求值顺序与默认值应用顺序固定，避免请求与目录产生不同结果。
 
-### 两个目标型号的首期能力
+### 已适配型号的能力
 
 根据 [xAI 视频能力与模式](https://docs.x.ai/developers/model-capabilities/video/overview)、[xAI 图生视频](https://docs.x.ai/developers/model-capabilities/video/image-to-video)、[xAI 参考生成](https://docs.x.ai/developers/model-capabilities/video/reference-to-video) 和 [MiniMax-H3 视频生成 API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create.md) 核对；这里只列首期**可由固定模式准确表达**的子集，不声明上游其他功能不存在。
 
@@ -167,8 +167,16 @@ type VideoGenerateInput struct {
 | --- | --- | --- | --- | --- |
 | `grok-imagine-video-1.5` | 文生、单首帧图生、纯参考图 | `480p`、`720p`、`1080p`；纯参考图最高 `720p` | 1–15 秒 | 文生可选固定比例，单首帧图生跟随输入图；图生提示词可选 |
 | `MiniMax-H3` | 文生、单首帧、单尾帧、首尾帧、纯参考图 | `768P`、`2K` | 4–15 秒（整数） | 文生必须指定固定比例，首/尾帧使用 `adaptive`；所有模式提示词必填 |
+| `doubao-seedance-2-0-260128` | 文生、单首帧、首尾帧、纯参考图 | `480p`、`720p`、`1080p`、`4k` | 4–15 秒（整数） | 所有模式支持固定比例或 `adaptive`；仅文生提示词必填 |
+| `doubao-seedance-2-5-260628` | 文生、单首帧、首尾帧、纯参考图 | `480p`、`720p`、`1080p` | 4–30 秒（整数） | 首帧和首尾帧仅支持 `adaptive`；仅文生提示词必填 |
 
 Grok 纯参考图最多开放 7 张：其[参考生成专页](https://docs.x.ai/developers/model-capabilities/video/reference-to-video)写 7 张，[概览页](https://docs.x.ai/developers/model-capabilities/video/overview)写 14 张，正式接入前须再核对实际接口；这里暂用更保守的 7 张。MiniMax-H3 纯参考图最多 9 张。Grok 的尾帧/关键帧/预置声音、多参考组合，以及 MiniMax-H3 的混合图片/视频/音频参考和视频重制不在首期目录中；这些模式涉及额外输入组合和素材总量规则，不应借口“适配器会处理”而开放虚假的可用组合。
+
+Seedance 接入采用火山方舟 `provider=volcengine`，Base URL 配置为 `https://ark.cn-beijing.volces.com/api/v3`。创建任务调用 `POST /contents/generations/tasks`，取响应 `id`；轮询调用 `GET /contents/generations/tasks/{id}`，取 `content.video_url` 和 `duration`。管理后台按型号选择，允许同一供应商下分别配置两个版本。
+
+根据 [Seedance 2.0 教程](https://docs.volcengine.com/docs/ark/seedance-2-0?lang=zh)、[Seedance 2.5 教程](https://docs.volcengine.com/docs/ark/seedance-2-5?lang=zh) 和 [创建视频生成任务 API](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh) 核对，两个版本均声明布尔参数 `generate_audio`，后台新建配置默认为 `true`，调用方可传 `false` 生成无声视频。Seedance 2.0 参考图最多 9 张，2.5 最多 30 张；平台仍限制单张 PNG/JPEG 为 10 MiB、参考图总大小为 24 MiB，图片宽高各为 300–6000 像素、宽高比为 0.4–2.5。Seedance 2.5 纯参考图任务显式发送 `omni_reference_task_type=reference`，所有 Seedance 任务固定输出 MP4。
+
+此次只开放现有图片输入能准确表达的四种模式；不开放单尾帧、输入视频/音频、视频编辑/延长、样片和 MOV 输出，也不接受 `duration=-1` 智能选时长。积分预估使用能力声明的最大时长：2.0 为 15 秒、2.5 为 30 秒；实际结算仍以归档视频的毫秒时长为准，元数据无法解析时采用上游返回时长。
 
 以下是两条 `AgentModel` 的视频相关字段**示意**；实际目录还包含现有的 `id`、所有权、标签等字段。积分费率为管理员示例值，**不是**供应商美元价；`max_bytes`、`prompt_max_characters` 是平台示例上限，不代表官方限额。
 

@@ -167,7 +167,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			}
 		}
 	case "video":
-		if r.VideoUnitPrice < 0 || r.VideoMaxDurationMs <= 0 || r.VideoMaxDurationMs > 15_000 {
+		if r.VideoUnitPrice < 0 || r.VideoMaxDurationMs <= 0 || r.VideoMaxDurationMs > MaxVideoDurationMs {
 			return Reservation{}, resource.Invalid("视频积分或时长上限无效")
 		}
 		row, e := sqlc.New(tx).VideoPricingModel(ctx, r.ResourceID)

@@ -13,6 +13,8 @@ func TestQuoteVideoMilliseconds(t *testing.T) {
 	}{
 		{6000, "84"},
 		{15000, "210"},
+		{30000, "420"},
+		{25125, "351.75"},
 		{1250, "17.5"},
 		{1, "0.014"},
 	} {
@@ -21,7 +23,9 @@ func TestQuoteVideoMilliseconds(t *testing.T) {
 			t.Fatalf("时长 %d: got %s, err %v; want %s", tc.ms, got, err, tc.want)
 		}
 	}
-	if _, err := QuoteVideo(rate, 15001); err == nil {
-		t.Fatal("必须拒绝超出预留上限的结果")
+	for _, duration := range []int64{-1, 30001} {
+		if _, err := QuoteVideo(rate, duration); err == nil {
+			t.Fatalf("必须拒绝超出范围的时长 %d", duration)
+		}
 	}
 }
