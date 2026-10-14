@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -50,6 +51,7 @@ type Entry struct {
 	Type            string            `json:"type"`
 	Slug            string            `json:"slug"`
 	Name            string            `json:"name"`
+	Tags            []string          `json:"tags,omitzero"`
 	Path            string            `json:"path"`
 	SHA256          string            `json:"sha256"`
 	NameI18n        map[string]string `json:"name_i18n,omitempty"`
@@ -185,6 +187,27 @@ func readZIP(data []byte, maxSize, maxExpanded, maxFiles, maxFile int) (map[stri
 		files[name] = content
 	}
 	return files, nil
+}
+
+func normalizeTags(names []string) ([]string, error) {
+	if names == nil {
+		return nil, nil
+	}
+	tags := make([]string, len(names))
+	for i, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || len(name) > 100 || !utf8.ValidString(name) || strings.ContainsRune(name, '\x00') {
+			return nil, fmt.Errorf("标签名称无效")
+		}
+		tags[i] = name
+	}
+	slices.SortFunc(tags, func(a, b string) int {
+		if n := strings.Compare(strings.ToLower(a), strings.ToLower(b)); n != 0 {
+			return n
+		}
+		return strings.Compare(a, b)
+	})
+	return slices.CompactFunc(tags, strings.EqualFold), nil
 }
 
 func canonicalManifest(m Manifest) ([]byte, error) {
@@ -329,7 +352,7 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 		case "connector":
 			maxArtifact = 1 << 20
 		}
-		for _, entry := range section.items {
+		for i, entry := range section.items {
 			file := p.entries[entry.Path]
 			if entry.Type != section.kind || !slugPattern.MatchString(entry.Slug) || seenSlugs[entry.Slug] ||
 				strings.TrimSpace(entry.Name) == "" || len(entry.Name) > 200 ||
@@ -337,6 +360,11 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 				!shaPattern.MatchString(entry.SHA256) || referenced[entry.Path] || file == nil || file.UncompressedSize64 == 0 || file.UncompressedSize64 > maxArtifact {
 				return Package{}, fmt.Errorf("%s 资源路径、slug 或摘要无效: %q", section.kind, entry.Slug)
 			}
+			tags, err := normalizeTags(entry.Tags)
+			if err != nil {
+				return Package{}, fmt.Errorf("%s 资源 %s: %w", section.kind, entry.Slug, err)
+			}
+			section.items[i].Tags = tags
 			seenSlugs[entry.Slug], referenced[entry.Path] = true, true
 		}
 	}

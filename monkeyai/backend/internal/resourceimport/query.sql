@@ -57,6 +57,13 @@ SELECT id FROM (
 -- name: GetImportSkillSHA :one
 SELECT package_sha256 FROM skills WHERE id=$1::uuid;
 
+-- name: ResolveImportTag :one
+INSERT INTO tags (name, created_by_user_id)
+VALUES ($1, $2)
+ON CONFLICT (lower(name)) WHERE deleted_at IS NULL
+DO UPDATE SET name = tags.name
+RETURNING id::text;
+
 -- name: CreateImportBatch :exec
 INSERT INTO resource_imports (id,publisher,release_id,version,manifest_sha256,actor_user_id,status,result_counts)
 VALUES ((sqlc.arg(data)::jsonb->>'id')::uuid,sqlc.arg(data)::jsonb->>'publisher',

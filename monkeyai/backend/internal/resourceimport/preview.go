@@ -34,6 +34,7 @@ type Change struct {
 	Type       string   `json:"type"`
 	Slug       string   `json:"slug"`
 	Name       string   `json:"name"`
+	Tags       []string `json:"tags,omitzero"`
 	Action     string   `json:"action"`
 	ResourceID string   `json:"resource_id,omitempty"`
 	Revision   int64    `json:"revision,omitempty"`
@@ -100,6 +101,7 @@ func target(ctx context.Context, q resource.Queryer, b binding) (resource.Object
 type desired struct {
 	Kind, Slug, Name, Source, StoredSHA string
 	Fields                              resource.Object
+	Tags                                []string
 	Warnings                            []string
 }
 
@@ -107,7 +109,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 	out := make([]desired, 0, len(r.Skills)+len(r.Rules)+len(r.Connectors)+len(r.Experts))
 	for _, s := range r.Skills {
 		warning := slices.Clone(s.Normalizations)
-		out = append(out, desired{Kind: "skill", Slug: s.Entry.Slug, Name: s.Entry.Name, Source: s.SourceSHA, StoredSHA: "sha256:" + s.Package.SHA, Warnings: warning,
+		out = append(out, desired{Kind: "skill", Slug: s.Entry.Slug, Name: s.Entry.Name, Source: s.SourceSHA, StoredSHA: "sha256:" + s.Package.SHA, Tags: s.Entry.Tags, Warnings: warning,
 			Fields: resource.Object{"name": s.Package.Name, "description": s.Package.Description, "file_tree_sha256": s.StoredFileSHA, "name_i18n": s.Entry.NameI18n, "description_i18n": s.Entry.DescriptionI18n}})
 	}
 	for _, r := range r.Rules {
@@ -115,7 +117,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 		if source == "" {
 			source = resource.Hash(r.Content)
 		}
-		out = append(out, desired{Kind: "rule", Slug: r.Entry.Slug, Name: r.Entry.Name, Source: source,
+		out = append(out, desired{Kind: "rule", Slug: r.Entry.Slug, Name: r.Entry.Name, Source: source, Tags: r.Entry.Tags,
 			Fields: resource.Object{"name": r.Entry.Name, "content": r.Content, "name_i18n": r.Entry.NameI18n, "description_i18n": r.Entry.DescriptionI18n}})
 	}
 	for _, c := range r.Connectors {
@@ -138,7 +140,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 			}
 			mode = current.String("authorization_mode")
 		}
-		out = append(out, desired{Kind: "connector", Slug: c.Entry.Slug, Name: c.Entry.Name, Source: c.Entry.SHA256,
+		out = append(out, desired{Kind: "connector", Slug: c.Entry.Slug, Name: c.Entry.Name, Source: c.Entry.SHA256, Tags: c.Entry.Tags,
 			Fields: resource.Object{"name": c.Entry.Name, "url": c.Config.URL, "timeout_ms": c.Config.TimeoutMs,
 				"auth_header_name": c.Auth.Header, "authorization_mode": mode, "authorization_method": method,
 				"oauth_mode": map[bool]string{true: "dynamic", false: ""}[method == "oauth"], "oauth_scopes": strings.Join(strings.Fields(c.OAuth.Scope), " "),
@@ -149,10 +151,15 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 		slices.Sort(skills)
 		slices.Sort(rules)
 		slices.Sort(connectors)
-		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256,
+		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256, Tags: e.Entry.Tags,
 			Fields: resource.Object{"name": e.Entry.Name, "prompt": e.Prompt, "avatar_sha256": e.AvatarSHA,
 				"skills": skills, "rules": rules, "connectors": connectors,
 				"name_i18n": e.Entry.NameI18n, "description_i18n": e.Entry.DescriptionI18n}})
+	}
+	for i := range out {
+		if out[i].Tags != nil {
+			out[i].Fields["tags"] = out[i].Tags
+		}
 	}
 	for slug := range opts.AuthorizationModes {
 		if _, ok := r.Connectors[slug]; !ok {
@@ -242,7 +249,7 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 	present := map[string]bool{}
 	for _, item := range items {
 		present[item.Slug] = true
-		change := Change{Type: item.Kind, Slug: item.Slug, Name: item.Name, SourceSHA: item.Source, StoredSHA: item.StoredSHA, AppliedSHA: resource.Hash(item.Fields), Warnings: item.Warnings}
+		change := Change{Type: item.Kind, Slug: item.Slug, Name: item.Name, Tags: item.Tags, SourceSHA: item.Source, StoredSHA: item.StoredSHA, AppliedSHA: resource.Hash(item.Fields), Warnings: item.Warnings}
 		if b, ok := current[item.Slug]; ok {
 			if b.Type != item.Kind {
 				return result, fmt.Errorf("资源 %s 跨类型冲突", item.Slug)
