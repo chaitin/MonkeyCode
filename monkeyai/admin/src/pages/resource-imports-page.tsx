@@ -93,32 +93,22 @@ async function archiveDirectory(list: FileList): Promise<StagedArchive> {
     }
     byPath.set(relativePath, file)
   }
-  const checksum = byPath.get("CHECKSUMS.sha256")
-  if (!checksum || checksum.size > 8 * 1024 * 1024) throw new Error("目录缺少有效的 CHECKSUMS.sha256")
-  const declared = (await checksum.text()).trim().split("\n").map((line) => line.trimEnd().slice(66))
-  const paths = new Set(["release.json", "manifest.json", "CHECKSUMS.sha256", ...declared])
-  if (paths.size > 5000) throw new Error("目录文件数量超限")
-  const selected = new Map<string, File>()
+  if (byPath.size > 5000) throw new Error("目录文件数量超限")
   let size = 0
-  for (const path of paths) {
-    const file = byPath.get(path)
-    if (!file || path.split("/").some((part) => part === ".." || !part)) {
-      throw new Error(`目录缺少发布包声明的文件：${path}`)
-    }
+  for (const file of byPath.values()) {
     size += file.size
     if (size > maxPackage) throw new Error("目录文件总大小超过 2 GiB，请选择现成 ZIP")
-    selected.set(path, file)
   }
   if (!navigator.storage?.getDirectory) {
     if (size > 200 * 1024 * 1024) throw new Error("当前浏览器不支持大目录磁盘暂存，请选择现成 ZIP")
     const { default: JSZip } = await import("jszip")
     const zip = new JSZip()
-    for (const [path, file] of selected) zip.file(path, file)
+    for (const [path, file] of byPath) zip.file(path, file)
     const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" })
     if (blob.size > maxPackage) throw new Error("资源包超过 2 GiB")
     return { file: new File([blob], "release.zip", { type: "application/zip" }) }
   }
-  return stageDirectoryZip(selected, maxPackage)
+  return stageDirectoryZip(byPath, maxPackage)
 }
 
 export function ResourceImportsPage() {
@@ -289,10 +279,10 @@ export function ResourceImportsPage() {
         <DialogContent className={`max-h-[90svh] overflow-y-auto ${preview ? "sm:max-w-3xl" : "sm:max-w-xl"}`} closeLabel="关闭">
           <DialogHeader>
             <DialogTitle>导入资源包</DialogTitle>
-            <p className="text-sm text-muted-foreground">选择发布包 ZIP，或选择包含 release.json 的解压目录。</p>
+            <p className="text-sm text-muted-foreground">选择发布包 ZIP，或选择包含 manifest.json 的解压目录。</p>
           </DialogHeader>
           <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6">
-            <span className="font-medium">全量同步：</span>本次资源包是该发布者最终的 Agent 资源集合，缺失资源将在确认后停用。独立静态资源只校验、不导入。
+            <span className="font-medium">全量同步：</span>本次资源包是该发布者最终的 Agent 资源集合，缺失资源将在确认后停用。独立静态资源和设计资源跳过导入。
           </div>
           <Input accept=".zip,application/zip" className="hidden" disabled={busy} ref={archiveInputRef} type="file" onChange={(event) => {
             const selected = event.currentTarget.files?.[0]
@@ -368,7 +358,7 @@ export function ResourceImportsPage() {
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           {!preview && <DialogFooter>
             <Button type="button" variant="outline" disabled={busy} onClick={() => closeDialog(false)}>取消</Button>
-            <Button type="button" disabled={!file || busy} onClick={() => { void upload(false) }}>{busy ? "校验中…" : "校验并预览"}</Button>
+            <Button type="button" disabled={!file || busy} onClick={() => { void upload(false) }}>{busy ? "解析中…" : "解析并预览"}</Button>
           </DialogFooter>}
           {preview && <div className="space-y-4 border-t pt-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -376,7 +366,7 @@ export function ResourceImportsPage() {
               <span className="text-xs text-muted-foreground">共 {preview.changes.length} 项资源</span>
             </div>
             {preview.already_imported && <p>此发布版本已经导入。</p>}
-            {preview.ignored_static.length > 0 && <p className="text-sm">已校验但忽略 {preview.ignored_static.length} 个静态资源：{preview.ignored_static.join("、")}</p>}
+            {preview.ignored_static.length > 0 && <p className="text-sm">已忽略 {preview.ignored_static.length} 个静态资源：{preview.ignored_static.join("、")}</p>}
             <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border p-2">
               {preview.changes.map((item) => <div key={`${item.type}:${item.slug}`} className="rounded-md bg-muted/50 p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -411,7 +401,7 @@ export function ResourceImportsPage() {
               <label htmlFor="import-final">我确认此包是该 publisher 的最终 Agent 资源清单，缺失项将被停用</label>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => { void upload(false) }}>重新校验</Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => { void upload(false) }}>重新预览</Button>
               <Button type="button" disabled={busy || !confirmed || (needsNormalization && !normalization)} onClick={() => { void upload(true) }}>{busy ? "导入中…" : "确认导入"}</Button>
             </DialogFooter>
           </div>}

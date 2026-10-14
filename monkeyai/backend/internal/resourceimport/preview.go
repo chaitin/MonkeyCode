@@ -149,7 +149,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 		slices.Sort(skills)
 		slices.Sort(rules)
 		slices.Sort(connectors)
-		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256,
+		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256, Warnings: e.Warnings,
 			Fields: resource.Object{"name": e.Entry.Name, "prompt": e.Prompt, "avatar_sha256": e.AvatarSHA,
 				"skills": skills, "rules": rules, "connectors": connectors,
 				"name_i18n": e.Entry.NameI18n, "description_i18n": e.Entry.DescriptionI18n}})
@@ -211,12 +211,9 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r Resources, opts Options, packageSHA string) (Preview, error) {
 	result := Preview{Publisher: p.Release.Publisher.Name, ReleaseID: p.Release.ReleaseID, Version: p.Release.Version,
 		PackageSHA256: packageSHA, Changes: []Change{}, IgnoredStatic: []string{}}
-	for _, a := range p.Manifest.StaticAssets {
-		prefix := "static/" + a.Slug + "/"
-		for _, name := range p.Names() {
-			if strings.HasPrefix(name, prefix) {
-				result.IgnoredStatic = append(result.IgnoredStatic, name)
-			}
+	for _, name := range p.Names() {
+		if strings.HasPrefix(name, "static/") {
+			result.IgnoredStatic = append(result.IgnoredStatic, name)
 		}
 	}
 	slices.Sort(result.IgnoredStatic)
@@ -225,10 +222,12 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		return result, err
 	}
 	if err == nil {
-		if result.Version == last.Version && result.ReleaseID == last.ReleaseID && p.Manifest.ManifestSHA256 == last.ManifestSha256 {
+		if p.Manifest.ManifestSHA256 == last.ManifestSha256 {
 			result.AlreadyImported = true
-		} else if result.Version <= last.Version || result.ReleaseID == last.ReleaseID {
-			return result, fmt.Errorf("publisher %s 的 release 版本或标识冲突", result.Publisher)
+			result.Version, result.ReleaseID = last.Version, last.ReleaseID
+		} else if result.Version <= last.Version {
+			result.Version = last.Version + 1
+			result.ReleaseID = manifestID([]byte(fmt.Sprintf("%s:%d", result.ReleaseID, result.Version)))
 		}
 	}
 	current, err := bindings(ctx, q, result.Publisher)
