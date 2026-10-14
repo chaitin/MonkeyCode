@@ -73,7 +73,8 @@ func TestUpgradeFrom14(t *testing.T) {
 	last := -1
 	for _, migration := range []string{
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
-		"18/u resource_origin", "19/u session_turn_content_add",
+		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
+		"21/u video_output_metadata_optional",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -86,7 +87,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 19 || dirty {
+	if version != 21 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -109,6 +110,8 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
+	run("down", "1")
+	run("up")
 	if output := run("up"); !strings.Contains(output, "no change") {
 		t.Fatalf("重复 up 应无变更: %s", output)
 	}
