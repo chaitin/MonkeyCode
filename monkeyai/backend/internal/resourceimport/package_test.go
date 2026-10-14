@@ -35,7 +35,7 @@ func packageFixture(t *testing.T, mutate func(*Manifest, map[string][]byte)) []b
 		t.Fatal(err)
 	}
 	m.ManifestSHA256 = digest(canonical)
-	release := Release{Publisher: Publisher{Name: "monkeyai-respub", Version: "16"}, ReleaseID: releaseID, Version: 16,
+	release := Release{Publisher: Publisher{Name: "monkeyai-respub", Version: "16"}, ReleaseID: m.ReleaseID, Version: m.Version,
 		PublishedAt: m.GeneratedAt, ExportedAt: m.GeneratedAt, ManifestSHA256: m.ManifestSHA256,
 		Counts: map[string]int{"skill": len(m.AgentResources.Skills), "rule": len(m.AgentResources.Rules), "connector": len(m.AgentResources.Connectors), "expert": len(m.AgentResources.Experts)}}
 	files["release.json"], _ = json.Marshal(release)
