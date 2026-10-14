@@ -58,13 +58,15 @@ AND provider_job_id IS NOT NULL AND poll_after<=now() ORDER BY poll_after LIMIT 
 -- name: ClaimVideoJobPoll :one
 UPDATE video_jobs SET poll_after=now()+interval '5 minutes'
 WHERE id=$1 AND poll_after<=now() AND status IN ('submitted','running')
-RETURNING model_id,provider_job_id,billing_transaction_id,user_id;
+RETURNING model_id,provider_job_id,billing_transaction_id,user_id,created_at,poll_failures;
 
--- name: RetryVideoJobPoll :exec
-UPDATE video_jobs SET poll_after=now()+interval '30 seconds' WHERE id=$1 AND status IN ('submitted','running');
+-- name: RetryVideoJobPoll :one
+UPDATE video_jobs SET poll_failures=poll_failures+1,poll_after=sqlc.arg(poll_after),updated_at=now()
+WHERE id=sqlc.arg(id) AND status IN ('submitted','running')
+RETURNING poll_failures;
 
 -- name: MarkVideoJobRunning :exec
-UPDATE video_jobs SET status='running',updated_at=now(),poll_after=now()+interval '10 seconds' WHERE id=$1;
+UPDATE video_jobs SET status='running',poll_failures=0,updated_at=now(),poll_after=now()+interval '10 seconds' WHERE id=$1;
 
 -- name: MarkVideoJobSucceeded :exec
 UPDATE video_jobs SET status='succeeded',output_duration_ms=$2,updated_at=now(),completed_at=now()

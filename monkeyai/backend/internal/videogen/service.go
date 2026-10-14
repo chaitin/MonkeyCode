@@ -21,6 +21,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	maxPollFailures = 10
+	taskTimeout     = 30 * time.Minute
+)
+
 type ModelReader interface {
 	Get(context.Context, string) (model.Model, error)
 }
@@ -394,11 +399,68 @@ func (s *Service) poll(ctx context.Context) error {
 		if claim.ProviderJobID == nil || claim.BillingTransactionID == nil {
 			return errors.New("视频任务缺少供应商或计费 ID")
 		}
-		if err := s.process(ctx, id, claim.ModelID, *claim.ProviderJobID, *claim.BillingTransactionID, claim.UserID); err != nil {
-			slog.WarnContext(ctx, "处理视频任务失败，等待重试", "job_id", id, "error", err)
-			_ = queries.RetryVideoJobPoll(ctx, id)
+		deadline := claim.CreatedAt.Add(taskTimeout)
+		reason := ""
+		if !time.Now().Before(deadline) {
+			reason = "provider_poll_timeout"
+		} else if claim.PollFailures >= maxPollFailures {
+			reason = "provider_poll_exhausted"
 		}
+		if reason != "" {
+			if err := s.stopPoll(ctx, id, *claim.BillingTransactionID, reason); err != nil {
+				return err
+			}
+			continue
+		}
+		pollCtx, cancel := context.WithDeadline(ctx, deadline)
+		err = s.process(pollCtx, id, claim.ModelID, *claim.ProviderJobID, *claim.BillingTransactionID, claim.UserID)
+		cancel()
+		if err == nil {
+			continue
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		delay := min(30*time.Second<<min(claim.PollFailures, 4), 5*time.Minute)
+		retryAt := time.Now().Add(delay)
+		if retryAt.After(deadline) {
+			retryAt = deadline
+		}
+		failures, retryErr := queries.RetryVideoJobPoll(ctx, sqlc.RetryVideoJobPollParams{ID: id, PollAfter: retryAt})
+		if errors.Is(retryErr, pgx.ErrNoRows) {
+			continue
+		}
+		if retryErr != nil {
+			return retryErr
+		}
+		if !time.Now().Before(deadline) {
+			reason = "provider_poll_timeout"
+		} else if failures >= maxPollFailures {
+			reason = "provider_poll_exhausted"
+		}
+		if reason != "" {
+			slog.WarnContext(ctx, "视频任务轮询达到限制", "job_id", id, "failures", failures, "error", err)
+			if err := s.stopPoll(ctx, id, *claim.BillingTransactionID, reason); err != nil {
+				return err
+			}
+			continue
+		}
+		slog.WarnContext(ctx, "处理视频任务失败，等待重试", "job_id", id, "failures", failures,
+			"max_failures", maxPollFailures, "retry_at", retryAt, "error", err)
 	}
+	return nil
+}
+
+func (s *Service) stopPoll(ctx context.Context, id, transactionID, reason string) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := s.billing.Finish(ctx, transactionID, billing.Usage{Result: "failed", Known: false, ErrorCode: reason}); err != nil {
+		return err
+	}
+	if err := sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &reason}); err != nil {
+		return err
+	}
+	slog.WarnContext(ctx, "停止视频任务自动轮询，等待核查", "job_id", id, "reason", reason)
 	return nil
 }
 
