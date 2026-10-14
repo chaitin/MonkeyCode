@@ -157,6 +157,10 @@ func TestModelsOverview(t *testing.T) {
 	for key, want := range map[string]float64{"model_calls": 4, "input_tokens": 390, "output_tokens": 115} {
 		number(t, last24, key, want)
 	}
+	previous24 := out["previous_24h"].(map[string]any)
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 800, "output_tokens": 80} {
+		number(t, previous24, key, want)
+	}
 	last30 := out["last_30m"].(map[string]any)
 	for key, want := range map[string]float64{"tpm": 225.0 / 30, "rpm": 3.0 / 30, "cache_hit_rate": 100.0 / 3, "model_success_rate": 200.0 / 3, "p95_response_time": 4800, "p95_first_token_time": 400} {
 		number(t, last30, key, want)
@@ -189,12 +193,44 @@ func TestModelsOverview(t *testing.T) {
 	}
 }
 
+func TestModelsOverviewComparisonBoundaries(t *testing.T) {
+	s, user, model := fixture(t)
+	now := s.now()
+	for _, sample := range []struct {
+		offset time.Duration
+		input  int64
+	}{
+		{-48*time.Hour - time.Second, 1000},
+		{-48 * time.Hour, 10},
+		{-24*time.Hour - time.Second, 20},
+		{-24 * time.Hour, 30},
+		{-time.Second, 40},
+		{0, 2000},
+	} {
+		end := now.Add(sample.offset)
+		call(t, s, user, model, "succeeded", end.Add(-time.Minute), end, sample.input, 0, sample.input/10, 1000)
+	}
+	// Running calls must not contribute to either comparison window.
+	for _, offset := range []time.Duration{-36 * time.Hour, -12 * time.Hour} {
+		end := now.Add(offset)
+		call(t, s, user, model, "running", end.Add(-time.Minute), end, 3000, 0, 300, nil)
+	}
+	out := request(t, s, "/statistics/models/overview", 200)
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 70, "output_tokens": 7} {
+		number(t, out["last_24h"].(map[string]any), key, want)
+	}
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 30, "output_tokens": 3} {
+		number(t, out["previous_24h"].(map[string]any), key, want)
+	}
+}
+
 func TestModelsOverviewEmpty(t *testing.T) {
 	s, _, _ := fixture(t)
 	out := request(t, s, "/statistics/models/overview", 200)
 	last24 := out["last_24h"].(map[string]any)
 	for _, key := range []string{"model_calls", "input_tokens", "output_tokens"} {
 		number(t, last24, key, 0)
+		number(t, out["previous_24h"].(map[string]any), key, 0)
 	}
 	last30 := out["last_30m"].(map[string]any)
 	for _, key := range []string{"tpm", "rpm"} {

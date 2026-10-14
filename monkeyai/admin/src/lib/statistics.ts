@@ -3,6 +3,11 @@ export type ModelOverview = {
   timezone: "UTC"
   generated_at: string
   last_24h: { model_calls: number; input_tokens: number; output_tokens: number }
+  previous_24h: {
+    model_calls: number
+    input_tokens: number
+    output_tokens: number
+  }
   last_30m: {
     tpm: number
     rpm: number
@@ -60,6 +65,27 @@ export type UserStatistics = {
   timezone: "UTC"
   generated_at: string
   days: { date: string; new_users: number; active_users: number }[]
+}
+
+export function periodChange(
+  current: number | null | undefined,
+  previous: number | null | undefined
+): { direction: "up" | "down" | "flat"; percent: number | null } | undefined {
+  if (
+    current == null ||
+    previous == null ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(previous) ||
+    current < 0 ||
+    previous < 0
+  )
+    return undefined
+  if (current === previous) return { direction: "flat", percent: 0 }
+  if (previous === 0) return { direction: "up", percent: null }
+  return {
+    direction: current > previous ? "up" : "down",
+    percent: (Math.abs(current - previous) / previous) * 100,
+  }
 }
 
 export function change(

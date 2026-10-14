@@ -1,11 +1,13 @@
 import {
   Activity01Icon,
   AiChat02Icon,
+  ArrowDownRight01Icon,
   Clock01Icon,
   Coins01Icon,
   DashboardSpeed01Icon,
   Database02Icon,
   GaugeIcon,
+  Loading03Icon,
   Task01Icon,
   TaskAdd01Icon,
   TaskDaily01Icon,
@@ -26,8 +28,14 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useStatistics } from "@/hooks/use-statistics"
 import {
+  periodChange,
   type ModelOverview,
   type TaskOverview,
   type UserStatistics,
@@ -134,6 +142,25 @@ const OVERVIEW_METRICS = new Set<MetricKey>([
 
 type TrendPoint = { date: string; count: number }
 
+function StatisticsLoader() {
+  const { t } = useTranslation()
+  return (
+    <span
+      role="status"
+      aria-label={t("statistics.loading")}
+      className="inline-flex items-center justify-center text-muted-foreground"
+    >
+      <HugeiconsIcon
+        icon={Loading03Icon}
+        className="animate-spin motion-reduce:animate-none"
+        size={20}
+        strokeWidth={1.75}
+        aria-hidden="true"
+      />
+    </span>
+  )
+}
+
 function TrendCard({
   icon,
   title,
@@ -141,6 +168,7 @@ function TrendCard({
   points,
   color,
   barClassName,
+  loading,
 }: {
   icon: IconSvgElement
   title: string
@@ -148,6 +176,7 @@ function TrendCard({
   points?: TrendPoint[]
   color: string
   barClassName: string
+  loading: boolean
 }) {
   const config = { count: { label: title, color } } satisfies ChartConfig
   return (
@@ -166,8 +195,15 @@ function TrendCard({
           {periodLabel}
         </span>
       </CardHeader>
-      <CardContent className="rounded-xl border border-border/60 bg-card p-4">
-        {points ? (
+      <CardContent
+        className="rounded-xl border border-border/60 bg-card p-4"
+        aria-busy={loading}
+      >
+        {loading ? (
+          <div className="flex h-32 items-center justify-center">
+            <StatisticsLoader />
+          </div>
+        ) : points ? (
           <ChartContainer className="h-32 w-full" config={config}>
             <BarChart
               accessibilityLayer
@@ -177,10 +213,11 @@ function TrendCard({
               <XAxis dataKey="date" hide />
               <YAxis
                 hide
-                domain={[
-                  (min: number) => Math.min(0, min),
-                  (max: number) => Math.max(0, max),
-                ]}
+                domain={([min, max]: readonly [number, number]) =>
+                  min === 0 && max === 0
+                    ? [0, 1]
+                    : [Math.min(0, min), Math.max(0, max)]
+                }
               />
               <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
               <Bar
@@ -188,7 +225,7 @@ function TrendCard({
                 fill="var(--color-count)"
                 className={barClassName}
                 maxBarSize={8}
-                minPointSize={(value) => (value != null && value !== 0 ? 6 : 0)}
+                minPointSize={3}
                 radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
               />
@@ -204,6 +241,96 @@ function TrendCard({
   )
 }
 
+function MetricComparison({
+  current,
+  previous,
+}: {
+  current?: number
+  previous?: number
+}) {
+  const { i18n, t } = useTranslation()
+  const comparison = periodChange(current, previous)
+  if (!comparison) {
+    const description = t("pages.realtimeStatus.comparison.unavailable")
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={<span tabIndex={0} />}
+          className="ms-auto shrink-0 cursor-default text-sm text-muted-foreground"
+          aria-label={description}
+        >
+          —
+        </TooltipTrigger>
+        <TooltipContent>{description}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const roundedPercent =
+    comparison.percent === null ? null : Math.round(comparison.percent)
+  const percent =
+    roundedPercent === null
+      ? undefined
+      : new Intl.NumberFormat(locale, {
+          style: "percent",
+          maximumFractionDigits: 0,
+        }).format(roundedPercent / 100)
+  const description = t(
+    `pages.realtimeStatus.comparison.${
+      comparison.percent === null
+        ? "newActivity"
+        : comparison.direction === "up"
+          ? "increased"
+          : comparison.direction === "down"
+            ? "decreased"
+            : "unchanged"
+    }`,
+    { percent }
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span tabIndex={0} />}
+        className={cn(
+          "ms-auto shrink-0 cursor-default text-sm font-medium whitespace-nowrap tabular-nums",
+          comparison.direction === "up"
+            ? metricColors.good
+            : comparison.direction === "down"
+              ? metricColors.bad
+              : "text-muted-foreground"
+        )}
+        aria-label={description}
+      >
+        <span aria-hidden="true" className="inline-flex items-center gap-1">
+          <HugeiconsIcon
+            icon={ArrowDownRight01Icon}
+            className={
+              comparison.direction === "up" || roundedPercent === 0
+                ? "-rotate-90"
+                : undefined
+            }
+            size={16}
+            strokeWidth={1.75}
+          />
+          {percent ?? t("pages.realtimeStatus.comparison.new")}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="flex-col items-start">
+        <p>{description}</p>
+        {previous != null && (
+          <p>
+            {t("pages.realtimeStatus.comparison.previousValue", {
+              value: new Intl.NumberFormat(locale).format(previous),
+            })}
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function RealtimeMetricCard({
   icon,
   label,
@@ -211,6 +338,8 @@ function RealtimeMetricCard({
   valueClassName,
   qualifier,
   pendingLabel,
+  comparison,
+  loading,
 }: {
   icon: IconSvgElement
   label: string
@@ -218,6 +347,8 @@ function RealtimeMetricCard({
   valueClassName?: string
   qualifier?: string
   pendingLabel?: string
+  comparison?: { current?: number; previous?: number }
+  loading: boolean
 }) {
   return (
     <Card className="gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
@@ -237,17 +368,32 @@ function RealtimeMetricCard({
           </span>
         )}
       </CardHeader>
-      <CardContent className="min-h-20 justify-center rounded-xl border border-border/60 bg-card p-5">
-        <p
-          className={cn(
-            "text-2xl font-medium tracking-tight break-words tabular-nums",
-            valueClassName
-          )}
-          title={pendingLabel}
-          aria-label={pendingLabel ? `${label}: ${pendingLabel}` : undefined}
-        >
-          {valueLabel}
-        </p>
+      <CardContent
+        className={cn(
+          "min-h-20 flex-row items-center rounded-xl border border-border/60 bg-card p-5",
+          loading ? "justify-center" : "justify-between"
+        )}
+        aria-busy={loading}
+      >
+        {loading ? (
+          <StatisticsLoader />
+        ) : (
+          <>
+            <p
+              className={cn(
+                "min-w-0 text-2xl font-medium tracking-tight break-words tabular-nums",
+                valueClassName
+              )}
+              title={pendingLabel}
+              aria-label={
+                pendingLabel ? `${label}: ${pendingLabel}` : undefined
+              }
+            >
+              {valueLabel}
+            </p>
+            {comparison && <MetricComparison {...comparison} />}
+          </>
+        )}
       </CardContent>
     </Card>
   )
@@ -437,12 +583,33 @@ export function RealtimeStatusPage() {
 
   const renderMetric = (metric: (typeof METRICS)[number]) => {
     const source = SHORT_METRICS.has(metric.key) ? quality : summary
+    const loading =
+      metric.key === "total_users" ||
+      metric.key === "new_users_24h" ||
+      metric.key === "active_users_24h"
+        ? userRequest.loading
+        : metric.key === "total_tasks" ||
+            metric.key === "new_tasks_24h" ||
+            metric.key === "active_tasks_24h"
+          ? taskRequest.loading
+          : modelRequest.loading
     return (
       <RealtimeMetricCard
         icon={metric.icon}
         key={metric.key}
         label={t(`pages.realtimeStatus.metrics.${metric.labelKey}`)}
         valueLabel={valueLabels[metric.key] ?? "—"}
+        loading={loading}
+        comparison={
+          metric.key === "model_calls" ||
+          metric.key === "input_tokens" ||
+          metric.key === "output_tokens"
+            ? {
+                current: summary?.[metric.key],
+                previous: model?.previous_24h?.[metric.key],
+              }
+            : undefined
+        }
         valueClassName={
           metric.key === "p95_first_token_time"
             ? durationColor(quality?.p95_first_token_time, 3_000, 6_000)
@@ -487,6 +654,7 @@ export function RealtimeStatusPage() {
               title={t("pages.realtimeStatus.metrics.modelConsumption")}
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelCreditsTrend}
+              loading={modelRequest.loading}
               color="var(--color-yellow-500)"
               barClassName="fill-yellow-500"
             />
@@ -495,6 +663,7 @@ export function RealtimeStatusPage() {
               title={t("pages.realtimeStatus.callsTrend")}
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelCallsTrend}
+              loading={modelRequest.loading}
               color="var(--color-emerald-500)"
               barClassName="fill-emerald-500"
             />
@@ -503,6 +672,7 @@ export function RealtimeStatusPage() {
               title={t("pages.realtimeStatus.metrics.inputTokens")}
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelInputTrend}
+              loading={modelRequest.loading}
               color="var(--color-emerald-400)"
               barClassName="fill-emerald-400"
             />
@@ -511,6 +681,7 @@ export function RealtimeStatusPage() {
               title={t("pages.realtimeStatus.metrics.outputTokens")}
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelOutputTrend}
+              loading={modelRequest.loading}
               color="var(--color-emerald-600)"
               barClassName="fill-emerald-600"
             />
@@ -525,6 +696,7 @@ export function RealtimeStatusPage() {
             title={t("pages.realtimeStatus.newUsersTrend")}
             periodLabel={t("pages.realtimeStatus.period90d")}
             points={newUsersTrend}
+            loading={userRequest.loading}
             color="var(--color-orange-500)"
             barClassName="fill-orange-500"
           />
@@ -533,6 +705,7 @@ export function RealtimeStatusPage() {
             title={t("pages.realtimeStatus.activeUsersTrend")}
             periodLabel={t("pages.realtimeStatus.period90d")}
             points={activeUsersTrend}
+            loading={userRequest.loading}
             color="var(--color-orange-400)"
             barClassName="fill-orange-400"
           />
@@ -546,6 +719,7 @@ export function RealtimeStatusPage() {
             title={t("pages.realtimeStatus.metrics.newTasks")}
             periodLabel={t("pages.realtimeStatus.period90d")}
             points={newTasksTrend}
+            loading={taskRequest.loading}
             color="var(--color-rose-500)"
             barClassName="fill-rose-500"
           />
@@ -554,6 +728,7 @@ export function RealtimeStatusPage() {
             title={t("pages.realtimeStatus.metrics.activeTasks")}
             periodLabel={t("pages.realtimeStatus.period90d")}
             points={activeTasksTrend}
+            loading={taskRequest.loading}
             color="var(--color-rose-400)"
             barClassName="fill-rose-400"
           />

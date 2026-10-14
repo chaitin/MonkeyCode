@@ -167,6 +167,17 @@ export const es419 = {
       timeRange: "Periodo de estadísticas en tiempo real",
       pendingMetric: "Datos pendientes de conexión",
       period24h: "24 horas",
+      comparison: {
+        new: "Nuevo",
+        unavailable: "No hay datos del periodo anterior",
+        increased: "Aumento del {{percent}} respecto a las 24 horas anteriores",
+        decreased:
+          "Disminución del {{percent}} respecto a las 24 horas anteriores",
+        unchanged: "Sin cambios respecto a las 24 horas anteriores",
+        newActivity:
+          "Nueva actividad; el valor de las 24 horas anteriores era cero",
+        previousValue: "24 horas anteriores: {{value}}",
+      },
       period30m: "30 minutos",
       callsTrend: "Llamadas",
       newUsersTrend: "Usuarios nuevos",

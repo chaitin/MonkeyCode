@@ -165,6 +165,11 @@ SELECT jsonb_build_object(
     'last_24h', (SELECT jsonb_build_object('model_calls', count(*),
         'input_tokens', coalesce(sum(input_tokens),0), 'output_tokens', coalesce(sum(output_tokens),0))
         FROM calls CROSS JOIN bounds b WHERE completed_at >= b.now_at - interval '24 hours'),
+    'previous_24h', (SELECT jsonb_build_object('model_calls', count(*),
+        'input_tokens', coalesce(sum(input_tokens),0), 'output_tokens', coalesce(sum(output_tokens),0))
+        FROM calls CROSS JOIN bounds b
+        WHERE completed_at >= b.now_at - interval '48 hours'
+            AND completed_at < b.now_at - interval '24 hours'),
     'last_30m', (SELECT jsonb_build_object(
         'tpm', coalesce(sum(input_tokens + output_tokens),0) / 30.0,
         'rpm', count(*) / 30.0,

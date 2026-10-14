@@ -172,6 +172,16 @@ export const deDE = {
       timeRange: "Zeitraum der Live-Statistik",
       pendingMetric: "Datenanbindung ausstehend",
       period24h: "24 Stunden",
+      comparison: {
+        new: "Neu",
+        unavailable: "Keine Daten für den vorherigen Zeitraum verfügbar",
+        increased: "{{percent}} mehr als in den vorherigen 24 Stunden",
+        decreased: "{{percent}} weniger als in den vorherigen 24 Stunden",
+        unchanged: "Unverändert gegenüber den vorherigen 24 Stunden",
+        newActivity:
+          "Neue Aktivität; in den vorherigen 24 Stunden war der Wert null",
+        previousValue: "Vorherige 24 Stunden: {{value}}",
+      },
       period30m: "30 Minuten",
       callsTrend: "Aufrufe",
       newUsersTrend: "Neue Benutzer",

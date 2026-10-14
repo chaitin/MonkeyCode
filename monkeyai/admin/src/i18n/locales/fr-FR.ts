@@ -172,6 +172,18 @@ export const frFR = {
       timeRange: "Période des statistiques en temps réel",
       pendingMetric: "Données en attente de connexion",
       period24h: "24 heures",
+      comparison: {
+        new: "Nouveau",
+        unavailable: "Les données de la période précédente sont indisponibles",
+        increased:
+          "Hausse de {{percent}} par rapport aux 24 heures précédentes",
+        decreased:
+          "Baisse de {{percent}} par rapport aux 24 heures précédentes",
+        unchanged: "Stable par rapport aux 24 heures précédentes",
+        newActivity:
+          "Nouvelle activité ; la valeur des 24 heures précédentes était nulle",
+        previousValue: "24 heures précédentes : {{value}}",
+      },
       period30m: "30 minutes",
       callsTrend: "Nombre d’appels",
       newUsersTrend: "Nouveaux utilisateurs",

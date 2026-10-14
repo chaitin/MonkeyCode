@@ -5196,12 +5196,21 @@ components:
                       - scheduled
     StatisticsModelsOverview:
       type: object
-      required: [timezone, generated_at, last_24h, last_30m, days]
+      required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]
       properties:
         timezone: {type: string, const: UTC}
         generated_at: {type: string, format: date-time}
         last_24h:
           type: object
+          description: 按完成时间统计 [generated_at - 24 小时, generated_at) 内的非运行中调用。
+          required: [model_calls, input_tokens, output_tokens]
+          properties:
+            model_calls: {type: integer, minimum: 0}
+            input_tokens: {type: integer, minimum: 0}
+            output_tokens: {type: integer, minimum: 0}
+        previous_24h:
+          type: object
+          description: 按完成时间统计 [generated_at - 48 小时, generated_at - 24 小时) 内的非运行中调用，用于与 last_24h 比较。
           required: [model_calls, input_tokens, output_tokens]
           properties:
             model_calls: {type: integer, minimum: 0}
