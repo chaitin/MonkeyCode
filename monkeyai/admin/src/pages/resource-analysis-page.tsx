@@ -13,6 +13,13 @@ import { useAppToast } from "@/components/animated-toast-provider"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuOptionsContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -59,6 +66,7 @@ const columns = [
   "calls",
   "failure_rate",
 ] as const
+type ResourceColumn = (typeof columns)[number]
 const pageSizes = ["20", "50", "100"]
 
 export function ResourceAnalysisPage() {
@@ -68,6 +76,9 @@ export function ResourceAnalysisPage() {
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
   const [userID, setUserID] = useState("")
+  const [visibleColumns, setVisibleColumns] = useState<Set<ResourceColumn>>(
+    () => new Set(columns.filter((column) => column !== "version"))
+  )
   const [invalidRange, setInvalidRange] = useState(false)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   const [active, setActive] = useState(0)
@@ -78,6 +89,9 @@ export function ResourceAnalysisPage() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string>()
+  const displayedColumns = columns.filter((column) =>
+    visibleColumns.has(column)
+  )
   const items = data?.items ?? []
   const from = items.length ? active * pageSize + 1 : 0
   const to = items.length ? active * pageSize + items.length : 0
@@ -173,6 +187,19 @@ export function ResourceAnalysisPage() {
     setRevision(nextRevision)
   }
 
+  function renderCell(row: ReportResourceRow, column: ResourceColumn) {
+    if (column === "kind") return <ReportKind value={row.kind} />
+    if (column === "resource_id" || column === "version") {
+      return <ReportValue value={row[column]} />
+    }
+    return (
+      <ReportNumber
+        value={row[column]}
+        suffix={column === "failure_rate" ? "%" : ""}
+      />
+    )
+  }
+
   return (
     <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col overflow-hidden p-4 pt-px md:h-[calc(100svh-5rem)]">
       <Card className="min-h-0 flex-1">
@@ -221,6 +248,36 @@ export function ResourceAnalysisPage() {
               />
               {t("pages.operationLogs.filters.search")}
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" variant="outline" className="ms-auto" />
+                }
+              >
+                {t(`${key}.clients.selectColumns`)}
+              </DropdownMenuTrigger>
+              <DropdownMenuOptionsContent align="end" className="max-h-80">
+                <DropdownMenuGroup>
+                  {columns.map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column}
+                      checked={visibleColumns.has(column)}
+                      onCheckedChange={(checked) =>
+                        setVisibleColumns((current) => {
+                          if (!checked && current.size === 1) return current
+                          const next = new Set(current)
+                          if (checked) next.add(column)
+                          else next.delete(column)
+                          return next
+                        })
+                      }
+                    >
+                      {t(`${key}.fields.${column}`)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuOptionsContent>
+            </DropdownMenu>
             {invalidRange && (
               <p role="alert" className="text-sm text-destructive">
                 {t(`${key}.resources.invalidRange`)}
@@ -252,7 +309,7 @@ export function ResourceAnalysisPage() {
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
-                  {columns.map((column) => (
+                  {displayedColumns.map((column) => (
                     <TableHead key={column} className="whitespace-nowrap">
                       {t(`${key}.fields.${column}`)}
                     </TableHead>
@@ -262,37 +319,26 @@ export function ResourceAnalysisPage() {
               <TableBody className={!items.length ? "h-full" : undefined}>
                 {items.map((row) => (
                   <TableRow key={row.sort_key}>
-                    <TableCell className="whitespace-nowrap">
-                      <ReportKind value={row.kind} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <ReportValue value={row.resource_id} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <ReportValue value={row.version} />
-                    </TableCell>
-                    {[
-                      row.enabled_sessions,
-                      row.available_sessions,
-                      row.used_sessions,
-                      row.calls,
-                    ].map((value, index) => (
+                    {displayedColumns.map((column) => (
                       <TableCell
-                        key={index}
-                        className="whitespace-nowrap tabular-nums"
+                        key={column}
+                        className={cn(
+                          "whitespace-nowrap",
+                          column !== "kind" &&
+                            column !== "resource_id" &&
+                            column !== "version" &&
+                            "tabular-nums"
+                        )}
                       >
-                        <ReportNumber value={value} />
+                        {renderCell(row, column)}
                       </TableCell>
                     ))}
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      <ReportNumber value={row.failure_rate} suffix="%" />
-                    </TableCell>
                   </TableRow>
                 ))}
                 {!items.length && (
                   <TableRow className="h-full">
                     <TableCell
-                      colSpan={columns.length}
+                      colSpan={displayedColumns.length}
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading || searching ? (
