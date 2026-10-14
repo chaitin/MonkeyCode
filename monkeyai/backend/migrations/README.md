@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=20, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=21, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -40,6 +40,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000018_resource_origin` | 区分本地与导入资源来源，调整系统资源名称唯一索引 |
 | `000019_session_turn_content_add` | 增加轮次正文、截断标记及标题字段 |
 | `000020_model_call_first_token_duration` | 为新产生的模型调用增加可空首字耗时；历史调用不回填 |
+| `000021_video_output_metadata_optional` | 视频结果宽高允许为 0，表示元数据无法解析；成功视频仍可保存和下载 |
 
 从 `backend` 目录执行：
 
@@ -49,7 +50,9 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `20` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `21` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+
+版本 `21` 回滚会恢复视频宽高必须大于 0 的约束；已有宽高为 0 的结果时，需先补齐真实宽高，回滚不会删除视频或伪造元数据。
 
 升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
 

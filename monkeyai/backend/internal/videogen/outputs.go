@@ -49,8 +49,8 @@ func (s *Service) saveOutput(ctx context.Context, client *http.Client, jobID, ad
 		return VideoOutput{}, errors.New("生成视频超出大小限制或下载不完整")
 	}
 	info, err := inspectMP4(file, count)
-	if err != nil || upstreamDurationMs > 0 && (info.DurationMs-upstreamDurationMs > 500 || upstreamDurationMs-info.DurationMs > 500) {
-		return VideoOutput{}, errors.New("生成视频元数据与上游结果不一致")
+	if err != nil {
+		info = mediaInfo{DurationMs: upstreamDurationMs}
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return VideoOutput{}, err

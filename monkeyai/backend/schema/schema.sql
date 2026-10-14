@@ -1258,3 +1258,9 @@ ALTER TABLE session_turns
 ALTER TABLE model_calls
     ADD COLUMN first_token_duration_ms integer
     CHECK (first_token_duration_ms IS NULL OR first_token_duration_ms >= 0);
+
+ALTER TABLE video_outputs
+    DROP CONSTRAINT video_outputs_width_check,
+    DROP CONSTRAINT video_outputs_height_check,
+    ADD CONSTRAINT video_outputs_width_check CHECK (width >= 0),
+    ADD CONSTRAINT video_outputs_height_check CHECK (height >= 0);
