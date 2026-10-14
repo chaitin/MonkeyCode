@@ -254,7 +254,6 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 		t.Fatalf("组搜索未返回父子组: %v", foundGroups)
 	}
 	groupShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "model", ID: ids[1]}}, GroupIDs: []string{groupID, groupID}}
-	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, GroupIDs: []string{rootgroup.ID}}, 400)
 	call("POST", "/resources/shares", "a", resource.ShareInput{Resources: groupShare.Resources, GroupIDs: []string{groupID, resource.ID()}}, 400)
 	assertAccess(users[1], ids[1], false)
 	call("POST", "/resources/shares", "b", groupShare, 404)

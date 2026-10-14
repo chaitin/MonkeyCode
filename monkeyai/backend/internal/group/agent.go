@@ -40,13 +40,24 @@ func (s *Service) RegisterAgent(router chi.Router) {
 }
 
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]GroupSummary, error) {
+	name, err := rootgroup.Name(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	groups := []GroupSummary{}
+	if strings.Contains(strings.ToLower(name), strings.ToLower(query)) {
+		groups = append(groups, GroupSummary{ID: rootgroup.ID, Name: name})
+		limit--
+	}
+	if limit == 0 {
+		return groups, nil
+	}
 	rows, err := sqlc.New(s.pool).SearchGroups(ctx, sqlc.SearchGroupsParams{
 		RootID: rootgroup.ID, NameQuery: query, ResultLimit: int32(limit),
 	})
 	if err != nil {
 		return nil, err
 	}
-	groups := []GroupSummary{}
 	for _, row := range rows {
 		groups = append(groups, GroupSummary{ID: row.ID, Name: row.Name, ParentID: rootgroup.ParentID(row.ParentID)})
 	}
