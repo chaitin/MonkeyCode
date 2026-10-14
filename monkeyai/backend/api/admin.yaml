@@ -128,6 +128,38 @@ paths:
         - {name: cursor, in: query, schema: {type: string}}
       responses:
         '200': {description: 客户端维度指标及 next_cursor}
+  /api/admin/v1/statistics/session-reporting/clients/overview:
+    get:
+      summary: 查询客户端类型、平台和客户端版本的会话分布
+      description: |
+        使用与客户端列表一致的轮次筛选和可见范围，包含符合条件的子会话。
+        每个 session_id 只计一次，客户端版本取所有筛选条件匹配后的最后一轮，按 started_at、turn_index 降序确定。
+        平台为当前设备属性，不是历史快照。空白或缺失客户端版本归入 null；分类不截断。
+        三组分类数量之和均等于 total；同数量分类按值稳定排序，null 排最后。
+        默认最近 24 小时，时间区间为 [from, until)。不支持 cursor、limit、page、page_size。
+      parameters:
+        - {name: from, in: query, description: 窗口起点，包含；默认当前时间前 24 小时。, schema: {type: string, format: date-time}}
+        - {name: until, in: query, description: 窗口终点，不包含；默认当前时间。, schema: {type: string, format: date-time}}
+        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, unknown]}}
+        - {name: platform, in: query, description: 当前设备平台。, schema: {type: string, enum: [macos, windows, linux, ios, android, web]}}
+        - {name: outcome, in: query, description: 轮次结束原因；先筛选再确定会话的最后匹配轮次。, schema: {type: string, enum: [complete, interrupted, error, max_turns, output_limit, unknown]}}
+        - {name: user_id, in: query, description: 会话所属用户 ID。, schema: {type: string, format: uuid}}
+        - {name: group_id, in: query, description: 会话所属分组 ID。, schema: {type: string, format: uuid}}
+        - {name: model_id, in: query, description: 匹配轮次使用的模型 ID。, schema: {type: string, format: uuid}}
+        - {name: expert_id, in: query, description: 会话的专家 ID。, schema: {type: string, format: uuid}}
+        - {name: resource_id, in: query, description: 匹配轮次资源快照中的资源 ID，最多 256 字节。, schema: {type: string, maxLength: 256}}
+        - {name: resource_version, in: query, description: 匹配资源的版本，最多 256 字节。, schema: {type: string, maxLength: 256}}
+        - {name: include_placeholders, in: query, description: 是否包含已上报且有匹配轮次的占位会话。, schema: {type: boolean, default: false}}
+      responses:
+        '200':
+          description: 全量筛选结果的三个分布；空数据 total 为 0，分类均为空数组。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatisticsClientOverview'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
   /oauth/connectors/{id}/callback:
     get:
       summary: 处理指定 MCP 的 OAuth 回调
@@ -5368,6 +5400,45 @@ components:
           type: integer
           minimum: 0
           description: 窗口内开始的未删除、非占位、已上报顶层任务数。
+    StatisticsClientDistribution:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+          nullable: true
+          description: 原始分类值，客户端版本不附加前缀；null 表示未知。
+        count:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 归入此分类的去重会话数。
+    StatisticsClientOverview:
+      type: object
+      required: [metric, total, distributions, from, until, generated_at, data_freshness_seconds]
+      properties:
+        metric: {type: string, enum: [sessions], description: 计数口径固定为筛选后的去重会话数。}
+        total: {type: integer, format: int64, minimum: 0, description: 匹配的会话总数，包含未知分类。}
+        distributions:
+          type: object
+          required: [client_type, platform, client_version]
+          properties:
+            client_type:
+              type: array
+              description: 按会话数降序排列的全部客户端类型。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+            platform:
+              type: array
+              description: 按会话数降序排列的全部平台，包含未知平台。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+            client_version:
+              type: array
+              description: 按会话数降序排列的全部客户端版本，每个会话采用匹配的最后一轮版本。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+        from: {type: string, format: date-time, description: 实际统计窗口起点，包含。}
+        until: {type: string, format: date-time, description: 实际统计窗口终点，不包含。}
+        generated_at: {type: string, format: date-time, description: 响应生成时间。}
+        data_freshness_seconds: {type: number, minimum: 0, nullable: true, description: 距最新匹配轮次接收时间的秒数；没有匹配数据时为 null。}
     StatisticsConversations:
       type: object
       required: [items, total, page, page_size]

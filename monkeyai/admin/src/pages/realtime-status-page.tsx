@@ -66,11 +66,17 @@ function durationColor(
   return metricColors.bad
 }
 
-function formatTokenAmount(value: number, formatter: Intl.NumberFormat) {
+function formatCompactAmount(value: number, formatter: Intl.NumberFormat) {
   const absolute = Math.abs(value)
-  if (absolute <= 999.9) return formatter.format(value)
-  if (absolute <= 999_900) return `${formatter.format(value / 1_000)}K`
-  if (absolute <= 999_900_000) return `${formatter.format(value / 1_000_000)}M`
+  const precision =
+    10 ** -(formatter.resolvedOptions().maximumFractionDigits ?? 0)
+  const fits = (scale: number) =>
+    value < 0
+      ? absolute < 1_000 * scale
+      : absolute <= (1_000 - precision) * scale
+  if (fits(1)) return formatter.format(value)
+  if (fits(1_000)) return `${formatter.format(value / 1_000)}K`
+  if (fits(1_000_000)) return `${formatter.format(value / 1_000_000)}M`
   return `${formatter.format(value / 1_000_000_000)}B`
 }
 
@@ -169,6 +175,7 @@ function TrendCard({
   color,
   barClassName,
   loading,
+  formatValue,
 }: {
   icon: IconSvgElement
   title: string
@@ -177,11 +184,12 @@ function TrendCard({
   color: string
   barClassName: string
   loading: boolean
+  formatValue?: (value: number) => string
 }) {
   const config = { count: { label: title, color } } satisfies ChartConfig
   return (
     <Card className="gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
-      <CardHeader className="flex min-h-10 flex-row items-center gap-3 px-4 py-1">
+      <CardHeader className="flex min-h-7 flex-row items-center gap-3 px-3 py-0">
         <HugeiconsIcon
           className="shrink-0 text-muted-foreground"
           icon={icon}
@@ -219,7 +227,21 @@ function TrendCard({
                     : [Math.min(0, min), Math.max(0, max)]
                 }
               />
-              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    valueFormatter={
+                      formatValue
+                        ? (value) =>
+                            typeof value === "number"
+                              ? formatValue(value)
+                              : String(value)
+                        : undefined
+                    }
+                  />
+                }
+              />
               <Bar
                 dataKey="count"
                 fill="var(--color-count)"
@@ -352,7 +374,7 @@ function RealtimeMetricCard({
 }) {
   return (
     <Card className="gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
-      <CardHeader className="flex min-h-10 flex-row items-center gap-3 px-4 py-1">
+      <CardHeader className="flex min-h-7 flex-row items-center gap-3 px-3 py-0">
         <HugeiconsIcon
           className="shrink-0 text-muted-foreground"
           icon={icon}
@@ -412,6 +434,14 @@ export function RealtimeStatusPage() {
     maximumFractionDigits: 1,
     roundingMode: "ceil",
   })
+  const formatTrendAmount = (value: number) =>
+    formatCompactAmount(value, tokenFormatter)
+  const creditsFormatter = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+    roundingMode: "ceil",
+  })
+  const formatCreditsAmount = (value: number) =>
+    formatCompactAmount(value, creditsFormatter)
   const percentFormatter = new Intl.NumberFormat(locale, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -512,11 +542,11 @@ export function RealtimeStatusPage() {
           input_tokens:
             summary.input_tokens == null
               ? "—"
-              : formatTokenAmount(summary.input_tokens, tokenFormatter),
+              : formatCompactAmount(summary.input_tokens, tokenFormatter),
           output_tokens:
             summary.output_tokens == null
               ? "—"
-              : formatTokenAmount(summary.output_tokens, tokenFormatter),
+              : formatCompactAmount(summary.output_tokens, tokenFormatter),
         }
       : {}),
     ...(quality
@@ -524,7 +554,7 @@ export function RealtimeStatusPage() {
           tpm:
             quality.tpm == null
               ? "—"
-              : formatTokenAmount(quality.tpm, tokenFormatter),
+              : formatCompactAmount(quality.tpm, tokenFormatter),
           rpm:
             quality.rpm == null
               ? "—"
@@ -655,6 +685,7 @@ export function RealtimeStatusPage() {
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelCreditsTrend}
               loading={modelRequest.loading}
+              formatValue={formatCreditsAmount}
               color="var(--color-yellow-500)"
               barClassName="fill-yellow-500"
             />
@@ -673,6 +704,7 @@ export function RealtimeStatusPage() {
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelInputTrend}
               loading={modelRequest.loading}
+              formatValue={formatTrendAmount}
               color="var(--color-emerald-400)"
               barClassName="fill-emerald-400"
             />
@@ -682,6 +714,7 @@ export function RealtimeStatusPage() {
               periodLabel={t("pages.realtimeStatus.period90d")}
               points={modelOutputTrend}
               loading={modelRequest.loading}
+              formatValue={formatTrendAmount}
               color="var(--color-emerald-600)"
               barClassName="fill-emerald-600"
             />

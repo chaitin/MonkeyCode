@@ -11,6 +11,7 @@ import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { ClientDistributionCards } from "@/components/client-distribution-cards"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,8 +45,10 @@ import {
 import { api } from "@/lib/api"
 import { startOfLocalDay } from "@/lib/date-range"
 import {
+  defaultWindow,
   reportPaths,
   reportQuery,
+  type ClientOverview,
   type ReportClient,
   type ReportPage,
   type ReportWindow,
@@ -117,7 +120,7 @@ const pageSizes = ["20", "50", "100"]
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
-  const [filters, setFilters] = useState<ReportWindow>({ from: "", until: "" })
+  const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
   const [draft, setDraft] = useState<ReportWindow>(filters)
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
@@ -132,6 +135,13 @@ export function ClientAnalysisPage() {
   const [active, setActive] = useState(0)
   const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
+  const [listRetry, setListRetry] = useState(0)
+  const [overviewRetry, setOverviewRetry] = useState(0)
+  const [overviewResponse, setOverviewResponse] = useState<{
+    key: string
+    data?: ClientOverview
+    error?: string
+  }>()
   const searchRevisionRef = useRef<number | null>(null)
   const [data, setData] = useState<ReportPage<ReportClient>>()
   const [loading, setLoading] = useState(true)
@@ -149,6 +159,34 @@ export function ClientAnalysisPage() {
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))
   const path = `${reportPaths.clients}${reportQuery(filters, cursors[active])}&limit=${pageSize}`
+  const overviewPath = `${reportPaths.clientsOverview}${reportQuery(filters)}`
+  const overviewKey = `${overviewPath}:${revision}:${overviewRetry}`
+  const overviewLoading = overviewResponse?.key !== overviewKey
+  const overview = overviewLoading ? undefined : overviewResponse.data
+  const overviewError = overviewLoading ? undefined : overviewResponse.error
+  const searchBusy = searching || (revision > 0 && overviewLoading)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api<ClientOverview>(overviewPath, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setOverviewResponse({ key: overviewKey, data: result })
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setOverviewResponse({
+            key: overviewKey,
+            error: reason instanceof Error ? reason.message : String(reason),
+          })
+        }
+      })
+    return () => controller.abort()
+  }, [overviewPath, overviewKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -183,7 +221,7 @@ export function ClientAnalysisPage() {
           ...(!isSearch && {
             action: {
               label: t("statistics.retry"),
-              onClick: () => setRevision((value) => value + 1),
+              onClick: () => setListRetry((value) => value + 1),
             },
           }),
         })
@@ -197,24 +235,31 @@ export function ClientAnalysisPage() {
         }
       })
     return () => controller.abort()
-  }, [path, revision, showToast, t])
+  }, [path, revision, listRetry, showToast, t])
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (loading || searching) return
+    if (loading || searchBusy || overviewLoading) return
     if (
       Boolean(startDay) !== Boolean(endDay) ||
-      (startDay && endDay && startOfLocalDay(startDay) > startOfLocalDay(endDay))
+      (startDay &&
+        endDay &&
+        startOfLocalDay(startDay) > startOfLocalDay(endDay))
     ) {
       setInvalidRange(true)
       return
     }
     setInvalidRange(false)
     setError(undefined)
+    const timeWindow = defaultWindow()
     setFilters({
       ...draft,
-      from: startDay ? startOfLocalDay(startDay).toISOString() : "",
-      until: endDay ? startOfLocalDay(addDays(endDay, 1)).toISOString() : "",
+      from: startDay
+        ? startOfLocalDay(startDay).toISOString()
+        : timeWindow.from,
+      until: endDay
+        ? startOfLocalDay(addDays(endDay, 1)).toISOString()
+        : timeWindow.until,
     })
     setCursors([undefined])
     setActive(0)
@@ -237,8 +282,14 @@ export function ClientAnalysisPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
-      <Card className="min-h-0 flex-1">
+    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px lg:h-[calc(100svh-5rem)] lg:flex-none lg:overflow-hidden">
+      <ClientDistributionCards
+        data={overview}
+        loading={overviewLoading}
+        error={overviewError}
+        onRetry={() => setOverviewRetry((value) => value + 1)}
+      />
+      <Card className="h-[32rem] min-h-0 flex-none lg:h-auto lg:flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
             onSubmit={applySearch}
@@ -386,12 +437,15 @@ export function ClientAnalysisPage() {
                 </DropdownMenuGroup>
               </DropdownMenuOptionsContent>
             </DropdownMenu>
-            <Button type="submit" disabled={loading || searching}>
+            <Button
+              type="submit"
+              disabled={loading || searchBusy || overviewLoading}
+            >
               <HugeiconsIcon
-                icon={searching ? Loading03Icon : Search02Icon}
+                icon={searchBusy ? Loading03Icon : Search02Icon}
                 data-icon="inline-start"
                 className={
-                  searching
+                  searchBusy
                     ? "animate-spin motion-reduce:animate-none"
                     : undefined
                 }
@@ -406,10 +460,7 @@ export function ClientAnalysisPage() {
               >
                 {t(`${key}.clients.selectColumns`)}
               </DropdownMenuTrigger>
-              <DropdownMenuOptionsContent
-                align="end"
-                className="max-h-80"
-              >
+              <DropdownMenuOptionsContent align="end" className="max-h-80">
                 <DropdownMenuGroup>
                   {columns.map((column) => (
                     <DropdownMenuCheckboxItem
@@ -441,7 +492,7 @@ export function ClientAnalysisPage() {
             <div className="px-(--card-spacing)">
               <Button
                 variant="outline"
-                onClick={() => setRevision((value) => value + 1)}
+                onClick={() => setListRetry((value) => value + 1)}
               >
                 {t("statistics.retry")}
               </Button>

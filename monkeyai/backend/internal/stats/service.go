@@ -77,6 +77,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/statistics/session-reporting/sessions/{id}", s.reportingDetail)
 	r.Get("/statistics/session-reporting/resources", s.reportingResources)
 	r.Get("/statistics/session-reporting/clients", s.reportingClients)
+	r.Get("/statistics/session-reporting/clients/overview", s.reportingClientsOverview)
 }
 
 func rollbackStats(ctx context.Context, tx pgx.Tx, operation string) {

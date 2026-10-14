@@ -397,6 +397,21 @@ export const zhCN = {
         selectColumns: "选择列",
         cursorSummary: "显示 {{from}}–{{to}} 条",
         cursorPage: "第 {{page}} 页",
+        distribution: {
+          client_type: "客户端类型分布",
+          platform: "平台分布",
+          client_version: "客户端版本分布",
+          sessions: "会话",
+          empty: "无匹配数据",
+          unknown: "未知",
+          types: {
+            desktop: "桌面端",
+            web: "网页端",
+            extension: "扩展端",
+            mobile: "移动端",
+            unknown: "未知",
+          },
+        },
       },
       detail: {
         title: "会话详情",

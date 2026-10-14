@@ -287,6 +287,49 @@ func (q *Queries) ReportingClients(ctx context.Context, filters []byte) ([][]byt
 	return items, nil
 }
 
+const reportingClientsOverview = `-- name: ReportingClientsOverview :one
+WITH opts AS (SELECT $1::jsonb AS f), facts AS (
+    SELECT s.id,t.turn_index,t.started_at,t.received_at,s.client_type,ep.platform,
+        nullif(btrim(t.client_version),'') AS client_version FROM session_turns t
+    JOIN sessions s ON s.id = t.session_id
+    LEFT JOIN endpoints ep ON ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id CROSS JOIN opts p
+    WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
+        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
+        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
+        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
+        AND (p.f->>'platform' IS NULL OR ep.platform = p.f->>'platform')
+        AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
+        AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
+        AND t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
+), latest AS (
+    SELECT DISTINCT ON (id) id,client_type,platform,client_version FROM facts
+    ORDER BY id,started_at DESC,turn_index DESC
+), counts AS (
+    SELECT 'client_type'::text AS dimension,client_type AS value,count(*) AS count FROM latest GROUP BY client_type
+    UNION ALL SELECT 'platform',platform,count(*) FROM latest GROUP BY platform
+    UNION ALL SELECT 'client_version',client_version,count(*) FROM latest GROUP BY client_version
+)
+SELECT jsonb_build_object('metric','sessions','total',(SELECT count(*) FROM latest),
+    'last_received_at',(SELECT max(received_at) FROM facts),
+    'distributions',jsonb_build_object(
+        'client_type',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_type'),'[]'::jsonb),
+        'platform',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='platform'),'[]'::jsonb),
+        'client_version',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_version'),'[]'::jsonb)
+    ))
+`
+
+func (q *Queries) ReportingClientsOverview(ctx context.Context, filters []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingClientsOverview, filters)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
 const reportingDetail = `-- name: ReportingDetail :one
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (

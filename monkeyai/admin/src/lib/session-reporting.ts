@@ -175,12 +175,22 @@ export type ReportClient = {
   sort_key: string
 }
 
+export type ClientDistributionDimension =
+  "client_type" | "platform" | "client_version"
+export type ClientDistribution = { value: string | null; count: number }
+export type ClientOverview = ReportMeta & {
+  metric: "sessions"
+  total: number
+  distributions: Record<ClientDistributionDimension, ClientDistribution[]>
+}
+
 const root = "/api/admin/v1/statistics/session-reporting"
 export const reportPaths = {
   overview: `${root}/overview`,
   detail: (id: string) => `${root}/sessions/${encodeURIComponent(id)}`,
   resources: `${root}/resources`,
   clients: `${root}/clients`,
+  clientsOverview: `${root}/clients/overview`,
 }
 
 export function defaultWindow(): ReportWindow {

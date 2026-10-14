@@ -421,6 +421,21 @@ export const enUS = {
         selectColumns: "Select columns",
         cursorSummary: "Showing {{from}}–{{to}}",
         cursorPage: "Page {{page}}",
+        distribution: {
+          client_type: "Client type distribution",
+          platform: "Platform distribution",
+          client_version: "Client version distribution",
+          sessions: "Sessions",
+          empty: "No matching data",
+          unknown: "Unknown",
+          types: {
+            desktop: "Desktop",
+            web: "Web",
+            extension: "Extension",
+            mobile: "Mobile",
+            unknown: "Unknown",
+          },
+        },
       },
       detail: {
         title: "Session details",
