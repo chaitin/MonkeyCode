@@ -1,5 +1,5 @@
 ALTER TABLE models
-    DROP CONSTRAINT models_kind_config_check,
+    DROP CONSTRAINT IF EXISTS models_kind_config_check,
     ADD CONSTRAINT models_kind_config_check CHECK (
         (kind = 'text' AND provider = 'passthrough'
             AND protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic')

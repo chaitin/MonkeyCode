@@ -124,6 +124,33 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
+	t.Run("SeedanceMigrationIdempotency", func(t *testing.T) {
+		for _, direction := range []string{"up", "down", "up"} {
+			path := "000022_video_seedance_provider." + direction + ".sql"
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for attempt := range 3 {
+				if attempt == 1 {
+					if _, err := conn.Exec(t.Context(), "ALTER TABLE models DROP CONSTRAINT models_kind_config_check"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := conn.Exec(t.Context(), string(data)); err != nil {
+					t.Fatalf("执行 %s，第 %d 次: %v", path, attempt+1, err)
+				}
+				var definition string
+				if err := conn.QueryRow(t.Context(), `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+					WHERE conrelid = 'models'::regclass AND conname = 'models_kind_config_check'`).Scan(&definition); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(definition, "'volcengine'") != (direction == "up") {
+					t.Fatalf("执行 %s 后的视频供应商约束错误: %s", path, definition)
+				}
+			}
+		}
+	})
 	run("down", "1")
 	run("up")
 	if output := run("up"); !strings.Contains(output, "no change") {

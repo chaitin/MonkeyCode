@@ -1269,7 +1269,7 @@ ALTER TABLE video_jobs
     ADD COLUMN poll_failures integer NOT NULL DEFAULT 0 CHECK (poll_failures >= 0);
 
 ALTER TABLE models
-    DROP CONSTRAINT models_kind_config_check,
+    DROP CONSTRAINT IF EXISTS models_kind_config_check,
     ADD CONSTRAINT models_kind_config_check CHECK (
         (kind = 'text' AND provider = 'passthrough'
             AND protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic')
