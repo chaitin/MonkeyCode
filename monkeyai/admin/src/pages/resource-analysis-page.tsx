@@ -77,7 +77,12 @@ export function ResourceAnalysisPage() {
   const [endDay, setEndDay] = useState<Date>()
   const [userID, setUserID] = useState("")
   const [visibleColumns, setVisibleColumns] = useState<Set<ResourceColumn>>(
-    () => new Set(columns.filter((column) => column !== "version"))
+    () =>
+      new Set(
+        columns.filter(
+          (column) => column !== "version" && column !== "available_sessions"
+        )
+      )
   )
   const [invalidRange, setInvalidRange] = useState(false)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
