@@ -32,11 +32,7 @@ import { RulesPage } from "@/pages/rules-page"
 import { ResourceImportsPage } from "@/pages/resource-imports-page"
 import { SkillsPage } from "@/pages/skills-page"
 import { TaskHistoryPage } from "@/pages/task-history-page"
-import { TaskStatisticsPage } from "@/pages/task-statistics-page"
-import {
-  ResourceAnalysisPage,
-  SessionOverviewPage,
-} from "@/pages/session-reporting-page"
+import { ResourceAnalysisPage } from "@/pages/resource-analysis-page"
 import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
 
@@ -105,14 +101,10 @@ export function App() {
                 element={
                   page.path === CONSOLE_ROUTES.realtimeStatus ? (
                     <RealtimeStatusPage />
-                  ) : page.path === CONSOLE_ROUTES.taskStatistics ? (
-                    <TaskStatisticsPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.conversationHistory ? (
                     <ConversationHistoryPage />
-                  ) : page.path === CONSOLE_ROUTES.sessionOverview ? (
-                    <SessionOverviewPage />
                   ) : page.path === CONSOLE_ROUTES.resourceAnalysis ? (
                     <ResourceAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.clientAnalysis ? (

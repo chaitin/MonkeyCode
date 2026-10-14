@@ -77,8 +77,6 @@ export const es419 = {
     deleted: "Eliminado",
     modelScope:
       "Llamadas por hora de inicio; créditos por hora de cobro y reembolso. La tasa de caché es la proporción de llamadas con aciertos.",
-    taskScope:
-      "Sesiones iniciadas en el período. Tasa de finalización: exitosas / total; duración media solo de sesiones terminadas. Requiere informes del cliente.",
   },
   common: {
     breadcrumb: "Ruta de navegación",
@@ -244,48 +242,6 @@ export const es419 = {
         conversationCount: "Conversaciones",
       },
       empty: "No hay tareas que coincidan con los filtros actuales",
-    },
-    taskStatistics: {
-      title: "Estadísticas de tareas",
-      description:
-        "Consulta las tendencias, el estado de ejecución y la finalización de las tareas.",
-      timeRange: "Periodo de estadísticas",
-      ranges: {
-        "7d": "Últimos 7 días",
-        "30d": "Últimos 30 días",
-        "90d": "Últimos 90 días",
-      },
-      comparedToPrevious: "frente al periodo anterior",
-      metrics: {
-        totalTasks: "Total de tareas",
-        completionRate: "Tasa de finalización",
-        averageDuration: "Duración promedio",
-        runningTasks: "Tareas abiertas",
-      },
-      taskTrend: "Tendencia de tareas",
-      statusDistribution: "Distribución por estado",
-      statuses: {
-        completed: "Completadas",
-        running: "Abiertas",
-        failed: "Fallidas",
-      },
-      taskTypeDetails: "Detalle por tipo de tarea",
-      columns: {
-        taskType: "Tipo de tarea",
-        total: "Tareas",
-        completed: "Completadas",
-        completionRate: "Tasa de finalización",
-        averageDuration: "Duración promedio",
-      },
-      taskTypes: {
-        conversation: "Conversación con Agent",
-        workflow: "Flujo de trabajo",
-        retrieval: "Búsqueda de conocimiento",
-        tool: "Llamada a herramienta",
-        scheduled: "Tarea programada",
-      },
-      durationSeconds: "{{count}} s",
-      durationMinutes: "{{minutes}} min {{seconds}} s",
     },
     models: {
       noTags: "Sin etiquetas",

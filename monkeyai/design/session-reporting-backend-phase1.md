@@ -4,6 +4,8 @@
 >
 > 适用范围：MonkeyCode/monkeyai/backend。
 >
+> 后台现状：会话总览、任务统计和会话列表页面及其专用查询 API 已移除。数据总览使用的任务指标、任务历史、会话详情、资源分析和客户端统计继续保留。下文保留一期设计记录，现行接口以 `../backend/api/admin.yaml` 为准。
+>
 > 依据：`SESSION-REPORTING-PLAN.md`、`SESSION-REPORTING-SPEC.md`，以及当前会话、网关、计费、设备和统计实现。
 
 ## 1. 目标与边界

@@ -81,8 +81,6 @@ export const ruRU = {
     deleted: "Удалено",
     modelScope:
       "Вызовы учитываются по времени начала, кредиты — списания и возврата. Попадания в кэш — доля вызовов с использованием кэша.",
-    taskScope:
-      "Сессии, начатые за период. Доля завершения: успешные / все; средняя длительность только завершённых сессий. Требуются отчёты клиента.",
   },
   common: {
     breadcrumb: "Навигационная цепочка",
@@ -247,48 +245,6 @@ export const ruRU = {
         conversationCount: "Диалоги",
       },
       empty: "Нет задач, соответствующих текущим фильтрам",
-    },
-    taskStatistics: {
-      title: "Статистика задач",
-      description:
-        "Просматривайте динамику задач, состояние выполнения и процент завершения.",
-      timeRange: "Период статистики",
-      ranges: {
-        "7d": "Последние 7 дней",
-        "30d": "Последние 30 дней",
-        "90d": "Последние 90 дней",
-      },
-      comparedToPrevious: "по сравнению с предыдущим периодом",
-      metrics: {
-        totalTasks: "Всего задач",
-        completionRate: "Процент завершения",
-        averageDuration: "Средняя длительность",
-        runningTasks: "Открытые задачи",
-      },
-      taskTrend: "Динамика задач",
-      statusDistribution: "Распределение по статусам",
-      statuses: {
-        completed: "Завершено",
-        running: "Открытые",
-        failed: "Ошибка",
-      },
-      taskTypeDetails: "Статистика по типам задач",
-      columns: {
-        taskType: "Тип задачи",
-        total: "Задачи",
-        completed: "Завершено",
-        completionRate: "Процент завершения",
-        averageDuration: "Средняя длительность",
-      },
-      taskTypes: {
-        conversation: "Диалог с Agent",
-        workflow: "Рабочий процесс",
-        retrieval: "Поиск знаний",
-        tool: "Вызов инструмента",
-        scheduled: "Задача по расписанию",
-      },
-      durationSeconds: "{{count}} сек.",
-      durationMinutes: "{{minutes}} мин. {{seconds}} сек.",
     },
     models: {
       noTags: "Без тегов",

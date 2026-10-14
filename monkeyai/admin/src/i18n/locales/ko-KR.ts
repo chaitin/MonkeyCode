@@ -73,8 +73,6 @@ export const koKR = {
     deleted: "삭제됨",
     modelScope:
       "호출은 시작 시각, 크레딧은 청구 및 환불 시각 기준입니다. 캐시 적중률은 적중한 호출의 비율입니다.",
-    taskScope:
-      "기간 내 시작한 세션입니다. 완료율은 성공 수 / 전체 수이며 평균 시간은 종료된 세션만 포함합니다. 클라이언트 보고가 필요합니다.",
   },
   common: {
     breadcrumb: "이동 경로",
@@ -233,47 +231,6 @@ export const koKR = {
         conversationCount: "대화 수",
       },
       empty: "현재 필터와 일치하는 작업이 없습니다",
-    },
-    taskStatistics: {
-      title: "작업 통계",
-      description: "작업 실행 추세, 실행 상태 및 완료 현황을 확인합니다.",
-      timeRange: "통계 기간",
-      ranges: {
-        "7d": "최근 7일",
-        "30d": "최근 30일",
-        "90d": "최근 90일",
-      },
-      comparedToPrevious: "이전 기간 대비",
-      metrics: {
-        totalTasks: "전체 작업",
-        completionRate: "완료율",
-        averageDuration: "평균 소요 시간",
-        runningTasks: "미종료 작업",
-      },
-      taskTrend: "작업 추세",
-      statusDistribution: "상태 분포",
-      statuses: {
-        completed: "완료",
-        running: "미종료",
-        failed: "실패",
-      },
-      taskTypeDetails: "작업 유형 상세",
-      columns: {
-        taskType: "작업 유형",
-        total: "작업 수",
-        completed: "완료",
-        completionRate: "완료율",
-        averageDuration: "평균 소요 시간",
-      },
-      taskTypes: {
-        conversation: "Agent 대화",
-        workflow: "워크플로",
-        retrieval: "지식 검색",
-        tool: "도구 호출",
-        scheduled: "예약 작업",
-      },
-      durationSeconds: "{{count}}초",
-      durationMinutes: "{{minutes}}분 {{seconds}}초",
     },
     models: {
       noTags: "태그 없음",

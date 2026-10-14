@@ -268,16 +268,16 @@ func TestRealtimeRanges(t *testing.T) {
 		"1d":  24 * time.Hour,
 		"7d":  7 * 24 * time.Hour,
 	} {
-		w, err := period(httptest.NewRequest("GET", "/statistics/realtime?range="+value, nil), now, true)
+		w, err := period(httptest.NewRequest("GET", "/statistics/realtime?range="+value, nil), now)
 		if err != nil || !w.from.Equal(now.Add(-duration)) || !w.until.Equal(now) {
 			t.Fatalf("range=%s: window=%+v error=%v", value, w, err)
 		}
 	}
-	w, err := period(httptest.NewRequest("GET", "/statistics/realtime", nil), now, true)
+	w, err := period(httptest.NewRequest("GET", "/statistics/realtime", nil), now)
 	if err != nil || !w.from.Equal(now.Add(-24*time.Hour)) {
 		t.Fatalf("默认应为 1 天: window=%+v error=%v", w, err)
 	}
-	if _, err := period(httptest.NewRequest("GET", "/statistics/realtime?range=8d", nil), now, true); err == nil {
+	if _, err := period(httptest.NewRequest("GET", "/statistics/realtime?range=8d", nil), now); err == nil {
 		t.Fatal("无效窗口应被拒绝")
 	}
 }
@@ -466,7 +466,7 @@ func TestRealtimeGroupsSubsessionsWithoutEndedAt(t *testing.T) {
 	number(t, out, "new_tasks", 0)
 }
 
-func TestTasksAndHistory(t *testing.T) {
+func TestHistory(t *testing.T) {
 	s, user, _ := fixture(t)
 	now := s.now()
 	from := now.Add(-7 * 24 * time.Hour)
@@ -503,16 +503,7 @@ func TestTasksAndHistory(t *testing.T) {
 			}
 		}
 	}
-	out := request(t, s, "/statistics/tasks?range=7d", 200)
-	summary := out["summary"].(map[string]any)
-	for key, want := range map[string]float64{"total": 6, "completed": 2, "failed": 3, "interrupted": 1, "average_duration_seconds": 100, "completion_rate": 200.0 / 6, "anomaly_rate": 50} {
-		number(t, summary, key, want)
-	}
-	if len(out["trend"].([]any)) != 7 || len(out["types"].([]any)) != 1 {
-		t.Fatalf("分桶或类型错误: %v", out)
-	}
-	number(t, out["previous"].(map[string]any), "total", 1)
-	out = request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
+	out := request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
 	number(t, out, "total", 1)
 	number(t, out, "page", 1)
 	if item := out["items"].([]any)[0].(map[string]any); item["title"] != "报告 100%" || item["user_id"] != user {
@@ -523,14 +514,18 @@ func TestTasksAndHistory(t *testing.T) {
 	number(t, out, "page", 2)
 	number(t, out["items"].([]any)[0].(map[string]any), "turn_count", 3)
 }
-func TestReportingSessionListRemoved(t *testing.T) {
+func TestRemovedStatisticsEndpoints(t *testing.T) {
 	router := chi.NewRouter()
 	(&Service{}).RegisterAdmin(router)
-	for _, path := range []string{"/statistics/session-reporting/sessions", "/statistics/session-reporting/sessions?limit=1"} {
+	for _, path := range []string{
+		"/statistics/session-reporting/sessions", "/statistics/session-reporting/sessions?limit=1",
+		"/statistics/session-reporting/overview", "/statistics/session-reporting/overview?from=2026-09-08T00:00:00Z",
+		"/statistics/tasks", "/statistics/tasks?range=7d",
+	} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusNotFound {
-			t.Fatalf("已移除的会话列表应返回 404: %s: %d", path, w.Code)
+			t.Fatalf("已移除的统计接口应返回 404: %s: %d", path, w.Code)
 		}
 	}
 }
@@ -618,7 +613,7 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 
 func TestEmptyAndInvalid(t *testing.T) {
 	s, _, _ := fixture(t)
-	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks", "/statistics/realtime", "/statistics/history", "/statistics/session-reporting/overview", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients"} {
+	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks/overview", "/statistics/realtime", "/statistics/history", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients", "/statistics/session-reporting/clients/overview"} {
 		request(t, s, path, 200)
 	}
 	out := request(t, s, "/statistics/realtime", 200)

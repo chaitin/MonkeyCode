@@ -3,10 +3,8 @@ export const CONSOLE_PATH = "/console"
 
 export const CONSOLE_ROUTES = {
   realtimeStatus: "/console/statistics/realtime",
-  taskStatistics: "/console/statistics/tasks",
   taskHistory: "/console/statistics/task-history",
   conversationHistory: "/console/statistics/conversation-history",
-  sessionOverview: "/console/statistics/session-reporting",
   sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
   resourceAnalysis: "/console/statistics/session-reporting/resources",
   clientAnalysis: "/console/statistics/session-reporting/clients",
@@ -36,13 +34,6 @@ export const CONSOLE_PAGES = [
     descriptionKey: "pages.realtimeStatus.description",
   },
   {
-    path: CONSOLE_ROUTES.taskStatistics,
-    sectionKey: "sections.statistics",
-    sectionPath: CONSOLE_ROUTES.realtimeStatus,
-    titleKey: "pages.taskStatistics.title",
-    descriptionKey: "pages.taskStatistics.description",
-  },
-  {
     path: CONSOLE_ROUTES.taskHistory,
     sectionKey: "sections.usageRecords",
     sectionPath: CONSOLE_ROUTES.taskHistory,
@@ -58,9 +49,8 @@ export const CONSOLE_PAGES = [
   },
   ...(
     [
-      ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
-      ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
       ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+      ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
     ] as const
   ).map(([name, path]) => ({
     path,

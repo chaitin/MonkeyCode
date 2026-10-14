@@ -73,8 +73,6 @@ export const ar = {
     deleted: "محذوف",
     modelScope:
       "تُحسب الاستدعاءات حسب وقت البدء والأرصدة حسب وقت الخصم والاسترداد. معدل إصابة الذاكرة المؤقتة هو نسبة الاستدعاءات التي استخدمتها.",
-    taskScope:
-      "الجلسات التي بدأت خلال الفترة. معدل الإكمال هو الناجحة / الإجمالي، ومتوسط المدة للجلسات المنتهية فقط. يلزم إرسال بيانات من العميل.",
   },
   common: {
     breadcrumb: "مسار التنقل",
@@ -232,47 +230,6 @@ export const ar = {
         conversationCount: "المحادثات",
       },
       empty: "لا توجد مهام تطابق عوامل التصفية الحالية",
-    },
-    taskStatistics: {
-      title: "إحصاءات المهام",
-      description: "راجع اتجاهات المهام وحالة التشغيل ومعدلات الإنجاز.",
-      timeRange: "الفترة الإحصائية",
-      ranges: {
-        "7d": "آخر 7 أيام",
-        "30d": "آخر 30 يومًا",
-        "90d": "آخر 90 يومًا",
-      },
-      comparedToPrevious: "مقارنة بالفترة السابقة",
-      metrics: {
-        totalTasks: "إجمالي المهام",
-        completionRate: "معدل الإنجاز",
-        averageDuration: "متوسط المدة",
-        runningTasks: "المهام المفتوحة",
-      },
-      taskTrend: "اتجاه المهام",
-      statusDistribution: "توزيع الحالات",
-      statuses: {
-        completed: "مكتملة",
-        running: "مفتوحة",
-        failed: "فشلت",
-      },
-      taskTypeDetails: "تفاصيل أنواع المهام",
-      columns: {
-        taskType: "نوع المهمة",
-        total: "المهام",
-        completed: "مكتملة",
-        completionRate: "معدل الإنجاز",
-        averageDuration: "متوسط المدة",
-      },
-      taskTypes: {
-        conversation: "محادثة Agent",
-        workflow: "سير العمل",
-        retrieval: "استرجاع المعرفة",
-        tool: "استدعاء أداة",
-        scheduled: "مهمة مجدولة",
-      },
-      durationSeconds: "{{count}} ث",
-      durationMinutes: "{{minutes}} د {{seconds}} ث",
     },
     models: {
       noTags: "بلا وسوم",

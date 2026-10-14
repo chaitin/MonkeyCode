@@ -194,8 +194,6 @@ export const enUS = {
     deleted: "Deleted",
     modelScope:
       "Calls use start time; credits use charge and refund time. Cache hit rate is the share of calls with cache hits.",
-    taskScope:
-      "Based on reported turns in the selected window. Completion and anomaly rates exclude unknown outcomes; interruptions are counted separately.",
   },
   common: {
     breadcrumb: "Breadcrumb",
@@ -293,7 +291,10 @@ export const enUS = {
     systemSettings: "System Settings",
   },
   pages: {
-    resourceImports: { title: "Import resource package", description: "Preview and apply a resource release" },
+    resourceImports: {
+      title: "Import resource package",
+      description: "Preview and apply a resource release",
+    },
     license: {
       title: "License",
       description: "View and manage paid licenses.",
@@ -398,22 +399,22 @@ export const enUS = {
       empty: "No tasks match the current filters",
     },
     sessionReporting: {
-      overview: {
-        title: "Session overview",
-        description: "Session and turn statistics.",
-      },
-      sessionOverview: {
-        title: "Session overview",
-        description: "Session and turn statistics.",
-      },
       resourceAnalysis: {
-        title: "Resources",
+        title: "Resource usage",
         description: "Resource availability and usage.",
       },
       clientAnalysis: { title: "Clients", description: "Client breakdown." },
       resources: {
-        title: "Resources",
+        title: "Resource usage",
         note: "Team connectors use gateway MCP facts; local tools use reported turn facts.",
+        invalidRange:
+          "Select both dates. The end date cannot be earlier than the start date.",
+        kinds: {
+          builtin: "Built-in tool",
+          workflow: "Workflow",
+          agent: "Agent",
+          local_mcp: "Local MCP",
+        },
       },
       clients: {
         title: "Clients",
@@ -575,52 +576,6 @@ export const enUS = {
       freshness: "Data lag",
       pending: "Not synchronized",
       window: "Window",
-      trend: "Turn trend (hourly)",
-      distribution: "Outcome distribution",
-      recentNote:
-        "Recently active means gateway activity within the chosen window, not necessarily running now. Refreshes every 30 seconds.",
-    },
-    taskStatistics: {
-      title: "Task Statistics",
-      description:
-        "Review reported turn outcomes, duration, and anomaly rates.",
-      timeRange: "Statistics time range",
-      ranges: {
-        "7d": "Last 7 days",
-        "30d": "Last 30 days",
-        "90d": "Last 90 days",
-      },
-      comparedToPrevious: "vs. previous period",
-      metrics: {
-        totalTasks: "Reported turns",
-        completionRate: "Completion rate",
-        averageDuration: "Average duration",
-        runningTasks: "Open tasks",
-      },
-      taskTrend: "Turn trend",
-      statusDistribution: "Turn outcome distribution",
-      statuses: {
-        completed: "Completed",
-        running: "Open",
-        failed: "Failed",
-      },
-      taskTypeDetails: "Task type details",
-      columns: {
-        taskType: "Task type",
-        total: "Turns",
-        completed: "Completed",
-        completionRate: "Completion rate",
-        averageDuration: "Average duration",
-      },
-      taskTypes: {
-        conversation: "Agent conversation",
-        workflow: "Workflow",
-        retrieval: "Knowledge retrieval",
-        tool: "Tool call",
-        scheduled: "Scheduled task",
-      },
-      durationSeconds: "{{count}} sec",
-      durationMinutes: "{{minutes}} min {{seconds}} sec",
     },
     models: {
       noTags: "No tags",
@@ -1451,7 +1406,24 @@ export const enUS = {
     },
     otherSettings: {
       about: "About",
-      proxies: { title: "System proxies", description: "Configure outbound proxies for models and connectors. Proxies in use cannot be deleted.", name: "Name", url: "Proxy URL", username: "Username (optional)", password: "Password (leave blank to keep)", newPassword: "Password (optional)", add: "Add proxy", edit: "Edit proxy", editAction: "Edit", delete: "Delete", cancel: "Cancel", save: "Save", direct: "Direct connection", confirmDelete: "Delete this proxy?" },
+      proxies: {
+        title: "System proxies",
+        description:
+          "Configure outbound proxies for models and connectors. Proxies in use cannot be deleted.",
+        name: "Name",
+        url: "Proxy URL",
+        username: "Username (optional)",
+        password: "Password (leave blank to keep)",
+        newPassword: "Password (optional)",
+        add: "Add proxy",
+        edit: "Edit proxy",
+        editAction: "Edit",
+        delete: "Delete",
+        cancel: "Cancel",
+        save: "Save",
+        direct: "Direct connection",
+        confirmDelete: "Delete this proxy?",
+      },
       title: "Other Settings",
       description:
         "Configure branding, OAuth, and other platform capabilities.",

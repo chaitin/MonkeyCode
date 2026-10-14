@@ -1,4 +1,4 @@
-export type Period = { from: string; until: string }
+
 export type ModelOverview = {
   timezone: "UTC"
   generated_at: string
@@ -23,31 +23,6 @@ export type ModelOverview = {
     output_tokens: number
     credits: string
   }[]
-}
-export type TaskSummary = {
-  total: number
-  completed: number
-  failed: number
-  interrupted: number
-  unknown: number
-  known_outcomes: number
-  anomaly_rate: number | null
-  completion_rate: number | null
-  average_duration_seconds: number | null
-  p50_duration_seconds?: number | null
-  p95_duration_seconds?: number | null
-}
-export type TaskStatistics = Period & {
-  summary: TaskSummary
-  previous: TaskSummary
-  trend: {
-    at: string
-    completed: number
-    failed: number
-    interrupted: number
-    unknown: number
-  }[]
-  types: (Omit<TaskSummary, "known_outcomes"> & { key: string })[]
 }
 export type TaskOverview = {
   total_tasks: number
@@ -86,18 +61,4 @@ export function periodChange(
     direction: current > previous ? "up" : "down",
     percent: (Math.abs(current - previous) / previous) * 100,
   }
-}
-
-export function change(
-  current: number | null,
-  previous: number | null,
-  locale: string,
-  points = false
-): string | undefined {
-  if (current === null || previous === null || (!points && previous === 0))
-    return undefined
-  const delta = points
-    ? current - previous
-    : ((current - previous) / Math.abs(previous)) * 100
-  return `${new Intl.NumberFormat(locale, { signDisplay: "exceptZero", maximumFractionDigits: 1 }).format(delta)}${points ? " pp" : "%"}`
 }

@@ -83,19 +83,6 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '403': {$ref: '#/components/responses/ResourceError403'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/admin/v1/statistics/session-reporting/overview:
-    get:
-      summary: 一期会话统计总览
-      description: 半开时间区间，返回会话/轮次/结局/耗时/费用/实时活跃及上报质量指标；不含正文。
-      parameters:
-        - {name: from, in: query, schema: {type: string, format: date-time}}
-        - {name: until, in: query, schema: {type: string, format: date-time}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-      responses:
-        '200': {description: 统计总览及数据新鲜度}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/statistics/session-reporting/sessions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -818,43 +805,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatisticsModelsOverview"
-        "400":
-          $ref: "#/components/responses/ResourceError400"
-        "401":
-          $ref: "#/components/responses/ResourceError401"
-        "403":
-          $ref: "#/components/responses/ResourceError403"
-        "500":
-          $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/statistics/tasks:
-    get:
-      summary: 会话统计与真实环比
-      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
-      parameters:
-        - name: range
-          in: query
-          required: false
-          description: 以服务端当前时间为终点的滚动窗口。
-          schema:
-            type: string
-            enum:
-              - 24h
-              - 7d
-              - 30d
-              - 90d
-            default: 30d
-      responses:
-        "200":
-          description: 统计结果。
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                const: private, no-store
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatisticsTasks"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -5152,101 +5102,6 @@ components:
       type: string
       format: date-time
       description: 查询窗口终点，不包含；由服务端统一确定。
-    StatisticsTaskSummary:
-      type: object
-      required:
-        - total
-        - completed
-        - failed
-        - running
-        - completion_rate
-        - average_duration_seconds
-      properties:
-        total:
-          type: integer
-          minimum: 0
-          description: 窗口内新建且未软删除的会话总数。
-        completed:
-          type: integer
-          minimum: 0
-          description: 已结束且失败代码、失败描述均为空的会话数。
-        failed:
-          type: integer
-          minimum: 0
-          description: 已结束且失败代码或失败描述非空的会话数，包含异常取消。
-        running:
-          type: integer
-          minimum: 0
-          description: 尚未结束的会话数，可能处于空闲状态。
-        completion_rate:
-          type:
-            - number
-            - "null"
-          description: 成功结束数 / 会话总数 × 100；无会话时为 null。
-        average_duration_seconds:
-          type:
-            - number
-            - "null"
-          description: 已结束会话的平均耗时，单位秒；没有已结束会话时为 null。
-    StatisticsTasks:
-      type: object
-      required:
-        - from
-        - until
-        - summary
-        - previous
-        - trend
-        - types
-      properties:
-        from: *statisticsFrom
-        until: *statisticsUntil
-        summary:
-          $ref: "#/components/schemas/StatisticsTaskSummary"
-        previous:
-          $ref: "#/components/schemas/StatisticsTaskSummary"
-          description: 紧邻当前窗口之前的等长周期，按会话当前结果汇总。
-        trend:
-          type: array
-          items:
-            type: object
-            required:
-              - at
-              - completed
-              - failed
-              - running
-            properties:
-              at:
-                type: string
-                format: date-time
-                description: 分桶起点，从窗口起点每 1 小时（24h）或 24 小时递增；按会话开始时间归桶，空桶补零。
-              completed:
-                type: integer
-                minimum: 0
-                description: 本桶成功结束数。
-              failed:
-                type: integer
-                minimum: 0
-                description: 本桶失败数。
-              running:
-                type: integer
-                minimum: 0
-                description: 本桶未结束数。
-        types:
-          type: array
-          items:
-            allOf:
-              - $ref: "#/components/schemas/StatisticsTaskSummary"
-              - type: object
-                required:
-                  - key
-                properties:
-                  key:
-                    type: string
-                    enum:
-                      - conversation
-                      - workflow
-                      - tool
-                      - scheduled
     StatisticsModelsOverview:
       type: object
       required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]

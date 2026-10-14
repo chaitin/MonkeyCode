@@ -81,8 +81,6 @@ export const deDE = {
     deleted: "Gelöscht",
     modelScope:
       "Aufrufe nach Startzeit, Credits nach Buchungs- und Erstattungszeit. Cache-Trefferquote: Anteil der Aufrufe mit Cache-Treffern.",
-    taskScope:
-      "Im Zeitraum gestartete Sitzungen. Abschlussquote: erfolgreich / gesamt. Durchschnittsdauer nur für beendete Sitzungen. Erfordert Client-Meldungen.",
   },
   common: {
     breadcrumb: "Brotkrümelnavigation",
@@ -248,48 +246,6 @@ export const deDE = {
         conversationCount: "Unterhaltungen",
       },
       empty: "Keine Aufgaben entsprechen den aktuellen Filtern",
-    },
-    taskStatistics: {
-      title: "Aufgabenstatistiken",
-      description:
-        "Prüfen Sie Aufgabentrends, Ausführungsstatus und Abschlussquoten.",
-      timeRange: "Statistikzeitraum",
-      ranges: {
-        "7d": "Letzte 7 Tage",
-        "30d": "Letzte 30 Tage",
-        "90d": "Letzte 90 Tage",
-      },
-      comparedToPrevious: "gegenüber dem vorherigen Zeitraum",
-      metrics: {
-        totalTasks: "Aufgaben insgesamt",
-        completionRate: "Abschlussquote",
-        averageDuration: "Durchschnittliche Dauer",
-        runningTasks: "Offene Aufgaben",
-      },
-      taskTrend: "Aufgabentrend",
-      statusDistribution: "Statusverteilung",
-      statuses: {
-        completed: "Abgeschlossen",
-        running: "Offen",
-        failed: "Fehlgeschlagen",
-      },
-      taskTypeDetails: "Details nach Aufgabentyp",
-      columns: {
-        taskType: "Aufgabentyp",
-        total: "Aufgaben",
-        completed: "Abgeschlossen",
-        completionRate: "Abschlussquote",
-        averageDuration: "Durchschnittliche Dauer",
-      },
-      taskTypes: {
-        conversation: "Agent-Unterhaltung",
-        workflow: "Workflow",
-        retrieval: "Wissenssuche",
-        tool: "Werkzeugaufruf",
-        scheduled: "Geplante Aufgabe",
-      },
-      durationSeconds: "{{count}} Sek.",
-      durationMinutes: "{{minutes}} Min. {{seconds}} Sek.",
     },
     models: {
       noTags: "Keine Tags",

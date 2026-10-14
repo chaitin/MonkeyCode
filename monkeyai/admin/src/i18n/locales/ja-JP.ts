@@ -77,8 +77,6 @@ export const jaJP = {
     deleted: "削除済み",
     modelScope:
       "呼び出しは開始時刻、クレジットは課金・返金時刻で集計します。キャッシュヒット率はヒットした呼び出しの割合です。",
-    taskScope:
-      "期間内に開始したセッション。完了率は成功数 / 総数、平均時間は終了したセッションのみです。クライアントからの報告が必要です。",
   },
   common: {
     breadcrumb: "パンくずリスト",
@@ -240,47 +238,6 @@ export const jaJP = {
         conversationCount: "会話数",
       },
       empty: "現在の条件に一致するタスクはありません",
-    },
-    taskStatistics: {
-      title: "タスク統計",
-      description: "タスクの実行傾向、状態、完了状況を確認します。",
-      timeRange: "集計期間",
-      ranges: {
-        "7d": "過去 7 日間",
-        "30d": "過去 30 日間",
-        "90d": "過去 90 日間",
-      },
-      comparedToPrevious: "前の期間との比較",
-      metrics: {
-        totalTasks: "タスク総数",
-        completionRate: "完了率",
-        averageDuration: "平均所要時間",
-        runningTasks: "未終了タスク",
-      },
-      taskTrend: "タスクの推移",
-      statusDistribution: "ステータス分布",
-      statuses: {
-        completed: "完了",
-        running: "未終了",
-        failed: "失敗",
-      },
-      taskTypeDetails: "タスク種別の詳細",
-      columns: {
-        taskType: "タスク種別",
-        total: "タスク数",
-        completed: "完了",
-        completionRate: "完了率",
-        averageDuration: "平均所要時間",
-      },
-      taskTypes: {
-        conversation: "Agent 会話",
-        workflow: "ワークフロー",
-        retrieval: "ナレッジ検索",
-        tool: "ツール呼び出し",
-        scheduled: "スケジュールタスク",
-      },
-      durationSeconds: "{{count}} 秒",
-      durationMinutes: "{{minutes}} 分 {{seconds}} 秒",
     },
     models: {
       noTags: "タグなし",

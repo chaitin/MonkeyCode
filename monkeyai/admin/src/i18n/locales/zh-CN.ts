@@ -184,8 +184,6 @@ export const zhCN = {
     deleted: "已删除",
     modelScope:
       "调用按开始时间统计，积分按扣费与退款发生时间统计；缓存命中率为命中缓存的调用占比。",
-    taskScope:
-      "按窗口内已上报轮次统计；完成率和异常率以已知结局为分母，中断单独统计，未知结局不计入分母。",
   },
   common: {
     breadcrumb: "面包屑导航",
@@ -270,7 +268,10 @@ export const zhCN = {
     systemSettings: "系统设置",
   },
   pages: {
-    resourceImports: { title: "导入资源包", description: "预览并导入资源发布包" },
+    resourceImports: {
+      title: "导入资源包",
+      description: "预览并导入资源发布包",
+    },
     license: {
       title: "付费授权",
       description: "用于查看和管理付费授权",
@@ -374,13 +375,8 @@ export const zhCN = {
       empty: "没有符合条件的任务",
     },
     sessionReporting: {
-      overview: { title: "会话总览", description: "查看会话与轮次统计。" },
-      sessionOverview: {
-        title: "会话总览",
-        description: "查看会话与轮次统计。",
-      },
       resourceAnalysis: {
-        title: "资源分析",
+        title: "资源使用",
         description: "查看资源开启与使用统计。",
       },
       clientAnalysis: {
@@ -388,8 +384,15 @@ export const zhCN = {
         description: "查看客户端维度统计。",
       },
       resources: {
-        title: "资源分析",
+        title: "资源使用",
         note: "团队连接器使用网关 MCP 事实；本机工具使用轮次上报事实。",
+        invalidRange: "请选择完整的时间范围，结束日期不能早于开始日期。",
+        kinds: {
+          builtin: "内置工具",
+          workflow: "工作流",
+          agent: "智能体",
+          local_mcp: "本地 MCP",
+        },
       },
       clients: {
         title: "客户端分析",
@@ -534,7 +537,8 @@ export const zhCN = {
         timeout: "请求超时，请重试。",
         general: "统计服务暂不可用，请重试。",
       },
-      privacy: "会话详情可展示客户端上报的用户正文和标题，不包含附件、工具参数、工具输出或文件。",
+      privacy:
+        "会话详情可展示客户端上报的用户正文和标题，不包含附件、工具参数、工具输出或文件。",
       all: "全部",
       apply: "查询",
       open: "查看",
@@ -549,51 +553,6 @@ export const zhCN = {
       freshness: "数据延迟",
       pending: "尚未同步",
       window: "统计窗口",
-      trend: "轮次趋势（按小时）",
-      distribution: "结局分布",
-      recentNote:
-        "最近活跃任务表示所选窗口内有网关活动，不代表当前仍在运行。页面每 30 秒刷新。",
-    },
-    taskStatistics: {
-      title: "任务统计",
-      description: "查看上报轮次的结局、耗时与异常率。",
-      timeRange: "统计时间范围",
-      ranges: {
-        "7d": "最近 7 天",
-        "30d": "最近 30 天",
-        "90d": "最近 90 天",
-      },
-      comparedToPrevious: "较上一周期",
-      metrics: {
-        totalTasks: "上报轮次数",
-        completionRate: "完成率",
-        averageDuration: "平均耗时",
-        runningTasks: "未结束任务",
-      },
-      taskTrend: "轮次趋势",
-      statusDistribution: "轮次结局分布",
-      statuses: {
-        completed: "已完成",
-        running: "未结束",
-        failed: "失败",
-      },
-      taskTypeDetails: "任务类型明细",
-      columns: {
-        taskType: "任务类型",
-        total: "轮次数",
-        completed: "已完成",
-        completionRate: "完成率",
-        averageDuration: "平均耗时",
-      },
-      taskTypes: {
-        conversation: "Agent 对话",
-        workflow: "工作流",
-        retrieval: "知识检索",
-        tool: "工具调用",
-        scheduled: "定时任务",
-      },
-      durationSeconds: "{{count}} 秒",
-      durationMinutes: "{{minutes}} 分 {{seconds}} 秒",
     },
     models: {
       noTags: "没有标签",
@@ -1378,7 +1337,24 @@ export const zhCN = {
     },
     otherSettings: {
       about: "关于",
-      proxies: { title: "系统代理", description: "配置可供模型和连接器选择的出站代理。使用中的代理不可删除。", name: "名称", url: "代理地址", username: "用户名（可选）", password: "密码（留空保持不变）", newPassword: "密码（可选）", add: "添加代理", edit: "编辑代理", editAction: "编辑", delete: "删除", cancel: "取消", save: "保存", direct: "直连", confirmDelete: "确认删除该代理？" },
+      proxies: {
+        title: "系统代理",
+        description:
+          "配置可供模型和连接器选择的出站代理。使用中的代理不可删除。",
+        name: "名称",
+        url: "代理地址",
+        username: "用户名（可选）",
+        password: "密码（留空保持不变）",
+        newPassword: "密码（可选）",
+        add: "添加代理",
+        edit: "编辑代理",
+        editAction: "编辑",
+        delete: "删除",
+        cancel: "取消",
+        save: "保存",
+        direct: "直连",
+        confirmDelete: "确认删除该代理？",
+      },
       title: "其他设置",
       description: "配置品牌信息、OAuth 及其他平台级能力。",
       brandInfo: {

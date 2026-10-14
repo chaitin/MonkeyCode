@@ -70,8 +70,6 @@ export const zhTW = {
     deleted: "已刪除",
     modelScope:
       "呼叫按開始時間統計，積分按扣費與退款時間統計；快取命中率為命中快取的呼叫比例。",
-    taskScope:
-      "期間內建立的工作階段；完成率為成功結束數 / 總數，平均耗時僅含已結束工作階段。資料須由用戶端回報。",
   },
   common: {
     breadcrumb: "麵包屑導覽",
@@ -241,47 +239,6 @@ export const zhTW = {
         conversationCount: "對話數量",
       },
       empty: "沒有符合目前篩選條件的任務",
-    },
-    taskStatistics: {
-      title: "任務統計",
-      description: "查看任務執行趨勢、執行狀態與完成情況。",
-      timeRange: "統計時間範圍",
-      ranges: {
-        "7d": "最近 7 天",
-        "30d": "最近 30 天",
-        "90d": "最近 90 天",
-      },
-      comparedToPrevious: "較上一週期",
-      metrics: {
-        totalTasks: "任務總數",
-        completionRate: "完成率",
-        averageDuration: "平均耗時",
-        runningTasks: "未結束任務",
-      },
-      taskTrend: "任務趨勢",
-      statusDistribution: "狀態分布",
-      statuses: {
-        completed: "已完成",
-        running: "未結束",
-        failed: "失敗",
-      },
-      taskTypeDetails: "任務類型明細",
-      columns: {
-        taskType: "任務類型",
-        total: "任務數",
-        completed: "已完成",
-        completionRate: "完成率",
-        averageDuration: "平均耗時",
-      },
-      taskTypes: {
-        conversation: "Agent 對話",
-        workflow: "工作流程",
-        retrieval: "知識檢索",
-        tool: "工具呼叫",
-        scheduled: "排程任務",
-      },
-      durationSeconds: "{{count}} 秒",
-      durationMinutes: "{{minutes}} 分 {{seconds}} 秒",
     },
     models: {
       noTags: "沒有標籤",

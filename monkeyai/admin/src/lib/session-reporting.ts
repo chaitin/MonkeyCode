@@ -27,29 +27,6 @@ export type ReportPage<T> = ReportMeta & {
   next_cursor: string | null
   pagination: "cursor"
 }
-export type ReportOverview = ReportMeta & {
-  sessions: number
-  placeholders: number
-  clock_suspect: number
-  turns: number
-  complete: number
-  anomalies: number
-  interrupted: number
-  unknown: number
-  completion_rate: number | null
-  anomaly_rate: number | null
-  average_duration_seconds: number | null
-  p50_duration_seconds: number | null
-  p95_duration_seconds: number | null
-  input_tokens: number
-  output_tokens: number
-  credits: string
-  recent_active_tasks: number
-  recovered: number
-  average_reporting_delay_seconds: number | null
-  trend: { at: string; turns: number; complete: number; anomalies: number }[]
-  outcomes: { outcome: string; turns: number }[]
-}
 type ReportSessionInfo = {
   id: string
   owner_user_id: string
@@ -186,7 +163,6 @@ export type ClientOverview = ReportMeta & {
 
 const root = "/api/admin/v1/statistics/session-reporting"
 export const reportPaths = {
-  overview: `${root}/overview`,
   detail: (id: string) => `${root}/sessions/${encodeURIComponent(id)}`,
   resources: `${root}/resources`,
   clients: `${root}/clients`,

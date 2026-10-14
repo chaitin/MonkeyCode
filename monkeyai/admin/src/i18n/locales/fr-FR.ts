@@ -82,8 +82,6 @@ export const frFR = {
     deleted: "Supprimé",
     modelScope:
       "Appels par heure de début ; crédits par heure de débit et de remboursement. Le taux de cache est la part des appels avec un cache utilisé.",
-    taskScope:
-      "Sessions démarrées sur la période. Taux de réussite : réussies / total ; durée moyenne des sessions terminées uniquement. Nécessite les rapports du client.",
   },
   common: {
     breadcrumb: "Fil d’Ariane",
@@ -250,48 +248,6 @@ export const frFR = {
         conversationCount: "Conversations",
       },
       empty: "Aucune tâche ne correspond aux filtres actuels",
-    },
-    taskStatistics: {
-      title: "Statistiques des tâches",
-      description:
-        "Consultez les tendances, l’état d’exécution et le taux d’achèvement des tâches.",
-      timeRange: "Période statistique",
-      ranges: {
-        "7d": "7 derniers jours",
-        "30d": "30 derniers jours",
-        "90d": "90 derniers jours",
-      },
-      comparedToPrevious: "par rapport à la période précédente",
-      metrics: {
-        totalTasks: "Nombre total de tâches",
-        completionRate: "Taux d’achèvement",
-        averageDuration: "Durée moyenne",
-        runningTasks: "Tâches ouvertes",
-      },
-      taskTrend: "Évolution des tâches",
-      statusDistribution: "Répartition par statut",
-      statuses: {
-        completed: "Terminées",
-        running: "Ouvertes",
-        failed: "Échouées",
-      },
-      taskTypeDetails: "Détail par type de tâche",
-      columns: {
-        taskType: "Type de tâche",
-        total: "Tâches",
-        completed: "Terminées",
-        completionRate: "Taux d’achèvement",
-        averageDuration: "Durée moyenne",
-      },
-      taskTypes: {
-        conversation: "Conversation Agent",
-        workflow: "Workflow",
-        retrieval: "Recherche de connaissances",
-        tool: "Appel d’outil",
-        scheduled: "Tâche planifiée",
-      },
-      durationSeconds: "{{count}} s",
-      durationMinutes: "{{minutes}} min {{seconds}} s",
     },
     models: {
       noTags: "Aucune étiquette",

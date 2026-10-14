@@ -46,15 +46,10 @@ export function AppSidebar({
           title: t("pages.realtimeStatus.title"),
           url: CONSOLE_ROUTES.realtimeStatus,
         },
-        {
-          title: t("pages.taskStatistics.title"),
-          url: CONSOLE_ROUTES.taskStatistics,
-        },
         ...(
           [
-            ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
-            ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
             ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+            ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
           ] as const
         ).map(([name, url]) => ({
           title: t(`pages.sessionReporting.${name}.title`),

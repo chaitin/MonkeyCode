@@ -36,44 +36,32 @@ func (s *Service) canReadPurged(r *http.Request) bool {
 
 type window struct {
 	from, until time.Time
-	step        time.Duration
 }
 
-func period(r *http.Request, now time.Time, realtime bool) (window, error) {
-	ranges := map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour}
+func period(r *http.Request, now time.Time) (window, error) {
+	ranges := map[string]time.Duration{
+		"5m": 5 * time.Minute, "15m": 15 * time.Minute, "30m": 30 * time.Minute,
+		"60m": time.Hour, "1h": time.Hour, "4h": 4 * time.Hour,
+		"1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour,
+	}
 	value := r.URL.Query().Get("range")
-	if realtime {
-		ranges = map[string]time.Duration{
-			"5m": 5 * time.Minute, "15m": 15 * time.Minute, "30m": 30 * time.Minute,
-			"60m": time.Hour, "1h": time.Hour, "4h": 4 * time.Hour,
-			"1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour,
-		}
-		if value == "" {
-			value = "1d"
-		}
-	} else if value == "" {
-		value = "30d"
+	if value == "" {
+		value = "1d"
 	}
 	duration, ok := ranges[value]
 	if !ok {
 		return window{}, resource.Invalid("统计周期无效")
 	}
-	w := window{from: now.Add(-duration), until: now, step: 24 * time.Hour}
-	if duration <= 24*time.Hour {
-		w.step = time.Hour
-	}
-	return w, nil
+	return window{from: now.Add(-duration), until: now}, nil
 }
 
 func (s *Service) RegisterAdmin(r chi.Router) {
-	r.Get("/statistics/realtime", s.read(true, realtime))
+	r.Get("/statistics/realtime", s.read(realtime))
 	r.Get("/statistics/users", s.usersOverview)
 	r.Get("/statistics/tasks/overview", s.tasksOverview)
 	r.Get("/statistics/models/overview", s.modelsOverview)
-	r.Get("/statistics/tasks", s.read(false, tasks))
 	r.Get("/statistics/history", s.history)
 	r.Get("/statistics/conversations", s.conversations)
-	r.Get("/statistics/session-reporting/overview", s.reportingOverview)
 	r.Get("/statistics/session-reporting/sessions/{id}", s.reportingDetail)
 	r.Get("/statistics/session-reporting/resources", s.reportingResources)
 	r.Get("/statistics/session-reporting/clients", s.reportingClients)
@@ -86,9 +74,9 @@ func rollbackStats(ctx context.Context, tx pgx.Tx, operation string) {
 	}
 }
 
-func (s *Service) read(live bool, query func(context.Context, pgx.Tx, window) (resource.Object, error)) http.HandlerFunc {
+func (s *Service) read(query func(context.Context, pgx.Tx, window) (resource.Object, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		period, err := period(r, s.now().UTC(), live)
+		period, err := period(r, s.now().UTC())
 		if err != nil {
 			resource.Fail(w, err)
 			return
