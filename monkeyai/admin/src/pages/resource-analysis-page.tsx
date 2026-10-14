@@ -57,7 +57,6 @@ const columns = [
   "available_sessions",
   "used_sessions",
   "calls",
-  "failed",
   "failure_rate",
 ] as const
 const pageSizes = ["20", "50", "100"]
@@ -277,7 +276,6 @@ export function ResourceAnalysisPage() {
                       row.available_sessions,
                       row.used_sessions,
                       row.calls,
-                      row.failed,
                     ].map((value, index) => (
                       <TableCell
                         key={index}
