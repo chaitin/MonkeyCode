@@ -395,7 +395,7 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                           title={task.user_email}
                           onClick={() => openAccount(task)}
                         >
@@ -413,7 +413,7 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <Link
                           to={`${CONSOLE_ROUTES.conversationHistory}?task_id=${encodeURIComponent(task.id)}`}
-                          className="block min-w-0 truncate rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="block min-w-0 cursor-pointer truncate rounded-sm underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover]:underline"
                           title={task.title}
                         >
                           {task.title}

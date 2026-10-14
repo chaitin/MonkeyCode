@@ -597,7 +597,7 @@ export function BillingDetailsPage() {
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={e.user_email}
                             onClick={() => setAccountUserID(e.user_id)}
                           >
@@ -746,7 +746,7 @@ export function BillingDetailsPage() {
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={tx.user_email}
                             onClick={() => setAccountUserID(tx.user_id)}
                           >

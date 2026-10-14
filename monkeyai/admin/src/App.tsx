@@ -35,7 +35,6 @@ import { TaskHistoryPage } from "@/pages/task-history-page"
 import { TaskStatisticsPage } from "@/pages/task-statistics-page"
 import {
   ResourceAnalysisPage,
-  SessionListPage,
   SessionOverviewPage,
 } from "@/pages/session-reporting-page"
 import { SessionDetailPage } from "@/pages/session-detail-page"
@@ -114,8 +113,6 @@ export function App() {
                     <ConversationHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.sessionOverview ? (
                     <SessionOverviewPage />
-                  ) : page.path === CONSOLE_ROUTES.sessionList ? (
-                    <SessionListPage />
                   ) : page.path === CONSOLE_ROUTES.resourceAnalysis ? (
                     <ResourceAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.clientAnalysis ? (

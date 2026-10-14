@@ -379,7 +379,6 @@ export const zhCN = {
         title: "会话总览",
         description: "查看会话与轮次统计。",
       },
-      sessionList: { title: "会话列表", description: "按条件筛选会话。" },
       resourceAnalysis: {
         title: "资源分析",
         description: "查看资源开启与使用统计。",
@@ -388,7 +387,6 @@ export const zhCN = {
         title: "客户端",
         description: "查看客户端维度统计。",
       },
-      sessions: { title: "会话列表" },
       resources: {
         title: "资源分析",
         note: "团队连接器使用网关 MCP 事实；本机工具使用轮次上报事实。",
@@ -526,7 +524,7 @@ export const zhCN = {
       apply: "查询",
       open: "查看",
       copy: "复制 ID",
-      back: "返回会话列表",
+      back: "返回任务历史",
       previous: "上一页",
       next: "下一页",
       invalidFilter: "请检查时间范围及会话 ID。",

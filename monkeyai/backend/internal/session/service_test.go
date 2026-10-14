@@ -337,15 +337,15 @@ func TestValidUUID(t *testing.T) {
 	}
 }
 
-func TestSessionFilters(t *testing.T) {
-	for _, path := range []string{"/sessions?cursor=abc", "/sessions?owner_user_id=invalid", "/sessions?status=unknown", "/sessions?include_purged=maybe"} {
-		if _, err := sessionFilters(httptest.NewRequest("GET", path, nil)); err == nil {
-			t.Fatalf("无效筛选未被拒绝：%s", path)
+func TestSessionListRemoved(t *testing.T) {
+	router := chi.NewRouter()
+	(&Service{}).RegisterAdmin(router)
+	for _, path := range []string{"/sessions", "/sessions?page=1", "/sessions?include_purged=true"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("已移除的会话列表应返回 404: %s: %d", path, w.Code)
 		}
-	}
-	filter, err := sessionFilters(httptest.NewRequest("GET", "/sessions?status=purged", nil))
-	if err != nil || !strings.Contains(filter.where(), "purged_at IS NOT NULL") {
-		t.Fatalf("墓碑筛选未生效：%s %v", filter.where(), err)
 	}
 }
 
@@ -747,7 +747,7 @@ VALUES($1,$2,$3,'charge','model','测试模型',-5,5,now(),$4,$5)`, accountID, u
 
 	admin := chi.NewRouter()
 	s.RegisterAdmin(admin)
-	for _, path := range []string{"/sessions", "/sessions/" + sessionID} {
+	for _, path := range []string{"/sessions/" + sessionID} {
 		w := httptest.NewRecorder()
 		admin.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"title":"更新标题"`) || !strings.Contains(w.Body.String(), `"title_source":"generated"`) {

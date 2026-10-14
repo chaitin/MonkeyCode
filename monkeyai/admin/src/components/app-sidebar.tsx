@@ -75,10 +75,6 @@ export function AppSidebar({
           title: t("pages.conversationHistory.title"),
           url: CONSOLE_ROUTES.conversationHistory,
         },
-        {
-          title: t("pages.sessionReporting.sessionList.title"),
-          url: CONSOLE_ROUTES.sessionList,
-        },
       ],
     },
     {

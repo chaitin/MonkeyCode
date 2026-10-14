@@ -406,16 +406,11 @@ export const enUS = {
         title: "Session overview",
         description: "Session and turn statistics.",
       },
-      sessionList: {
-        title: "Sessions",
-        description: "Filter reported sessions.",
-      },
       resourceAnalysis: {
         title: "Resources",
         description: "Resource availability and usage.",
       },
       clientAnalysis: { title: "Clients", description: "Client breakdown." },
-      sessions: { title: "Sessions" },
       resources: {
         title: "Resources",
         note: "Team connectors use gateway MCP facts; local tools use reported turn facts.",
@@ -555,7 +550,7 @@ export const enUS = {
       apply: "Apply",
       open: "View",
       copy: "Copy ID",
-      back: "Back to sessions",
+      back: "Back to task history",
       previous: "Previous",
       next: "Next",
       invalidFilter: "Check the time range and session ID.",

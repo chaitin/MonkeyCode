@@ -238,7 +238,7 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(userItem, /<Item\s+size="sm"\s+variant="outline"\s+render=/)
   assert.match(
     userItem,
-    /<Button\s+type="button"\s+variant="ghost"\s+className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
+    /<Button\s+type="button"\s+variant="ghost"\s+className="[^"]*"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
   )
   assert.match(userItem, /<ItemMedia>/)
   assert.match(userItem, /<ItemContent className="min-w-0">/)

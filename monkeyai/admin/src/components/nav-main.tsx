@@ -53,8 +53,10 @@ export function NavMain({
       : (getConsolePage(location.pathname)?.sectionPath ?? null)
   const isActiveSubItem = (url: string) =>
     location.pathname === url ||
-    (url === CONSOLE_ROUTES.sessionList &&
-      location.pathname.startsWith(`${url}/`))
+    (url === CONSOLE_ROUTES.taskHistory &&
+      location.pathname.startsWith(
+        CONSOLE_ROUTES.sessionDetail.replace(":sessionId", "")
+      ))
 
   return (
     <SidebarGroup>

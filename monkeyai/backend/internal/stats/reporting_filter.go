@@ -166,14 +166,13 @@ func (f reportingFilter) sqlParams(c reportCursor, sessionID string) []byte {
 		"client_type": optional(f.clientType), "platform": optional(f.platform),
 		"resource_id": optional(f.resourceID), "resource_version": optional(f.resourceVersion),
 		"outcome": optional(f.outcome), "include_placeholders": f.placeholders,
-		"include_purged": f.purged, "cursor_at": optional(c.At),
-		"cursor_id": optional(c.ID), "cursor_key": optional(c.Key), "session_id": optional(sessionID),
+		"include_purged": f.purged, "cursor_key": optional(c.Key), "session_id": optional(sessionID),
 	}
 	data, _ := json.Marshal(values)
 	return data
 }
 
-type reportCursor struct{ Fingerprint, From, Until, At, ID, Key string }
+type reportCursor struct{ Fingerprint, From, Until, Key string }
 
 func (f reportingFilter) decodeCursor() (reportCursor, error) {
 	if f.cursor == "" {
@@ -235,7 +234,7 @@ func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pg
 }
 
 func unexpectedCursor() error {
-	return resource.Invalid("此接口不支持 cursor；仅会话列表支持游标分页")
+	return resource.Invalid("此接口不支持 cursor；仅资源和客户端列表支持游标分页")
 }
 func purgedSession() error {
 	return &resource.Error{Status: http.StatusGone, Code: "session_purged", Message: "会话统计数据已清除"}

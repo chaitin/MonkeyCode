@@ -338,7 +338,7 @@ func TestUsersOverview(t *testing.T) {
 			if row.owner == deletedUser {
 				kind = "command"
 			}
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2,1,'hash',$2,$3,$4,'complete','snapshot',$5)`, sessionID, index+1, at, at.Add(time.Second), kind)
+			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot',$5)`, sessionID, index+1, at, at.Add(time.Second), kind)
 		}
 	}
 	out := request(t, s, "/statistics/users", 200)
@@ -406,7 +406,7 @@ func TestTasksOverview(t *testing.T) {
 		exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, sessionID)
 		for index := range count {
 			started := at.Add(time.Duration(index) * time.Minute)
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2,1,'hash',$2,$3,$4,'complete','snapshot','text')`, sessionID, index+1, started, started.Add(time.Second))
+			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot','text')`, sessionID, index+1, started, started.Add(time.Second))
 		}
 	}
 	old := makeSession("", now.AddDate(0, 0, -100), true, false, false)
@@ -523,15 +523,27 @@ func TestTasksAndHistory(t *testing.T) {
 	number(t, out, "page", 2)
 	number(t, out["items"].([]any)[0].(map[string]any), "turn_count", 3)
 }
+func TestReportingSessionListRemoved(t *testing.T) {
+	router := chi.NewRouter()
+	(&Service{}).RegisterAdmin(router)
+	for _, path := range []string{"/statistics/session-reporting/sessions", "/statistics/session-reporting/sessions?limit=1"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("已移除的会话列表应返回 404: %s: %d", path, w.Code)
+		}
+	}
+}
+
 func TestReportingFiltersAndCursor(t *testing.T) {
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	for _, path := range []string{
-		"/statistics/session-reporting/sessions?limit=101",
-		"/statistics/session-reporting/sessions?cursor=invalid",
-		"/statistics/session-reporting/sessions?page=1",
-		"/statistics/session-reporting/sessions?outcome=failed",
-		"/statistics/session-reporting/sessions?from=bad",
-		"/statistics/session-reporting/sessions?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
+		"/statistics/session-reporting/clients?limit=101",
+		"/statistics/session-reporting/clients?cursor=invalid",
+		"/statistics/session-reporting/clients?page=1",
+		"/statistics/session-reporting/clients?outcome=failed",
+		"/statistics/session-reporting/clients?from=bad",
+		"/statistics/session-reporting/clients?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
 	} {
 		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now)
 		if err == nil && f.cursor != "" {
@@ -541,19 +553,20 @@ func TestReportingFiltersAndCursor(t *testing.T) {
 			t.Fatalf("未拒绝无效参数: %s", path)
 		}
 	}
-	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=1", nil), now)
+	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=1", nil), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cursor := f.encodeCursor(reportCursor{At: now.Format(time.RFC3339Nano), ID: resource.ID()})
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=100&cursor="+cursor, nil), now)
+	cursor := f.encodeCursor(reportCursor{Key: "desktop"})
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=100&cursor="+cursor, nil), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.decodeCursor(); err != nil {
-		t.Fatal(err)
+	decoded, err := f.decodeCursor()
+	if err != nil || decoded.Key != "desktop" {
+		t.Fatalf("客户端游标丢失: %+v %v", decoded, err)
 	}
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?outcome=error&cursor="+cursor, nil), now)
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?outcome=error&cursor="+cursor, nil), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,13 +606,9 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 	if out["title"] != "隐私标题" {
 		t.Fatalf("会话标题未返回: %v", out)
 	}
-	list := request(t, s, "/statistics/session-reporting/sessions?limit=1", 200)
-	if list["items"].([]any)[0].(map[string]any)["id"] != id {
-		t.Fatalf("会话列表缺失: %v", list)
-	}
 	exec(t, s, `UPDATE sessions SET purged_at=$2,deleted_at=$2 WHERE id=$1`, id, s.now())
 	request(t, s, path, 410)
-	request(t, s, "/statistics/session-reporting/sessions?include_purged=true", 403)
+	request(t, s, path+"?include_purged=true", 403)
 	s.SetSessionReportingAuditAuthorizer(func(*http.Request) bool { return true })
 	tombstone := request(t, s, path+"?include_purged=true", 200)
 	if tombstone["tombstone"] != true || tombstone["turns"] != nil {
@@ -609,7 +618,7 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 
 func TestEmptyAndInvalid(t *testing.T) {
 	s, _, _ := fixture(t)
-	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks", "/statistics/realtime", "/statistics/history", "/statistics/session-reporting/overview", "/statistics/session-reporting/sessions", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients"} {
+	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks", "/statistics/realtime", "/statistics/history", "/statistics/session-reporting/overview", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients"} {
 		request(t, s, path, 200)
 	}
 	out := request(t, s, "/statistics/realtime", 200)

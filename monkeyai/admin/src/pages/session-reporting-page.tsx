@@ -1,13 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react"
-import { Search02Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
-import { Link, useNavigate } from "react-router-dom"
-import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -26,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { CONSOLE_ROUTES } from "@/lib/routes"
 import {
   defaultWindow,
   reportPaths,
@@ -35,12 +28,10 @@ import {
   type ReportOverview,
   type ReportPage,
   type ReportResourceRow,
-  type ReportSession,
   type ReportWindow,
 } from "@/lib/session-reporting"
 
 const key = "pages.sessionReporting"
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const outcomes = [
   "complete",
   "interrupted",
@@ -170,33 +161,17 @@ export function ReportFilters({
   value,
   onApply,
   resource = false,
-  session = false,
 }: {
   value: ReportWindow
   onApply: (filters: ReportWindow) => void
   resource?: boolean
-  session?: boolean
 }) {
-  const { i18n, t } = useTranslation()
-  const navigate = useNavigate()
+  const { t } = useTranslation()
   const [draft, setDraft] = useState(value)
-  const [startDay, setStartDay] = useState<Date | undefined>(
-    () => new Date(value.from)
-  )
-  const [endDay, setEndDay] = useState<Date | undefined>(
-    () => new Date(new Date(value.until).getTime() - 1)
-  )
-  const [sessionId, setSessionId] = useState("")
   const [invalid, setInvalid] = useState(false)
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const selected = session
-      ? {
-          ...draft,
-          from: startDay ? startOfDay(startDay).toISOString() : "",
-          until: endDay ? startOfDay(addDays(endDay, 1)).toISOString() : "",
-        }
-      : draft
+    const selected = draft
     if (
       !selected.from ||
       !selected.until ||
@@ -208,86 +183,41 @@ export function ReportFilters({
     setInvalid(false)
     onApply(selected)
   }
-  function goToSession() {
-    if (!uuid.test(sessionId.trim())) {
-      setInvalid(true)
-      return
-    }
-    navigate(
-      `${CONSOLE_ROUTES.sessionDetail.replace(":sessionId", sessionId.trim())}${reportQuery({ from: value.from, until: value.until })}`
-    )
-  }
-  const Frame = session ? "div" : Card
-  const FrameContent = session ? "div" : CardContent
   return (
-    <Frame>
-      <FrameContent className={session ? "flex flex-col gap-4" : undefined}>
-        <form
-          onSubmit={submit}
-          className={cn(
-            "flex flex-wrap items-end gap-3",
-            session && "px-(--card-spacing)"
-          )}
-        >
-          {session ? (
-            <>
-              <DatePickerField
-                id="session-list-from"
-                label={t(`${key}.fields.from`)}
-                placeholder={t(`${key}.fields.from`)}
-                locale={i18n.resolvedLanguage ?? i18n.language}
-                value={startDay}
-                onChange={setStartDay}
-                disabled={endDay ? { after: endDay } : undefined}
+    <Card>
+      <CardContent>
+        <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
+          {(["from", "until"] as const).map((field) => (
+            <label
+              key={field}
+              className="grid gap-1 text-xs text-muted-foreground"
+            >
+              {t(`${key}.fields.${field}`)}
+              <Input
+                required
+                type="datetime-local"
+                value={localDate(draft[field])}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    [field]: event.target.value
+                      ? new Date(event.target.value).toISOString()
+                      : "",
+                  })
+                }
               />
-              <DatePickerField
-                id="session-list-until"
-                label={t(`${key}.fields.until`)}
-                placeholder={t(`${key}.fields.until`)}
-                locale={i18n.resolvedLanguage ?? i18n.language}
-                value={endDay}
-                onChange={setEndDay}
-                disabled={startDay ? { before: startDay } : undefined}
-              />
-            </>
-          ) : (
-            (["from", "until"] as const).map((field) => (
-              <label
-                key={field}
-                className="grid gap-1 text-xs text-muted-foreground"
-              >
-                {t(`${key}.fields.${field}`)}
-                <Input
-                  required
-                  type="datetime-local"
-                  value={localDate(draft[field])}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      [field]: event.target.value
-                        ? new Date(event.target.value).toISOString()
-                        : "",
-                    })
-                  }
-                />
-              </label>
-            ))
-          )}
+            </label>
+          ))}
           {(["group_id", "user_id", "model_id", "expert_id"] as const).map(
             (field) => (
               <label
                 key={field}
-                className={cn(
-                  "grid gap-1 text-xs text-muted-foreground",
-                  session && "sm:w-56"
-                )}
+                className="grid gap-1 text-xs text-muted-foreground"
               >
-                <span className={session ? "sr-only" : undefined}>
-                  {t(`${key}.fields.${field}`)}
-                </span>
+                <span>{t(`${key}.fields.${field}`)}</span>
                 <Input
-                  className={session ? "w-full" : "w-44"}
-                  placeholder={session ? t(`${key}.fields.${field}`) : "UUID"}
+                  className="w-44"
+                  placeholder="UUID"
                   pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
                   value={draft[field] ?? ""}
                   onChange={(event) =>
@@ -308,16 +238,12 @@ export function ReportFilters({
               key={field}
               className="grid gap-1 text-xs text-muted-foreground"
             >
-              <span className={session ? "sr-only" : undefined}>
-                {t(`${key}.fields.${field}`)}
-              </span>
+              <span>{t(`${key}.fields.${field}`)}</span>
               <Select
                 items={[
                   {
                     value: "__all__",
-                    label: session
-                      ? t(`${key}.fields.${field}`)
-                      : t(`${key}.all`),
+                    label: t(`${key}.all`),
                   },
                   ...values.map((option) => ({
                     value: option,
@@ -342,9 +268,7 @@ export function ReportFilters({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">
-                    {session ? t(`${key}.fields.${field}`) : t(`${key}.all`)}
-                  </SelectItem>
+                  <SelectItem value="__all__">{t(`${key}.all`)}</SelectItem>
                   {values.map((option) => (
                     <SelectItem key={option} value={option}>
                       {field === "outcome"
@@ -360,18 +284,12 @@ export function ReportFilters({
             (["resource_id", "resource_version"] as const).map((field) => (
               <label
                 key={field}
-                className={cn(
-                  "grid gap-1 text-xs text-muted-foreground",
-                  session && "sm:w-56"
-                )}
+                className="grid gap-1 text-xs text-muted-foreground"
               >
-                <span className={session ? "sr-only" : undefined}>
-                  {t(`${key}.fields.${field}`)}
-                </span>
+                <span>{t(`${key}.fields.${field}`)}</span>
                 <Input
                   maxLength={256}
-                  className={session ? "w-full" : "w-44"}
-                  placeholder={session ? t(`${key}.fields.${field}`) : undefined}
+                  className="w-44"
                   value={draft[field] ?? ""}
                   onChange={(event) =>
                     setDraft({ ...draft, [field]: event.target.value })
@@ -379,68 +297,17 @@ export function ReportFilters({
                 />
               </label>
             ))}
-          {session && (
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.include_placeholders ?? false}
-                onCheckedChange={(checked) =>
-                  setDraft({
-                    ...draft,
-                    include_placeholders: checked === true,
-                  })
-                }
-              />
-              {t(`${key}.fields.include_placeholders`)}
-            </label>
-          )}
-          <Button
-            type="submit"
-            size={session ? "default" : "sm"}
-            className={session ? "w-full sm:w-auto" : undefined}
-          >
-            {session && (
-              <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
-            )}
-            {session
-              ? t("pages.operationLogs.filters.search")
-              : t(`${key}.apply`)}
+          <Button type="submit" size="sm">
+            {t(`${key}.apply`)}
           </Button>
         </form>
-        {session && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              goToSession()
-            }}
-            className="flex flex-wrap items-end gap-2 px-(--card-spacing)"
-          >
-            <label className="grid gap-1 text-xs text-muted-foreground">
-              {t(`${key}.fields.session_id`)}
-              <Input
-                className="w-64"
-                value={sessionId}
-                onChange={(event) => setSessionId(event.target.value)}
-                placeholder="UUID"
-              />
-            </label>
-            <Button type="submit" variant="outline" size="sm">
-              {t(`${key}.open`)}
-            </Button>
-          </form>
-        )}
         {invalid && (
-          <p
-            role="alert"
-            className={cn(
-              "pt-2 text-sm text-destructive",
-              session && "px-(--card-spacing)"
-            )}
-          >
+          <p role="alert" className="pt-2 text-sm text-destructive">
             {t(`${key}.invalidFilter`)}
           </p>
         )}
-      </FrameContent>
-    </Frame>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -676,7 +543,7 @@ function PaginatedReport<T>({
     <Table
       className={
         inline
-          ? "[&_th:first-child]:ps-(--card-spacing) [&_td:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing) [&_td:last-child]:pe-(--card-spacing)"
+          ? "[&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)"
           : undefined
       }
     >
@@ -758,99 +625,6 @@ function PaginatedReport<T>({
         </>
       )}
     </>
-  )
-}
-
-export function SessionListPage() {
-  const { t } = useTranslation()
-  const [filters, setFilters] = useState<ReportWindow>(() => {
-    const today = startOfDay(new Date())
-    return {
-      from: startOfDay(addDays(today, -1)).toISOString(),
-      until: startOfDay(addDays(today, 1)).toISOString(),
-    }
-  })
-  return (
-    <ReportShell title={t(`${key}.sessions.title`)} fillHeight>
-      <Card className="min-h-0 flex-1">
-        <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <ReportFilters
-            value={filters}
-            onApply={setFilters}
-            resource
-            session
-          />
-          <PaginatedReport<ReportSession>
-            inline
-            path={reportPaths.sessions}
-            filters={filters}
-            columns={[
-              "started_at",
-              "last_active_at",
-              "session_id",
-              "user_id",
-              "group_id",
-              "client_type",
-              "platform",
-              "client_version",
-              "model_id",
-              "turns",
-              "active_seconds",
-              "last_outcome",
-              "credits",
-              "subsessions",
-              "placeholder",
-              "clock_suspect",
-            ]}
-            renderRow={(row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <ReportTime value={row.started_at} />
-                </TableCell>
-                <TableCell>
-                  <ReportTime value={row.last_active_at} />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    className="block max-w-40 truncate text-primary underline"
-                    title={row.id}
-                    to={`${CONSOLE_ROUTES.sessionDetail.replace(":sessionId", row.id)}${reportQuery({ from: filters.from, until: filters.until })}`}
-                  >
-                    {row.id}
-                  </Link>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => void navigator.clipboard.writeText(row.id)}
-                  >
-                    {t(`${key}.copy`)}
-                  </Button>
-                </TableCell>
-                {[
-                  row.owner_user_id,
-                  row.group_id,
-                  row.client_type,
-                  row.platform,
-                  row.client_version,
-                  row.model_id,
-                  row.turns,
-                  row.active_seconds,
-                  row.last_outcome,
-                  row.credits,
-                  row.subsessions,
-                  row.placeholder,
-                  row.clock_suspect,
-                ].map((v, i) => (
-                  <TableCell key={i}>
-                    <ReportValue value={v} />
-                  </TableCell>
-                ))}
-              </TableRow>
-            )}
-          />
-        </CardContent>
-      </Card>
-    </ReportShell>
   )
 }
 

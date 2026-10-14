@@ -336,7 +336,7 @@ export function BillingSettingsPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"
+              className="h-auto cursor-pointer justify-start text-start underline-offset-2 whitespace-normal hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
               onClick={() => setAccountUserID(user.id)}
             />
           }

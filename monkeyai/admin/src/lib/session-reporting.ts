@@ -50,7 +50,7 @@ export type ReportOverview = ReportMeta & {
   trend: { at: string; turns: number; complete: number; anomalies: number }[]
   outcomes: { outcome: string; turns: number }[]
 }
-export type ReportSession = {
+type ReportSessionInfo = {
   id: string
   owner_user_id: string
   group_id: string | null
@@ -130,7 +130,7 @@ export type ReportChild = {
   active_seconds: number
 }
 export type ReportDetail = ReportMeta &
-  Omit<ReportSession, "turns" | "subsessions" | "platform"> & {
+  Omit<ReportSessionInfo, "turns" | "subsessions" | "platform"> & {
     parent_session_id: string | null
     engine_version: string | null
     runtime_version: string | null
@@ -178,7 +178,6 @@ export type ReportClient = {
 const root = "/api/admin/v1/statistics/session-reporting"
 export const reportPaths = {
   overview: `${root}/overview`,
-  sessions: `${root}/sessions`,
   detail: (id: string) => `${root}/sessions/${encodeURIComponent(id)}`,
   resources: `${root}/resources`,
   clients: `${root}/clients`,

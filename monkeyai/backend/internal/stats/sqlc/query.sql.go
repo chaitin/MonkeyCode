@@ -10,6 +10,47 @@ import (
 	"time"
 )
 
+const countConversations = `-- name: CountConversations :one
+SELECT count(*)
+FROM session_turns t
+JOIN sessions s ON s.id = t.session_id
+JOIN users u ON u.id = s.owner_user_id
+WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
+    AND s.parent_session_id IS NULL
+    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
+    AND ($2::text = '' OR strpos(lower(s.title), lower($2::text)) > 0)
+    AND ($3::text = ''
+        OR strpos(lower(u.name), lower($3::text)) > 0
+        OR strpos(lower(u.email), lower($3::text)) > 0)
+    AND ($4::text = '' OR strpos(lower(t.input_text), lower($4::text)) > 0)
+    AND ($5::timestamptz IS NULL OR t.started_at >= $5)
+    AND ($6::timestamptz IS NULL OR t.started_at < $6)
+`
+
+type CountConversationsParams struct {
+	TaskID       string
+	TitleQuery   string
+	UserQuery    string
+	ContentQuery string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+}
+
+func (q *Queries) CountConversations(ctx context.Context, arg CountConversationsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countConversations,
+		arg.TaskID,
+		arg.TitleQuery,
+		arg.UserQuery,
+		arg.ContentQuery,
+		arg.FromTime,
+		arg.UntilTime,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countHistory = `-- name: CountHistory :one
 SELECT
     count(*)
@@ -51,6 +92,74 @@ func (q *Queries) CountHistory(ctx context.Context, arg CountHistoryParams) (int
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const listConversations = `-- name: ListConversations :many
+SELECT jsonb_build_object(
+    'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
+    'user_id', u.id, 'user_name', u.name, 'user_email', u.email,
+    'started_at', t.started_at, 'ended_at', t.ended_at,
+    'duration_seconds', extract(epoch FROM (t.ended_at - t.started_at)),
+    'input_text', t.input_text, 'input_text_truncated', t.input_text_truncated, 'input_kind', t.input_kind,
+    'input_tokens', t.input_tokens, 'output_tokens', t.output_tokens,
+    'outcome', t.stop_reason, 'error_code', t.error_code,
+    'is_completed', CASE WHEN t.stop_reason = 'unknown' THEN NULL ELSE t.stop_reason = 'complete' END)
+FROM session_turns t
+JOIN sessions s ON s.id = t.session_id
+JOIN users u ON u.id = s.owner_user_id
+WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
+    AND s.parent_session_id IS NULL
+    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
+    AND ($2::text = '' OR strpos(lower(s.title), lower($2::text)) > 0)
+    AND ($3::text = ''
+        OR strpos(lower(u.name), lower($3::text)) > 0
+        OR strpos(lower(u.email), lower($3::text)) > 0)
+    AND ($4::text = '' OR strpos(lower(t.input_text), lower($4::text)) > 0)
+    AND ($5::timestamptz IS NULL OR t.started_at >= $5)
+    AND ($6::timestamptz IS NULL OR t.started_at < $6)
+ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
+LIMIT $8 OFFSET $7
+`
+
+type ListConversationsParams struct {
+	TaskID       string
+	TitleQuery   string
+	UserQuery    string
+	ContentQuery string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+	Offset       int32
+	Limit        int32
+}
+
+func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listConversations,
+		arg.TaskID,
+		arg.TitleQuery,
+		arg.UserQuery,
+		arg.ContentQuery,
+		arg.FromTime,
+		arg.UntilTime,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listHistory = `-- name: ListHistory :many
@@ -549,65 +658,6 @@ func (q *Queries) ReportingSessionStatus(ctx context.Context, sessionID string) 
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
-}
-
-const reportingSessions = `-- name: ReportingSessions :many
-WITH opts AS (SELECT $1::jsonb AS f),
-cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source FROM sessions s CROSS JOIN opts p
-    WHERE s.reporting_enabled_at IS NOT NULL
-        AND (s.deleted_at IS NULL OR (p.f->>'include_purged')::boolean AND s.purged_at IS NOT NULL)
-        AND ((p.f->>'include_purged')::boolean OR s.purged_at IS NULL)
-        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
-        AND s.parent_session_id IS NULL
-        AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
-        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
-        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
-        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
-        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
-        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
-        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
-        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
-        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
-            SELECT 1 FROM session_turns rt JOIN session_resource_snapshot_items ri ON ri.session_id = rt.session_id AND ri.snapshot_id = rt.resources_snapshot_id
-            WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
-                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
-        AND (p.f->>'cursor_at' IS NULL OR (s.started_at,s.id) < ((p.f->>'cursor_at')::timestamptz,(p.f->>'cursor_id')::uuid))
-), page AS (SELECT id, owner_user_id, expert_id, title, session_type, client_type, client_name, device_id, turn_count, failure_code, failure_message, started_at, last_active_at, ended_at, created_at, updated_at, deleted_at, group_id, model_id, parent_session_id, mode, workspace_kind, client_version, engine_version, runtime_version, placeholder, started_at_provisional, clock_suspect, state_seq, state_hash, state_received_at, resources_snapshot_id, acked_turn, facts_version, last_stop_reason, active_seconds, client_deleted_at, purged_at, reporting_enabled_at, title_source FROM cohort ORDER BY started_at DESC,id DESC LIMIT ($1::jsonb->>'limit')::integer + 1)
-SELECT CASE WHEN s.purged_at IS NOT NULL THEN
-    jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'purged_at',s.purged_at,'tombstone',true,'sort_at',s.started_at)
-    ELSE jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'group_id',s.group_id,
-        'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
-        'client_version',s.client_version,'started_at',s.started_at,'last_active_at',s.last_active_at,
-        'active_seconds',s.active_seconds,'placeholder',s.placeholder,'clock_suspect',s.clock_suspect,
-        'turns',coalesce(turns.total,0),'last_outcome',s.last_stop_reason,'subsessions',coalesce(children.total,0),
-        'credits',coalesce(credits.net,0)::text,'tombstone',false) END
-FROM page s CROSS JOIN opts p
-LEFT JOIN LATERAL (SELECT platform FROM endpoints WHERE user_id = s.owner_user_id AND machine_id::text = s.device_id LIMIT 1) ep ON true
-LEFT JOIN LATERAL (SELECT count(*) total FROM session_turns WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz) turns ON s.purged_at IS NULL
-LEFT JOIN LATERAL (SELECT count(*) total FROM sessions WHERE parent_session_id = s.id AND deleted_at IS NULL AND purged_at IS NULL) children ON s.purged_at IS NULL
-LEFT JOIN LATERAL (SELECT -sum(credit_delta) net FROM credit_ledger_entries e WHERE e.session_id IN (SELECT id FROM sessions WHERE id = s.id OR parent_session_id = s.id) AND e.entry_type IN ('charge','refund')) credits ON s.purged_at IS NULL
-ORDER BY s.started_at DESC,s.id DESC
-`
-
-func (q *Queries) ReportingSessions(ctx context.Context, filters []byte) ([]interface{}, error) {
-	rows, err := q.db.Query(ctx, reportingSessions, filters)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []interface{}{}
-	for rows.Next() {
-		var column_1 interface{}
-		if err := rows.Scan(&column_1); err != nil {
-			return nil, err
-		}
-		items = append(items, column_1)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const reportingTaskSessions = `-- name: ReportingTaskSessions :one

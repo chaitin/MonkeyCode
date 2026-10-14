@@ -3,13 +3,16 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   FilterHorizontalIcon,
+  Loading03Icon,
   Search02Icon,
   User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,18 +42,43 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { endOfLocalDay, startOfLocalDay } from "@/lib/date-range"
+import { useStatistics } from "@/hooks/use-statistics"
+import {
+  conversationQuery,
+  conversationResult,
+  type Conversation,
+  type ConversationPage,
+} from "@/lib/conversation-history"
+import { startOfLocalDay } from "@/lib/date-range"
+import { cn } from "@/lib/utils"
 
-type Conversation = {
-  id: string
-  userName: string
-  userEmail: string
-  taskId: string
-  taskTitle: string
-  turn: number
-  at: string
-  content: string
-}
+const columns = [
+  "time",
+  "user",
+  "task",
+  "turn",
+  "inputTokens",
+  "outputTokens",
+  "result",
+  "content",
+  "duration",
+] as const
+
+type ConversationColumn = (typeof columns)[number]
+
+const defaultColumns: ConversationColumn[] = [
+  "time",
+  "user",
+  "result",
+  "content",
+  "duration",
+]
+const numericColumns = new Set<ConversationColumn>([
+  "duration",
+  "inputTokens",
+  "outputTokens",
+])
+const mutedColumns = new Set<ConversationColumn>(["time", "turn", "duration"])
 
 type SearchField = "taskName" | "taskId" | "user" | "content" | "dateRange"
 
@@ -69,197 +97,9 @@ const emptyFilters = (): Filters => ({
   user: "",
   content: "",
 })
-const users = [
-  { name: "林晨", email: "lin.chen@example.com" },
-  { name: "周宁", email: "zhou.ning@example.com" },
-  { name: "陈晓", email: "chen.xiao@example.com" },
-  { name: "王悦", email: "wang.yue@example.com" },
-]
-const tasks = [
-  { id: "00000000-0000-4000-8000-000000000001", title: "整理季度产品反馈" },
-  { id: "00000000-0000-4000-8000-000000000002", title: "准备新品发布邮件" },
-  { id: "00000000-0000-4000-8000-000000000003", title: "分析销售数据趋势" },
-  { id: "00000000-0000-4000-8000-000000000004", title: "修复登录流程异常" },
-  { id: "00000000-0000-4000-8000-000000000005", title: "设计春季活动海报" },
-]
-const examples: {
-  user: number
-  task: number
-  turn: number
-  minutes: number
-  content: string
-}[] = [
-  {
-    user: 0,
-    task: 0,
-    turn: 5,
-    minutes: 8,
-    content:
-      "请把用户反馈按性能、易用性和价格三个主题归类，并列出每类最常见的三个问题。",
-  },
-  {
-    user: 1,
-    task: 1,
-    turn: 4,
-    minutes: 22,
-    content:
-      "邮件标题再简短一点，正文保持轻松自然的语气，最后加上报名链接的占位符。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 6,
-    minutes: 45,
-    content:
-      "对比最近三个月各渠道的销售额，说明增长最快的渠道，并标出样本量过少的数据。",
-  },
-  {
-    user: 3,
-    task: 3,
-    turn: 3,
-    minutes: 68,
-    content:
-      "登录失败时偶尔会跳回首页。请检查重定向逻辑，给出复现步骤和可能的修复方案。",
-  },
-  {
-    user: 0,
-    task: 0,
-    turn: 4,
-    minutes: 140,
-    content: "能把刚才的结论整理成一页摘要吗？重点写给产品和客服团队看。",
-  },
-  {
-    user: 1,
-    task: 4,
-    turn: 3,
-    minutes: 225,
-    content:
-      "把主视觉里的标题放大，背景留出足够的留白。\n请分别给出横版和方版的排版建议。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 5,
-    minutes: 330,
-    content:
-      "这张表的日期是本地时间，请按自然日重新汇总，不要把当天的订单归到前一天。",
-  },
-  {
-    user: 3,
-    task: 3,
-    turn: 2,
-    minutes: 480,
-    content: "先梳理登录页面、回调页面和会话校验之间的调用顺序。",
-  },
-  {
-    user: 1,
-    task: 1,
-    turn: 3,
-    minutes: 750,
-    content: "请给邮件加一段 50 字以内的产品亮点介绍，避免使用过于正式的措辞。",
-  },
-  {
-    user: 0,
-    task: 0,
-    turn: 3,
-    minutes: 1000,
-    content: "根据这些反馈，哪些问题应该优先放进下个版本？请说明判断依据。",
-  },
-  {
-    user: 1,
-    task: 4,
-    turn: 2,
-    minutes: 1490,
-    content: "配色可以更明亮一些，但不要改变现有品牌色。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 4,
-    minutes: 1700,
-    content: "按地区拆分结果，再补充每个地区的订单数和客单价。",
-  },
-  {
-    user: 1,
-    task: 1,
-    turn: 2,
-    minutes: 2020,
-    content:
-      "目标读者是已经注册但没有使用过产品的人，开头需要更直接地说明价值。",
-  },
-  {
-    user: 0,
-    task: 0,
-    turn: 2,
-    minutes: 2550,
-    content: "请先去掉重复反馈，把相同意思的建议合并，并保留原始数量。",
-  },
-  {
-    user: 3,
-    task: 3,
-    turn: 1,
-    minutes: 3100,
-    content:
-      "帮我排查登录后跳转不稳定的问题，尤其关注页面刷新后返回地址丢失的情况。",
-  },
-  {
-    user: 1,
-    task: 4,
-    turn: 1,
-    minutes: 3610,
-    content: "设计一张春季活动海报，画面需要清爽、明亮，并突出限时体验的主题。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 3,
-    minutes: 4310,
-    content: "销售额包含退款，请在计算增长率之前扣除退款金额。",
-  },
-  {
-    user: 1,
-    task: 1,
-    turn: 1,
-    minutes: 5020,
-    content: "写一封新品发布邮件，介绍主要功能和上线时间，控制在三段以内。",
-  },
-  {
-    user: 0,
-    task: 0,
-    turn: 1,
-    minutes: 5780,
-    content: "整理本季度收到的产品反馈，先给我一个总体概览。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 2,
-    minutes: 7210,
-    content: "请先检查数据中的异常值，再按月份绘制趋势。",
-  },
-  {
-    user: 2,
-    task: 2,
-    turn: 1,
-    minutes: 8650,
-    content: "分析过去三个月的销售数据，找出主要变化。",
-  },
-]
-const sampleConversations: Conversation[] = examples.map((example, index) => ({
-  id: `sample-${index}`,
-  userName: users[example.user].name,
-  userEmail: users[example.user].email,
-  taskId: tasks[example.task].id,
-  taskTitle: tasks[example.task].title,
-  turn: example.turn,
-  at: new Date(Date.now() - example.minutes * 60_000).toISOString(),
-  content: example.content,
-}))
 
 const labels = {
   zh: {
-    sample: "示例数据",
-    note: "用于确认页面样式与交互，目前不展示真实对话。",
     task: "任务名称",
     taskId: "任务 ID",
     user: "用户",
@@ -274,11 +114,23 @@ const labels = {
     turn: "轮次",
     turnNumber: (n: number) => `第 ${n} 轮`,
     content: "对话内容",
+    noText: "（无文本输入）",
+    duration: "耗时",
+    seconds: (n: string) => `${n} 秒`,
+    inputTokens: "输入 Token",
+    outputTokens: "输出 Token",
+    result: "结果",
+    roundResult: "本轮结果",
+    results: {
+      completed: "已完成",
+      incomplete: "未完成",
+      failed: "失败",
+      interrupted: "已中断",
+      unknown: "未知",
+    },
     empty: "没有符合条件的对话",
   },
   en: {
-    sample: "Sample data",
-    note: "Preview the layout and interactions. No real conversations are shown.",
     task: "Task name",
     taskId: "Task ID",
     user: "User",
@@ -293,6 +145,20 @@ const labels = {
     turn: "Turn",
     turnNumber: (n: number) => `Turn ${n}`,
     content: "Message",
+    noText: "(No text input)",
+    duration: "Duration",
+    seconds: (n: string) => `${n} s`,
+    inputTokens: "Input tokens",
+    outputTokens: "Output tokens",
+    result: "Result",
+    roundResult: "Turn outcome",
+    results: {
+      completed: "Completed",
+      incomplete: "Incomplete",
+      failed: "Failed",
+      interrupted: "Interrupted",
+      unknown: "Unknown",
+    },
     empty: "No matching messages",
   },
 }
@@ -300,20 +166,66 @@ const labels = {
 export function ConversationHistoryPage() {
   const { i18n, t } = useTranslation()
   const [params, setParams] = useSearchParams()
-  const initialTaskId = params.get("task_id") ?? ""
-  const initialFilters = () => ({ ...emptyFilters(), taskId: initialTaskId })
+  const selectedTaskId = params.get("task_id") ?? ""
+  const initialFilters = () => ({ ...emptyFilters(), taskId: selectedTaskId })
   const copy = i18n.language.startsWith("zh") ? labels.zh : labels.en
   const locale = i18n.resolvedLanguage ?? i18n.language
+  const numberFormatter = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+  })
+  const tokenFormatter = new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  })
   const [draft, setDraft] = useState<Filters>(initialFilters)
   const [filters, setFilters] = useState<Filters>(initialFilters)
   const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
     () =>
       new Set(
-        initialTaskId ? ["taskName", "taskId", "user"] : ["taskName", "user"]
+        selectedTaskId ? ["taskName", "taskId", "user"] : ["taskName", "user"]
       )
+  )
+  const [visibleColumns, setVisibleColumns] = useState<Set<ConversationColumn>>(
+    () => new Set(defaultColumns)
+  )
+  const displayedColumns = columns.filter((column) =>
+    visibleColumns.has(column)
   )
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
+
+  const [previousTaskId, setPreviousTaskId] = useState(selectedTaskId)
+  if (previousTaskId !== selectedTaskId) {
+    setPreviousTaskId(selectedTaskId)
+    setDraft((current) => ({ ...current, taskId: selectedTaskId }))
+    setPage(1)
+    if (selectedTaskId)
+      setVisibleFields((current) => new Set(current).add("taskId"))
+  }
+
+  const query = conversationQuery(
+    {
+      ...filters,
+      taskId: selectedTaskId,
+      from: filters.from
+        ? startOfLocalDay(filters.from).toISOString()
+        : undefined,
+      until: filters.until
+        ? startOfLocalDay(addDays(filters.until, 1)).toISOString()
+        : undefined,
+    },
+    page,
+    pageSize
+  )
+  const request = useStatistics<ConversationPage>(
+    `/api/admin/v1/statistics/conversations?${query}`
+  )
+  const total = request.data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const currentPage = request.data?.page ?? page
+  const start = (currentPage - 1) * pageSize
+  const visible = request.data?.items ?? []
   const pageSizeItems = [10, 20, 50].map((size) => ({
     value: String(size),
     label: t("pages.operationLogs.pagination.perPage", { count: size }),
@@ -331,35 +243,6 @@ export function ConversationHistoryPage() {
       }),
     [locale]
   )
-  const filtered = useMemo(() => {
-    const taskName = filters.taskName.trim().toLocaleLowerCase()
-    const taskId = filters.taskId.trim().toLocaleLowerCase()
-    const user = filters.user.trim().toLocaleLowerCase()
-    const content = filters.content.trim().toLocaleLowerCase()
-    const from = filters.from
-      ? startOfLocalDay(filters.from).getTime()
-      : -Infinity
-    const until = filters.until
-      ? endOfLocalDay(filters.until).getTime()
-      : Infinity
-    return sampleConversations.filter((entry) => {
-      const at = Date.parse(entry.at)
-      return (
-        at >= from &&
-        at <= until &&
-        (!taskId || entry.taskId.toLocaleLowerCase() === taskId) &&
-        entry.taskTitle.toLocaleLowerCase().includes(taskName) &&
-        `${entry.userName} ${entry.userEmail}`
-          .toLocaleLowerCase()
-          .includes(user) &&
-        entry.content.toLocaleLowerCase().includes(content)
-      )
-    })
-  }, [filters])
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const currentPage = Math.min(page, pages)
-  const start = (currentPage - 1) * pageSize
-  const visible = filtered.slice(start, start + pageSize)
   const update = (
     key: "taskName" | "taskId" | "user" | "content",
     value: string
@@ -372,17 +255,19 @@ export function ConversationHistoryPage() {
   }
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (request.loading) return
     const next = { ...draft, taskId: draft.taskId.trim() }
     setFilters(next)
     setTaskQuery(next.taskId)
     setPage(1)
+    request.reload()
   }
   const filterByTask = (entry: Conversation) => {
-    const next = { ...draft, taskName: "", taskId: entry.taskId }
+    const next = { ...draft, taskName: "", taskId: entry.session_id }
     setDraft(next)
     setFilters(next)
     setVisibleFields((current) => new Set(current).add("taskId"))
-    setTaskQuery(entry.taskId)
+    setTaskQuery(entry.session_id)
     setPage(1)
   }
   const fieldOptions: { key: SearchField; label: string }[] = [
@@ -393,17 +278,93 @@ export function ConversationHistoryPage() {
     { key: "dateRange", label: copy.dateRange },
   ]
 
+  function renderCell(entry: Conversation, column: ConversationColumn) {
+    switch (column) {
+      case "time":
+        return (
+          <span
+            className="block truncate"
+            title={formatter.format(new Date(entry.started_at))}
+          >
+            {formatter.format(new Date(entry.started_at))}
+          </span>
+        )
+      case "user":
+        return (
+          <button
+            type="button"
+            className="flex w-full min-w-0 items-center gap-2 rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+            title={entry.user_email}
+            disabled={!entry.user_id}
+            onClick={() => setAccountUserID(entry.user_id)}
+          >
+            <HugeiconsIcon
+              icon={User02Icon}
+              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 truncate">{entry.user_name}</span>
+          </button>
+        )
+      case "task":
+        return (
+          <button
+            type="button"
+            className="block w-full min-w-0 cursor-pointer truncate text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-ring [&:hover]:underline"
+            title={entry.task_title}
+            onClick={() => filterByTask(entry)}
+          >
+            {entry.task_title}
+          </button>
+        )
+      case "turn":
+        return (
+          <span className="block truncate">
+            {copy.turnNumber(entry.turn_index)}
+          </span>
+        )
+      case "duration":
+        return copy.seconds(numberFormatter.format(entry.duration_seconds))
+      case "inputTokens":
+      case "outputTokens": {
+        const value =
+          column === "inputTokens" ? entry.input_tokens : entry.output_tokens
+        return value == null ? (
+          "—"
+        ) : (
+          <span title={numberFormatter.format(value)}>
+            {tokenFormatter.format(value)}
+          </span>
+        )
+      }
+      case "result":
+        return (
+          <Badge
+            variant={entry.is_completed === false ? "destructive" : "secondary"}
+            title={`${copy.roundResult}: ${t(`pages.sessionReporting.outcomes.${entry.outcome}`)}${entry.error_code ? ` · ${entry.error_code}` : ""}`}
+          >
+            {copy.results[conversationResult(entry.outcome)]}
+          </Badge>
+        )
+      case "content": {
+        const text = entry.input_text?.trim() ? entry.input_text : copy.noText
+        const title = entry.input_text_truncated
+          ? `${text}\n${t("pages.sessionReporting.detail.textTruncated")}`
+          : text
+        return (
+          <span className="block truncate" title={title}>
+            {text}
+          </span>
+        )
+      }
+    }
+  }
+
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div
-            className="flex flex-wrap items-center gap-2 px-(--card-spacing) text-sm text-muted-foreground"
-            role="note"
-          >
-            <Badge variant="outline">{copy.sample}</Badge>
-            <span>{copy.note}</span>
-          </div>
           <form
             className="flex flex-wrap items-end gap-3 px-(--card-spacing)"
             onSubmit={search}
@@ -414,6 +375,7 @@ export function ConversationHistoryPage() {
                 aria-label={copy.task}
                 placeholder={copy.task}
                 value={draft.taskName}
+                maxLength={200}
                 onChange={(event) => update("taskName", event.target.value)}
               />
             )}
@@ -432,6 +394,7 @@ export function ConversationHistoryPage() {
                 aria-label={copy.user}
                 placeholder={copy.user}
                 value={draft.user}
+                maxLength={200}
                 onChange={(event) => update("user", event.target.value)}
               />
             )}
@@ -441,6 +404,7 @@ export function ConversationHistoryPage() {
                 aria-label={copy.keyword}
                 placeholder={copy.keywordPlaceholder}
                 value={draft.content}
+                maxLength={200}
                 onChange={(event) => update("content", event.target.value)}
               />
             )}
@@ -503,93 +467,123 @@ export function ConversationHistoryPage() {
                 </DropdownMenuGroup>
               </DropdownMenuOptionsContent>
             </DropdownMenu>
-            <Button type="submit">
-              <HugeiconsIcon icon={Search02Icon} data-icon="inline-start" />
+            <Button type="submit" disabled={request.loading}>
+              <HugeiconsIcon
+                icon={request.loading ? Loading03Icon : Search02Icon}
+                className={
+                  request.loading
+                    ? "animate-spin motion-reduce:animate-none"
+                    : undefined
+                }
+                data-icon="inline-start"
+              />
               {copy.search}
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" variant="outline" className="ms-auto" />
+                }
+              >
+                {t("pages.sessionReporting.clients.selectColumns")}
+              </DropdownMenuTrigger>
+              <DropdownMenuOptionsContent align="end" className="max-h-80">
+                <DropdownMenuGroup>
+                  {columns.map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column}
+                      checked={visibleColumns.has(column)}
+                      onCheckedChange={(checked) =>
+                        setVisibleColumns((current) => {
+                          if (!checked && current.size === 1) return current
+                          const next = new Set(current)
+                          if (checked) next.add(column)
+                          else next.delete(column)
+                          return next
+                        })
+                      }
+                    >
+                      {copy[column]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuOptionsContent>
+            </DropdownMenu>
           </form>
           <ScrollArea
             horizontal
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
           >
             <Table
-              className={
-                !visible.length
-                  ? "h-full min-w-4xl table-fixed"
-                  : "min-w-4xl table-fixed"
-              }
+              className={cn(
+                "table-auto [&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)",
+                !visible.length && "h-full"
+              )}
               aria-label={t("pages.conversationHistory.title")}
+              aria-busy={request.loading}
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow>
-                  <TableHead className="w-44 ps-(--card-spacing)">
-                    {copy.time}
-                  </TableHead>
-                  <TableHead className="w-36">{copy.user}</TableHead>
-                  <TableHead className="w-48">{copy.task}</TableHead>
-                  <TableHead className="w-20">{copy.turn}</TableHead>
-                  <TableHead className="pe-(--card-spacing)">
-                    {copy.content}
-                  </TableHead>
+                  {displayedColumns.map((column) => (
+                    <TableHead
+                      key={column}
+                      className={
+                        numericColumns.has(column) ? "text-end" : undefined
+                      }
+                    >
+                      {copy[column]}
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody className={!visible.length ? "h-full" : undefined}>
                 {visible.length ? (
                   visible.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                        <span
-                          className="block truncate"
-                          title={formatter.format(new Date(entry.at))}
+                    <TableRow key={`${entry.session_id}:${entry.turn_index}`}>
+                      {displayedColumns.map((column) => (
+                        <TableCell
+                          key={column}
+                          className={cn(
+                            numericColumns.has(column) &&
+                              "text-end tabular-nums",
+                            mutedColumns.has(column) && "text-muted-foreground"
+                          )}
                         >
-                          {formatter.format(new Date(entry.at))}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className="flex w-full min-w-0 items-center gap-2"
-                          title={entry.userEmail}
-                        >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          <span className="min-w-0 truncate">
-                            {entry.userName}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          className="block w-full min-w-0 cursor-pointer truncate text-start hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                          title={entry.taskTitle}
-                          onClick={() => filterByTask(entry)}
-                        >
-                          {entry.taskTitle}
-                        </button>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        <span className="block truncate">
-                          {copy.turnNumber(entry.turn)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="pe-(--card-spacing)">
-                        <span className="block truncate" title={entry.content}>
-                          {entry.content}
-                        </span>
-                      </TableCell>
+                          {renderCell(entry, column)}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   ))
                 ) : (
                   <TableRow className="h-full">
                     <TableCell
-                      colSpan={5}
+                      colSpan={displayedColumns.length}
                       className="h-full text-center text-muted-foreground"
                     >
-                      {copy.empty}
+                      {request.loading ? (
+                        <span
+                          role="status"
+                          aria-label={t("statistics.loading")}
+                          className="inline-flex text-muted-foreground"
+                        >
+                          <HugeiconsIcon
+                            icon={Loading03Icon}
+                            size={20}
+                            className="animate-spin motion-reduce:animate-none"
+                            aria-hidden="true"
+                          />
+                        </span>
+                      ) : request.error ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={request.reload}
+                        >
+                          {t("statistics.retry")}
+                        </Button>
+                      ) : (
+                        copy.empty
+                      )}
                     </TableCell>
                   </TableRow>
                 )}
@@ -601,6 +595,7 @@ export function ConversationHistoryPage() {
               <Select
                 items={pageSizeItems}
                 value={String(pageSize)}
+                disabled={request.loading}
                 onValueChange={(value) => {
                   if (value !== null) {
                     setPageSize(Number(value))
@@ -628,7 +623,7 @@ export function ConversationHistoryPage() {
                 {t("pages.operationLogs.pagination.summary", {
                   from: visible.length ? start + 1 : 0,
                   to: start + visible.length,
-                  total: filtered.length,
+                  total,
                 })}
               </p>
             </div>
@@ -643,8 +638,8 @@ export function ConversationHistoryPage() {
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                disabled={currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                disabled={request.loading || currentPage === 1}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
                 aria-label={t("pages.operationLogs.pagination.previous")}
               >
                 <HugeiconsIcon
@@ -656,8 +651,8 @@ export function ConversationHistoryPage() {
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                disabled={currentPage >= pages}
-                onClick={() => setPage((value) => Math.min(pages, value + 1))}
+                disabled={request.loading || currentPage >= pages}
+                onClick={() => setPage(Math.min(pages, currentPage + 1))}
                 aria-label={t("pages.operationLogs.pagination.next")}
               >
                 <HugeiconsIcon
@@ -669,6 +664,13 @@ export function ConversationHistoryPage() {
           </div>
         </CardContent>
       </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

@@ -62,19 +62,6 @@ paths:
       responses:
         '200': {description: 批次详情}
         '404': {description: 批次不存在}
-  /api/admin/v1/sessions:
-    get:
-      summary: 查询正式顶层会话
-      description: 排除占位、已清除和功能启用前旧会话。分页使用 page/page_size；统计模块另提供游标分页视图。
-      parameters:
-        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
-        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-      responses:
-        '200': {description: 会话分页及总数，包含标题及来源，不含对话正文}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/sessions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -107,27 +94,6 @@ paths:
         - {name: user_id, in: query, schema: {type: string, format: uuid}}
       responses:
         '200': {description: 统计总览及数据新鲜度}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-  /api/admin/v1/statistics/session-reporting/sessions:
-    get:
-      summary: 游标分页查询一期会话
-      parameters:
-        - {name: from, in: query, schema: {type: string, format: date-time}}
-        - {name: until, in: query, schema: {type: string, format: date-time}}
-        - {name: cursor, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-        - {name: include_placeholders, in: query, schema: {type: boolean, default: false}}
-        - {name: include_purged, in: query, schema: {type: boolean, default: false}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-        - {name: model_id, in: query, schema: {type: string, format: uuid}}
-        - {name: expert_id, in: query, schema: {type: string, format: uuid}}
-        - {name: client_type, in: query, schema: {type: string}}
-        - {name: platform, in: query, schema: {type: string}}
-        - {name: outcome, in: query, schema: {type: string}}
-      responses:
-        '200': {description: items、next_cursor 及数据新鲜度}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/statistics/session-reporting/sessions/{id}:
@@ -946,6 +912,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatisticsUsersOverview"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/conversations:
+    get:
+      summary: 分页查询对话轮次历史
+      description: 仅管理员可访问。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。总数与列表在同一只读快照中查询。
+      parameters:
+        - name: task
+          in: query
+          description: 按当前任务标题包含匹配，忽略大小写；百分号和下划线作为普通字符。
+          schema: {type: string, maxLength: 200}
+        - name: task_id
+          in: query
+          description: 精确匹配根会话 UUID，用于从任务历史进入对话历史。
+          schema: {type: string, format: uuid}
+        - name: user
+          in: query
+          description: 按用户当前姓名或邮箱包含匹配，忽略大小写。
+          schema: {type: string, maxLength: 200}
+        - name: content
+          in: query
+          description: 按已上报的对话正文包含匹配，忽略大小写；百分号和下划线作为普通字符。
+          schema: {type: string, maxLength: 200}
+        - name: from
+          in: query
+          description: 轮次开始时间下界，包含；须携带时区。
+          schema: {type: string, format: date-time}
+        - name: until
+          in: query
+          description: 轮次开始时间上界，不包含；须携带时区且晚于 from。日期筛选应传结束日期次日的本地零点。
+          schema: {type: string, format: date-time}
+        - name: page
+          in: query
+          description: 页码；超过最后一页时回退到最后一页。
+          schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
+        - name: page_size
+          in: query
+          description: 每页条数。
+          schema: {type: integer, minimum: 1, maximum: 500, default: 20}
+      responses:
+        "200":
+          description: 按轮次开始时间、会话 ID、轮次编号降序排列的真实对话记录。
+          headers:
+            Cache-Control:
+              schema: {type: string, const: 'private, no-store'}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsConversations"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -5347,6 +5368,42 @@ components:
           type: integer
           minimum: 0
           description: 窗口内开始的未删除、非占位、已上报顶层任务数。
+    StatisticsConversations:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          description: 当前页的对话轮次；没有数据时返回空数组。
+          items:
+            $ref: "#/components/schemas/StatisticsConversation"
+        total: {type: integer, minimum: 0, description: 符合筛选条件的轮次总数，包含空正文。}
+        page: {type: integer, minimum: 1, description: 实际页码；超过最后一页时回退到最后一页，空数据时为 1。}
+        page_size: {type: integer, minimum: 1, maximum: 500, description: 每页条数。}
+    StatisticsConversation:
+      type: object
+      required: [session_id, turn_index, task_title, user_id, user_name, user_email, started_at, ended_at, duration_seconds, input_text, input_text_truncated, input_kind, input_tokens, output_tokens, outcome, error_code, is_completed]
+      properties:
+        session_id: {type: string, format: uuid, description: 所属根会话 ID，即任务历史的任务 ID；与 turn_index 联合标识一个轮次。}
+        turn_index: {type: integer, minimum: 1, description: 客户端上报的轮次编号。}
+        task_title: {type: string, description: 所属任务当前标题，与任务历史一致。}
+        user_id: {type: string, format: uuid, description: 所属用户 ID。}
+        user_name: {type: string, description: 所属用户当前姓名。}
+        user_email: {type: string, description: 所属用户当前邮箱。}
+        started_at: {type: string, format: date-time, description: 轮次开始时间，筛选和排序使用此时间。}
+        ended_at: {type: string, format: date-time, description: 轮次结束时间；此接口仅展示已结束且完成上报的轮次。}
+        duration_seconds: {type: number, minimum: 0, description: ended_at 减 started_at 的秒数，保留原始精度，前端按整秒显示。}
+        input_text: {type: [string, 'null'], description: 已上报的用户正文；未采集或无文本输入时为 null，不生成示例正文。}
+        input_text_truncated: {type: boolean, description: 正文是否已经被客户端截断。}
+        input_kind: {type: string, description: 客户端上报的输入类型。}
+        input_tokens: {type: [integer, 'null'], minimum: 0, description: 本轮客户端上报的输入 Token 数；未采集时为 null，不合并模型网关或子代理用量。}
+        output_tokens: {type: [integer, 'null'], minimum: 0, description: 本轮客户端上报的输出 Token 数；未采集时为 null，K/M/B 由前端格式化。}
+        outcome:
+          type: string
+          enum: [complete, interrupted, error, max_turns, output_limit, unknown]
+          description: 本轮原始结束原因；不表示整个任务是否结束。
+        error_code: {type: [string, 'null'], description: 已上报的错误码，无错误码时为 null。}
+        is_completed: {type: [boolean, 'null'], description: complete 为 true；unknown 为 null；其他结束原因为 false。只表示本轮是否正常完成。}
     StatisticsHistory:
       type: object
       required:

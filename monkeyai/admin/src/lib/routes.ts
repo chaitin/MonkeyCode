@@ -7,7 +7,6 @@ export const CONSOLE_ROUTES = {
   taskHistory: "/console/statistics/task-history",
   conversationHistory: "/console/statistics/conversation-history",
   sessionOverview: "/console/statistics/session-reporting",
-  sessionList: "/console/statistics/session-reporting/sessions",
   sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
   resourceAnalysis: "/console/statistics/session-reporting/resources",
   clientAnalysis: "/console/statistics/session-reporting/clients",
@@ -56,13 +55,6 @@ export const CONSOLE_PAGES = [
     sectionPath: CONSOLE_ROUTES.taskHistory,
     titleKey: "pages.conversationHistory.title",
     descriptionKey: "pages.conversationHistory.description",
-  },
-  {
-    path: CONSOLE_ROUTES.sessionList,
-    sectionKey: "sections.usageRecords",
-    sectionPath: CONSOLE_ROUTES.taskHistory,
-    titleKey: "pages.sessionReporting.sessionList.title",
-    descriptionKey: "pages.sessionReporting.sessionList.description",
   },
   ...(
     [
@@ -173,7 +165,7 @@ export const CONSOLE_PAGES = [
 export function getConsolePage(pathname: string) {
   return (
     CONSOLE_PAGES.find((page) => page.path === pathname) ??
-    (pathname.startsWith(`${CONSOLE_ROUTES.sessionList}/`)
+    (pathname.startsWith(CONSOLE_ROUTES.sessionDetail.replace(":sessionId", ""))
       ? {
           path: pathname,
           sectionKey: "sections.usageRecords",

@@ -129,7 +129,7 @@ export function SessionDetailPage() {
       )
       showToast({ status: "success", title: t(`${key}.detail.clearSuccess`) })
       setClearOpen(false)
-      navigate(CONSOLE_ROUTES.sessionList)
+      navigate(CONSOLE_ROUTES.taskHistory)
     } catch (reason) {
       showToast({
         status: "error",
@@ -167,7 +167,7 @@ export function SessionDetailPage() {
     <ReportShell title={t(`${key}.detail.title`)}>
       <div>
         <Link
-          to={CONSOLE_ROUTES.sessionList}
+          to={CONSOLE_ROUTES.taskHistory}
           className="text-sm text-primary underline"
         >
           {t(`${key}.back`)}

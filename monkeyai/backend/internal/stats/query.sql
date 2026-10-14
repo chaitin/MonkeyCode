@@ -50,6 +50,50 @@ ORDER BY
     s.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
+-- name: CountConversations :one
+SELECT count(*)
+FROM session_turns t
+JOIN sessions s ON s.id = t.session_id
+JOIN users u ON u.id = s.owner_user_id
+WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
+    AND s.parent_session_id IS NULL
+    AND (sqlc.arg(task_id)::text = '' OR s.id = nullif(sqlc.arg(task_id)::text, '')::uuid)
+    AND (sqlc.arg(title_query)::text = '' OR strpos(lower(s.title), lower(sqlc.arg(title_query)::text)) > 0)
+    AND (sqlc.arg(user_query)::text = ''
+        OR strpos(lower(u.name), lower(sqlc.arg(user_query)::text)) > 0
+        OR strpos(lower(u.email), lower(sqlc.arg(user_query)::text)) > 0)
+    AND (sqlc.arg(content_query)::text = '' OR strpos(lower(t.input_text), lower(sqlc.arg(content_query)::text)) > 0)
+    AND (sqlc.narg(from_time)::timestamptz IS NULL OR t.started_at >= sqlc.narg(from_time))
+    AND (sqlc.narg(until_time)::timestamptz IS NULL OR t.started_at < sqlc.narg(until_time));
+
+-- name: ListConversations :many
+SELECT jsonb_build_object(
+    'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
+    'user_id', u.id, 'user_name', u.name, 'user_email', u.email,
+    'started_at', t.started_at, 'ended_at', t.ended_at,
+    'duration_seconds', extract(epoch FROM (t.ended_at - t.started_at)),
+    'input_text', t.input_text, 'input_text_truncated', t.input_text_truncated, 'input_kind', t.input_kind,
+    'input_tokens', t.input_tokens, 'output_tokens', t.output_tokens,
+    'outcome', t.stop_reason, 'error_code', t.error_code,
+    'is_completed', CASE WHEN t.stop_reason = 'unknown' THEN NULL ELSE t.stop_reason = 'complete' END)
+FROM session_turns t
+JOIN sessions s ON s.id = t.session_id
+JOIN users u ON u.id = s.owner_user_id
+WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
+    AND s.parent_session_id IS NULL
+    AND (sqlc.arg(task_id)::text = '' OR s.id = nullif(sqlc.arg(task_id)::text, '')::uuid)
+    AND (sqlc.arg(title_query)::text = '' OR strpos(lower(s.title), lower(sqlc.arg(title_query)::text)) > 0)
+    AND (sqlc.arg(user_query)::text = ''
+        OR strpos(lower(u.name), lower(sqlc.arg(user_query)::text)) > 0
+        OR strpos(lower(u.email), lower(sqlc.arg(user_query)::text)) > 0)
+    AND (sqlc.arg(content_query)::text = '' OR strpos(lower(t.input_text), lower(sqlc.arg(content_query)::text)) > 0)
+    AND (sqlc.narg(from_time)::timestamptz IS NULL OR t.started_at >= sqlc.narg(from_time))
+    AND (sqlc.narg(until_time)::timestamptz IS NULL OR t.started_at < sqlc.narg(until_time))
+ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
 -- name: ReportingTaskSummary :one
 SELECT jsonb_build_object('total', count(*), 'completed', count(*) FILTER (WHERE t.stop_reason = 'complete'),
     'failed', count(*) FILTER (WHERE t.stop_reason IN ('error','max_turns','output_limit')),
@@ -314,44 +358,6 @@ FROM facts t;
 -- name: ReportingSessionStatus :one
 SELECT jsonb_build_object('id',id,'owner_user_id',owner_user_id,'purged_at',purged_at,'tombstone',purged_at IS NOT NULL)
 FROM sessions WHERE id = sqlc.arg(session_id)::uuid;
-
--- name: ReportingSessions :many
-WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f),
-cohort AS (
-    SELECT s.* FROM sessions s CROSS JOIN opts p
-    WHERE s.reporting_enabled_at IS NOT NULL
-        AND (s.deleted_at IS NULL OR (p.f->>'include_purged')::boolean AND s.purged_at IS NOT NULL)
-        AND ((p.f->>'include_purged')::boolean OR s.purged_at IS NULL)
-        AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
-        AND s.parent_session_id IS NULL
-        AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
-        AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
-        AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
-        AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
-        AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
-        AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
-        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
-        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
-        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
-            SELECT 1 FROM session_turns rt JOIN session_resource_snapshot_items ri ON ri.session_id = rt.session_id AND ri.snapshot_id = rt.resources_snapshot_id
-            WHERE rt.session_id = s.id AND rt.started_at >= (p.f->>'from')::timestamptz AND rt.started_at < (p.f->>'until')::timestamptz
-                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
-        AND (p.f->>'cursor_at' IS NULL OR (s.started_at,s.id) < ((p.f->>'cursor_at')::timestamptz,(p.f->>'cursor_id')::uuid))
-), page AS (SELECT * FROM cohort ORDER BY started_at DESC,id DESC LIMIT (sqlc.arg(filters)::jsonb->>'limit')::integer + 1)
-SELECT CASE WHEN s.purged_at IS NOT NULL THEN
-    jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'purged_at',s.purged_at,'tombstone',true,'sort_at',s.started_at)
-    ELSE jsonb_build_object('id',s.id,'owner_user_id',s.owner_user_id,'group_id',s.group_id,
-        'title',s.title,'title_source',s.title_source,'expert_id',s.expert_id,'model_id',s.model_id,'client_type',s.client_type,'platform',ep.platform,
-        'client_version',s.client_version,'started_at',s.started_at,'last_active_at',s.last_active_at,
-        'active_seconds',s.active_seconds,'placeholder',s.placeholder,'clock_suspect',s.clock_suspect,
-        'turns',coalesce(turns.total,0),'last_outcome',s.last_stop_reason,'subsessions',coalesce(children.total,0),
-        'credits',coalesce(credits.net,0)::text,'tombstone',false) END
-FROM page s CROSS JOIN opts p
-LEFT JOIN LATERAL (SELECT platform FROM endpoints WHERE user_id = s.owner_user_id AND machine_id::text = s.device_id LIMIT 1) ep ON true
-LEFT JOIN LATERAL (SELECT count(*) total FROM session_turns WHERE session_id = s.id AND started_at >= (p.f->>'from')::timestamptz AND started_at < (p.f->>'until')::timestamptz) turns ON s.purged_at IS NULL
-LEFT JOIN LATERAL (SELECT count(*) total FROM sessions WHERE parent_session_id = s.id AND deleted_at IS NULL AND purged_at IS NULL) children ON s.purged_at IS NULL
-LEFT JOIN LATERAL (SELECT -sum(credit_delta) net FROM credit_ledger_entries e WHERE e.session_id IN (SELECT id FROM sessions WHERE id = s.id OR parent_session_id = s.id) AND e.entry_type IN ('charge','refund')) credits ON s.purged_at IS NULL
-ORDER BY s.started_at DESC,s.id DESC;
 
 -- name: ReportingDetail :one
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f),
