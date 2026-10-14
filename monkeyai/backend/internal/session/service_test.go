@@ -133,16 +133,15 @@ func TestOfficialSessionSnapshot(t *testing.T) {
 	if in.Title == nil || *in.Title != "提示内容" || in.TitleSource == nil || *in.TitleSource != "prompt" {
 		t.Fatalf("标题字段未解析: %+v", in)
 	}
-	for _, field := range []string{`"state_hash":"fake"`, `"raw_prompt":"正文"`} {
+	for _, field := range []string{`"state_hash":"fake"`, `"raw_prompt":"正文"`, `"last_active_at":"2026-01-01T00:00:00Z"`} {
 		modified := strings.TrimSuffix(body, "}") + "," + field + "}"
 		r := httptest.NewRequest("PUT", "/", strings.NewReader(modified))
-		var invalid sessionInput
-		err := decodeBody(httptest.NewRecorder(), r, maxSessionBodyBytes, &invalid)
-		if err == nil {
-			err = validateSessionInput(invalid)
+		var decoded sessionInput
+		if err := decodeBody(httptest.NewRecorder(), r, maxSessionBodyBytes, &decoded); err != nil {
+			t.Fatalf("未知字段应被忽略: %s: %v", field, err)
 		}
-		if err == nil {
-			t.Fatalf("未知字段未拒绝: %s", field)
+		if err := validateSessionInput(decoded); err != nil {
+			t.Fatalf("未知字段不应影响已知字段校验: %s: %v", field, err)
 		}
 	}
 	for _, value := range []string{strings.Repeat("a", 513), "a\x00b"} {
@@ -273,19 +272,27 @@ func TestTurnHashCompatibility(t *testing.T) {
 	}
 }
 
-func TestTurnPayloadRejectsUnknownFieldsAndExcessTools(t *testing.T) {
+func TestTurnPayloadIgnoresUnknownFields(t *testing.T) {
 	for _, body := range []string{
 		`{"facts_version":1,"turns":[{"turn_index":1,"input":{"kind":"prompt","raw_prompt":"正文"}}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"usage":{"input_tokens":2,"raw":"输出"}}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"tools":[{"category":"builtin","calls":1,"failed":0,"duration_ms":0,"arguments":"参数"}]}]}`,
 		`{"facts_version":1,"turns":[{"turn_index":1,"input":{"kind":"prompt","origin":{"machine_id":"m","unknown":"内容"}}}]}`,
+		`{"facts_version":1,"turns":[{"turn_index":1,"content":"忽略内容"}]}`,
+		`{"facts_version":1,"turns":[{"turn_index":1}],"unknown":"内容"}`,
 	} {
 		r := httptest.NewRequest("POST", "/?after_turn=0", strings.NewReader(body))
 		var in turnBatchInput
-		if err := decodeBody(httptest.NewRecorder(), r, maxTurnsBodyBytes, &in); err == nil {
-			t.Fatalf("未知字段未被拒绝: %s", body)
+		if err := decodeBody(httptest.NewRecorder(), r, maxTurnsBodyBytes, &in); err != nil {
+			t.Fatalf("未知字段应被忽略: %s: %v", body, err)
+		}
+		if len(in.Turns) != 1 || in.Turns[0].TurnIndex != 1 {
+			t.Fatalf("未知字段不应影响已知字段解析: %+v", in)
 		}
 	}
+}
+
+func TestPrepareTurnLimitsTools(t *testing.T) {
 	tools := make([]toolInput, maxToolsPerTurn+1)
 	for i := range tools {
 		tools[i] = toolInput{Category: "builtin", Calls: 1}
@@ -314,26 +321,6 @@ func TestUnknownErrorCodeIsNotPersisted(t *testing.T) {
 	}, &facts)
 	if err != nil || prepared.input.ErrorCode != nil {
 		t.Fatalf("未知机器码不得入库: code=%v err=%v", prepared.input.ErrorCode, err)
-	}
-}
-
-func TestSessionPayloadCannotSetDerivedColumns(t *testing.T) {
-	body := `{"last_active_at":"2026-01-01T00:00:00Z"}`
-	r := httptest.NewRequest("PUT", "/", bytes.NewBufferString(body))
-	w := httptest.NewRecorder()
-	var in sessionInput
-	if err := decodeBody(w, r, maxSessionBodyBytes, &in); code(err) != "invalid_request" {
-		t.Fatalf("派生列未被拒绝，错误=%v", err)
-	}
-}
-
-func TestPrepareTurnRejectsContentFields(t *testing.T) {
-	body := `{"facts_version":1,"turns":[{"turn_index":1,"input_seq":1,"started_at":"2026-01-01T00:00:00Z","ended_at":"2026-01-01T00:00:01Z","stop_reason":"complete","resources_snapshot_id":"r","input":{"kind":"prompt"},"content":"不得上报"}]}`
-	r := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
-	w := httptest.NewRecorder()
-	var in turnBatchInput
-	if err := decodeBody(w, r, maxTurnsBodyBytes, &in); code(err) != "invalid_request" {
-		t.Fatalf("正文白名单未拒绝，错误=%v", err)
 	}
 }
 

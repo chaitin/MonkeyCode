@@ -242,8 +242,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, limit int, target any) e
 		return resource.Invalid("请求 JSON 字段重复或格式无效")
 	}
 	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			return sessionFailure(http.StatusRequestEntityTooLarge, "payload_too_large", "请求体超过大小限制")
 		}
 		if err == nil {
@@ -251,9 +250,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, limit int, target any) e
 		}
 		return resource.Invalid("请求格式无效")
 	}
-	strict := json.NewDecoder(bytes.NewReader(raw))
-	strict.DisallowUnknownFields()
-	if err := strict.Decode(target); err != nil {
+	if err := json.Unmarshal(raw, target); err != nil {
 		return resource.Invalid("请求字段或格式无效")
 	}
 	return nil

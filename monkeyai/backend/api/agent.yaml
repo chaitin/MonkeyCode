@@ -15,7 +15,7 @@ paths:
         schema: {type: string, format: uuid}
     put:
       summary: 创建或更新一期会话元数据快照
-      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。省略标题字段时保留已有值。
+      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。省略标题字段时保留已有值，未知字段会被忽略。
       parameters:
         - name: X-MAI-Machine-ID
           in: header
@@ -27,13 +27,13 @@ paths:
           application/json:
             schema:
               type: object
-              additionalProperties: false
+              additionalProperties: true
               required: [state_seq, client, session_type, started_at]
               properties:
                 state_seq: {type: integer, format: int64, minimum: 0}
                 client:
                   type: object
-                  additionalProperties: false
+                  additionalProperties: true
                   required: [type, machine_id, version]
                   properties:
                     type: {type: string, enum: [desktop, web, extension, mobile, unknown]}
@@ -76,7 +76,7 @@ paths:
         schema: {type: string, format: uuid}
     post:
       summary: 批量追加已完成的轮次报告
-      description: 接收已完成轮次的统计事实、可选用户正文及封存本轮时的会话标题；不接受附件、工具参数、工具输出或文件。
+      description: 接收已完成轮次的统计事实、可选用户正文及封存本轮时的会话标题；仅处理已声明字段，未知字段会被忽略。
       parameters:
         - name: X-MAI-Machine-ID
           in: header
@@ -92,7 +92,7 @@ paths:
           application/json:
             schema:
               type: object
-              additionalProperties: false
+              additionalProperties: true
               required: [facts_version, turns]
               properties:
                 facts_version: {type: integer, minimum: 1}
@@ -101,7 +101,7 @@ paths:
                   maxItems: 50
                   items:
                     type: object
-                    additionalProperties: false
+                    additionalProperties: true
                     required: [snapshot_id, items]
                     properties:
                       snapshot_id: {type: string, description: 'sha256: 前缀的规范化资源快照摘要'}
@@ -114,7 +114,7 @@ paths:
                   maxItems: 50
                   items:
                     type: object
-                    additionalProperties: false
+                    additionalProperties: true
                     required: [turn_index, input_seq, started_at, ended_at, stop_reason, resources_snapshot_id, input]
                     properties:
                       turn_index: {type: integer, minimum: 1}
@@ -137,7 +137,7 @@ paths:
                       context_window: {type: [integer, 'null']}
                       input:
                         type: object
-                        additionalProperties: false
+                        additionalProperties: true
                         required: [kind]
                         description: 输入类型、来源、正文、截断标记及数量统计；正文去掉附件行，可含换行。
                         properties:
@@ -146,7 +146,7 @@ paths:
                           text_truncated: {type: boolean, default: false, description: 正文被截断时为 true，未截断时可省略}
                           origin:
                             type: [object, 'null']
-                            additionalProperties: false
+                            additionalProperties: true
                             properties:
                               client_type: {type: [string, 'null']}
                               machine_id: {type: [string, 'null']}
