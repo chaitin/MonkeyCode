@@ -66,7 +66,13 @@ func TestUpgradeFrom14(t *testing.T) {
 		INSERT INTO skills (ownership_type, owner_user_id, name, description,
 			package_file_name, package_s3_key, package_size_bytes, package_sha256)
 		VALUES ('system', '00000000-0000-0000-0000-000000000001', '已有资源', '保留描述',
-			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));`); err != nil {
+			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));
+		INSERT INTO models(id,ownership_type,owner_user_id,model_id,display_name,protocol,kind,provider,base_url,api_key,advanced_config,credit_multiplier,video_config,video_pricing)
+		VALUES ('00000000-0000-0000-0000-000000000002','system','00000000-0000-0000-0000-000000000001',
+			'MiniMax-H3','已有视频模型','video_generation','video','minimax','https://provider.example','test-key','{}',1,'{}','{}');
+		INSERT INTO video_jobs(id,user_id,model_id,provider,mode,status,request_hash,request_config,pricing_snapshot,provider_job_id)
+		VALUES ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001',
+			'00000000-0000-0000-0000-000000000002','minimax','text_to_video','submitted','test','{}','{}','existing-provider-job');`); err != nil {
 		t.Fatal(err)
 	}
 	output := run("up")
@@ -74,7 +80,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	for _, migration := range []string{
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
-		"21/u video_output_metadata_optional",
+		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -87,7 +93,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 21 || dirty {
+	if version != 22 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -98,6 +104,12 @@ func TestUpgradeFrom14(t *testing.T) {
 		description != "保留描述" || origin != "local" || nameI18n != "{}" {
 		t.Fatalf("业务数据或新增字段默认值错误: %q %q %q %q %q %v", balance, frozen, description, origin, nameI18n, err)
 	}
+	var failures int
+	var providerJobID string
+	if err := conn.QueryRow(t.Context(), `SELECT poll_failures,provider_job_id FROM video_jobs WHERE id='00000000-0000-0000-0000-000000000003'`).
+		Scan(&failures, &providerJobID); err != nil || failures != 0 || providerJobID != "existing-provider-job" {
+		t.Fatalf("已有视频任务升级后应保留供应商 ID 并初始化失败次数: failures=%d provider_job_id=%s err=%v", failures, providerJobID, err)
+	}
 	var valid bool
 	err = conn.QueryRow(t.Context(), `SELECT
 		to_regclass('resource_imports') IS NOT NULL AND to_regclass('resource_import_bindings') IS NOT NULL
@@ -106,7 +118,9 @@ func TestUpgradeFrom14(t *testing.T) {
 		AND (SELECT count(*) = 2 FROM information_schema.columns WHERE table_schema = current_schema()
 			AND table_name IN ('models', 'connectors') AND column_name = 'proxy_id')
 		AND (SELECT count(*) = 4 FROM information_schema.columns WHERE table_schema = current_schema()
-			AND table_name = 'session_turns' AND column_name IN ('input_text', 'input_text_truncated', 'title', 'title_source'))`).Scan(&valid)
+			AND table_name = 'session_turns' AND column_name IN ('input_text', 'input_text_truncated', 'title', 'title_source'))
+		AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+			AND table_name = 'video_jobs' AND column_name = 'poll_failures' AND column_default = '0')`).Scan(&valid)
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
