@@ -9,8 +9,8 @@ security:
 paths:
   /api/admin/v1/resource-imports/preview:
     post:
-      summary: 校验资源发布包并预览变更
-      description: ZIP 包体最大 2 GiB；磁盘暂存并校验整包、静态资源和 Agent 闭包，不写入资源，返回新增/更新/跳过/退役/恢复与 plan_digest。
+      summary: 解析资源发布包并预览变更
+      description: ZIP 包体最大 2 GiB，磁盘暂存并解析 Agent 资源，不写入资源。JSON 仅检查语法，不校验发布端摘要、字段格式或元数据一致性；缺省字段使用默认值，CHECKSUMS.sha256 和 release.json 可省略。返回新增/更新/跳过/退役/恢复与 plan_digest。
       requestBody:
         required: true
         content:
@@ -24,7 +24,7 @@ paths:
       responses:
         '200': {description: 预览结果与包摘要}
         '400': {$ref: '#/components/responses/ResourceError400'}
-        '409': {description: 发布版本、资源身份或依赖冲突}
+        '409': {description: 资源身份或现有数据关联冲突}
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认原子导入完整 Agent 清单
@@ -44,7 +44,7 @@ paths:
       responses:
         '200': {description: 导入批次结果}
         '400': {$ref: '#/components/responses/ResourceError400'}
-        '409': {description: 发布版本或并发变更冲突，需重新预览}
+        '409': {description: 并发变更冲突，需重新预览}
     get:
       summary: 分页查询资源包导入批次
       parameters:
