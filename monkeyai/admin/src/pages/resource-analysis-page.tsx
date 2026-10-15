@@ -201,13 +201,22 @@ export function ResourceAnalysisPage() {
       return <ReportValue value={row[column]} />
     }
     if (column === "success_rate") {
+      const successRate =
+        row.calls > 0 ? ((row.calls - row.failed) / row.calls) * 100 : null
       return (
-        <ReportNumber
-          value={
-            row.calls > 0 ? ((row.calls - row.failed) / row.calls) * 100 : null
+        <span
+          className={
+            successRate === null
+              ? "text-muted-foreground"
+              : successRate >= 95
+                ? "text-green-600 dark:text-green-400"
+                : successRate >= 60
+                  ? "text-yellow-600 dark:text-yellow-400"
+                  : "text-red-600 dark:text-red-400"
           }
-          suffix="%"
-        />
+        >
+          <ReportNumber value={successRate} suffix="%" />
+        </span>
       )
     }
     return <ReportNumber value={row[column]} />
