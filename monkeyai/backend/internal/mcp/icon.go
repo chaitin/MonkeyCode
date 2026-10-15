@@ -146,9 +146,14 @@ func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string)
 			slog.WarnContext(r.Context(), "关闭 Connector 图标读取流失败", "connector_id", connector, "operation", "close_icon", "failure", safeMCPFailure(err))
 		}
 	}()
-	mime := "image/png"
-	if strings.HasSuffix(key, ".jpeg") {
+	mime := "application/octet-stream"
+	switch {
+	case strings.HasSuffix(key, ".jpeg"), strings.HasSuffix(key, ".jpg"):
 		mime = "image/jpeg"
+	case strings.HasSuffix(key, ".png"):
+		mime = "image/png"
+	case strings.HasSuffix(key, ".webp"):
+		mime = "image/webp"
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")

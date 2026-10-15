@@ -139,10 +139,10 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 			mode = current.String("authorization_mode")
 		}
 		out = append(out, desired{Kind: "connector", Slug: c.Entry.Slug, Name: c.Entry.Name, Source: c.Entry.SHA256,
-			Fields: resource.Object{"name": c.Entry.Name, "url": c.Config.URL, "timeout_ms": c.Config.TimeoutMs,
+			Fields: resource.Object{"name": c.Entry.Name, "description": c.Entry.Description, "url": c.Config.URL, "timeout_ms": c.Config.TimeoutMs,
 				"auth_header_name": c.Auth.Header, "authorization_mode": mode, "authorization_method": method,
 				"oauth_mode": map[bool]string{true: "dynamic", false: ""}[method == "oauth"], "oauth_scopes": strings.Join(strings.Fields(c.OAuth.Scope), " "),
-				"name_i18n": c.Entry.NameI18n, "description_i18n": c.Entry.DescriptionI18n}})
+				"avatar_sha256": c.AvatarSHA, "name_i18n": c.Entry.NameI18n, "description_i18n": c.Entry.DescriptionI18n}})
 	}
 	for _, e := range r.Experts {
 		skills, rules, connectors := slices.Clone(e.Skills), slices.Clone(e.Rules), slices.Clone(e.Connectors)
