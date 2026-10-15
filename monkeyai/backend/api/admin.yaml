@@ -2197,10 +2197,26 @@ paths:
   /api/admin/v1/models:
     get:
       summary: 查询模型
+      description: |
+        按 ownership_type 分别查询系统或用户模型。q 按名称、模型 ID 或上游地址进行不区分大小写的字面子串搜索。
+        提供 limit、cursor 或 q 时启用按 ID 稳定排序的游标分页；筛选在分页前执行，切换类型或关键词时应清空 cursor。
+        未提供上述三个参数时保留完整列表及创建时间倒序；next_cursor 为空表示无后续页。
       parameters:
         - in: query
+          name: q
+          description: 按名称、模型 ID 或上游地址搜索；空值不筛选。
+          schema: {type: string}
+        - in: query
+          name: cursor
+          description: 上一页返回的 next_cursor。
+          schema: {type: string}
+        - in: query
+          name: limit
+          description: 单页数量；提供分页参数时默认 200。
+          schema: {type: integer, minimum: 1, maximum: 200, default: 200}
+        - in: query
           name: ownership_type
-          description: 按模型所有权类型筛选；不传时返回全部模型。
+          description: 按模型所有权类型筛选；不传时不过滤所有权类型。
           schema:
             type: string
             enum: [system, user]
@@ -2700,6 +2716,9 @@ paths:
   /api/admin/v1/skills:
     get:
       summary: 查询Skill
+      description: |
+        按 ownership_type 筛选系统或用户技能；q 对名称和描述进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Skill
@@ -2973,6 +2992,9 @@ paths:
   /api/admin/v1/experts:
     get:
       summary: 查询Expert
+      description: |
+        按 ownership_type 筛选系统或用户专家；q 对名称、描述和提示词进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Expert
@@ -3236,6 +3258,9 @@ paths:
   /api/admin/v1/connectors:
     get:
       summary: 查询Connector
+      description: |
+        按 ownership_type 筛选系统或用户连接器；q 对名称和描述进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Connector
@@ -5920,9 +5945,12 @@ components:
       type: object
       required: [models]
       properties:
+        next_cursor:
+          type: string
+          description: 后续页游标；无后续页或未启用分页时为空字符串。
         models:
           type: array
-          description: 按创建时间倒序排列的模型。
+          description: 分页时按 ID 升序；未启用分页时按创建时间倒序。
           items:
             $ref: "#/components/schemas/Model"
     SystemProxy:

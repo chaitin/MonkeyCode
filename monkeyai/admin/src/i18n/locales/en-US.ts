@@ -115,6 +115,9 @@ export const enUS = {
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
     ruleSearchPlaceholder: "Search name or description",
+    modelSearchPlaceholder: "Search name, model ID or URL",
+    systemExpert: "System experts",
+    userExpert: "User experts",
     importedRuleReadOnly:
       "The content of built-in system rules cannot be modified.",
     selectScope: "Select users or groups",

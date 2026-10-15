@@ -6,13 +6,14 @@ import {
   match,
   saveResource,
   listResources,
-  useResources,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { ResourceNotice } from "@/components/resource-notice"
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
+import { ResourceList } from "@/components/resource-list"
+import { useResourceList } from "@/hooks/use-resource-list"
 import {
   AiBrain01Icon,
   Copy02Icon,
@@ -22,7 +23,6 @@ import {
   PauseIcon,
   PlayIcon,
   PlusSignIcon,
-  Search02Icon,
   UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -290,18 +290,17 @@ function ExpertAssociationSelect({
 }
 
 export function ExpertsPage() {
-  const { i18n, t } = useTranslation()
+  const { t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
-  const remote = useResources("/experts", toExpert)
-  const experts = remote.items
+  const remote = useResourceList("/experts")
+  const experts = remote.items.map(toExpert)
   const subjects = useSubjects()
   const [options, setOptions] = useState<
     Record<AssociationKey, AssociationOption[]>
   >({ knowledgeBaseIds: [], toolIds: [], ruleIds: [], skillIds: [] })
   const [optionRevision, setOptionRevision] = useState(0)
 
-  const [query, setQuery] = useState("")
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [form, setForm] = useState<ExpertForm>(EMPTY_FORM)
@@ -310,6 +309,7 @@ export function ExpertsPage() {
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
 
   useEffect(() => {
+    if (!editorOpen) return
     let cancelled = false
     Promise.all([
       listResources(base + "/rules?ownership_type=system"),
@@ -349,16 +349,6 @@ export function ExpertsPage() {
       cancelled = true
     }
   }, [editorOpen, optionRevision, showToast, t])
-  const filteredExperts = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase(i18n.language)
-    if (!normalizedQuery) return experts
-
-    return experts.filter((expert) =>
-      [expert.name, expert.description, expert.prompt].some((value) =>
-        value.toLocaleLowerCase(i18n.language).includes(normalizedQuery)
-      )
-    )
-  }, [experts, i18n.language, query])
 
   const openCreateDialog = () => {
     setEditingExpert(null)
@@ -468,40 +458,32 @@ export function ExpertsPage() {
         method: "DELETE",
         headers: match(pendingDeletion.revision),
       })
+      if (experts.length === 1) remote.previousPage(pendingDeletion.ownership)
       setPendingDeletion(null)
     }, t("resources.operationCompleted"))
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-0">
-      <ResourceNotice
-        error={remote.error || subjects.error}
-        loading={remote.loading}
-        pending={remote.pending}
-      />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-full sm:w-64">
-          <HugeiconsIcon
-            icon={Search02Icon}
-            className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            className="ps-9"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("pages.experts.searchPlaceholder")}
-            aria-label={t("pages.experts.searchPlaceholder")}
-          />
-        </div>
-        <Button type="button" onClick={openCreateDialog}>
-          <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-          {t("pages.experts.createExpert")}
-        </Button>
-      </div>
-
-      {filteredExperts.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredExperts.map((expert) => (
+    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+      <ResourceList
+        page={remote}
+        error={subjects.error}
+        typeLabel={t("pages.models.type")}
+        systemLabel={t("resources.systemExpert")}
+        userLabel={t("resources.userExpert")}
+        actions={
+          <Button
+            className="ms-auto shrink-0"
+            type="button"
+            onClick={openCreateDialog}
+          >
+            <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+            {t("pages.experts.createExpert")}
+          </Button>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {experts.map((expert) => (
             <Card key={expert.id} className={cn(!expert.enabled && "bg-muted")}>
               <CardHeader>
                 <div className="flex min-w-0 items-start gap-3">
@@ -515,7 +497,11 @@ export function ExpertsPage() {
                       <span className="truncate" title={expert.name}>
                         {expert.name}
                       </span>
-                      {expert.origin === "package" && <Badge variant="outline" title={expert.publisher}>资源包导入</Badge>}
+                      {expert.origin === "package" && (
+                        <Badge variant="outline" title={expert.publisher}>
+                          资源包导入
+                        </Badge>
+                      )}
                       {expert.ownership === "user" && (
                         <Badge variant="outline">
                           {t("pages.experts.personalExpert")}
@@ -527,7 +513,18 @@ export function ExpertsPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    {expert.origin === "package" && <PackageGrants kind="expert" id={expert.id} name={expert.name} retired={expert.retired} subjects={subjects} onSaved={() => { void remote.reload() }} />}
+                    {expert.origin === "package" && (
+                      <PackageGrants
+                        kind="expert"
+                        id={expert.id}
+                        name={expert.name}
+                        retired={expert.retired}
+                        subjects={subjects}
+                        onSaved={() => {
+                          void remote.reload()
+                        }}
+                      />
+                    )}
                     <CardDescription
                       className="truncate"
                       title={expert.description}
@@ -543,73 +540,88 @@ export function ExpertsPage() {
                       </CardDescription>
                     )}
                   </div>
-                  {expert.origin !== "package" && <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("common.more")}
+                  {expert.origin !== "package" && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("common.more")}
+                          />
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={MoreHorizontalIcon}
+                          strokeWidth={2}
                         />
-                      }
-                    >
-                      <HugeiconsIcon
-                        icon={MoreHorizontalIcon}
-                        strokeWidth={2}
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {expert.ownership === "system" && (
-                        <>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              disabled={expert.enabled}
-                              onClick={() => setExpertEnabled(expert.id, true)}
-                            >
-                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
-                              {t("pages.experts.enable")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!expert.enabled}
-                              onClick={() => setExpertEnabled(expert.id, false)}
-                            >
-                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
-                              {t("pages.experts.disable")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => openEditDialog(expert)}
-                            >
-                              <HugeiconsIcon
-                                icon={Edit02Icon}
-                                strokeWidth={2}
-                              />
-                              {t("pages.experts.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => duplicateExpert(expert)}
-                            >
-                              <HugeiconsIcon
-                                icon={Copy02Icon}
-                                strokeWidth={2}
-                              />
-                              {t("pages.experts.duplicate")}
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                          <DropdownMenuSeparator />
-                        </>
-                      )}
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setPendingDeletion(expert)}
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-                          {t("pages.experts.delete")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {expert.ownership === "system" && (
+                          <>
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                disabled={expert.enabled}
+                                onClick={() =>
+                                  setExpertEnabled(expert.id, true)
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={PlayIcon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.enable")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!expert.enabled}
+                                onClick={() =>
+                                  setExpertEnabled(expert.id, false)
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={PauseIcon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.disable")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => openEditDialog(expert)}
+                              >
+                                <HugeiconsIcon
+                                  icon={Edit02Icon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.edit")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => duplicateExpert(expert)}
+                              >
+                                <HugeiconsIcon
+                                  icon={Copy02Icon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.duplicate")}
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setPendingDeletion(expert)}
+                          >
+                            <HugeiconsIcon
+                              icon={Delete02Icon}
+                              strokeWidth={2}
+                            />
+                            {t("pages.experts.delete")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -626,13 +638,7 @@ export function ExpertsPage() {
             </Card>
           ))}
         </div>
-      ) : (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            {t("pages.experts.empty")}
-          </CardContent>
-        </Card>
-      )}
+      </ResourceList>
 
       <Dialog
         open={editorOpen}

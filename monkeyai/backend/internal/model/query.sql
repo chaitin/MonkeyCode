@@ -10,6 +10,19 @@ WHERE
 ORDER BY
     created_at DESC;
 
+-- name: PageModels :many
+SELECT *
+FROM models
+WHERE deleted_at IS NULL
+    AND (sqlc.arg(filter)::jsonb ->> 'ownership' = ''
+        OR ownership_type = sqlc.arg(filter)::jsonb ->> 'ownership')
+    AND (strpos(lower(display_name), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0
+        OR strpos(lower(model_id), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0
+        OR strpos(lower(base_url), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0)
+    AND id::text > sqlc.arg(filter)::jsonb ->> 'cursor'
+ORDER BY id
+LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
+
 -- name: GetModel :one
 SELECT
     *

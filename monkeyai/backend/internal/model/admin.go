@@ -12,23 +12,7 @@ import (
 )
 
 func (s *Service) RegisterAdmin(router chi.Router) {
-	router.Get("/models", func(w http.ResponseWriter, r *http.Request) {
-		ownership := r.URL.Query().Get("ownership_type")
-		models, err := s.List(r.Context(), ownership)
-		if err != nil {
-			if ownership != "" && ownership != "system" && ownership != "user" {
-				modelError(w, http.StatusBadRequest, err.Error())
-			} else {
-				slog.ErrorContext(r.Context(), "读取模型列表失败", "error", err)
-				modelError(w, http.StatusInternalServerError, "读取模型列表失败")
-			}
-			return
-		}
-		for i := range models {
-			models[i] = presentModel(models[i])
-		}
-		modelJSON(w, http.StatusOK, map[string]any{"models": models})
-	})
+	router.Get("/models", s.listModels)
 	router.Get("/models/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
 		subjects, err := s.Subjects(r.Context())
 		if err != nil {

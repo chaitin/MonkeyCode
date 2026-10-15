@@ -18,6 +18,7 @@ var (
 
 type Repository interface {
 	List(context.Context, string) ([]Model, error)
+	Page(context.Context, ListFilter) ([]Model, error)
 	Get(context.Context, string) (Model, error)
 	Create(context.Context, Model) (Model, error)
 	Update(context.Context, Model) (Model, error)

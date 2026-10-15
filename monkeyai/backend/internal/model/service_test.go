@@ -24,7 +24,8 @@ type repositoryStub struct {
 	models []Model
 }
 
-func (r *repositoryStub) List(context.Context, string) ([]Model, error) { return r.models, nil }
+func (r *repositoryStub) List(context.Context, string) ([]Model, error)     { return r.models, nil }
+func (r *repositoryStub) Page(context.Context, ListFilter) ([]Model, error) { return r.models, nil }
 func (r *repositoryStub) Get(_ context.Context, id string) (Model, error) {
 	for _, item := range r.models {
 		if item.ID == id {
