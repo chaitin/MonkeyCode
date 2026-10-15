@@ -335,7 +335,10 @@ export function ResourceAnalysisPage() {
                     id="resource-analysis-kind"
                     type="button"
                     variant="outline"
-                    className={cn("min-w-24", !kind && "text-muted-foreground")}
+                    className={cn(
+                      "min-w-24 justify-start text-start",
+                      !kind && "text-muted-foreground"
+                    )}
                   />
                 }
               >
