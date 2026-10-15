@@ -68,7 +68,12 @@ func providerURL(base, endpoint string) (string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
 		return "", errors.New("视频上游地址必须是无查询参数的 HTTP(S) URL")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(endpoint, "/")
+	suffix, err := url.Parse(endpoint)
+	if err != nil || suffix.IsAbs() || suffix.Host != "" || suffix.User != nil || suffix.Fragment != "" {
+		return "", errors.New("视频上游接口地址无效")
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(suffix.Path, "/")
+	u.RawQuery = suffix.RawQuery
 	return u.String(), nil
 }
 

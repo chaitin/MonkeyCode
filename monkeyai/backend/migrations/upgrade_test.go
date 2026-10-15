@@ -80,7 +80,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	for _, migration := range []string{
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
-		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit",
+		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u agnes_provider",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -93,7 +93,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 22 || dirty {
+	if version != 23 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -124,6 +124,32 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
+	t.Run("AgnesMigrationIdempotency", func(t *testing.T) {
+		for _, direction := range []string{"up", "down", "up"} {
+			data, err := os.ReadFile("000023_agnes_provider." + direction + ".sql")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for attempt := range 3 {
+				if attempt == 1 {
+					if _, err := conn.Exec(t.Context(), "ALTER TABLE models DROP CONSTRAINT models_kind_config_check"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := conn.Exec(t.Context(), string(data)); err != nil {
+					t.Fatalf("执行 Agnes %s 迁移，第 %d 次: %v", direction, attempt+1, err)
+				}
+				var definition string
+				if err := conn.QueryRow(t.Context(), `SELECT pg_get_constraintdef(oid) FROM pg_constraint
+					WHERE conrelid = 'models'::regclass AND conname = 'models_kind_config_check'`).Scan(&definition); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(definition, "'agnes'") != (direction == "up") {
+					t.Fatalf("Agnes %s 迁移后的约束错误: %s", direction, definition)
+				}
+			}
+		}
+	})
 	run("down", "1")
 	run("up")
 	if output := run("up"); !strings.Contains(output, "no change") {

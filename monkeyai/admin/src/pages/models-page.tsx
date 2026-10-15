@@ -100,14 +100,15 @@ const PROTOCOLS = [
 type ModelProtocol = (typeof PROTOCOLS)[number]["value"] | "image_generation" | "video_generation"
 type ModelKind = "text" | "image" | "video"
 type ImageProvider =
-  "openai_images" | "openai_responses_image" | "volcengine" | "xai"
-type VideoProvider = "xai" | "minimax"
+  "openai_images" | "openai_responses_image" | "volcengine" | "xai" | "agnes"
+type VideoProvider = "xai" | "minimax" | "agnes"
 type ModelProvider = ImageProvider | VideoProvider | "passthrough"
 type ModelType = "system" | "user"
 
 const VIDEO_PROVIDERS = [
   { value: "xai", label: "Grok Imagine Video 1.5", model: "grok-imagine-video-1.5" },
   { value: "minimax", label: "MiniMax H3", model: "MiniMax-H3" },
+  { value: "agnes", label: "Agnes Video 2.5", model: "agnes-video-2.5" },
 ] as const
 
 type VideoMode = "text_to_video" | "image_to_video" | "last_frame_to_video" | "first_last_to_video" | "reference_image_to_video"
@@ -119,12 +120,13 @@ type VideoCapabilities = {
   param_rules?: Array<{ when: { modes?: VideoMode[] }; name: string; choices: string[] }>
 }
 
-const IMAGE_PROVIDERS = [
+const IMAGE_PROVIDERS: Array<{ value: ImageProvider; label: string; model?: string }> = [
   { value: "openai_images", label: "OpenAI GPT Image API" },
   { value: "openai_responses_image", label: "OpenAI Responses Image" },
   { value: "volcengine", label: "Seedream" },
   { value: "xai", label: "Grok Imagine" },
-] as const
+  { value: "agnes", label: "Agnes Image 2.5 Flash", model: "agnes-image-2.5-flash" },
+]
 
 type ImageConfig = {
   qualities: string[]
@@ -858,6 +860,9 @@ export function ModelsPage() {
                             onValueChange={(value) => {
                               setProvider(value as ImageProvider)
                               setImageCapabilities(null)
+                              const next = IMAGE_PROVIDERS.find((item) => item.value === value)
+                              const input = document.getElementById("model-id") as HTMLInputElement | null
+                              if (next?.model && input && !editingModel) input.value = next.model
                             }}
                           >
                             <SelectTrigger
@@ -887,7 +892,7 @@ export function ModelsPage() {
                           <FieldLabel>视频供应商</FieldLabel>
                           <Select
                             items={VIDEO_PROVIDERS.map((item) => ({ value: item.value, label: item.label }))}
-                            value={provider === "minimax" ? "minimax" : "xai"}
+                            value={provider}
                             onValueChange={(value) => {
                               const next = VIDEO_PROVIDERS.find((entry) => entry.value === value)
                               if (next) {
