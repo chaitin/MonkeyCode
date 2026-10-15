@@ -114,7 +114,8 @@ export const enUS = {
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
-    importedRuleReadOnly: "Imported rules only allow availability changes.",
+    importedRuleReadOnly:
+      "The content of built-in system rules cannot be modified.",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
     oauthClientDynamic: "Dynamic client (auto-discovery)",
