@@ -126,7 +126,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	}
 	t.Run("SeedanceMigrationIdempotency", func(t *testing.T) {
 		for _, direction := range []string{"up", "down", "up"} {
-			path := "000022_video_seedance_provider." + direction + ".sql"
+			path := "000023_video_seedance_provider." + direction + ".sql"
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
