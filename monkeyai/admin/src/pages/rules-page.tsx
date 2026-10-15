@@ -23,7 +23,6 @@ import {
   Edit02Icon,
   MoreHorizontalIcon,
   PlusSignIcon,
-  Search01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -267,15 +266,6 @@ export function RulesPage() {
               placeholder={t("resources.ruleSearchPlaceholder")}
               aria-label={t("resources.ruleSearchPlaceholder")}
             />
-            <Button
-              type="submit"
-              size="icon"
-              variant="outline"
-              disabled={remote.pending}
-              aria-label={t("pages.operationLogs.filters.search")}
-            >
-              <HugeiconsIcon icon={Search01Icon} />
-            </Button>
           </form>
           {activeRuleType === "system" && (
             <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
