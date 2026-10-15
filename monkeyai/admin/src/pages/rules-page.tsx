@@ -238,7 +238,7 @@ export function RulesPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 overflow-hidden p-4 pt-0 md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 overflow-hidden p-4 pt-1 md:h-[calc(100svh-5rem)]">
       <Tabs
         className="min-h-0 flex-1 gap-4"
         value={activeRuleType}
