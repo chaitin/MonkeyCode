@@ -48,7 +48,7 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/v1/users?q=<用户名或邮箱>&limit=20` | 查找有效接收用户，返回 `users: [{id, name, email}]` |
-| `GET /api/v1/groups?q=<分组名称>&limit=20` | 查找分享分组，包含名称匹配的虚拟根组，返回 `groups: [{id, name, parent_id}]` |
+| `GET /api/v1/groups[?q=<分组名称>&limit=20]` | 未提供 `q` 时列出全部分组；传入 `q` 时查找分享分组，包含名称匹配的虚拟根组，返回 `groups: [{id, name, parent_id}]` |
 | `GET /api/v1/models` | 获取可用模型及代理信息，支持独立 ETag |
 | `POST /api/v1/models` | 创建个人模型，所有者取当前登录用户 |
 | `GET /api/v1/models/{modelID}` | 读取自己的模型配置用于编辑，不返回密钥原文 |

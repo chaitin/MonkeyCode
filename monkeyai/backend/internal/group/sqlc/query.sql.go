@@ -187,6 +187,46 @@ func (q *Queries) HasUserInActiveGroup(ctx context.Context, userID string) (bool
 	return exists, err
 }
 
+const listGroupSummaries = `-- name: ListGroupSummaries :many
+SELECT
+    g.id,
+    g.name,
+    g.parent_id
+FROM
+    groups g
+WHERE
+    g.deleted_at IS NULL
+ORDER BY
+    g.created_at,
+    g.id
+`
+
+type ListGroupSummariesRow struct {
+	ID       string
+	Name     string
+	ParentID *string
+}
+
+func (q *Queries) ListGroupSummaries(ctx context.Context) ([]ListGroupSummariesRow, error) {
+	rows, err := q.db.Query(ctx, listGroupSummaries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGroupSummariesRow{}
+	for rows.Next() {
+		var i ListGroupSummariesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGroups = `-- name: ListGroups :many
 SELECT
     g.id,

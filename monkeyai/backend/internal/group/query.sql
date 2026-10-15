@@ -23,6 +23,19 @@ SELECT
         g.created_at,
         g.id;
 
+-- name: ListGroupSummaries :many
+SELECT
+    g.id,
+    g.name,
+    g.parent_id
+FROM
+    groups g
+WHERE
+    g.deleted_at IS NULL
+ORDER BY
+    g.created_at,
+    g.id;
+
 -- name: SearchGroups :many
 SELECT
     g.id,
