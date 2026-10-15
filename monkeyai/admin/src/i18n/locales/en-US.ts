@@ -520,7 +520,7 @@ export const enUS = {
         used_sessions: "Used sessions",
         calls: "Calls",
         failed: "Failed",
-        failure_rate: "Failure rate",
+        success_rate: "Success rate",
         os_version: "OS version",
         locale: "Language",
         timezone: "Timezone",

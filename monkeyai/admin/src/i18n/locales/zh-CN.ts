@@ -497,7 +497,7 @@ export const zhCN = {
         used_sessions: "使用会话",
         calls: "调用次数",
         failed: "失败次数",
-        failure_rate: "失败率",
+        success_rate: "成功率",
         os_version: "系统版本",
         locale: "语言",
         timezone: "时区",

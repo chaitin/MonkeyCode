@@ -64,7 +64,7 @@ const columns = [
   "available_sessions",
   "used_sessions",
   "calls",
-  "failure_rate",
+  "success_rate",
 ] as const
 type ResourceColumn = (typeof columns)[number]
 const pageSizes = ["20", "50", "100"]
@@ -200,12 +200,17 @@ export function ResourceAnalysisPage() {
     if (column === "resource_id" || column === "version") {
       return <ReportValue value={row[column]} />
     }
-    return (
-      <ReportNumber
-        value={row[column]}
-        suffix={column === "failure_rate" ? "%" : ""}
-      />
-    )
+    if (column === "success_rate") {
+      return (
+        <ReportNumber
+          value={
+            row.calls > 0 ? ((row.calls - row.failed) / row.calls) * 100 : null
+          }
+          suffix="%"
+        />
+      )
+    }
+    return <ReportNumber value={row[column]} />
   }
 
   return (
