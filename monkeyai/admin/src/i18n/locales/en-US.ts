@@ -120,6 +120,14 @@ export const enUS = {
     userExpert: "User experts",
     importedRuleReadOnly:
       "The content of built-in system rules cannot be modified.",
+    importedSkillReadOnly:
+      "The content of built-in system skills cannot be modified.",
+    importedExpertReadOnly:
+      "Built-in system expert settings cannot be modified.",
+    importedConnectorReadOnly:
+      "Built-in system connector settings cannot be modified.",
+    retiredGrantsOnly:
+      "This resource is retired. Existing access can only be revoked; new access cannot be granted.",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
     oauthClientDynamic: "Dynamic client (auto-discovery)",

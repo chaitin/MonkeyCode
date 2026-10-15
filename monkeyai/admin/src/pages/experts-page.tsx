@@ -5,6 +5,7 @@ import {
   selection,
   match,
   saveResource,
+  savePackageGrants,
   listResources,
   useSubjects,
   type ResourceRow,
@@ -29,7 +30,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
-import { PackageGrants } from "@/components/package-grants"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -59,7 +60,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -89,6 +89,7 @@ type Expert = {
   publisher?: string
   retired?: boolean
   ownership: ResourceRow["ownership_type"]
+  grants: ResourceRow["grants"]
   owner: string
   revision: number
   id: string
@@ -108,7 +109,7 @@ type Expert = {
 
 type ExpertForm = Omit<
   Expert,
-  "id" | "updatedAt" | "enabled" | "revision" | "ownership" | "owner"
+  "id" | "updatedAt" | "enabled" | "revision" | "ownership" | "owner" | "grants"
 >
 type AssociationKey = "knowledgeBaseIds" | "toolIds" | "ruleIds" | "skillIds"
 
@@ -125,6 +126,7 @@ function toExpert(row: ResourceRow): Expert {
     publisher: row.publisher,
     retired: row.retired,
     ownership: row.ownership_type,
+    grants: row.grants,
     owner: row.user.name || row.user.email || row.user.id,
     revision: row.revision,
     name: row.name,
@@ -305,6 +307,7 @@ export function ExpertsPage() {
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [form, setForm] = useState<ExpertForm>(EMPTY_FORM)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
+  const importedExpert = editingExpert?.origin === "package"
   const [tagsOpen, setTagsOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
 
@@ -359,6 +362,7 @@ export function ExpertsPage() {
   }
 
   const openEditDialog = (expert: Expert) => {
+    if (expert.ownership !== "system") return
     setEditingExpert(expert)
     setForm({
       name: expert.name,
@@ -403,36 +407,40 @@ export function ExpertsPage() {
   const saveExpert = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     await remote.run(async () => {
-      await saveResource(
-        editingExpert ? `/experts/${editingExpert.id}` : "/experts",
-        {
-          name: form.name,
-          description: form.description,
-          prompt: form.prompt,
-          tag_ids: form.tagIds,
-          rule_ids: form.ruleIds,
-          skill_ids: form.skillIds,
-          connectors: form.toolIds.map(
-            (connector_id) =>
-              form.connectorSettings.find(
-                (p) => p.connector_id === connector_id
-              ) ?? {
-                connector_id,
-                required: true,
-                tool_allowlist: [],
-                tool_denylist: [],
-              }
-          ),
-          grants: grants(form.authorization),
-        },
-        editingExpert?.revision
-      )
+      if (editingExpert?.origin === "package") {
+        await savePackageGrants("expert", editingExpert, form.authorization)
+      } else {
+        await saveResource(
+          editingExpert ? `/experts/${editingExpert.id}` : "/experts",
+          {
+            name: form.name,
+            description: form.description,
+            prompt: form.prompt,
+            tag_ids: form.tagIds,
+            rule_ids: form.ruleIds,
+            skill_ids: form.skillIds,
+            connectors: form.toolIds.map(
+              (connector_id) =>
+                form.connectorSettings.find(
+                  (p) => p.connector_id === connector_id
+                ) ?? {
+                  connector_id,
+                  required: true,
+                  tool_allowlist: [],
+                  tool_denylist: [],
+                }
+            ),
+            grants: grants(form.authorization),
+          },
+          editingExpert?.revision
+        )
+      }
       setEditorOpen(false)
     }, t("resources.operationCompleted"))
   }
   const setExpertEnabled = async (id: string, enabled: boolean) => {
     const item = experts.find((e) => e.id === id)
-    if (!item) return
+    if (!item || item.origin === "package") return
     await remote.run(async () => {
       await api(base + `/experts/${id}/enabled`, {
         method: "PATCH",
@@ -442,6 +450,7 @@ export function ExpertsPage() {
     }, t("resources.operationCompleted"))
   }
   const duplicateExpert = async (expert: Expert) => {
+    if (expert.origin === "package") return
     await remote.run(async () => {
       await api(base + `/experts/${expert.id}/copy`, {
         method: "POST",
@@ -452,7 +461,7 @@ export function ExpertsPage() {
     }, t("resources.operationCompleted"))
   }
   const deleteExpert = async () => {
-    if (!pendingDeletion) return
+    if (!pendingDeletion || pendingDeletion.origin === "package") return
     await remote.run(async () => {
       await api(base + `/experts/${pendingDeletion.id}`, {
         method: "DELETE",
@@ -513,18 +522,6 @@ export function ExpertsPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    {expert.origin === "package" && (
-                      <PackageGrants
-                        kind="expert"
-                        id={expert.id}
-                        name={expert.name}
-                        retired={expert.retired}
-                        subjects={subjects}
-                        onSaved={() => {
-                          void remote.reload()
-                        }}
-                      />
-                    )}
                     <CardDescription
                       className="truncate"
                       title={expert.description}
@@ -540,88 +537,78 @@ export function ExpertsPage() {
                       </CardDescription>
                     )}
                   </div>
-                  {expert.origin !== "package" && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t("common.more")}
-                          />
-                        }
-                      >
-                        <HugeiconsIcon
-                          icon={MoreHorizontalIcon}
-                          strokeWidth={2}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t("common.more")}
                         />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {expert.ownership === "system" && (
-                          <>
-                            <DropdownMenuGroup>
-                              <DropdownMenuItem
-                                disabled={expert.enabled}
-                                onClick={() =>
-                                  setExpertEnabled(expert.id, true)
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={PlayIcon}
-                                  strokeWidth={2}
-                                />
-                                {t("pages.experts.enable")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={!expert.enabled}
-                                onClick={() =>
-                                  setExpertEnabled(expert.id, false)
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={PauseIcon}
-                                  strokeWidth={2}
-                                />
-                                {t("pages.experts.disable")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => openEditDialog(expert)}
-                              >
-                                <HugeiconsIcon
-                                  icon={Edit02Icon}
-                                  strokeWidth={2}
-                                />
-                                {t("pages.experts.edit")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => duplicateExpert(expert)}
-                              >
-                                <HugeiconsIcon
-                                  icon={Copy02Icon}
-                                  strokeWidth={2}
-                                />
-                                {t("pages.experts.duplicate")}
-                              </DropdownMenuItem>
-                            </DropdownMenuGroup>
-                            <DropdownMenuSeparator />
-                          </>
-                        )}
-                        <DropdownMenuGroup>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setPendingDeletion(expert)}
-                          >
-                            <HugeiconsIcon
-                              icon={Delete02Icon}
-                              strokeWidth={2}
-                            />
-                            {t("pages.experts.delete")}
-                          </DropdownMenuItem>
-                        </DropdownMenuGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                      }
+                    >
+                      <HugeiconsIcon
+                        icon={MoreHorizontalIcon}
+                        strokeWidth={2}
+                      />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {expert.ownership === "system" && (
+                        <>
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              hidden={expert.origin === "package"}
+                              disabled={expert.enabled}
+                              onClick={() => setExpertEnabled(expert.id, true)}
+                            >
+                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
+                              {t("pages.experts.enable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              hidden={expert.origin === "package"}
+                              disabled={!expert.enabled}
+                              onClick={() => setExpertEnabled(expert.id, false)}
+                            >
+                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
+                              {t("pages.experts.disable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openEditDialog(expert)}
+                            >
+                              <HugeiconsIcon
+                                icon={Edit02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.experts.edit")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              hidden={expert.origin === "package"}
+                              onClick={() => duplicateExpert(expert)}
+                            >
+                              <HugeiconsIcon
+                                icon={Copy02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.experts.duplicate")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator
+                            hidden={expert.origin === "package"}
+                          />
+                        </>
+                      )}
+                      <DropdownMenuGroup hidden={expert.origin === "package"}>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setPendingDeletion(expert)}
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                          {t("pages.experts.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardHeader>
               <CardContent>
@@ -651,8 +638,11 @@ export function ExpertsPage() {
         }}
       >
         <DialogContent
-          className="max-h-[calc(100vh-2rem)] sm:max-w-3xl"
+          className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-3xl"
           closeLabel={t("common.close")}
+          aria-describedby={
+            importedExpert ? "imported-expert-readonly" : undefined
+          }
         >
           <DialogHeader>
             <DialogTitle>
@@ -663,128 +653,13 @@ export function ExpertsPage() {
           </DialogHeader>
           <form
             id="expert-editor-form"
-            className="flex min-h-0 flex-col gap-6"
+            className="flex min-h-0 flex-1 flex-col gap-6"
             onSubmit={saveExpert}
           >
-            <FieldGroup className="max-h-[calc(100vh-12rem)] gap-4 overflow-y-auto pe-1">
-              <Field>
-                <FieldLabel htmlFor="expert-name">
-                  {t("pages.experts.name")}
-                </FieldLabel>
-                <Input
-                  id="expert-name"
-                  value={form.name}
-                  onChange={(event) => updateForm("name", event.target.value)}
-                  placeholder={t("pages.experts.namePlaceholder")}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="expert-description">
-                  {t("pages.experts.expertDescription")}
-                </FieldLabel>
-                <Textarea
-                  id="expert-description"
-                  value={form.description}
-                  onChange={(event) =>
-                    updateForm("description", event.target.value)
-                  }
-                  placeholder={t("pages.experts.descriptionPlaceholder")}
-                  rows={3}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="expert-prompt">
-                  {t("pages.experts.prompt")}
-                </FieldLabel>
-                <Textarea
-                  id="expert-prompt"
-                  className="min-h-48 resize-none"
-                  value={form.prompt}
-                  onChange={(event) => updateForm("prompt", event.target.value)}
-                  placeholder={t("pages.experts.promptPlaceholder")}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="expert-tags">
-                  {t("pages.skills.tags")}
-                </FieldLabel>
-                <SkillTagSelect
-                  id="expert-tags"
-                  open={tagsOpen}
-                  options={availableTags}
-                  placeholder={t("pages.skills.tagsPlaceholder")}
-                  value={form.tagIds}
-                  onOpenChange={setTagsOpen}
-                  onValueChange={(value) => updateForm("tagIds", value)}
-                />
-              </Field>
-              {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
-                <Field key={key}>
-                  <FieldLabel htmlFor={`expert-${key}`}>
-                    {t(`pages.experts.${labelKey}`)}
-                  </FieldLabel>
-                  <ExpertAssociationSelect
-                    id={`expert-${key}`}
-                    label={t(`pages.experts.${labelKey}`)}
-                    options={options[key]}
-                    value={form[key]}
-                    onValueChange={(value) => updateForm(key, value)}
-                  />
-                </Field>
-              ))}
-              {form.toolIds.map((id) => {
-                const settings = form.connectorSettings.find(
-                  (p) => p.connector_id === id
-                )
-                return (
-                  <Field key={id}>
-                    <FieldLabel>
-                      {options.toolIds.find((p) => p.id === id)?.name}
-                    </FieldLabel>
-                    <label className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={settings?.required ?? true}
-                        onCheckedChange={(checked) =>
-                          updateConnector(id, { required: checked })
-                        }
-                      />
-                      {t("resources.requiredConnector")}
-                    </label>
-                    <Input
-                      aria-label={t("resources.allowTools")}
-                      placeholder={t("resources.allowTools")}
-                      value={(settings?.tool_allowlist ?? []).join(",")}
-                      onChange={(e) =>
-                        updateConnector(id, {
-                          tool_allowlist: e.target.value
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                    />
-                    <Input
-                      aria-label={t("resources.denyTools")}
-                      placeholder={t("resources.denyTools")}
-                      value={(settings?.tool_denylist ?? []).join(",")}
-                      onChange={(e) =>
-                        updateConnector(id, {
-                          tool_denylist: e.target.value
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                    />
-                  </Field>
-                )
-              })}
+            <FieldGroup className="max-h-[calc(100dvh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
               <Field>
                 <FieldLabel htmlFor="expert-authorization">
-                  {t("pages.experts.authorizedScope")}
+                  {t("resources.availableScope")}
                 </FieldLabel>
                 <AuthorizationSelect
                   groups={subjects.groups}
@@ -792,19 +667,151 @@ export function ExpertsPage() {
                   id="expert-authorization"
                   open={authorizationOpen}
                   placeholder={t("pages.experts.authorizationPlaceholder")}
-                  title={t("pages.experts.authorizedScope")}
+                  title={t("resources.availableScope")}
                   value={form.authorization}
                   onOpenChange={setAuthorizationOpen}
                   onValueChange={(value) => updateForm("authorization", value)}
                 />
+                {importedExpert && editingExpert.retired && (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    {t("resources.retiredGrantsOnly")}
+                  </p>
+                )}
               </Field>
+              <fieldset disabled={importedExpert} className="contents">
+                <Field>
+                  <FieldLabel htmlFor="expert-name">
+                    {t("pages.experts.name")}
+                  </FieldLabel>
+                  <Input
+                    id="expert-name"
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder={t("pages.experts.namePlaceholder")}
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="expert-description">
+                    {t("pages.experts.expertDescription")}
+                  </FieldLabel>
+                  <Textarea
+                    id="expert-description"
+                    value={form.description}
+                    onChange={(event) =>
+                      updateForm("description", event.target.value)
+                    }
+                    placeholder={t("pages.experts.descriptionPlaceholder")}
+                    rows={3}
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="expert-prompt">
+                    {t("pages.experts.prompt")}
+                  </FieldLabel>
+                  <Textarea
+                    id="expert-prompt"
+                    className="min-h-48 resize-none"
+                    value={form.prompt}
+                    onChange={(event) =>
+                      updateForm("prompt", event.target.value)
+                    }
+                    placeholder={t("pages.experts.promptPlaceholder")}
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="expert-tags">
+                    {t("pages.skills.tags")}
+                  </FieldLabel>
+                  <SkillTagSelect
+                    id="expert-tags"
+                    open={tagsOpen}
+                    options={availableTags}
+                    placeholder={t("pages.skills.tagsPlaceholder")}
+                    value={form.tagIds}
+                    onOpenChange={setTagsOpen}
+                    onValueChange={(value) => updateForm("tagIds", value)}
+                  />
+                </Field>
+                {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
+                  <Field key={key}>
+                    <FieldLabel htmlFor={`expert-${key}`}>
+                      {t(`pages.experts.${labelKey}`)}
+                    </FieldLabel>
+                    <ExpertAssociationSelect
+                      id={`expert-${key}`}
+                      label={t(`pages.experts.${labelKey}`)}
+                      options={options[key]}
+                      value={form[key]}
+                      onValueChange={(value) => updateForm(key, value)}
+                    />
+                  </Field>
+                ))}
+                {form.toolIds.map((id) => {
+                  const settings = form.connectorSettings.find(
+                    (p) => p.connector_id === id
+                  )
+                  return (
+                    <Field key={id}>
+                      <FieldLabel>
+                        {options.toolIds.find((p) => p.id === id)?.name}
+                      </FieldLabel>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          disabled={importedExpert}
+                          checked={settings?.required ?? true}
+                          onCheckedChange={(checked) =>
+                            updateConnector(id, { required: checked })
+                          }
+                        />
+                        {t("resources.requiredConnector")}
+                      </label>
+                      <Input
+                        aria-label={t("resources.allowTools")}
+                        placeholder={t("resources.allowTools")}
+                        value={(settings?.tool_allowlist ?? []).join(",")}
+                        onChange={(e) =>
+                          updateConnector(id, {
+                            tool_allowlist: e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                      <Input
+                        aria-label={t("resources.denyTools")}
+                        placeholder={t("resources.denyTools")}
+                        value={(settings?.tool_denylist ?? []).join(",")}
+                        onChange={(e) =>
+                          updateConnector(id, {
+                            tool_denylist: e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                    </Field>
+                  )
+                })}
+              </fieldset>
             </FieldGroup>
             <ResourceNotice
               error={remote.error || subjects.error}
               loading={false}
               pending={remote.pending}
             />
-            <DialogFooter>
+            <ResourceEditorFooter
+              id="imported-expert-readonly"
+              reason={
+                importedExpert
+                  ? t("resources.importedExpertReadOnly")
+                  : undefined
+              }
+            >
               <DialogClose render={<Button type="button" variant="outline" />}>
                 {t("pages.experts.cancel")}
               </DialogClose>
@@ -813,7 +820,7 @@ export function ExpertsPage() {
                   ? t("pages.experts.save")
                   : t("pages.experts.create")}
               </Button>
-            </DialogFooter>
+            </ResourceEditorFooter>
           </form>
         </DialogContent>
       </Dialog>

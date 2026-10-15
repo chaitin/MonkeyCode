@@ -111,6 +111,31 @@ export function saveResource(path: string, body: unknown, revision?: number) {
     body: JSON.stringify(body),
   })
 }
+export function savePackageGrants(
+  kind: "skill" | "rule" | "connector" | "expert",
+  resource: Pick<ResourceRow, "id" | "revision" | "grants">,
+  authorization: AuthorizationSelection,
+  required = false
+) {
+  const key = (grant: Grant) =>
+    grant.group_id ? `group:${grant.group_id}` : `user:${grant.user_id}`
+  const requirements = new Map(
+    resource.grants.map((grant) => [key(grant), grant.usage_requirement])
+  )
+  const scope = grants(authorization, required).map((grant) => ({
+    ...grant,
+    usage_requirement: requirements.get(key(grant)) ?? grant.usage_requirement,
+  }))
+  return api<{ grants: Grant[]; revision: number }>(
+    `${base}/resources/${kind}/${resource.id}/grants`,
+    {
+      method: "PUT",
+      headers: match(resource.revision),
+      body: JSON.stringify({ grants: scope }),
+    }
+  )
+}
+
 export function useResources<T>(
   path: string,
   convert: (row: ResourceRow) => T

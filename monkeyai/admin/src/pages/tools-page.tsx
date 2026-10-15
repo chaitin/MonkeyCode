@@ -8,6 +8,7 @@ import {
   selection,
   match,
   saveResource,
+  savePackageGrants,
   useSubjects,
   type ResourceRow,
   type Credential,
@@ -27,7 +28,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
-import { PackageGrants } from "@/components/package-grants"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -57,7 +58,6 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -146,6 +146,7 @@ type McpServer = {
   publisher?: string
   retired?: boolean
   iconPath: string
+  grants: ResourceRow["grants"]
   revision: number
   credentials: Credential[]
   oauthConfig: Record<string, string>
@@ -177,6 +178,7 @@ function toServer(row: ResourceRow): McpServer {
     publisher: row.publisher,
     retired: row.retired,
     revision: row.revision,
+    grants: row.grants,
     iconPath: row.icon_path,
     credentials: row.credentials ?? [],
     name: row.name,
@@ -251,6 +253,8 @@ export function ToolsPage() {
     null
   )
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
+  const importedServer = editingServer?.origin === "package"
+  const readOnlyTools = viewingServer?.origin === "package"
   const manualOAuthConfig =
     editingServer?.oauthConfig.mode === "dynamic"
       ? {}
@@ -286,6 +290,7 @@ export function ToolsPage() {
   ]
 
   const setConnectionEnabled = async (server: McpServer) => {
+    if (server.origin === "package") return
     await remote.run(async () => {
       await api(base + `/connectors/${server.id}/enabled`, {
         method: "PATCH",
@@ -328,6 +333,13 @@ export function ToolsPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (editingServer?.origin === "package") {
+      await remote.run(async () => {
+        await savePackageGrants("connector", editingServer, authorization)
+        handleDialogOpenChange(false)
+      }, t("resources.operationCompleted"))
+      return
+    }
     const form = event.currentTarget
     const formData = new FormData(form)
     const name = String(formData.get("name") ?? "").trim()
@@ -389,7 +401,8 @@ export function ToolsPage() {
     }, t("resources.operationCompleted"))
   }
   const handleDeleteServer = async () => {
-    if (!serverPendingDeletion) return
+    if (!serverPendingDeletion || serverPendingDeletion.origin === "package")
+      return
     await remote.run(async () => {
       await api(base + `/connectors/${serverPendingDeletion.id}`, {
         method: "DELETE",
@@ -455,7 +468,7 @@ export function ToolsPage() {
   }
 
   const handleSaveTools = async () => {
-    if (!viewingServer) return
+    if (!viewingServer || viewingServer.origin === "package") return
     await remote.run(async () => {
       for (const tool of toolDrafts) {
         await api(base + `/connectors/${viewingServer.id}/tools/${tool.id}`, {
@@ -498,6 +511,9 @@ export function ToolsPage() {
                 <DialogContent
                   className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
                   closeLabel={t("common.close")}
+                  aria-describedby={
+                    importedServer ? "imported-connector-readonly" : undefined
+                  }
                 >
                   <form
                     className="flex flex-col gap-6"
@@ -517,305 +533,8 @@ export function ToolsPage() {
 
                     <FieldGroup className="gap-4">
                       <Field>
-                        <FieldLabel htmlFor="mcp-name">
-                          {t("pages.tools.name")}
-                        </FieldLabel>
-                        <Input
-                          defaultValue={editingServer?.name}
-                          id="mcp-name"
-                          name="name"
-                          placeholder={t("pages.tools.namePlaceholder")}
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-icon">
-                          {t("resources.connectorIcon")}
-                        </FieldLabel>
-                        <Input
-                          id="mcp-icon"
-                          name="icon"
-                          type="file"
-                          accept="image/png,image/jpeg"
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-description">
-                          {t("pages.tools.toolDescription")}
-                        </FieldLabel>
-                        <Textarea
-                          className="max-h-40 min-h-24 resize-y overflow-y-auto"
-                          defaultValue={editingServer?.description}
-                          id="mcp-description"
-                          name="description"
-                          placeholder={t("pages.tools.descriptionPlaceholder")}
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-tags">
-                          {t("pages.skills.tags")}
-                        </FieldLabel>
-                        <SkillTagSelect
-                          id="mcp-tags"
-                          open={tagsOpen}
-                          options={availableTags}
-                          placeholder={t("pages.skills.tagsPlaceholder")}
-                          value={tagIds}
-                          onOpenChange={setTagsOpen}
-                          onValueChange={setTagIds}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-url">
-                          {t("pages.tools.url")}
-                        </FieldLabel>
-                        <Input
-                          defaultValue={editingServer?.url}
-                          id="mcp-url"
-                          name="url"
-                          placeholder={t("pages.tools.urlPlaceholder")}
-                          required
-                          type="url"
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-proxy">
-                          {t("pages.otherSettings.proxies.title", {
-                            defaultValue: "系统代理",
-                          })}
-                        </FieldLabel>
-                        <SystemProxySelect
-                          id="mcp-proxy"
-                          selected={editingServer?.proxyId ?? ""}
-                          proxies={proxies}
-                        />
-                        {proxyError && (
-                          <p role="alert" className="text-destructive">
-                            {proxyError}
-                          </p>
-                        )}
-                      </Field>
-                      <Field>
-                        <FieldLabel>
-                          {t("pages.tools.authorization")}
-                        </FieldLabel>
-                        <div className="flex flex-wrap gap-3">
-                          <Tabs
-                            value={authorizationMode}
-                            onValueChange={(value) => {
-                              setAuthorizationMode(
-                                value as McpAuthorizationMode
-                              )
-                            }}
-                          >
-                            <TabsList
-                              aria-label={t("pages.tools.authorizationMode")}
-                              className="w-full"
-                            >
-                              <TabsTrigger value="none">
-                                {t("pages.tools.authorizationModes.none")}
-                              </TabsTrigger>
-                              <TabsTrigger value="independent">
-                                {t(
-                                  "pages.tools.authorizationModes.independent"
-                                )}
-                              </TabsTrigger>
-                              <TabsTrigger value="centralized">
-                                {t(
-                                  "pages.tools.authorizationModes.centralized"
-                                )}
-                              </TabsTrigger>
-                            </TabsList>
-                          </Tabs>
-                          {authorizationMode !== "none" && (
-                            <Tabs
-                              value={authorizationMethod}
-                              onValueChange={(value) => {
-                                setAuthorizationMethod(
-                                  value as McpAuthorizationMethod
-                                )
-                              }}
-                            >
-                              <TabsList
-                                aria-label={t(
-                                  "pages.tools.authorizationMethod"
-                                )}
-                                className="w-full"
-                              >
-                                <TabsTrigger value="oauth">
-                                  {t("pages.tools.authorizationMethods.oauth")}
-                                </TabsTrigger>
-                                <TabsTrigger value="httpHeader">
-                                  {t(
-                                    "pages.tools.authorizationMethods.httpHeader"
-                                  )}
-                                </TabsTrigger>
-                              </TabsList>
-                            </Tabs>
-                          )}
-                        </div>
-                        <FieldDescription>
-                          {t(
-                            authorizationMode === "none"
-                              ? "pages.tools.noAuthorizationDescription"
-                              : authorizationMode === "independent"
-                                ? "pages.tools.independentAuthorizationDescription"
-                                : "pages.tools.centralizedAuthorizationDescription"
-                          )}
-                        </FieldDescription>
-                        {authorizationMode !== "none" &&
-                          authorizationMethod === "oauth" && (
-                            <>
-                              <Tabs
-                                value={oauthClientMode}
-                                onValueChange={(value) =>
-                                  setOAuthClientMode(value as OAuthClientMode)
-                                }
-                              >
-                                <TabsList
-                                  aria-label={t("resources.oauthClientMode")}
-                                >
-                                  <TabsTrigger value="dynamic">
-                                    {t("resources.oauthClientDynamic")}
-                                  </TabsTrigger>
-                                  <TabsTrigger value="manual">
-                                    {t("resources.oauthClientManual")}
-                                  </TabsTrigger>
-                                </TabsList>
-                              </Tabs>
-                              {oauthClientMode === "dynamic" ? (
-                                <FieldDescription>
-                                  {t("resources.oauthDiscoveryHint")}
-                                </FieldDescription>
-                              ) : (
-                                <>
-                                  {editingServer?.callbackURL ? (
-                                    <Field>
-                                      <FieldLabel htmlFor="mcp-callback-url">
-                                        {t("resources.callbackURL")}
-                                      </FieldLabel>
-                                      <Input
-                                        id="mcp-callback-url"
-                                        readOnly
-                                        value={editingServer.callbackURL}
-                                        onFocus={(event) =>
-                                          event.currentTarget.select()
-                                        }
-                                      />
-                                      <FieldDescription>
-                                        {t("resources.callbackURLDescription")}
-                                      </FieldDescription>
-                                    </Field>
-                                  ) : (
-                                    <p className="text-sm text-muted-foreground">
-                                      {t("resources.saveBeforeAuthorize")}
-                                    </p>
-                                  )}
-                                  {(
-                                    [
-                                      [
-                                        "oauthAuthorizationURL",
-                                        "authorization_url",
-                                        "OAuth Authorization URL",
-                                      ],
-                                      [
-                                        "oauthTokenURL",
-                                        "token_url",
-                                        "OAuth Token URL",
-                                      ],
-                                      [
-                                        "oauthClientID",
-                                        "client_id",
-                                        "OAuth Client ID",
-                                      ],
-                                      [
-                                        "oauthRegistrationURL",
-                                        "registration_url",
-                                        "OAuth Registration URL",
-                                      ],
-                                      ["oauthScopes", "scopes", "OAuth Scopes"],
-                                      [
-                                        "oauthClientSecret",
-                                        "secret",
-                                        "OAuth Client Secret",
-                                      ],
-                                    ] as const
-                                  )
-                                    .filter(
-                                      ([, key]) =>
-                                        key !== "registration_url" ||
-                                        manualOAuthConfig.registration_url
-                                    )
-                                    .map(([name, key, label]) => (
-                                      <Field key={name}>
-                                        <FieldLabel htmlFor={name}>
-                                          {label}
-                                        </FieldLabel>
-                                        <Input
-                                          id={name}
-                                          name={name}
-                                          type={
-                                            key === "secret"
-                                              ? "password"
-                                              : "text"
-                                          }
-                                          defaultValue={
-                                            manualOAuthConfig[key] ?? ""
-                                          }
-                                          required={[
-                                            "authorization_url",
-                                            "token_url",
-                                            ...(!manualOAuthConfig.registration_url
-                                              ? ["client_id"]
-                                              : []),
-                                          ].includes(key)}
-                                        />
-                                      </Field>
-                                    ))}
-                                  <Field>
-                                    <FieldLabel htmlFor="oauthTokenAuthMethod">
-                                      {t("resources.oauthTokenAuthMethod")}
-                                    </FieldLabel>
-                                    <Select
-                                      name="oauthTokenAuthMethod"
-                                      items={oauthTokenAuthItems}
-                                      defaultValue={
-                                        manualOAuthConfig.token_endpoint_auth_method ||
-                                        DEFAULT_TOKEN_AUTH_METHOD
-                                      }
-                                    >
-                                      <SelectTrigger
-                                        id="oauthTokenAuthMethod"
-                                        className="w-full"
-                                      >
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent
-                                        alignItemWithTrigger={false}
-                                        align="start"
-                                      >
-                                        <SelectGroup>
-                                          {oauthTokenAuthItems.map((item) => (
-                                            <SelectItem
-                                              key={item.value}
-                                              value={item.value}
-                                            >
-                                              {item.label}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectGroup>
-                                      </SelectContent>
-                                    </Select>
-                                  </Field>
-                                </>
-                              )}
-                            </>
-                          )}
-                      </Field>
-                      <Field>
                         <FieldLabel htmlFor="mcp-authorization">
-                          {t("pages.tools.availabilityScope")}
+                          {t("resources.availableScope")}
                         </FieldLabel>
                         <AuthorizationSelect
                           groups={subjects.groups}
@@ -825,7 +544,7 @@ export function ToolsPage() {
                           placeholder={t(
                             "pages.tools.authorizationPlaceholder"
                           )}
-                          title={t("pages.tools.availabilityScope")}
+                          title={t("resources.availableScope")}
                           value={authorization}
                           onOpenChange={setAuthorizationOpen}
                           onValueChange={setAuthorization}
@@ -833,7 +552,321 @@ export function ToolsPage() {
                         <FieldDescription>
                           {t("pages.tools.availabilityScopeDescription")}
                         </FieldDescription>
+                        {importedServer && editingServer.retired && (
+                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                            {t("resources.retiredGrantsOnly")}
+                          </p>
+                        )}
                       </Field>
+                      <fieldset disabled={importedServer} className="contents">
+                        <Field>
+                          <FieldLabel htmlFor="mcp-name">
+                            {t("pages.tools.name")}
+                          </FieldLabel>
+                          <Input
+                            defaultValue={editingServer?.name}
+                            id="mcp-name"
+                            name="name"
+                            placeholder={t("pages.tools.namePlaceholder")}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-icon">
+                            {t("resources.connectorIcon")}
+                          </FieldLabel>
+                          <Input
+                            id="mcp-icon"
+                            name="icon"
+                            type="file"
+                            accept="image/png,image/jpeg"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-description">
+                            {t("pages.tools.toolDescription")}
+                          </FieldLabel>
+                          <Textarea
+                            className="max-h-40 min-h-24 resize-y overflow-y-auto"
+                            defaultValue={editingServer?.description}
+                            id="mcp-description"
+                            name="description"
+                            placeholder={t(
+                              "pages.tools.descriptionPlaceholder"
+                            )}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-tags">
+                            {t("pages.skills.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="mcp-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t("pages.skills.tagsPlaceholder")}
+                            value={tagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setTagIds}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-url">
+                            {t("pages.tools.url")}
+                          </FieldLabel>
+                          <Input
+                            defaultValue={editingServer?.url}
+                            id="mcp-url"
+                            name="url"
+                            placeholder={t("pages.tools.urlPlaceholder")}
+                            required
+                            type="url"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-proxy">
+                            {t("pages.otherSettings.proxies.title", {
+                              defaultValue: "系统代理",
+                            })}
+                          </FieldLabel>
+                          <SystemProxySelect
+                            id="mcp-proxy"
+                            selected={editingServer?.proxyId ?? ""}
+                            proxies={proxies}
+                          />
+                          {proxyError && (
+                            <p role="alert" className="text-destructive">
+                              {proxyError}
+                            </p>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel>
+                            {t("pages.tools.authorization")}
+                          </FieldLabel>
+                          <div className="flex flex-wrap gap-3">
+                            <Tabs
+                              value={authorizationMode}
+                              onValueChange={(value) => {
+                                setAuthorizationMode(
+                                  value as McpAuthorizationMode
+                                )
+                              }}
+                            >
+                              <TabsList
+                                aria-label={t("pages.tools.authorizationMode")}
+                                className="w-full"
+                              >
+                                <TabsTrigger value="none">
+                                  {t("pages.tools.authorizationModes.none")}
+                                </TabsTrigger>
+                                <TabsTrigger value="independent">
+                                  {t(
+                                    "pages.tools.authorizationModes.independent"
+                                  )}
+                                </TabsTrigger>
+                                <TabsTrigger value="centralized">
+                                  {t(
+                                    "pages.tools.authorizationModes.centralized"
+                                  )}
+                                </TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                            {authorizationMode !== "none" && (
+                              <Tabs
+                                value={authorizationMethod}
+                                onValueChange={(value) => {
+                                  setAuthorizationMethod(
+                                    value as McpAuthorizationMethod
+                                  )
+                                }}
+                              >
+                                <TabsList
+                                  aria-label={t(
+                                    "pages.tools.authorizationMethod"
+                                  )}
+                                  className="w-full"
+                                >
+                                  <TabsTrigger value="oauth">
+                                    {t(
+                                      "pages.tools.authorizationMethods.oauth"
+                                    )}
+                                  </TabsTrigger>
+                                  <TabsTrigger value="httpHeader">
+                                    {t(
+                                      "pages.tools.authorizationMethods.httpHeader"
+                                    )}
+                                  </TabsTrigger>
+                                </TabsList>
+                              </Tabs>
+                            )}
+                          </div>
+                          <FieldDescription>
+                            {t(
+                              authorizationMode === "none"
+                                ? "pages.tools.noAuthorizationDescription"
+                                : authorizationMode === "independent"
+                                  ? "pages.tools.independentAuthorizationDescription"
+                                  : "pages.tools.centralizedAuthorizationDescription"
+                            )}
+                          </FieldDescription>
+                          {authorizationMode !== "none" &&
+                            authorizationMethod === "oauth" && (
+                              <>
+                                <Tabs
+                                  value={oauthClientMode}
+                                  onValueChange={(value) =>
+                                    setOAuthClientMode(value as OAuthClientMode)
+                                  }
+                                >
+                                  <TabsList
+                                    aria-label={t("resources.oauthClientMode")}
+                                  >
+                                    <TabsTrigger value="dynamic">
+                                      {t("resources.oauthClientDynamic")}
+                                    </TabsTrigger>
+                                    <TabsTrigger value="manual">
+                                      {t("resources.oauthClientManual")}
+                                    </TabsTrigger>
+                                  </TabsList>
+                                </Tabs>
+                                {oauthClientMode === "dynamic" ? (
+                                  <FieldDescription>
+                                    {t("resources.oauthDiscoveryHint")}
+                                  </FieldDescription>
+                                ) : (
+                                  <>
+                                    {editingServer?.callbackURL ? (
+                                      <Field>
+                                        <FieldLabel htmlFor="mcp-callback-url">
+                                          {t("resources.callbackURL")}
+                                        </FieldLabel>
+                                        <Input
+                                          id="mcp-callback-url"
+                                          readOnly
+                                          value={editingServer.callbackURL}
+                                          onFocus={(event) =>
+                                            event.currentTarget.select()
+                                          }
+                                        />
+                                        <FieldDescription>
+                                          {t(
+                                            "resources.callbackURLDescription"
+                                          )}
+                                        </FieldDescription>
+                                      </Field>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground">
+                                        {t("resources.saveBeforeAuthorize")}
+                                      </p>
+                                    )}
+                                    {(
+                                      [
+                                        [
+                                          "oauthAuthorizationURL",
+                                          "authorization_url",
+                                          "OAuth Authorization URL",
+                                        ],
+                                        [
+                                          "oauthTokenURL",
+                                          "token_url",
+                                          "OAuth Token URL",
+                                        ],
+                                        [
+                                          "oauthClientID",
+                                          "client_id",
+                                          "OAuth Client ID",
+                                        ],
+                                        [
+                                          "oauthRegistrationURL",
+                                          "registration_url",
+                                          "OAuth Registration URL",
+                                        ],
+                                        [
+                                          "oauthScopes",
+                                          "scopes",
+                                          "OAuth Scopes",
+                                        ],
+                                        [
+                                          "oauthClientSecret",
+                                          "secret",
+                                          "OAuth Client Secret",
+                                        ],
+                                      ] as const
+                                    )
+                                      .filter(
+                                        ([, key]) =>
+                                          key !== "registration_url" ||
+                                          manualOAuthConfig.registration_url
+                                      )
+                                      .map(([name, key, label]) => (
+                                        <Field key={name}>
+                                          <FieldLabel htmlFor={name}>
+                                            {label}
+                                          </FieldLabel>
+                                          <Input
+                                            id={name}
+                                            name={name}
+                                            type={
+                                              key === "secret"
+                                                ? "password"
+                                                : "text"
+                                            }
+                                            defaultValue={
+                                              manualOAuthConfig[key] ?? ""
+                                            }
+                                            required={[
+                                              "authorization_url",
+                                              "token_url",
+                                              ...(!manualOAuthConfig.registration_url
+                                                ? ["client_id"]
+                                                : []),
+                                            ].includes(key)}
+                                          />
+                                        </Field>
+                                      ))}
+                                    <Field>
+                                      <FieldLabel htmlFor="oauthTokenAuthMethod">
+                                        {t("resources.oauthTokenAuthMethod")}
+                                      </FieldLabel>
+                                      <Select
+                                        name="oauthTokenAuthMethod"
+                                        items={oauthTokenAuthItems}
+                                        defaultValue={
+                                          manualOAuthConfig.token_endpoint_auth_method ||
+                                          DEFAULT_TOKEN_AUTH_METHOD
+                                        }
+                                      >
+                                        <SelectTrigger
+                                          id="oauthTokenAuthMethod"
+                                          className="w-full"
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent
+                                          alignItemWithTrigger={false}
+                                          align="start"
+                                        >
+                                          <SelectGroup>
+                                            {oauthTokenAuthItems.map((item) => (
+                                              <SelectItem
+                                                key={item.value}
+                                                value={item.value}
+                                              >
+                                                {item.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                    </Field>
+                                  </>
+                                )}
+                              </>
+                            )}
+                        </Field>
+                      </fieldset>
                     </FieldGroup>
 
                     <ResourceNotice
@@ -841,7 +874,14 @@ export function ToolsPage() {
                       loading={false}
                       pending={remote.pending}
                     />
-                    <DialogFooter>
+                    <ResourceEditorFooter
+                      id="imported-connector-readonly"
+                      reason={
+                        importedServer
+                          ? t("resources.importedConnectorReadOnly")
+                          : undefined
+                      }
+                    >
                       <DialogClose
                         render={<Button type="button" variant="outline" />}
                       >
@@ -852,7 +892,7 @@ export function ToolsPage() {
                           ? t("pages.tools.save")
                           : t("pages.tools.create")}
                       </Button>
-                    </DialogFooter>
+                    </ResourceEditorFooter>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -950,17 +990,15 @@ export function ToolsPage() {
                                 })}
                               </DropdownMenuItem>
                             )}
-                            {server.origin !== "package" && (
-                              <DropdownMenuItem
-                                onClick={() => handleEditServer(server)}
-                              >
-                                <HugeiconsIcon
-                                  icon={Edit02Icon}
-                                  strokeWidth={2}
-                                />
-                                {t("pages.tools.edit")}
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem
+                              onClick={() => handleEditServer(server)}
+                            >
+                              <HugeiconsIcon
+                                icon={Edit02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.tools.edit")}
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={
                                 testingServerId === server.id ||
@@ -979,7 +1017,10 @@ export function ToolsPage() {
                             </DropdownMenuItem>
                           </DropdownMenuGroup>
                           <DropdownMenuSeparator
-                            hidden={server.type !== "system"}
+                            hidden={
+                              server.type !== "system" ||
+                              server.origin === "package"
+                            }
                           />
                           <DropdownMenuGroup
                             hidden={server.origin === "package"}
@@ -1006,16 +1047,6 @@ export function ToolsPage() {
                   </p>
                   {server.origin === "package" && (
                     <>
-                      <PackageGrants
-                        kind="connector"
-                        id={server.id}
-                        name={server.name}
-                        retired={server.retired}
-                        subjects={subjects}
-                        onSaved={() => {
-                          void reload()
-                        }}
-                      />
                       <p className="text-xs text-muted-foreground">
                         {server.authHeaderName
                           ? `凭证 Header：${server.authHeaderName} · `
@@ -1079,6 +1110,9 @@ export function ToolsPage() {
         <DialogContent
           className="max-h-[calc(100dvh-2rem)] sm:max-w-4xl"
           closeLabel={t("common.close")}
+          aria-describedby={
+            readOnlyTools ? "imported-connector-tools-readonly" : undefined
+          }
         >
           <DialogHeader>
             <DialogTitle>
@@ -1163,6 +1197,7 @@ export function ToolsPage() {
                         aria-label={t("pages.tools.toggleTool", {
                           tool: tool.name,
                         })}
+                        disabled={readOnlyTools}
                         checked={tool.enabled}
                         onCheckedChange={(enabled) =>
                           updateToolDraft(tool.id, { enabled })
@@ -1176,7 +1211,7 @@ export function ToolsPage() {
                             tool: tool.name,
                           })}
                           className="h-8"
-                          disabled={!tool.enabled}
+                          disabled={readOnlyTools || !tool.enabled}
                           min="0"
                           step="1"
                           type="number"
@@ -1200,13 +1235,21 @@ export function ToolsPage() {
             loading={false}
             pending={remote.pending}
           />
-          <DialogFooter>
+          <ResourceEditorFooter
+            id="imported-connector-tools-readonly"
+            reason={
+              readOnlyTools
+                ? t("resources.importedConnectorReadOnly")
+                : undefined
+            }
+          >
             <DialogClose render={<Button type="button" variant="outline" />}>
               {t("pages.tools.cancel")}
             </DialogClose>
             <Button
               disabled={
                 remote.pending ||
+                readOnlyTools ||
                 toolDrafts.some(
                   (tool) =>
                     !Number.isFinite(tool.pointsPerCall) ||
@@ -1218,7 +1261,7 @@ export function ToolsPage() {
             >
               {t("pages.tools.saveToolSettings")}
             </Button>
-          </DialogFooter>
+          </ResourceEditorFooter>
         </DialogContent>
       </Dialog>
 

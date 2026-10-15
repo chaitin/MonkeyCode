@@ -5,10 +5,12 @@ import {
   selection,
   match,
   saveResource,
+  savePackageGrants,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import {
   RULE_PAGE_SIZE,
   useRulePage,
@@ -53,7 +55,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -191,26 +192,12 @@ export function RulesPage() {
     const data = new FormData(event.currentTarget)
     await remote.run(async () => {
       if (editingRule?.origin === "package") {
-        const grantKey = (grant: ResourceRow["grants"][number]) =>
-          grant.group_id ? `group:${grant.group_id}` : `user:${grant.user_id}`
-        const requirements = new Map(
-          editingRule.grants.map((grant) => [
-            grantKey(grant),
-            grant.usage_requirement,
-          ])
+        await savePackageGrants(
+          "rule",
+          editingRule,
+          authorization,
+          editingRule.forced
         )
-        const scope = grants(authorization, editingRule.forced).map(
-          (grant) => ({
-            ...grant,
-            usage_requirement:
-              requirements.get(grantKey(grant)) ?? grant.usage_requirement,
-          })
-        )
-        await api(`${base}/resources/rule/${editingRule.id}/grants`, {
-          method: "PUT",
-          headers: match(editingRule.revision),
-          body: JSON.stringify({ grants: scope }),
-        })
       } else {
         await saveResource(
           editingRule ? `/rules/${editingRule.id}` : "/rules",
@@ -318,7 +305,7 @@ export function RulesPage() {
                       />
                       {importedRule && editingRule?.retired && (
                         <p className="text-sm text-amber-700">
-                          资源已退役，仅可撤销旧授权，不能新增授权。
+                          {t("resources.retiredGrantsOnly")}
                         </p>
                       )}
                     </Field>
@@ -371,28 +358,25 @@ export function RulesPage() {
                     loading={false}
                     pending={remote.pending}
                   />
-                  <DialogFooter className="flex-col sm:items-center">
-                    {importedRule && (
-                      <p
-                        id="imported-rule-readonly"
-                        className="min-w-0 flex-1 text-start text-sm text-red-600 dark:text-red-400"
-                      >
-                        {t("resources.importedRuleReadOnly")}
-                      </p>
-                    )}
-                    <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
-                      <DialogClose
-                        render={<Button type="button" variant="outline" />}
-                      >
-                        {t("pages.rules.cancel")}
-                      </DialogClose>
-                      <Button type="submit" disabled={remote.pending}>
-                        {editingRule
-                          ? t("pages.rules.save")
-                          : t("pages.rules.create")}
-                      </Button>
-                    </div>
-                  </DialogFooter>
+                  <ResourceEditorFooter
+                    id="imported-rule-readonly"
+                    reason={
+                      importedRule
+                        ? t("resources.importedRuleReadOnly")
+                        : undefined
+                    }
+                  >
+                    <DialogClose
+                      render={<Button type="button" variant="outline" />}
+                    >
+                      {t("pages.rules.cancel")}
+                    </DialogClose>
+                    <Button type="submit" disabled={remote.pending}>
+                      {editingRule
+                        ? t("pages.rules.save")
+                        : t("pages.rules.create")}
+                    </Button>
+                  </ResourceEditorFooter>
                 </form>
               </DialogContent>
             </Dialog>
