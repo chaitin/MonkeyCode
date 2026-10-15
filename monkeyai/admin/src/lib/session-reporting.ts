@@ -126,6 +126,7 @@ export type ReportResourceRow = Pick<
   ReportResource,
   "kind" | "resource_id" | "version"
 > & {
+  resource_name: string
   user_id: string
   user_name: string
   user_email: string

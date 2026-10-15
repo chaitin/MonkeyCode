@@ -101,6 +101,8 @@ paths:
         包含符合条件的子会话，时间范围为 [from, until)，默认最近 24 小时。
         user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id 及资源筛选组合。
         资源 ID 和版本按精确值筛选，包含仅有工具调用、没有资源快照条目的资源。
+        resource_name 优先采用未删除的后台资源名称，其次采用筛选范围内该用户、资源及版本的最新非空上报名称，最后回退到原始 ID。
+        内置工具始终以原始 ID 作为 resource_name；名称不参与分组、排序或 ID 筛选。
         游标与全部筛选条件绑定，旧的跨用户资源聚合游标不再适用。
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
@@ -5283,13 +5285,14 @@ components:
         data_freshness_seconds: {type: number, minimum: 0, nullable: true}
     StatisticsResourceUsageRow:
       type: object
-      required: [user_id, user_name, user_email, kind, resource_id, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
+      required: [user_id, user_name, user_email, kind, resource_id, resource_name, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
       properties:
         user_id: {type: string, format: uuid, description: 会话所属用户 ID。}
         user_name: {type: string, description: 用户当前名称。}
         user_email: {type: string, description: 用户当前邮箱。}
         kind: {type: string}
         resource_id: {type: string}
+        resource_name: {type: string, description: 后台配置名称、最新非空上报名称或原始 ID；内置工具保留原始 ID。}
         version: {type: string, nullable: true}
         enabled_sessions: {type: integer, minimum: 0}
         available_sessions: {type: integer, minimum: 0}

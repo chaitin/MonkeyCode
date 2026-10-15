@@ -558,7 +558,7 @@ cohort AS (
         AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
         AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
 ), turns AS (
-    SELECT t.session_id,t.turn_index,t.resources_snapshot_id,s.owner_user_id AS user_id
+    SELECT t.session_id,t.turn_index,t.resources_snapshot_id,t.started_at,s.owner_user_id AS user_id
     FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
     WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
         AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
@@ -596,13 +596,54 @@ cohort AS (
     SELECT c.user_id, c.kind, c.resource_id, c.version, c.enabled_sessions, c.available_sessions, c.used_sessions, c.calls, c.failed,u.name AS user_name,u.email AS user_email,
         jsonb_build_array(c.kind,c.resource_id,c.version,c.user_id)::text AS sort_key
     FROM combined c JOIN users u ON u.id = c.user_id
+), paged AS (
+    SELECT o.user_id, o.kind, o.resource_id, o.version, o.enabled_sessions, o.available_sessions, o.used_sessions, o.calls, o.failed, o.user_name, o.user_email, o.sort_key,CASE WHEN o.resource_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        THEN o.resource_id::uuid END AS catalog_id
+    FROM ordered o CROSS JOIN opts p
+    WHERE o.sort_key > coalesce(p.f->>'cursor_key','')
+    ORDER BY o.sort_key LIMIT ($1::jsonb->>'limit')::integer + 1
+), reported_names AS (
+    SELECT DISTINCT ON (n.user_id,n.kind,n.resource_id,n.version)
+        n.user_id,n.kind,n.resource_id,n.version,n.name
+    FROM (
+        SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(i.name),'') AS name,
+            t.started_at,t.session_id,t.turn_index,0 AS source_priority,0 AS ordinal
+        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
+            AND i.kind = p.kind AND i.resource_id = p.resource_id AND i.version IS NOT DISTINCT FROM p.version
+        WHERE p.kind <> 'builtin'
+        UNION ALL
+        SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(v.name),''),
+            t.started_at,t.session_id,t.turn_index,2,v.ordinal
+        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        JOIN session_turn_tools v ON v.session_id = t.session_id AND v.turn_index = t.turn_index
+            AND v.category = p.kind AND v.resource_id = p.resource_id AND v.resource_version IS NOT DISTINCT FROM p.version
+        WHERE p.kind <> 'builtin'
+        UNION ALL
+        SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(e.name),''),
+            t.started_at,t.session_id,t.turn_index,1,e.ordinal
+        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        JOIN session_skill_events e ON e.session_id = t.session_id AND e.turn_index = t.turn_index
+            AND p.kind = 'skill' AND e.skill_id = p.resource_id AND e.version IS NOT DISTINCT FROM p.version
+    ) n
+    WHERE n.name IS NOT NULL
+    ORDER BY n.user_id,n.kind,n.resource_id,n.version,n.started_at DESC,n.session_id DESC,n.turn_index DESC,n.source_priority,n.ordinal DESC
 )
-SELECT jsonb_build_object('kind',kind,'resource_id',resource_id,'version',version,'sort_key',sort_key,
-    'user_id',user_id,'user_name',user_name,'user_email',user_email,
-    'enabled_sessions',enabled_sessions,'available_sessions',available_sessions,'used_sessions',used_sessions,
-    'calls',calls,'failed',failed,'failure_rate',100.0*failed/NULLIF(calls,0))
-FROM ordered CROSS JOIN opts p
-WHERE sort_key > coalesce(p.f->>'cursor_key','') ORDER BY sort_key LIMIT ($1::jsonb->>'limit')::integer + 1
+SELECT jsonb_build_object('kind',p.kind,'resource_id',p.resource_id,'version',p.version,'sort_key',p.sort_key,
+    'resource_name',CASE WHEN p.kind = 'builtin' THEN p.resource_id ELSE coalesce(
+        nullif(btrim(m.display_name),''),nullif(btrim(r.name),''),nullif(btrim(sk.name),''),
+        nullif(btrim(ex.name),''),nullif(btrim(cn.name),''),n.name,p.resource_id) END,
+    'user_id',p.user_id,'user_name',p.user_name,'user_email',p.user_email,
+    'enabled_sessions',p.enabled_sessions,'available_sessions',p.available_sessions,'used_sessions',p.used_sessions,
+    'calls',p.calls,'failed',p.failed,'failure_rate',100.0*p.failed/NULLIF(p.calls,0))
+FROM paged p
+LEFT JOIN models m ON p.kind = 'model' AND m.id = p.catalog_id AND m.deleted_at IS NULL
+LEFT JOIN rules r ON p.kind = 'rule' AND r.id = p.catalog_id AND r.deleted_at IS NULL
+LEFT JOIN skills sk ON p.kind = 'skill' AND sk.id = p.catalog_id AND sk.deleted_at IS NULL
+LEFT JOIN experts ex ON p.kind = 'expert' AND ex.id = p.catalog_id AND ex.deleted_at IS NULL
+LEFT JOIN connectors cn ON p.kind = 'connector' AND cn.id = p.catalog_id AND cn.deleted_at IS NULL
+LEFT JOIN reported_names n ON n.user_id = p.user_id AND n.kind = p.kind AND n.resource_id = p.resource_id AND n.version IS NOT DISTINCT FROM p.version
+ORDER BY p.sort_key
 `
 
 func (q *Queries) ReportingResources(ctx context.Context, filters []byte) ([][]byte, error) {

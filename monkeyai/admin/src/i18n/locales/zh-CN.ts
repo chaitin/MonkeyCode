@@ -455,6 +455,7 @@ export const zhCN = {
         platform: "平台",
         outcome: "结局",
         resource_id: "资源 ID",
+        resource_name: "资源名称",
         resource_version: "资源版本",
         include_placeholders: "包含占位会话",
         session_id: "会话 ID",

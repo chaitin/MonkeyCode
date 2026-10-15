@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
   User02Icon,
@@ -60,7 +61,7 @@ import {
 const key = "pages.sessionReporting"
 const columns = [
   "kind",
-  "resource_id",
+  "resource_name",
   "user",
   "version",
   "enabled_sessions",
@@ -78,6 +79,7 @@ export function ResourceAnalysisPage() {
   const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
+  const [showDateRange, setShowDateRange] = useState(false)
   const [userQuery, setUserQuery] = useState("")
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [resourceID, setResourceID] = useState("")
@@ -183,6 +185,7 @@ export function ResourceAnalysisPage() {
         startOfLocalDay(startDay) > startOfLocalDay(endDay))
     ) {
       setInvalidRange(true)
+      setShowDateRange(true)
       return
     }
     const timeWindow = defaultWindow()
@@ -208,10 +211,11 @@ export function ResourceAnalysisPage() {
 
   function renderCell(row: ReportResourceRow, column: ResourceColumn) {
     if (column === "kind") return <ReportKind value={row.kind} />
-    if (column === "resource_id") {
+    if (column === "resource_name") {
       return (
         <button
           type="button"
+          title={`${t(`${key}.fields.resource_id`)}: ${row.resource_id}`}
           className="cursor-pointer rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover]:underline"
           onClick={() => {
             setResourceID(row.resource_id)
@@ -219,7 +223,7 @@ export function ResourceAnalysisPage() {
             search(row.resource_id)
           }}
         >
-          <ReportValue value={row.resource_id} />
+          <ReportValue value={row.resource_name || row.resource_id} />
         </button>
       )
     }
@@ -277,26 +281,30 @@ export function ResourceAnalysisPage() {
             onSubmit={applySearch}
             className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
           >
-            <DatePickerField
-              id="resource-analysis-from"
-              className="w-32 sm:w-32"
-              label={t("audit.since")}
-              placeholder={t("audit.since")}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              value={startDay}
-              onChange={setStartDay}
-              disabled={endDay ? { after: endDay } : undefined}
-            />
-            <DatePickerField
-              id="resource-analysis-until"
-              className="w-32 sm:w-32"
-              label={t("audit.until")}
-              placeholder={t("audit.until")}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              value={endDay}
-              onChange={setEndDay}
-              disabled={startDay ? { before: startDay } : undefined}
-            />
+            {showDateRange && (
+              <>
+                <DatePickerField
+                  id="resource-analysis-from"
+                  className="w-32 sm:w-32"
+                  label={t("audit.since")}
+                  placeholder={t("audit.since")}
+                  locale={i18n.resolvedLanguage ?? i18n.language}
+                  value={startDay}
+                  onChange={setStartDay}
+                  disabled={endDay ? { after: endDay } : undefined}
+                />
+                <DatePickerField
+                  id="resource-analysis-until"
+                  className="w-32 sm:w-32"
+                  label={t("audit.until")}
+                  placeholder={t("audit.until")}
+                  locale={i18n.resolvedLanguage ?? i18n.language}
+                  value={endDay}
+                  onChange={setEndDay}
+                  disabled={startDay ? { before: startDay } : undefined}
+                />
+              </>
+            )}
             <Input
               className="w-32"
               placeholder={t(`${key}.fields.user`)}
@@ -314,6 +322,27 @@ export function ResourceAnalysisPage() {
               value={resourceID}
               onChange={(event) => setResourceID(event.target.value)}
             />
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button type="button" variant="outline" />}
+              >
+                <HugeiconsIcon
+                  icon={FilterHorizontalIcon}
+                  data-icon="inline-start"
+                />
+                {t("common.more")}
+              </DropdownMenuTrigger>
+              <DropdownMenuOptionsContent align="start">
+                <DropdownMenuGroup>
+                  <DropdownMenuCheckboxItem
+                    checked={showDateRange}
+                    onCheckedChange={setShowDateRange}
+                  >
+                    {t("audit.since")} – {t("audit.until")}
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuOptionsContent>
+            </DropdownMenu>
             <Button type="submit" disabled={loading || searching}>
               <HugeiconsIcon
                 icon={searching ? Loading03Icon : Search02Icon}
@@ -403,7 +432,7 @@ export function ResourceAnalysisPage() {
                         className={cn(
                           "whitespace-nowrap",
                           column !== "kind" &&
-                            column !== "resource_id" &&
+                            column !== "resource_name" &&
                             column !== "user" &&
                             column !== "version" &&
                             "tabular-nums"

@@ -478,6 +478,7 @@ export const enUS = {
         platform: "Platform",
         outcome: "Outcome",
         resource_id: "Resource ID",
+        resource_name: "Resource name",
         resource_version: "Resource version",
         include_placeholders: "Include placeholders",
         session_id: "Session ID",
