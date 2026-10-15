@@ -462,7 +462,7 @@ export function RulesPage() {
                           </DropdownMenu>
                         </div>
                       </CardHeader>
-                      <CardContent className="min-h-16 flex-1">
+                      <CardContent className="min-h-10 flex-1">
                         <p
                           className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
                           title={rule.content}
