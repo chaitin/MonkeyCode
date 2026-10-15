@@ -1156,20 +1156,20 @@ paths:
           description: 请求来源不允许
   /api/v1/groups:
     get:
-      summary: 搜索可分享的分组
-      description: 按名称不区分大小写进行字面子串匹配，返回未删除分组及名称匹配的虚拟根组，不包含成员信息。根组名称来自 branding.workspace_name，匹配时优先返回且计入 limit。分享给父组可覆盖后代组成员；分享给根组覆盖系统全体用户，包括后续新增用户。
+      summary: 列出或搜索可分享的分组
+      description: 未提供 q 时返回全部未删除分组及虚拟根组；提供非空 q 时按名称不区分大小写进行字面子串匹配，返回未删除分组及名称匹配的虚拟根组，不包含成员信息。根组名称来自 branding.workspace_name，搜索时优先返回且计入 limit。分享给父组可覆盖后代组成员；分享给根组覆盖系统全体用户，包括后续新增用户。
       parameters:
       - in: query
         name: q
-        required: true
-        schema: {type: string, minLength: 1, maxLength: 200}
-        description: 去除首尾空白后长度为 1—200 字节。
+        schema: {type: string}
+        description: 可选的分组名称搜索关键词；省略或去除首尾空白后为空时返回全部分组。
       - in: query
         name: limit
         schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        description: 搜索时返回的最多分组数。
       responses:
         '200':
-          description: 匹配的分组。
+          description: 分组列表。
           content:
             application/json:
               schema: {$ref: '#/components/schemas/SearchGroupsResponse'}

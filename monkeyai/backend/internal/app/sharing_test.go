@@ -239,7 +239,14 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	if _, err := pool.Exec(ctx, `INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, childID, users[1], adminID); err != nil {
 		t.Fatal(err)
 	}
-	call("GET", "/groups", "a", nil, 400)
+	allGroups, _ := call("GET", "/groups", "a", nil, 200)
+	allGroupIDs := map[string]bool{}
+	for _, raw := range allGroups["groups"].([]any) {
+		allGroupIDs[raw.(map[string]any)["id"].(string)] = true
+	}
+	if !allGroupIDs[rootgroup.ID] || !allGroupIDs[groupID] || !allGroupIDs[childID] {
+		t.Fatalf("未查询到全部分组: %v", allGroups)
+	}
 	call("GET", "/groups?q=%E5%88%86%E4%BA%AB&limit=101", "a", nil, 400)
 	foundGroups, _ := call("GET", "/groups?q=%E5%88%86%E4%BA%AB&limit=20", "a", nil, 200)
 	foundIDs := map[string]bool{}
