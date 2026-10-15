@@ -111,6 +111,8 @@ export const zhCN = {
     saving: "正在保存…",
     operationCompleted: "操作已完成。",
     availableScope: "可用范围",
+    importedRuleReadOnly:
+      "此规则由资源包导入，仅可调整可用范围；其他配置请通过更新资源包修改。",
     selectScope: "选择用户或分组",
     oauthClientMode: "OAuth 客户端配置",
     oauthClientDynamic: "动态 Client（自动发现）",

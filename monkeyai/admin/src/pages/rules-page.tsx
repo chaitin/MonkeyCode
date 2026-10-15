@@ -22,7 +22,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
-import { PackageGrants } from "@/components/package-grants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,6 +88,7 @@ type AgentRule = {
   creator: string
   sharedUsers: string[]
   authorization: AuthorizationSelection
+  grants: ResourceRow["grants"]
   forced: boolean
 }
 
@@ -107,6 +107,7 @@ function toRule(row: ResourceRow): AgentRule {
       grant.user ? [grant.user.name || grant.user.email || grant.user.id] : []
     ),
     authorization: selection(row.grants),
+    grants: row.grants,
     forced: row.grants.some((grant) => grant.usage_requirement === "required"),
   }
 }
@@ -122,7 +123,7 @@ export function RulesPage() {
   const subjects = useSubjects()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
   const [rulePendingDeletion, setRulePendingDeletion] =
     useState<AgentRule | null>(null)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
@@ -131,7 +132,7 @@ export function RulesPage() {
   })
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forced, setForced] = useState(false)
-  const editingRule = rules.find((rule) => rule.id === editingRuleId)
+  const importedRule = editingRule?.origin === "package"
 
   const resetRuleOptions = () => {
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -141,7 +142,7 @@ export function RulesPage() {
   const handleDialogOpenChange = (open: boolean) => {
     setDialogOpen(open)
     if (!open) {
-      setEditingRuleId(null)
+      setEditingRule(null)
       resetRuleOptions()
     }
   }
@@ -152,7 +153,7 @@ export function RulesPage() {
     }
 
     setAuthorization(rule.authorization)
-    setEditingRuleId(rule.id)
+    setEditingRule(rule)
     setForced(rule.forced)
     setDialogOpen(true)
   }
@@ -161,20 +162,43 @@ export function RulesPage() {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     await remote.run(async () => {
-      await saveResource(
-        editingRule ? `/rules/${editingRule.id}` : "/rules",
-        {
-          name: String(data.get("name") ?? ""),
-          content: String(data.get("content") ?? ""),
-          grants: grants(authorization, forced),
-        },
-        editingRule?.revision
-      )
+      if (editingRule?.origin === "package") {
+        const grantKey = (grant: ResourceRow["grants"][number]) =>
+          grant.group_id ? `group:${grant.group_id}` : `user:${grant.user_id}`
+        const requirements = new Map(
+          editingRule.grants.map((grant) => [
+            grantKey(grant),
+            grant.usage_requirement,
+          ])
+        )
+        const scope = grants(authorization, editingRule.forced).map(
+          (grant) => ({
+            ...grant,
+            usage_requirement:
+              requirements.get(grantKey(grant)) ?? grant.usage_requirement,
+          })
+        )
+        await api(`${base}/resources/rule/${editingRule.id}/grants`, {
+          method: "PUT",
+          headers: match(editingRule.revision),
+          body: JSON.stringify({ grants: scope }),
+        })
+      } else {
+        await saveResource(
+          editingRule ? `/rules/${editingRule.id}` : "/rules",
+          {
+            name: String(data.get("name") ?? ""),
+            content: String(data.get("content") ?? ""),
+            grants: grants(authorization, forced),
+          },
+          editingRule?.revision
+        )
+      }
       handleDialogOpenChange(false)
     }, t("resources.operationCompleted"))
   }
   const handleDeleteRule = async () => {
-    if (!rulePendingDeletion) return
+    if (!rulePendingDeletion || rulePendingDeletion.origin === "package") return
     await remote.run(async () => {
       await api(base + `/rules/${rulePendingDeletion.id}`, {
         method: "DELETE",
@@ -211,7 +235,7 @@ export function RulesPage() {
                 render={
                   <Button
                     onClick={() => {
-                      setEditingRuleId(null)
+                      setEditingRule(null)
                       resetRuleOptions()
                     }}
                   />
@@ -223,6 +247,9 @@ export function RulesPage() {
               <DialogContent
                 className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
                 closeLabel={t("common.close")}
+                aria-describedby={
+                  importedRule ? "imported-rule-readonly" : undefined
+                }
               >
                 <form
                   key={editingRule?.id ?? "new-rule"}
@@ -250,6 +277,11 @@ export function RulesPage() {
                         title={t("resources.availableScope")}
                         placeholder={t("resources.selectScope")}
                       />
+                      {importedRule && editingRule?.retired && (
+                        <p className="text-sm text-amber-700">
+                          资源已退役，仅可撤销旧授权，不能新增授权。
+                        </p>
+                      )}
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="rule-name">
@@ -259,6 +291,7 @@ export function RulesPage() {
                         id="rule-name"
                         name="name"
                         defaultValue={editingRule?.name}
+                        disabled={importedRule}
                         placeholder={t("pages.rules.namePlaceholder")}
                         required
                       />
@@ -272,6 +305,7 @@ export function RulesPage() {
                         id="rule-content"
                         name="content"
                         defaultValue={editingRule?.content}
+                        disabled={importedRule}
                         placeholder={t("pages.rules.contentPlaceholder")}
                         required
                       />
@@ -280,6 +314,7 @@ export function RulesPage() {
                       <Checkbox
                         id="rule-forced"
                         checked={forced}
+                        disabled={importedRule}
                         onCheckedChange={setForced}
                       />
                       <div className="flex flex-col gap-1">
@@ -297,17 +332,27 @@ export function RulesPage() {
                     loading={false}
                     pending={remote.pending}
                   />
-                  <DialogFooter>
-                    <DialogClose
-                      render={<Button type="button" variant="outline" />}
-                    >
-                      {t("pages.rules.cancel")}
-                    </DialogClose>
-                    <Button type="submit" disabled={remote.pending}>
-                      {editingRule
-                        ? t("pages.rules.save")
-                        : t("pages.rules.create")}
-                    </Button>
+                  <DialogFooter className="flex-col sm:items-center">
+                    {importedRule && (
+                      <p
+                        id="imported-rule-readonly"
+                        className="min-w-0 flex-1 text-start text-sm text-red-600 dark:text-red-400"
+                      >
+                        {t("resources.importedRuleReadOnly")}
+                      </p>
+                    )}
+                    <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
+                      <DialogClose
+                        render={<Button type="button" variant="outline" />}
+                      >
+                        {t("pages.rules.cancel")}
+                      </DialogClose>
+                      <Button type="submit" disabled={remote.pending}>
+                        {editingRule
+                          ? t("pages.rules.save")
+                          : t("pages.rules.create")}
+                      </Button>
+                    </div>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -351,7 +396,10 @@ export function RulesPage() {
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <CardTitle className="truncate" title={rule.name}>
-                              {rule.name} {rule.origin === "package" && <span title={rule.publisher}>· 资源包导入</span>}
+                              {rule.name}{" "}
+                              {rule.origin === "package" && (
+                                <span title={rule.publisher}>· 资源包导入</span>
+                              )}
                             </CardTitle>
                             <CardDescription
                               className="truncate"
@@ -360,59 +408,61 @@ export function RulesPage() {
                               {rule.creator}
                             </CardDescription>
                           </div>
-                          {rule.origin !== "package" && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    aria-label={t("common.more")}
-                                    size="icon-sm"
-                                    type="button"
-                                    variant="ghost"
-                                  />
-                                }
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  aria-label={t("common.more")}
+                                  size="icon-sm"
+                                  type="button"
+                                  variant="ghost"
+                                />
+                              }
+                            >
+                              <HugeiconsIcon
+                                icon={MoreHorizontalIcon}
+                                strokeWidth={2}
+                              />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuGroup
+                                hidden={rule.type !== "system"}
                               >
-                                <HugeiconsIcon
-                                  icon={MoreHorizontalIcon}
-                                  strokeWidth={2}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup
-                                  hidden={rule.type !== "system"}
+                                <DropdownMenuItem
+                                  onClick={() => handleEditRule(rule)}
                                 >
-                                  <DropdownMenuItem
-                                    onClick={() => handleEditRule(rule)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Edit02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.rules.edit")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                                <DropdownMenuSeparator
-                                  hidden={rule.type !== "system"}
-                                />
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => setRulePendingDeletion(rule)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Delete02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.rules.delete")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                                  <HugeiconsIcon
+                                    icon={Edit02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.edit")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                              <DropdownMenuSeparator
+                                hidden={
+                                  rule.type !== "system" ||
+                                  rule.origin === "package"
+                                }
+                              />
+                              <DropdownMenuGroup
+                                hidden={rule.origin === "package"}
+                              >
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setRulePendingDeletion(rule)}
+                                >
+                                  <HugeiconsIcon
+                                    icon={Delete02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </CardHeader>
                       <CardContent className="flex-1">
-                        {rule.origin === "package" && <PackageGrants kind="rule" id={rule.id} name={rule.name} retired={rule.retired} subjects={subjects} onSaved={() => { void remote.reload() }} />}
                         <p
                           className="line-clamp-3 min-h-16 whitespace-pre-wrap text-muted-foreground"
                           title={rule.content}
