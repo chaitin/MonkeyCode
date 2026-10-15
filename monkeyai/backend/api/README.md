@@ -48,13 +48,14 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/v1/users?q=<用户名或邮箱>&limit=20` | 查找有效接收用户，返回 `users: [{id, name, email}]` |
+| `GET /api/v1/groups?q=<分组名称>&limit=20` | 查找分享分组，包含名称匹配的虚拟根组，返回 `groups: [{id, name, parent_id}]` |
 | `GET /api/v1/models` | 获取可用模型及代理信息，支持独立 ETag |
 | `POST /api/v1/models` | 创建个人模型，所有者取当前登录用户 |
 | `GET /api/v1/models/{modelID}` | 读取自己的模型配置用于编辑，不返回密钥原文 |
 | `PUT /api/v1/models/{modelID}` | 更新自己的模型，省略或留空 `api_key` 保留原密钥 |
 | `DELETE /api/v1/models/{modelID}` | 删除自己的模型并清除分享授权 |
-| `POST /api/v1/resources/shares` | 将一批自有资源追加分享给一批用户 |
-| `DELETE /api/v1/resources/shares` | 撤销指定资源与用户之间的分享 |
+| `POST /api/v1/resources/shares` | 将一批自有资源追加分享给用户或分组 |
+| `DELETE /api/v1/resources/shares` | 撤销指定资源与用户或分组之间的分享 |
 
 创建个人模型的请求示例：
 
@@ -85,11 +86,13 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 }
 ```
 
-资源和用户各限 1—100 项，重复项会去重。当前允许 `type=model`、`type=rule`、`type=skill`、`type=connector`、`type=expert`；其他资源通过显式注册 `resource.Shareable` 接入。任一资源非本人所有或任一接收用户无效时整批回滚。分享仅授予使用权限，接收方不能修改、删除或转分享。个人模型的积分倍率由服务端管理，创建时为 `1`。
+资源限 1—100 项，`user_ids` 与 `group_ids` 合计限 1—100 项，重复项会去重。当前允许 `type=model`、`type=rule`、`type=skill`、`type=connector`、`type=expert`；其他资源通过显式注册 `resource.Shareable` 接入。任一资源非本人所有、接收用户无效或真实分组不存在时整批回滚。分享仅授予使用权限，接收方不能修改、删除或转分享。个人模型的积分倍率由服务端管理，创建时为 `1`。
+
+分享到根分组时传入 `"group_ids": ["00000000-0000-0000-0000-000000000000"]`，表示授予当前系统全体用户（包括后续新增用户）使用权，不展开成员快照。可同时指定其他用户或分组；撤销根分组分享仅删除全员授权，独立的用户和分组授权继续生效。所有者目录和详情通过 `shared_groups` 回显根节点，其名称来自 `branding.workspace_name`，`parent_id` 为 `null`。分组搜索按根节点名称匹配，匹配时优先返回且计入 `limit`。
 
 Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `user: {id, name, email}`。`ownership_type` 仅表示资源归属，分享不会改变它；自己的模型和别人分享的模型均为 `user`，通过 `user.id` 与当前用户 ID 的比较区分。管理员在用户侧创建的个人模型同样为 `user`。自己的用户模型返回 `shared_users: [{id, name, email}]`，未分享时为 `[]`；收到分享的用户模型返回 `creator: {id, name, email}`，不展示其他接收人。系统模型不返回这两个字段。分享范围或创建者展示信息变化会影响模型目录 ETag；撤销、删除后的新列表请求和代理调用会重新检查权限。
 
-个人规则通过 `POST /api/v1/rules` 创建，`GET/PUT/DELETE /api/v1/rules/{id}` 仅供创建者维护，修改和删除需要 `If-Match`。个人规则可由创建者分享给指定用户使用，接收方不能读取详情或修改、删除、转分享；所有者目录与详情返回 `shared_users`，详情的 `grants` 包含指定用户的只读分享授权。历史全员或分组授权不能公开个人规则；个人规则不会强制应用，即使历史授权标记为 `required`。撤销后目录、资源解析和个人专家依赖校验不再允许接收方使用，删除规则时一并清理授权。系统规则以授权记录确定可见范围，`usage_requirement=required` 表示当前用户不可关闭，`optional` 表示可关闭；同一规则在管理界面统一设置强制性，已有按用户分别配置强制性的授权仍可读取。规则目录返回 `required`；Agent 首次见到规则时默认开启，之后自行维护非强制规则的开关状态，授权撤销时不再使用该规则。`/api/v1/resources/resolve` 始终包含强制规则，可选规则由 Agent 在 `rule_ids` 中显式选取（专家引用的规则另行返回）。
+个人规则通过 `POST /api/v1/rules` 创建，`GET/PUT/DELETE /api/v1/rules/{id}` 仅供创建者维护，修改和删除需要 `If-Match`。个人规则可由创建者分享给指定用户、分组或根分组使用，接收方不能读取详情或修改、删除、转分享；所有者目录与详情返回 `shared_users` 和 `shared_groups`，详情的 `grants` 包含对应只读分享授权。个人规则不会强制应用，即使历史授权标记为 `required`。撤销后目录、资源解析和个人专家依赖校验不再允许接收方使用，删除规则时一并清理授权。系统规则以授权记录确定可见范围，`usage_requirement=required` 表示当前用户不可关闭，`optional` 表示可关闭；同一规则在管理界面统一设置强制性，已有按用户分别配置强制性的授权仍可读取。规则目录返回 `required`；Agent 首次见到规则时默认开启，之后自行维护非强制规则的开关状态，授权撤销时不再使用该规则。`/api/v1/resources/resolve` 始终包含强制规则，可选规则由 Agent 在 `rule_ids` 中显式选取（专家引用的规则另行返回）。
 
 技能、规则、工具（Connector）和专家的管理详情及授权接口中，每条 `grants` 保留 `user_id`，并返回只读的 `user: {id, name, email}`；分组、全员授权或已删除用户的 `user` 为 `null`。停用用户仍保留展示信息，便于撤销授权。
 

@@ -76,7 +76,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	for _, o := range g {
 		if o.String("kind") == "rule" {
 			rule := c.rules[o.String("id")]
-			if rule == nil || (rule.String("ownership_type") == "user" && !o.Bool("explicit")) {
+			if rule == nil {
 				continue
 			}
 		}

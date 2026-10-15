@@ -106,6 +106,17 @@ FROM groups g
 WHERE g.id::text = ANY (sqlc.arg(group_ids)::text[]) AND g.deleted_at IS NULL
 ON CONFLICT (resource_type, resource_id, group_id) WHERE group_id IS NOT NULL DO NOTHING;
 
+-- name: RevokeAllShares :execresult
+DELETE FROM resource_access_grants
+WHERE resource_type = sqlc.arg(resource_type)
+    AND resource_id = sqlc.arg(resource_id)
+    AND all_users;
+
+-- name: CreateAllShares :execresult
+INSERT INTO resource_access_grants (resource_type, resource_id, all_users, access_level, granted_by_user_id)
+VALUES (sqlc.arg(resource_type), sqlc.arg(resource_id), true, 'read_only', sqlc.arg(granted_by_user_id))
+ON CONFLICT (resource_type, resource_id) WHERE all_users DO NOTHING;
+
 -- name: RevokeShares :execresult
 DELETE FROM resource_access_grants
 WHERE resource_type = sqlc.arg(resource_type)
@@ -194,7 +205,10 @@ FOR UPDATE;
 SELECT
     jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
         'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END,
-        'group', CASE WHEN g.id IS NOT NULL THEN jsonb_build_object('id', g.id, 'name', g.name, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')) END)
+        'group', CASE
+            WHEN rag.all_users THEN jsonb_build_object('id', '00000000-0000-0000-0000-000000000000',
+                'name', COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI'), 'parent_id', NULL)
+            WHEN g.id IS NOT NULL THEN jsonb_build_object('id', g.id, 'name', g.name, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')) END)
 FROM
     resource_access_grants rag
     LEFT JOIN users u ON u.id = rag.user_id AND u.deleted_at IS NULL
@@ -223,12 +237,18 @@ ORDER BY
     u.id;
 
 -- name: ListSharedGroups :many
-SELECT rag.resource_id, g.id, g.name, COALESCE(g.parent_id, '00000000-0000-0000-0000-000000000000'::uuid) AS parent_id
+SELECT rag.resource_id,
+    COALESCE(g.id, '00000000-0000-0000-0000-000000000000'::uuid) AS id,
+    (CASE WHEN rag.all_users THEN
+        COALESCE((SELECT NULLIF(value ->> 'workspace_name', '') FROM settings WHERE key = 'branding'), 'Monkey AI')
+        ELSE g.name END)::text AS name,
+    COALESCE(g.parent_id, '00000000-0000-0000-0000-000000000000'::uuid) AS parent_id
 FROM resource_access_grants rag
-JOIN groups g ON g.id = rag.group_id AND g.deleted_at IS NULL
+LEFT JOIN groups g ON g.id = rag.group_id AND g.deleted_at IS NULL
 WHERE rag.resource_type = sqlc.arg(resource_type)
     AND rag.resource_id::text = ANY (sqlc.arg(resource_ids)::text[])
-ORDER BY rag.resource_id, g.id;
+    AND (rag.all_users OR g.id IS NOT NULL)
+ORDER BY rag.resource_id, COALESCE(g.id, '00000000-0000-0000-0000-000000000000'::uuid);
 
 -- name: DeleteGrants :execresult
 DELETE FROM resource_access_grants

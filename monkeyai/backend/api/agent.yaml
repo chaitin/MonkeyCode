@@ -1156,8 +1156,8 @@ paths:
           description: 请求来源不允许
   /api/v1/groups:
     get:
-      summary: 搜索可分享的真实分组
-      description: 按名称不区分大小写进行字面子串匹配，仅返回未删除分组；不包含虚拟根组及成员信息。分享给父组可覆盖后代组成员。
+      summary: 搜索可分享的分组
+      description: 按名称不区分大小写进行字面子串匹配，返回未删除分组及名称匹配的虚拟根组，不包含成员信息。根组名称来自 branding.workspace_name，匹配时优先返回且计入 limit。分享给父组可覆盖后代组成员；分享给根组覆盖系统全体用户，包括后续新增用户。
       parameters:
       - in: query
         name: q
@@ -1340,7 +1340,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己或虚拟根组，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效。
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
       requestBody:
         required: true
         content:
@@ -3624,9 +3624,9 @@ components:
         id: {type: string, format: uuid}
         name: {type: string}
         parent_id:
-          type: string
+          type: [string, 'null']
           format: uuid
-          description: 顶层分组的父 ID 为虚拟根组 ID；虚拟根组自身不可分享。
+          description: 顶层分组的父 ID 为全零 UUID 的虚拟根组 ID；根组自身为 null，可作为全员分享对象。
     SearchGroupsResponse:
       type: object
       required: [groups]
@@ -3826,7 +3826,7 @@ components:
           format: date-time
     ShareResourcesInput:
       type: object
-      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。虚拟根组不可作为分享对象。
+      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。group_ids 中的全零 UUID 根组表示系统全员授权，包括后续新增用户；撤销根组分享只移除全员授权，保留独立的用户及其他分组授权。
       required:
       - resources
       properties:
@@ -3859,7 +3859,7 @@ components:
           type: array
           maxItems: 100
           items: *id006
-          description: 接收真实分组 ID，重复项自动去重；不展开成员。
+          description: 接收分组 ID，重复项自动去重；全零 UUID 表示系统全员授权，不展开成员。
     ErrorResponse:
       type: object
       required: [error]
