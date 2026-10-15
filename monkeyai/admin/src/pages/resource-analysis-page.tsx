@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
+  DropdownMenuContent,
   DropdownMenuOptionsContent,
   DropdownMenuGroup,
   DropdownMenuTrigger,
@@ -72,6 +73,17 @@ const columns = [
 ] as const
 type ResourceColumn = (typeof columns)[number]
 const pageSizes = ["20", "50", "100"]
+const resourceKinds = [
+  "model",
+  "rule",
+  "skill",
+  "expert",
+  "connector",
+  "builtin",
+  "workflow",
+  "agent",
+  "local_mcp",
+]
 
 export function ResourceAnalysisPage() {
   const { i18n, t } = useTranslation()
@@ -80,6 +92,8 @@ export function ResourceAnalysisPage() {
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
   const [showDateRange, setShowDateRange] = useState(false)
+  const [kind, setKind] = useState("")
+  const [knownKinds, setKnownKinds] = useState(resourceKinds)
   const [userQuery, setUserQuery] = useState("")
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [resourceID, setResourceID] = useState("")
@@ -109,6 +123,9 @@ export function ResourceAnalysisPage() {
     visibleColumns.has(column)
   )
   const items = data?.items ?? []
+  const kindOptions = Array.from(
+    new Set([...knownKinds, ...(kind ? [kind] : [])])
+  )
   const from = items.length ? active * pageSize + 1 : 0
   const to = items.length ? active * pageSize + items.length : 0
   const pageSizeItems = pageSizes.map((value) => ({
@@ -137,6 +154,11 @@ export function ResourceAnalysisPage() {
       .then((result) => {
         if (disposed || timedOut) return
         setData(result)
+        setKnownKinds((current) => {
+          const next = new Set(current)
+          for (const item of result.items) next.add(item.kind)
+          return next.size === current.length ? current : Array.from(next)
+        })
         setError(undefined)
         if (isSearch) {
           showToast({
@@ -199,6 +221,7 @@ export function ResourceAnalysisPage() {
         ? startOfLocalDay(addDays(endDay, 1)).toISOString()
         : timeWindow.until,
       user: userQuery.trim(),
+      kind,
       resource_id: selectedResourceID.trim(),
     })
     setCursors([undefined])
@@ -305,6 +328,42 @@ export function ResourceAnalysisPage() {
                 />
               </>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    id="resource-analysis-kind"
+                    type="button"
+                    variant="outline"
+                    className={cn("min-w-24", !kind && "text-muted-foreground")}
+                  />
+                }
+              >
+                {kind ? <ReportKind value={kind} /> : t(`${key}.fields.kind`)}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-80">
+                <DropdownMenuGroup>
+                  <DropdownMenuCheckboxItem
+                    checked={!kind}
+                    onCheckedChange={() => setKind("")}
+                  >
+                    {t(`${key}.all`)}
+                  </DropdownMenuCheckboxItem>
+                  {kindOptions.map((value) => (
+                    <DropdownMenuCheckboxItem
+                      key={value}
+                      title={value}
+                      checked={kind === value}
+                      onCheckedChange={(checked) =>
+                        setKind(checked ? value : "")
+                      }
+                    >
+                      <ReportKind value={value} />
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Input
               className="w-32"
               placeholder={t(`${key}.fields.user`)}

@@ -99,7 +99,8 @@ paths:
       description: |
         每行按用户、资源类别、资源 ID 和版本分别聚合；用户为会话所属用户，姓名和邮箱使用当前账户信息。
         包含符合条件的子会话，时间范围为 [from, until)，默认最近 24 小时。
-        user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id 及资源筛选组合。
+        user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id、kind 及资源筛选组合。
+        kind 按原始类别精确筛选，包含快照、工具、技能事件和网关连接器指标；空值表示全部类别。
         资源 ID 和版本按精确值筛选，包含仅有工具调用、没有资源快照条目的资源。
         resource_name 优先采用未删除的后台资源名称，其次采用筛选范围内该用户、资源及版本的最新非空上报名称，最后回退到原始 ID。
         内置工具始终以原始 ID 作为 resource_name；名称不参与分组、排序或 ID 筛选。
@@ -109,6 +110,7 @@ paths:
         - {name: until, in: query, schema: {type: string, format: date-time}}
         - {name: user, in: query, description: 用户名、邮箱或用户 ID，首尾空白会被移除，最多 200 个 Unicode 字符。, schema: {type: string, maxLength: 200}}
         - {name: user_id, in: query, description: 精确匹配会话所属用户 ID。, schema: {type: string, format: uuid}}
+        - {name: kind, in: query, description: 原始资源类别，首尾空白会被移除，最多 128 字节；兼容客户端自定义类别。, schema: {type: string, maxLength: 128}}
         - {name: resource_id, in: query, schema: {type: string}}
         - {name: resource_version, in: query, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}

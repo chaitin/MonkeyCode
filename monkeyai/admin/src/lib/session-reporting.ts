@@ -7,6 +7,7 @@ export type ReportWindow = {
   group_id?: string
   user_id?: string
   user?: string
+  kind?: string
   model_id?: string
   expert_id?: string
   client_type?: string

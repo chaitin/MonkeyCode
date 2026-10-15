@@ -419,6 +419,12 @@ SELECT max(t.received_at) FROM session_turns t JOIN sessions s ON s.id = t.sessi
 WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
     AND (p.f->>'user' IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = s.owner_user_id
         AND strpos(lower(u.name || ' ' || u.email || ' ' || u.id::text), lower(p.f->>'user')) > 0))
+    AND (p.f->>'kind' IS NULL
+        OR EXISTS (SELECT 1 FROM session_resource_snapshot_items i WHERE i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id AND i.kind = p.f->>'kind')
+        OR EXISTS (SELECT 1 FROM session_turn_tools v WHERE v.session_id = t.session_id AND v.turn_index = t.turn_index AND v.category = p.f->>'kind')
+        OR (p.f->>'kind' = 'skill' AND EXISTS (SELECT 1 FROM session_skill_events e WHERE e.session_id = t.session_id AND e.turn_index = t.turn_index))
+        OR (p.f->>'kind' = 'connector' AND EXISTS (SELECT 1 FROM mcp_tool_calls c WHERE c.session_id = t.session_id
+            AND c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz)))
     AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
     AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
     AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
@@ -591,6 +597,7 @@ cohort AS (
         UNION ALL SELECT user_id,kind,resource_id,version,0,0,sessions,calls,failed FROM gateway) x CROSS JOIN opts p
     WHERE (p.f->>'resource_id' IS NULL OR resource_id = p.f->>'resource_id')
         AND (p.f->>'resource_version' IS NULL OR version = p.f->>'resource_version')
+        AND (p.f->>'kind' IS NULL OR kind = p.f->>'kind')
     GROUP BY user_id,kind,resource_id,version
 ), ordered AS (
     SELECT c.user_id, c.kind, c.resource_id, c.version, c.enabled_sessions, c.available_sessions, c.used_sessions, c.calls, c.failed,u.name AS user_name,u.email AS user_email,

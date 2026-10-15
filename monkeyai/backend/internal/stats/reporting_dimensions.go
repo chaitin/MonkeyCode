@@ -58,12 +58,17 @@ func (s *Service) reportingFreshness(ctx context.Context, tx pgx.Tx, f reporting
 func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	userQuery := strings.TrimSpace(r.URL.Query().Get("user"))
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	if len(kind) > 128 {
+		resource.Fail(w, resource.Invalid("kind 过长"))
+		return
+	}
 	if utf8.RuneCountInString(userQuery) > 200 {
 		resource.Fail(w, resource.Invalid("user 搜索条件过长"))
 		return
 	}
 	s.reportingRead(false, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
-		f.userQuery = userQuery
+		f.userQuery, f.resourceKind = userQuery, kind
 		// Reject cursors issued before resources were grouped by user.
 		f.fingerprint += ":resource-users-v1"
 		out, err := groupedPage(ctx, f, sqlc.New(tx).ReportingResources)
