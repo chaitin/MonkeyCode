@@ -400,7 +400,7 @@ export const enUS = {
     },
     sessionReporting: {
       resourceAnalysis: {
-        title: "Resource usage",
+        title: "AI behavior",
         description: "Resource availability and usage.",
       },
       clientAnalysis: { title: "Clients", description: "Client breakdown." },

@@ -376,7 +376,7 @@ export const zhCN = {
     },
     sessionReporting: {
       resourceAnalysis: {
-        title: "资源使用",
+        title: "AI 行为",
         description: "查看资源开启与使用统计。",
       },
       clientAnalysis: {
