@@ -99,7 +99,7 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 			}
 		}
 		body = request
-	case "agnes-video-2.5":
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
 		mode := "text"
 		if input.Mode == model.VideoImageToVideo || input.Mode == model.VideoFirstLastToVideo {
 			mode = "keyframe"
@@ -160,7 +160,7 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 		id = response.RequestID
 	case "MiniMax-H3":
 		id = response.TaskID
-	case "agnes-video-2.5":
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
 		if response.VideoID != "" {
 			id = response.VideoID
 		} else if response.TaskID != "" {
@@ -187,13 +187,13 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 		provider, endpoint = model.ProviderMiniMax, "/v2/query/video_generation/"+path
 	case "doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628":
 		provider, endpoint = model.ProviderVolcengine, "/contents/generations/tasks/"+path
-	case "agnes-video-2.5":
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
 		provider, endpoint = model.ProviderAgnes, "/agnesapi?video_id="+url.QueryEscape(id)+"&model_name="+url.QueryEscape(target.UpstreamModel)
 	default:
 		return providerResult{}, errors.New("视频供应商型号不受支持")
 	}
 	queryTarget := target
-	if target.UpstreamModel == "agnes-video-2.5" {
+	if target.UpstreamModel == "agnes-video-2.5" || target.UpstreamModel == "agnes-video-2.5-flash" {
 		base := strings.TrimRight(target.BaseURL, "/")
 		if strings.HasSuffix(base, "/v1") {
 			queryTarget.BaseURL = strings.TrimSuffix(base, "/v1")
@@ -236,7 +236,7 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 	value := response.Video.Duration
 	if target.UpstreamModel == "MiniMax-H3" {
 		result.Status, result.URL, value = strings.ToLower(response.Task.Status), response.Task.Content.URL, response.Task.Duration
-	} else if target.UpstreamModel == "agnes-video-2.5" {
+	} else if target.UpstreamModel == "agnes-video-2.5" || target.UpstreamModel == "agnes-video-2.5-flash" {
 		result.Status, result.URL, value = strings.ToLower(response.Status), response.URL, response.Seconds
 	} else if provider == model.ProviderVolcengine {
 		result.URL, value = response.Content.URL, response.Duration

@@ -19,6 +19,10 @@ func TestAgnesVideoCapabilities(t *testing.T) {
 	if cap.References[2].MaxCount != 8 || !VideoPromptRequired(cap, VideoFirstLastToVideo, map[string]json.RawMessage{}) {
 		t.Fatalf("Agnes 视频参考或提示词规则错误: %+v", cap)
 	}
+	flash, err := VideoCapabilitiesFor(ProviderAgnes, "agnes-video-2.5-flash")
+	if err != nil || len(flash.Params[0].Choices) != 1 || string(flash.Params[0].Choices[0]) != `"720P"` || flash.References[2].MaxCount != 5 {
+		t.Fatalf("Agnes Flash 视频能力错误: %+v, %v", flash, err)
+	}
 	if _, err := VideoCapabilitiesFor(ProviderAgnes, "other-model"); err == nil {
 		t.Fatal("不应接受未知 Agnes 视频型号")
 	}

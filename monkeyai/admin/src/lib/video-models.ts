@@ -4,6 +4,7 @@ export const VIDEO_MODELS = [
   { provider: "volcengine", label: "Seedance 2.0", model: "doubao-seedance-2-0-260128" },
   { provider: "volcengine", label: "Seedance 2.5", model: "doubao-seedance-2-5-260628" },
   { provider: "agnes", label: "Agnes Video 2.5", model: "agnes-video-2.5" },
+  { provider: "agnes", label: "Agnes Video 2.5 Flash", model: "agnes-video-2.5-flash" },
 ] as const
 
 export type VideoProvider = (typeof VIDEO_MODELS)[number]["provider"]

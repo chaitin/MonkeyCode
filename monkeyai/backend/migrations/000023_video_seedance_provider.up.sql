@@ -9,7 +9,7 @@ ALTER TABLE models
             AND image_config IS NOT NULL AND image_pricing IS NOT NULL
             AND video_config IS NULL AND video_pricing IS NULL
             AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
-        OR (kind = 'video' AND provider IN ('xai', 'minimax', 'volcengine') AND protocol = 'video_generation'
+        OR (kind = 'video' AND provider IN ('xai', 'minimax', 'volcengine', 'agnes') AND protocol = 'video_generation'
             AND image_config IS NULL AND image_pricing IS NULL
             AND video_config IS NOT NULL AND video_pricing IS NOT NULL
             AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)

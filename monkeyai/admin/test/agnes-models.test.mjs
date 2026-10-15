@@ -13,6 +13,7 @@ test("Agnes models are available in the model management selectors", async () =>
   )
   assert.match(source, /Agnes Image 2\.5 Flash/)
   assert.match(videoModels, /Agnes Video 2\.5/)
+  assert.match(videoModels, /agnes-video-2\.5-flash/)
   assert.match(videoModels, /agnes-video-2\.5/)
   assert.match(source, /value: "agnes"/)
 })

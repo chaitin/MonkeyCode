@@ -127,10 +127,16 @@ func VideoCapabilitiesFor(provider Provider, modelID string) (VideoCapabilities,
 			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
 		}
 		cap.PromptRequiredWhen = []VideoCondition{{Modes: []VideoMode{VideoTextToVideo}}}
-	case provider == ProviderAgnes && modelID == "agnes-video-2.5":
+	case provider == ProviderAgnes && (modelID == "agnes-video-2.5" || modelID == "agnes-video-2.5-flash"):
 		cap.Modes = []VideoMode{VideoTextToVideo, VideoImageToVideo, VideoFirstLastToVideo, VideoReferenceImageToVideo}
+		resolutions := videoValues("720P", "1080P", "1K", "2K")
+		maxReferences := uint32(8)
+		if modelID == "agnes-video-2.5-flash" {
+			resolutions = videoValues("720P")
+			maxReferences = 5
+		}
 		cap.Params = []VideoParamSpec{
-			{Name: "resolution", Type: "string", Choices: videoValues("720P", "1080P", "1K", "2K")},
+			{Name: "resolution", Type: "string", Choices: resolutions},
 			{Name: "aspect_ratio", Type: "string", Choices: videoValues("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")},
 			{Name: "duration_seconds", Type: "integer", Min: videoInt(4), Max: videoInt(12), Step: videoInt(1)},
 		}
@@ -139,7 +145,7 @@ func VideoCapabilitiesFor(provider Provider, modelID string) (VideoCapabilities,
 		last = first
 		last.Role = "last_frame"
 		reference = first
-		reference.Role, reference.MaxCount = "reference_image", 8
+		reference.Role, reference.MaxCount = "reference_image", maxReferences
 		cap.References = []VideoReferenceSpec{first, last, reference}
 		cap.ReferenceModes = []VideoModeReferences{
 			{Mode: VideoTextToVideo, RequiredRoles: []string{}, OptionalRoles: []string{}},

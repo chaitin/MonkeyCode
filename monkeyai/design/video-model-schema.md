@@ -170,6 +170,7 @@ type VideoGenerateInput struct {
 | `doubao-seedance-2-0-260128` | 文生、单首帧、首尾帧、纯参考图 | `480p`、`720p`、`1080p`、`4k` | 4–15 秒（整数） | 所有模式支持固定比例或 `adaptive`；仅文生提示词必填 |
 | `doubao-seedance-2-5-260628` | 文生、单首帧、首尾帧、纯参考图 | `480p`、`720p`、`1080p` | 4–30 秒（整数） | 首帧和首尾帧仅支持 `adaptive`；仅文生提示词必填 |
 | `agnes-video-2.5` | 文生、首帧、首尾帧、纯参考图 | `720P`、`1080P`、`1K`、`2K` | 4–12 秒（整数） | 文生、关键帧和参考图均使用固定比例；所有模式提示词必填 |
+| `agnes-video-2.5-flash` | 文生、首帧、首尾帧、纯参考图 | 固定 `720P` | 4–12 秒（整数） | 参考图最多 5 张，其他模式规则与 Agnes Video 2.5 相同 |
 
 Grok 纯参考图最多开放 7 张：其[参考生成专页](https://docs.x.ai/developers/model-capabilities/video/reference-to-video)写 7 张，[概览页](https://docs.x.ai/developers/model-capabilities/video/overview)写 14 张，正式接入前须再核对实际接口；这里暂用更保守的 7 张。MiniMax-H3 纯参考图最多 9 张。Grok 的尾帧/关键帧/预置声音、多参考组合，以及 MiniMax-H3 的混合图片/视频/音频参考和视频重制不在首期目录中；这些模式涉及额外输入组合和素材总量规则，不应借口“适配器会处理”而开放虚假的可用组合。
 

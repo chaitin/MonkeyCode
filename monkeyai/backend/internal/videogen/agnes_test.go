@@ -75,7 +75,7 @@ func TestAgnesVideoReferenceSubmission(t *testing.T) {
 	input := GenerateInput{Mode: model.VideoReferenceImageToVideo, Prompt: "参考图片生成视频", Params: map[string]json.RawMessage{
 		"resolution": json.RawMessage(`"720P"`), "aspect_ratio": json.RawMessage(`"1:1"`), "duration_seconds": json.RawMessage(`4`),
 	}, References: []Reference{{Role: "reference_image", MIMEType: "image/jpeg", Data: []byte("a")}, {Role: "reference_image", MIMEType: "image/jpeg", Data: []byte("b")}}}
-	id, err := submitProvider(context.Background(), client, proxy.Target{BaseURL: "https://apihub.agnes-ai.com/v1", UpstreamModel: "agnes-video-2.5", APIKey: "key"}, input)
+	id, err := submitProvider(context.Background(), client, proxy.Target{BaseURL: "https://apihub.agnes-ai.com/v1", UpstreamModel: "agnes-video-2.5-flash", APIKey: "key"}, input)
 	if err != nil || id != "video-reference" {
 		t.Fatalf("Agnes 参考图创建结果错误: %s, %v", id, err)
 	}
