@@ -80,7 +80,10 @@ export function ResourceAnalysisPage() {
     () =>
       new Set(
         columns.filter(
-          (column) => column !== "version" && column !== "available_sessions"
+          (column) =>
+            column !== "version" &&
+            column !== "available_sessions" &&
+            column !== "enabled_sessions"
         )
       )
   )
