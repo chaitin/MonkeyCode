@@ -18,7 +18,7 @@ type Result = {
   error?: string
 }
 
-export function useRulePage(type: RuleType, cursor: string) {
+export function useRulePage(type: RuleType, cursor: string, search: string) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
   const [result, setResult] = useState<Result>()
@@ -30,6 +30,7 @@ export function useRulePage(type: RuleType, cursor: string) {
     limit: String(RULE_PAGE_SIZE),
   })
   if (cursor) query.set("cursor", cursor)
+  if (search) query.set("q", search)
   const path = `${base}/rules?${query}`
   const key = `${path}:${revision}`
   const current = result?.key === key ? result : undefined

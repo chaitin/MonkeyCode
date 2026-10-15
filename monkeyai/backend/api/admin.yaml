@@ -2484,6 +2484,11 @@ paths:
   /api/admin/v1/rules:
     get:
       summary: 查询Rule
+      description: |
+        按 ownership_type 筛选系统或用户规则；省略时返回两类规则。
+        q 对名称和完整规则内容进行不区分大小写的字面子串搜索；空值不筛选。
+        筛选在游标分页前执行；切换类型或搜索关键词时应清空 cursor。
+        limit 控制单页数量，后续页使用 next_cursor 请求，不返回已删除的规则。
       responses:
         '200':
           description: 查询Rule

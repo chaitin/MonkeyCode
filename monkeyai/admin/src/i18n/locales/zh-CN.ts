@@ -111,6 +111,7 @@ export const zhCN = {
     saving: "正在保存…",
     operationCompleted: "操作已完成。",
     availableScope: "可用范围",
+    ruleSearchPlaceholder: "搜索名称或描述",
     importedRuleReadOnly: "系统内置规则不允许修改规则内容。",
     selectScope: "选择用户或分组",
     oauthClientMode: "OAuth 客户端配置",

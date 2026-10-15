@@ -114,6 +114,7 @@ export const enUS = {
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
+    ruleSearchPlaceholder: "Search name or description",
     importedRuleReadOnly:
       "The content of built-in system rules cannot be modified.",
     selectScope: "Select users or groups",

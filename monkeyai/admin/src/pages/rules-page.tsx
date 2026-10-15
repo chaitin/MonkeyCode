@@ -23,6 +23,7 @@ import {
   Edit02Icon,
   MoreHorizontalIcon,
   PlusSignIcon,
+  Search01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -73,6 +74,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -123,12 +125,14 @@ function getCreatorInitials(creator: string) {
 export function RulesPage() {
   const { t } = useTranslation()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
+  const [searchDraft, setSearchDraft] = useState("")
+  const [search, setSearch] = useState("")
   const [cursors, setCursors] = useState<Record<RuleType, string[]>>({
     system: [""],
     user: [""],
   })
   const pageCursors = cursors[activeRuleType]
-  const remote = useRulePage(activeRuleType, pageCursors.at(-1) ?? "")
+  const remote = useRulePage(activeRuleType, pageCursors.at(-1) ?? "", search)
   const rules = remote.items.map(toRule)
   const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -142,6 +146,14 @@ export function RulesPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forced, setForced] = useState(false)
   const importedRule = editingRule?.origin === "package"
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (remote.pending) return
+    setSearch(searchDraft.trim())
+    setCursors({ system: [""], user: [""] })
+    remote.reload()
+  }
 
   const previousPage = (type: RuleType = activeRuleType) => {
     setCursors((current) => ({
@@ -227,21 +239,16 @@ export function RulesPage() {
   }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <ResourceNotice
-        error={remote.error || subjects.error}
-        loading={remote.loading}
-        pending={remote.pending}
-      />
+    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 overflow-hidden p-4 pt-0 md:h-[calc(100svh-5rem)]">
       <Tabs
-        className="gap-4"
+        className="min-h-0 flex-1 gap-4"
         value={activeRuleType}
         onValueChange={(value) => {
           setActiveRuleType(value as RuleType)
         }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList aria-label={t("pages.rules.type")}>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <TabsList className="shrink-0" aria-label={t("pages.rules.type")}>
             <TabsTrigger value="system" disabled={remote.pending}>
               {t("pages.rules.systemRule")}
             </TabsTrigger>
@@ -249,11 +256,33 @@ export function RulesPage() {
               {t("pages.rules.userRule")}
             </TabsTrigger>
           </TabsList>
+          <form
+            className="order-2 flex basis-full items-center gap-2 sm:order-none sm:max-w-72 sm:min-w-40 sm:flex-1 sm:basis-0"
+            onSubmit={handleSearch}
+          >
+            <Input
+              type="search"
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
+              placeholder={t("resources.ruleSearchPlaceholder")}
+              aria-label={t("resources.ruleSearchPlaceholder")}
+            />
+            <Button
+              type="submit"
+              size="icon"
+              variant="outline"
+              disabled={remote.pending}
+              aria-label={t("pages.operationLogs.filters.search")}
+            >
+              <HugeiconsIcon icon={Search01Icon} />
+            </Button>
+          </form>
           {activeRuleType === "system" && (
             <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
               <DialogTrigger
                 render={
                   <Button
+                    className="ms-auto shrink-0"
                     onClick={() => {
                       setEditingRule(null)
                       resetRuleOptions()
@@ -380,152 +409,177 @@ export function RulesPage() {
           )}
         </div>
 
-        <TabsContent key={activeRuleType} value={activeRuleType}>
-          {remote.error && (
-            <Button type="button" variant="outline" onClick={remote.reload}>
-              {t("statistics.retry")}
-            </Button>
-          )}
-          {!remote.loading && !remote.error && rules.length === 0 && (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              {t("statistics.empty")}
-            </p>
-          )}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {rules.map((rule) => {
-              const scopeNames =
-                rule.type === "system"
-                  ? getAuthorizationNames(
-                      rule.authorization,
-                      t,
-                      subjects.flatGroups,
-                      subjects.members
-                    )
-                  : rule.sharedUsers.length
-                    ? [rule.creator, ...rule.sharedUsers].join(", ")
-                    : t("pages.rules.creatorOnly")
+        <TabsContent
+          key={activeRuleType}
+          value={activeRuleType}
+          className="min-h-0 overflow-hidden"
+        >
+          <ScrollArea
+            key={`${search}:${pageCursors.length}`}
+            className="h-full"
+          >
+            <div className="flex flex-col gap-4 p-px">
+              <ResourceNotice
+                error={remote.error || subjects.error}
+                loading={remote.loading}
+                pending={remote.pending}
+              />
+              {remote.error && (
+                <Button
+                  className="self-start"
+                  type="button"
+                  variant="outline"
+                  onClick={remote.reload}
+                >
+                  {t("statistics.retry")}
+                </Button>
+              )}
+              {!remote.loading && !remote.error && rules.length === 0 && (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  {t("statistics.empty")}
+                </p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {rules.map((rule) => {
+                  const scopeNames =
+                    rule.type === "system"
+                      ? getAuthorizationNames(
+                          rule.authorization,
+                          t,
+                          subjects.flatGroups,
+                          subjects.members
+                        )
+                      : rule.sharedUsers.length
+                        ? [rule.creator, ...rule.sharedUsers].join(", ")
+                        : t("pages.rules.creatorOnly")
 
-              return (
-                <Card className="h-full" key={rule.id}>
-                  <CardHeader>
-                    <div className="flex min-w-0 items-start gap-3">
-                      <Avatar size="lg">
-                        <AvatarFallback>
-                          {rule.type === "system" ? (
-                            <HugeiconsIcon
-                              icon={DocumentValidationIcon}
-                              strokeWidth={2}
-                            />
-                          ) : (
-                            getCreatorInitials(rule.creator)
-                          )}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="truncate" title={rule.name}>
-                          {rule.name}{" "}
-                          {rule.origin === "package" && (
-                            <span title={rule.publisher}>· 资源包导入</span>
-                          )}
-                        </CardTitle>
-                        <CardDescription
-                          className="truncate"
-                          title={rule.creator}
-                        >
-                          {rule.creator}
-                        </CardDescription>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button
-                              aria-label={t("common.more")}
-                              size="icon-sm"
-                              type="button"
-                              variant="ghost"
-                            />
-                          }
-                        >
-                          <HugeiconsIcon
-                            icon={MoreHorizontalIcon}
-                            strokeWidth={2}
-                          />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuGroup hidden={rule.type !== "system"}>
-                            <DropdownMenuItem
-                              onClick={() => handleEditRule(rule)}
+                  return (
+                    <Card className="h-full" key={rule.id}>
+                      <CardHeader>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <Avatar size="lg">
+                            <AvatarFallback>
+                              {rule.type === "system" ? (
+                                <HugeiconsIcon
+                                  icon={DocumentValidationIcon}
+                                  strokeWidth={2}
+                                />
+                              ) : (
+                                getCreatorInitials(rule.creator)
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="truncate" title={rule.name}>
+                              {rule.name}{" "}
+                              {rule.origin === "package" && (
+                                <span title={rule.publisher}>· 资源包导入</span>
+                              )}
+                            </CardTitle>
+                            <CardDescription
+                              className="truncate"
+                              title={rule.creator}
+                            >
+                              {rule.creator}
+                            </CardDescription>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  aria-label={t("common.more")}
+                                  size="icon-sm"
+                                  type="button"
+                                  variant="ghost"
+                                />
+                              }
                             >
                               <HugeiconsIcon
-                                icon={Edit02Icon}
+                                icon={MoreHorizontalIcon}
                                 strokeWidth={2}
                               />
-                              {t("pages.rules.edit")}
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                          <DropdownMenuSeparator
-                            hidden={
-                              rule.type !== "system" ||
-                              rule.origin === "package"
-                            }
-                          />
-                          <DropdownMenuGroup hidden={rule.origin === "package"}>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setRulePendingDeletion(rule)}
-                            >
-                              <HugeiconsIcon
-                                icon={Delete02Icon}
-                                strokeWidth={2}
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuGroup
+                                hidden={rule.type !== "system"}
+                              >
+                                <DropdownMenuItem
+                                  onClick={() => handleEditRule(rule)}
+                                >
+                                  <HugeiconsIcon
+                                    icon={Edit02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.edit")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                              <DropdownMenuSeparator
+                                hidden={
+                                  rule.type !== "system" ||
+                                  rule.origin === "package"
+                                }
                               />
-                              {t("pages.rules.delete")}
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="min-h-10 flex-1">
-                    <p
-                      className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
-                      title={rule.content}
-                    >
-                      {rule.content}
-                    </p>
-                  </CardContent>
-                  <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
-                    <div className="flex gap-4">
-                      <span className="w-2/5 truncate text-muted-foreground">
-                        {t("pages.rules.usageScope")}
-                      </span>
-                      <span
-                        className="w-3/5 truncate text-end font-medium"
-                        title={scopeNames}
-                      >
-                        {scopeNames}
-                      </span>
-                    </div>
-                    {rule.type === "system" && (
-                      <div className="flex gap-4">
-                        <span className="w-2/5 truncate text-muted-foreground">
-                          {t("pages.rules.forcedScope")}
-                        </span>
-                        <span className="w-3/5 truncate text-end font-medium">
-                          {rule.forced
-                            ? t("pages.rules.forcedScope")
-                            : t("pages.rules.forcedScopePlaceholder")}
-                        </span>
-                      </div>
-                    )}
-                  </CardFooter>
-                </Card>
-              )
-            })}
-          </div>
+                              <DropdownMenuGroup
+                                hidden={rule.origin === "package"}
+                              >
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setRulePendingDeletion(rule)}
+                                >
+                                  <HugeiconsIcon
+                                    icon={Delete02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="min-h-10 flex-1">
+                        <p
+                          className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
+                          title={rule.content}
+                        >
+                          {rule.content}
+                        </p>
+                      </CardContent>
+                      <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
+                        <div className="flex gap-4">
+                          <span className="w-2/5 truncate text-muted-foreground">
+                            {t("pages.rules.usageScope")}
+                          </span>
+                          <span
+                            className="w-3/5 truncate text-end font-medium"
+                            title={scopeNames}
+                          >
+                            {scopeNames}
+                          </span>
+                        </div>
+                        {rule.type === "system" && (
+                          <div className="flex gap-4">
+                            <span className="w-2/5 truncate text-muted-foreground">
+                              {t("pages.rules.forcedScope")}
+                            </span>
+                            <span className="w-3/5 truncate text-end font-medium">
+                              {rule.forced
+                                ? t("pages.rules.forcedScope")
+                                : t("pages.rules.forcedScopePlaceholder")}
+                            </span>
+                          </div>
+                        )}
+                      </CardFooter>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          </ScrollArea>
         </TabsContent>
       </Tabs>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">
           {t("pages.operationLogs.pagination.perPage", {
             count: RULE_PAGE_SIZE,
