@@ -76,6 +76,8 @@ export function ResourceAnalysisPage() {
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
   const [userID, setUserID] = useState("")
+  const [resourceID, setResourceID] = useState("")
+  const resourceInputRef = useRef<HTMLInputElement>(null)
   const [visibleColumns, setVisibleColumns] = useState<Set<ResourceColumn>>(
     () =>
       new Set(
@@ -186,6 +188,7 @@ export function ResourceAnalysisPage() {
         ? startOfLocalDay(addDays(endDay, 1)).toISOString()
         : timeWindow.until,
       user_id: userID.trim(),
+      resource_id: resourceID.trim(),
     })
     setCursors([undefined])
     setActive(0)
@@ -197,9 +200,21 @@ export function ResourceAnalysisPage() {
 
   function renderCell(row: ReportResourceRow, column: ResourceColumn) {
     if (column === "kind") return <ReportKind value={row.kind} />
-    if (column === "resource_id" || column === "version") {
-      return <ReportValue value={row[column]} />
+    if (column === "resource_id") {
+      return (
+        <button
+          type="button"
+          className="cursor-pointer rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover]:underline"
+          onClick={() => {
+            setResourceID(row.resource_id)
+            resourceInputRef.current?.focus({ preventScroll: true })
+          }}
+        >
+          <ReportValue value={row.resource_id} />
+        </button>
+      )
     }
+    if (column === "version") return <ReportValue value={row.version} />
     if (column === "success_rate") {
       const successRate =
         row.calls > 0 ? ((row.calls - row.failed) / row.calls) * 100 : null
@@ -257,6 +272,15 @@ export function ResourceAnalysisPage() {
               pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
               value={userID}
               onChange={(event) => setUserID(event.target.value.trim())}
+            />
+            <Input
+              ref={resourceInputRef}
+              className="w-44"
+              placeholder={t(`${key}.fields.resource_id`)}
+              aria-label={t(`${key}.fields.resource_id`)}
+              maxLength={256}
+              value={resourceID}
+              onChange={(event) => setResourceID(event.target.value)}
             />
             <Button type="submit" disabled={loading || searching}>
               <HugeiconsIcon
