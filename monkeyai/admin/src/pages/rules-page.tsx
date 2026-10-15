@@ -5,13 +5,19 @@ import {
   selection,
   match,
   saveResource,
-  useResources,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
+import {
+  RULE_PAGE_SIZE,
+  useRulePage,
+  type RuleType,
+} from "@/hooks/use-rule-page"
 import { useState, type FormEvent } from "react"
 import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   Delete02Icon,
   DocumentValidationIcon,
   Edit02Icon,
@@ -74,8 +80,6 @@ import {
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
 
-type RuleType = "system" | "user"
-
 type AgentRule = {
   origin?: ResourceRow["origin"]
   publisher?: string
@@ -118,10 +122,15 @@ function getCreatorInitials(creator: string) {
 
 export function RulesPage() {
   const { t } = useTranslation()
-  const remote = useResources("/rules", toRule)
-  const rules = remote.items
-  const subjects = useSubjects()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
+  const [cursors, setCursors] = useState<Record<RuleType, string[]>>({
+    system: [""],
+    user: [""],
+  })
+  const pageCursors = cursors[activeRuleType]
+  const remote = useRulePage(activeRuleType, pageCursors.at(-1) ?? "")
+  const rules = remote.items.map(toRule)
+  const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
   const [rulePendingDeletion, setRulePendingDeletion] =
@@ -133,6 +142,14 @@ export function RulesPage() {
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forced, setForced] = useState(false)
   const importedRule = editingRule?.origin === "package"
+
+  const previousPage = (type: RuleType = activeRuleType) => {
+    setCursors((current) => ({
+      ...current,
+      [type]:
+        current[type].length > 1 ? current[type].slice(0, -1) : current[type],
+    }))
+  }
 
   const resetRuleOptions = () => {
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -204,6 +221,7 @@ export function RulesPage() {
         method: "DELETE",
         headers: match(rulePendingDeletion.revision),
       })
+      if (rules.length === 1) previousPage(rulePendingDeletion.type)
       setRulePendingDeletion(null)
     }, t("resources.operationCompleted"))
   }
@@ -224,10 +242,12 @@ export function RulesPage() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList aria-label={t("pages.rules.type")}>
-            <TabsTrigger value="system">
+            <TabsTrigger value="system" disabled={remote.pending}>
               {t("pages.rules.systemRule")}
             </TabsTrigger>
-            <TabsTrigger value="user">{t("pages.rules.userRule")}</TabsTrigger>
+            <TabsTrigger value="user" disabled={remote.pending}>
+              {t("pages.rules.userRule")}
+            </TabsTrigger>
           </TabsList>
           {activeRuleType === "system" && (
             <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
@@ -360,148 +380,196 @@ export function RulesPage() {
           )}
         </div>
 
-        {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {rules
-                .filter((rule) => rule.type === tabType)
-                .map((rule) => {
-                  const scopeNames =
-                    rule.type === "system"
-                      ? getAuthorizationNames(
-                          rule.authorization,
-                          t,
-                          subjects.flatGroups,
-                          subjects.members
-                        )
-                      : rule.sharedUsers.length
-                        ? [rule.creator, ...rule.sharedUsers].join(", ")
-                        : t("pages.rules.creatorOnly")
+        <TabsContent key={activeRuleType} value={activeRuleType}>
+          {remote.error && (
+            <Button type="button" variant="outline" onClick={remote.reload}>
+              {t("statistics.retry")}
+            </Button>
+          )}
+          {!remote.loading && !remote.error && rules.length === 0 && (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              {t("statistics.empty")}
+            </p>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {rules.map((rule) => {
+              const scopeNames =
+                rule.type === "system"
+                  ? getAuthorizationNames(
+                      rule.authorization,
+                      t,
+                      subjects.flatGroups,
+                      subjects.members
+                    )
+                  : rule.sharedUsers.length
+                    ? [rule.creator, ...rule.sharedUsers].join(", ")
+                    : t("pages.rules.creatorOnly")
 
-                  return (
-                    <Card className="h-full" key={rule.id}>
-                      <CardHeader>
-                        <div className="flex min-w-0 items-start gap-3">
-                          <Avatar size="lg">
-                            <AvatarFallback>
-                              {rule.type === "system" ? (
-                                <HugeiconsIcon
-                                  icon={DocumentValidationIcon}
-                                  strokeWidth={2}
-                                />
-                              ) : (
-                                getCreatorInitials(rule.creator)
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <CardTitle className="truncate" title={rule.name}>
-                              {rule.name}{" "}
-                              {rule.origin === "package" && (
-                                <span title={rule.publisher}>· 资源包导入</span>
-                              )}
-                            </CardTitle>
-                            <CardDescription
-                              className="truncate"
-                              title={rule.creator}
-                            >
-                              {rule.creator}
-                            </CardDescription>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  aria-label={t("common.more")}
-                                  size="icon-sm"
-                                  type="button"
-                                  variant="ghost"
-                                />
-                              }
+              return (
+                <Card className="h-full" key={rule.id}>
+                  <CardHeader>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Avatar size="lg">
+                        <AvatarFallback>
+                          {rule.type === "system" ? (
+                            <HugeiconsIcon
+                              icon={DocumentValidationIcon}
+                              strokeWidth={2}
+                            />
+                          ) : (
+                            getCreatorInitials(rule.creator)
+                          )}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="truncate" title={rule.name}>
+                          {rule.name}{" "}
+                          {rule.origin === "package" && (
+                            <span title={rule.publisher}>· 资源包导入</span>
+                          )}
+                        </CardTitle>
+                        <CardDescription
+                          className="truncate"
+                          title={rule.creator}
+                        >
+                          {rule.creator}
+                        </CardDescription>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              aria-label={t("common.more")}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            />
+                          }
+                        >
+                          <HugeiconsIcon
+                            icon={MoreHorizontalIcon}
+                            strokeWidth={2}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuGroup hidden={rule.type !== "system"}>
+                            <DropdownMenuItem
+                              onClick={() => handleEditRule(rule)}
                             >
                               <HugeiconsIcon
-                                icon={MoreHorizontalIcon}
+                                icon={Edit02Icon}
                                 strokeWidth={2}
                               />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup
-                                hidden={rule.type !== "system"}
-                              >
-                                <DropdownMenuItem
-                                  onClick={() => handleEditRule(rule)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Edit02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.rules.edit")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                              <DropdownMenuSeparator
-                                hidden={
-                                  rule.type !== "system" ||
-                                  rule.origin === "package"
-                                }
+                              {t("pages.rules.edit")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator
+                            hidden={
+                              rule.type !== "system" ||
+                              rule.origin === "package"
+                            }
+                          />
+                          <DropdownMenuGroup hidden={rule.origin === "package"}>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setRulePendingDeletion(rule)}
+                            >
+                              <HugeiconsIcon
+                                icon={Delete02Icon}
+                                strokeWidth={2}
                               />
-                              <DropdownMenuGroup
-                                hidden={rule.origin === "package"}
-                              >
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setRulePendingDeletion(rule)}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Delete02Icon}
-                                    strokeWidth={2}
-                                  />
-                                  {t("pages.rules.delete")}
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="min-h-10 flex-1">
-                        <p
-                          className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
-                          title={rule.content}
-                        >
-                          {rule.content}
-                        </p>
-                      </CardContent>
-                      <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
-                        <div className="flex gap-4">
-                          <span className="w-2/5 truncate text-muted-foreground">
-                            {t("pages.rules.usageScope")}
-                          </span>
-                          <span
-                            className="w-3/5 truncate text-end font-medium"
-                            title={scopeNames}
-                          >
-                            {scopeNames}
-                          </span>
-                        </div>
-                        {rule.type === "system" && (
-                          <div className="flex gap-4">
-                            <span className="w-2/5 truncate text-muted-foreground">
-                              {t("pages.rules.forcedScope")}
-                            </span>
-                            <span className="w-3/5 truncate text-end font-medium">
-                              {rule.forced
-                                ? t("pages.rules.forcedScope")
-                                : t("pages.rules.forcedScopePlaceholder")}
-                            </span>
-                          </div>
-                        )}
-                      </CardFooter>
-                    </Card>
-                  )
-                })}
-            </div>
-          </TabsContent>
-        ))}
+                              {t("pages.rules.delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="min-h-10 flex-1">
+                    <p
+                      className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
+                      title={rule.content}
+                    >
+                      {rule.content}
+                    </p>
+                  </CardContent>
+                  <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
+                    <div className="flex gap-4">
+                      <span className="w-2/5 truncate text-muted-foreground">
+                        {t("pages.rules.usageScope")}
+                      </span>
+                      <span
+                        className="w-3/5 truncate text-end font-medium"
+                        title={scopeNames}
+                      >
+                        {scopeNames}
+                      </span>
+                    </div>
+                    {rule.type === "system" && (
+                      <div className="flex gap-4">
+                        <span className="w-2/5 truncate text-muted-foreground">
+                          {t("pages.rules.forcedScope")}
+                        </span>
+                        <span className="w-3/5 truncate text-end font-medium">
+                          {rule.forced
+                            ? t("pages.rules.forcedScope")
+                            : t("pages.rules.forcedScopePlaceholder")}
+                        </span>
+                      </div>
+                    )}
+                  </CardFooter>
+                </Card>
+              )
+            })}
+          </div>
+        </TabsContent>
       </Tabs>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+        <span className="text-sm text-muted-foreground">
+          {t("pages.operationLogs.pagination.perPage", {
+            count: RULE_PAGE_SIZE,
+          })}
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground" aria-live="polite">
+            {t("pages.sessionReporting.clients.cursorPage", {
+              page: pageCursors.length,
+            })}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={
+              remote.loading || remote.pending || pageCursors.length === 1
+            }
+            onClick={() => previousPage()}
+            aria-label={t("pages.operationLogs.pagination.previous")}
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={remote.loading || remote.pending || !remote.nextCursor}
+            onClick={() => {
+              if (!remote.nextCursor) return
+              setCursors((current) => ({
+                ...current,
+                [activeRuleType]: [
+                  ...current[activeRuleType],
+                  remote.nextCursor,
+                ],
+              }))
+            }}
+            aria-label={t("pages.operationLogs.pagination.next")}
+          >
+            <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
+          </Button>
+        </div>
+      </div>
 
       <AlertDialog
         open={rulePendingDeletion !== null}
