@@ -3697,13 +3697,14 @@ components:
           - openai_responses
           - anthropic
           - image_generation
+          - video_generation
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
           default: text
         provider:
           type: string
-          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         base_url: &id004
@@ -3772,10 +3773,10 @@ components:
         protocol: *id003
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
         provider:
           type: string
-          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:
@@ -4289,11 +4290,11 @@ components:
           description: Agent 向用户展示的模型名称。
         protocol:
           type: string
-          enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
+          enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
           description: MonkeyAI 与上游服务通信时使用的协议。
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:

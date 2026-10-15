@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=23, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=24, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -43,6 +43,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000021_video_output_metadata_optional` | 视频结果宽高允许为 0，表示元数据无法解析；成功视频仍可保存和下载 |
 | `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数与总时长，超过上限后标记任务未知 |
 | `000023_video_seedance_provider` | 视频模型供应商增加 `volcengine`；up/down 均可在约束存在或缺失时重复执行 |
+| `000024_agnes_provider` | 视频模型供应商增加 `agnes`；up/down 保留已有 Seedance 供应商并幂等执行 |
 
 从 `backend` 目录执行：
 
@@ -52,13 +53,15 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `23` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `24` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `23` 的 up/down 在单条 `ALTER TABLE` 中先执行 `DROP CONSTRAINT IF EXISTS`，再重建目标约束，保证整条语句原子执行。重复执行不会增加约束或改变业务数据；回滚前需先处理已有的火山视频模型，否则原供应商约束无法恢复，回滚会失败并保留现有约束和数据。
 
+版本 `24` 的 up/down 同样使用 `DROP CONSTRAINT IF EXISTS`，回滚时保留 `volcengine`，避免回滚 Agnes 时破坏 Seedance 模型约束。
+
 版本 `21` 回滚会恢复视频宽高必须大于 0 的约束；已有宽高为 0 的结果时，需先补齐真实宽高，回滚不会删除视频或伪造元数据。
 
-升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，并直接重跑版本 `23` 的 up/down 验证约束存在、缺失和连续执行的场景，需要本地安装 `migrate`：
+升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，并直接重跑版本 `23`、`24` 的 up/down 验证约束存在、缺失和连续执行的场景，需要本地安装 `migrate`：
 
 ```sh
 MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v

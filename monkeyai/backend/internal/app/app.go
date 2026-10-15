@@ -23,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
+	agnesimage "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/agnes"
 	openaiimages "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/openai/images"
 	openairesponses "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/openai/responses"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/volcengine"
@@ -188,10 +189,12 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	gptImages := openaiimages.New(upstreamClient)
 	gptResponses := openairesponses.New(upstreamClient)
 	seedream := volcengine.New(upstreamClient)
+	agnesImages := agnesimage.New(upstreamClient)
 	grok := xai.New(upstreamClient)
 	imageService.WithAdapter(model.ProviderOpenAIImages, imagegen.Adapter{Capabilities: gptImages.Capabilities, DefaultCapabilities: gptImages.DefaultCapabilities, Generator: gptImages, Editor: gptImages})
 	imageService.WithAdapter(model.ProviderOpenAIResponses, imagegen.Adapter{Capabilities: gptResponses.Capabilities, DefaultCapabilities: gptResponses.DefaultCapabilities, Generator: gptResponses, Editor: gptResponses})
 	imageService.WithAdapter(model.ProviderVolcengine, imagegen.Adapter{Capabilities: seedream.Capabilities, DefaultCapabilities: seedream.DefaultCapabilities, Generator: seedream, Editor: seedream})
+	imageService.WithAdapter(model.ProviderAgnes, imagegen.Adapter{Capabilities: agnesImages.Capabilities, DefaultCapabilities: agnesImages.DefaultCapabilities, Generator: agnesImages, Editor: agnesImages})
 	imageService.WithAdapter(model.ProviderXAI, imagegen.Adapter{Capabilities: grok.Capabilities, DefaultCapabilities: grok.DefaultCapabilities, Generator: grok, Editor: grok})
 	models.WithImageCapabilities(imageService.Capabilities)
 	videoService := videogen.NewService(pool, storage, charges, modelRepo).WithProxyResolver(settings)

@@ -127,6 +127,27 @@ func VideoCapabilitiesFor(provider Provider, modelID string) (VideoCapabilities,
 			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
 		}
 		cap.PromptRequiredWhen = []VideoCondition{{Modes: []VideoMode{VideoTextToVideo}}}
+	case provider == ProviderAgnes && modelID == "agnes-video-2.5":
+		cap.Modes = []VideoMode{VideoTextToVideo, VideoImageToVideo, VideoFirstLastToVideo, VideoReferenceImageToVideo}
+		cap.Params = []VideoParamSpec{
+			{Name: "resolution", Type: "string", Choices: videoValues("720P", "1080P", "1K", "2K")},
+			{Name: "aspect_ratio", Type: "string", Choices: videoValues("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")},
+			{Name: "duration_seconds", Type: "integer", Min: videoInt(4), Max: videoInt(12), Step: videoInt(1)},
+		}
+		first.MinWidth, first.MaxWidth, first.MinHeight, first.MaxHeight = 256, 5760, 256, 5760
+		first.MinAspectRatio, first.MaxAspectRatio = "0.4", "2.5"
+		last = first
+		last.Role = "last_frame"
+		reference = first
+		reference.Role, reference.MaxCount = "reference_image", 8
+		cap.References = []VideoReferenceSpec{first, last, reference}
+		cap.ReferenceModes = []VideoModeReferences{
+			{Mode: VideoTextToVideo, RequiredRoles: []string{}, OptionalRoles: []string{}},
+			{Mode: VideoImageToVideo, RequiredRoles: []string{"first_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoFirstLastToVideo, RequiredRoles: []string{"first_frame", "last_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
+		}
+		cap.PromptRequiredWhen = []VideoCondition{{Modes: cap.Modes}}
 	default:
 		return VideoCapabilities{}, errors.New("视频模型供应商或型号不受支持")
 	}

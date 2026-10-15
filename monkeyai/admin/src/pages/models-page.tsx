@@ -109,17 +109,18 @@ const PROTOCOLS = [
 type ModelProtocol = (typeof PROTOCOLS)[number]["value"] | "image_generation" | "video_generation"
 type ModelKind = "text" | "image" | "video"
 type ImageProvider =
-  "openai_images" | "openai_responses_image" | "volcengine" | "xai"
+  "openai_images" | "openai_responses_image" | "volcengine" | "xai" | "agnes"
 type ModelProvider = ImageProvider | VideoProvider | "passthrough"
 type ModelType = "system" | "user"
 type VideoPricing = { rates: Array<{ resolution: string; credits_per_second: string }> }
 
-const IMAGE_PROVIDERS = [
+const IMAGE_PROVIDERS: Array<{ value: ImageProvider; label: string; model?: string }> = [
   { value: "openai_images", label: "OpenAI GPT Image API" },
   { value: "openai_responses_image", label: "OpenAI Responses Image" },
   { value: "volcengine", label: "Seedream" },
   { value: "xai", label: "Grok Imagine" },
-] as const
+  { value: "agnes", label: "Agnes Image 2.5 Flash", model: "agnes-image-2.5-flash" },
+]
 
 type ImageConfig = {
   qualities: string[]
@@ -844,6 +845,9 @@ export function ModelsPage() {
                             onValueChange={(value) => {
                               setProvider(value as ImageProvider)
                               setImageCapabilities(null)
+                              const next = IMAGE_PROVIDERS.find((item) => item.value === value)
+                              const input = document.getElementById("model-id") as HTMLInputElement | null
+                              if (next?.model && input && !editingModel) input.value = next.model
                             }}
                           >
                             <SelectTrigger
