@@ -6021,15 +6021,15 @@ components:
           description: 模型最后更新时间。
     ModelProtocol:
       type: string
-      enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
+      enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
       description: MonkeyAI 与上游服务通信时使用的协议。
     ModelKind:
       type: string
-      enum: [text, image]
+      enum: [text, image, video]
       description: 模型对外提供的能力；省略时兼容为 text。
     ModelProvider:
       type: string
-      enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+      enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
       description: 上游调用路径；text 模型只允许 passthrough。
     ImageQuality:
       type: string

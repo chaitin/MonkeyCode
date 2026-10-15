@@ -68,7 +68,12 @@ func providerURL(base, endpoint string) (string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
 		return "", errors.New("视频上游地址必须是无查询参数的 HTTP(S) URL")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(endpoint, "/")
+	suffix, err := url.Parse(endpoint)
+	if err != nil || suffix.IsAbs() || suffix.Host != "" || suffix.User != nil || suffix.Fragment != "" {
+		return "", errors.New("视频上游接口地址无效")
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(suffix.Path, "/")
+	u.RawQuery = suffix.RawQuery
 	return u.String(), nil
 }
 
@@ -132,9 +137,9 @@ func providerTaskPath(id string) (string, error) {
 	return url.PathEscape(id), nil
 }
 
-func durationMillis(seconds json.Number) (int64, error) {
+func durationMillis(seconds json.Number, maxSeconds int64) (int64, error) {
 	value, ok := new(big.Rat).SetString(string(seconds))
-	if !ok || value.Sign() <= 0 || value.Cmp(big.NewRat(15, 1)) > 0 {
+	if !ok || value.Sign() <= 0 || value.Cmp(big.NewRat(maxSeconds, 1)) > 0 {
 		return 0, errors.New("上游时长无效")
 	}
 	ms := new(big.Int).Mul(value.Num(), big.NewInt(1000))

@@ -90,6 +90,15 @@ import { useSkillTags } from "@/hooks/use-skill-tags"
 import { getModelIconName } from "@/lib/model-utils"
 import type { SkillTag } from "@/lib/skill-tags"
 import { cn } from "@/lib/utils"
+import {
+  VIDEO_MODELS,
+  videoDefaults,
+  videoResolutions,
+  type VideoCapabilities,
+  type VideoConfig,
+  type VideoMode,
+  type VideoProvider,
+} from "@/lib/video-models"
 
 const PROTOCOLS = [
   { value: "openai_chat_completions", label: "OpenAI Chat Completions" },
@@ -100,31 +109,18 @@ const PROTOCOLS = [
 type ModelProtocol = (typeof PROTOCOLS)[number]["value"] | "image_generation" | "video_generation"
 type ModelKind = "text" | "image" | "video"
 type ImageProvider =
-  "openai_images" | "openai_responses_image" | "volcengine" | "xai"
-type VideoProvider = "xai" | "minimax"
+  "openai_images" | "openai_responses_image" | "volcengine" | "xai" | "agnes"
 type ModelProvider = ImageProvider | VideoProvider | "passthrough"
 type ModelType = "system" | "user"
-
-const VIDEO_PROVIDERS = [
-  { value: "xai", label: "Grok Imagine Video 1.5", model: "grok-imagine-video-1.5" },
-  { value: "minimax", label: "MiniMax H3", model: "MiniMax-H3" },
-] as const
-
-type VideoMode = "text_to_video" | "image_to_video" | "last_frame_to_video" | "first_last_to_video" | "reference_image_to_video"
-type VideoConfig = { modes: VideoMode[]; defaults: Record<string, Record<string, string | number>> }
 type VideoPricing = { rates: Array<{ resolution: string; credits_per_second: string }> }
-type VideoCapabilities = {
-  modes: VideoMode[]
-  params: Array<{ name: string; choices?: string[]; min?: number; max?: number }>
-  param_rules?: Array<{ when: { modes?: VideoMode[] }; name: string; choices: string[] }>
-}
 
-const IMAGE_PROVIDERS = [
+const IMAGE_PROVIDERS: Array<{ value: ImageProvider; label: string; model?: string }> = [
   { value: "openai_images", label: "OpenAI GPT Image API" },
   { value: "openai_responses_image", label: "OpenAI Responses Image" },
   { value: "volcengine", label: "Seedream" },
   { value: "xai", label: "Grok Imagine" },
-] as const
+  { value: "agnes", label: "Agnes Image 2.5 Flash", model: "agnes-image-2.5-flash" },
+]
 
 type ImageConfig = {
   qualities: string[]
@@ -152,22 +148,6 @@ type ImageCapabilities = {
 
 const decimalCredits = /^(0|[1-9]\d*)(\.\d{1,6})?$/
 const positiveMultiplier = /^(?:[1-9]\d*(?:\.\d{1,6})?|0\.(?=\d*[1-9])\d{1,6})$/
-
-function videoDefaults(cap: VideoCapabilities, modes: VideoMode[], saved?: VideoConfig) {
-  return Object.fromEntries(modes.map((mode) => {
-    const values: Record<string, string | number> = {}
-    for (const param of cap.params) {
-      const rule = cap.param_rules?.find((item) => item.name === param.name && item.when.modes?.includes(mode))
-      const choices = rule?.choices ?? param.choices
-      const savedValue = saved?.defaults?.[mode]?.[param.name]
-      values[param.name] = savedValue !== undefined &&
-        (choices ? choices.includes(String(savedValue)) : Number(savedValue) >= (param.min ?? 0) && Number(savedValue) <= (param.max ?? Infinity))
-        ? savedValue
-        : choices?.[0] ?? param.min ?? ""
-    }
-    return [mode, values]
-  }))
-}
 
 type ModelBase = {
   id: string
@@ -317,6 +297,7 @@ export function ModelsPage() {
   const [modelToTest, setModelToTest] = useState<Model | null>(null)
   const [protocol, setProtocol] = useState<ModelProtocol>("openai_responses")
   const [kind, setKind] = useState<ModelKind>("text")
+  const [modelId, setModelId] = useState("")
   const [provider, setProvider] = useState<ModelProvider>("openai_images")
   const [videoCapabilities, setVideoCapabilities] = useState<VideoCapabilities | null>(null)
   const [videoModes, setVideoModes] = useState<VideoMode[]>([])
@@ -437,20 +418,20 @@ export function ModelsPage() {
 
   useEffect(() => {
     if (!dialogOpen || kind !== "video") return
-    const entry = VIDEO_PROVIDERS.find((candidate) => candidate.value === provider)
-    if (!entry || (editingModel && editingModel.modelId !== entry.model)) return
+    const entry = VIDEO_MODELS.find((candidate) => candidate.provider === provider && candidate.model === modelId)
+    if (!entry) return
     let active = true
-    api<VideoCapabilities>(`/api/admin/v1/models/video-capabilities?provider=${entry.value}&model_id=${encodeURIComponent(entry.model)}`)
+    api<VideoCapabilities>(`/api/admin/v1/models/video-capabilities?provider=${entry.provider}&model_id=${encodeURIComponent(entry.model)}`)
       .then((cap) => {
         if (!active) return
         setVideoCapabilities(cap)
-        setVideoModes(editingModel?.kind === "video" && editingModel.provider === provider
+        setVideoModes(editingModel?.kind === "video" && editingModel.provider === provider && editingModel.modelId === modelId
           ? editingModel.videoConfig?.modes ?? cap.modes
           : cap.modes)
       })
       .catch(() => { if (active) setVideoCapabilities(null) })
     return () => { active = false }
-  }, [dialogOpen, kind, provider, editingModel])
+  }, [dialogOpen, kind, provider, modelId, editingModel])
 
   const handleQualitySelectionChange = (values: string[]) => {
     if (!imageCapabilities) return
@@ -477,6 +458,7 @@ export function ModelsPage() {
   const resetModelOptions = () => {
     setProtocol("openai_responses")
     setKind("text")
+    setModelId("")
     setProvider("openai_images")
     setImageCapabilities(null)
     setVideoCapabilities(null)
@@ -511,6 +493,7 @@ export function ModelsPage() {
     setEditingModelId(model.id)
     setProtocol(model.protocol)
     setKind(model.kind)
+    setModelId(model.modelId)
     setProvider(
       model.provider === "passthrough" ? "openai_images" : model.provider
     )
@@ -612,9 +595,9 @@ export function ModelsPage() {
       )
         return
     } else if (kind === "video") {
-      const entry = VIDEO_PROVIDERS.find((candidate) => candidate.value === provider)
-      const resolutions = videoCapabilities?.params.find((param) => param.name === "resolution")?.choices ?? []
-      if (!entry || modelId !== entry.model || !videoCapabilities || videoModes.length === 0 ||
+      const entry = VIDEO_MODELS.find((candidate) => candidate.provider === provider && candidate.model === modelId)
+      const resolutions = videoResolutions(videoCapabilities)
+      if (!entry || !videoCapabilities || videoModes.length === 0 ||
         resolutions.length === 0 || resolutions.some((value) => !decimalCredits.test(videoRates[value] ?? ""))) return
     } else {
       if (
@@ -679,10 +662,10 @@ export function ModelsPage() {
               protocol: "video_generation",
               video_config: {
                 modes: videoModes,
-                defaults: videoDefaults(videoCapabilities, videoModes, editingModel?.videoConfig),
+                defaults: videoDefaults(videoCapabilities, videoModes, editingModel?.modelId === modelId ? editingModel.videoConfig : undefined),
               },
               video_pricing: {
-                rates: (videoCapabilities.params.find((param) => param.name === "resolution")?.choices ?? [])
+                rates: videoResolutions(videoCapabilities)
                   .map((resolution) => ({ resolution, credits_per_second: videoRates[resolution] })),
               },
             }
@@ -789,18 +772,18 @@ export function ModelsPage() {
                         : t("pages.models.dialogTitle")}
                     </DialogTitle>
                   </DialogHeader>
-                  <ScrollArea className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:pe-3">
+                  <ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:pe-3">
                     <Tabs
                       value={kind}
                       onValueChange={(value) => {
                         const next = value as ModelKind
                         setKind(next)
                         setImageCapabilities(null)
+                        setVideoCapabilities(null)
                         if (next === "text") setProtocol("openai_responses")
                         if (next === "video") {
-                          setProvider("xai")
-                          const input = document.getElementById("model-id") as HTMLInputElement | null
-                          if (input && !editingModel) input.value = "grok-imagine-video-1.5"
+                          setProvider(VIDEO_MODELS[0].provider)
+                          setModelId(VIDEO_MODELS[0].model)
                         }
                       }}
                     >
@@ -826,7 +809,11 @@ export function ModelsPage() {
                           <Input
                             id="model-id"
                             name="modelId"
-                            defaultValue={editingModel?.modelId}
+                            value={modelId}
+                            onChange={(event) => {
+                              setModelId(event.target.value)
+                              setVideoCapabilities(null)
+                            }}
                             placeholder={t("pages.models.modelIdPlaceholder")}
                             required
                           />
@@ -858,6 +845,9 @@ export function ModelsPage() {
                             onValueChange={(value) => {
                               setProvider(value as ImageProvider)
                               setImageCapabilities(null)
+                              const next = IMAGE_PROVIDERS.find((item) => item.value === value)
+                              const input = document.getElementById("model-id") as HTMLInputElement | null
+                              if (next?.model && input && !editingModel) input.value = next.model
                             }}
                           >
                             <SelectTrigger
@@ -884,23 +874,24 @@ export function ModelsPage() {
 
                       {kind === "video" && (
                         <Field>
-                          <FieldLabel>视频供应商</FieldLabel>
+                          <FieldLabel htmlFor="video-model">视频型号</FieldLabel>
                           <Select
-                            items={VIDEO_PROVIDERS.map((item) => ({ value: item.value, label: item.label }))}
-                            value={provider === "minimax" ? "minimax" : "xai"}
+                            items={VIDEO_MODELS.map((item) => ({ value: item.model, label: item.label }))}
+                            value={VIDEO_MODELS.find((item) => item.provider === provider && item.model === modelId)?.model ?? null}
                             onValueChange={(value) => {
-                              const next = VIDEO_PROVIDERS.find((entry) => entry.value === value)
+                              const next = VIDEO_MODELS.find((entry) => entry.model === value)
                               if (next) {
-                                setProvider(next.value)
+                                setProvider(next.provider)
+                                setModelId(next.model)
                                 setVideoCapabilities(null)
-                                const input = document.getElementById("model-id") as HTMLInputElement | null
-                                if (input) input.value = next.model
+                                setVideoModes([])
+                                setVideoRates({})
                               }
                             }}
                           >
-                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="w-full" id="video-model"><SelectValue /></SelectTrigger>
                             <SelectContent><SelectGroup>
-                              {VIDEO_PROVIDERS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                              {VIDEO_MODELS.map((item) => <SelectItem key={item.model} value={item.model}>{item.label}</SelectItem>)}
                             </SelectGroup></SelectContent>
                           </Select>
                         </Field>
@@ -1245,7 +1236,7 @@ export function ModelsPage() {
                               </div>
                               <FieldLabel>每秒积分（按清晰度）</FieldLabel>
                               <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                {(videoCapabilities.params.find((param) => param.name === "resolution")?.choices ?? []).map((resolution) => (
+                                {videoResolutions(videoCapabilities).map((resolution) => (
                                   <Field key={resolution}>
                                     <FieldLabel htmlFor={`video-rate-${resolution}`}>{resolution} / 秒</FieldLabel>
                                     <Input id={`video-rate-${resolution}`} inputMode="decimal" required

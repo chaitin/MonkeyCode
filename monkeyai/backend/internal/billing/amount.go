@@ -94,7 +94,7 @@ func priceImages(unit Amount, count int64) (Amount, error) {
 }
 
 func priceVideo(unit Amount, durationMs int64) (Amount, error) {
-	if unit < 0 || durationMs < 0 || durationMs > 15_000 {
+	if unit < 0 || durationMs < 0 || durationMs > MaxVideoDurationMs {
 		return 0, errors.New("视频积分或时长无效")
 	}
 	return rounded(new(big.Int).Mul(big.NewInt(int64(unit)), big.NewInt(durationMs)), big.NewInt(1000))

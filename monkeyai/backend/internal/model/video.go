@@ -96,6 +96,64 @@ func VideoCapabilitiesFor(provider Provider, modelID string) (VideoCapabilities,
 			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
 		}
 		cap.PromptRequiredWhen = []VideoCondition{{Modes: modes}}
+	case provider == ProviderVolcengine && (modelID == "doubao-seedance-2-0-260128" || modelID == "doubao-seedance-2-5-260628"):
+		cap.Modes = []VideoMode{VideoTextToVideo, VideoImageToVideo, VideoFirstLastToVideo, VideoReferenceImageToVideo}
+		resolutions := videoValues("480p", "720p", "1080p", "4k")
+		maxSeconds, maxReferences := int64(15), uint32(9)
+		if modelID == "doubao-seedance-2-5-260628" {
+			resolutions = videoValues("480p", "720p", "1080p")
+			maxSeconds, maxReferences = 30, 30
+			cap.ParamRules = []VideoParamRule{
+				{When: VideoCondition{Modes: []VideoMode{VideoImageToVideo, VideoFirstLastToVideo}}, Name: "aspect_ratio", Choices: videoValues("adaptive")},
+			}
+		}
+		cap.Params = []VideoParamSpec{
+			{Name: "resolution", Type: "string", Choices: resolutions},
+			{Name: "aspect_ratio", Type: "string", Choices: videoValues("adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16")},
+			{Name: "duration_seconds", Type: "integer", Min: videoInt(4), Max: videoInt(maxSeconds), Step: videoInt(1)},
+			{Name: "generate_audio", Type: "boolean", Choices: videoValues(true, false)},
+		}
+		first.MinWidth, first.MaxWidth, first.MinHeight, first.MaxHeight = 300, 6000, 300, 6000
+		first.MinAspectRatio, first.MaxAspectRatio = "0.4", "2.5"
+		last = first
+		last.Role = "last_frame"
+		reference = first
+		reference.Role, reference.MaxCount = "reference_image", maxReferences
+		cap.References = []VideoReferenceSpec{first, last, reference}
+		cap.ReferenceModes = []VideoModeReferences{
+			{Mode: VideoTextToVideo, RequiredRoles: []string{}, OptionalRoles: []string{}},
+			{Mode: VideoImageToVideo, RequiredRoles: []string{"first_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoFirstLastToVideo, RequiredRoles: []string{"first_frame", "last_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
+		}
+		cap.PromptRequiredWhen = []VideoCondition{{Modes: []VideoMode{VideoTextToVideo}}}
+	case provider == ProviderAgnes && (modelID == "agnes-video-2.5" || modelID == "agnes-video-2.5-flash"):
+		cap.Modes = []VideoMode{VideoTextToVideo, VideoImageToVideo, VideoFirstLastToVideo, VideoReferenceImageToVideo}
+		resolutions := videoValues("720P", "1080P", "1K", "2K")
+		maxReferences := uint32(8)
+		if modelID == "agnes-video-2.5-flash" {
+			resolutions = videoValues("720P")
+			maxReferences = 5
+		}
+		cap.Params = []VideoParamSpec{
+			{Name: "resolution", Type: "string", Choices: resolutions},
+			{Name: "aspect_ratio", Type: "string", Choices: videoValues("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")},
+			{Name: "duration_seconds", Type: "integer", Min: videoInt(4), Max: videoInt(12), Step: videoInt(1)},
+		}
+		first.MinWidth, first.MaxWidth, first.MinHeight, first.MaxHeight = 256, 5760, 256, 5760
+		first.MinAspectRatio, first.MaxAspectRatio = "0.4", "2.5"
+		last = first
+		last.Role = "last_frame"
+		reference = first
+		reference.Role, reference.MaxCount = "reference_image", maxReferences
+		cap.References = []VideoReferenceSpec{first, last, reference}
+		cap.ReferenceModes = []VideoModeReferences{
+			{Mode: VideoTextToVideo, RequiredRoles: []string{}, OptionalRoles: []string{}},
+			{Mode: VideoImageToVideo, RequiredRoles: []string{"first_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoFirstLastToVideo, RequiredRoles: []string{"first_frame", "last_frame"}, OptionalRoles: []string{}},
+			{Mode: VideoReferenceImageToVideo, RequiredRoles: []string{"reference_image"}, OptionalRoles: []string{}},
+		}
+		cap.PromptRequiredWhen = []VideoCondition{{Modes: cap.Modes}}
 	default:
 		return VideoCapabilities{}, errors.New("视频模型供应商或型号不受支持")
 	}
@@ -357,9 +415,19 @@ func VideoRateFor(pricing *VideoPricing, resolution string) (billing.Amount, err
 	return 0, errors.New("清晰度未配置积分")
 }
 
+func VideoMaxDuration(cap VideoCapabilities) (int64, error) {
+	for _, spec := range cap.Params {
+		if spec.Name == "duration_seconds" && spec.Type == "integer" && spec.Max != nil &&
+			*spec.Max > 0 && *spec.Max <= billing.MaxVideoDurationMs/1000 {
+			return *spec.Max, nil
+		}
+	}
+	return 0, errors.New("视频时长上限无效")
+}
+
 func VideoDuration(values map[string]json.RawMessage) (int64, error) {
 	var seconds int64
-	if err := json.Unmarshal(values["duration_seconds"], &seconds); err != nil || seconds < 1 || seconds > 15 {
+	if err := json.Unmarshal(values["duration_seconds"], &seconds); err != nil || seconds < 1 || seconds > billing.MaxVideoDurationMs/1000 {
 		return 0, errors.New("视频时长无效")
 	}
 	return seconds, nil

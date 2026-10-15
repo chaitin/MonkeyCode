@@ -6,6 +6,8 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 )
 
+const MaxVideoDurationMs int64 = 30_000
+
 func QuoteVideo(unit Amount, durationMs int64) (Amount, error) {
 	return priceVideo(unit, durationMs)
 }

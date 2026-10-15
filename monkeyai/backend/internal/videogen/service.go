@@ -133,7 +133,11 @@ func (s *Service) Submit(ctx context.Context, target proxy.Target, input Generat
 	if err != nil {
 		return Task{}, resource.Invalid(err.Error())
 	}
-	maxMs := int64(15_000)
+	maxSeconds, err := model.VideoMaxDuration(cap)
+	if err != nil {
+		return Task{}, resource.Invalid(err.Error())
+	}
+	maxMs := maxSeconds * 1000
 	reserve, err := billing.QuoteVideo(rate, maxMs)
 	if err != nil {
 		return Task{}, resource.Invalid(err.Error())
