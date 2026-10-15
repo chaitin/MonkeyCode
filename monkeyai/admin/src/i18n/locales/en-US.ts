@@ -114,8 +114,7 @@ export const enUS = {
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
-    importedRuleReadOnly:
-      "This rule was imported from a resource package. You can only change who can use it. Update the resource package to change other settings.",
+    importedRuleReadOnly: "Imported rules only allow availability changes.",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
     oauthClientDynamic: "Dynamic client (auto-discovery)",
