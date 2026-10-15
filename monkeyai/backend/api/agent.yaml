@@ -5247,6 +5247,12 @@ components:
           format: uuid
         name:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         revision:
           type: integer
           minimum: 1

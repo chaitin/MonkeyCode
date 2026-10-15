@@ -51,9 +51,9 @@ func (q *Queries) CreateImportBatch(ctx context.Context, data []byte) error {
 
 const createImportConnector = `-- name: CreateImportConnector :exec
 INSERT INTO connectors (id,owner_user_id,ownership_type,origin,name,description,url,
-                        authorization_mode,authorization_method,oauth_config,timeout_ms,auth_header_name,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name','',d->>'url',d->>'authorization_mode',
-       NULLIF(d->>'authorization_method',''),d->'oauth_config',(d->>'timeout_ms')::int,d->>'auth_header_name',d->'name_i18n',d->'description_i18n'
+                        authorization_mode,authorization_method,oauth_config,timeout_ms,auth_header_name,icon_s3_key,name_i18n,description_i18n)
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->>'url',d->>'authorization_mode',
+       NULLIF(d->>'authorization_method',''),d->'oauth_config',(d->>'timeout_ms')::int,d->>'auth_header_name',d->>'icon_s3_key',d->'name_i18n',d->'description_i18n'
 FROM (SELECT $1::jsonb AS d) input
 `
 
@@ -424,9 +424,9 @@ func (q *Queries) RevokeImportCredentials(ctx context.Context, dollar_1 string) 
 }
 
 const updateImportConnector = `-- name: UpdateImportConnector :exec
-UPDATE connectors SET origin='package',name=d->>'name',description='',url=d->>'url',authorization_mode=d->>'authorization_mode',
+UPDATE connectors SET origin='package',name=d->>'name',description=d->>'description',url=d->>'url',authorization_mode=d->>'authorization_mode',
        authorization_method=NULLIF(d->>'authorization_method',''),oauth_config=d->'oauth_config',timeout_ms=(d->>'timeout_ms')::int,
-       auth_header_name=d->>'auth_header_name',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+       auth_header_name=d->>'auth_header_name',icon_s3_key=d->>'icon_s3_key',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        config_revision=(d->>'config_revision')::bigint,connection_status=d->>'connection_status',
        last_checked_at=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_checked_at END,
        last_error=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_error END,

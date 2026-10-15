@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -302,8 +303,38 @@ func (s *Service) prepareObjects(ctx context.Context, pkg Package, p Preview, r 
 			}
 			keys["expert:"+c.Slug], written = key, append(written, key)
 		}
+		if item, ok := r.Connectors[c.Slug]; ok && c.Type == "connector" && item.HasAvatar {
+			body, err := pkg.ConnectorAvatarBytes(item)
+			if err != nil {
+				cleanup()
+				return nil, nil, err
+			}
+			key, mime := connectorAvatarObject(item)
+			if err := s.Storage.Put(ctx, key, body, mime); err != nil {
+				cleanup()
+				return nil, nil, err
+			}
+			keys["connector:"+c.Slug], written = key, append(written, key)
+		}
 	}
 	return keys, cleanup, nil
+}
+
+func connectorAvatarObject(item Connector) (string, string) {
+	ext := strings.ToLower(path.Ext(item.Entry.AvatarPath))
+	mime := "application/octet-stream"
+	switch ext {
+	case ".jpeg", ".jpg":
+		mime = "image/jpeg"
+	case ".png":
+		mime = "image/png"
+	case ".webp":
+		mime = "image/webp"
+	default:
+		ext = ".webp"
+		mime = "image/webp"
+	}
+	return "resource-import/connectors/" + resource.ID() + ext, mime
 }
 
 func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Options, packageSHA, expectedDigest string) (Preview, error) {
@@ -470,7 +501,7 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 		}
 		return sqlc.New(tx).UpdateImportRule(ctx, data)
 	case "connector":
-		return writeConnector(ctx, tx, r.Connectors[change.Slug], change, id, actor, opts)
+		return writeConnector(ctx, tx, r.Connectors[change.Slug], change, id, actor, objects, opts)
 	case "expert":
 		item := r.Experts[change.Slug]
 		desc := description(item.Entry.DescriptionI18n)
@@ -537,7 +568,7 @@ func payload(value any) []byte {
 	return data
 }
 
-func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Change, id, actor string, opts Options) error {
+func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Change, id, actor string, objects map[string]string, opts Options) error {
 	method, mode := "", "none"
 	switch item.Auth.Mode {
 	case "header":
@@ -574,10 +605,11 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 			}
 		}
 	}
-	data := resource.Object{"id": id, "actor_id": actor, "name": change.Name, "url": item.Config.URL,
+	data := resource.Object{"id": id, "actor_id": actor, "name": change.Name, "description": item.Entry.Description, "url": item.Config.URL,
 		"authorization_mode": mode, "authorization_method": method, "oauth_config": oauth,
 		"timeout_ms": item.Config.TimeoutMs, "auth_header_name": item.Auth.Header,
-		"name_i18n": mapOrEmpty(item.Entry.NameI18n), "description_i18n": mapOrEmpty(item.Entry.DescriptionI18n)}
+		"icon_s3_key": objects["connector:"+change.Slug],
+		"name_i18n":   mapOrEmpty(item.Entry.NameI18n), "description_i18n": mapOrEmpty(item.Entry.DescriptionI18n)}
 	if change.Action == "create" {
 		return sqlc.New(tx).CreateImportConnector(ctx, payload(data))
 	}

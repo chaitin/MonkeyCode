@@ -171,6 +171,50 @@ func TestRejectInvalidResourceJSON(t *testing.T) {
 	}
 }
 
+func TestConnectorManifestMetadataAndAvatar(t *testing.T) {
+	avatar := []byte("connector avatar")
+	manifest := Manifest{AgentResources: AgentResources{Connectors: []Entry{{
+		Slug: "demo-connector", Name: "演示连接", Description: "默认描述", Path: "agent/connectors/demo.json",
+		AvatarPath:      "agent/connectors/avatars/demo.webp",
+		NameI18n:        map[string]string{"zh-CN": "清单名称"},
+		DescriptionI18n: map[string]string{"zh-CN": "清单描述"},
+	}}}}
+	files := map[string][]byte{
+		"manifest.json":                      nil,
+		"agent/connectors/demo.json":         []byte(`{"config":{"url":"https://example.com/mcp","name_i18n":{"en-US":"Demo Connector"},"description_i18n":{"en-US":"Demo description"}}}`),
+		"agent/connectors/avatars/demo.webp": avatar,
+	}
+	files["manifest.json"], _ = json.Marshal(manifest)
+	archive, err := makeZIP(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Connectors["demo-connector"]
+	if !item.HasAvatar || item.AvatarSHA != digest(avatar) || len(item.Avatar) != 0 {
+		t.Fatalf("流式解析未正确记录 Connector 头像: %+v", item)
+	}
+	if item.Entry.Description != "默认描述" || item.Entry.NameI18n["zh-CN"] != "清单名称" || item.Entry.NameI18n["en-US"] != "Demo Connector" ||
+		item.Entry.DescriptionI18n["zh-CN"] != "清单描述" || item.Entry.DescriptionI18n["en-US"] != "Demo description" {
+		t.Fatalf("Connector i18n 合并异常: %+v", item.Entry)
+	}
+	stored, err := pkg.ConnectorAvatarBytes(item)
+	if err != nil || !bytes.Equal(stored, avatar) {
+		t.Fatalf("无法按需读取 Connector 头像: %v", err)
+	}
+	items, err := desiredItems(resources, Options{}, nil, context.Background(), nil)
+	if err != nil || len(items) != 1 || items[0].Fields.String("description") != "默认描述" || items[0].Fields.String("avatar_sha256") != digest(avatar) {
+		t.Fatalf("头像和 i18n 未进入导入计划: %v %+v", err, items)
+	}
+}
+
 func TestPublishedReleaseZIP(t *testing.T) {
 	name := os.Getenv("MONKEYAI_RELEASE_FIXTURE_ZIP")
 	if name == "" {
@@ -195,6 +239,15 @@ func TestPublishedReleaseZIP(t *testing.T) {
 	}
 	t.Logf("发布包 v%d 解析通过: %d Skill, %d Rule, %d Connector, %d Expert",
 		pkg.Manifest.Version, len(resources.Skills), len(resources.Rules), len(resources.Connectors), len(resources.Experts))
+	connector, ok := resources.Connectors["tavily"]
+	if !ok || !connector.HasAvatar || connector.Entry.NameI18n["en-US"] != "Tavily Search" ||
+		connector.Entry.DescriptionI18n["en-US"] != "Search with Tavily online" {
+		t.Fatalf("r0016 Connector 元数据未正确解析: %+v", connector)
+	}
+	avatar, err := pkg.ConnectorAvatarBytes(connector)
+	if err != nil || len(avatar) == 0 {
+		t.Fatalf("r0016 Connector 头像未正确读取: %v", err)
+	}
 }
 
 func TestPublishedReleaseFixture(t *testing.T) {

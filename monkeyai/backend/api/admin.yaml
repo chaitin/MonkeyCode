@@ -6540,6 +6540,14 @@ components:
           type: string
         name:
           type: string
+        description:
+          type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         authorization_mode:
           type: string
           enum:
@@ -7008,6 +7016,12 @@ components:
           format: uuid
         name:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         revision:
           type: integer
           minimum: 1

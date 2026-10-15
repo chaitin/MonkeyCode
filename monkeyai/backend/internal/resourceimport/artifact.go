@@ -35,13 +35,15 @@ type Rule struct {
 }
 
 type ConnectorConfig struct {
-	Transport    string            `json:"transport"`
-	URL          string            `json:"url"`
-	TimeoutMs    int               `json:"timeout_ms"`
-	Auth         json.RawMessage   `json:"auth"`
-	HeaderSchema json.RawMessage   `json:"header_schema"`
-	OAuth        json.RawMessage   `json:"oauth"`
-	NameI18n     map[string]string `json:"name_i18n"`
+	Transport       string            `json:"transport"`
+	URL             string            `json:"url"`
+	TimeoutMs       int               `json:"timeout_ms"`
+	Auth            json.RawMessage   `json:"auth"`
+	HeaderSchema    json.RawMessage   `json:"header_schema"`
+	OAuth           json.RawMessage   `json:"oauth"`
+	NameI18n        map[string]string `json:"name_i18n"`
+	Description     string            `json:"description"`
+	DescriptionI18n map[string]string `json:"description_i18n"`
 }
 
 type Auth struct {
@@ -58,10 +60,13 @@ type OAuth struct {
 }
 
 type Connector struct {
-	Entry  Entry
-	Config ConnectorConfig
-	Auth   Auth
-	OAuth  OAuth
+	Entry     Entry
+	Config    ConnectorConfig
+	Auth      Auth
+	OAuth     OAuth
+	Avatar    []byte
+	AvatarSHA string
+	HasAvatar bool
 }
 
 type Expert struct {
@@ -446,6 +451,16 @@ func (p Package) SkillBytes(item Skill) ([]byte, error) {
 	return parsed.Package.Bytes, nil
 }
 
+func (p Package) ConnectorAvatarBytes(item Connector) ([]byte, error) {
+	if !item.HasAvatar {
+		return nil, nil
+	}
+	if !p.streamed {
+		return item.Avatar, nil
+	}
+	return p.ReadFile(item.Entry.AvatarPath)
+}
+
 func (p Package) AvatarBytes(item Expert) ([]byte, error) {
 	if !p.streamed {
 		return item.Avatar, nil
@@ -527,6 +542,8 @@ func ParseResources(p Package) (Resources, error) {
 		}
 		entry.SHA256 = digest(data)
 		entry.NameI18n = mergeTranslations(entry.NameI18n, info.Config.NameI18n)
+		entry.Description = first(entry.Description, info.Config.Description)
+		entry.DescriptionI18n = mergeTranslations(entry.DescriptionI18n, info.Config.DescriptionI18n)
 		if info.Config.TimeoutMs == 0 {
 			info.Config.TimeoutMs = 25000
 		}
@@ -544,7 +561,20 @@ func ParseResources(p Package) (Resources, error) {
 			}
 		}
 		out.Connectors[entry.Slug] = Connector{Entry: entry, Config: info.Config, Auth: auth, OAuth: oauth}
+		if entry.AvatarPath != "" {
+			avatar, readErr := p.ReadFile(entry.AvatarPath)
+			if readErr != nil {
+				return out, fmt.Errorf("连接器 %s 头像: %w", entry.Slug, readErr)
+			}
+			item := out.Connectors[entry.Slug]
+			item.AvatarSHA, item.HasAvatar = digest(avatar), len(avatar) > 0
+			if !p.streamed {
+				item.Avatar = avatar
+			}
+			out.Connectors[entry.Slug] = item
+		}
 	}
+
 	for _, entry := range p.Manifest.AgentResources.Experts {
 		data, err := p.ReadFile(entry.Path)
 		if err != nil {

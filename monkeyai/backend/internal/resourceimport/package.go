@@ -49,9 +49,11 @@ type Entry struct {
 	Type            string            `json:"type"`
 	Slug            string            `json:"slug"`
 	Name            string            `json:"name"`
+	Description     string            `json:"description,omitempty"`
 	Tags            []string          `json:"tags,omitempty"`
 	Path            string            `json:"path"`
 	SHA256          string            `json:"sha256"`
+	AvatarPath      string            `json:"avatar_path,omitempty"`
 	NameI18n        map[string]string `json:"name_i18n,omitempty"`
 	DescriptionI18n map[string]string `json:"description_i18n,omitempty"`
 }
@@ -137,6 +139,10 @@ func safePath(name string) bool {
 		!strings.Contains(name, "//") && !strings.ContainsAny(name, "\r\n")
 }
 
+func ignoredZIPPath(name string) bool {
+	return name == "__MACOSX" || strings.HasPrefix(name, "__MACOSX/") || path.Base(name) == ".DS_Store"
+}
+
 func readZIP(data []byte, maxSize, maxExpanded, maxFiles, maxFile int) (map[string][]byte, error) {
 	if len(data) == 0 || len(data) > maxSize {
 		return nil, fmt.Errorf("压缩包大小超限")
@@ -146,20 +152,37 @@ func readZIP(data []byte, maxSize, maxExpanded, maxFiles, maxFile int) (map[stri
 		return nil, fmt.Errorf("ZIP 无效或条目数超限")
 	}
 	files := make(map[string][]byte, len(z.File))
-	seen := make(map[string]bool, len(z.File))
+	seen := make(map[string]*zip.File)
 	total := 0
 	for _, f := range z.File {
 		name := strings.TrimSuffix(f.Name, "/")
-		if !safePath(name) || seen[strings.ToLower(name)] || f.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("ZIP 存在不安全或重复路径: %q", f.Name)
+		if !safePath(name) || f.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("ZIP 存在不安全路径: %q", f.Name)
 		}
-		seen[strings.ToLower(name)] = true
+		if ignoredZIPPath(name) {
+			continue
+		}
+		key := strings.ToLower(name)
 		if f.FileInfo().IsDir() {
 			if !strings.HasSuffix(f.Name, "/") {
 				return nil, fmt.Errorf("ZIP 目录路径无效: %q", f.Name)
 			}
+			if previous := seen[key]; previous != nil {
+				if !previous.FileInfo().IsDir() {
+					return nil, fmt.Errorf("ZIP 存在重复路径: %q", f.Name)
+				}
+				continue
+			}
+			seen[key] = f
 			continue
 		}
+		if previous := seen[key]; previous != nil {
+			if previous.FileInfo().IsDir() || previous.UncompressedSize64 != f.UncompressedSize64 || previous.CRC32 != f.CRC32 {
+				return nil, fmt.Errorf("ZIP 存在内容不同的重复路径: %q", f.Name)
+			}
+			continue
+		}
+		seen[key] = f
 		if !f.Mode().IsRegular() || f.UncompressedSize64 > uint64(maxFile) {
 			return nil, fmt.Errorf("ZIP 文件类型或大小无效: %q", name)
 		}
@@ -244,20 +267,37 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 	if err != nil || len(z.File) > MaxFiles {
 		return p, fmt.Errorf("ZIP 无效或条目数超限")
 	}
-	seen := make(map[string]bool, len(z.File))
+	seen := make(map[string]*zip.File)
 	var total uint64
 	for _, f := range z.File {
 		name := strings.TrimSuffix(f.Name, "/")
-		if !safePath(name) || seen[strings.ToLower(name)] || f.Mode()&os.ModeSymlink != 0 {
-			return Package{}, fmt.Errorf("ZIP 存在不安全或重复路径: %q", f.Name)
+		if !safePath(name) || f.Mode()&os.ModeSymlink != 0 {
+			return Package{}, fmt.Errorf("ZIP 存在不安全路径: %q", f.Name)
 		}
-		seen[strings.ToLower(name)] = true
+		if ignoredZIPPath(name) {
+			continue
+		}
+		key := strings.ToLower(name)
 		if f.FileInfo().IsDir() {
 			if !strings.HasSuffix(f.Name, "/") {
 				return Package{}, fmt.Errorf("ZIP 目录路径无效: %q", f.Name)
 			}
+			if previous := seen[key]; previous != nil {
+				if !previous.FileInfo().IsDir() {
+					return Package{}, fmt.Errorf("ZIP 存在重复路径: %q", f.Name)
+				}
+				continue
+			}
+			seen[key] = f
 			continue
 		}
+		if previous := seen[key]; previous != nil {
+			if previous.FileInfo().IsDir() || previous.UncompressedSize64 != f.UncompressedSize64 || previous.CRC32 != f.CRC32 {
+				return Package{}, fmt.Errorf("ZIP 存在内容不同的重复路径: %q", f.Name)
+			}
+			continue
+		}
+		seen[key] = f
 		limit := uint64(MaxFile)
 		if name == "release.json" || name == "manifest.json" || name == "CHECKSUMS.sha256" {
 			limit = MaxMetadata
