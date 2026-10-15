@@ -4,12 +4,14 @@ import {
   ArrowRight01Icon,
   Loading03Icon,
   Search02Icon,
+  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -59,6 +61,7 @@ const key = "pages.sessionReporting"
 const columns = [
   "kind",
   "resource_id",
+  "user",
   "version",
   "enabled_sessions",
   "available_sessions",
@@ -75,7 +78,8 @@ export function ResourceAnalysisPage() {
   const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
-  const [userID, setUserID] = useState("")
+  const [userQuery, setUserQuery] = useState("")
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [resourceID, setResourceID] = useState("")
   const resourceInputRef = useRef<HTMLInputElement>(null)
   const [visibleColumns, setVisibleColumns] = useState<Set<ResourceColumn>>(
@@ -168,6 +172,10 @@ export function ResourceAnalysisPage() {
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (loading || searching) return
+    search(resourceID)
+  }
+
+  function search(selectedResourceID: string) {
     if (
       Boolean(startDay) !== Boolean(endDay) ||
       (startDay &&
@@ -187,8 +195,8 @@ export function ResourceAnalysisPage() {
       until: endDay
         ? startOfLocalDay(addDays(endDay, 1)).toISOString()
         : timeWindow.until,
-      user_id: userID.trim(),
-      resource_id: resourceID.trim(),
+      user: userQuery.trim(),
+      resource_id: selectedResourceID.trim(),
     })
     setCursors([undefined])
     setActive(0)
@@ -208,9 +216,33 @@ export function ResourceAnalysisPage() {
           onClick={() => {
             setResourceID(row.resource_id)
             resourceInputRef.current?.focus({ preventScroll: true })
+            search(row.resource_id)
           }}
         >
           <ReportValue value={row.resource_id} />
+        </button>
+      )
+    }
+    if (column === "user") {
+      return (
+        <button
+          type="button"
+          className="flex max-w-52 items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+          title={row.user_email || undefined}
+          disabled={!row.user_id}
+          onClick={() => {
+            if (row.user_id) setAccountUserID(row.user_id)
+          }}
+        >
+          <HugeiconsIcon
+            icon={User02Icon}
+            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <span className="truncate">
+            {row.user_name || row.user_email || row.user_id || "—"}
+          </span>
         </button>
       )
     }
@@ -266,12 +298,12 @@ export function ResourceAnalysisPage() {
               disabled={startDay ? { before: startDay } : undefined}
             />
             <Input
-              className="w-44"
-              placeholder={t(`${key}.fields.user_id`)}
-              aria-label={t(`${key}.fields.user_id`)}
-              pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-              value={userID}
-              onChange={(event) => setUserID(event.target.value.trim())}
+              className="w-32"
+              placeholder={t(`${key}.fields.user`)}
+              aria-label={t(`${key}.fields.user`)}
+              maxLength={200}
+              value={userQuery}
+              onChange={(event) => setUserQuery(event.target.value)}
             />
             <Input
               ref={resourceInputRef}
@@ -372,6 +404,7 @@ export function ResourceAnalysisPage() {
                           "whitespace-nowrap",
                           column !== "kind" &&
                             column !== "resource_id" &&
+                            column !== "user" &&
                             column !== "version" &&
                             "tabular-nums"
                         )}
@@ -486,6 +519,13 @@ export function ResourceAnalysisPage() {
           </div>
         </CardContent>
       </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

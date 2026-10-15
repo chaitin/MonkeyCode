@@ -321,6 +321,8 @@ FROM cohort s CROSS JOIN opts p;
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f)
 SELECT max(t.received_at) FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN opts p
 WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND (p.f->>'user' IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = s.owner_user_id
+        AND strpos(lower(u.name || ' ' || u.email || ' ' || u.id::text), lower(p.f->>'user')) > 0))
     AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
     AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
     AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
@@ -337,55 +339,59 @@ WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_a
 -- name: ReportingResources :many
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f),
 cohort AS (
-    SELECT s.* FROM sessions s CROSS JOIN opts p
+    SELECT s.* FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
         AND (p.f->>'user_id' IS NULL OR s.owner_user_id = (p.f->>'user_id')::uuid)
+        AND (p.f->>'user' IS NULL OR strpos(lower(u.name || ' ' || u.email || ' ' || u.id::text), lower(p.f->>'user')) > 0)
         AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
         AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
         AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
         AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
         AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
 ), turns AS (
-    SELECT t.session_id,t.turn_index,t.resources_snapshot_id FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
+    SELECT t.session_id,t.turn_index,t.resources_snapshot_id,s.owner_user_id AS user_id
+    FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
     WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
         AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
         AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
-        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
-            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
-                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
 ), enabled AS (
-    SELECT i.kind,i.resource_id,i.version,count(DISTINCT t.session_id) AS sessions,
+    SELECT t.user_id,i.kind,i.resource_id,i.version,count(DISTINCT t.session_id) AS sessions,
         count(DISTINCT t.session_id) FILTER (WHERE i.available) AS available_sessions
     FROM turns t JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
-    WHERE i.enabled GROUP BY i.kind,i.resource_id,i.version
+    WHERE i.enabled GROUP BY t.user_id,i.kind,i.resource_id,i.version
 ), used AS (
-    SELECT v.category AS kind,v.resource_id,v.resource_version AS version,
+    SELECT t.user_id,v.category AS kind,v.resource_id,v.resource_version AS version,
         count(DISTINCT v.session_id) AS sessions,sum(v.calls) AS calls,sum(v.failed) AS failed
     FROM session_turn_tools v JOIN turns t ON t.session_id = v.session_id AND t.turn_index = v.turn_index
-    WHERE v.resource_id IS NOT NULL AND v.category NOT IN ('connector','skill') GROUP BY v.category,v.resource_id,v.resource_version
-    UNION ALL SELECT 'skill',e.skill_id,e.version,count(DISTINCT e.session_id),count(*),count(*) FILTER (WHERE NOT e.ok)
+    WHERE v.resource_id IS NOT NULL AND v.category NOT IN ('connector','skill') GROUP BY t.user_id,v.category,v.resource_id,v.resource_version
+    UNION ALL SELECT t.user_id,'skill',e.skill_id,e.version,count(DISTINCT e.session_id),count(*),count(*) FILTER (WHERE NOT e.ok)
     FROM session_skill_events e JOIN turns t ON t.session_id = e.session_id AND t.turn_index = e.turn_index
-    WHERE e.skill_id IS NOT NULL GROUP BY e.skill_id,e.version
+    WHERE e.skill_id IS NOT NULL GROUP BY t.user_id,e.skill_id,e.version
 ), gateway AS (
-    SELECT 'connector'::text AS kind,c.connector_id::text AS resource_id,NULL::text AS version,
+    SELECT s.owner_user_id AS user_id,'connector'::text AS kind,c.connector_id::text AS resource_id,NULL::text AS version,
         count(DISTINCT c.session_id) AS sessions,count(*) AS calls,count(*) FILTER (WHERE c.status = 'failed') AS failed
     FROM mcp_tool_calls c JOIN cohort s ON s.id = c.session_id CROSS JOIN opts p
     WHERE c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz
         AND (p.f->>'resource_id' IS NULL OR c.connector_id::text = p.f->>'resource_id')
-        AND p.f->>'resource_version' IS NULL GROUP BY c.connector_id
+        AND p.f->>'resource_version' IS NULL GROUP BY s.owner_user_id,c.connector_id
 ), combined AS (
-    SELECT kind,resource_id,version,max(enabled_sessions) AS enabled_sessions,max(available_sessions) AS available_sessions,
+    SELECT user_id,kind,resource_id,version,max(enabled_sessions) AS enabled_sessions,max(available_sessions) AS available_sessions,
         sum(used_sessions) AS used_sessions,sum(calls) AS calls,sum(failed) AS failed FROM (
-        SELECT kind,resource_id,version,sessions AS enabled_sessions,available_sessions,0::bigint AS used_sessions,0::numeric AS calls,0::numeric AS failed FROM enabled
-        UNION ALL SELECT kind,resource_id,version,0,0,sessions,calls,failed FROM used
-        UNION ALL SELECT kind,resource_id,version,0,0,sessions,calls,failed FROM gateway) x CROSS JOIN opts p
+        SELECT user_id,kind,resource_id,version,sessions AS enabled_sessions,available_sessions,0::bigint AS used_sessions,0::numeric AS calls,0::numeric AS failed FROM enabled
+        UNION ALL SELECT user_id,kind,resource_id,version,0,0,sessions,calls,failed FROM used
+        UNION ALL SELECT user_id,kind,resource_id,version,0,0,sessions,calls,failed FROM gateway) x CROSS JOIN opts p
     WHERE (p.f->>'resource_id' IS NULL OR resource_id = p.f->>'resource_id')
         AND (p.f->>'resource_version' IS NULL OR version = p.f->>'resource_version')
-    GROUP BY kind,resource_id,version
-), ordered AS (SELECT *,jsonb_build_array(kind,resource_id,version)::text AS sort_key FROM combined)
+    GROUP BY user_id,kind,resource_id,version
+), ordered AS (
+    SELECT c.*,u.name AS user_name,u.email AS user_email,
+        jsonb_build_array(c.kind,c.resource_id,c.version,c.user_id)::text AS sort_key
+    FROM combined c JOIN users u ON u.id = c.user_id
+)
 SELECT jsonb_build_object('kind',kind,'resource_id',resource_id,'version',version,'sort_key',sort_key,
+    'user_id',user_id,'user_name',user_name,'user_email',user_email,
     'enabled_sessions',enabled_sessions,'available_sessions',available_sessions,'used_sessions',used_sessions,
     'calls',calls,'failed',failed,'failure_rate',100.0*failed/NULLIF(calls,0))
 FROM ordered CROSS JOIN opts p

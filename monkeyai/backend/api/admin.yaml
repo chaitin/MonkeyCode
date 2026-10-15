@@ -95,16 +95,29 @@ paths:
         '410': {description: 会话统计数据已清除}
   /api/admin/v1/statistics/session-reporting/resources:
     get:
-      summary: 查询资源开启、使用、调用和失败指标
+      summary: 按用户查询资源开启、使用、调用和失败指标
+      description: |
+        每行按用户、资源类别、资源 ID 和版本分别聚合；用户为会话所属用户，姓名和邮箱使用当前账户信息。
+        包含符合条件的子会话，时间范围为 [from, until)，默认最近 24 小时。
+        user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id 及资源筛选组合。
+        资源 ID 和版本按精确值筛选，包含仅有工具调用、没有资源快照条目的资源。
+        游标与全部筛选条件绑定，旧的跨用户资源聚合游标不再适用。
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: user, in: query, description: 用户名、邮箱或用户 ID，首尾空白会被移除，最多 200 个 Unicode 字符。, schema: {type: string, maxLength: 200}}
+        - {name: user_id, in: query, description: 精确匹配会话所属用户 ID。, schema: {type: string, format: uuid}}
         - {name: resource_id, in: query, schema: {type: string}}
         - {name: resource_version, in: query, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
         - {name: cursor, in: query, schema: {type: string}}
       responses:
-        '200': {description: 资源维度指标及 next_cursor}
+        '200':
+          description: 用户资源维度指标及 next_cursor
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatisticsResourceUsage'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
   /api/admin/v1/statistics/session-reporting/clients:
     get:
       summary: 查询客户端平台、版本和结局指标
@@ -5255,6 +5268,36 @@ components:
           type: integer
           minimum: 0
           description: 窗口内开始的未删除、非占位、已上报顶层任务数。
+    StatisticsResourceUsage:
+      type: object
+      required: [items, next_cursor, pagination, from, until, generated_at, data_freshness_seconds]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/StatisticsResourceUsageRow'}
+        next_cursor: {type: string, nullable: true}
+        pagination: {type: string, enum: [cursor]}
+        from: {type: string, format: date-time}
+        until: {type: string, format: date-time}
+        generated_at: {type: string, format: date-time}
+        data_freshness_seconds: {type: number, minimum: 0, nullable: true}
+    StatisticsResourceUsageRow:
+      type: object
+      required: [user_id, user_name, user_email, kind, resource_id, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
+      properties:
+        user_id: {type: string, format: uuid, description: 会话所属用户 ID。}
+        user_name: {type: string, description: 用户当前名称。}
+        user_email: {type: string, description: 用户当前邮箱。}
+        kind: {type: string}
+        resource_id: {type: string}
+        version: {type: string, nullable: true}
+        enabled_sessions: {type: integer, minimum: 0}
+        available_sessions: {type: integer, minimum: 0}
+        used_sessions: {type: integer, minimum: 0}
+        calls: {type: integer, minimum: 0}
+        failed: {type: integer, minimum: 0}
+        failure_rate: {type: number, minimum: 0, maximum: 100, nullable: true}
+        sort_key: {type: string, description: 资源类别、ID、版本及用户 ID 组成的稳定分页键。}
     StatisticsClientDistribution:
       type: object
       required: [value, count]

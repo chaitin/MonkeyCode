@@ -469,6 +469,7 @@ export const enUS = {
         from: "From",
         until: "Until (exclusive)",
         group_id: "Group ID",
+        user: "User",
         user_id: "User ID",
         owner_user_id: "User ID",
         model_id: "Model ID",

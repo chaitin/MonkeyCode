@@ -6,6 +6,7 @@ export type ReportWindow = {
   until: string
   group_id?: string
   user_id?: string
+  user?: string
   model_id?: string
   expert_id?: string
   client_type?: string
@@ -125,6 +126,9 @@ export type ReportResourceRow = Pick<
   ReportResource,
   "kind" | "resource_id" | "version"
 > & {
+  user_id: string
+  user_name: string
+  user_email: string
   enabled_sessions: number
   available_sessions: number
   used_sessions: number

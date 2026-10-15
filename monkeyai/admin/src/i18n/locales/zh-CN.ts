@@ -446,6 +446,7 @@ export const zhCN = {
         from: "开始时间",
         until: "结束时间（不含）",
         group_id: "分组 ID",
+        user: "用户",
         user_id: "用户 ID",
         owner_user_id: "用户 ID",
         model_id: "模型 ID",

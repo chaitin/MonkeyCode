@@ -3,7 +3,9 @@ package stats
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
@@ -54,7 +56,16 @@ func (s *Service) reportingFreshness(ctx context.Context, tx pgx.Tx, f reporting
 }
 
 func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	userQuery := strings.TrimSpace(r.URL.Query().Get("user"))
+	if utf8.RuneCountInString(userQuery) > 200 {
+		resource.Fail(w, resource.Invalid("user 搜索条件过长"))
+		return
+	}
 	s.reportingRead(false, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
+		f.userQuery = userQuery
+		// Reject cursors issued before resources were grouped by user.
+		f.fingerprint += ":resource-users-v1"
 		out, err := groupedPage(ctx, f, sqlc.New(tx).ReportingResources)
 		if err != nil {
 			return nil, err

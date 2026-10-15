@@ -23,6 +23,7 @@ type reportingFilter struct {
 	cursor                                                                                         string
 	fingerprint                                                                                    string
 	groupID, userID, modelID, expertID, clientType, platform, resourceID, resourceVersion, outcome string
+	userQuery                                                                                      string
 	placeholders, purged                                                                           bool
 }
 
@@ -161,7 +162,7 @@ func optional(value string) any {
 func (f reportingFilter) sqlParams(c reportCursor, sessionID string) []byte {
 	values := map[string]any{
 		"from": f.from, "until": f.until, "limit": f.limit,
-		"group_id": optional(f.groupID), "user_id": optional(f.userID),
+		"group_id": optional(f.groupID), "user_id": optional(f.userID), "user": optional(f.userQuery),
 		"model_id": optional(f.modelID), "expert_id": optional(f.expertID),
 		"client_type": optional(f.clientType), "platform": optional(f.platform),
 		"resource_id": optional(f.resourceID), "resource_version": optional(f.resourceVersion),
