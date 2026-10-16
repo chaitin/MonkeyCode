@@ -533,14 +533,14 @@ func TestRemovedStatisticsEndpoints(t *testing.T) {
 func TestReportingFiltersAndCursor(t *testing.T) {
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	for _, path := range []string{
-		"/statistics/session-reporting/clients?limit=101",
+		"/statistics/session-reporting/clients?limit=501",
 		"/statistics/session-reporting/clients?cursor=invalid",
 		"/statistics/session-reporting/clients?page=1",
 		"/statistics/session-reporting/clients?outcome=failed",
 		"/statistics/session-reporting/clients?from=bad",
 		"/statistics/session-reporting/clients?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
 	} {
-		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now)
+		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now, 500)
 		if err == nil && f.cursor != "" {
 			_, err = f.decodeCursor()
 		}
@@ -548,12 +548,12 @@ func TestReportingFiltersAndCursor(t *testing.T) {
 			t.Fatalf("未拒绝无效参数: %s", path)
 		}
 	}
-	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=1", nil), now)
+	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=1", nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cursor := f.encodeCursor(reportCursor{Key: "desktop"})
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=100&cursor="+cursor, nil), now)
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=500&cursor="+cursor, nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestReportingFiltersAndCursor(t *testing.T) {
 	if err != nil || decoded.Key != "desktop" {
 		t.Fatalf("客户端游标丢失: %+v %v", decoded, err)
 	}
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?outcome=error&cursor="+cursor, nil), now)
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?outcome=error&cursor="+cursor, nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}

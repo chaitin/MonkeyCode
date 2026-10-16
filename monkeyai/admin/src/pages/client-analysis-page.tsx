@@ -115,7 +115,7 @@ const selectValues = {
     "unknown",
   ],
 }
-const pageSizes = ["20", "50", "100"]
+const pageSizes = ["20", "50", "100", "200", "500"]
 
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()

@@ -18,7 +18,7 @@ func (s *Service) reportingClientsOverview(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	s.reportingRead(false, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
+	s.reportingRead(false, 100, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
 		out, err := resource.DecodeObject(sqlc.New(tx).ReportingClientsOverview(ctx, f.sqlParams(reportCursor{}, "")))
 		if err != nil {
 			return nil, err

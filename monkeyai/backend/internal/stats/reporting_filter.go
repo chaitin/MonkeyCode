@@ -27,7 +27,7 @@ type reportingFilter struct {
 	placeholders, purged                                                                           bool
 }
 
-func parseReportingFilter(r *http.Request, now time.Time) (reportingFilter, error) {
+func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reportingFilter, error) {
 	q := r.URL.Query()
 	f := reportingFilter{from: now.Add(-24 * time.Hour), until: now, limit: 50}
 	for _, key := range []string{"from", "until"} {
@@ -46,8 +46,8 @@ func parseReportingFilter(r *http.Request, now time.Time) (reportingFilter, erro
 	}
 	if q.Has("limit") {
 		n, err := strconv.Atoi(q.Get("limit"))
-		if err != nil || n < 1 || n > 100 {
-			return f, resource.Invalid("limit 必须为 1 至 100")
+		if err != nil || n < 1 || n > maxLimit {
+			return f, resource.Invalid("limit 必须为 1 至 " + strconv.Itoa(maxLimit))
 		}
 		f.limit = n
 	}
@@ -193,10 +193,10 @@ func (f reportingFilter) encodeCursor(c reportCursor) string {
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pgx.Tx, reportingFilter) (resource.Object, error)) http.HandlerFunc {
+func (s *Service) reportingRead(allowPurged bool, maxLimit int, query func(context.Context, pgx.Tx, reportingFilter) (resource.Object, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
-		f, err := parseReportingFilter(r, s.now().UTC())
+		f, err := parseReportingFilter(r, s.now().UTC(), maxLimit)
 		if err == nil && f.purged {
 			if !allowPurged {
 				err = resource.Invalid("此接口不支持 include_purged")

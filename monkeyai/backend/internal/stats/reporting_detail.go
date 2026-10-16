@@ -19,7 +19,7 @@ func (s *Service) reportingDetail(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, resource.Invalid("会话 ID 无效"))
 		return
 	}
-	s.reportingRead(true, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
+	s.reportingRead(true, 100, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
 		if f.cursor != "" {
 			return nil, unexpectedCursor()
 		}

@@ -184,7 +184,7 @@ func TestResourceUsageUsers(t *testing.T) {
 	if len(seen) != len(items) {
 		t.Fatalf("分页遗漏: %d/%d", len(seen), len(items))
 	}
-	legacy, err := parseReportingFilter(httptest.NewRequest("GET", resourceUsagePath+"?limit=1", nil), s.now())
+	legacy, err := parseReportingFilter(httptest.NewRequest("GET", resourceUsagePath+"?limit=1", nil), s.now(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
