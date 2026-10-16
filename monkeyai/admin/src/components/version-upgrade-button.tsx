@@ -1,6 +1,6 @@
 import { useContext } from "react"
 import { useTranslation } from "react-i18next"
-import { UploadCircle02Icon } from "@hugeicons/core-free-icons"
+import { UploadSquare01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Button } from "@/components/ui/button"
@@ -38,7 +38,7 @@ export function VersionUpgradeButton({
     >
       {showIcon && (
         <HugeiconsIcon
-          icon={UploadCircle02Icon}
+          icon={UploadSquare01Icon}
           data-icon="inline-start"
           strokeWidth={2}
           aria-hidden="true"
