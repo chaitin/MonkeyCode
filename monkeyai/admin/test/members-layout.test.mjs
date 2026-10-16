@@ -53,10 +53,7 @@ test("members page keeps the original split cards and compact member list", asyn
   assert.match(source, /groupsByMember\.get\(user\.id\)/)
   assert.doesNotMatch(source, /pages\.membersAndGroups\.ungroupedMembers/)
   assert.match(source, /<MemberActions/)
-  assert.match(
-    source,
-    /<MemberAvatar\s+role=\{user\.role\}\s+status=\{user\.status\}\s+size="lg"/
-  )
+  assert.match(source, /<UserAvatar src=\{user\.avatar_url\} size="lg"/)
   assert.doesNotMatch(source, /groupMemberIDs\(/)
   assert.match(source, /\.sort\(compareMembers\)/)
   assert.doesNotMatch(source, /<Table/)
@@ -404,20 +401,11 @@ test("tree and list share the same member action menu", async () => {
     2
   )
   assert.match(tree, /<MemberActions/)
-  const avatar = await readFile(
-    new URL("../src/components/members/member-avatar.tsx", import.meta.url),
-    "utf8"
-  )
-  assert.match(tree, /icon=\{User02Icon\}/)
-  assert.match(tree, /memberIconColor\(member\)/)
-  assert.doesNotMatch(tree, /<MemberAvatar/)
-  assert.match(avatar, /<Avatar size=\{size\}>/)
-  assert.match(avatar, /<AvatarFallback>/)
-  assert.match(avatar, /status === "disabled"\s*\?\s*UserRoundXIcon/)
   assert.match(
-    avatar,
-    /role === "admin"\s*\?\s*UserRoundCogIcon\s*:\s*UserRoundCheckIcon/
+    tree,
+    /<UserAvatar src=\{member\.avatar_url\} className="size-4!"/
   )
-  assert.match(avatar, /memberIconColor\(\{ role, status \}\)/)
+  assert.doesNotMatch(tree, /User02Icon|MemberAvatar/)
+  assert.match(tree, /member\.status === "disabled" && "text-muted-foreground"/)
   assert.match(actions, /<DropdownMenu/)
 })

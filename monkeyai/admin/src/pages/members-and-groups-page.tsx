@@ -85,7 +85,7 @@ import {
 } from "@/lib/group-move"
 import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
-import { MemberAvatar } from "@/components/members/member-avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { MemberGroupSelect } from "@/components/members/member-group-select"
 import { GroupTreeItem } from "@/components/members/group-tree"
 import { ResetMemberPasswordDialog } from "@/components/members/reset-member-password-dialog"
@@ -633,6 +633,7 @@ export function MembersAndGroupsPage() {
                       role="listitem"
                       size="sm"
                       variant="outline"
+                      className="gap-2"
                       aria-busy={savingID === user.id}
                     >
                       <ItemMedia
@@ -646,11 +647,7 @@ export function MembersAndGroupsPage() {
                         }
                         onDragEnd={() => setDragging(null)}
                       >
-                        <MemberAvatar
-                          role={user.role}
-                          status={user.status}
-                          size="lg"
-                        />
+                        <UserAvatar src={user.avatar_url} size="lg" />
                       </ItemMedia>
                       <ItemContent className="min-w-0">
                         <ItemTitle className="max-w-full min-w-0">

@@ -8,7 +8,6 @@ import {
   MoreHorizontalIcon,
   MoveIcon,
   UserMultiple02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -42,7 +41,7 @@ import {
   compareByName,
   type MemberGroup,
 } from "@/lib/member-groups"
-import { memberIconColor } from "@/lib/member-appearance"
+import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 
 const allGroupActions: GroupAction[] = [
@@ -442,12 +441,7 @@ function GroupTreeMemberRow({
             : undefined
         }
       >
-        <HugeiconsIcon
-          icon={User02Icon}
-          className={cn("size-4 shrink-0", memberIconColor(member))}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
+        <UserAvatar src={member.avatar_url} className="size-4!" />
         <span className="min-w-0 flex-1 truncate" title={member.email}>
           {member.name}
         </span>
