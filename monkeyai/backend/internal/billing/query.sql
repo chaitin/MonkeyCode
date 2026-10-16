@@ -73,6 +73,7 @@ memberships AS (
 )
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
+        'avatar_url', nullif(btrim(u.avatar_url), ''),
         'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
         'effective_credits', COALESCE(g.credits, sqlc.arg(root_credits)::numeric)::text,
         'balance_credits', COALESCE(a.balance,

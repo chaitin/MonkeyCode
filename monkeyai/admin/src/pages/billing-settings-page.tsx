@@ -3,13 +3,13 @@ import {
   Folder02Icon,
   FolderIcon,
   LinkSquare02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import {
   GroupSelect,
   type GroupSelectionValue,
@@ -336,24 +336,14 @@ export function BillingSettingsPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-auto cursor-pointer justify-start text-start underline-offset-2 whitespace-normal hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
+              className="h-auto cursor-pointer justify-start text-start whitespace-normal underline-offset-2 hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
               onClick={() => setAccountUserID(user.id)}
             />
           }
-          className={cn(disabled && "text-muted-foreground")}
+          className={cn("gap-2", disabled && "text-muted-foreground")}
         >
           <ItemMedia>
-            <HugeiconsIcon
-              icon={User02Icon}
-              className={cn(
-                "size-4 shrink-0",
-                disabled
-                  ? "text-muted-foreground"
-                  : "text-blue-600 dark:text-blue-400"
-              )}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <UserAvatar src={user.avatar_url} />
           </ItemMedia>
           <ItemContent className="min-w-0">
             <ItemTitle className="max-w-full min-w-0">

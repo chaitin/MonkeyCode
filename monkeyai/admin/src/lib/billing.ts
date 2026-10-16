@@ -35,6 +35,7 @@ export type QuotaUser = {
   id: string
   name: string
   email: string
+  avatar_url?: string | null
   status: string
   group_ids: string[]
   effective_credits: string

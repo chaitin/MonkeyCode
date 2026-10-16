@@ -1241,6 +1241,9 @@ paths:
                           type: string
                         email:
                           type: string
+                        avatar_url:
+                          type: [string, 'null']
+                          description: 成员当前头像地址；为空时使用默认头像。
                         status:
                           type: string
                         group_ids:
@@ -1321,6 +1324,9 @@ paths:
                           type: string
                         email:
                           type: string
+                        avatar_url:
+                          type: [string, 'null']
+                          description: 成员当前头像地址；为空时使用默认头像。
                         status:
                           type: string
                         group_ids:

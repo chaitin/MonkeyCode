@@ -245,8 +245,9 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(userItem, /<ItemTitle/)
   assert.doesNotMatch(userItem, /<ItemDescription|\{user\.email\}/)
   assert.match(userItem, /<ItemActions>/)
-  assert.match(userItem, /icon=\{User02Icon\}/)
-  assert.match(userItem, /text-blue-600 dark:text-blue-400/)
+  assert.match(userItem, /<UserAvatar src=\{user\.avatar_url\}/)
+  assert.match(userItem, /cn\("gap-2", disabled && "text-muted-foreground"\)/)
+  assert.doesNotMatch(userItem, /User02Icon/)
   assert.match(userItem, /groupQuota\.remaining/)
   assert.match(
     userItem,

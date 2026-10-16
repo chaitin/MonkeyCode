@@ -10,6 +10,58 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func TestQuotaUserAvatars(t *testing.T) {
+	s, user, _ := fixture(t)
+	ctx := t.Context()
+	other := resource.ID()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO users(id,name,email,status,disabled_at)
+		VALUES($1,'停用成员','disabled-avatar@example.com','disabled',now())`, other); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	s.RegisterAdmin(router)
+	for _, tc := range []struct {
+		name   string
+		stored any
+		want   any
+	}{
+		{"url", "https://example.com/avatar.webp", "https://example.com/avatar.webp"},
+		{"changed", "https://example.com/new.webp", "https://example.com/new.webp"},
+		{"trimmed", " https://example.com/avatar.webp ", "https://example.com/avatar.webp"},
+		{"empty", "", nil}, {"blank", "   ", nil}, {"null", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := s.pool.Exec(ctx, `UPDATE users SET avatar_url=$2 WHERE id=$1`, user, tc.stored); err != nil {
+				t.Fatal(err)
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", "/billing/quotas", nil))
+			var out struct {
+				Users []map[string]any `json:"users"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 200 || len(out.Users) != 2 {
+				t.Fatalf("额度列表错误: %d %s", w.Code, w.Body)
+			}
+			for _, item := range out.Users {
+				want, status := tc.want, "active"
+				if item["id"] == other {
+					want, status = nil, "disabled"
+				}
+				avatar, present := item["avatar_url"]
+				if !present || avatar != want || item["status"] != status {
+					t.Fatalf("成员头像或状态错误: %v，头像期望 %v", item, want)
+				}
+				if item["effective_credits"] == nil || item["balance_credits"] == nil || item["available_credits"] == nil {
+					t.Fatalf("成员额度数据缺失: %v", item)
+				}
+			}
+		})
+	}
+}
+
 func TestAdminListUserAvatars(t *testing.T) {
 	s, user, model := fixture(t)
 	ctx := t.Context()
