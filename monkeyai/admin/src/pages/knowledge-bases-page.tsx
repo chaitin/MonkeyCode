@@ -302,6 +302,7 @@ export function KnowledgeBasesPage() {
   const [activeType, setActiveType] = useState<KnowledgeBaseType>("system")
   const [searchDraft, setSearchDraft] = useState("")
   const [search, setSearch] = useState("")
+  const [pageSize, setPageSize] = useState(RESOURCE_PAGE_SIZE)
   const [pages, setPages] = useState<Record<KnowledgeBaseType, number>>({
     system: 1,
     user: 1,
@@ -317,12 +318,12 @@ export function KnowledgeBasesPage() {
   )
   const pageCount = Math.max(
     1,
-    Math.ceil(filteredKnowledgeBases.length / RESOURCE_PAGE_SIZE)
+    Math.ceil(filteredKnowledgeBases.length / pageSize)
   )
   const page = Math.min(pages[activeType], pageCount)
   const visibleKnowledgeBases = filteredKnowledgeBases.slice(
-    (page - 1) * RESOURCE_PAGE_SIZE,
-    page * RESOURCE_PAGE_SIZE
+    (page - 1) * pageSize,
+    page * pageSize
   )
   const previousPage = (type: KnowledgeBaseType = activeType) =>
     setPages((current) => ({
@@ -336,6 +337,11 @@ export function KnowledgeBasesPage() {
     setSearchDraft,
     search,
     page,
+    pageSize,
+    setPageSize: (size: number) => {
+      setPageSize(size)
+      setPages({ system: 1, user: 1 })
+    },
     items: visibleKnowledgeBases,
     nextCursor: page < pageCount ? String(page + 1) : "",
     previousPage,

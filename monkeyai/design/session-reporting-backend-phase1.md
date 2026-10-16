@@ -686,7 +686,7 @@ ResolveSession(user_id, session_header, parent_header)
 - `outcome`：`complete`、`interrupted`、`error`、`max_turns`、`output_limit`、`unknown`。
 - `include_placeholders`：默认 false；仅会话列表和质量面板可用。
 - `include_purged`：默认 false；仅管理员可用，且只返回墓碑摘要，不返回清除前明细。
-- `limit`：默认 50，最大 100。
+- `limit`：默认 50，客户端和资源列表最大 500。管理端每页条数统一提供 20、50、100、200、500。
 - `cursor`：不使用 offset 深分页。
 
 列表接口的 `items` 必须返回稳定的 `next_cursor`；统计接口返回 `generated_at`、`from`、`until` 和 `data_freshness_seconds`，让页面能区分“无数据”和“数据尚未同步”。除质量面板外，所有正式会话统计接口默认增加 `reporting_enabled_at IS NOT NULL` 条件。

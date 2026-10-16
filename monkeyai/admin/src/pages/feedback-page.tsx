@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { PageSizeSelect } from "@/components/page-size-select"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -70,7 +71,6 @@ type FeedbackPageData = {
 const categories: Category[] = ["bug", "feature", "experience", "other"]
 const states: State[] = ["uploading", "new", "resolved", "ignored", "failed"]
 const editableStates: EditableState[] = ["new", "resolved", "ignored"]
-const pageSize = 20
 
 function isEditable(state: State): state is EditableState {
   return state === "new" || state === "resolved" || state === "ignored"
@@ -308,6 +308,7 @@ export function FeedbackPage() {
   const [category, setCategory] = useState<Category | "all">("all")
   const [state, setState] = useState<State | "all">("all")
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
@@ -538,7 +539,14 @@ export function FeedbackPage() {
                 total,
               })}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <PageSizeSelect
+                value={pageSize}
+                onValueChange={(size) => {
+                  setPageSize(size)
+                  setPage(1)
+                }}
+              />
               <span>
                 {t("pages.feedback.pagination.page", { page, pages })}
               </span>

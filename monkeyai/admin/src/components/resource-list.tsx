@@ -3,11 +3,11 @@ import { useTranslation } from "react-i18next"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import {
-  RESOURCE_PAGE_SIZE,
   type useResourceList,
   type ResourceType,
 } from "@/hooks/use-resource-list"
 import { ResourceNotice } from "@/components/resource-notice"
+import { PageSizeSelect } from "@/components/page-size-select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -75,7 +75,10 @@ export function ResourceList({
           value={page.type}
           className="min-h-0 overflow-hidden"
         >
-          <ScrollArea key={`${page.search}:${page.page}`} className="h-full">
+          <ScrollArea
+            key={`${page.search}:${page.page}:${page.pageSize}`}
+            className="h-full"
+          >
             <div className="flex flex-col gap-4 p-px">
               <ResourceNotice
                 error={page.error || error}
@@ -103,11 +106,11 @@ export function ResourceList({
         </TabsContent>
       </Tabs>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.perPage", {
-            count: RESOURCE_PAGE_SIZE,
-          })}
-        </span>
+        <PageSizeSelect
+          value={page.pageSize}
+          onValueChange={page.setPageSize}
+          disabled={busy}
+        />
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground" aria-live="polite">
             {t("pages.sessionReporting.clients.cursorPage", {

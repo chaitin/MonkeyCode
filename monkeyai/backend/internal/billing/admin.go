@@ -616,7 +616,7 @@ func (s *Service) adjust(w http.ResponseWriter, r *http.Request) {
 
 	s.account(w, r)
 }
-func pageParams(r *http.Request) (int, int) {
+func pageParams(r *http.Request, maxSize int) (int, int) {
 	page, pageErr := strconv.Atoi(r.URL.Query().Get("page"))
 	size, sizeErr := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if pageErr != nil || page < 1 {
@@ -625,7 +625,7 @@ func pageParams(r *http.Request) (int, int) {
 	if page > 100000 {
 		page = 100000
 	}
-	if sizeErr != nil || size < 1 || size > 100 {
+	if sizeErr != nil || size < 1 || size > maxSize {
 		size = 20
 	}
 	return page, size

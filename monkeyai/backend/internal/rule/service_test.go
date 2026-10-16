@@ -170,4 +170,30 @@ func TestRuleSearchAndPagination(t *testing.T) {
 			}
 		})
 	}
+	for i := 5001; i <= 5505; i++ {
+		insert(i, "system", "large-page-only", "分页测试")
+	}
+	for _, limit := range []int{200, 500} {
+		query := url.Values{"ownership_type": {"system"}, "q": {"large-page-only"}, "limit": {fmt.Sprint(limit)}}
+		for offset := 0; offset < 505; offset += limit {
+			out := get(t, query)
+			if len(out.Items) != min(limit, 505-offset) {
+				t.Fatalf("limit=%d offset=%d: 返回 %d 条", limit, offset, len(out.Items))
+			}
+			for index, item := range out.Items {
+				if item.String("id") != id(5001+offset+index) {
+					t.Fatalf("规则分页顺序或记录错误: %v", item)
+				}
+			}
+			if (out.NextCursor != "") != (offset+limit < 505) {
+				t.Fatalf("规则分页游标错误: %q", out.NextCursor)
+			}
+			query.Set("cursor", out.NextCursor)
+		}
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/rules?limit=501", nil))
+	if response.Code != 400 {
+		t.Fatalf("应拒绝超出上限: %d", response.Code)
+	}
 }

@@ -23,8 +23,8 @@ func (s *Service) Page(ctx context.Context, filter ListFilter) ([]Model, string,
 	if filter.Ownership != "" && filter.Ownership != "system" && filter.Ownership != "user" {
 		return nil, "", errors.New("ownership_type 无效")
 	}
-	if filter.Limit < 1 || filter.Limit > 200 {
-		return nil, "", errors.New("limit 必须在 1—200 之间")
+	if filter.Limit < 1 || filter.Limit > 500 {
+		return nil, "", errors.New("limit 必须在 1—500 之间")
 	}
 	limit := filter.Limit
 	filter.Limit++
@@ -76,8 +76,8 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 		limit := 200
 		if raw := query.Get("limit"); raw != "" {
 			limit, err = strconv.Atoi(raw)
-			if err != nil || limit < 1 || limit > 200 {
-				modelError(w, http.StatusBadRequest, "limit 必须在 1—200 之间")
+			if err != nil || limit < 1 || limit > 500 {
+				modelError(w, http.StatusBadRequest, "limit 必须在 1—500 之间")
 				return
 			}
 		}

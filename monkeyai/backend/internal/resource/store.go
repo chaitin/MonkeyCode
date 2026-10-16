@@ -473,8 +473,8 @@ func (c *CRUD) Register(r chi.Router) {
 		limit := 200
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
-			if err != nil || n < 1 || n > 200 {
-				Fail(w, Invalid("limit 必须在 1—200 之间"))
+			if err != nil || n < 1 || n > 500 {
+				Fail(w, Invalid("limit 必须在 1—500 之间"))
 				return
 			}
 			limit = n

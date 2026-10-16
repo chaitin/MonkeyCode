@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -86,7 +87,7 @@ type CategoryFilter = LogCategory | null
 type ResultFilter = LogResult | null
 type SearchField = "operator" | "ip" | "dateRange" | "category" | "result"
 const DEFAULT_PAGE_SIZE = 50
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const CATEGORY_FILTERS: LogCategory[] = [
   "model",
   "identity",

@@ -155,7 +155,7 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
   assert.doesNotMatch(source, /navigate\(\{ page|navigate\(\{ page_size/)
   assert.match(
     source,
-    /const PAGE_SIZE_OPTIONS = \["20", "50", "100", "200", "500"\]/
+    /import \{ PAGE_SIZE_OPTIONS \} from "@\/lib\/pagination"/
   )
   assert.match(source, /pages\.operationLogs\.pagination\.summary/)
   assert.match(source, /pages\.operationLogs\.pagination\.pageSizeLabel/)

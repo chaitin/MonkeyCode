@@ -9,6 +9,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { ClientDistributionCards } from "@/components/client-distribution-cards"
@@ -115,7 +116,6 @@ const selectValues = {
     "unknown",
   ],
 }
-const pageSizes = ["20", "50", "100", "200", "500"]
 
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()
@@ -154,7 +154,7 @@ export function ClientAnalysisPage() {
   const pageStart = active * pageSize
   const from = items.length ? pageStart + 1 : 0
   const to = items.length ? pageStart + items.length : 0
-  const pageSizeItems = pageSizes.map((value) => ({
+  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))

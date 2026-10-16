@@ -67,7 +67,7 @@ func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, resource.Invalid("user 搜索条件过长"))
 		return
 	}
-	s.reportingRead(false, 100, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
+	s.reportingRead(false, 500, func(ctx context.Context, tx pgx.Tx, f reportingFilter) (resource.Object, error) {
 		f.userQuery, f.resourceKind = userQuery, kind
 		// Reject cursors issued before resources were grouped by user.
 		f.fingerprint += ":resource-users-v1"

@@ -75,6 +75,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { PageSizeSelect } from "@/components/page-size-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -131,8 +132,14 @@ export function RulesPage() {
     system: [""],
     user: [""],
   })
+  const [pageSize, setPageSize] = useState(RULE_PAGE_SIZE)
   const pageCursors = cursors[activeRuleType]
-  const remote = useRulePage(activeRuleType, pageCursors.at(-1) ?? "", search)
+  const remote = useRulePage(
+    activeRuleType,
+    pageCursors.at(-1) ?? "",
+    search,
+    pageSize
+  )
   const rules = remote.items.map(toRule)
   const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -389,7 +396,7 @@ export function RulesPage() {
           className="min-h-0 overflow-hidden"
         >
           <ScrollArea
-            key={`${search}:${pageCursors.length}`}
+            key={`${search}:${pageCursors.length}:${pageSize}`}
             className="h-full"
           >
             <div className="flex flex-col gap-4 p-px">
@@ -554,11 +561,14 @@ export function RulesPage() {
       </Tabs>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.perPage", {
-            count: RULE_PAGE_SIZE,
-          })}
-        </span>
+        <PageSizeSelect
+          value={pageSize}
+          onValueChange={(size) => {
+            setPageSize(size)
+            setCursors({ system: [""], user: [""] })
+          }}
+          disabled={remote.pending}
+        />
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground" aria-live="polite">
             {t("pages.sessionReporting.clients.cursorPage", {

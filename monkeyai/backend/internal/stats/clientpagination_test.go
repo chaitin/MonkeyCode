@@ -67,7 +67,7 @@ func TestClientLargePages(t *testing.T) {
 		})
 	}
 	request(t, s, path+"?limit=501", 400)
-	request(t, s, "/statistics/session-reporting/resources?limit=101", 400)
+	request(t, s, "/statistics/session-reporting/resources?limit=501", 400)
 	request(t, s, clientOverviewPath+"?limit=500", 400)
 	number(t, request(t, s, clientOverviewPath, 200), "total", 1)
 }

@@ -113,7 +113,7 @@ paths:
         - {name: kind, in: query, description: 原始资源类别，首尾空白会被移除，最多 128 字节；兼容客户端自定义类别。, schema: {type: string, maxLength: 128}}
         - {name: resource_id, in: query, schema: {type: string}}
         - {name: resource_version, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
         - {name: cursor, in: query, schema: {type: string}}
       responses:
         '200':
@@ -1666,7 +1666,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 100
+          maximum: 500
   /api/admin/v1/billing/summary:
     get:
       summary: 按同一筛选口径汇总扣费和退款
@@ -1799,7 +1799,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 100
+          maximum: 500
   /api/admin/v1/billing/transactions/{id}:
     parameters:
     - in: path
@@ -2219,7 +2219,7 @@ paths:
         - in: query
           name: limit
           description: 单页数量；提供分页参数时默认 200。
-          schema: {type: integer, minimum: 1, maximum: 200, default: 200}
+          schema: {type: integer, minimum: 1, maximum: 500, default: 200}
         - in: query
           name: ownership_type
           description: 按模型所有权类型筛选；不传时不过滤所有权类型。
@@ -2417,7 +2417,7 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
         - name: page_size
           in: query
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+          schema: {type: integer, minimum: 1, maximum: 500, default: 20}
         - name: category
           in: query
           schema: {type: string, enum: [bug, feature, experience, other]}
@@ -2567,7 +2567,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Rule
@@ -2781,7 +2781,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Skill
@@ -3057,7 +3057,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Expert
@@ -3323,7 +3323,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Connector

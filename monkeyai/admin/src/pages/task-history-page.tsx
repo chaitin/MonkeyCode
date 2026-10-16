@@ -8,6 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { Link } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -75,7 +76,7 @@ type TaskHistoryFilters = {
 }
 
 const DEFAULT_PAGE_SIZE = 50
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const EMPTY_FILTERS: TaskHistoryFilters = {
   taskName: "",
   userName: "",

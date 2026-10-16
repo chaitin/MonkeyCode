@@ -9,6 +9,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { useSearchParams } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -226,7 +227,7 @@ export function ConversationHistoryPage() {
   const currentPage = request.data?.page ?? page
   const start = (currentPage - 1) * pageSize
   const visible = request.data?.items ?? []
-  const pageSizeItems = [20, 50, 100, 200, 500].map((size) => ({
+  const pageSizeItems = PAGE_SIZE_OPTIONS.map((size) => ({
     value: String(size),
     label: t("pages.operationLogs.pagination.perPage", { count: size }),
   }))

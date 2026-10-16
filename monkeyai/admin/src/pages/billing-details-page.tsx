@@ -9,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { UserAvatar } from "@/components/user-avatar"
@@ -85,7 +86,7 @@ type Pending = {
   migration_issues: { id: number; subject: string; reason: string }[]
 }
 type SearchField = "user" | "content" | "dateRange" | "category" | "entryType"
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
   credits(value, locale, 0)
 const changedCredits = (value: string, locale: string) =>

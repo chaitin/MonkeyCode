@@ -3,6 +3,7 @@ package feedback
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -112,4 +113,40 @@ func TestAdminListUserAvatars(t *testing.T) {
 			}
 		})
 	}
+	t.Run("large_pages", func(t *testing.T) {
+		exec(`INSERT INTO feedbacks(user_id,category,content,platform,state,request_hash)
+			SELECT $1,'feature','分页测试','web','new','hash' FROM generate_series(1,505)`, user)
+		for _, size := range []int{200, 500} {
+			seen := make(map[string]bool)
+			for page, offset := 1, 0; offset < 505; page, offset = page+1, offset+size {
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, httptest.NewRequest("GET", fmt.Sprintf("/feedback?category=feature&page_size=%d&page=%d", size, page), nil))
+				var out struct {
+					Items []Feedback `json:"items"`
+					Total int        `json:"total"`
+					Size  int        `json:"page_size"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+					t.Fatal(err)
+				}
+				if w.Code != 200 || out.Total != 505 || out.Size != size || len(out.Items) != min(size, 505-offset) {
+					t.Fatalf("反馈大分页错误: %d %s", w.Code, w.Body)
+				}
+				for _, item := range out.Items {
+					if seen[item.ID] {
+						t.Fatalf("分页重复: %s", item.ID)
+					}
+					seen[item.ID] = true
+				}
+			}
+			if len(seen) != 505 {
+				t.Fatalf("分页丢失记录: %d", len(seen))
+			}
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/feedback?page_size=501", nil))
+		if w.Code != 400 {
+			t.Fatalf("应拒绝超出上限: %d", w.Code)
+		}
+	})
 }

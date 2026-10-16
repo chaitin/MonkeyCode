@@ -5,7 +5,7 @@ import { api } from "@/lib/api"
 import { base, type ResourceRow } from "@/lib/resources"
 
 export type ResourceType = ResourceRow["ownership_type"]
-export const RESOURCE_PAGE_SIZE = 48
+export const RESOURCE_PAGE_SIZE = 50
 
 type ResourcePage<T> = {
   items?: T[]
@@ -24,7 +24,8 @@ export function useResourcePage<T = ResourceRow>(
   type: ResourceType,
   cursor: string,
   search: string,
-  itemsKey: "items" | "models" = "items"
+  itemsKey: "items" | "models" = "items",
+  pageSize = RESOURCE_PAGE_SIZE
 ) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
@@ -34,7 +35,7 @@ export function useResourcePage<T = ResourceRow>(
   const lock = useRef(false)
   const query = new URLSearchParams({
     ownership_type: type,
-    limit: String(RESOURCE_PAGE_SIZE),
+    limit: String(pageSize),
   })
   if (cursor) query.set("cursor", cursor)
   if (search) query.set("q", search)
@@ -106,6 +107,7 @@ export function useResourceList<T = ResourceRow>(
   itemsKey: "items" | "models" = "items"
 ) {
   const [type, setType] = useState<ResourceType>("system")
+  const [pageSize, setPageSize] = useState(RESOURCE_PAGE_SIZE)
   const [searchDraft, setSearchDraft] = useState("")
   const [search, setSearch] = useState("")
   const [cursors, setCursors] = useState<Record<ResourceType, string[]>>({
@@ -118,7 +120,8 @@ export function useResourceList<T = ResourceRow>(
     type,
     pageCursors.at(-1) ?? "",
     search,
-    itemsKey
+    itemsKey,
+    pageSize
   )
   const previousPage = (ownership: ResourceType = type) => {
     setCursors((current) => ({
@@ -145,6 +148,11 @@ export function useResourceList<T = ResourceRow>(
   }
   return {
     ...remote,
+    pageSize,
+    setPageSize: (size: number) => {
+      setPageSize(size)
+      setCursors({ system: [""], user: [""] })
+    },
     type,
     setType,
     searchDraft,

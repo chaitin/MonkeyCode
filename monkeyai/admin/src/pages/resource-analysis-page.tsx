@@ -10,6 +10,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -72,7 +73,7 @@ const columns = [
   "success_rate",
 ] as const
 type ResourceColumn = (typeof columns)[number]
-const pageSizes = ["20", "50", "100"]
+
 const resourceKinds = [
   "model",
   "rule",
@@ -128,7 +129,7 @@ export function ResourceAnalysisPage() {
   )
   const from = items.length ? active * pageSize + 1 : 0
   const to = items.length ? active * pageSize + items.length : 0
-  const pageSizeItems = pageSizes.map((value) => ({
+  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
     value,
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))

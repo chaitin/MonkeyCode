@@ -35,7 +35,7 @@ func (s *Service) agentEntries(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	user, _ := identity.UserFromContext(ctx)
-	page, size := pageParams(r)
+	page, size := pageParams(r, 100)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		resource.Fail(w, err)

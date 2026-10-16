@@ -51,7 +51,7 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, err)
 		return
 	}
-	page, size := pageParams(r)
+	page, size := pageParams(r, 500)
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		resource.Fail(w, err)
@@ -118,7 +118,7 @@ func (s *Service) transaction(w http.ResponseWriter, r *http.Request) {
 	resource.JSON(w, 200, out)
 }
 func (s *Service) reconciliation(w http.ResponseWriter, r *http.Request) {
-	page, size := pageParams(r)
+	page, size := pageParams(r, 500)
 	ctx := r.Context()
 	rows, err := resource.DecodeObjects(sqlc.New(s.pool).PendingTransactions(ctx, sqlc.PendingTransactionsParams{Limit: int32(size), Offset: int32((page - 1) * size)}))
 	if err != nil {

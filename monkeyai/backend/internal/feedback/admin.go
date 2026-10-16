@@ -23,7 +23,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
-	page, size, err := resource.PageParams(r)
+	page, size, err := resource.PageParamsWithLimit(r, 500)
 	if err != nil {
 		resource.Fail(w, err)
 		return
