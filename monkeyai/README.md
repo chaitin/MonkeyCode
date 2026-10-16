@@ -15,6 +15,12 @@ docker compose up --build
 
 `MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，也用于 OAuth 回调、元数据及登录后的页面跳转。若修改 `MONKEYAI_ADMIN_PORT`，还需将该地址改为浏览器实际访问的地址；生产环境应使用 HTTPS。
 
+### 远程执行中转
+
+服务端中转默认开启，设备仍需用户在本机开启远程访问并批准权限。首次启动自动生成控制面标识和签名私钥，保存到 `runtime` 持久卷；重启或重建 backend 容器继续复用。备份时一并保存该卷，`docker compose down -v` 会删除这些身份数据。文件地址默认沿用 `MONKEYAI_PUBLIC_URL`，生产应使用 HTTPS。
+
+需要关闭时设置 `MONKEYAI_RUNTIME_RELAY=false`；需要独立文件域名时设置 `MONKEYAI_RUNTIME_FILES_ORIGIN`。独立服务器可使用设备码授权，在 `/device` 确认后发布同一设备；会话聚合按会话上报策略开放。HTTP 产物执行预览需额外的独立泛域名模板和泛域名证书，采用禁止存储的隔离沙箱。详细授权、预览证书挂载、身份覆盖和公钥轮换配置见[后端说明](backend/README.md#远程执行中转)。
+
 ### 前置代理与操作记录来源 IP
 
 如果 Admin 前面还有反向代理，在 `.env` 中设置 `MONKEYAI_TRUSTED_PROXY_CIDRS` 为**直接连接 Admin 的可信代理** IP/CIDR，多个地址用英文逗号分隔，例如 `192.0.2.10/32,2001:db8::/32`。仅当连接来自这些网段时，Admin Nginx 才按 X-Forwarded-For 从右向左解析来源，并将结果作为 `X-Real-IP` 转发给后端；未设置时仍记录连接方地址。前置代理应追加实际连接来源到 XFF 或覆盖客户端提交的 XFF，不要把客户端可控的整段 XFF 原样透传，也不要将所有网段或整个容器网段设为可信代理。修改后重建 Admin 镜像并运行 `docker compose up -d admin`。
@@ -158,7 +164,7 @@ MIGRATE_IMAGE=registry.example.com/team/monkeyai-migrate:v1.0.0 \
 docker compose up --no-build
 ```
 
-首次部署从完整初始化迁移 `000001` 开始，需连接全新的 PostgreSQL 数据库或数据目录。曾执行收敛前旧迁移历史的数据库不能直接升级，也不能通过 `force 1` 完成升级；需要保留旧数据时应另行制定迁移方案。使用收敛后迁移历史、当前为 `14, dirty=false` 的环境支持直接 `up` 升级到 `19`，无需重建数据库。升级步骤与验证要求见 [数据库迁移说明](backend/migrations/README.md)。
+首次部署从当前迁移历史的 `000001` 开始；本次远程执行新增结构收敛在 `000024_remote_runtime`，连接权限代次在 `000025_remote_runtime_access_version` 补充。曾执行其他历史迁移的数据库不能直接通过 `force` 切换；需要保留旧数据时应另行制定迁移方案。升级步骤与验证要求见 [数据库迁移说明](backend/migrations/README.md)。
 
 迁移 SQL 已打包在 Migrate 镜像中。远程部署无需同步 `backend/migrations` 目录，但必须为 `MIGRATE_IMAGE` 指定与 Backend 相同发布版本的已推送镜像。
 

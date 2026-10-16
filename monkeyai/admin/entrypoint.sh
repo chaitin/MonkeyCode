@@ -81,5 +81,26 @@ case "${MONKEYAI_AUTO_TLS_ENABLED:-false}" in
     *) fail 'MONKEYAI_AUTO_TLS_ENABLED 只能为 true 或 false' ;;
 esac
 
+: > /tmp/nginx/preview-site.conf
+if [ -n "${MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE:-}" ]; then
+    template=$MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE
+    case "$template" in
+        'https://{artifact}.'*) MONKEYAI_PREVIEW_DOMAIN=${template#'https://{artifact}.'} ;;
+        *) fail '预览 origin 必须为 https://{artifact}.独立域名' ;;
+    esac
+    validated=$(origin "https://$MONKEYAI_PREVIEW_DOMAIN") || fail '预览域名无效'
+    [ "$validated" = "https://$MONKEYAI_PREVIEW_DOMAIN" ] || fail '预览模板只支持小写域名且不能包含端口'
+    MONKEYAI_RUNTIME_PREVIEW_CERT_FILE=${MONKEYAI_RUNTIME_PREVIEW_CERT_FILE:-/run/secrets/preview/tls.crt}
+    MONKEYAI_RUNTIME_PREVIEW_KEY_FILE=${MONKEYAI_RUNTIME_PREVIEW_KEY_FILE:-/run/secrets/preview/tls.key}
+    for path in "$MONKEYAI_RUNTIME_PREVIEW_CERT_FILE" "$MONKEYAI_RUNTIME_PREVIEW_KEY_FILE"; do
+        case "$path" in /*) ;; *) fail '预览证书必须使用绝对路径' ;; esac
+        printf '%s\n' "$path" | LC_ALL=C awk 'NR != 1 || /[^A-Za-z0-9_.\/-]/ { exit 1 }' || fail '预览证书路径无效'
+        [ -r "$path" ] || fail '预览证书或私钥不可读'
+    done
+    export MONKEYAI_PREVIEW_DOMAIN MONKEYAI_RUNTIME_PREVIEW_CERT_FILE MONKEYAI_RUNTIME_PREVIEW_KEY_FILE
+    envsubst '${MONKEYAI_PREVIEW_DOMAIN} ${MONKEYAI_RUNTIME_PREVIEW_CERT_FILE} ${MONKEYAI_RUNTIME_PREVIEW_KEY_FILE}' \
+        < /etc/nginx/monkeyai/preview.conf.template > /tmp/nginx/preview-site.conf
+fi
+
 nginx -t
 exec "$@"

@@ -1,0 +1,35 @@
+{
+  "description": "公开固定测试向量；测试种子为字节 0..31，仅用于跨语言契约校验。",
+  "hello": {
+    "type": "hello",
+    "tunnel_version": 1,
+    "channel_kind": "control",
+    "machine_id": "00000000-0000-4000-8000-000000000001",
+    "execution_public_key": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+    "boot_id": "00000000-0000-4000-8000-000000000002",
+    "display_name": "fixture",
+    "platform": "macos",
+    "arch": "arm64",
+    "deployment_mode": "desktop_managed",
+    "intent": "publish",
+    "restore_revoked": false,
+    "lease_epoch": 0,
+    "protocols": {
+      "acp": [1],
+      "runtime_api": [1]
+    }
+  },
+  "challenge": {
+    "type": "challenge",
+    "server_id": "00000000-0000-4000-8000-000000000003",
+    "owner_user_id": "00000000-0000-4000-8000-000000000004",
+    "challenge_id": "00000000-0000-4000-8000-000000000005",
+    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "ttl_ms": 60000,
+    "server_time": "2026-10-13T00:00:00Z",
+    "grant_id": "00000000-0000-4000-8000-000000000006",
+    "registration_version": 0
+  },
+  "canonical_utf8_base64": "WyJtb25rZXlhaS5lbmRwb2ludC5wcm9vZi52MSIsWzEsImNvbnRyb2wiLCJwdWJsaXNoIiwiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiQTZFSHZfUE9FTDRkY04wWTUwdkFtV2ZrMWpDYnBRMWZIZHlHWkJKVk1iZyIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMiIsImZpeHR1cmUiLCJtYWNvcyIsImFybTY0IiwiZGVza3RvcF9tYW5hZ2VkIiwwLGZhbHNlLFsxXSxbMV1dLFsiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDA0IiwiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDA1IiwiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsNjAwMDAsIjIwMjYtMTAtMTNUMDA6MDA6MDBaIiwiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDA2IiwwXV0",
+  "signature": "zglaOx4n-wJbs4Ffaz19Eoc23xufNjmkzKnQ34qn9g7ptP-MJE1yclZDzBuEm2YZE_kOgmtaptx55LRorV0MBQ"
+}

@@ -20,6 +20,7 @@ import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
+import { DeviceAuthorizationPage } from "@/pages/device-authorization-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { ClientAnalysisPage } from "@/pages/client-analysis-page"
@@ -83,6 +84,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path={LOGIN_PATH} element={<LoginPage />} />
+        <Route path="/device" element={<DeviceAuthorizationPage />} />
         <Route path="/client-login" element={<ClientLoginPage />} />
         <Route element={<RequireAuth />}>
           <Route path={CONSOLE_PATH} element={<Dashboard />}>

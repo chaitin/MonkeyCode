@@ -78,3 +78,35 @@ WHERE user_id = $1 AND machine_id = $2 RETURNING *;
 -- name: Touch :exec
 UPDATE endpoints SET last_seen_at = greatest(last_seen_at, sqlc.arg(seen_at)::timestamptz)
 WHERE user_id = $1 AND machine_id = $2;
+
+-- name: EnsureExecutionEndpoint :exec
+INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version)
+VALUES ($1,$2,$3,$4,'unknown',$5,'unknown')
+ON CONFLICT (user_id,machine_id) DO NOTHING;
+
+-- name: SetExecutionIdentity :one
+UPDATE endpoints SET execution_public_key = $3, key_id = $4,
+    registration_version = registration_version + CASE WHEN execution_public_key IS NULL THEN 1 ELSE 0 END,
+    updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 AND registration_version = $5
+RETURNING *;
+
+-- name: EnableExecution :one
+UPDATE endpoints SET remote_access_state = 'enabled', active_grant_id = $3, deployment_mode = $4,
+    execution_protocols=$5, runtime_version=$6,engine_version=$7,
+    registration_version = registration_version + CASE WHEN remote_access_state = 'revoked' THEN 1 ELSE 0 END,
+    grant_version = grant_version + CASE WHEN remote_access_state <> 'enabled' OR active_grant_id IS DISTINCT FROM $3 THEN 1 ELSE 0 END,
+    lease_epoch = lease_epoch + 1, last_seen_at = now(), updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 RETURNING *;
+
+-- name: RevokeExecution :one
+UPDATE endpoints SET remote_access_state = 'revoked',
+    registration_version = registration_version + CASE WHEN remote_access_state <> 'revoked' THEN 1 ELSE 0 END,
+    grant_version = grant_version + CASE WHEN remote_access_state <> 'revoked' THEN 1 ELSE 0 END,
+    updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 RETURNING *;
+
+-- name: ListExecutions :many
+SELECT * FROM endpoints WHERE user_id = $1
+    AND (NOT sqlc.arg(execute_only)::boolean OR execution_public_key IS NOT NULL)
+ORDER BY created_at DESC, id DESC;

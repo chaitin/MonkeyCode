@@ -42,7 +42,7 @@ func TestNormalizeCreationGroups(t *testing.T) {
 
 func TestCreateUserWithGroups(t *testing.T) {
 	pool := emailDatabase(t)
-	service := NewService(pool, nil, "http://localhost")
+	service := newTestService(pool, nil, "http://localhost")
 	actor, err := service.insertUser(t.Context(), "Administrator", "actor@example.com", "admin", "")
 	if err != nil {
 		t.Fatal(err)

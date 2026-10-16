@@ -24,6 +24,11 @@ WHERE
     AND $2::text = ANY (k.scopes)
     AND k.revoked_at IS NULL
     AND k.expires_at > now()
+    AND (k.runtime_grant_id IS NULL OR EXISTS (
+        SELECT 1 FROM oauth_grants g JOIN endpoints e ON e.user_id=g.user_id AND e.machine_id=g.machine_id
+        WHERE g.id=k.runtime_grant_id AND g.user_id=k.user_id AND g.machine_id=k.machine_id AND g.purpose='runtime'
+            AND g.revoked_at IS NULL AND g.expires_at>now() AND e.active_grant_id=g.id
+            AND e.remote_access_state='enabled' AND e.deployment_mode='standalone'))
     AND u.status = 'active'
     AND u.deleted_at IS NULL
 `
@@ -45,35 +50,41 @@ func (q *Queries) AuthenticateKey(ctx context.Context, arg AuthenticateKeyParams
 	return i, err
 }
 
+const cleanupRuntimeKeys = `-- name: CleanupRuntimeKeys :exec
+UPDATE api_keys k SET revoked_at=now()
+WHERE k.runtime_grant_id IS NOT NULL AND k.revoked_at IS NULL AND NOT EXISTS (
+    SELECT 1 FROM oauth_grants g WHERE g.id=k.runtime_grant_id AND g.revoked_at IS NULL AND g.expires_at>now())
+`
+
+func (q *Queries) CleanupRuntimeKeys(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, cleanupRuntimeKeys)
+	return err
+}
+
 const createKey = `-- name: CreateKey :one
-INSERT INTO api_keys (user_id, name, key_prefix, key_hash, scopes, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING
-    id, user_id, name, key_prefix, scopes, expires_at, last_used_at, created_at, revoked_at
+INSERT INTO api_keys (user_id, name, key_prefix, key_hash, scopes, expires_at,machine_id,runtime_grant_id)
+SELECT $1,$2,$3,$4,$5,$6,$7::uuid,$8::uuid
+WHERE $8::uuid IS NULL OR EXISTS (
+    SELECT 1 FROM oauth_grants g JOIN endpoints e ON e.user_id=g.user_id AND e.machine_id=g.machine_id
+    WHERE g.id=$8::uuid AND g.user_id=$1 AND g.machine_id=$7::uuid
+        AND g.purpose='runtime' AND g.revoked_at IS NULL AND g.expires_at>now()
+        AND e.active_grant_id=g.id AND e.deployment_mode='standalone' AND e.remote_access_state='enabled'
+)
+RETURNING id, user_id, name, key_prefix, key_hash, scopes, expires_at, last_used_at, created_at, revoked_at, machine_id, runtime_grant_id
 `
 
 type CreateKeyParams struct {
-	UserID    string
-	Name      string
-	KeyPrefix string
-	KeyHash   string
-	Scopes    []string
-	ExpiresAt time.Time
+	UserID         string
+	Name           string
+	KeyPrefix      string
+	KeyHash        string
+	Scopes         []string
+	ExpiresAt      time.Time
+	MachineID      *string
+	RuntimeGrantID *string
 }
 
-type CreateKeyRow struct {
-	ID         string
-	UserID     string
-	Name       string
-	KeyPrefix  string
-	Scopes     []string
-	ExpiresAt  time.Time
-	LastUsedAt *time.Time
-	CreatedAt  time.Time
-	RevokedAt  *time.Time
-}
-
-func (q *Queries) CreateKey(ctx context.Context, arg CreateKeyParams) (CreateKeyRow, error) {
+func (q *Queries) CreateKey(ctx context.Context, arg CreateKeyParams) (ApiKey, error) {
 	row := q.db.QueryRow(ctx, createKey,
 		arg.UserID,
 		arg.Name,
@@ -81,18 +92,23 @@ func (q *Queries) CreateKey(ctx context.Context, arg CreateKeyParams) (CreateKey
 		arg.KeyHash,
 		arg.Scopes,
 		arg.ExpiresAt,
+		arg.MachineID,
+		arg.RuntimeGrantID,
 	)
-	var i CreateKeyRow
+	var i ApiKey
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.Name,
 		&i.KeyPrefix,
+		&i.KeyHash,
 		&i.Scopes,
 		&i.ExpiresAt,
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.MachineID,
+		&i.RuntimeGrantID,
 	)
 	return i, err
 }
@@ -108,36 +124,42 @@ SELECT
     k.expires_at,
     k.last_used_at,
     k.created_at,
-    k.revoked_at
+    k.revoked_at,
+    k.machine_id,
+    k.runtime_grant_id
 FROM
     api_keys k
     JOIN users u ON u.id = k.user_id
 WHERE ($1::boolean
     OR k.user_id = NULLIF ($2::text, '')::uuid)
+    AND ($3::text='' OR k.runtime_grant_id=NULLIF($3::text,'')::uuid)
 ORDER BY
     k.created_at DESC
 `
 
 type ListKeysParams struct {
-	AllUsers bool
-	UserID   string
+	AllUsers       bool
+	UserID         string
+	RuntimeGrantID string
 }
 
 type ListKeysRow struct {
-	ID         string
-	UserID     string
-	UserName   string
-	Name       string
-	KeyPrefix  string
-	Scopes     []string
-	ExpiresAt  time.Time
-	LastUsedAt *time.Time
-	CreatedAt  time.Time
-	RevokedAt  *time.Time
+	ID             string
+	UserID         string
+	UserName       string
+	Name           string
+	KeyPrefix      string
+	Scopes         []string
+	ExpiresAt      time.Time
+	LastUsedAt     *time.Time
+	CreatedAt      time.Time
+	RevokedAt      *time.Time
+	MachineID      *string
+	RuntimeGrantID *string
 }
 
 func (q *Queries) ListKeys(ctx context.Context, arg ListKeysParams) ([]ListKeysRow, error) {
-	rows, err := q.db.Query(ctx, listKeys, arg.AllUsers, arg.UserID)
+	rows, err := q.db.Query(ctx, listKeys, arg.AllUsers, arg.UserID, arg.RuntimeGrantID)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +178,8 @@ func (q *Queries) ListKeys(ctx context.Context, arg ListKeysParams) ([]ListKeysR
 			&i.LastUsedAt,
 			&i.CreatedAt,
 			&i.RevokedAt,
+			&i.MachineID,
+			&i.RuntimeGrantID,
 		); err != nil {
 			return nil, err
 		}
@@ -177,19 +201,30 @@ WHERE
     AND revoked_at IS NULL
     AND ($2::text = ''
         OR user_id = NULLIF ($2::text, '')::uuid)
+    AND ($3::text='' OR runtime_grant_id=NULLIF($3::text,'')::uuid)
 `
 
 type RevokeKeyParams struct {
-	ID     string
-	UserID string
+	ID             string
+	UserID         string
+	RuntimeGrantID string
 }
 
 func (q *Queries) RevokeKey(ctx context.Context, arg RevokeKeyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeKey, arg.ID, arg.UserID)
+	result, err := q.db.Exec(ctx, revokeKey, arg.ID, arg.UserID, arg.RuntimeGrantID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const revokeRuntimeKeys = `-- name: RevokeRuntimeKeys :exec
+UPDATE api_keys SET revoked_at=coalesce(revoked_at,now()) WHERE runtime_grant_id=$1
+`
+
+func (q *Queries) RevokeRuntimeKeys(ctx context.Context, runtimeGrantID *string) error {
+	_, err := q.db.Exec(ctx, revokeRuntimeKeys, runtimeGrantID)
+	return err
 }
 
 const touchKey = `-- name: TouchKey :execresult

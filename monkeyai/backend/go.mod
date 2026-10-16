@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.111.0
 	github.com/coder/websocket v1.8.14
 	github.com/go-chi/chi/v5 v5.3.2
+	github.com/hashicorp/yamux v0.1.2
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/tiktoken-go/tokenizer v0.8.1
 	golang.org/x/image v0.46.0

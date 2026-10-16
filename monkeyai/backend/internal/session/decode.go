@@ -14,6 +14,7 @@ import (
 )
 
 type sessionInput struct {
+	Runtime         *liveSummary `json:"runtime,omitempty"`
 	StateSeq        *int64       `json:"state_seq"`
 	Client          *clientInput `json:"client"`
 	SessionType     *string      `json:"session_type"`

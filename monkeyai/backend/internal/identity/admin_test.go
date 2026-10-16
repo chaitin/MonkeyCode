@@ -43,7 +43,7 @@ func TestAdminGetUserByID(t *testing.T) {
 
 func TestPatchUserPromotesWithoutChangingPassword(t *testing.T) {
 	pool := emailDatabase(t)
-	service := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true}`)}, "http://localhost")
+	service := newTestService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true}`)}, "http://localhost")
 	router := chi.NewRouter()
 	service.RegisterAdmin(router)
 

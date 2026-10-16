@@ -27,10 +27,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -S monkeyai \
-    && adduser -S -G monkeyai monkeyai
+    && addgroup -S -g 10001 monkeyai \
+    && adduser -S -D -u 10001 -G monkeyai monkeyai \
+    && mkdir -p /app/runtime \
+    && chown monkeyai:monkeyai /app/runtime \
+    && chmod 700 /app/runtime
 
 WORKDIR /app
+ENV MONKEYAI_RUNTIME_STATE_DIR=/app/runtime
 
 COPY --from=builder --chown=monkeyai:monkeyai /out/monkeyai-server ./monkeyai-server
 

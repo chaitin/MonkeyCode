@@ -44,8 +44,8 @@ WHERE
     id = $1;
 
 -- name: CreateAuthorizationRequest :one
-INSERT INTO oauth_authorization_requests (client_id, redirect_uri, state, code_challenge, code_challenge_method, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO oauth_authorization_requests (client_id, redirect_uri, state, code_challenge, code_challenge_method, expires_at, scopes, audience)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING
     id;
 
@@ -58,7 +58,9 @@ SELECT
     code_challenge,
     code_challenge_method,
     expires_at,
-    completed_at
+    completed_at,
+    scopes,
+    audience
 FROM
     oauth_authorization_requests
 WHERE
@@ -76,8 +78,8 @@ WHERE
 
 -- name: CreateAuthorizationCode :execresult
 INSERT INTO oauth_authorization_codes (code_hash, authorization_request_id, user_id, client_id, redirect_uri,
-    code_challenge, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7);
+    code_challenge, expires_at, scopes, audience)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: GetAuthorizationCode :one
 SELECT
@@ -87,7 +89,9 @@ SELECT
     redirect_uri,
     code_challenge,
     expires_at,
-    redeemed_at
+    redeemed_at,
+    scopes,
+    audience
 FROM
     oauth_authorization_codes
 WHERE
@@ -104,26 +108,49 @@ WHERE
     AND expires_at > now();
 
 -- name: CreateToken :execresult
-INSERT INTO oauth_tokens (user_id, client_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO oauth_tokens (user_id, client_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at, grant_id, parent_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
--- name: RevokeRefreshToken :one
-UPDATE
-    oauth_tokens
-SET
-    revoked_at = now()
-WHERE
-    refresh_token_hash = $1
-    AND client_id = $2
-    AND revoked_at IS NULL
-    AND refresh_expires_at > now()
-RETURNING
-    user_id;
+-- name: CreateGrant :one
+INSERT INTO oauth_grants(user_id, client_id, scopes, audience, expires_at)
+VALUES ($1, $2, $3, $4, $5) RETURNING *;
+
+-- name: GetRefreshToken :one
+SELECT * FROM oauth_tokens WHERE refresh_token_hash = $1 AND client_id = $2;
+
+-- name: LockGrant :one
+SELECT g.*, u.status AS user_status, u.deleted_at AS user_deleted_at
+FROM oauth_grants g JOIN users u ON u.id = g.user_id
+WHERE g.id = $1 FOR UPDATE OF g;
+
+-- name: GetGrant :one
+SELECT g.* FROM oauth_grants g JOIN users u ON u.id = g.user_id
+WHERE g.id = $1 AND g.revoked_at IS NULL AND g.expires_at > now()
+    AND u.status = 'active' AND u.deleted_at IS NULL;
+
+-- name: RotateToken :execrows
+UPDATE oauth_tokens SET rotated_at = now(), revoked_at = now()
+WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL AND refresh_expires_at > now();
+
+-- name: ExtendGrant :exec
+UPDATE oauth_grants SET expires_at = $2 WHERE id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeGrant :exec
+UPDATE oauth_grants SET revoked_at = now(), revoke_reason = $2,
+    revocation_version = revocation_version + 1
+WHERE id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeGrantTokens :exec
+UPDATE oauth_tokens SET revoked_at = coalesce(revoked_at, now()) WHERE grant_id = $1;
+
+-- name: FindTokenGrant :one
+SELECT grant_id FROM oauth_tokens
+WHERE client_id = $2 AND (access_token_hash = $1 OR refresh_token_hash = $1);
 
 -- name: CreateLoginState :execresult
-INSERT INTO oauth_login_states (state_hash, connection_id, authorization_request_id, purpose, expires_at)
+INSERT INTO oauth_login_states (state_hash, connection_id, authorization_request_id, purpose, expires_at,device_request_id)
     VALUES (sqlc.arg(state_hash), sqlc.arg(connection_id), NULLIF (sqlc.arg(authorization_request_id)::text, '')::uuid,
-	sqlc.arg(purpose), sqlc.arg(expires_at));
+	sqlc.arg(purpose), sqlc.arg(expires_at),NULLIF(sqlc.arg(device_request_id)::text,'')::uuid);
 
 -- name: ConsumeLoginState :one
 UPDATE
@@ -137,7 +164,8 @@ WHERE
 RETURNING
     connection_id,
     coalesce(authorization_request_id::text, '')::text AS authorization_request_id,
-    purpose;
+    purpose,
+    coalesce(device_request_id::text,'')::text AS device_request_id;
 
 -- name: CreateBrowserSession :execresult
 INSERT INTO browser_sessions (token_hash, user_id, authentication_method, expires_at)
@@ -174,23 +202,36 @@ SELECT
     u.status,
     u.joined_at,
     u.last_login_at,
-    t.access_expires_at
+    t.access_expires_at,
+    g.id AS grant_id,
+    t.client_id,
+    g.scopes,
+    g.audience,
+    g.purpose,
+    g.machine_id,
+    g.key_id,
+    g.revocation_version
 FROM
     oauth_tokens t
     JOIN users u ON u.id = t.user_id
+    JOIN oauth_grants g ON g.id = t.grant_id
 WHERE
     t.access_token_hash = $1
     AND t.revoked_at IS NULL
     AND t.access_expires_at > now()
+    AND g.revoked_at IS NULL AND g.expires_at > now()
     AND u.status = 'active'
     AND u.deleted_at IS NULL;
 
 -- name: GetAccessCredential :one
-SELECT t.access_expires_at, t.user_id
+SELECT t.access_expires_at, t.user_id, g.id AS grant_id, t.client_id,
+    g.scopes, g.audience, g.purpose, g.machine_id, g.key_id, g.revocation_version
 FROM oauth_tokens t
 JOIN users u ON u.id = t.user_id
+JOIN oauth_grants g ON g.id = t.grant_id
 WHERE t.access_token_hash = $1
     AND t.revoked_at IS NULL AND t.access_expires_at > now()
+    AND g.revoked_at IS NULL AND g.expires_at > now()
     AND u.status = 'active' AND u.deleted_at IS NULL;
 
 -- name: RevokeBrowserSession :execresult
@@ -473,7 +514,17 @@ WHERE id = $1 AND deleted_at IS NULL RETURNING id;
 UPDATE browser_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
 
 -- name: RevokeUserTokens :exec
-UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
+WITH grants AS (
+    UPDATE oauth_grants AS g SET revoked_at = now(), revoke_reason = 'user_revocation',
+        revocation_version = g.revocation_version + 1
+    WHERE g.user_id = $1 AND g.revoked_at IS NULL
+)
+UPDATE oauth_tokens AS t SET revoked_at = now() WHERE t.user_id = $1 AND t.revoked_at IS NULL;
 
 -- name: RevokeUserCodes :exec
 UPDATE oauth_authorization_codes SET redeemed_at = now() WHERE user_id = $1 AND redeemed_at IS NULL;
+
+-- name: BindGrant :execrows
+UPDATE oauth_grants SET machine_id = $2, key_id = $3
+WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()
+    AND (machine_id IS NULL OR (machine_id = $2 AND key_id = $3));

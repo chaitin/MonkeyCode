@@ -1,0 +1,22 @@
+server {
+    listen 8443 ssl;
+    server_name *.${MONKEYAI_PREVIEW_DOMAIN};
+    ssl_certificate ${MONKEYAI_RUNTIME_PREVIEW_CERT_FILE};
+    ssl_certificate_key ${MONKEYAI_RUNTIME_PREVIEW_KEY_FILE};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    error_log /dev/null;
+
+    location /preview/ {
+        proxy_pass http://monkeyai_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_read_timeout 30m;
+        proxy_buffering off;
+    }
+    location / {
+        return 404;
+    }
+}

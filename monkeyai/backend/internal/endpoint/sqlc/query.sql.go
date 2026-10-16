@@ -11,7 +11,7 @@ import (
 )
 
 const active = `-- name: Active :many
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 AND status = 'active' ORDER BY machine_id
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch FROM endpoints WHERE user_id = $1 AND status = 'active' ORDER BY machine_id
 `
 
 func (q *Queries) Active(ctx context.Context, userID string) ([]Endpoint, error) {
@@ -49,6 +49,15 @@ func (q *Queries) Active(ctx context.Context, userID string) ([]Endpoint, error)
 			&i.EngineVersion,
 			&i.ElectronVersion,
 			&i.LastReportedAt,
+			&i.ExecutionProtocols,
+			&i.ExecutionPublicKey,
+			&i.KeyID,
+			&i.DeploymentMode,
+			&i.RemoteAccessState,
+			&i.ActiveGrantID,
+			&i.RegistrationVersion,
+			&i.GrantVersion,
+			&i.LeaseEpoch,
 		); err != nil {
 			return nil, err
 		}
@@ -82,8 +91,102 @@ func (q *Queries) CountActive(ctx context.Context, userID string) (int64, error)
 	return count, err
 }
 
+const enableExecution = `-- name: EnableExecution :one
+UPDATE endpoints SET remote_access_state = 'enabled', active_grant_id = $3, deployment_mode = $4,
+    execution_protocols=$5, runtime_version=$6,engine_version=$7,
+    registration_version = registration_version + CASE WHEN remote_access_state = 'revoked' THEN 1 ELSE 0 END,
+    grant_version = grant_version + CASE WHEN remote_access_state <> 'enabled' OR active_grant_id IS DISTINCT FROM $3 THEN 1 ELSE 0 END,
+    lease_epoch = lease_epoch + 1, last_seen_at = now(), updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
+`
+
+type EnableExecutionParams struct {
+	UserID             string
+	MachineID          string
+	ActiveGrantID      *string
+	DeploymentMode     *string
+	ExecutionProtocols []byte
+	RuntimeVersion     *string
+	EngineVersion      *string
+}
+
+func (q *Queries) EnableExecution(ctx context.Context, arg EnableExecutionParams) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, enableExecution,
+		arg.UserID,
+		arg.MachineID,
+		arg.ActiveGrantID,
+		arg.DeploymentMode,
+		arg.ExecutionProtocols,
+		arg.RuntimeVersion,
+		arg.EngineVersion,
+	)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MachineID,
+		&i.DeviceName,
+		&i.Alias,
+		&i.Platform,
+		&i.OsVersion,
+		&i.Arch,
+		&i.ClientVersion,
+		&i.ProtocolVersion,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
+	)
+	return i, err
+}
+
+const ensureExecutionEndpoint = `-- name: EnsureExecutionEndpoint :exec
+INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version)
+VALUES ($1,$2,$3,$4,'unknown',$5,'unknown')
+ON CONFLICT (user_id,machine_id) DO NOTHING
+`
+
+type EnsureExecutionEndpointParams struct {
+	UserID     string
+	MachineID  string
+	DeviceName string
+	Platform   string
+	Arch       string
+}
+
+func (q *Queries) EnsureExecutionEndpoint(ctx context.Context, arg EnsureExecutionEndpointParams) error {
+	_, err := q.db.Exec(ctx, ensureExecutionEndpoint,
+		arg.UserID,
+		arg.MachineID,
+		arg.DeviceName,
+		arg.Platform,
+		arg.Arch,
+	)
+	return err
+}
+
 const get = `-- name: Get :one
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 AND machine_id = $2
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch FROM endpoints WHERE user_id = $1 AND machine_id = $2
 `
 
 type GetParams struct {
@@ -120,8 +223,83 @@ func (q *Queries) Get(ctx context.Context, arg GetParams) (Endpoint, error) {
 		&i.EngineVersion,
 		&i.ElectronVersion,
 		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
 	)
 	return i, err
+}
+
+const listExecutions = `-- name: ListExecutions :many
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch FROM endpoints WHERE user_id = $1
+    AND (NOT $2::boolean OR execution_public_key IS NOT NULL)
+ORDER BY created_at DESC, id DESC
+`
+
+type ListExecutionsParams struct {
+	UserID      string
+	ExecuteOnly bool
+}
+
+func (q *Queries) ListExecutions(ctx context.Context, arg ListExecutionsParams) ([]Endpoint, error) {
+	rows, err := q.db.Query(ctx, listExecutions, arg.UserID, arg.ExecuteOnly)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Endpoint{}
+	for rows.Next() {
+		var i Endpoint
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.MachineID,
+			&i.DeviceName,
+			&i.Alias,
+			&i.Platform,
+			&i.OsVersion,
+			&i.Arch,
+			&i.ClientVersion,
+			&i.ProtocolVersion,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastSeenAt,
+			&i.RevokedAt,
+			&i.ClientType,
+			&i.ClientName,
+			&i.Channel,
+			&i.Locale,
+			&i.SystemLocale,
+			&i.Timezone,
+			&i.RuntimeVersion,
+			&i.EngineVersion,
+			&i.ElectronVersion,
+			&i.LastReportedAt,
+			&i.ExecutionProtocols,
+			&i.ExecutionPublicKey,
+			&i.KeyID,
+			&i.DeploymentMode,
+			&i.RemoteAccessState,
+			&i.ActiveGrantID,
+			&i.RegistrationVersion,
+			&i.GrantVersion,
+			&i.LeaseEpoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockUser = `-- name: LockUser :one
@@ -135,7 +313,7 @@ func (q *Queries) LockUser(ctx context.Context, id string) (string, error) {
 }
 
 const page = `-- name: Page :many
-SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at FROM endpoints WHERE user_id = $1 ORDER BY created_at DESC, id DESC
+SELECT id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch FROM endpoints WHERE user_id = $1 ORDER BY created_at DESC, id DESC
 LIMIT $3::integer OFFSET $2::integer
 `
 
@@ -180,6 +358,15 @@ func (q *Queries) Page(ctx context.Context, arg PageParams) ([]Endpoint, error) 
 			&i.EngineVersion,
 			&i.ElectronVersion,
 			&i.LastReportedAt,
+			&i.ExecutionProtocols,
+			&i.ExecutionPublicKey,
+			&i.KeyID,
+			&i.DeploymentMode,
+			&i.RemoteAccessState,
+			&i.ActiveGrantID,
+			&i.RegistrationVersion,
+			&i.GrantVersion,
+			&i.LeaseEpoch,
 		); err != nil {
 			return nil, err
 		}
@@ -199,7 +386,7 @@ ON CONFLICT (user_id, machine_id) DO UPDATE SET
     os_version = EXCLUDED.os_version, arch = EXCLUDED.arch, client_version = EXCLUDED.client_version,
     protocol_version = 1, last_seen_at = now(), updated_at = now()
 WHERE endpoints.status = 'active'
-RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
+RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
 `
 
 type RegisterParams struct {
@@ -249,6 +436,15 @@ func (q *Queries) Register(ctx context.Context, arg RegisterParams) (Endpoint, e
 		&i.EngineVersion,
 		&i.ElectronVersion,
 		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
 	)
 	return i, err
 }
@@ -277,7 +473,7 @@ ON CONFLICT (user_id, machine_id) DO UPDATE SET
     runtime_version = EXCLUDED.runtime_version, engine_version = EXCLUDED.engine_version,
     electron_version = EXCLUDED.electron_version, last_reported_at = now(), updated_at = now()
 WHERE endpoints.status = 'active'
-RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
+RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
 `
 
 type RegisterDeviceParams struct {
@@ -347,13 +543,22 @@ func (q *Queries) RegisterDevice(ctx context.Context, arg RegisterDeviceParams) 
 		&i.EngineVersion,
 		&i.ElectronVersion,
 		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
 	)
 	return i, err
 }
 
 const rename = `-- name: Rename :one
 UPDATE endpoints SET alias = $3::text, updated_at = now()
-WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
 `
 
 type RenameParams struct {
@@ -391,6 +596,134 @@ func (q *Queries) Rename(ctx context.Context, arg RenameParams) (Endpoint, error
 		&i.EngineVersion,
 		&i.ElectronVersion,
 		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
+	)
+	return i, err
+}
+
+const revokeExecution = `-- name: RevokeExecution :one
+UPDATE endpoints SET remote_access_state = 'revoked',
+    registration_version = registration_version + CASE WHEN remote_access_state <> 'revoked' THEN 1 ELSE 0 END,
+    grant_version = grant_version + CASE WHEN remote_access_state <> 'revoked' THEN 1 ELSE 0 END,
+    updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
+`
+
+type RevokeExecutionParams struct {
+	UserID    string
+	MachineID string
+}
+
+func (q *Queries) RevokeExecution(ctx context.Context, arg RevokeExecutionParams) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, revokeExecution, arg.UserID, arg.MachineID)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MachineID,
+		&i.DeviceName,
+		&i.Alias,
+		&i.Platform,
+		&i.OsVersion,
+		&i.Arch,
+		&i.ClientVersion,
+		&i.ProtocolVersion,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
+	)
+	return i, err
+}
+
+const setExecutionIdentity = `-- name: SetExecutionIdentity :one
+UPDATE endpoints SET execution_public_key = $3, key_id = $4,
+    registration_version = registration_version + CASE WHEN execution_public_key IS NULL THEN 1 ELSE 0 END,
+    updated_at = now()
+WHERE user_id = $1 AND machine_id = $2 AND registration_version = $5
+RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
+`
+
+type SetExecutionIdentityParams struct {
+	UserID              string
+	MachineID           string
+	ExecutionPublicKey  []byte
+	KeyID               *string
+	RegistrationVersion int64
+}
+
+func (q *Queries) SetExecutionIdentity(ctx context.Context, arg SetExecutionIdentityParams) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, setExecutionIdentity,
+		arg.UserID,
+		arg.MachineID,
+		arg.ExecutionPublicKey,
+		arg.KeyID,
+		arg.RegistrationVersion,
+	)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.MachineID,
+		&i.DeviceName,
+		&i.Alias,
+		&i.Platform,
+		&i.OsVersion,
+		&i.Arch,
+		&i.ClientVersion,
+		&i.ProtocolVersion,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastSeenAt,
+		&i.RevokedAt,
+		&i.ClientType,
+		&i.ClientName,
+		&i.Channel,
+		&i.Locale,
+		&i.SystemLocale,
+		&i.Timezone,
+		&i.RuntimeVersion,
+		&i.EngineVersion,
+		&i.ElectronVersion,
+		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
 	)
 	return i, err
 }
@@ -399,7 +732,7 @@ const status = `-- name: Status :one
 UPDATE endpoints SET status = $3::text,
     revoked_at = CASE WHEN $3::text = 'revoked' THEN now() ELSE NULL END,
     updated_at = now()
-WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at
+WHERE user_id = $1 AND machine_id = $2 RETURNING id, user_id, machine_id, device_name, alias, platform, os_version, arch, client_version, protocol_version, status, created_at, updated_at, last_seen_at, revoked_at, client_type, client_name, channel, locale, system_locale, timezone, runtime_version, engine_version, electron_version, last_reported_at, execution_protocols, execution_public_key, key_id, deployment_mode, remote_access_state, active_grant_id, registration_version, grant_version, lease_epoch
 `
 
 type StatusParams struct {
@@ -437,6 +770,15 @@ func (q *Queries) Status(ctx context.Context, arg StatusParams) (Endpoint, error
 		&i.EngineVersion,
 		&i.ElectronVersion,
 		&i.LastReportedAt,
+		&i.ExecutionProtocols,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DeploymentMode,
+		&i.RemoteAccessState,
+		&i.ActiveGrantID,
+		&i.RegistrationVersion,
+		&i.GrantVersion,
+		&i.LeaseEpoch,
 	)
 	return i, err
 }
