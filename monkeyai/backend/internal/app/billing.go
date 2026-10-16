@@ -149,6 +149,7 @@ func (b modelBilling) Finish(ctx context.Context, id string, c proxy.Call) error
 		Input: int64(c.InputTokens), Cached: int64(c.CachedInputTokens), Output: int64(c.OutputTokens),
 		Known: c.Known, Stream: &stream, Result: c.Result, ErrorCode: c.ErrorCode,
 		RequestID: c.RequestID, TerminalEvent: c.TerminalEvent,
+		InputSource: c.InputSource, OutputSource: c.OutputSource,
 		FirstTokenDurationMs: c.FirstTokenDurationMs,
 	})
 }

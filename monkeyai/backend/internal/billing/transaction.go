@@ -32,6 +32,8 @@ type Usage struct {
 	Input                int64  `json:"input_tokens"`
 	Cached               int64  `json:"cached_input_tokens"`
 	Output               int64  `json:"output_tokens"`
+	InputSource          string `json:"input_source,omitempty"`
+	OutputSource         string `json:"output_source,omitempty"`
 	FirstTokenDurationMs *int32 `json:"first_token_duration_ms,omitempty"`
 	Images               int64  `json:"generated_images,omitempty"`
 	VideoDurationMs      int64  `json:"output_duration_ms,omitempty"`
