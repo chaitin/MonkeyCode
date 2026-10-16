@@ -73,7 +73,7 @@ func TestResourceIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
-	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "测试管理员", InitialAdminEmail: "resources@example.com", InitialAdminPassword: "resource-test-password"})
+	handler, err := newMemberTestHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "测试管理员", InitialAdminEmail: "resources@example.com", InitialAdminPassword: "resource-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +148,12 @@ func TestResourceIntegration(t *testing.T) {
 				t.Fatalf("%s 未校验 Agent 身份: %d", path, code)
 			}
 			code, out, headers := call("GET", path, nil, "a", "")
-			fields := 2
+			fields := 5
+			if kind == "settings" {
+				fields = 2
+			}
 			if kind == "models" {
-				fields = 3
+				fields = 6
 				gateway := out["model_gateway"].(map[string]any)
 				if gateway["base_url"] != "http://localhost:8080/v1" || gateway["authentication"] != "api_key" {
 					t.Fatalf("模型代理配置缺失: %v", out)
@@ -1058,10 +1061,10 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if code, _, _ := call("POST", "/api/v1/resources/resolve", resource.Object{"rule_ids": []string{id}}, "b", ""); code != 404 {
 			t.Fatalf("未授权用户选择规则应返回 404: %d", code)
 		}
-		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": []resource.Object{{"user_id": users[0], "usage_requirement": "required"}}}, "", `"1"`)
+		must("PUT", path, resource.Object{"name": "可关闭规则", "content": "正文", "grants": []resource.Object{{"user_id": users[0], "usage_requirement": "required"}}}, "", `"1"`)
 		assertRule("a", true, true)
 		assertRule("b", false, false)
-		must("PUT", path, resource.Object{"name": "可关闭规则", "grants": optional}, "", `"2"`)
+		must("PUT", path, resource.Object{"name": "可关闭规则", "content": "正文", "grants": optional}, "", `"2"`)
 		assertRule("a", true, false)
 		must("DELETE", path, nil, "", `"3"`)
 	})

@@ -105,8 +105,48 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 		user := User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}
 		ctx = context.WithValue(r.Context(), userContextKey{}, user)
 		ctx = context.WithValue(ctx, credentialKey{}, AccessCredential{UserID: row.ID, Reference: reference, ExpiresAt: row.AccessExpiresAt})
+		p := Principal{UserID: row.ID, ClientID: row.ClientID, GrantID: row.GrantID, Scopes: row.Scopes,
+			Audience: row.Audience, Purpose: row.Purpose, RevocationVersion: row.RevocationVersion}
+		if row.MachineID != nil {
+			p.MachineID = *row.MachineID
+		}
+		if row.KeyID != nil {
+			p.KeyID = *row.KeyID
+		}
+		ctx = context.WithValue(ctx, principalKey{}, p)
+		if p.Purpose == "runtime" && !runtimeRoute(p, r.Method, r.URL.Path) {
+			writeError(w, 403, "permission_denied", "独立执行授权只能访问本机执行接口")
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func runtimeRoute(p Principal, method, path string) bool {
+	path = strings.TrimPrefix(path, "/api/v1")
+	if method == "GET" && (path == "/me" || path == "/settings" || path == "/endpoint-bridge") {
+		return true
+	}
+	if strings.HasPrefix(path, "/api-keys") {
+		return p.MachineID != "" && p.Has("device:publish")
+	}
+	if method == "PUT" && path == "/endpoints/"+p.MachineID && p.MachineID != "" {
+		return true
+	}
+	if (method == "PUT" || method == "POST") && strings.HasPrefix(path, "/sessions/") {
+		return p.Has("session:report")
+	}
+	if method == "POST" && path == "/resources/resolve" {
+		return true
+	}
+	if method == "GET" {
+		for _, prefix := range []string{"/models", "/rules", "/skills", "/experts", "/connectors"} {
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

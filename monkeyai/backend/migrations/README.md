@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=23, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=25, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -41,8 +41,11 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000019_session_turn_content_add` | 增加轮次正文、截断标记及标题字段 |
 | `000020_model_call_first_token_duration` | 为新产生的模型调用增加可空首字耗时；历史调用不回填 |
 | `000021_video_output_metadata_optional` | 视频结果宽高允许为 0，表示元数据无法解析；成功视频仍可保存和下载 |
-| `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数与总时长，超过上限后标记任务未知 |
+| `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数和总时长 |
+| `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数和总时长 |
 | `000023_video_seedance_provider` | 视频模型供应商增加 `volcengine` 和 `agnes`；up/down 均可在约束存在或缺失时重复执行 |
+| `000024_remote_runtime` | 合并设备授权族、设备证明、中转连接、会话目录、独立设备码授权和独立密钥绑定 |
+| `000025_remote_runtime_access_version` | 为连接权限代次增加独立 access_version，区分票据轮换和权限收窄 |
 
 从 `backend` 目录执行：
 
@@ -52,14 +55,16 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `23` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `25` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
-版本 `23` 的 up/down 在单条 `ALTER TABLE` 中先执行 `DROP CONSTRAINT IF EXISTS`，再重建目标约束，up 同时加入 `volcengine` 和 `agnes`，down 恢复原供应商约束，保证重复执行不会增加约束或改变业务数据。
+版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 
-版本 `21` 回滚会恢复视频宽高必须大于 0 的约束；已有宽高为 0 的结果时，需先补齐真实宽高，回滚不会删除视频或伪造元数据。
-
-升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，并重跑版本 `23` 的 up/down 验证两种视频供应商约束存在、缺失和连续执行的场景，需要本地安装 `migrate`：
+升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
 
 ```sh
 MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 ```
+
+`000024_remote_runtime` 的 up/down SQL 将当前工作树新增的远程执行结构作为一个版本执行，支持重复执行。重复升级保留已有授权族、刷新链、设备版本、会话摘要和密钥绑定；旧 token 只在尚未绑定授权族时回填。重复回滚会保留既有撤销时间和原因，重新升级不会恢复已撤销凭据。
+
+`TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。

@@ -27,6 +27,10 @@ type ClientRequest = {
   authenticated: boolean
   user: AuthUser | null
   providers: Provider[]
+  scopes: string[]
+  scope_descriptions: Record<string, string>
+  consent_required: boolean
+  csrf_token: string
 }
 
 const callbackErrorMessages: Record<string, string> = {
@@ -50,6 +54,7 @@ export function ClientLoginPage() {
   const [request, setRequest] = useState<ClientRequest | null>(null)
   const [launchURL, setLaunchURL] = useState("")
   const [error, setError] = useState("")
+  const [submitting, setSubmitting] = useState(false)
   const completionStarted = useRef(false)
   const requestError = !requestId
     ? (errorMessages[callbackError] ?? "缺少授权请求参数。")
@@ -67,7 +72,12 @@ export function ClientLoginPage() {
   }, [requestId])
 
   useEffect(() => {
-    if (!request?.authenticated || completionStarted.current) return
+    if (
+      !request?.authenticated ||
+      request.consent_required ||
+      completionStarted.current
+    )
+      return
     completionStarted.current = true
     api<{ launch_url: string }>(
       `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}/complete`,
@@ -79,6 +89,31 @@ export function ClientLoginPage() {
       })
       .catch((reason: Error) => setError(reason.message))
   }, [request, requestId])
+
+  const approve = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!request || submitting || completionStarted.current) return
+    completionStarted.current = true
+    setSubmitting(true)
+    setError("")
+    try {
+      const { launch_url } = await api<{ launch_url: string }>(
+        `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}/complete`,
+        {
+          method: "POST",
+          headers: { "X-CSRF-Token": request.csrf_token },
+          body: JSON.stringify({ approved_scopes: request.scopes }),
+        }
+      )
+      setLaunchURL(launch_url)
+      window.location.assign(launch_url)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "授权失败，请重试。")
+      completionStarted.current = false
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const startLogin = (provider: Provider) => {
     const query = new URLSearchParams({ request_id: requestId })
@@ -144,19 +179,48 @@ export function ClientLoginPage() {
           {request && !request.authenticated && (
             <EmailAuthForm
               hasProviders={request.providers.length > 0}
-              onAuthenticated={(user) => {
-                setRequest({ ...request, authenticated: true, user })
+              onAuthenticated={() => {
+                api<ClientRequest>(
+                  `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`
+                )
+                  .then(setRequest)
+                  .catch((reason: Error) => setError(reason.message))
               }}
             />
           )}
-          {request?.authenticated && !launchURL && !requestError && (
-            <p
-              className="py-5 text-center text-sm text-muted-foreground"
-              role="status"
-            >
-              身份已确认，正在生成一次性授权码…
-            </p>
+          {request?.authenticated && request.consent_required && !launchURL && (
+            <form onSubmit={approve} className="space-y-4">
+              <p className="text-sm">
+                {request.client.name} 申请以下权限，请确认后继续：
+              </p>
+              <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+                {request.scopes.map((scope) => (
+                  <li key={scope}>
+                    {request.scope_descriptions[scope] ?? scope}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="submit"
+                size="lg"
+                className="min-h-11 w-full cursor-pointer"
+                disabled={submitting}
+              >
+                {submitting ? "正在授权…" : "确认授权"}
+              </Button>
+            </form>
           )}
+          {request?.authenticated &&
+            !request.consent_required &&
+            !launchURL &&
+            !requestError && (
+              <p
+                className="py-5 text-center text-sm text-muted-foreground"
+                role="status"
+              >
+                身份已确认，正在生成一次性授权码…
+              </p>
+            )}
           {launchURL && (
             <Button
               render={<a href={launchURL} />}

@@ -1,0 +1,351 @@
+package relay
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"path"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay/sqlc"
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+)
+
+func readBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, error) {
+	return io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+}
+func isMissing(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+func routeScope(method, p string) (string, bool, bool) {
+	switch {
+	case p == "/acp":
+		return "session:read", false, method == http.MethodGet
+	case p == "/read/session":
+		return "session:read", true, method == http.MethodPost
+	case p == "/read/config":
+		return "resources:manage", true, method == http.MethodPost
+	case p == "/read/interaction":
+		return "session:control", true, method == http.MethodPost
+	case p == "/write/resource":
+		return "resources:manage", true, method == http.MethodPost
+	case strings.HasPrefix(p, "/cap/") && strings.HasSuffix(p, "/mcp"):
+		parts := strings.Split(strings.Trim(p, "/"), "/")
+		return "files:read", true, len(parts) == 3 && slices.Contains([]string{"GET", "POST", "DELETE"}, method)
+	case strings.HasPrefix(p, "/uploads/"):
+		parts := strings.Split(strings.Trim(p, "/"), "/")
+		return "files:write", true, len(parts) == 2 && slices.Contains([]string{"PUT", "HEAD"}, method)
+	case strings.HasPrefix(p, "/files/"):
+		return "files:read", true, method == "GET" || method == "HEAD"
+	default:
+		return "", false, false
+	}
+}
+
+func safePath(value string) bool {
+	return strings.HasPrefix(value, "/") && !strings.ContainsAny(value, "\\\x00") && path.Clean(value) == value && !strings.Contains(value, "//")
+}
+
+// chi 在 RawPath 存在时提供转义后的路由参数，否则参数已经解码。
+func requestPath(r *http.Request, value string) (string, error) {
+	if r.URL.RawPath == "" {
+		return value, nil
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c") {
+		return "", errProtocol
+	}
+	return url.PathUnescape(value)
+}
+
+func (s *Service) proxyOrigin(origin string) bool {
+	if origin == "" || origin == s.config.PublicURL || origin == "app://monkeyai" {
+		return true
+	}
+	return slices.Contains(s.config.DesktopOrigins, origin)
+}
+
+func responseTimeout(p string) time.Duration {
+	if strings.HasPrefix(p, "/read/") {
+		return 150 * time.Second
+	}
+	if p == "/write/resource" {
+		return 225 * time.Second
+	}
+	return 30 * time.Second
+}
+
+func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
+	if s.draining.Load() {
+		failure(w, 503, "device_draining")
+		return
+	}
+	if origin := r.Header.Get("Origin"); !s.proxyOrigin(origin) {
+		failure(w, 403, "permission_denied")
+		return
+	}
+	machine := chi.URLParam(r, "machine")
+	p, pathErr := requestPath(r, "/"+chi.URLParam(r, "*"))
+	if pathErr != nil || !validUUID(machine) || !safePath(p) {
+		failure(w, 400, "invalid_request")
+		return
+	}
+	if strings.HasPrefix(p, "/uploads/") {
+		if r.ContentLength > 64<<20 {
+			failure(w, 413, "invalid_request")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Expose-Headers", "Upload-Session-ID,Upload-Offset,Upload-Length,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,ETag,Last-Modified,Content-Length,Content-Range,Accept-Ranges")
+	}
+	if r.Method == http.MethodOptions {
+		_, _, allowed := routeScope(r.Header.Get("Access-Control-Request-Method"), p)
+		if !allowed {
+			failure(w, 403, "permission_denied")
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,POST,PUT,PATCH,DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,Range,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,Upload-Session-ID,Upload-Offset,Upload-Length")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	scope, data, allowed := routeScope(r.Method, p)
+	if !allowed {
+		failure(w, 403, "permission_denied")
+		return
+	}
+
+	raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	protocols := strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",")
+	remaining := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		protocol = strings.TrimSpace(protocol)
+		if strings.HasPrefix(protocol, "monkeyai.token.") {
+			if raw != "" {
+				failure(w, 400, "invalid_request")
+				return
+			}
+			raw = strings.TrimPrefix(protocol, "monkeyai.token.")
+		} else if protocol == "monkeyai.v1" {
+			remaining = append(remaining, protocol)
+		}
+	}
+	if raw == "" || len(raw) > 128 {
+		failure(w, 401, "connection_expired")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	found, err := sqlc.New(s.pool).FindTicket(ctx, sqlc.FindTicketParams{MachineID: machine, TicketHash: secretHash(raw)})
+	if err != nil {
+		cancel()
+		if isMissing(err) {
+			failure(w, 401, "connection_expired")
+		} else {
+			failure(w, 503, "authorization_state_unavailable")
+		}
+		return
+	}
+	row, err := sqlc.New(s.pool).GetConnection(ctx, found.ID)
+	cancel()
+	if err != nil {
+		if isMissing(err) {
+			failure(w, 401, "connection_expired")
+		} else {
+			failure(w, 503, "authorization_state_unavailable")
+		}
+		return
+	}
+	if !slices.Contains(row.Scopes, scope) || p == "/write/resource" && !slices.Contains(row.Scopes, "session:read") {
+		failure(w, 403, "permission_denied")
+		return
+	}
+	current := s.current(target{found.UserID, machine})
+	if current == nil {
+		failure(w, 503, "device_offline")
+		return
+	}
+	fileExpiry := time.Time{}
+	if strings.HasPrefix(p, "/files/") {
+		parts := strings.SplitN(strings.TrimPrefix(p, "/files/"), "/", 2)
+		if len(parts) != 2 {
+			failure(w, 403, "permission_denied")
+			return
+		}
+		fileCtx, fileCancel := context.WithTimeout(r.Context(), 5*time.Second)
+		grant, _, fileErr := s.verifyFile(fileCtx, machine, parts[0], "/"+parts[1])
+		fileCancel()
+		if fileErr != nil {
+			fail(w, fileErr)
+			return
+		}
+		if grant.OwnerUserID != row.UserID || grant.ConnectionID != "" && (grant.ConnectionID != row.ID || grant.ClientGrantID != row.ClientGrantID || grant.AccessVersion != row.AccessVersion || grant.LeaseEpoch != current.state.LeaseEpoch || !slices.Equal(grant.Scopes, row.Scopes)) {
+			failure(w, 403, "permission_denied")
+			return
+		}
+		fileExpiry = grant.ExpiresAt
+	}
+	if p == "/acp" && !slices.Equal(remaining, []string{"monkeyai.v1"}) && len(remaining) != 0 {
+		failure(w, 400, "invalid_request")
+		return
+	}
+	if p == "/acp" && !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		failure(w, 400, "invalid_request")
+		return
+	}
+	r = r.Clone(r.Context())
+	r.Header = r.Header.Clone()
+	if len(remaining) > 0 {
+		r.Header.Set("Sec-WebSocket-Protocol", strings.Join(remaining, ", "))
+	} else {
+		r.Header.Del("Sec-WebSocket-Protocol")
+	}
+	a := &access{id: row.ID, clientGrant: row.ClientGrantID, scopes: slices.Clone(row.Scopes), grantVersion: row.GrantVersion, accessVersion: row.AccessVersion, ticketVersion: row.TicketVersion, verifiedAt: time.Now(), expiresAt: row.ExpiresAt}
+	if !fileExpiry.IsZero() {
+		a.expiresAt = minTime(a.expiresAt, fileExpiry)
+		a.fileExpiresAt = fileExpiry
+	}
+	assertion, err := signWire(s.key, s.kid, map[string]any{"type": "monkeyai.access.assertion.v1", "issuer": s.config.PublicURL, "audience": "monkeyai-runtime", "kid": s.kid,
+		"authorization": map[string]any{"server_id": s.config.ServerID, "owner_user_id": row.UserID, "machine_id": machine, "connection_id": row.ID, "client_grant_id": row.ClientGrantID,
+			"grant_version": row.GrantVersion, "access_version": row.AccessVersion, "lease_epoch": current.state.LeaseEpoch, "scopes": row.Scopes}, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		failure(w, 503, "authorization_state_unavailable")
+		return
+	}
+	s.forward(w, r, current, a, data, p, assertion, !fileExpiry.IsZero())
+}
+
+func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, a *access, data bool, p, assertion string, download bool) {
+	if s.draining.Load() {
+		failure(w, 503, "device_draining")
+		return
+	}
+	headerBytes := 0
+	for key, values := range r.Header {
+		headerBytes += len(key)
+		for _, value := range values {
+			headerBytes += len(value)
+		}
+	}
+	if headerBytes > 64<<10 {
+		failure(w, 431, "invalid_request")
+		return
+	}
+	started := time.Now()
+	label := "/acp"
+	for _, prefix := range []string{"/files/", "/uploads/", "/cap/"} {
+		if strings.HasPrefix(p, prefix) {
+			label = prefix + "*"
+			break
+		}
+	}
+	defer func() {
+		s.logger.Debug("远程代理流结束", "server_id", s.config.ServerID, "user_id", route.target.user, "machine_id", route.target.machine, "boot_id", route.hello.BootID, "lease_epoch", route.state.LeaseEpoch, "connection_id", a.id, "method", r.Method, "route", label, "duration_ms", time.Since(started).Milliseconds())
+	}()
+	s.mu.Lock()
+	mux, slots := streamSession(route, data)
+	active := s.routes[route.target] == route && route.ready && route.runtimeStatus == "online"
+	s.mu.Unlock()
+	if !active || mux == nil || mux.IsClosed() {
+		failure(w, 503, "device_offline")
+		return
+	}
+	select {
+	case slots <- struct{}{}:
+		defer func() { <-slots }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		failure(w, 429, "relay_overloaded")
+		return
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	a.cancel = cancel
+	defer cancel()
+	defer a.close()
+	s.mu.Lock()
+	if s.routes[route.target] != route || !route.ready || a.id != "" && (route.connectionVersions[a.id].version > a.ticketVersion && a.ticketVersion != 0 || route.connectionVersions[a.id].accessVersion > a.accessVersion) {
+		s.mu.Unlock()
+		failure(w, 401, "connection_expired")
+		return
+	}
+	route.streams[a] = struct{}{}
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); delete(route.streams, a); s.mu.Unlock() }()
+	transport := &http.Transport{DisableKeepAlives: true, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 64 << 10, ResponseHeaderTimeout: responseTimeout(p),
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			stream, err := mux.OpenStream()
+			if err != nil {
+				return nil, err
+			}
+			a.mu.Lock()
+			if a.closed {
+				a.mu.Unlock()
+				stream.Close()
+				return nil, context.Canceled
+			}
+			a.stream = stream
+			stream.SetDeadline(minTime(a.expiresAt, a.verifiedAt.Add(180*time.Second)))
+			a.mu.Unlock()
+			return stream, nil
+		}}
+	defer transport.CloseIdleConnections()
+	destination := &url.URL{Scheme: "http", Host: "device.internal", Path: p}
+	proxy := &httputil.ReverseProxy{Transport: transport, FlushInterval: -1, BufferPool: relayBuffers{},
+		Rewrite: func(request *httputil.ProxyRequest) {
+			request.SetURL(destination)
+			request.Out.URL.Path = p
+			request.Out.URL.RawPath = ""
+			request.Out.URL.RawQuery = r.URL.RawQuery
+			request.Out.Host = "device.internal"
+			for key := range request.Out.Header {
+				if strings.HasPrefix(strings.ToLower(key), "x-mai-") || strings.HasPrefix(strings.ToLower(key), "x-monkeyai-") || strings.HasPrefix(strings.ToLower(key), "x-forwarded-") {
+					request.Out.Header.Del(key)
+				}
+			}
+			for _, key := range []string{"Authorization", "Cookie", "Forwarded", "Proxy-Authorization"} {
+				request.Out.Header.Del(key)
+			}
+			request.Out.Header.Set("X-MonkeyAI-Access", assertion)
+		},
+		ModifyResponse: func(response *http.Response) error {
+			s.logger.Debug("远程代理响应", "machine_id", route.target.machine, "connection_id", a.id, "route", label, "status", response.StatusCode, "content_length", response.ContentLength)
+			if response.StatusCode >= 300 && response.StatusCode < 400 && (download || strings.HasPrefix(r.URL.Path, "/preview/")) {
+				return errors.New("文件或预览禁止重定向")
+			}
+			response.Header.Del("Set-Cookie")
+			if strings.HasPrefix(r.URL.Path, "/preview/") {
+				for _, key := range []string{"Content-Security-Policy", "Content-Security-Policy-Report-Only", "Referrer-Policy", "X-Content-Type-Options", "Permissions-Policy", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials", "Clear-Site-Data", "Service-Worker-Allowed", "X-Frame-Options"} {
+					response.Header.Del(key)
+				}
+				for _, key := range []string{"Content-Security-Policy", "Referrer-Policy", "X-Content-Type-Options", "Permissions-Policy", "Access-Control-Allow-Origin"} {
+					response.Header.Set(key, w.Header().Get(key))
+				}
+				response.Header.Del("Content-Disposition")
+			}
+			response.Header.Set("Cache-Control", "no-store")
+			if download {
+				response.Header.Set("Content-Disposition", "attachment")
+				response.Header.Set("Content-Security-Policy", "sandbox; default-src 'none'")
+				response.Header.Set("X-Content-Type-Options", "nosniff")
+				response.Header.Set("Referrer-Policy", "no-referrer")
+			}
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) { failure(w, 503, "device_offline") },
+	}
+	proxy.ServeHTTP(w, r.WithContext(ctx))
+}
+
+type relayBuffers struct{}
+
+func (relayBuffers) Get() []byte { return make([]byte, 32<<10) }
+func (relayBuffers) Put([]byte)  {}

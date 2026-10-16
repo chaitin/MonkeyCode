@@ -115,7 +115,7 @@ func TestEmailAutoRegistrationDefaultDisabled(t *testing.T) {
 func TestEmailAuthentication(t *testing.T) {
 	pool := emailDatabase(t)
 	sender := &mailStub{}
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
+	s := newTestService(pool, authenticationStub{json.RawMessage(`{"password_enabled":true,"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 	ctx := t.Context()
 	authCall(t, s, "/email/code", emailInput{Email: "new@example.com", Purpose: "register"}, 400)
 	authCall(t, s, "/email/register", emailInput{Email: "new@example.com"}, 404)
@@ -254,7 +254,7 @@ func TestEmailAutoRegistration(t *testing.T) {
 			pool := emailDatabase(t)
 			sender := &mailStub{}
 			methods := loginMethods{EmailCodeEnabled: true, EmailCodeAutoRegistrationEnabled: !test.closed}
-			s := NewService(pool, nil, "http://localhost").WithEmailSender(sender)
+			s := newTestService(pool, nil, "http://localhost").WithEmailSender(sender)
 			setMethods := func() {
 				t.Helper()
 				value, err := json.Marshal(methods)
@@ -357,7 +357,7 @@ func TestEmailAutoRegistration(t *testing.T) {
 func TestConcurrentEmailAutoRegistration(t *testing.T) {
 	pool := emailDatabase(t)
 	sender := &mailStub{}
-	s := NewService(pool, authenticationStub{json.RawMessage(`{"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
+	s := newTestService(pool, authenticationStub{json.RawMessage(`{"email_code_enabled":true,"email_code_auto_registration_enabled":true}`)}, "http://localhost").WithEmailSender(sender)
 	input := emailInput{Email: "new@example.com", Purpose: "login"}
 	authCall(t, s, "/email/code", input, 200)
 	input.Code = sender.code
@@ -398,7 +398,7 @@ func TestConcurrentEmailAutoRegistration(t *testing.T) {
 
 func TestConcurrentEmailCode(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, nil, "")
+	s := newTestService(pool, nil, "")
 	input := emailInput{Email: "user@example.com", Purpose: "login"}
 	var wg sync.WaitGroup
 	results := make(chan error, 8)

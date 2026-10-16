@@ -15,6 +15,8 @@ import (
 )
 
 func (s *Service) RegisterAgent(router chi.Router) {
+	router.With(identity.RequireScope("session:read")).Get("/sessions", s.sessionIndex)
+	router.With(identity.RequireScope("session:read")).Get("/sessions/{id}", s.sessionIndex)
 	router.Put("/sessions/{id}", s.putSession)
 	router.Post("/sessions/{id}/turns", s.postTurns)
 }
@@ -40,9 +42,9 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 	if !s.checkRequestLimit(w, r.Context(), user.ID, "sessions", 60) {
 		return
 	}
-	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
-	if !validUUID(machineID) {
-		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必须为 UUID"))
+	machineID, err := reportingMachine(r)
+	if err != nil {
+		resource.Fail(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -70,8 +72,21 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(r.Context(), tx)
+	verified, err := s.authenticateHost(r.Context(), tx, machineID)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if err := s.liveSummary(r.Context(), user.ID, machineID, in.Runtime, verified); err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	row, err := s.ensureLocked(r.Context(), tx, user.ID, id, inputString(in.ParentSessionID), "", machineID)
 	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
+	if err := checkHostVerification(row, verified); err != nil {
 		resource.Fail(w, err)
 		return
 	}
@@ -85,7 +100,19 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := sqlc.New(tx)
+	if verified {
+		if err := q.VerifySessionHost(r.Context(), id); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+	}
 	now := s.now().UTC()
+	if in.Runtime != nil {
+		if err := q.SetLiveSummary(r.Context(), sqlc.SetLiveSummaryParams{ID: id, LastLiveReportAt: new(now), LiveBootID: new(in.Runtime.BootID), LiveLeaseEpoch: new(in.Runtime.LeaseEpoch)}); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+	}
 	if stateChanged {
 		payload, err := json.Marshal(resource.Object{
 			"id": id, "state_seq": *in.StateSeq,
@@ -189,6 +216,7 @@ func validateSessionTimes(in sessionInput, row sessionRow) error {
 }
 
 func validateState(in sessionInput, row sessionRow) (bool, []byte, error) {
+	in.Runtime = nil
 	data, err := json.Marshal(in)
 	if err != nil {
 		return false, nil, invalidState("会话快照无法规范化")

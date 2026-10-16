@@ -32,6 +32,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
@@ -56,8 +57,11 @@ type App struct {
 	images          *imagegen.Service
 	videos          *videogen.Service
 	inputs          *imagegen.Inputs
+	runtimeKeys     *apikey.Service
+	relay           *relay.Service
 	endpoints       *endpoint.Service
 	feedback        *feedback.Service
+	connectors      *mcp.Service
 }
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
@@ -127,8 +131,11 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		images:          handler.(*applicationHandler).images,
 		videos:          handler.(*applicationHandler).videos,
 		inputs:          handler.(*applicationHandler).inputs,
+		runtimeKeys:     handler.(*applicationHandler).runtimeKeys,
+		relay:           handler.(*applicationHandler).relay,
 		endpoints:       handler.(*applicationHandler).endpoints,
 		feedback:        handler.(*applicationHandler).feedback,
+		connectors:      handler.(*applicationHandler).connectors,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -157,6 +164,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		return ok && user.Role == "admin"
 	})
 	identities := identity.NewService(pool, settings, cfg.PublicURL).WithEmailSender(settings)
+	executions := endpoint.NewExecution(pool, identities)
+	sessions.WithHostAuthorizer(executions)
 	identities.WithUserWriter(users)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
@@ -202,7 +211,6 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
-	go connectors.Run(ctx)
 	experts := expert.NewService(store).WithStorage(storage)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
@@ -240,7 +248,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
-	endpoints := endpoint.NewService(endpoint.NewPostgres(pool), endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
+	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
+	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	identities.RegisterAgent(agent)
 	group.NewService(pool).RegisterAgent(agent)
@@ -258,6 +267,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
+	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
 		WithSessionResolver(sessionResolver).
@@ -269,6 +279,30 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
 	videoproxy.New(modelResolver{service: models}, keys, sessionResolver, videoService).Register(router)
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
+	var runtimeRelay *relay.Service
+	if cfg.RuntimeRelay {
+		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
+		if err != nil {
+			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
+		}
+		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions)
+		runtimeRelay.Register(router)
+		sessions.WithRuntimeStatus(runtimeRelay)
+		identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {
+			enabled, err := sessions.IndexEnabled(ctx)
+			return map[string]bool{"session_index": enabled, "device_grant": true}, err
+		})
+		endpoints.WithRuntimeDirectory(runtimeRelay.Directory())
+		endpointStore.WithExecutionRevoker(runtimeRelay.InvalidateDevice)
+		identities.WithRuntimeMetadata(runtimeRelay.Metadata()).WithGrantRevoker(func(id string) {
+			runtimeRelay.InvalidateGrant(id)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := keys.RevokeRuntimeKeys(ctx, id); err != nil {
+				logger.Warn("撤销独立执行密钥标记失败", "grant_id", id, "reason", "storage_unavailable")
+			}
+		})
+	}
 	router.Get("/.well-known/oauth-authorization-server", identities.OAuthMetadata)
 	router.Get("/oauth/connectors/{id}/callback", connectors.Callback)
 	router.Mount("/oauth", identities.OAuthRouter())
@@ -286,7 +320,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, feedback: feedbacks}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -321,6 +355,36 @@ func (a *App) Run(ctx context.Context) error {
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
+	relayDone := make(chan struct{})
+	go func() {
+		defer close(relayDone)
+		if a.relay != nil {
+			cleanupKeys := time.NewTicker(time.Minute)
+			defer cleanupKeys.Stop()
+			cleanupRelayDone := make(chan struct{})
+			go func() { defer close(cleanupRelayDone); a.relay.Run(workerCtx) }()
+			defer func() { <-cleanupRelayDone }()
+			for {
+				select {
+				case <-workerCtx.Done():
+					return
+				case <-cleanupKeys.C:
+					ctx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
+					if err := a.runtimeKeys.CleanupRuntimeKeys(ctx); err != nil && workerCtx.Err() == nil {
+						slog.Warn("回收独立执行密钥失败", "reason", "storage_unavailable")
+					}
+					cancel()
+				}
+			}
+		}
+	}()
+	connectorsDone := make(chan struct{})
+	go func() {
+		defer close(connectorsDone)
+		if a.connectors != nil {
+			a.connectors.Run(workerCtx)
+		}
+	}()
 	observeDone := make(chan struct{})
 	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
 	imageDone := make(chan struct{})
@@ -334,6 +398,8 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		stopWorker()
 		<-workerDone
+		<-relayDone
+		<-connectorsDone
 		<-observeDone
 		<-imageDone
 		<-videoDone
@@ -366,6 +432,11 @@ func (a *App) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.shutdownTimeout)
 	defer cancel()
 	bridgeCtx, bridgeCancel := context.WithTimeout(shutdownCtx, 10*time.Second)
+	if a.relay != nil {
+		if err := a.relay.Shutdown(bridgeCtx); err != nil {
+			runErrors = append(runErrors, fmt.Errorf("关闭远程执行中转: %w", err))
+		}
+	}
 	if err := a.endpoints.Shutdown(bridgeCtx); err != nil {
 		runErrors = append(runErrors, fmt.Errorf("关闭端点桥接: %w", err))
 	}

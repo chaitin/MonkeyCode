@@ -8,16 +8,18 @@ const (
 )
 
 type Key struct {
-	ID         string     `json:"id"`
-	UserID     string     `json:"user_id"`
-	UserName   string     `json:"user_name,omitempty"`
-	Name       string     `json:"name"`
-	Prefix     string     `json:"key_prefix"`
-	Scopes     []string   `json:"scopes"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	MachineID      *string    `json:"machine_id,omitempty"`
+	RuntimeGrantID *string    `json:"runtime_grant_id,omitempty"`
+	ID             string     `json:"id"`
+	UserID         string     `json:"user_id"`
+	UserName       string     `json:"user_name,omitempty"`
+	Name           string     `json:"name"`
+	Prefix         string     `json:"key_prefix"`
+	Scopes         []string   `json:"scopes"`
+	ExpiresAt      time.Time  `json:"expires_at"`
+	LastUsedAt     *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	RevokedAt      *time.Time `json:"revoked_at,omitempty"`
 }
 
 type CreatedKey struct {
