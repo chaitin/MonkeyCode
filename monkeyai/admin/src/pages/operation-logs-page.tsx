@@ -494,7 +494,7 @@ export function OperationLogsPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+                          className="flex max-w-52 items-center gap-1 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
                           title={log.actor_email ?? undefined}
                           disabled={!log.actor_user_id}
                           onClick={() => {
