@@ -442,21 +442,21 @@ export const deDE = {
       content: "Fähigkeitsinhalt (SKILL.md)",
       contentPlaceholder: "Anweisungen für die Fähigkeit eingeben",
       skillPackage: "Fähigkeitspaket",
-      packageHint: "Fähigkeitsordner als ZIP-Datei hochladen, maximal 20 MB.",
+      packageHint: "Fähigkeitsordner als ZIP-Datei hochladen, maximal 500 MiB.",
       packageOptionalHint:
         "Laden Sie nur zum Ersetzen des Inhalts ein neues ZIP-Paket hoch.",
       packageParsing: "Fähigkeitspaket wird geprüft…",
       packageSummary: "{{count}} Dateien · entpackt {{size}}",
       packageErrors: {
-        fileTooLarge: "Das Fähigkeitspaket darf höchstens 20 MB groß sein.",
+        fileTooLarge: "Das Fähigkeitspaket darf höchstens 500 MiB groß sein.",
         invalidZip:
           "Die Datei kann nicht gelesen werden. Laden Sie ein gültiges ZIP-Paket hoch.",
         unsafePath: "Das Fähigkeitspaket enthält einen unsicheren Dateipfad.",
         symlink: "Das Fähigkeitspaket darf keine symbolischen Links enthalten.",
         tooManyFiles:
-          "Das Fähigkeitspaket darf höchstens 500 Dateien enthalten.",
+          "Das Fähigkeitspaket darf höchstens 5000 Dateien enthalten.",
         unpackedTooLarge:
-          "Das entpackte Fähigkeitspaket darf höchstens 50 MB groß sein.",
+          "Das entpackte Fähigkeitspaket darf höchstens 1 GiB groß sein.",
         missingManifest:
           "SKILL.md wurde nicht gefunden. Dies ist kein gültiges Fähigkeitspaket.",
         multipleManifests:

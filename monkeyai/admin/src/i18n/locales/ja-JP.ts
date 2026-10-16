@@ -429,20 +429,20 @@ export const jaJP = {
       contentPlaceholder: "スキルの指示を入力",
       skillPackage: "スキルパッケージ",
       packageHint:
-        "スキルディレクトリを ZIP 形式（最大 20 MB）でアップロードします。",
+        "スキルディレクトリを ZIP 形式（最大 500 MiB）でアップロードします。",
       packageOptionalHint:
         "スキル内容を更新する場合は、新しい ZIP パッケージをアップロードしてください。",
       packageParsing: "スキルパッケージを検査しています…",
       packageSummary: "{{count}} ファイル · 展開後 {{size}}",
       packageErrors: {
-        fileTooLarge: "スキルパッケージは 20 MB 以下にしてください。",
+        fileTooLarge: "スキルパッケージは 500 MiB 以下にしてください。",
         invalidZip:
           "ファイルを読み取れません。有効な ZIP スキルパッケージをアップロードしてください。",
         unsafePath: "スキルパッケージに安全でないファイルパスがあります。",
         symlink: "スキルパッケージにシンボリックリンクは含められません。",
-        tooManyFiles: "スキルパッケージに含められるのは最大 500 ファイルです。",
+        tooManyFiles: "スキルパッケージに含められるのは最大 5000 ファイルです。",
         unpackedTooLarge:
-          "展開後のスキルパッケージは 50 MB 以下にしてください。",
+          "展開後のスキルパッケージは 1 GiB 以下にしてください。",
         missingManifest:
           "SKILL.md が見つかりません。有効なスキルパッケージではありません。",
         multipleManifests:

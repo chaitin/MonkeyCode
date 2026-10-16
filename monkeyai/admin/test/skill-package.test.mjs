@@ -45,6 +45,75 @@ async function expectPackageError(files, code) {
   )
 }
 
+for (const extra of [0, 1]) {
+  test(`compressed size ${extra === 0 ? "at" : "above"} 500 MiB`, async () => {
+    const file = await createArchive({ "SKILL.md": VALID_MANIFEST })
+    // 覆盖声明大小，避免为大小门槛测试实际分配数百 MiB。
+    Object.defineProperty(file, "size", { value: 500 * 1024 * 1024 + extra })
+
+    if (extra) {
+      await assert.rejects(
+        inspectSkillPackage(file),
+        (error) =>
+          error instanceof SkillPackageError && error.code === "fileTooLarge"
+      )
+    } else {
+      assert.equal((await inspectSkillPackage(file)).name, "code-review")
+    }
+  })
+
+  test(`expanded size ${extra === 0 ? "at" : "above"} 1 GiB`, async () => {
+    const manifest = new File([VALID_MANIFEST], "SKILL.md")
+    const data = new File([], "data.bin")
+    Object.defineProperty(data, "size", {
+      value: 1024 * 1024 * 1024 - manifest.size + extra,
+    })
+
+    if (extra) {
+      await assert.rejects(
+        inspectSkillDirectory([manifest, data]),
+        (error) =>
+          error instanceof SkillPackageError && error.code === "unpackedTooLarge"
+      )
+    } else {
+      const [analysis] = await inspectSkillDirectory([manifest, data])
+      assert.equal(analysis.unpackedSize, 1024 * 1024 * 1024)
+    }
+  })
+}
+
+for (const count of [5000, 5001]) {
+  for (const source of ["archive", "directory"]) {
+    test(`${source} ${count === 5000 ? "accepts" : "rejects"} a skill with ${count} files`, async () => {
+      const files = { "SKILL.md": VALID_MANIFEST }
+      for (let i = 1; i < count; i++) {
+        files[`reference-${i}.md`] = "reference"
+      }
+      const inspection =
+        source === "archive"
+          ? inspectSkillPackage(await createArchive(files))
+          : inspectSkillDirectory(
+              Object.entries(files).map(
+                ([path, content]) => new File([content], path)
+              )
+            )
+
+      if (count > 5000) {
+        await assert.rejects(
+          inspection,
+          (error) =>
+            error instanceof SkillPackageError && error.code === "tooManyFiles"
+        )
+        return
+      }
+
+      const result = await inspection
+      const analysis = source === "archive" ? result : result[0]
+      assert.equal(analysis.fileCount, count)
+    })
+  }
+}
+
 test("recognizes a skill directory and parses SKILL.md metadata", async () => {
   const file = await createArchive({
     "code-review/SKILL.md": VALID_MANIFEST,

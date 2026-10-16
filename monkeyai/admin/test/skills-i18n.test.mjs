@@ -35,3 +35,13 @@ test("skills are fully translated in every supported language", () => {
     )
   }
 })
+
+test("skill package limits are consistent in every supported language", () => {
+  for (const [language, resource] of Object.entries(resources)) {
+    const skills = resource.pages.skills
+    assert.ok(skills.packageHint.includes("500 MiB"), language)
+    assert.ok(skills.packageErrors.fileTooLarge.includes("500 MiB"), language)
+    assert.ok(skills.packageErrors.unpackedTooLarge.includes("1 GiB"), language)
+    assert.ok(skills.packageErrors.tooManyFiles.includes("5000"), language)
+  }
+})

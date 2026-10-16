@@ -418,17 +418,17 @@ export const ar = {
       content: "محتوى المهارة (SKILL.md)",
       contentPlaceholder: "أدخل تعليمات المهارة",
       skillPackage: "حزمة المهارة",
-      packageHint: "ارفع مجلد المهارة كملف ZIP بحجم أقصى 20 ميجابايت.",
+      packageHint: "ارفع مجلد المهارة كملف ZIP بحجم أقصى 500 MiB.",
       packageOptionalHint: "ارفع حزمة ZIP جديدة فقط عند استبدال محتوى المهارة.",
       packageParsing: "جارٍ فحص حزمة المهارة…",
       packageSummary: "{{count}} ملفات · {{size}} بعد فك الضغط",
       packageErrors: {
-        fileTooLarge: "يجب ألا يتجاوز حجم حزمة المهارة 20 ميجابايت.",
+        fileTooLarge: "يجب ألا يتجاوز حجم حزمة المهارة 500 MiB.",
         invalidZip: "تعذرت قراءة الملف. ارفع حزمة مهارة ZIP صالحة.",
         unsafePath: "تحتوي حزمة المهارة على مسار ملف غير آمن.",
         symlink: "يجب ألا تحتوي حزمة المهارة على روابط رمزية.",
-        tooManyFiles: "يمكن أن تحتوي حزمة المهارة على 500 ملف كحد أقصى.",
-        unpackedTooLarge: "يجب ألا يتجاوز حجم الحزمة بعد فك الضغط 50 ميجابايت.",
+        tooManyFiles: "يمكن أن تحتوي حزمة المهارة على 5000 ملف كحد أقصى.",
+        unpackedTooLarge: "يجب ألا يتجاوز حجم الحزمة بعد فك الضغط 1 GiB.",
         missingManifest:
           "لم يتم العثور على SKILL.md. هذه ليست حزمة مهارة صالحة.",
         multipleManifests:
