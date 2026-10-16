@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
@@ -420,7 +421,8 @@ func sessionDBFixture(t *testing.T) (*Service, *identity.Service, string, string
 VALUES($1,'monkeyai-desktop',$2,$3,now()+interval '1 hour',now()+interval '1 day')`, userID, hex.EncodeToString(hash[:]), resource.ID()); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(pool), identity.NewService(pool, nil, "http://localhost"), userID, token
+	identities := identity.NewService(pool, nil, "http://localhost")
+	return NewService(pool).WithHostAuthorizer(endpoint.NewExecution(pool, identities)), identities, userID, token
 }
 
 func TestTurnTextDatabase(t *testing.T) {

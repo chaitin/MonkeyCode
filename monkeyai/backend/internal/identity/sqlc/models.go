@@ -3,3 +3,63 @@
 //   sqlc v1.30.0
 
 package sqlc
+
+import (
+	"time"
+)
+
+type OauthDeviceRequest struct {
+	ID                 string
+	ClientID           string
+	DeviceCodeHash     string
+	UserCodeHash       string
+	MachineID          string
+	ExecutionPublicKey []byte
+	KeyID              string
+	DisplayName        string
+	Platform           string
+	Arch               string
+	RequestedScopes    []string
+	ApprovedScopes     []string
+	OwnerUserID        *string
+	RestoreRevoked     bool
+	Status             string
+	IntervalMs         int64
+	NextPollAt         time.Time
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
+}
+
+type OauthGrant struct {
+	ID                 string
+	UserID             string
+	ClientID           string
+	Scopes             []string
+	Audience           string
+	Purpose            string
+	MachineID          *string
+	KeyID              *string
+	RevocationVersion  int64
+	ExpiresAt          time.Time
+	CreatedAt          time.Time
+	RevokedAt          *time.Time
+	RevokeReason       *string
+	RequestedMachineID *string
+	RequestedKeyID     *string
+	RestoreApproved    bool
+}
+
+type OauthToken struct {
+	ID               string
+	UserID           string
+	ClientID         string
+	AccessTokenHash  string
+	RefreshTokenHash string
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
+	CreatedAt        time.Time
+	RevokedAt        *time.Time
+	GrantID          string
+	ParentID         *string
+	RotatedAt        *time.Time
+}

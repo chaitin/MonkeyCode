@@ -3,3 +3,22 @@
 //   sqlc v1.30.0
 
 package sqlc
+
+import (
+	"time"
+)
+
+type ApiKey struct {
+	ID             string
+	UserID         string
+	Name           string
+	KeyPrefix      string
+	KeyHash        string
+	Scopes         []string
+	ExpiresAt      time.Time
+	LastUsedAt     *time.Time
+	CreatedAt      time.Time
+	RevokedAt      *time.Time
+	MachineID      *string
+	RuntimeGrantID *string
+}

@@ -8,7 +8,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid;
 
 -- name: LockSession :one
@@ -21,7 +21,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid FOR UPDATE;
 
 -- name: GetParent :one
@@ -203,3 +203,25 @@ DELETE FROM session_resource_snapshots WHERE session_id=ANY($1::uuid[]);
 -- name: PurgeSessions :exec
 UPDATE sessions SET deleted_at=COALESCE(deleted_at,now()),client_deleted_at=COALESCE(client_deleted_at,now()),
  title='',title_source=NULL,purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[]);
+
+-- name: VerifySessionHost :exec
+UPDATE sessions SET host_verified = true, host_revision = host_revision + 1
+WHERE id = $1::uuid AND host_verified = false;
+
+-- name: SetLiveSummary :exec
+UPDATE sessions SET last_live_report_at=$2,live_boot_id=$3,live_lease_epoch=$4 WHERE id=$1;
+
+-- name: SessionIndex :many
+SELECT id,device_id,title,title_source,session_type,parent_session_id,state_seq,host_revision,
+    started_at,last_active_at,state_received_at,last_live_report_at,live_boot_id,live_lease_epoch
+FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND (sqlc.arg(machine_id)::text='' OR device_id=sqlc.arg(machine_id)::text)
+    AND (sqlc.arg(session_id)::text='' OR id=NULLIF(sqlc.arg(session_id)::text,'')::uuid)
+ORDER BY started_at DESC,id DESC LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
+
+-- name: CountSessionIndex :one
+SELECT count(*) FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND (sqlc.arg(machine_id)::text='' OR device_id=sqlc.arg(machine_id)::text)
+    AND (sqlc.arg(session_id)::text='' OR id=NULLIF(sqlc.arg(session_id)::text,'')::uuid);

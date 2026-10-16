@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
@@ -14,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
@@ -21,13 +23,16 @@ import (
 
 type applicationHandler struct {
 	http.Handler
-	billing   *billing.Service
-	proxy     *proxy.Proxy
-	images    *imagegen.Service
-	videos    *videogen.Service
-	inputs    *imagegen.Inputs
-	endpoints *endpoint.Service
-	feedback  *feedback.Service
+	billing     *billing.Service
+	proxy       *proxy.Proxy
+	images      *imagegen.Service
+	videos      *videogen.Service
+	inputs      *imagegen.Inputs
+	endpoints   *endpoint.Service
+	runtimeKeys *apikey.Service
+	relay       *relay.Service
+	feedback    *feedback.Service
+	connectors  *mcp.Service
 }
 type modelBilling struct{ service *billing.Service }
 type modelUsageRecorder struct{ models *model.Postgres }

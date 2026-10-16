@@ -40,6 +40,8 @@ type Service struct {
 	now             func() time.Time
 	purgeAuthorizer func(context.Context) bool
 	settings        ReportingSettings
+	runtime         RuntimeStatus
+	hosts           HostAuthorizer
 }
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool, now: time.Now} }
@@ -137,6 +139,7 @@ type sessionRow struct {
 	LastStopReason  *string    `json:"last_stop_reason"`
 	ActiveSeconds   int64      `json:"active_seconds"`
 	ClientDeletedAt *time.Time `json:"client_deleted_at"`
+	HostVerified    bool       `json:"host_verified"`
 }
 
 func sessionFailure(status int, code, message string) error {

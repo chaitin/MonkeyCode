@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -73,6 +74,7 @@ type Service struct {
 	maxConnections                                                       int
 	slots                                                                int
 	pingInterval, timePong, verifyInterval, timeDB, timeWrite, timeHello time.Duration
+	runtimeDirectory                                                     http.Handler
 	stats                                                                counters
 }
 type counters struct{ messages, bytes, rejected, handshakes, limited, verifications, verifyNanos atomic.Uint64 }
@@ -80,6 +82,11 @@ type counters struct{ messages, bytes, rejected, handshakes, limited, verificati
 func NewService(store Store, auth Authenticator, logger *slog.Logger, publicURL string) *Service {
 	return &Service{store: store, auth: auth, logger: logger, origin: publicURL, users: make(map[string]*userState), connections: make(map[*connection]struct{}), maxConnections: 1000, pingInterval: 30 * time.Second, timePong: 10 * time.Second, verifyInterval: 30 * time.Second, timeDB: 5 * time.Second, timeWrite: 10 * time.Second, timeHello: 5 * time.Second}
 }
+func (s *Service) WithRuntimeDirectory(handler http.Handler) *Service {
+	s.runtimeDirectory = handler
+	return s
+}
+
 func (s *Service) WithMaxConnections(n int) *Service {
 	if n > 0 {
 		s.maxConnections = n
@@ -275,6 +282,9 @@ func (s *Service) check(ctx context.Context, credential Credential) (int, error)
 	return 0, nil
 }
 func status(err error) (int, string) {
+	if e, ok := errors.AsType[*resource.Error](err); ok {
+		return e.Status, e.Code
+	}
 	if f, ok := errors.AsType[fault](err); ok {
 		switch f.code {
 		case "unauthorized":

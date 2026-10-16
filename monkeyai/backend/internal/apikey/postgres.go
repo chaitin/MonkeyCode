@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,12 +23,14 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 
 func (p *Postgres) Create(ctx context.Context, key Key, keyHash string) (Key, error) {
 	record, err := sqlc.New(p.pool).CreateKey(ctx, sqlc.CreateKeyParams{
-		UserID:    key.UserID,
-		Name:      key.Name,
-		KeyPrefix: key.Prefix,
-		KeyHash:   keyHash,
-		Scopes:    key.Scopes,
-		ExpiresAt: key.ExpiresAt,
+		RuntimeGrantID: key.RuntimeGrantID,
+		MachineID:      key.MachineID,
+		UserID:         key.UserID,
+		Name:           key.Name,
+		KeyPrefix:      key.Prefix,
+		KeyHash:        keyHash,
+		Scopes:         key.Scopes,
+		ExpiresAt:      key.ExpiresAt,
 	})
 
 	if err != nil {
@@ -47,20 +50,20 @@ func (p *Postgres) List(ctx context.Context, userID string) ([]Key, error) {
 }
 
 func (p *Postgres) list(ctx context.Context, userID string, all bool) ([]Key, error) {
-	rows, err := sqlc.New(p.pool).ListKeys(ctx, sqlc.ListKeysParams{AllUsers: all, UserID: userID})
+	rows, err := sqlc.New(p.pool).ListKeys(ctx, sqlc.ListKeysParams{AllUsers: all, UserID: userID, RuntimeGrantID: runtimeGrant(ctx)})
 	if err != nil {
 		return nil, fmt.Errorf("查询调用密钥: %w", err)
 	}
 	keys := make([]Key, 0, len(rows))
 	for _, row := range rows {
 		keys = append(keys, Key{ID: row.ID, UserID: row.UserID, UserName: row.UserName, Name: row.Name,
-			Prefix: row.KeyPrefix, Scopes: row.Scopes, ExpiresAt: row.ExpiresAt, LastUsedAt: row.LastUsedAt, CreatedAt: row.CreatedAt, RevokedAt: row.RevokedAt})
+			Prefix: row.KeyPrefix, Scopes: row.Scopes, ExpiresAt: row.ExpiresAt, LastUsedAt: row.LastUsedAt, CreatedAt: row.CreatedAt, RevokedAt: row.RevokedAt, MachineID: row.MachineID, RuntimeGrantID: row.RuntimeGrantID})
 	}
 	return keys, nil
 }
 
 func (p *Postgres) Revoke(ctx context.Context, id, userID string) error {
-	result, err := sqlc.New(p.pool).RevokeKey(ctx, sqlc.RevokeKeyParams{ID: id, UserID: userID})
+	result, err := sqlc.New(p.pool).RevokeKey(ctx, sqlc.RevokeKeyParams{ID: id, UserID: userID, RuntimeGrantID: runtimeGrant(ctx)})
 	if err != nil {
 		return fmt.Errorf("撤销调用密钥: %w", err)
 	}
@@ -68,6 +71,21 @@ func (p *Postgres) Revoke(ctx context.Context, id, userID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func runtimeGrant(ctx context.Context) string {
+	p, ok := identity.PrincipalFromContext(ctx)
+	if ok && p.Purpose == "runtime" {
+		return p.GrantID
+	}
+	return ""
+}
+
+func (p *Postgres) RevokeRuntimeKeys(ctx context.Context, id string) error {
+	return sqlc.New(p.pool).RevokeRuntimeKeys(ctx, new(id))
+}
+func (p *Postgres) CleanupRuntimeKeys(ctx context.Context) error {
+	return sqlc.New(p.pool).CleanupRuntimeKeys(ctx)
 }
 
 func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string) (string, error) {

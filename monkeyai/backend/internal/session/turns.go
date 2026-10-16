@@ -65,9 +65,9 @@ func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 	if !s.checkRequestLimit(w, r.Context(), user.ID, "turns", 30) {
 		return
 	}
-	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
-	if !validUUID(machineID) {
-		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必填且必须为 UUID"))
+	machineID, err := reportingMachine(r)
+	if err != nil {
+		resource.Fail(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -97,6 +97,11 @@ func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(r.Context(), tx)
+	verified, err := s.authenticateHost(r.Context(), tx, machineID)
+	if err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	row, err := readSession(r.Context(), tx, id, true)
 	if errors.Is(err, pgx.ErrNoRows) {
 		resource.Fail(w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未注册"))
@@ -114,6 +119,10 @@ func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(w, sessionFailure(http.StatusGone, "session_not_registered", "会话已清除"))
 		return
 	}
+	if err := checkHostVerification(row, verified); err != nil {
+		resource.Fail(w, err)
+		return
+	}
 	if row.DeviceID == nil {
 		resource.Fail(w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未由宿主注册"))
 		return
@@ -123,6 +132,12 @@ func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if verified {
+		if err := sqlc.New(tx).VerifySessionHost(r.Context(), id); err != nil {
+			resource.Fail(w, err)
+			return
+		}
+	}
 	accepted, duplicates, err := s.applyBatch(r.Context(), tx, id, row, afterTurn, preparedSnapshots, preparedTurns)
 	if err != nil {
 		resource.Fail(w, err)

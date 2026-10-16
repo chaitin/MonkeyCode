@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +17,7 @@ import (
 func (s *Service) OAuthRouter() http.Handler {
 	router := chi.NewRouter()
 	router.Get("/authorize", s.authorize)
+	router.Post("/device/authorization", s.deviceAuthorization)
 	router.Post("/token", s.token)
 	router.Post("/revoke", s.revoke)
 	return router
@@ -40,6 +43,7 @@ func (s *Service) AuthRouter() http.Handler {
 	router.Post("/email/reset-password", s.resetPassword)
 	router.Get("/session", s.session)
 	router.Post("/logout", s.logout)
+	router.With(s.RequireBrowser).Post("/device/decision", s.deviceDecision)
 	router.Get("/client-requests/{requestID}", s.clientRequest)
 	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
 	router.Get("/oauth/{connectionID}/start", s.startUpstream)
@@ -48,8 +52,13 @@ func (s *Service) AuthRouter() http.Handler {
 	return router
 }
 
-func (s *Service) OAuthMetadata(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
+	scopes := make([]string, 0, len(scopeNames))
+	for scope := range scopeNames {
+		scopes = append(scopes, scope)
+	}
+	slices.Sort(scopes)
+	metadata := map[string]any{
 		"issuer":                                s.publicURL,
 		"authorization_endpoint":                s.publicURL + "/oauth/authorize",
 		"token_endpoint":                        s.publicURL + "/oauth/token",
@@ -58,11 +67,44 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, _ *http.Request) {
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
-	})
+		"scopes_supported":                      scopes,
+	}
+	if s.deviceEnabled() {
+		metadata["device_authorization_endpoint"] = s.publicURL + "/oauth/device/authorization"
+		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType}
+	}
+	if s.runtimeMetadata != nil {
+		runtime := make(map[string]any, len(s.runtimeMetadata))
+		for key, value := range s.runtimeMetadata {
+			runtime[key] = value
+		}
+		if s.runtimeFeatures != nil {
+			features := map[string]bool{}
+			if existing, ok := runtime["features"].(map[string]bool); ok {
+				for key, value := range existing {
+					features[key] = value
+				}
+			}
+			current, err := s.runtimeFeatures(r.Context())
+			if err != nil {
+				writeError(w, 503, "capabilities_unavailable", "功能策略暂不可用")
+				return
+			}
+			for key, value := range current {
+				features[key] = value
+			}
+			runtime["features"] = features
+		}
+		metadata["monkeyai_runtime"] = runtime
+	}
+	writeJSON(w, http.StatusOK, metadata)
 }
 
 func (s *Service) clients(w http.ResponseWriter, _ *http.Request) {
 	clients := []Client{Clients["monkeyai-desktop"], Clients["monkeyai-mobile"]}
+	if s.deviceEnabled() {
+		clients = append(clients, Clients[RuntimeClientID])
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"clients": clients})
 }
 
@@ -83,11 +125,18 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	}
 	var token Token
 	var err error
-	switch r.Form.Get("grant_type") {
+	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
-		token, err = s.ExchangeCode(r.Context(), r.Form.Get("client_id"), r.Form.Get("redirect_uri"), r.Form.Get("code"), r.Form.Get("code_verifier"))
+		token, err = s.ExchangeCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("redirect_uri"), r.PostForm.Get("code"), r.PostForm.Get("code_verifier"))
+	case DeviceGrantType:
+		if !s.deviceLimit(r, "poll", 300) {
+			w.Header().Set("Retry-After", "60")
+			s.writeOAuthError(w, oauthError("slow_down", "设备轮询过于频繁"))
+			return
+		}
+		token, err = s.ExchangeDeviceCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("device_code"))
 	case "refresh_token":
-		token, err = s.Refresh(r.Context(), r.Form.Get("client_id"), r.Form.Get("refresh_token"))
+		token, err = s.Refresh(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("refresh_token"))
 	default:
 		err = oauthError("unsupported_grant_type", "不支持的 grant_type")
 	}
@@ -101,22 +150,28 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	if err := r.ParseForm(); err == nil {
-		if err := s.revokeToken(r.Context(), tokenHash(r.Form.Get("token")), r.Form.Get("client_id")); err != nil {
-			slog.ErrorContext(r.Context(), "撤销 OAuth 令牌失败", "client_id", r.Form.Get("client_id"), "error", err)
-		}
+	if err := r.ParseForm(); err != nil {
+		s.writeOAuthError(w, oauthError("invalid_request", "请求格式无效"))
+		return
 	}
+	if err := s.revokeToken(r.Context(), tokenHash(r.PostForm.Get("token")), r.PostForm.Get("client_id")); err != nil {
+		s.writeOAuthError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Service) writeOAuthError(w http.ResponseWriter, err error) {
 	var protocol protocolError
+	status := http.StatusBadRequest
 	if !errors.As(err, &protocol) {
 		slog.Error("OAuth 请求处理失败", "error", err)
 		protocol = protocolError{Code: "server_error", Description: "服务暂时不可用"}
+		status = http.StatusServiceUnavailable
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusBadRequest, protocol)
+	writeJSON(w, status, protocol)
 }
 
 func (s *Service) providers(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +216,10 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("purpose") == "device" || chi.URLParam(r, "requestID") == "device" {
+		s.deviceRequest(w, r)
+		return
+	}
 	request, err := s.authorizationRequest(r.Context(), chi.URLParam(r, "requestID"))
 	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -178,11 +237,16 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 	user, authenticated := s.BrowserUser(r)
 	client := Clients[request.ClientID]
 	writeJSON(w, http.StatusOK, map[string]any{
-		"request_id":    request.ID,
-		"client":        client,
-		"authenticated": authenticated,
-		"user":          nullableUser(user, authenticated),
-		"providers":     publicConnections(connections),
+		"request_id":         request.ID,
+		"client":             client,
+		"authenticated":      authenticated,
+		"user":               nullableUser(user, authenticated),
+		"providers":          publicConnections(connections),
+		"scopes":             request.Scopes,
+		"scope_descriptions": scopeNames,
+		"audience":           request.Audience,
+		"consent_required":   len(request.Scopes) > 0,
+		"csrf_token":         consentToken(r, request.ID),
 	})
 }
 
@@ -196,7 +260,18 @@ func publicConnections(connections []OAuthConnection) []map[string]string {
 
 func (s *Service) completeClientRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	launchURL, err := s.CompleteAuthorization(r.Context(), chi.URLParam(r, "requestID"), user.ID)
+	requestID := chi.URLParam(r, "requestID")
+	request, err := s.authorizationRequest(r.Context(), requestID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "request_not_found", "授权请求不存在")
+		return
+	}
+	approval, err := readApproval(w, r, request, s.publicURL)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "consent_required", err.Error())
+		return
+	}
+	launchURL, err := s.completeAuthorization(r.Context(), requestID, user.ID, approval)
 	if err != nil {
 		writeError(w, http.StatusConflict, "request_unavailable", err.Error())
 		return
@@ -208,6 +283,19 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 	requestID := r.URL.Query().Get("request_id")
 	if requestID == "" {
 		writeError(w, http.StatusBadRequest, "request_required", "缺少客户端授权请求")
+		return
+	}
+	if r.URL.Query().Get("purpose") == "device" {
+		if !s.deviceEnabled() || !deviceUUID(requestID) {
+			writeError(w, 400, "request_unavailable", "设备申请无效")
+			return
+		}
+		request, err := sqlc.New(s.db).DeviceRequestByID(r.Context(), requestID)
+		if err != nil || request.Status != "pending" || !s.now().Before(request.ExpiresAt) {
+			writeError(w, 400, "request_unavailable", "设备申请已完成或过期")
+			return
+		}
+		s.beginUpstream(w, r, requestID, loginPurposeDevice)
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), requestID)
@@ -315,6 +403,13 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) upstreamResultURL(state LoginState, errorCode string) string {
+	if state.Purpose == loginPurposeDevice {
+		query := url.Values{"request_id": {state.DeviceRequestID}}
+		if errorCode != "" {
+			query.Set("error", errorCode)
+		}
+		return s.publicURL + "/device?" + query.Encode()
+	}
 	if state.Purpose == loginPurposeAdmin {
 		query := url.Values{}
 		if errorCode != "" {

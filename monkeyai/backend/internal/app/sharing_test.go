@@ -37,6 +37,9 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	if _, err := pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'test',$2,'sharing-admin-refresh',now()+interval '1 hour',now()+interval '2 hours')`, adminID, hex.EncodeToString(hash[:])); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO browser_sessions(token_hash,user_id,authentication_method,expires_at) VALUES($1,$2,'password',now()+interval '1 hour')`, hex.EncodeToString(hash[:]), adminID); err != nil {
+		t.Fatal(err)
+	}
 	call := func(method, path, token string, input any, want int) (resource.Object, http.Header) {
 		t.Helper()
 		b, err := json.Marshal(input)
@@ -269,7 +272,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	assertAccess(users[1], ids[1], true)
 	owned, _ := call("GET", "/models/"+ids[1], "a", nil, 200)
 	groups := owned["shared_groups"].([]any)
-	if len(groups) != 1 || groups[0].(map[string]any)["id"] != groupID || len(owned["shared_users"].([]any)) != 0 {
+	if len(groups) != 1 || groups[0].(map[string]any)["id"] != groupID || len(owned["authorization"].(map[string]any)["user_ids"].([]any)) != 1 || owned["authorization"].(map[string]any)["user_ids"].([]any)[0] != adminID {
 		t.Fatalf("模型详情组授权回显错误: %v", owned)
 	}
 	ownerCatalog, _ := call("GET", "/models", "a", nil, 200)
@@ -299,7 +302,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	assertAccess(users[1], ids[1], false)
 	_, beforeDelete := call("GET", "/models", "a", nil, 200)
 	req := httptest.NewRequest("DELETE", "/api/admin/v1/groups/"+groupID, nil)
-	req.Header.Set("Authorization", "Bearer sharing-admin")
+	req.AddCookie(&http.Cookie{Name: "monkeyai_session", Value: "sharing-admin"})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, req)
 	if response.Code != 204 {

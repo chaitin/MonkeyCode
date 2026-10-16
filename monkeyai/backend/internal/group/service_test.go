@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/testmember"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -70,7 +71,7 @@ func TestGroups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	service := NewService(pool)
+	service := NewService(pool).WithMemberWriter(testmember.Groups())
 	router := chi.NewRouter()
 	router.Use(identity.NewService(pool, nil, "http://localhost").RequireAdmin)
 	service.RegisterAdmin(router)
