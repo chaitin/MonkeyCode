@@ -7,7 +7,7 @@ export function UserAvatar({
   className,
 }: {
   src?: string | null
-  size?: "sm" | "lg"
+  size?: "default" | "sm" | "lg"
   className?: string
 }) {
   return (
