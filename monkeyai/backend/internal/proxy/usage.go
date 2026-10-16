@@ -27,12 +27,17 @@ type Call struct {
 	InputTokens          uint64
 	OutputTokens         uint64
 	CachedInputTokens    uint64
+	InputSource          string
+	OutputSource         string
 	FirstTokenDurationMs *int32
 	StartedAt            time.Time
 	CompletedAt          time.Time
 }
 
 type usageResult struct {
+	inputKnown, outputKnown  bool
+	InputSource              string
+	OutputSource             string
 	InputTokens              uint64
 	OutputTokens             uint64
 	CacheReadInputTokens     uint64
@@ -140,6 +145,8 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 		InputTokens:          result.InputTokens + result.CacheReadInputTokens + result.CacheCreationInputTokens,
 		OutputTokens:         result.OutputTokens,
 		CachedInputTokens:    result.CacheReadInputTokens + result.CachedTokens,
+		InputSource:          result.InputSource,
+		OutputSource:         result.OutputSource,
 		FirstTokenDurationMs: result.FirstTokenDurationMs,
 		StartedAt:            proxyCtx.startedAt,
 		CompletedAt:          completedAt,
@@ -159,6 +166,11 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 			"terminal_event", result.TerminalEvent,
 			"reason", call.ErrorCode,
 		)
+	}
+	if call.InputSource != "" || call.OutputSource != "" {
+		p.logger.InfoContext(ctx, "模型用量已本地估算", "model_id", target.ModelID,
+			"transaction_id", proxyCtx.reservation.ID, "input_source", call.InputSource,
+			"output_source", call.OutputSource, "known", call.Known)
 	}
 	p.finish(ctx, proxyCtx, call)
 	if target.OwnershipType == "user" || p.billing != nil || p.recorder == nil || !result.hasTokens() {
@@ -186,9 +198,10 @@ func (c *usageCapture) handleShadow() {
 	}
 }
 
-func (c *usageCapture) handleStream() usageResult {
-	var result usageResult
-	var inputKnown, outputKnown, terminal, usageSeen bool
+func (c *usageCapture) handleStream() (result usageResult) {
+	estimate := newTokenEstimate(c.ctx.proxyCtx)
+	defer func() { result = estimate.apply(result) }()
+	var terminal, usageSeen bool
 	decoder := newSSEDecoder(c.reader)
 	transactionID := ""
 	if c.ctx.proxyCtx != nil {
@@ -197,6 +210,7 @@ func (c *usageCapture) handleStream() usageResult {
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	for decoder.Next() {
 		event := decoder.Event()
+		estimate.event(c.ctx.path, event)
 		if result.FirstTokenDurationMs == nil && c.ctx.proxyCtx != nil && firstOutputEvent(c.ctx.path, event) {
 			elapsed := time.Since(c.ctx.proxyCtx.startedAt).Milliseconds()
 			if elapsed >= 0 && elapsed <= 1<<31-1 {
@@ -235,10 +249,11 @@ func (c *usageCapture) handleStream() usageResult {
 			}
 			usageSeen = true
 			result.Known = response.Usage.inputKnown && response.Usage.outputKnown
+			result.inputKnown, result.outputKnown = response.Usage.inputKnown, response.Usage.outputKnown
 			result.InputTokens = response.Usage.InputTokens
 			result.OutputTokens = response.Usage.OutputTokens
 			result.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
-		case "", "done":
+		case "", "message", "done":
 			if event.Type == "done" {
 				terminal = true
 				result.TerminalEvent = "done"
@@ -249,15 +264,25 @@ func (c *usageCapture) handleStream() usageResult {
 				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
+			if response.ID != "" {
+				result.ResponseID = response.ID
+			}
 			if response.Usage == nil {
 				continue
 			}
 			usageSeen = true
-			result.Known = response.Usage.complete
-			result.InputTokens = response.Usage.PromptTokens
-			result.OutputTokens = response.Usage.CompletionTokens
-			result.ResponseID = response.ID
-			result.CachedTokens = response.Usage.PromptTokensDetails.CachedTokens
+			if response.Usage.inputKnown {
+				result.inputKnown = true
+				result.InputTokens = response.Usage.PromptTokens
+				result.CachedTokens = response.Usage.PromptTokensDetails.CachedTokens
+			} else if response.Usage.PromptTokensDetails.CachedTokens > 0 {
+				result.CachedTokens = response.Usage.PromptTokensDetails.CachedTokens
+			}
+			if response.Usage.outputKnown {
+				result.outputKnown = true
+				result.OutputTokens = response.Usage.CompletionTokens
+			}
+			result.Known = result.inputKnown && result.outputKnown
 		case "message_start":
 			response, err := parseAnthropicResponse(event.Data)
 			if err != nil {
@@ -270,7 +295,7 @@ func (c *usageCapture) handleStream() usageResult {
 				continue
 			}
 			usageSeen = true
-			inputKnown = response.Message.Usage.inputKnown
+			result.inputKnown = response.Message.Usage.inputKnown
 			result.CacheCreationInputTokens = response.Message.Usage.CacheCreationInputTokens
 			result.InputTokens = response.Message.Usage.InputTokens
 			result.CacheReadInputTokens = response.Message.Usage.CacheReadInputTokens
@@ -285,18 +310,21 @@ func (c *usageCapture) handleStream() usageResult {
 				continue
 			}
 			usageSeen = true
-			if response.Usage.InputTokens > 0 {
+			if response.Usage.inputKnown {
+				result.inputKnown = true
 				result.InputTokens = response.Usage.InputTokens
 			}
-			outputKnown = response.Usage.outputKnown
-			result.OutputTokens = response.Usage.OutputTokens
+			if response.Usage.outputKnown {
+				result.outputKnown = true
+				result.OutputTokens = response.Usage.OutputTokens
+			}
 			if response.Usage.CacheReadInputTokens > 0 {
 				result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
 			}
 		case "message_stop":
 			terminal = true
 			result.TerminalEvent = event.Type
-			result.Known = inputKnown && outputKnown
+			result.Known = result.inputKnown && result.outputKnown
 		case "error":
 			terminal = true
 			result.Result = "failed"
@@ -325,20 +353,22 @@ func (c *usageCapture) handleStream() usageResult {
 	return result
 }
 
-func (c *usageCapture) handleNonStream() usageResult {
-	var result usageResult
+func (c *usageCapture) handleNonStream() (result usageResult) {
+	estimate := newTokenEstimate(c.ctx.proxyCtx)
+	defer func() { result = estimate.apply(result) }()
 	transactionID := ""
 	if c.ctx.proxyCtx != nil {
 		transactionID = c.ctx.proxyCtx.reservation.ID
 	}
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
-	data, err := io.ReadAll(io.LimitReader(c.reader, 32<<20))
-	if err != nil {
+	data, err := io.ReadAll(io.LimitReader(c.reader, maxEstimateBytes+1))
+	if err != nil || len(data) > maxEstimateBytes {
 		logger.WarnContext(c.ctx.ctx, "读取模型响应副本失败", "error", err)
 		result.Result = "failed"
 		result.ErrorCode = "usage_read_failed"
 		return result
 	}
+	estimate.response(c.ctx.path, data)
 	switch c.ctx.path {
 	case "/v1/responses":
 		response, err := parseOpenAIResponse(data)
@@ -357,6 +387,7 @@ func (c *usageCapture) handleNonStream() usageResult {
 			return result
 		}
 		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
+		result.inputKnown, result.outputKnown = response.Usage.inputKnown, response.Usage.outputKnown
 		if response.Status == "failed" || response.Status == "incomplete" {
 			result.Result = "failed"
 		}
@@ -375,7 +406,8 @@ func (c *usageCapture) handleNonStream() usageResult {
 			result.ErrorCode = "usage_missing"
 			return result
 		}
-		result.Known = response.Usage.complete
+		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
+		result.inputKnown, result.outputKnown = response.Usage.inputKnown, response.Usage.outputKnown
 		result.InputTokens = response.Usage.PromptTokens
 		result.OutputTokens = response.Usage.CompletionTokens
 		result.CachedTokens = response.Usage.PromptTokensDetails.CachedTokens
@@ -392,6 +424,7 @@ func (c *usageCapture) handleNonStream() usageResult {
 			return result
 		}
 		result.Known = response.Usage.inputKnown && response.Usage.outputKnown
+		result.inputKnown, result.outputKnown = response.Usage.inputKnown, response.Usage.outputKnown
 		result.InputTokens = response.Usage.InputTokens
 		result.OutputTokens = response.Usage.OutputTokens
 		result.CacheReadInputTokens = response.Usage.CacheReadInputTokens
@@ -477,10 +510,10 @@ type chatCompletion struct {
 	Usage *chatUsage `json:"usage"`
 }
 type chatUsage struct {
-	PromptTokens        uint64       `json:"prompt_tokens"`
-	CompletionTokens    uint64       `json:"completion_tokens"`
-	PromptTokensDetails tokenDetails `json:"prompt_tokens_details"`
-	complete            bool
+	PromptTokens            uint64       `json:"prompt_tokens"`
+	CompletionTokens        uint64       `json:"completion_tokens"`
+	PromptTokensDetails     tokenDetails `json:"prompt_tokens_details"`
+	inputKnown, outputKnown bool
 }
 
 func (u *chatUsage) UnmarshalJSON(data []byte) error {
@@ -488,7 +521,8 @@ func (u *chatUsage) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, (*plain)(u)); err != nil {
 		return err
 	}
-	u.complete = usageField(data, "prompt_tokens") && usageField(data, "completion_tokens")
+	u.inputKnown = usageField(data, "prompt_tokens")
+	u.outputKnown = usageField(data, "completion_tokens")
 	return nil
 }
 func (u *tokenUsage) UnmarshalJSON(data []byte) error {

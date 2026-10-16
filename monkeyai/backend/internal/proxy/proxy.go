@@ -80,6 +80,7 @@ type proxyContext struct {
 	upstream     *url.URL
 	upstreamPath string
 	stream       bool
+	requestBody  []byte
 	startedAt    time.Time
 	reservation  Reservation
 	settled      sync.Once
@@ -243,6 +244,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstream:     upstream,
 		upstreamPath: upstreamPath,
 		stream:       meta.Stream,
+		requestBody:  body,
 		startedAt:    time.Now(),
 		reservation:  reservation,
 	})
