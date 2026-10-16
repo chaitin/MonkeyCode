@@ -173,6 +173,7 @@ export const jaJP = {
         previousValue: "直前の24時間：{{value}}",
       },
       period30m: "30 分",
+      average: "平均",
       callsTrend: "呼び出し回数",
       newUsersTrend: "新規ユーザー",
       activeUsersTrend: "アクティブユーザー",
@@ -191,8 +192,8 @@ export const jaJP = {
       },
       metrics: {
         modelConsumption: "クレジット消費量",
-        p95ResponseTime: "モデル応答時間",
-        p95FirstTokenTime: "モデル初回トークン時間",
+        avgResponseTime: "モデル応答時間",
+        avgFirstTokenTime: "モデル初回トークン時間",
         modelSuccessRate: "モデル成功率",
         cacheHitRate: "キャッシュヒット率",
         modelCalls: "モデル呼び出し回数",

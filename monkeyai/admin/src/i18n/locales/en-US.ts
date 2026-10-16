@@ -346,6 +346,7 @@ export const enUS = {
         previousValue: "Preceding 24 hours: {{value}}",
       },
       period30m: "30 minutes",
+      average: "Average",
       callsTrend: "Calls",
       newUsersTrend: "New users",
       activeUsersTrend: "Active users",
@@ -364,8 +365,8 @@ export const enUS = {
       },
       metrics: {
         modelConsumption: "Credits consumed",
-        p95ResponseTime: "Model response time",
-        p95FirstTokenTime: "Model first token time",
+        avgResponseTime: "Model response time",
+        avgFirstTokenTime: "Model first token time",
         modelSuccessRate: "Model success rate",
         cacheHitRate: "Cache hit rate",
         modelCalls: "Model calls",

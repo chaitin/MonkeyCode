@@ -162,7 +162,7 @@ func TestModelsOverview(t *testing.T) {
 		number(t, previous24, key, want)
 	}
 	last30 := out["last_30m"].(map[string]any)
-	for key, want := range map[string]float64{"tpm": 225.0 / 30, "rpm": 3.0 / 30, "cache_hit_rate": 100.0 / 3, "model_success_rate": 200.0 / 3, "p95_response_time": 4800, "p95_first_token_time": 400} {
+	for key, want := range map[string]float64{"tpm": 225.0 / 30, "rpm": 3.0 / 30, "cache_hit_rate": 100.0 / 3, "model_success_rate": 200.0 / 3, "avg_response_time": 3000, "avg_first_token_time": 400} {
 		number(t, last30, key, want)
 	}
 	days, ok := out["days"].([]any)
@@ -236,7 +236,7 @@ func TestModelsOverviewEmpty(t *testing.T) {
 	for _, key := range []string{"tpm", "rpm"} {
 		number(t, last30, key, 0)
 	}
-	for _, key := range []string{"cache_hit_rate", "model_success_rate", "p95_response_time", "p95_first_token_time"} {
+	for _, key := range []string{"cache_hit_rate", "model_success_rate", "avg_response_time", "avg_first_token_time"} {
 		if last30[key] != nil {
 			t.Fatalf("无样本时 %s 应为 null: %v", key, last30[key])
 		}

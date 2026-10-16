@@ -180,6 +180,7 @@ export const ruRU = {
         previousValue: "Предыдущие 24 часа: {{value}}",
       },
       period30m: "30 минут",
+      average: "Среднее",
       callsTrend: "Количество вызовов",
       newUsersTrend: "Новые пользователи",
       activeUsersTrend: "Активные пользователи",
@@ -198,8 +199,8 @@ export const ruRU = {
       },
       metrics: {
         modelConsumption: "Расход кредитов",
-        p95ResponseTime: "Время ответа моделей",
-        p95FirstTokenTime: "Время до первого токена модели",
+        avgResponseTime: "Время ответа моделей",
+        avgFirstTokenTime: "Время до первого токена модели",
         modelSuccessRate: "Успешность моделей",
         cacheHitRate: "Доля попаданий в кэш",
         modelCalls: "Вызовы моделей",

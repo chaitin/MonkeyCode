@@ -177,6 +177,7 @@ export const es419 = {
         previousValue: "24 horas anteriores: {{value}}",
       },
       period30m: "30 minutos",
+      average: "Promedio",
       callsTrend: "Llamadas",
       newUsersTrend: "Usuarios nuevos",
       activeUsersTrend: "Usuarios activos",
@@ -195,8 +196,8 @@ export const es419 = {
       },
       metrics: {
         modelConsumption: "Consumo de créditos",
-        p95ResponseTime: "Tiempo de respuesta del modelo",
-        p95FirstTokenTime: "Tiempo al primer token del modelo",
+        avgResponseTime: "Tiempo de respuesta del modelo",
+        avgFirstTokenTime: "Tiempo al primer token del modelo",
         modelSuccessRate: "Tasa de éxito del modelo",
         cacheHitRate: "Tasa de aciertos de caché",
         modelCalls: "Llamadas al modelo",

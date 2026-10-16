@@ -2,6 +2,14 @@
 
 四个统计页面使用 `/api/admin/v1/statistics/{realtime,models,tasks,history}`，由 `internal/stats` 显式注册并复用管理员 Cookie 鉴权。Agent token 和调用密钥没有访问权限。查询使用 PostgreSQL 只读 Repeatable Read 快照，单次请求限时 15 秒，返回 `private, no-store`。
 
+## 数据总览耗时
+
+当前数据总览使用 `/api/admin/v1/statistics/models/overview` 的 `last_30m.avg_response_time` 和 `last_30m.avg_first_token_time`，单位为毫秒，卡片标注“30 分钟 - 平均”。
+
+- 只取最近 30 分钟完成的成功调用，窗口左闭右开。响应耗时优先使用记录值，缺失时使用完成时间减开始时间；首字耗时只取实际采集到的流式样本。
+- 两项指标分别从小到大排序，各自剔除最慢的 `floor(样本数 × 5%)` 条，再对剩余样本求算术平均值。不足 20 条时保留全部样本；相同耗时按条数截尾，避免边界值相同导致多剔除。
+- 无有效样本返回 `null`，页面显示 `—`；有样本时换算成秒并保留一位小数。
+
 ## 数据口径
 
 | 页面 | 数据来源 | 时间与计算规则 |

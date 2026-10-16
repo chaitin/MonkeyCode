@@ -165,6 +165,7 @@ export const ar = {
         previousValue: "الساعات الـ24 السابقة: {{value}}",
       },
       period30m: "30 دقيقة",
+      average: "المتوسط",
       callsTrend: "عدد الاستدعاءات",
       newUsersTrend: "المستخدمون الجدد",
       activeUsersTrend: "المستخدمون النشطون",
@@ -183,8 +184,8 @@ export const ar = {
       },
       metrics: {
         modelConsumption: "استهلاك الرصيد",
-        p95ResponseTime: "زمن استجابة النماذج",
-        p95FirstTokenTime: "زمن أول رمز للنماذج",
+        avgResponseTime: "زمن استجابة النماذج",
+        avgFirstTokenTime: "زمن أول رمز للنماذج",
         modelSuccessRate: "معدل نجاح النماذج",
         cacheHitRate: "معدل إصابة ذاكرة التخزين المؤقت",
         modelCalls: "استدعاءات النماذج",

@@ -5173,14 +5173,14 @@ components:
             output_tokens: {type: integer, minimum: 0}
         last_30m:
           type: object
-          required: [tpm, rpm, cache_hit_rate, model_success_rate, p95_response_time, p95_first_token_time]
+          required: [tpm, rpm, cache_hit_rate, model_success_rate, avg_response_time, avg_first_token_time]
           properties:
             tpm: {type: number, minimum: 0, description: 近 30 分钟完成调用的输入和输出 Token 总量除以 30。}
             rpm: {type: number, minimum: 0, description: 近 30 分钟完成调用数除以 30。}
             cache_hit_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
             model_success_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
-            p95_response_time: {type: [number, 'null'], minimum: 0, description: 成功调用总响应耗时的 P95，毫秒；无样本时为 null。}
-            p95_first_token_time: {type: [number, 'null'], minimum: 0, description: 成功的流式调用中已采集首字耗时的 P95，毫秒；历史和非流式调用不计入，无样本时为 null。}
+            avg_response_time: {type: [number, 'null'], minimum: 0, description: 最近 30 分钟完成的成功调用响应耗时，独立剔除最慢 5% 样本后的算术平均值，单位毫秒。剔除条数向下取整，不足 20 条时保留全部样本；相同耗时按条数截尾。优先使用记录的响应耗时，否则使用完成时间减开始时间；无样本时为 null。}
+            avg_first_token_time: {type: [number, 'null'], minimum: 0, description: 最近 30 分钟完成的成功流式调用中，已采集首字耗时的样本独立剔除最慢 5% 后的算术平均值，单位毫秒。剔除条数向下取整，不足 20 条时保留全部样本；相同耗时按条数截尾。历史和非流式调用不计入；无样本时为 null。}
         days:
           type: array
           minItems: 90

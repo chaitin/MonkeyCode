@@ -87,10 +87,10 @@ const METRICS = [
   { key: "tpm", labelKey: "tpm", icon: DashboardSpeed01Icon },
   { key: "rpm", labelKey: "rpm", icon: GaugeIcon },
   { key: "cache_hit_rate", labelKey: "cacheHitRate", icon: Database02Icon },
-  { key: "p95_response_time", labelKey: "p95ResponseTime", icon: Clock01Icon },
+  { key: "avg_response_time", labelKey: "avgResponseTime", icon: Clock01Icon },
   {
-    key: "p95_first_token_time",
-    labelKey: "p95FirstTokenTime",
+    key: "avg_first_token_time",
+    labelKey: "avgFirstTokenTime",
     icon: Clock01Icon,
   },
   {
@@ -133,8 +133,8 @@ const SHORT_METRICS = new Set<MetricKey>([
   "tpm",
   "rpm",
   "cache_hit_rate",
-  "p95_response_time",
-  "p95_first_token_time",
+  "avg_response_time",
+  "avg_first_token_time",
   "model_success_rate",
 ])
 const OVERVIEW_METRICS = new Set<MetricKey>([
@@ -563,20 +563,20 @@ export function RealtimeStatusPage() {
             quality.cache_hit_rate == null
               ? "—"
               : `${percentFormatter.format(quality.cache_hit_rate)}%`,
-          p95_response_time:
-            quality.p95_response_time == null
+          avg_response_time:
+            quality.avg_response_time == null
               ? "—"
               : t("pages.realtimeStatus.units.seconds", {
                   count: secondsFormatter.format(
-                    quality.p95_response_time / 1000
+                    quality.avg_response_time / 1000
                   ),
                 }),
-          p95_first_token_time:
-            quality.p95_first_token_time == null
+          avg_first_token_time:
+            quality.avg_first_token_time == null
               ? "—"
               : t("pages.realtimeStatus.units.seconds", {
                   count: secondsFormatter.format(
-                    quality.p95_first_token_time / 1000
+                    quality.avg_first_token_time / 1000
                   ),
                 }),
           model_success_rate:
@@ -641,10 +641,10 @@ export function RealtimeStatusPage() {
             : undefined
         }
         valueClassName={
-          metric.key === "p95_first_token_time"
-            ? durationColor(quality?.p95_first_token_time, 3_000, 6_000)
-            : metric.key === "p95_response_time"
-              ? durationColor(quality?.p95_response_time, 10_000, 30_000)
+          metric.key === "avg_first_token_time"
+            ? durationColor(quality?.avg_first_token_time, 3_000, 6_000)
+            : metric.key === "avg_response_time"
+              ? durationColor(quality?.avg_response_time, 10_000, 30_000)
               : metric.key === "cache_hit_rate" ||
                   metric.key === "model_success_rate"
                 ? rateColor(quality?.[metric.key])
@@ -658,9 +658,9 @@ export function RealtimeStatusPage() {
             : undefined
         }
         qualifier={
-          metric.key === "p95_response_time" ||
-          metric.key === "p95_first_token_time"
-            ? `${t("pages.realtimeStatus.period30m")} - P95`
+          metric.key === "avg_response_time" ||
+          metric.key === "avg_first_token_time"
+            ? `${t("pages.realtimeStatus.period30m")} - ${t("pages.realtimeStatus.average")}`
             : SHORT_METRICS.has(metric.key)
               ? t("pages.realtimeStatus.period30m")
               : PERIOD_METRICS.has(metric.key)

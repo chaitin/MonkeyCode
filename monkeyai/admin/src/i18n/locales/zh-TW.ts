@@ -174,6 +174,7 @@ export const zhTW = {
         previousValue: "此前 24 小時：{{value}}",
       },
       period30m: "30 分鐘",
+      average: "平均",
       callsTrend: "呼叫次數",
       newUsersTrend: "新增使用者",
       activeUsersTrend: "活躍使用者",
@@ -192,8 +193,8 @@ export const zhTW = {
       },
       metrics: {
         modelConsumption: "積分消耗量",
-        p95ResponseTime: "模型回應時間",
-        p95FirstTokenTime: "模型首字時間",
+        avgResponseTime: "模型回應時間",
+        avgFirstTokenTime: "模型首字時間",
         modelSuccessRate: "模型成功率",
         cacheHitRate: "快取命中率",
         modelCalls: "模型呼叫次數",

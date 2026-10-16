@@ -183,6 +183,7 @@ export const frFR = {
         previousValue: "24 heures précédentes : {{value}}",
       },
       period30m: "30 minutes",
+      average: "Moyenne",
       callsTrend: "Nombre d’appels",
       newUsersTrend: "Nouveaux utilisateurs",
       activeUsersTrend: "Utilisateurs actifs",
@@ -201,8 +202,8 @@ export const frFR = {
       },
       metrics: {
         modelConsumption: "Consommation de crédits",
-        p95ResponseTime: "Temps de réponse des modèles",
-        p95FirstTokenTime: "Temps avant le premier token",
+        avgResponseTime: "Temps de réponse des modèles",
+        avgFirstTokenTime: "Temps avant le premier token",
         modelSuccessRate: "Taux de réussite des modèles",
         cacheHitRate: "Taux de cache atteint",
         modelCalls: "Appels de modèles",

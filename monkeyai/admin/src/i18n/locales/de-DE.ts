@@ -181,6 +181,7 @@ export const deDE = {
         previousValue: "Vorherige 24 Stunden: {{value}}",
       },
       period30m: "30 Minuten",
+      average: "Durchschnitt",
       callsTrend: "Aufrufe",
       newUsersTrend: "Neue Benutzer",
       activeUsersTrend: "Aktive Benutzer",
@@ -199,8 +200,8 @@ export const deDE = {
       },
       metrics: {
         modelConsumption: "Guthabenverbrauch",
-        p95ResponseTime: "Antwortzeit der Modelle",
-        p95FirstTokenTime: "Zeit bis zum ersten Token",
+        avgResponseTime: "Antwortzeit der Modelle",
+        avgFirstTokenTime: "Zeit bis zum ersten Token",
         modelSuccessRate: "Erfolgsquote der Modelle",
         cacheHitRate: "Cache-Trefferquote",
         modelCalls: "Modellaufrufe",

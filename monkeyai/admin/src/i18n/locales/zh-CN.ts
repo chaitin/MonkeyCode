@@ -317,6 +317,7 @@ export const zhCN = {
         previousValue: "此前 24 小时：{{value}}",
       },
       period30m: "30 分钟",
+      average: "平均",
       callsTrend: "调用次数",
       newUsersTrend: "新增用户",
       activeUsersTrend: "活跃用户",
@@ -335,8 +336,8 @@ export const zhCN = {
       },
       metrics: {
         modelConsumption: "积分消耗量",
-        p95ResponseTime: "模型响应时间",
-        p95FirstTokenTime: "模型首字时间",
+        avgResponseTime: "模型响应时间",
+        avgFirstTokenTime: "模型首字时间",
         modelSuccessRate: "模型成功率",
         cacheHitRate: "缓存命中率",
         modelCalls: "模型调用次数",

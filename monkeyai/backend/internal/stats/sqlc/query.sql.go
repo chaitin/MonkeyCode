@@ -459,6 +459,26 @@ WITH bounds AS (
     FROM model_calls c CROSS JOIN bounds b
     WHERE c.completed_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC')
         AND c.completed_at < b.now_at AND c.status <> 'running'
+), successful_calls AS (
+    SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit, c.response_duration_ms, c.first_token_duration_ms, c.started_at FROM calls c CROSS JOIN bounds b
+    WHERE c.completed_at >= b.now_at - interval '30 minutes' AND c.status = 'succeeded'
+), duration_samples AS (
+    SELECT 'response'::text AS metric,
+           coalesce(response_duration_ms, extract(epoch FROM (completed_at - started_at)) * 1000) AS duration_ms
+    FROM successful_calls
+    UNION ALL
+    SELECT 'first_token'::text AS metric, first_token_duration_ms::numeric AS duration_ms
+    FROM successful_calls WHERE first_token_duration_ms IS NOT NULL
+), ranked_durations AS (
+    SELECT metric, duration_ms,
+           row_number() OVER (PARTITION BY metric ORDER BY duration_ms) AS sample_index,
+           count(*) OVER (PARTITION BY metric) AS sample_count
+    FROM duration_samples
+), trimmed_durations AS (
+    -- Trim the slowest floor(N * 0.05) samples independently for each metric.
+    SELECT metric, avg(duration_ms) AS duration_ms FROM ranked_durations
+    WHERE sample_index <= sample_count - floor(sample_count * 0.05)
+    GROUP BY metric
 ), calls_by_day AS (
     SELECT (completed_at AT TIME ZONE 'UTC')::date AS day, count(*) AS calls,
            coalesce(sum(input_tokens),0) AS input_tokens, coalesce(sum(output_tokens),0) AS output_tokens
@@ -485,8 +505,8 @@ SELECT jsonb_build_object(
         'rpm', count(*) / 30.0,
         'cache_hit_rate', 100.0 * count(*) FILTER (WHERE cache_hit) / nullif(count(*),0),
         'model_success_rate', 100.0 * count(*) FILTER (WHERE status = 'succeeded') / nullif(count(*),0),
-        'p95_response_time', percentile_cont(0.95) WITHIN GROUP (ORDER BY coalesce(response_duration_ms, extract(epoch FROM (completed_at - started_at)) * 1000)) FILTER (WHERE status = 'succeeded'),
-        'p95_first_token_time', percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_duration_ms) FILTER (WHERE status = 'succeeded' AND first_token_duration_ms IS NOT NULL))
+        'avg_response_time', (SELECT duration_ms FROM trimmed_durations WHERE metric = 'response'),
+        'avg_first_token_time', (SELECT duration_ms FROM trimmed_durations WHERE metric = 'first_token'))
         FROM calls CROSS JOIN bounds b WHERE completed_at >= b.now_at - interval '30 minutes'),
     'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text,
         'model_calls', coalesce(c.calls,0), 'input_tokens', coalesce(c.input_tokens,0),

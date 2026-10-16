@@ -166,6 +166,7 @@ export const koKR = {
         previousValue: "직전 24시간: {{value}}",
       },
       period30m: "30분",
+      average: "평균",
       callsTrend: "호출 횟수",
       newUsersTrend: "신규 사용자",
       activeUsersTrend: "활성 사용자",
@@ -184,8 +185,8 @@ export const koKR = {
       },
       metrics: {
         modelConsumption: "크레딧 소모량",
-        p95ResponseTime: "모델 응답 시간",
-        p95FirstTokenTime: "모델 첫 토큰 시간",
+        avgResponseTime: "모델 응답 시간",
+        avgFirstTokenTime: "모델 첫 토큰 시간",
         modelSuccessRate: "모델 성공률",
         cacheHitRate: "캐시 적중률",
         modelCalls: "모델 호출 횟수",

@@ -1,4 +1,3 @@
-
 export type ModelOverview = {
   timezone: "UTC"
   generated_at: string
@@ -12,8 +11,8 @@ export type ModelOverview = {
     tpm: number
     rpm: number
     cache_hit_rate: number | null
-    p95_response_time: number | null
-    p95_first_token_time: number | null
+    avg_response_time: number | null
+    avg_first_token_time: number | null
     model_success_rate: number | null
   }
   days: {
