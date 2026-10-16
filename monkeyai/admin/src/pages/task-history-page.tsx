@@ -4,7 +4,6 @@ import {
   ArrowRight01Icon,
   FilterHorizontalIcon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
@@ -12,6 +11,7 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { useStatistics } from "@/hooks/use-statistics"
 import { StatisticsFeedback } from "@/components/statistics-feedback"
@@ -52,6 +52,7 @@ type TaskHistoryEntry = {
   user_id?: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   started_at: string
   last_active_at: string
   turn_count: number
@@ -395,16 +396,11 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                          className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                           title={task.user_email}
                           onClick={() => openAccount(task)}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <UserAvatar src={task.user_avatar_url} />
                           <span className="min-w-0 truncate">
                             {task.user_name}
                           </span>

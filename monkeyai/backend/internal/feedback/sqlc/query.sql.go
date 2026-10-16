@@ -224,15 +224,16 @@ func (q *Queries) FeedbackByIdempotency(ctx context.Context, arg FeedbackByIdemp
 }
 
 const feedbackUsers = `-- name: FeedbackUsers :many
-SELECT id, name, email
+SELECT id, name, email, avatar_url
 FROM users
 WHERE id = ANY($1::uuid[])
 `
 
 type FeedbackUsersRow struct {
-	ID    string
-	Name  string
-	Email string
+	ID        string
+	Name      string
+	Email     string
+	AvatarUrl *string
 }
 
 func (q *Queries) FeedbackUsers(ctx context.Context, userIds []string) ([]FeedbackUsersRow, error) {
@@ -244,7 +245,12 @@ func (q *Queries) FeedbackUsers(ctx context.Context, userIds []string) ([]Feedba
 	items := []FeedbackUsersRow{}
 	for rows.Next() {
 		var i FeedbackUsersRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.AvatarUrl,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

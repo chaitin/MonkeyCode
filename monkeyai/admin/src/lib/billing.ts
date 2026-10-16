@@ -108,6 +108,7 @@ export type Entry = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   category: string
   entry_type: string
   item_name: string
@@ -122,6 +123,7 @@ export type Transaction = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   category: string
   item_name: string
   mode: string

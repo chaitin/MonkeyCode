@@ -154,13 +154,15 @@ test("operation log actors use their avatar with the bundled image as fallback",
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /@\/assets\/default-user-avatar\.webp/)
-  assert.match(
-    source,
-    /<AvatarImage[\s\S]*?src=\{log\.actor_avatar_url\?\.trim\(\) \|\| undefined\}/
+  assert.match(source, /<UserAvatar src=\{log\.actor_avatar_url\}/)
+  const avatar = await readFile(
+    new URL("../src/components/user-avatar.tsx", import.meta.url),
+    "utf8"
   )
+  assert.match(avatar, /@\/assets\/default-user-avatar\.webp/)
+  assert.match(avatar, /<AvatarImage src=\{src\?\.trim\(\) \|\| undefined\}/)
   assert.match(
-    source,
+    avatar,
     /<AvatarFallback>[\s\S]*?<img\s+src=\{defaultUserAvatar\}/
   )
   assert.doesNotMatch(source, /User02Icon|actor_name\.slice/)

@@ -22,15 +22,9 @@ test("billing detail user columns match the operation log actor presentation", a
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /icon=\{User02Icon\}/)
-  assert.equal(
-    (
-      source.match(
-        /className="size-4 shrink-0 text-blue-600 dark:text-blue-400"/g
-      ) ?? []
-    ).length,
-    2
-  )
+  assert.match(source, /<UserAvatar src=\{e\.user_avatar_url\}/)
+  assert.match(source, /<UserAvatar src=\{tx\.user_avatar_url\}/)
+  assert.doesNotMatch(source, /User02Icon/)
   assert.match(source, /title=\{e\.user_email\}/)
   assert.match(source, /<span className="truncate">\{e\.user_name\}<\/span>/)
   assert.match(source, /title=\{tx\.user_email\}/)

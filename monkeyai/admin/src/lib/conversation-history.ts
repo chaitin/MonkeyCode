@@ -13,6 +13,7 @@ export type Conversation = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   started_at: string
   ended_at: string
   duration_seconds: number

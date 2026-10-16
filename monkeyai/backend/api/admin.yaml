@@ -4923,6 +4923,7 @@ components:
         user_id: {type: string, format: uuid}
         user_name: {type: string, description: 提交反馈的用户名，仅管理员列表返回。}
         user_email: {type: string, format: email, description: 提交反馈的邮箱，仅管理员列表返回。}
+        user_avatar_url: {type: [string, 'null'], description: 提交反馈用户的当前头像，仅管理员列表返回；为空或省略时使用默认头像。}
         category: {type: string, enum: [bug, feature, experience, other]}
         content: {type: string, maxLength: 5000}
         rating: {type: [integer, 'null'], minimum: 1, maximum: 5}
@@ -5389,7 +5390,7 @@ components:
         page_size: {type: integer, minimum: 1, maximum: 500, description: 每页条数。}
     StatisticsConversation:
       type: object
-      required: [session_id, turn_index, task_title, user_id, user_name, user_email, started_at, ended_at, duration_seconds, input_text, input_text_truncated, input_kind, input_tokens, output_tokens, outcome, error_code, is_completed]
+      required: [session_id, turn_index, task_title, user_id, user_name, user_email, user_avatar_url, started_at, ended_at, duration_seconds, input_text, input_text_truncated, input_kind, input_tokens, output_tokens, outcome, error_code, is_completed]
       properties:
         session_id: {type: string, format: uuid, description: 所属根会话 ID，即任务历史的任务 ID；与 turn_index 联合标识一个轮次。}
         turn_index: {type: integer, minimum: 1, description: 客户端上报的轮次编号。}
@@ -5397,6 +5398,7 @@ components:
         user_id: {type: string, format: uuid, description: 所属用户 ID。}
         user_name: {type: string, description: 所属用户当前姓名。}
         user_email: {type: string, description: 所属用户当前邮箱。}
+        user_avatar_url: {type: [string, 'null'], description: 所属用户当前头像地址；为空时使用默认头像。}
         started_at: {type: string, format: date-time, description: 轮次开始时间，筛选和排序使用此时间。}
         ended_at: {type: string, format: date-time, description: 轮次结束时间；此接口仅展示已结束且完成上报的轮次。}
         duration_seconds: {type: number, minimum: 0, description: ended_at 减 started_at 的秒数，保留原始精度，前端按整秒显示。}
@@ -5429,6 +5431,7 @@ components:
               - user_id
               - user_name
               - user_email
+              - user_avatar_url
               - started_at
               - last_active_at
               - turn_count
@@ -5449,6 +5452,9 @@ components:
               user_email:
                 type: string
                 description: 所属用户当前邮箱。
+              user_avatar_url:
+                type: [string, 'null']
+                description: 所属用户当前头像地址；为空时使用默认头像。
               started_at:
                 type: string
                 format: date-time
@@ -5746,6 +5752,9 @@ components:
     CreditEntry:
       type: object
       properties:
+        user_avatar_url:
+          type: [string, 'null']
+          description: 管理员流水列表返回用户当前头像；为空时使用默认头像。
         id:
           type: string
           format: uuid
@@ -5833,6 +5842,9 @@ components:
     BillingTransaction:
       type: object
       properties:
+        user_avatar_url:
+          type: [string, 'null']
+          description: 管理员待处理列表返回用户当前头像；为空时使用默认头像。
         id:
           type: string
           format: uuid

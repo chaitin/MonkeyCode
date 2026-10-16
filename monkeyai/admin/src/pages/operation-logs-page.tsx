@@ -9,7 +9,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
-import defaultUserAvatar from "@/assets/default-user-avatar.webp"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
@@ -24,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -502,19 +501,7 @@ export function OperationLogsPage() {
                               setAccountUserID(log.actor_user_id)
                           }}
                         >
-                          <Avatar size="sm">
-                            <AvatarImage
-                              src={log.actor_avatar_url?.trim() || undefined}
-                              alt=""
-                            />
-                            <AvatarFallback>
-                              <img
-                                src={defaultUserAvatar}
-                                alt=""
-                                className="size-full rounded-full object-cover"
-                              />
-                            </AvatarFallback>
-                          </Avatar>
+                          <UserAvatar src={log.actor_avatar_url} />
                           <span className="truncate">{log.actor_name}</span>
                         </button>
                       </TableCell>

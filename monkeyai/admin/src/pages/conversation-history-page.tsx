@@ -5,7 +5,6 @@ import {
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
@@ -13,6 +12,7 @@ import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -298,12 +298,7 @@ export function ConversationHistoryPage() {
             disabled={!entry.user_id}
             onClick={() => setAccountUserID(entry.user_id)}
           >
-            <HugeiconsIcon
-              icon={User02Icon}
-              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <UserAvatar src={entry.user_avatar_url} />
             <span className="min-w-0 truncate">{entry.user_name}</span>
           </button>
         )

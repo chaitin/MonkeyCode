@@ -67,6 +67,11 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 		if user, ok := usersByID[item.UserID]; ok {
 			feedback.UserName = user.Name
 			feedback.UserEmail = user.Email
+			if user.AvatarUrl != nil {
+				if avatar := strings.TrimSpace(*user.AvatarUrl); avatar != "" {
+					feedback.UserAvatarURL = &avatar
+				}
+			}
 		}
 		out = append(out, feedback)
 	}

@@ -24,6 +24,7 @@ WHERE
 -- name: ListHistory :many
 SELECT
     jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_id', s.owner_user_id, 'user_name', u.name, 'user_email', u.email,
+        'user_avatar_url', nullif(btrim(u.avatar_url), ''),
         'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
             SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
 FROM
@@ -71,6 +72,7 @@ WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
 SELECT jsonb_build_object(
     'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
     'user_id', u.id, 'user_name', u.name, 'user_email', u.email,
+    'user_avatar_url', nullif(btrim(u.avatar_url), ''),
     'started_at', t.started_at, 'ended_at', t.ended_at,
     'duration_seconds', extract(epoch FROM (t.ended_at - t.started_at)),
     'input_text', t.input_text, 'input_text_truncated', t.input_text_truncated, 'input_kind', t.input_kind,

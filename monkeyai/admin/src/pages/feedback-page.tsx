@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
-import { User02Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +48,7 @@ type Feedback = {
   user_id: string
   user_name?: string
   user_email?: string
+  user_avatar_url?: string | null
   category: Category
   content: string
   rating?: number | null
@@ -467,16 +467,11 @@ export function FeedbackPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                          className="flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                           title={item.user_email || item.user_id}
                           onClick={() => setAccountUserID(item.user_id)}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <UserAvatar src={item.user_avatar_url} />
                           <span className="truncate">
                             {item.user_name || item.user_id}
                           </span>

@@ -974,9 +974,10 @@ func (q *Queries) InitializePolicy(ctx context.Context, value []byte) (pgconn.Co
 const listEntries = `-- name: ListEntries :many
 SELECT
     (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
-	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text))::jsonb
+	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
+    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
 FROM
-    credit_ledger_entries e
+    credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
 WHERE ($1::text = ''
     OR COALESCE(e.user_name, '')
     ILIKE '%' || $1::text || '%'
@@ -1663,17 +1664,18 @@ func (q *Queries) ModelPricing(ctx context.Context, id string) (ModelPricingRow,
 
 const pendingTransactions = `-- name: PendingTransactions :many
 SELECT
-    jsonb_build_object('id', id, 'user_id', user_id, 'user_name', user_name, 'user_email',
-	user_email, 'item_name', item_name, 'category', category, 'mode', MODE, 'status',
-	status, 'reserve', reserve::text, 'amount', amount::text, 'error_code', error_code,
-	'attempts', attempts, 'started_at', started_at)
+    jsonb_build_object('id', t.id, 'user_id', t.user_id, 'user_name', t.user_name, 'user_email',
+    t.user_email, 'user_avatar_url', nullif(btrim(u.avatar_url), ''),
+    'item_name', t.item_name, 'category', t.category, 'mode', t.mode, 'status',
+    t.status, 'reserve', t.reserve::text, 'amount', t.amount::text, 'error_code', t.error_code,
+    'attempts', t.attempts, 'started_at', t.started_at)
 FROM
-    billing_transactions
+    billing_transactions t LEFT JOIN users u ON u.id = t.user_id
 WHERE
-    status NOT IN ('settled', 'released', 'rejected')
+    t.status NOT IN ('settled', 'released', 'rejected')
 ORDER BY
-    started_at,
-    id
+    t.started_at,
+    t.id
 LIMIT $1 OFFSET $2
 `
 

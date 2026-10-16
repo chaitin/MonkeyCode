@@ -6,12 +6,12 @@ import {
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -597,16 +597,11 @@ export function BillingDetailsPage() {
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={e.user_email}
                             onClick={() => setAccountUserID(e.user_id)}
                           >
-                            <HugeiconsIcon
-                              icon={User02Icon}
-                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            />
+                            <UserAvatar src={e.user_avatar_url} />
                             <span className="truncate">{e.user_name}</span>
                           </button>
                         </TableCell>
@@ -746,16 +741,11 @@ export function BillingDetailsPage() {
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
+                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={tx.user_email}
                             onClick={() => setAccountUserID(tx.user_id)}
                           >
-                            <HugeiconsIcon
-                              icon={User02Icon}
-                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            />
+                            <UserAvatar src={tx.user_avatar_url} />
                             <span className="truncate">{tx.user_name}</span>
                           </button>
                         </TableCell>
