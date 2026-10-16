@@ -31,19 +31,8 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { api } from "@/lib/api"
+import { publishLicenseStatus, type LicenseInfo } from "@/lib/license"
 import { cn } from "@/lib/utils"
-
-type LicenseInfo = {
-  state: "missing" | "valid" | "expired" | "invalid"
-  product_type?: string
-  client_name?: string
-  client_id?: string
-  custom_product_name?: string
-  machine_ids?: string[]
-  max_members?: number
-  not_valid_before?: number
-  not_valid_after?: number
-}
 
 type MachineCodeResponse = {
   machine_code: string
@@ -104,6 +93,7 @@ export function PaidLicenseCard({ className }: { className?: string }) {
         body: form,
       })
       setInfo(next)
+      publishLicenseStatus(next)
       setFile(null)
       formElement.reset()
       setImportOpen(false)

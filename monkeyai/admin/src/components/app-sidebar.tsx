@@ -4,6 +4,7 @@ import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { NavLink } from "react-router-dom"
 
+import paidLicenseLogo from "@/assets/paid-license-logo.webp"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import {
@@ -25,6 +26,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { CONSOLE_ROUTES, DEFAULT_CONSOLE_PATH } from "@/lib/routes"
 import { useAuth } from "@/hooks/use-auth"
+import { useLicenseStatus } from "@/hooks/use-license-status"
 
 export function AppSidebar({
   onLogout,
@@ -36,6 +38,7 @@ export function AppSidebar({
 }) {
   const { i18n, t } = useTranslation()
   const { user } = useAuth()
+  const license = useLicenseStatus()
   const navMain = [
     {
       title: t("sections.statistics"),
@@ -162,16 +165,26 @@ export function AppSidebar({
               render={<NavLink to={DEFAULT_CONSOLE_PATH} />}
             >
               <div className="size-8 shrink-0 overflow-hidden rounded-lg">
-                <img
-                  src="/logo-light.png"
-                  alt=""
-                  className="size-full object-contain dark:hidden"
-                />
-                <img
-                  src="/logo-dark.png"
-                  alt=""
-                  className="hidden size-full object-contain dark:block"
-                />
+                {license?.state === "valid" ? (
+                  <img
+                    src={paidLicenseLogo}
+                    alt=""
+                    className="size-full object-contain"
+                  />
+                ) : (
+                  <>
+                    <img
+                      src="/logo-light.png"
+                      alt=""
+                      className="size-full object-contain dark:hidden"
+                    />
+                    <img
+                      src="/logo-dark.png"
+                      alt=""
+                      className="hidden size-full object-contain dark:block"
+                    />
+                  </>
+                )}
               </div>
               <div className="grid flex-1 text-start text-sm leading-tight">
                 <span className="truncate font-medium">{productName}</span>
