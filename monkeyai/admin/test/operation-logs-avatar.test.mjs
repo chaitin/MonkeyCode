@@ -149,17 +149,21 @@ test("operation log pagination uses matching arrow icons", async () => {
   assert.doesNotMatch(source, /ArrowLeft02Icon/)
 })
 
-test("operation log actors use the same blue user icon as tree members", async () => {
+test("operation log actors use their avatar with the bundled image as fallback", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /User02Icon/)
+  assert.match(source, /@\/assets\/default-user-avatar\.webp/)
   assert.match(
     source,
-    /icon=\{User02Icon\}\s+className="size-4 shrink-0 text-blue-600 dark:text-blue-400"/
+    /<AvatarImage[\s\S]*?src=\{log\.actor_avatar_url\?\.trim\(\) \|\| undefined\}/
   )
-  assert.doesNotMatch(source, /<Avatar|AvatarFallback|actor_name\.slice/)
+  assert.match(
+    source,
+    /<AvatarFallback>[\s\S]*?<img\s+src=\{defaultUserAvatar\}/
+  )
+  assert.doesNotMatch(source, /User02Icon|actor_name\.slice/)
   assert.match(source, /title=\{log\.actor_email \?\? undefined\}/)
   assert.match(source, /<span className="truncate">\s*\{log\.actor_name\}/)
   assert.doesNotMatch(source, /<span className="truncate font-medium">/)

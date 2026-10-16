@@ -27,6 +27,9 @@ WITH filtered AS NOT MATERIALIZED (
     SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
         request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
     FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset)
+), enriched AS (
+    SELECT page.*, nullif(btrim(u.avatar_url), '') AS actor_avatar_url
+    FROM page LEFT JOIN users u ON u.id = page.actor_user_id
 )
 SELECT jsonb_build_object('total', (SELECT count(*) FROM filtered), 'items',
-    coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY occurred_at DESC, id DESC) FROM page), '[]'::jsonb))::jsonb AS data;
+    coalesce((SELECT jsonb_agg(to_jsonb(enriched) ORDER BY occurred_at DESC, id DESC) FROM enriched), '[]'::jsonb))::jsonb AS data;

@@ -5,11 +5,11 @@ import {
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import defaultUserAvatar from "@/assets/default-user-avatar.webp"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { DatePickerField } from "@/components/date-picker-field"
@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -64,6 +65,7 @@ type AuditLog = {
   actor_user_id: string | null
   actor_name: string
   actor_email: string | null
+  actor_avatar_url?: string | null
   action: string
   category: LogCategory
   target_type: string | null
@@ -500,12 +502,19 @@ export function OperationLogsPage() {
                               setAccountUserID(log.actor_user_id)
                           }}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <Avatar size="sm">
+                            <AvatarImage
+                              src={log.actor_avatar_url?.trim() || undefined}
+                              alt=""
+                            />
+                            <AvatarFallback>
+                              <img
+                                src={defaultUserAvatar}
+                                alt=""
+                                className="size-full rounded-full object-cover"
+                              />
+                            </AvatarFallback>
+                          </Avatar>
                           <span className="truncate">{log.actor_name}</span>
                         </button>
                       </TableCell>

@@ -5080,7 +5080,7 @@ components:
           description: 每页条数。
     AuditRecord:
       type: object
-      required: [id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, request_id]
+      required: [id, actor_type, actor_user_id, actor_name, actor_email, actor_avatar_url, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, request_id]
       properties:
         id:
           type: string
@@ -5100,6 +5100,9 @@ components:
         actor_email:
           type: [string, "null"]
           description: "操作者邮箱快照。"
+        actor_avatar_url:
+          type: [string, "null"]
+          description: "操作者当前的头像地址；无关联用户或头像为空时为 null，客户端使用默认头像。"
         action:
           type: string
           description: "操作标识；客户端应为未知标识保留原文回退。"
