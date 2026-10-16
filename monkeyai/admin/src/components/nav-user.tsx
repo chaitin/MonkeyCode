@@ -72,7 +72,9 @@ export function NavUser({
                 <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
                   <UserAvatar src={user.avatar_url} size="default" />
                   <div className="grid flex-1 text-start text-sm leading-tight">
-                    <span className="truncate font-medium">{user.name}</span>
+                    <span className="truncate text-foreground">
+                      {user.name}
+                    </span>
                     <span className="truncate text-xs">{user.email}</span>
                   </div>
                 </div>
