@@ -192,7 +192,7 @@ export function ConversationHistoryPage() {
     visibleColumns.has(column)
   )
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(50)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
 
   const [previousTaskId, setPreviousTaskId] = useState(selectedTaskId)
@@ -226,7 +226,7 @@ export function ConversationHistoryPage() {
   const currentPage = request.data?.page ?? page
   const start = (currentPage - 1) * pageSize
   const visible = request.data?.items ?? []
-  const pageSizeItems = [10, 20, 50].map((size) => ({
+  const pageSizeItems = [20, 50, 100, 200, 500].map((size) => ({
     value: String(size),
     label: t("pages.operationLogs.pagination.perPage", { count: size }),
   }))
