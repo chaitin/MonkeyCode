@@ -16,8 +16,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const MaxPackage = 20 << 20
-const MaxExpanded = 50 << 20
+const MaxPackage = 500 << 20
+const MaxExpanded = 1 << 30
+const MaxFiles = 5000
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
@@ -31,14 +32,14 @@ type Package struct {
 func Parse(b []byte) (Package, error) {
 	p := Package{Files: map[string][]byte{}, Bytes: b}
 	if len(b) > MaxPackage {
-		return p, fmt.Errorf("技能包超过 20 MiB")
+		return p, fmt.Errorf("技能包超过 %d MiB", MaxPackage>>20)
 	}
 	r, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 	if err != nil {
 		return p, fmt.Errorf("无效 ZIP")
 	}
-	if len(r.File) > 500 {
-		return p, fmt.Errorf("技能包超过 500 个文件")
+	if len(r.File) > MaxFiles {
+		return p, fmt.Errorf("技能包超过 %d 个文件", MaxFiles)
 	}
 	root := ""
 	found := false

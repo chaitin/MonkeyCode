@@ -787,19 +787,19 @@ export const enUS = {
       content: "Skill content (SKILL.md)",
       contentPlaceholder: "Enter the skill instructions",
       skillPackage: "Skill package",
-      packageHint: "Upload the skill directory as a ZIP file, up to 20 MB.",
+      packageHint: "Upload the skill directory as a ZIP file, up to 500 MiB.",
       packageOptionalHint:
         "Upload a new ZIP skill package only when replacing its contents.",
       packageParsing: "Inspecting skill package…",
       packageSummary: "{{count}} files · {{size}} unpacked",
       packageErrors: {
-        fileTooLarge: "The skill package must not exceed 20 MB.",
+        fileTooLarge: "The skill package must not exceed 500 MiB.",
         invalidZip:
           "This file cannot be read. Upload a valid ZIP skill package.",
         unsafePath: "The skill package contains an unsafe file path.",
         symlink: "The skill package must not contain symbolic links.",
-        tooManyFiles: "The skill package can contain at most 500 files.",
-        unpackedTooLarge: "The unpacked skill package must not exceed 50 MB.",
+        tooManyFiles: "The skill package can contain at most 5000 files.",
+        unpackedTooLarge: "The unpacked skill package must not exceed 1 GiB.",
         missingManifest:
           "No SKILL.md was found. This is not a valid skill package.",
         multipleManifests:

@@ -3,7 +3,9 @@ package skill
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -19,6 +21,98 @@ func archive(entries map[string]string) []byte {
 }
 
 const manifest = "---\nname: review\ndescription: Review\ncustom: kept\n---\nOriginal\n"
+
+func TestPackageSizeLimits(t *testing.T) {
+	if MaxPackage != 500<<20 || MaxExpanded != 1<<30 {
+		t.Fatalf("技能包应允许 500 MiB 压缩、1 GiB 解压: %d, %d", MaxPackage, MaxExpanded)
+	}
+	for _, tc := range []struct {
+		name   string
+		method uint16
+		size   int
+	}{
+		{name: "compressed-above-old-limit", method: zip.Store, size: 21 << 20},
+		{name: "expanded-above-old-limit", method: zip.Deflate, size: 51 << 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b bytes.Buffer
+			z := zip.NewWriter(&b)
+			for name, data := range map[string][]byte{"SKILL.md": []byte(manifest), "data.bin": make([]byte, tc.size)} {
+				w, err := z.CreateHeader(&zip.FileHeader{Name: name, Method: tc.method})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := w.Write(data); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := z.Close(); err != nil {
+				t.Fatal(err)
+			}
+			p, err := Parse(b.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(p.Files["data.bin"]) != tc.size {
+				t.Fatal("解压后文件大小不一致")
+			}
+		})
+	}
+}
+
+func TestPackageCompressedSizeLimit(t *testing.T) {
+	data := make([]byte, (500<<20)+1)
+	for _, tc := range []struct {
+		size int
+		want string
+	}{
+		{size: 500 << 20, want: "无效 ZIP"},
+		{size: (500 << 20) + 1, want: "技能包超过 500 MiB"},
+	} {
+		// 空内容只验证大小门槛；未超限时应继续进入 ZIP 格式校验。
+		if _, err := Parse(data[:tc.size]); err == nil || err.Error() != tc.want {
+			t.Fatalf("大小 %d 的校验错误不一致: %v", tc.size, err)
+		}
+	}
+}
+
+func TestPackageRejectOversizedExpandedFile(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	if _, err := z.CreateRaw(&zip.FileHeader{Name: "data.bin", Method: zip.Store, UncompressedSize64: (1 << 30) + 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(b.Bytes()); err == nil || err.Error() != "解包大小超限" {
+		t.Fatalf("应在读取内容前拒绝解压后超过 1 GiB 的文件: %v", err)
+	}
+}
+
+func TestPackageFileCountLimit(t *testing.T) {
+	for _, count := range []int{5000, 5001} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			entries := map[string]string{"SKILL.md": manifest}
+			for i := 1; i < count; i++ {
+				entries[fmt.Sprintf("reference-%d.md", i)] = "reference"
+			}
+			p, err := Parse(archive(entries))
+			if count > 5000 {
+				if err == nil || !strings.Contains(err.Error(), "技能包超过 5000 个文件") {
+					t.Fatalf("应拒绝超过 5000 个文件的技能包: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(p.Files) != count {
+				t.Fatalf("文件数量不一致: got %d, want %d", len(p.Files), count)
+			}
+		})
+	}
+}
 
 func TestPackageRewrite(t *testing.T) {
 	p, err := Parse(archive(map[string]string{"root/SKILL.md": manifest, "root/scripts/test.sh": "echo ok"}))

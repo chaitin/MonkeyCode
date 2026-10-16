@@ -438,19 +438,19 @@ export const es419 = {
       contentPlaceholder: "Ingresa las instrucciones de la habilidad",
       skillPackage: "Paquete de habilidad",
       packageHint:
-        "Sube el directorio de la habilidad como archivo ZIP, de hasta 20 MB.",
+        "Sube el directorio de la habilidad como archivo ZIP, de hasta 500 MiB.",
       packageOptionalHint:
         "Sube un nuevo paquete ZIP solo para reemplazar su contenido.",
       packageParsing: "Inspeccionando el paquete de habilidad…",
       packageSummary: "{{count}} archivos · {{size}} descomprimidos",
       packageErrors: {
-        fileTooLarge: "El paquete de habilidad no puede superar los 20 MB.",
+        fileTooLarge: "El paquete de habilidad no puede superar los 500 MiB.",
         invalidZip: "No se puede leer el archivo. Sube un paquete ZIP válido.",
         unsafePath: "El paquete contiene una ruta de archivo no segura.",
         symlink: "El paquete no puede contener enlaces simbólicos.",
-        tooManyFiles: "El paquete puede contener como máximo 500 archivos.",
+        tooManyFiles: "El paquete puede contener como máximo 5000 archivos.",
         unpackedTooLarge:
-          "El paquete descomprimido no puede superar los 50 MB.",
+          "El paquete descomprimido no puede superar 1 GiB.",
         missingManifest:
           "No se encontró SKILL.md. Este no es un paquete de habilidad válido.",
         multipleManifests:

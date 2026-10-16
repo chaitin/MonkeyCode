@@ -441,18 +441,18 @@ export const frFR = {
       contentPlaceholder: "Saisissez les instructions de la compétence",
       skillPackage: "Paquet de compétence",
       packageHint:
-        "Chargez le dossier de compétence au format ZIP, jusqu’à 20 Mo.",
+        "Chargez le dossier de compétence au format ZIP, jusqu’à 500 MiB.",
       packageOptionalHint:
         "Chargez un nouveau paquet ZIP uniquement pour remplacer son contenu.",
       packageParsing: "Analyse du paquet de compétence…",
       packageSummary: "{{count}} fichiers · {{size}} décompressés",
       packageErrors: {
-        fileTooLarge: "Le paquet de compétence ne doit pas dépasser 20 Mo.",
+        fileTooLarge: "Le paquet de compétence ne doit pas dépasser 500 MiB.",
         invalidZip: "Ce fichier est illisible. Chargez un paquet ZIP valide.",
         unsafePath: "Le paquet contient un chemin de fichier non sécurisé.",
         symlink: "Le paquet ne doit pas contenir de liens symboliques.",
-        tooManyFiles: "Le paquet peut contenir au maximum 500 fichiers.",
-        unpackedTooLarge: "Le paquet décompressé ne doit pas dépasser 50 Mo.",
+        tooManyFiles: "Le paquet peut contenir au maximum 5000 fichiers.",
+        unpackedTooLarge: "Le paquet décompressé ne doit pas dépasser 1 GiB.",
         missingManifest:
           "Aucun SKILL.md trouvé. Ce paquet de compétence n’est pas valide.",
         multipleManifests:

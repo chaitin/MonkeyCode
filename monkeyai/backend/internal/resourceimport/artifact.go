@@ -106,7 +106,7 @@ func mergeTranslations(manifest, artifact map[string]string) map[string]string {
 }
 
 func zipSkillFiles(data []byte) (map[string][]byte, error) {
-	files, err := readZIP(data, skill.MaxPackage, skill.MaxExpanded, 500, skill.MaxExpanded)
+	files, err := readZIP(data, skill.MaxPackage, skill.MaxExpanded, skill.MaxFiles, skill.MaxExpanded)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func parseEntrySkill(entry Entry, archive []byte) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
-	original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, 500, skill.MaxExpanded)
+	original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, skill.MaxFiles, skill.MaxExpanded)
 	if err != nil {
 		return Skill{}, err
 	}

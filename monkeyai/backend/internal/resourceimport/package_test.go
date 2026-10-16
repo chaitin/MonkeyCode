@@ -1,9 +1,11 @@
 package resourceimport
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -347,6 +349,84 @@ func TestParsePackageAndResources(t *testing.T) {
 	}
 	if resources.Skills["demo-skill"].Package.Name != "demo-skill" || len(resources.Skills) != 1 {
 		t.Fatalf("技能解析异常: %+v", resources.Skills)
+	}
+}
+
+func TestImportSkillAboveOldSizeLimits(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	for name, content := range map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo-skill\ndescription: Demo skill\n---\nHello\n"),
+		"data.bin": make([]byte, 51<<20),
+	} {
+		w, err := z.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := packageFixture(t, func(_ *Manifest, files map[string][]byte) {
+		files["agent/skills/demo.zip"] = b.Bytes()
+	})
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Skills["demo-skill"]
+	if item.StoredSize != b.Len() || item.FileCount != 2 {
+		t.Fatal("应完整导入超过原压缩和解压上限的技能包")
+	}
+}
+
+func TestImportSkillFileCountLimit(t *testing.T) {
+	for _, root := range []string{"", "root/"} {
+		for _, count := range []int{5000, 5001} {
+			t.Run(fmt.Sprintf("%s%d", root, count), func(t *testing.T) {
+				data := packageFixture(t, func(_ *Manifest, files map[string][]byte) {
+					entries := map[string][]byte{
+						root + "SKILL.md": []byte("---\nname: demo-skill\ndescription: Demo skill\n---\nHello\n"),
+					}
+					for i := 1; i < count; i++ {
+						entries[fmt.Sprintf("%sreference-%d.md", root, i)] = []byte("reference")
+					}
+					archive, err := makeZIP(entries)
+					if err != nil {
+						t.Fatal(err)
+					}
+					files["agent/skills/demo.zip"] = archive
+				})
+				pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				resources, err := ParseResources(pkg)
+				if count > 5000 {
+					if err == nil || !strings.Contains(err.Error(), "条目数超限") {
+						t.Fatalf("应拒绝超过 5000 个文件的技能包: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := resources.Skills["demo-skill"]
+				if item.FileCount != count {
+					t.Fatalf("文件数量不一致: got %d, want %d", item.FileCount, count)
+				}
+				if _, err := pkg.SkillBytes(item); err != nil {
+					t.Fatalf("应能按需重读技能包: %v", err)
+				}
+			})
+		}
 	}
 }
 

@@ -420,20 +420,20 @@ export const koKR = {
       contentPlaceholder: "스킬 지침을 입력하세요",
       skillPackage: "스킬 패키지",
       packageHint:
-        "스킬 디렉터리를 ZIP 형식으로 업로드하세요. 최대 20 MB입니다.",
+        "스킬 디렉터리를 ZIP 형식으로 업로드하세요. 최대 500 MiB입니다.",
       packageOptionalHint:
         "스킬 내용을 교체할 때만 새 ZIP 스킬 패키지를 업로드하세요.",
       packageParsing: "스킬 패키지를 검사하는 중…",
       packageSummary: "파일 {{count}}개 · 압축 해제 후 {{size}}",
       packageErrors: {
-        fileTooLarge: "스킬 패키지는 20 MB를 초과할 수 없습니다.",
+        fileTooLarge: "스킬 패키지는 500 MiB를 초과할 수 없습니다.",
         invalidZip:
           "파일을 읽을 수 없습니다. 유효한 ZIP 스킬 패키지를 업로드하세요.",
         unsafePath: "스킬 패키지에 안전하지 않은 파일 경로가 있습니다.",
         symlink: "스킬 패키지에는 심볼릭 링크를 포함할 수 없습니다.",
-        tooManyFiles: "스킬 패키지는 최대 500개의 파일을 포함할 수 있습니다.",
+        tooManyFiles: "스킬 패키지는 최대 5000개의 파일을 포함할 수 있습니다.",
         unpackedTooLarge:
-          "압축 해제된 스킬 패키지는 50 MB를 초과할 수 없습니다.",
+          "압축 해제된 스킬 패키지는 1 GiB를 초과할 수 없습니다.",
         missingManifest:
           "SKILL.md를 찾을 수 없습니다. 유효한 스킬 패키지가 아닙니다.",
         multipleManifests:

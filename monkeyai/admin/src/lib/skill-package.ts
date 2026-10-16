@@ -3,9 +3,9 @@ import type { JSZipObject } from "jszip"
 
 type ParseDocument = (typeof import("yaml"))["parseDocument"]
 
-const MAX_PACKAGE_SIZE = 20 * 1024 * 1024
-const MAX_UNPACKED_SIZE = 50 * 1024 * 1024
-const MAX_FILE_COUNT = 500
+const MAX_PACKAGE_SIZE = 500 * 1024 * 1024
+const MAX_UNPACKED_SIZE = 1024 * 1024 * 1024
+const MAX_FILE_COUNT = 5000
 const MAX_MANIFEST_SIZE = 512 * 1024
 
 export type SkillPackageErrorCode =
