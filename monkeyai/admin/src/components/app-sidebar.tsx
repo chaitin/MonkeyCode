@@ -7,6 +7,7 @@ import { NavLink } from "react-router-dom"
 import paidLicenseLogo from "@/assets/paid-license-logo.webp"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { VersionUpgradeButton } from "@/components/version-upgrade-button"
 import {
   Sidebar,
   SidebarContent,
@@ -200,6 +201,7 @@ export function AppSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>
+        <VersionUpgradeButton className="w-full" variant="outline" showIcon />
         <NavUser
           user={{
             name: user?.name ?? "MonkeyAI Admin",
