@@ -140,7 +140,7 @@ export function GroupTreeItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 border-0 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
     />
   )
@@ -177,6 +177,7 @@ export function GroupTreeItem({
         <div
           className={cn(
             "group/group-row flex items-center rounded-md pe-1 transition-colors",
+            multiSelect && "gap-2",
             !multiSelect && "cursor-grab active:cursor-grabbing",
             (hovered || menuOpen) && "bg-foreground/5",
             dropHovered && "bg-foreground/5 text-foreground/60"
