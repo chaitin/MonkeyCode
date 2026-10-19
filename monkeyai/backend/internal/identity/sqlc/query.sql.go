@@ -28,6 +28,26 @@ func (q *Queries) AssignCreatedUserGroups(ctx context.Context, arg AssignCreated
 	return err
 }
 
+const bindGrant = `-- name: BindGrant :execrows
+UPDATE oauth_grants SET machine_id = $2, key_id = $3
+WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()
+    AND (machine_id IS NULL OR (machine_id = $2 AND key_id = $3))
+`
+
+type BindGrantParams struct {
+	ID        string
+	MachineID *string
+	KeyID     *string
+}
+
+func (q *Queries) BindGrant(ctx context.Context, arg BindGrantParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindGrant, arg.ID, arg.MachineID, arg.KeyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cleanEmailCodes = `-- name: CleanEmailCodes :exec
 DELETE FROM email_codes WHERE expires_at < now()
 `
@@ -73,19 +93,26 @@ WHERE
 RETURNING
     connection_id,
     coalesce(authorization_request_id::text, '')::text AS authorization_request_id,
-    purpose
+    purpose,
+    coalesce(device_request_id::text,'')::text AS device_request_id
 `
 
 type ConsumeLoginStateRow struct {
 	ConnectionID           string
 	AuthorizationRequestID string
 	Purpose                string
+	DeviceRequestID        string
 }
 
 func (q *Queries) ConsumeLoginState(ctx context.Context, stateHash string) (ConsumeLoginStateRow, error) {
 	row := q.db.QueryRow(ctx, consumeLoginState, stateHash)
 	var i ConsumeLoginStateRow
-	err := row.Scan(&i.ConnectionID, &i.AuthorizationRequestID, &i.Purpose)
+	err := row.Scan(
+		&i.ConnectionID,
+		&i.AuthorizationRequestID,
+		&i.Purpose,
+		&i.DeviceRequestID,
+	)
 	return i, err
 }
 
@@ -107,8 +134,8 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 
 const createAuthorizationCode = `-- name: CreateAuthorizationCode :execresult
 INSERT INTO oauth_authorization_codes (code_hash, authorization_request_id, user_id, client_id, redirect_uri,
-    code_challenge, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    code_challenge, expires_at, scopes, audience)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateAuthorizationCodeParams struct {
@@ -119,6 +146,8 @@ type CreateAuthorizationCodeParams struct {
 	RedirectUri            string
 	CodeChallenge          string
 	ExpiresAt              time.Time
+	Scopes                 []string
+	Audience               string
 }
 
 func (q *Queries) CreateAuthorizationCode(ctx context.Context, arg CreateAuthorizationCodeParams) (pgconn.CommandTag, error) {
@@ -130,12 +159,14 @@ func (q *Queries) CreateAuthorizationCode(ctx context.Context, arg CreateAuthori
 		arg.RedirectUri,
 		arg.CodeChallenge,
 		arg.ExpiresAt,
+		arg.Scopes,
+		arg.Audience,
 	)
 }
 
 const createAuthorizationRequest = `-- name: CreateAuthorizationRequest :one
-INSERT INTO oauth_authorization_requests (client_id, redirect_uri, state, code_challenge, code_challenge_method, expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO oauth_authorization_requests (client_id, redirect_uri, state, code_challenge, code_challenge_method, expires_at, scopes, audience)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING
     id
 `
@@ -147,6 +178,8 @@ type CreateAuthorizationRequestParams struct {
 	CodeChallenge       string
 	CodeChallengeMethod string
 	ExpiresAt           time.Time
+	Scopes              []string
+	Audience            string
 }
 
 func (q *Queries) CreateAuthorizationRequest(ctx context.Context, arg CreateAuthorizationRequestParams) (string, error) {
@@ -157,6 +190,8 @@ func (q *Queries) CreateAuthorizationRequest(ctx context.Context, arg CreateAuth
 		arg.CodeChallenge,
 		arg.CodeChallengeMethod,
 		arg.ExpiresAt,
+		arg.Scopes,
+		arg.Audience,
 	)
 	var id string
 	err := row.Scan(&id)
@@ -198,6 +233,49 @@ type CreateEmailUserParams struct {
 func (q *Queries) CreateEmailUser(ctx context.Context, arg CreateEmailUserParams) error {
 	_, err := q.db.Exec(ctx, createEmailUser, arg.Name, arg.Email)
 	return err
+}
+
+const createGrant = `-- name: CreateGrant :one
+INSERT INTO oauth_grants(user_id, client_id, scopes, audience, expires_at)
+VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, client_id, scopes, audience, purpose, machine_id, key_id, revocation_version, expires_at, created_at, revoked_at, revoke_reason, requested_machine_id, requested_key_id, restore_approved
+`
+
+type CreateGrantParams struct {
+	UserID    string
+	ClientID  string
+	Scopes    []string
+	Audience  string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (OauthGrant, error) {
+	row := q.db.QueryRow(ctx, createGrant,
+		arg.UserID,
+		arg.ClientID,
+		arg.Scopes,
+		arg.Audience,
+		arg.ExpiresAt,
+	)
+	var i OauthGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Scopes,
+		&i.Audience,
+		&i.Purpose,
+		&i.MachineID,
+		&i.KeyID,
+		&i.RevocationVersion,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokeReason,
+		&i.RequestedMachineID,
+		&i.RequestedKeyID,
+		&i.RestoreApproved,
+	)
+	return i, err
 }
 
 const createIdentityUser = `-- name: CreateIdentityUser :one
@@ -274,9 +352,9 @@ func (q *Queries) CreateInitialAdmin(ctx context.Context, arg CreateInitialAdmin
 }
 
 const createLoginState = `-- name: CreateLoginState :execresult
-INSERT INTO oauth_login_states (state_hash, connection_id, authorization_request_id, purpose, expires_at)
+INSERT INTO oauth_login_states (state_hash, connection_id, authorization_request_id, purpose, expires_at,device_request_id)
     VALUES ($1, $2, NULLIF ($3::text, '')::uuid,
-	$4, $5)
+	$4, $5,NULLIF($6::text,'')::uuid)
 `
 
 type CreateLoginStateParams struct {
@@ -285,6 +363,7 @@ type CreateLoginStateParams struct {
 	AuthorizationRequestID string
 	Purpose                string
 	ExpiresAt              time.Time
+	DeviceRequestID        string
 }
 
 func (q *Queries) CreateLoginState(ctx context.Context, arg CreateLoginStateParams) (pgconn.CommandTag, error) {
@@ -294,12 +373,13 @@ func (q *Queries) CreateLoginState(ctx context.Context, arg CreateLoginStatePara
 		arg.AuthorizationRequestID,
 		arg.Purpose,
 		arg.ExpiresAt,
+		arg.DeviceRequestID,
 	)
 }
 
 const createToken = `-- name: CreateToken :execresult
-INSERT INTO oauth_tokens (user_id, client_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO oauth_tokens (user_id, client_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at, grant_id, parent_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type CreateTokenParams struct {
@@ -309,6 +389,8 @@ type CreateTokenParams struct {
 	RefreshTokenHash string
 	AccessExpiresAt  time.Time
 	RefreshExpiresAt time.Time
+	GrantID          string
+	ParentID         *string
 }
 
 func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (pgconn.CommandTag, error) {
@@ -319,6 +401,8 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (pgcon
 		arg.RefreshTokenHash,
 		arg.AccessExpiresAt,
 		arg.RefreshExpiresAt,
+		arg.GrantID,
+		arg.ParentID,
 	)
 }
 
@@ -401,6 +485,20 @@ func (q *Queries) EmailDeliveryLimited(ctx context.Context, arg EmailDeliveryLim
 	return limited, err
 }
 
+const extendGrant = `-- name: ExtendGrant :exec
+UPDATE oauth_grants SET expires_at = $2 WHERE id = $1 AND revoked_at IS NULL
+`
+
+type ExtendGrantParams struct {
+	ID        string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) ExtendGrant(ctx context.Context, arg ExtendGrantParams) error {
+	_, err := q.db.Exec(ctx, extendGrant, arg.ID, arg.ExpiresAt)
+	return err
+}
+
 const failEmailCode = `-- name: FailEmailCode :exec
 UPDATE email_codes SET attempts = attempts + 1 WHERE email = $1 AND purpose = $2
 `
@@ -415,24 +513,63 @@ func (q *Queries) FailEmailCode(ctx context.Context, arg FailEmailCodeParams) er
 	return err
 }
 
+const findTokenGrant = `-- name: FindTokenGrant :one
+SELECT grant_id FROM oauth_tokens
+WHERE client_id = $2 AND (access_token_hash = $1 OR refresh_token_hash = $1)
+`
+
+type FindTokenGrantParams struct {
+	AccessTokenHash string
+	ClientID        string
+}
+
+func (q *Queries) FindTokenGrant(ctx context.Context, arg FindTokenGrantParams) (string, error) {
+	row := q.db.QueryRow(ctx, findTokenGrant, arg.AccessTokenHash, arg.ClientID)
+	var grant_id string
+	err := row.Scan(&grant_id)
+	return grant_id, err
+}
+
 const getAccessCredential = `-- name: GetAccessCredential :one
-SELECT t.access_expires_at, t.user_id
+SELECT t.access_expires_at, t.user_id, g.id AS grant_id, t.client_id,
+    g.scopes, g.audience, g.purpose, g.machine_id, g.key_id, g.revocation_version
 FROM oauth_tokens t
 JOIN users u ON u.id = t.user_id
+JOIN oauth_grants g ON g.id = t.grant_id
 WHERE t.access_token_hash = $1
     AND t.revoked_at IS NULL AND t.access_expires_at > now()
+    AND g.revoked_at IS NULL AND g.expires_at > now()
     AND u.status = 'active' AND u.deleted_at IS NULL
 `
 
 type GetAccessCredentialRow struct {
-	AccessExpiresAt time.Time
-	UserID          string
+	AccessExpiresAt   time.Time
+	UserID            string
+	GrantID           string
+	ClientID          string
+	Scopes            []string
+	Audience          string
+	Purpose           string
+	MachineID         *string
+	KeyID             *string
+	RevocationVersion int64
 }
 
 func (q *Queries) GetAccessCredential(ctx context.Context, accessTokenHash string) (GetAccessCredentialRow, error) {
 	row := q.db.QueryRow(ctx, getAccessCredential, accessTokenHash)
 	var i GetAccessCredentialRow
-	err := row.Scan(&i.AccessExpiresAt, &i.UserID)
+	err := row.Scan(
+		&i.AccessExpiresAt,
+		&i.UserID,
+		&i.GrantID,
+		&i.ClientID,
+		&i.Scopes,
+		&i.Audience,
+		&i.Purpose,
+		&i.MachineID,
+		&i.KeyID,
+		&i.RevocationVersion,
+	)
 	return i, err
 }
 
@@ -444,7 +581,9 @@ SELECT
     redirect_uri,
     code_challenge,
     expires_at,
-    redeemed_at
+    redeemed_at,
+    scopes,
+    audience
 FROM
     oauth_authorization_codes
 WHERE
@@ -459,6 +598,8 @@ type GetAuthorizationCodeRow struct {
 	CodeChallenge string
 	ExpiresAt     time.Time
 	RedeemedAt    *time.Time
+	Scopes        []string
+	Audience      string
 }
 
 func (q *Queries) GetAuthorizationCode(ctx context.Context, codeHash string) (GetAuthorizationCodeRow, error) {
@@ -472,6 +613,8 @@ func (q *Queries) GetAuthorizationCode(ctx context.Context, codeHash string) (Ge
 		&i.CodeChallenge,
 		&i.ExpiresAt,
 		&i.RedeemedAt,
+		&i.Scopes,
+		&i.Audience,
 	)
 	return i, err
 }
@@ -485,7 +628,9 @@ SELECT
     code_challenge,
     code_challenge_method,
     expires_at,
-    completed_at
+    completed_at,
+    scopes,
+    audience
 FROM
     oauth_authorization_requests
 WHERE
@@ -501,6 +646,8 @@ type GetAuthorizationRequestRow struct {
 	CodeChallengeMethod string
 	ExpiresAt           time.Time
 	CompletedAt         *time.Time
+	Scopes              []string
+	Audience            string
 }
 
 func (q *Queries) GetAuthorizationRequest(ctx context.Context, id string) (GetAuthorizationRequestRow, error) {
@@ -515,6 +662,8 @@ func (q *Queries) GetAuthorizationRequest(ctx context.Context, id string) (GetAu
 		&i.CodeChallengeMethod,
 		&i.ExpiresAt,
 		&i.CompletedAt,
+		&i.Scopes,
+		&i.Audience,
 	)
 	return i, err
 }
@@ -588,6 +737,36 @@ func (q *Queries) GetEmailCode(ctx context.Context, arg GetEmailCodeParams) (Get
 	row := q.db.QueryRow(ctx, getEmailCode, arg.Email, arg.Purpose)
 	var i GetEmailCodeRow
 	err := row.Scan(&i.CodeHash, &i.Attempts)
+	return i, err
+}
+
+const getGrant = `-- name: GetGrant :one
+SELECT g.id, g.user_id, g.client_id, g.scopes, g.audience, g.purpose, g.machine_id, g.key_id, g.revocation_version, g.expires_at, g.created_at, g.revoked_at, g.revoke_reason, g.requested_machine_id, g.requested_key_id, g.restore_approved FROM oauth_grants g JOIN users u ON u.id = g.user_id
+WHERE g.id = $1 AND g.revoked_at IS NULL AND g.expires_at > now()
+    AND u.status = 'active' AND u.deleted_at IS NULL
+`
+
+func (q *Queries) GetGrant(ctx context.Context, id string) (OauthGrant, error) {
+	row := q.db.QueryRow(ctx, getGrant, id)
+	var i OauthGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Scopes,
+		&i.Audience,
+		&i.Purpose,
+		&i.MachineID,
+		&i.KeyID,
+		&i.RevocationVersion,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokeReason,
+		&i.RequestedMachineID,
+		&i.RequestedKeyID,
+		&i.RestoreApproved,
+	)
 	return i, err
 }
 
@@ -700,6 +879,35 @@ func (q *Queries) GetPasswordUser(ctx context.Context, arg GetPasswordUserParams
 	return i, err
 }
 
+const getRefreshToken = `-- name: GetRefreshToken :one
+SELECT id, user_id, client_id, access_token_hash, refresh_token_hash, access_expires_at, refresh_expires_at, created_at, revoked_at, grant_id, parent_id, rotated_at FROM oauth_tokens WHERE refresh_token_hash = $1 AND client_id = $2
+`
+
+type GetRefreshTokenParams struct {
+	RefreshTokenHash string
+	ClientID         string
+}
+
+func (q *Queries) GetRefreshToken(ctx context.Context, arg GetRefreshTokenParams) (OauthToken, error) {
+	row := q.db.QueryRow(ctx, getRefreshToken, arg.RefreshTokenHash, arg.ClientID)
+	var i OauthToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.AccessTokenHash,
+		&i.RefreshTokenHash,
+		&i.AccessExpiresAt,
+		&i.RefreshExpiresAt,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.GrantID,
+		&i.ParentID,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
 const getTokenUser = `-- name: GetTokenUser :one
 SELECT
     u.id,
@@ -710,28 +918,46 @@ SELECT
     u.status,
     u.joined_at,
     u.last_login_at,
-    t.access_expires_at
+    t.access_expires_at,
+    g.id AS grant_id,
+    t.client_id,
+    g.scopes,
+    g.audience,
+    g.purpose,
+    g.machine_id,
+    g.key_id,
+    g.revocation_version
 FROM
     oauth_tokens t
     JOIN users u ON u.id = t.user_id
+    JOIN oauth_grants g ON g.id = t.grant_id
 WHERE
     t.access_token_hash = $1
     AND t.revoked_at IS NULL
     AND t.access_expires_at > now()
+    AND g.revoked_at IS NULL AND g.expires_at > now()
     AND u.status = 'active'
     AND u.deleted_at IS NULL
 `
 
 type GetTokenUserRow struct {
-	ID              string
-	Name            string
-	Email           string
-	AvatarUrl       string
-	Role            string
-	Status          string
-	JoinedAt        time.Time
-	LastLoginAt     *time.Time
-	AccessExpiresAt time.Time
+	ID                string
+	Name              string
+	Email             string
+	AvatarUrl         string
+	Role              string
+	Status            string
+	JoinedAt          time.Time
+	LastLoginAt       *time.Time
+	AccessExpiresAt   time.Time
+	GrantID           string
+	ClientID          string
+	Scopes            []string
+	Audience          string
+	Purpose           string
+	MachineID         *string
+	KeyID             *string
+	RevocationVersion int64
 }
 
 func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (GetTokenUserRow, error) {
@@ -747,6 +973,14 @@ func (q *Queries) GetTokenUser(ctx context.Context, accessTokenHash string) (Get
 		&i.JoinedAt,
 		&i.LastLoginAt,
 		&i.AccessExpiresAt,
+		&i.GrantID,
+		&i.ClientID,
+		&i.Scopes,
+		&i.Audience,
+		&i.Purpose,
+		&i.MachineID,
+		&i.KeyID,
+		&i.RevocationVersion,
 	)
 	return i, err
 }
@@ -934,6 +1168,59 @@ func (q *Queries) LockEmailDelivery(ctx context.Context) error {
 	return err
 }
 
+const lockGrant = `-- name: LockGrant :one
+SELECT g.id, g.user_id, g.client_id, g.scopes, g.audience, g.purpose, g.machine_id, g.key_id, g.revocation_version, g.expires_at, g.created_at, g.revoked_at, g.revoke_reason, g.requested_machine_id, g.requested_key_id, g.restore_approved, u.status AS user_status, u.deleted_at AS user_deleted_at
+FROM oauth_grants g JOIN users u ON u.id = g.user_id
+WHERE g.id = $1 FOR UPDATE OF g
+`
+
+type LockGrantRow struct {
+	ID                 string
+	UserID             string
+	ClientID           string
+	Scopes             []string
+	Audience           string
+	Purpose            string
+	MachineID          *string
+	KeyID              *string
+	RevocationVersion  int64
+	ExpiresAt          time.Time
+	CreatedAt          time.Time
+	RevokedAt          *time.Time
+	RevokeReason       *string
+	RequestedMachineID *string
+	RequestedKeyID     *string
+	RestoreApproved    bool
+	UserStatus         string
+	UserDeletedAt      *time.Time
+}
+
+func (q *Queries) LockGrant(ctx context.Context, id string) (LockGrantRow, error) {
+	row := q.db.QueryRow(ctx, lockGrant, id)
+	var i LockGrantRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Scopes,
+		&i.Audience,
+		&i.Purpose,
+		&i.MachineID,
+		&i.KeyID,
+		&i.RevocationVersion,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokeReason,
+		&i.RequestedMachineID,
+		&i.RequestedKeyID,
+		&i.RestoreApproved,
+		&i.UserStatus,
+		&i.UserDeletedAt,
+	)
+	return i, err
+}
+
 const lockInitialAdmin = `-- name: LockInitialAdmin :execresult
 SELECT
     pg_advisory_xact_lock(hashtext('monkeyai:initial-admin'))
@@ -1045,30 +1332,29 @@ func (q *Queries) RevokeBrowserSession(ctx context.Context, tokenHash string) (p
 	return q.db.Exec(ctx, revokeBrowserSession, tokenHash)
 }
 
-const revokeRefreshToken = `-- name: RevokeRefreshToken :one
-UPDATE
-    oauth_tokens
-SET
-    revoked_at = now()
-WHERE
-    refresh_token_hash = $1
-    AND client_id = $2
-    AND revoked_at IS NULL
-    AND refresh_expires_at > now()
-RETURNING
-    user_id
+const revokeGrant = `-- name: RevokeGrant :exec
+UPDATE oauth_grants SET revoked_at = now(), revoke_reason = $2,
+    revocation_version = revocation_version + 1
+WHERE id = $1 AND revoked_at IS NULL
 `
 
-type RevokeRefreshTokenParams struct {
-	RefreshTokenHash string
-	ClientID         string
+type RevokeGrantParams struct {
+	ID           string
+	RevokeReason *string
 }
 
-func (q *Queries) RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) (string, error) {
-	row := q.db.QueryRow(ctx, revokeRefreshToken, arg.RefreshTokenHash, arg.ClientID)
-	var user_id string
-	err := row.Scan(&user_id)
-	return user_id, err
+func (q *Queries) RevokeGrant(ctx context.Context, arg RevokeGrantParams) error {
+	_, err := q.db.Exec(ctx, revokeGrant, arg.ID, arg.RevokeReason)
+	return err
+}
+
+const revokeGrantTokens = `-- name: RevokeGrantTokens :exec
+UPDATE oauth_tokens SET revoked_at = coalesce(revoked_at, now()) WHERE grant_id = $1
+`
+
+func (q *Queries) RevokeGrantTokens(ctx context.Context, grantID string) error {
+	_, err := q.db.Exec(ctx, revokeGrantTokens, grantID)
+	return err
 }
 
 const revokeToken = `-- name: RevokeToken :execresult
@@ -1111,12 +1397,30 @@ func (q *Queries) RevokeUserSessions(ctx context.Context, userID string) error {
 }
 
 const revokeUserTokens = `-- name: RevokeUserTokens :exec
-UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL
+WITH grants AS (
+    UPDATE oauth_grants AS g SET revoked_at = now(), revoke_reason = 'user_revocation',
+        revocation_version = g.revocation_version + 1
+    WHERE g.user_id = $1 AND g.revoked_at IS NULL
+)
+UPDATE oauth_tokens AS t SET revoked_at = now() WHERE t.user_id = $1 AND t.revoked_at IS NULL
 `
 
 func (q *Queries) RevokeUserTokens(ctx context.Context, userID string) error {
 	_, err := q.db.Exec(ctx, revokeUserTokens, userID)
 	return err
+}
+
+const rotateToken = `-- name: RotateToken :execrows
+UPDATE oauth_tokens SET rotated_at = now(), revoked_at = now()
+WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL AND refresh_expires_at > now()
+`
+
+func (q *Queries) RotateToken(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateToken, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const saveEmailCode = `-- name: SaveEmailCode :exec

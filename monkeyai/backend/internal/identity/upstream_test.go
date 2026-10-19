@@ -174,7 +174,7 @@ func TestBaizhiyunIdentityRegistration(t *testing.T) {
 	for _, email := range []string{"", "user@example.com"} {
 		t.Run(email, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, nil, "")
+			s := newTestService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: email}
 			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
@@ -214,7 +214,7 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, nil, "")
+			s := newTestService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: tc.initialEmail}
 			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
@@ -253,7 +253,7 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 
 func TestBaizhiyunEmailBinding(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, nil, "")
+	s := newTestService(pool, nil, "")
 	for _, role := range []string{"user", "admin"} {
 		t.Run(role, func(t *testing.T) {
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: role, Name: "百智云用户", Email: role + "@example.com"}

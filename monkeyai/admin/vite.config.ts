@@ -4,7 +4,8 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 const backend = process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080"
-const apiBackend = process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-ai.com"
+const apiBackend =
+  process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-ai.com"
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -14,7 +15,22 @@ export default defineConfig({
       awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
     },
     proxy: {
-      "^/api/v1/endpoints/connect$": { target: apiBackend, changeOrigin: true, ws: true },
+      "^/api/v1/endpoints/connect$": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "^/api/v1/endpoint-bridge": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "^/api/v1/endpoints/[^/]+/proxy/": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "/endpoints": { target: apiBackend, changeOrigin: true },
       "/api": { target: apiBackend, changeOrigin: true },
       "/oauth": backend,
       "/mcp": backend,

@@ -48,6 +48,26 @@ func (q *Queries) CountOpenPlaceholders(ctx context.Context, dollar_1 string) (i
 	return count, err
 }
 
+const countSessionIndex = `-- name: CountSessionIndex :one
+SELECT count(*) FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND ($2::text='' OR device_id=$2::text)
+    AND ($3::text='' OR id=NULLIF($3::text,'')::uuid)
+`
+
+type CountSessionIndexParams struct {
+	OwnerUserID string
+	MachineID   string
+	SessionID   string
+}
+
+func (q *Queries) CountSessionIndex(ctx context.Context, arg CountSessionIndexParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSessionIndex, arg.OwnerUserID, arg.MachineID, arg.SessionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const currentSessionGroup = `-- name: CurrentSessionGroup :one
 SELECT COALESCE(
     (SELECT s.group_id::text FROM sessions s
@@ -171,7 +191,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid
 `
 
@@ -359,7 +379,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid FOR UPDATE
 `
 
@@ -485,6 +505,82 @@ func (q *Queries) SaveTurn(ctx context.Context, payload []byte) error {
 	return err
 }
 
+const sessionIndex = `-- name: SessionIndex :many
+SELECT id,device_id,title,title_source,session_type,parent_session_id,state_seq,host_revision,
+    started_at,last_active_at,state_received_at,last_live_report_at,live_boot_id,live_lease_epoch
+FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND ($2::text='' OR device_id=$2::text)
+    AND ($3::text='' OR id=NULLIF($3::text,'')::uuid)
+ORDER BY started_at DESC,id DESC LIMIT $5::integer OFFSET $4::integer
+`
+
+type SessionIndexParams struct {
+	OwnerUserID string
+	MachineID   string
+	SessionID   string
+	PageOffset  int32
+	PageSize    int32
+}
+
+type SessionIndexRow struct {
+	ID               string
+	DeviceID         *string
+	Title            string
+	TitleSource      *string
+	SessionType      string
+	ParentSessionID  *string
+	StateSeq         int64
+	HostRevision     int64
+	StartedAt        time.Time
+	LastActiveAt     *time.Time
+	StateReceivedAt  *time.Time
+	LastLiveReportAt *time.Time
+	LiveBootID       *string
+	LiveLeaseEpoch   *int64
+}
+
+func (q *Queries) SessionIndex(ctx context.Context, arg SessionIndexParams) ([]SessionIndexRow, error) {
+	rows, err := q.db.Query(ctx, sessionIndex,
+		arg.OwnerUserID,
+		arg.MachineID,
+		arg.SessionID,
+		arg.PageOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SessionIndexRow{}
+	for rows.Next() {
+		var i SessionIndexRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeviceID,
+			&i.Title,
+			&i.TitleSource,
+			&i.SessionType,
+			&i.ParentSessionID,
+			&i.StateSeq,
+			&i.HostRevision,
+			&i.StartedAt,
+			&i.LastActiveAt,
+			&i.StateReceivedAt,
+			&i.LastLiveReportAt,
+			&i.LiveBootID,
+			&i.LiveLeaseEpoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sessionStats = `-- name: SessionStats :one
 SELECT jsonb_build_object(
  'turns',(SELECT count(*) FROM session_turns WHERE session_id=$1::uuid),
@@ -502,6 +598,27 @@ func (q *Queries) SessionStats(ctx context.Context, dollar_1 string) ([]byte, er
 	var data []byte
 	err := row.Scan(&data)
 	return data, err
+}
+
+const setLiveSummary = `-- name: SetLiveSummary :exec
+UPDATE sessions SET last_live_report_at=$2,live_boot_id=$3,live_lease_epoch=$4 WHERE id=$1
+`
+
+type SetLiveSummaryParams struct {
+	ID               string
+	LastLiveReportAt *time.Time
+	LiveBootID       *string
+	LiveLeaseEpoch   *int64
+}
+
+func (q *Queries) SetLiveSummary(ctx context.Context, arg SetLiveSummaryParams) error {
+	_, err := q.db.Exec(ctx, setLiveSummary,
+		arg.ID,
+		arg.LastLiveReportAt,
+		arg.LiveBootID,
+		arg.LiveLeaseEpoch,
+	)
+	return err
 }
 
 const setState = `-- name: SetState :exec
@@ -541,4 +658,14 @@ func (q *Queries) TakeReportingRateLimit(ctx context.Context, arg TakeReportingR
 	var request_count int32
 	err := row.Scan(&request_count)
 	return request_count, err
+}
+
+const verifySessionHost = `-- name: VerifySessionHost :exec
+UPDATE sessions SET host_verified = true, host_revision = host_revision + 1
+WHERE id = $1::uuid AND host_verified = false
+`
+
+func (q *Queries) VerifySessionHost(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, verifySessionHost, dollar_1)
+	return err
 }

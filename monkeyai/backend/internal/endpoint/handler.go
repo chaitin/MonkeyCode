@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 )
@@ -50,7 +51,7 @@ func respond(w http.ResponseWriter, code int, data any) {
 	}
 }
 func failure(w http.ResponseWriter, code int, name string) {
-	respond(w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁"}[name]}})
+	respond(w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁", "permission_denied": "没有所需权限"}[name]}})
 }
 func (s *Service) credential(w http.ResponseWriter, r *http.Request) (Credential, bool) {
 	w.Header().Set("Cache-Control", "private, no-store")
@@ -116,6 +117,16 @@ func (s *Service) manage(w http.ResponseWriter, r *http.Request, fn func(context
 	respond(w, 200, result)
 }
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
+	modern := r.Header.Get("X-MAI-Runtime-API") == "1"
+	if !modern {
+		if p, ok := identity.PrincipalFromContext(r.Context()); ok {
+			modern = p.Has("device:connect")
+		}
+	}
+	if modern && s.runtimeDirectory != nil {
+		s.runtimeDirectory.ServeHTTP(w, r)
+		return
+	}
 	page, ok := pageParam(r, "page", 1, 1000000)
 	size, okSize := pageParam(r, "page_size", 20, 100)
 	if !ok || !okSize {

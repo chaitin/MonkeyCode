@@ -111,7 +111,7 @@ migrations/<唯一版本>_<feature>_*.sql
 - 路由使用 `chi/v5` 组织版本、调用方和中间件，处理器保持标准 `http.Handler` 接口。
 - HTTP DTO 不直接充当业务对象。
 - 测试与对应 Go 源码放在同一目录；暂不创建独立测试树。
-- 首次部署从收敛后的完整初始化版本 `000001` 开始；收敛前的旧迁移历史不能直接升级或通过 `force 1` 切换。使用收敛后迁移历史且状态为 `14, dirty=false` 的现有数据库支持直接 `up` 升级至 `19`。详见 [迁移说明](migrations/README.md)。
+- 首次部署从现有迁移历史升级时，主线历史保持原有 1–23 版本；当前工作树新增的远程执行结构统一由 `000024_remote_runtime` 和 `000025_remote_runtime_access_version` 执行。收敛前的旧迁移历史不能直接升级或通过 `force` 切换。详见 [迁移说明](migrations/README.md)。
 - 后续迁移文件使用 `migrate create -ext sql -dir migrations -seq <feature>_<action>` 生成，采用默认六位递增序号。合并前必须检查序号未被其他分支占用；如有冲突，重新生成序号。已经发布的迁移不可改写。
 - 不创建 `pkg`、`utils` 或 `common`；出现明确复用对象后再决定归属。
 
@@ -136,7 +136,7 @@ export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkey
 go run ./cmd/server
 ```
 
-可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL` 和 `MONKEYAI_PUBLIC_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，统一用于 OAuth 回调、元数据和登录后的页面跳转，默认 `http://localhost:8080`，正式环境应使用 HTTPS。
+可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL` 和 `MONKEYAI_PUBLIC_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，统一用于 OAuth 回调、元数据和登录后的页面跳转，默认 `http://localhost:8080`，支持公网和内网 HTTP(S) 根地址。
 
 前后端分别启动时，将后端的 `MONKEYAI_PUBLIC_URL` 设置为浏览器访问的 Vite 地址，例如 `http://localhost:5173`。Vite 将 `/api`、`/oauth`、`/mcp`、`/v1` 和 OAuth 元数据请求代理到后端；后端实际监听地址仍由 `MONKEYAI_HTTP_ADDR` 配置，开发代理目标由 `MONKEYAI_DEV_BACKEND_URL` 配置，默认 `http://localhost:8080`。
 
@@ -148,15 +148,64 @@ go run ./cmd/server
 
 `/api/v1/endpoints` 提供当前用户的端点管理，`/api/v1/endpoints/connect` 使用原生客户端 OAuth Bearer 升级为 WebSocket；不接受 Cookie、调用密钥或 URL token。完整协议见 [单进程端点桥接设计](../design/endpoint-bridge-design.md)，HTTP 契约见 `api/agent.yaml`。
 
+多设备远程执行的增量改造见 [后端实现方案](../design/remote-runtime-backend-plan.md)，联调字段和签名规则见 [远程执行协议 v1](../design/remote-runtime-protocol.md)。设备证明、安装授权族、双通道隧道、目标票据和文件代理已实现，服务端默认开启；真实 Desktop 联合验收及外部发行状态以方案中的记录为准。以下先说明原有 JSON 桥接。
+
 只支持一个后端进程：PostgreSQL 保存端点资料，在线连接、队列与路由仅在内存中；不引入 Redis。发布须先停止旧进程再启动新进程，禁止双进程滚动接入。进程重启不恢复在线状态和消息，客户端重新握手并查询业务状态；超时或断线的请求结果未知，不自动重发。
 
-生产使用 WSS，后端端口只对可信入口开放。非空 Origin 必须匹配 `MONKEYAI_PUBLIC_URL`，原生客户端可以省略。Nginx 和 Vite 已对桥接入口启用 Upgrade，代理空闲超时需大于心跳及等待窗口，默认 90 秒。应用退出时主动关闭桥接连接并使 `/readyz` 返回不可用。
+WebSocket 协议随 `MONKEYAI_PUBLIC_URL` 选择：HTTP 使用 WS，HTTPS 使用 WSS。非空 Origin 必须匹配 `MONKEYAI_PUBLIC_URL`，原生客户端可以省略。Nginx 和 Vite 已对桥接入口启用 Upgrade，代理空闲超时需大于心跳及等待窗口，默认 90 秒。应用退出时主动关闭桥接连接并使 `/readyz` 返回不可用。
 
 `MONKEYAI_ENDPOINT_MAX_CONNECTIONS`（或 `-endpoint-max-connections`）默认 1000，包含等待 hello 的连接；每连接业务队列最多 64 条/2 MiB，需按内存预算下调连接数。用户最多 20 个 active 端点，离线仍计入。停用端点不是撤销设备登录授权；持有有效账号凭据可显式恢复。
 
 access token 刷新后旧连接凭据失效，客户端应通过统一 OAuth 管理器轮换并重新连接。服务端每 30 秒复验一次，超时 5 秒；已知到期时间直接限制路由，数据库撤销或用户停用最多约 35 秒收敛。桥接不定义会话控制、文件操作等 Agent 业务方法。
 
 纯协议测试运行 `go test ./internal/endpoint/...`；设置隔离的 `MONKEYAI_TEST_DATABASE_URL` 后，同一命令还覆盖真实数据库与 WebSocket，并可加 `-race` 验证并发路径。
+
+## 远程执行中转
+
+服务端默认开启，可用 `MONKEYAI_RUNTIME_RELAY=false` 显式关闭。未指定 `server_id` 或签名私钥时，首次启动在 `MONKEYAI_RUNTIME_STATE_DIR`（默认 `data/runtime`）原子生成 `identity.json`，之后复用同一标识和私钥；目录须可写并持久化，文件权限为 0600。损坏、不可读或无法保存时启动失败，不临时生成另一份身份。Compose 将项目目录的 `./data/runtime` 挂载到 `/app/runtime`，重启和容器重建保留身份。Backend 使用 UID 10001；直接使用 Compose 时先准备目录，安装器会自动处理：
+
+```sh
+mkdir -p data/runtime
+sudo chown 10001:10001 data/runtime
+chmod 700 data/runtime
+```
+
+文件 origin 默认沿用 `MONKEYAI_PUBLIC_URL`，公网和内网均支持 HTTP/HTTPS。Desktop 业务代理默认允许部署 origin 和 `app://monkeyai`；开发版必须显式配置实际来源及端口，例如 `MONKEYAI_RUNTIME_DESKTOP_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`，不自动放开全部回环端口。Compose 会将该变量传给后端。
+
+配置公开根地址即可，HTTP 对应 `ws://`，HTTPS 对应 `wss://`；如需独立文件域名或由部署系统管理身份，可显式覆盖：
+
+```text
+MONKEYAI_PUBLIC_URL=https://control.example.com
+MONKEYAI_RUNTIME_FILES_ORIGIN=https://files.example.com
+MONKEYAI_RUNTIME_SERVER_ID=<稳定 UUIDv4>
+MONKEYAI_RUNTIME_SIGNING_KEY_FILE=/run/secrets/runtime-access.pem
+```
+
+显式私钥使用 Ed25519 PKCS8 PEM，经受限文件或只读挂载提供；配置该文件后不会在缺失时静默回退自动密钥。独立启动时需持久保存状态目录，删除状态会改变控制面身份。
+
+可选 `MONKEYAI_RUNTIME_VERIFICATION_KEYS_FILE` 指向 `{"keys":[{"kid":"...","algorithm":"Ed25519","public_key":"..."}]}` 公钥集合，当前签名公钥自动发布。轮换时先把新公钥加入集合并发布，再切换私钥，旧公钥继续保留覆盖客户端缓存和有效租约的重叠期；单节点重启仍会中断隧道。
+
+新入口为 `/api/v1/endpoint-bridge`、`/api/v1/endpoints/{machine_id}/connections`、DELETE 设备登记、`proxy/*` 和独立文件 origin；设备目录通过 `X-MAI-Runtime-API: 1` 返回新形状。新代理使用目标票据，设备管理使用 OAuth，文件另校验限定签名授权，不能互相替代。
+
+执行设备主动建立控制和数据两条 WebSocket/yamux，协议沿用公开地址的 WS/WSS 配置。控制面只转发，关闭观察流不取消目标已经受理的任务。托管关闭远程保留 Desktop 登录、公钥、网关密钥和认证宿主补传；旧 restore 不恢复新远程访问。
+
+独立 runtime 使用 `monkeyai-runtime` client 的 RFC8628 设备授权：申请 `/oauth/device/authorization`，用户在 `/device` 明确批准，再轮询 `/oauth/token` 的 device grant。申请设备和公钥冻结，证明后才能发布或上报；运行方式切为 standalone 时保留原 machine/session，替换旧专用执行授权，保留 Desktop 自身登录。独立调用密钥限定本设备和授权族，撤销或替换授权后立即失效。
+
+本人会话目录位于 GET `/api/v1/sessions` 和 `/api/v1/sessions/{id}`，要求 session:read 并遵循会话上报策略；stats 级不返回标题。仅认证宿主摘要进入目录，离线、旧 boot/epoch 或实时报告超时标记 stale。`session_index` 能力随策略动态发布。
+
+[Nginx 配置](../admin/nginx/app.conf) 已增加所需 Upgrade 和流式转发，文件及目标代理入口关闭 access/error 原始路径日志，业务诊断使用后端脱敏路由模板。共享文件 origin 强制下载；HTTP 执行预览需额外配置独立泛域名与证书：
+
+```text
+MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE=https://{artifact}.preview.example.net
+MONKEYAI_RUNTIME_PREVIEW_CERT_FILE=/run/secrets/preview/tls.crt
+MONKEYAI_RUNTIME_PREVIEW_KEY_FILE=/run/secrets/preview/tls.key
+```
+
+将泛域名 DNS 指向预览入口，证书及私钥只读挂载到 admin；例如 Compose override 的 `services.admin.volumes` 添加 `./secrets/preview:/run/secrets/preview:ro`。内置 HTTP-01 ACME 不签发泛域名证书，需部署方提供或使用外部 TLS 网关。外部网关只将 `/preview/` 转发到后端，保持 Host 并关闭带 grant 路径的原始日志。
+
+预览按 server/user/machine/session/artifact 派生独立域名，file grant 同时绑定 artifact 和 Host。HTTP 模式强制 opaque 无存储沙箱，禁止 Cookie、localStorage、IndexedDB、ServiceWorker、表单和外部网络，Desktop 自定义产物 origin 的持久存储语义保持独立。只有配置模板时发布预览能力。
+
+服务端组件测试：`go test ./internal/relay/... ./internal/endpoint/... ./internal/session/...`，设置隔离 `MONKEYAI_TEST_DATABASE_URL` 后覆盖真实数据库和双通道；`MONKEYAI_TEST_NGINX_IMAGE=nginx:1.28-alpine` 额外启动并清理专用 Docker 容器验证 Nginx。应用组装测试还需配置隔离的 `MONKEYAI_S3_*`，执行 `go test ./internal/app -run '^TestRuntimeRelayApplication$'`。功能上线仍需真实 Mac/Win runtime 的操作恢复、权限、产物预览及代理验收。
 
 ## 资源功能验证
 

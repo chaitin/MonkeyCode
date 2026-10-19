@@ -94,6 +94,7 @@ export function PaidLicenseCard({ className }: { className?: string }) {
       })
       setInfo(next)
       publishLicenseStatus(next)
+      window.dispatchEvent(new Event("monkeyai-license-changed"))
       setFile(null)
       formElement.reset()
       setImportOpen(false)
