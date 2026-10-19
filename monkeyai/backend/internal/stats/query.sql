@@ -415,7 +415,7 @@ cohort AS (
         AND (p.f->>'kind' IS NULL OR kind = p.f->>'kind')
     GROUP BY user_id,kind,resource_id,version
 ), ordered AS (
-    SELECT c.*,u.name AS user_name,u.email AS user_email,
+    SELECT c.*,u.name AS user_name,u.email AS user_email,u.avatar_url AS user_avatar_url,
         jsonb_build_array(c.kind,c.resource_id,c.version,c.user_id)::text AS sort_key
     FROM combined c JOIN users u ON u.id = c.user_id
 ), paged AS (
@@ -456,6 +456,7 @@ SELECT jsonb_build_object('kind',p.kind,'resource_id',p.resource_id,'version',p.
         nullif(btrim(m.display_name),''),nullif(btrim(r.name),''),nullif(btrim(sk.name),''),
         nullif(btrim(ex.name),''),nullif(btrim(cn.name),''),n.name,p.resource_id) END,
     'user_id',p.user_id,'user_name',p.user_name,'user_email',p.user_email,
+    'user_avatar_url',nullif(btrim(p.user_avatar_url),''),
     'enabled_sessions',p.enabled_sessions,'available_sessions',p.available_sessions,'used_sessions',p.used_sessions,
     'calls',p.calls,'failed',p.failed,'failure_rate',100.0*p.failed/NULLIF(p.calls,0))
 FROM paged p

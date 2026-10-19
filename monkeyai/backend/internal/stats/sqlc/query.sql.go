@@ -622,11 +622,11 @@ cohort AS (
         AND (p.f->>'kind' IS NULL OR kind = p.f->>'kind')
     GROUP BY user_id,kind,resource_id,version
 ), ordered AS (
-    SELECT c.user_id, c.kind, c.resource_id, c.version, c.enabled_sessions, c.available_sessions, c.used_sessions, c.calls, c.failed,u.name AS user_name,u.email AS user_email,
+    SELECT c.user_id, c.kind, c.resource_id, c.version, c.enabled_sessions, c.available_sessions, c.used_sessions, c.calls, c.failed,u.name AS user_name,u.email AS user_email,u.avatar_url AS user_avatar_url,
         jsonb_build_array(c.kind,c.resource_id,c.version,c.user_id)::text AS sort_key
     FROM combined c JOIN users u ON u.id = c.user_id
 ), paged AS (
-    SELECT o.user_id, o.kind, o.resource_id, o.version, o.enabled_sessions, o.available_sessions, o.used_sessions, o.calls, o.failed, o.user_name, o.user_email, o.sort_key,CASE WHEN o.resource_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    SELECT o.user_id, o.kind, o.resource_id, o.version, o.enabled_sessions, o.available_sessions, o.used_sessions, o.calls, o.failed, o.user_name, o.user_email, o.user_avatar_url, o.sort_key,CASE WHEN o.resource_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         THEN o.resource_id::uuid END AS catalog_id
     FROM ordered o CROSS JOIN opts p
     WHERE o.sort_key > coalesce(p.f->>'cursor_key','')
@@ -663,6 +663,7 @@ SELECT jsonb_build_object('kind',p.kind,'resource_id',p.resource_id,'version',p.
         nullif(btrim(m.display_name),''),nullif(btrim(r.name),''),nullif(btrim(sk.name),''),
         nullif(btrim(ex.name),''),nullif(btrim(cn.name),''),n.name,p.resource_id) END,
     'user_id',p.user_id,'user_name',p.user_name,'user_email',p.user_email,
+    'user_avatar_url',nullif(btrim(p.user_avatar_url),''),
     'enabled_sessions',p.enabled_sessions,'available_sessions',p.available_sessions,'used_sessions',p.used_sessions,
     'calls',p.calls,'failed',p.failed,'failure_rate',100.0*p.failed/NULLIF(p.calls,0))
 FROM paged p

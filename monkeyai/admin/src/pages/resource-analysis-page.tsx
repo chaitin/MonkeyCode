@@ -3,7 +3,6 @@ import {
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
@@ -12,6 +11,7 @@ import { TablePagination } from "@/components/table-pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -240,19 +240,14 @@ export function ResourceAnalysisPage() {
       return (
         <button
           type="button"
-          className="flex max-w-52 items-center gap-3 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+          className="flex max-w-52 items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
           title={row.user_email || undefined}
           disabled={!row.user_id}
           onClick={() => {
             if (row.user_id) setAccountUserID(row.user_id)
           }}
         >
-          <HugeiconsIcon
-            icon={User02Icon}
-            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-            strokeWidth={2}
-            aria-hidden="true"
-          />
+          <UserAvatar src={row.user_avatar_url} />
           <span className="truncate">
             {row.user_name || row.user_email || row.user_id || "—"}
           </span>

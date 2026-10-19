@@ -5328,11 +5328,12 @@ components:
         data_freshness_seconds: {type: number, minimum: 0, nullable: true}
     StatisticsResourceUsageRow:
       type: object
-      required: [user_id, user_name, user_email, kind, resource_id, resource_name, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
+      required: [user_id, user_name, user_email, user_avatar_url, kind, resource_id, resource_name, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
       properties:
         user_id: {type: string, format: uuid, description: 会话所属用户 ID。}
         user_name: {type: string, description: 用户当前名称。}
         user_email: {type: string, description: 用户当前邮箱。}
+        user_avatar_url: {type: [string, 'null'], description: 用户当前头像地址；为空时使用默认头像。}
         kind: {type: string}
         resource_id: {type: string}
         resource_name: {type: string, description: 后台配置名称、最新非空上报名称或原始 ID；内置工具保留原始 ID。}
