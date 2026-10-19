@@ -171,7 +171,8 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 	if err != nil {
 		return err
 	}
-	for _, id := range ids {
+	for _, reference := range ids {
+		id := reference.ID
 		needed := false
 		for slug, expert := range r.Experts {
 			bound, ok := bindings[slug]
@@ -192,7 +193,7 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 			break
 		}
 		if needed {
-			return fmt.Errorf("资源 %s 仍被保留的 Expert %s 引用", b.Slug, id)
+			return fmt.Errorf("资源 %s（%s）仍被本次保留的 Expert「%s」（%s）引用，请在完整资源包中保留此资源或解除引用", b.Slug, b.Type, reference.Name, id)
 		}
 		local := true
 		for _, old := range bindings {
@@ -202,13 +203,16 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 			}
 		}
 		if local {
-			return fmt.Errorf("资源 %s 仍被其他 Expert %s 引用", b.Slug, id)
+			return fmt.Errorf("资源 %s（%s）仍被其他 Expert「%s」（%s）引用；该 Expert 不属于本发布者，请先解除引用或在完整资源包中保留此资源", b.Slug, b.Type, reference.Name, id)
 		}
 	}
 	return nil
 }
 
 func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r Resources, opts Options, packageSHA string) (Preview, error) {
+	if opts.AuthorizationModes == nil {
+		opts.AuthorizationModes = map[string]string{}
+	}
 	result := Preview{Publisher: p.Release.Publisher.Name, ReleaseID: p.Release.ReleaseID, Version: p.Release.Version,
 		PackageSHA256: packageSHA, Changes: []Change{}, IgnoredStatic: []string{}}
 	for _, name := range p.Names() {

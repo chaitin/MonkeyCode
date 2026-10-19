@@ -43,14 +43,14 @@ SELECT data FROM (
 ) t LIMIT 1;
 
 -- name: ListImportReferences :many
-SELECT id FROM (
-    SELECT e.id::text AS id FROM expert_skills l JOIN experts e ON e.id=l.expert_id
+SELECT id, name FROM (
+    SELECT e.id::text AS id, e.name FROM expert_skills l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='skill' AND l.skill_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
     UNION ALL
-    SELECT e.id::text AS id FROM expert_rules l JOIN experts e ON e.id=l.expert_id
+    SELECT e.id::text AS id, e.name FROM expert_rules l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='rule' AND l.rule_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
     UNION ALL
-    SELECT e.id::text AS id FROM expert_connectors l JOIN experts e ON e.id=l.expert_id
+    SELECT e.id::text AS id, e.name FROM expert_connectors l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='connector' AND l.connector_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
 ) refs;
 
@@ -166,3 +166,49 @@ UPDATE connectors SET enabled=false,revision=revision+1,updated_at=now() WHERE i
 UPDATE resource_import_bindings SET retired_at=now(),retired_import_id=sqlc.arg(import_id)::uuid,
     last_import_id=sqlc.arg(import_id)::uuid,updated_at=now()
 WHERE publisher=sqlc.arg(publisher) AND slug=sqlc.arg(slug);
+
+-- name: CreateImportUpload :one
+INSERT INTO resource_import_uploads (id, actor_user_id, files, total_size)
+SELECT (d->>'id')::uuid, (d->>'actor_user_id')::uuid, d->'files', (d->>'total_size')::bigint
+FROM (SELECT sqlc.arg(data)::jsonb AS d) input
+WHERE (SELECT count(*) FROM resource_import_uploads
+       WHERE actor_user_id=(d->>'actor_user_id')::uuid AND status IN ('uploading','ready') AND expires_at>now()) < 5
+RETURNING to_jsonb(resource_import_uploads);
+
+-- name: ListImportUploads :many
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE actor_user_id=$1::uuid AND status IN ('uploading','ready') AND expires_at>now()
+ORDER BY created_at DESC;
+
+-- name: GetImportUpload :one
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE id=sqlc.arg(id)::uuid AND actor_user_id=sqlc.arg(actor_user_id)::uuid AND status<>'cancelled' AND expires_at>now();
+
+-- name: LockImportUpload :one
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE id=sqlc.arg(id)::uuid AND actor_user_id=sqlc.arg(actor_user_id)::uuid AND status<>'cancelled' AND expires_at>now()
+FOR UPDATE;
+
+-- name: ListImportChunks :many
+SELECT to_jsonb(c) FROM resource_import_chunks c WHERE upload_id=$1::uuid ORDER BY index;
+
+-- name: CreateImportChunk :exec
+INSERT INTO resource_import_chunks (upload_id,index,size,sha256)
+SELECT (d->>'upload_id')::uuid,(d->>'index')::integer,(d->>'size')::bigint,d->>'sha256'
+FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
+
+-- name: ReadyImportUpload :exec
+UPDATE resource_import_uploads SET status='ready',package_sha256=sqlc.arg(package_sha256) WHERE id=sqlc.arg(id)::uuid;
+
+-- name: FinishImportUpload :exec
+UPDATE resource_import_uploads SET status='imported' WHERE id=$1::uuid;
+
+-- name: CancelImportUpload :exec
+UPDATE resource_import_uploads SET status='cancelled',package_sha256='',expires_at=now() WHERE id=$1::uuid;
+
+-- name: ListExpiredImportUploads :many
+SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now()
+ORDER BY expires_at LIMIT 10 FOR UPDATE SKIP LOCKED;
+
+-- name: DeleteImportUpload :exec
+DELETE FROM resource_import_uploads WHERE id=$1::uuid;

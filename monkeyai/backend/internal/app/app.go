@@ -62,6 +62,7 @@ type App struct {
 	endpoints       *endpoint.Service
 	feedback        *feedback.Service
 	connectors      *mcp.Service
+	resourceImports *resourceimport.Service
 }
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
@@ -136,6 +137,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		endpoints:       handler.(*applicationHandler).endpoints,
 		feedback:        handler.(*applicationHandler).feedback,
 		connectors:      handler.(*applicationHandler).connectors,
+		resourceImports: handler.(*applicationHandler).resourceImports,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
@@ -237,7 +239,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)
 	store.RegisterGrants(admin, map[string]*resource.CRUD{"rule": rules, "skill": skills.CRUD, "expert": experts.CRUD, "connector": connectors.Connectors})
-	resourceimport.NewService(pool, storage).RegisterAdmin(admin)
+	resourceImports := resourceimport.NewService(pool, storage)
+	resourceImports.RegisterAdmin(admin)
 	rules.Register(admin)
 	skills.RegisterAdmin(admin)
 	connectors.RegisterAdmin(admin)
@@ -320,7 +323,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors}, nil
+	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -395,6 +398,13 @@ func (a *App) Run(ctx context.Context) error {
 	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
 	feedbackCleanupDone := make(chan struct{})
 	go func() { defer close(feedbackCleanupDone); _ = a.feedback.Run(workerCtx, time.Hour) }()
+	uploadCleanupDone := make(chan struct{})
+	go func() {
+		defer close(uploadCleanupDone)
+		if a.resourceImports != nil {
+			a.resourceImports.Run(workerCtx)
+		}
+	}()
 	defer func() {
 		stopWorker()
 		<-workerDone
@@ -405,6 +415,7 @@ func (a *App) Run(ctx context.Context) error {
 		<-videoDone
 		<-cleanupDone
 		<-feedbackCleanupDone
+		<-uploadCleanupDone
 	}()
 
 	result := make(chan error, len(a.servers))

@@ -2,16 +2,12 @@ package resourceimport
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io"
 	"log/slog"
-	"mime/multipart"
 	"net/http"
 	"path"
 	"slices"
@@ -54,72 +50,15 @@ func decodeHistoryCursor(value string) ([]byte, error) {
 }
 
 func (s *Service) RegisterAdmin(router chi.Router) {
-	load := func(w http.ResponseWriter, r *http.Request) (pkg Package, items Resources, options Options, sha string, cleanup func(), err error) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(16<<20))
-		if err = r.ParseMultipartForm(8 << 20); err != nil {
-			if r.MultipartForm != nil {
-				r.MultipartForm.RemoveAll()
-			}
-			err = resource.Invalid("资源包上传格式或大小无效")
-			return
-		}
-		var file multipart.File
-		cleanup = func() {
-			if file != nil {
-				file.Close()
-			}
-			if r.MultipartForm != nil {
-				if removeErr := r.MultipartForm.RemoveAll(); removeErr != nil {
-					slog.WarnContext(r.Context(), "清理导入临时文件失败", "error", removeErr)
-				}
-			}
-		}
-		defer func() {
-			if err != nil {
-				cleanup()
-				cleanup = nil
-			}
-		}()
-		var header *multipart.FileHeader
-		file, header, err = r.FormFile("package")
-		if err != nil {
-			err = resource.Invalid("缺少资源包文件")
-			return
-		}
-		if header.Size <= 0 || header.Size > MaxPackage {
-			err = resource.Invalid("资源包超过大小限制")
-			return
-		}
-		if value := r.FormValue("options"); value != "" {
-			if json.Unmarshal([]byte(value), &options) != nil {
-				err = resource.Invalid("导入选项无效")
-				return
-			}
-		}
-		hash := sha256.New()
-		if _, err = io.Copy(hash, io.NewSectionReader(file, 0, header.Size)); err != nil {
-			return
-		}
-		sha = "sha256:" + hex.EncodeToString(hash.Sum(nil))
-		pkg, err = ParseReader(file, header.Size)
-		if err != nil {
-			err = resource.Invalid(err.Error())
-			return
-		}
-		items, err = ParseResources(pkg)
-		if err != nil {
-			err = resource.Invalid(err.Error())
-		}
-		return
-	}
+	s.RegisterUploads(router)
 	router.Post("/resource-imports/preview", func(w http.ResponseWriter, r *http.Request) {
-		pkg, items, options, sha, cleanup, err := load(w, r)
+		loaded, err := s.loadImport(w, r)
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
-		defer cleanup()
-		out, err := s.Evaluate(r.Context(), s.Pool, pkg, items, options, sha)
+		defer loaded.cleanup()
+		out, err := s.Evaluate(r.Context(), s.Pool, loaded.pkg, loaded.items, loaded.input.Options, loaded.sha)
 		if err != nil {
 			resource.Fail(w, &resource.Error{Status: 409, Code: "import_conflict", Message: err.Error()})
 			return
@@ -127,17 +66,20 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		resource.JSON(w, http.StatusOK, out)
 	})
 	router.Post("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
-		pkg, items, options, sha, cleanup, err := load(w, r)
+		loaded, err := s.loadImport(w, r)
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
-		defer cleanup()
-		if r.FormValue("package_sha256") != sha || r.FormValue("plan_digest") == "" || !options.ConfirmFinal {
+		defer loaded.cleanup()
+		if loaded.input.PackageSHA256 != loaded.sha || loaded.input.PlanDigest == "" || !loaded.input.Options.ConfirmFinal {
 			resource.Fail(w, resource.Invalid("必须先预览并确认本包是最终 Agent 资源集合"))
 			return
 		}
-		out, err := s.Apply(r.Context(), pkg, items, options, sha, r.FormValue("plan_digest"))
+		out, err := s.Apply(r.Context(), loaded.pkg, loaded.items, loaded.input.Options, loaded.sha, loaded.input.PlanDigest)
+		if err == nil {
+			err = loaded.finish(r.Context())
+		}
 		if err != nil {
 			resource.Fail(w, err)
 			return

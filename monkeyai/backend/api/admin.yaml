@@ -7,13 +7,105 @@ servers:
 security:
   - AdminSession: []
 paths:
-  /api/admin/v1/resource-imports/preview:
+  /api/admin/v1/resource-import-uploads:
     post:
-      summary: 解析资源发布包并预览变更
-      description: ZIP 包体最大 2 GiB，磁盘暂存并解析 Agent 资源，不写入资源。JSON 仅检查语法，不校验发布端摘要、字段格式或元数据一致性；缺省字段使用默认值，CHECKSUMS.sha256 和 release.json 可省略。返回新增/更新/跳过/退役/恢复与 plan_digest。
+      summary: 创建资源包上传会话
+      description: 仅管理员可用，会话与创建者绑定，有效期 24 小时，每人最多 5 个未完成任务。普通 ZIP 或按字节拆分的 .zip.001 等分卷按顺序组成一个 ZIP，总大小不超过 2 GiB，最多 256 卷；不支持 .z01 或 7z 分卷。网络上传统一使用 64 MiB 传输块。
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 256
+                  items: {$ref: '#/components/schemas/ResourceImportUploadFile'}
+      responses:
+        '201':
+          description: 返回上传会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '409': {description: 未完成任务数已达上限}
+    get:
+      summary: 查询当前管理员未完成的资源包上传任务
+      responses:
+        '200':
+          description: 返回尚未过期的 uploading 和 ready 任务
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ResourceImportUpload'}
+  /api/admin/v1/resource-import-uploads/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询上传进度及已保存的传输块
+      responses:
+        '200':
+          description: 刷新页面或重启服务后可据此续传；本地文件须重新选择并核对已上传块摘要
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    delete:
+      summary: 放弃未完成上传任务
+      description: 使任务立即失效，后台定期清理暂存对象；已导入任务不能取消。
+      responses:
+        '204': {description: 任务已取消}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {description: 任务已导入}
+  /api/admin/v1/resource-import-uploads/{id}/chunks/{index}:
+    put:
+      summary: 上传一个资源包传输块
+      description: index 从 0 开始，对应逻辑 ZIP 的 index × chunk_size 偏移；除末块外必须恰好 64 MiB。服务端核对实际大小和 SHA-256，同内容重复上传幂等，不同内容或已封存返回 409。分块可乱序上传。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: index, in: path, required: true, schema: {type: integer, minimum: 0, maximum: 31}}
+        - {name: X-Content-SHA256, in: header, required: true, schema: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '204': {description: 传输块已保存或同内容已存在}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {description: 块内容冲突或上传已封存}
+  /api/admin/v1/resource-import-uploads/{id}/complete:
+    post:
+      summary: 检查完整 ZIP 并封存上传内容
+      description: 收齐所有传输块后检查 ZIP 路径、展开限制及外层文件 CRC，计算完整 ZIP 的 package_sha256。成功后 ready 状态不可修改，重复完成幂等。本接口不导入资源，也不校验包内声明的发布协议摘要。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 完整上传会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/resource-imports/preview:
+    post:
+      summary: 解析资源发布包并预览变更
+      description: 使用已封存的 upload_id，或直接上传不超过 2 GiB 的 ZIP，磁盘暂存并解析完整 Agent 清单，不写入资源。JSON 元数据仅检查语法，不校验发布端摘要、字段格式或元数据一致性；缺省字段使用默认值，CHECKSUMS.sha256 和 release.json 可省略。返回新增/更新/跳过/退役/恢复与 plan_digest。缺失资源若仍被其他启用的 Expert 引用，将返回包含 Expert 名称和 ID 的 409 冲突。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceImportInput'}
           multipart/form-data:
             schema:
               type: object
@@ -28,10 +120,15 @@ paths:
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认原子导入完整 Agent 清单
-      description: 重新上传同一 ZIP（最大 2 GiB），校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。
+      description: 使用预览时相同的 upload_id，无需再次上传；兼容重新上传同一 ZIP（最大 2 GiB）。校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。全部分卷只产生一个导入批次，保留发布者锁与整包事务。
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/ResourceImportInput'}
+                - {required: [options, package_sha256, plan_digest]}
           multipart/form-data:
             schema:
               type: object
@@ -4909,6 +5006,50 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    ResourceImportUploadFile:
+      type: object
+      required: [name, size]
+      properties:
+        name: {type: string, description: ZIP 文件名或从 001 连续递增的分卷文件名}
+        size: {type: integer, format: int64, minimum: 1, maximum: 2147483648}
+    ResourceImportUpload:
+      type: object
+      required: [id, files, total_size, status, package_sha256, chunk_size, chunks, created_at, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        files:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceImportUploadFile'}
+        total_size: {type: integer, format: int64}
+        status: {type: string, enum: [uploading, ready, imported]}
+        package_sha256: {type: string, description: 封存后由服务端计算的完整 ZIP 摘要，上传期间为空}
+        chunk_size: {type: integer, const: 67108864}
+        chunks:
+          type: array
+          items:
+            type: object
+            required: [index, size, sha256]
+            properties:
+              index: {type: integer, minimum: 0, maximum: 31}
+              size: {type: integer, format: int64}
+              sha256: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ResourceImportInput:
+      type: object
+      required: [upload_id]
+      properties:
+        upload_id: {type: string, format: uuid}
+        package_sha256: {type: string}
+        plan_digest: {type: string}
+        options:
+          type: object
+          properties:
+            confirm_final: {type: boolean, description: 确认导入时必须为 true}
+            accept_normalization: {type: boolean}
+            authorization_modes:
+              type: object
+              additionalProperties: {type: string, enum: [independent, centralized]}
     FeedbackPage:
       type: object
       additionalProperties: false

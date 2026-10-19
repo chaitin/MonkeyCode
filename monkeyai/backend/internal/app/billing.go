@@ -17,22 +17,24 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 )
 
 type applicationHandler struct {
 	http.Handler
-	billing     *billing.Service
-	proxy       *proxy.Proxy
-	images      *imagegen.Service
-	videos      *videogen.Service
-	inputs      *imagegen.Inputs
-	endpoints   *endpoint.Service
-	runtimeKeys *apikey.Service
-	relay       *relay.Service
-	feedback    *feedback.Service
-	connectors  *mcp.Service
+	billing         *billing.Service
+	proxy           *proxy.Proxy
+	images          *imagegen.Service
+	videos          *videogen.Service
+	inputs          *imagegen.Inputs
+	endpoints       *endpoint.Service
+	runtimeKeys     *apikey.Service
+	relay           *relay.Service
+	feedback        *feedback.Service
+	connectors      *mcp.Service
+	resourceImports *resourceimport.Service
 }
 type modelBilling struct{ service *billing.Service }
 type modelUsageRecorder struct{ models *model.Postgres }
