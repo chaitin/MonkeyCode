@@ -570,7 +570,7 @@ export function BillingDetailsPage() {
                   aria-busy={loading}
                   className={!entries?.items.length ? "h-full" : undefined}
                 >
-                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                  <TableHeader className="sticky top-0 z-10">
                     <TableRow>
                       <TableHead className="ps-(--card-spacing)">
                         入账时间
@@ -714,7 +714,7 @@ export function BillingDetailsPage() {
                   aria-busy={loading}
                   className={!pending?.items.length ? "h-full" : undefined}
                 >
-                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                  <TableHeader className="sticky top-0 z-10">
                     <TableRow>
                       <TableHead className="ps-(--card-spacing)">
                         调用时间

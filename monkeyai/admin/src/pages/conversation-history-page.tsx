@@ -518,7 +518,7 @@ export function ConversationHistoryPage() {
               aria-label={t("pages.conversationHistory.title")}
               aria-busy={request.loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   {displayedColumns.map((column) => (
                     <TableHead

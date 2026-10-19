@@ -510,7 +510,7 @@ export function ClientAnalysisPage() {
               aria-label={t(`${key}.clients.title`)}
               aria-busy={loading || searching}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   {displayedColumns.map((column) => (
                     <TableHead key={column} className="whitespace-nowrap">

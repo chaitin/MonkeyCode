@@ -1177,7 +1177,7 @@ export function ToolsPage() {
                 {toolDrafts.map((tool) => (
                   <TableRow key={tool.id}>
                     <TableCell className="max-w-72">
-                      <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex min-w-0 flex-col gap-0.5">
                         <span
                           className="truncate font-medium"
                           title={tool.name}

@@ -361,7 +361,7 @@ export function TaskHistoryPage() {
               aria-label={t("pages.taskHistory.title")}
               aria-busy={request.loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="w-52 ps-(--card-spacing)">
                     {t("pages.taskHistory.columns.startedAt")}

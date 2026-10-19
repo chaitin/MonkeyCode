@@ -48,7 +48,10 @@ test("billing views use tabs and tables scroll inside the available page height"
     /<TabsTrigger value="pending">待处理与对账<\/TabsTrigger>/
   )
   assert.equal((source.match(/<ScrollArea/g) ?? []).length, 3)
-  assert.equal((source.match(/sticky top-0 z-10 bg-card/g) ?? []).length, 2)
+  assert.equal(
+    (source.match(/<TableHeader className="sticky top-0 z-10">/g) ?? []).length,
+    2
+  )
   assert.equal(
     (source.match(/data-slot=table-container\]\]:h-full/g) ?? []).length,
     2

@@ -11,16 +11,22 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
-test("operation log header uses muted text over a 70-percent muted background", async () => {
+test("operation logs inherit the shared table height, header and dividers", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /\[&_th\]:text-muted-foreground/)
-  assert.match(
-    source,
-    /<TableRow\s+className="bg-muted\/70 hover:bg-muted\/70"\s+style=\{\{ height: 48 \}\}/
+  const table = await readFile(
+    new URL("../src/components/ui/table.tsx", import.meta.url),
+    "utf8"
   )
+  assert.match(table, /h-\[48px\]/)
+  assert.match(table, /\[&_tr\]:bg-muted\/70/)
+  assert.match(table, /\[&_tr:hover\]:bg-muted\/70/)
+  assert.match(table, /whitespace-nowrap text-muted-foreground/)
+  assert.match(table, /border-b border-muted-foreground\/15/)
+  assert.match(table, /\[&_tr\]:border-b-0/)
+  assert.doesNotMatch(table, /last-child.*border-0/)
   assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
   assert.match(
     source,
@@ -286,10 +292,7 @@ test("only the operation log table scrolls and its header stays visible", async 
     "utf8"
   )
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
-  assert.match(
-    source,
-    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground \[&_tr\]:border-b-0">/
-  )
+  assert.match(source, /<TableHeader className="sticky top-0 z-10">/)
   assert.ok(
     source.indexOf("</ScrollArea>") <
       source.indexOf('pagination.pageSizeLabel")')
@@ -300,7 +303,6 @@ test("only the operation log table scrolls and its header stays visible", async 
   )
   assert.doesNotMatch(source, /min-w-4xl/)
   assert.match(source, /<TableRow className="h-full">/)
-  assert.match(source, /\[&_tr:last-child\]:border-b/)
   assert.doesNotMatch(source, /shadow-\[inset_0_-1px/)
   assert.match(
     source,

@@ -443,7 +443,7 @@ export function FeedbackPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             <Table aria-label={t("pages.feedback.title")} aria-busy={loading}>
-              <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="ps-(--card-spacing)">
                     {t("pages.feedback.columns.time")}
