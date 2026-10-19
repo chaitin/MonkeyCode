@@ -3,6 +3,7 @@ package stats
 import (
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,7 +74,7 @@ func TestClientOverviewRejectsInvalidFilters(t *testing.T) {
 		"cursor=", "cursor=invalid", "limit=1", "page=1", "page_size=20", "include_purged=true",
 		"from=bad", "from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
 		"user_id=invalid", "group_id=invalid", "model_id=invalid", "expert_id=invalid",
-		"client_type=invalid", "platform=invalid", "outcome=invalid",
+		"client_type=invalid", "platform=" + strings.Repeat("x", 65), "outcome=invalid",
 	} {
 		t.Run(query, func(t *testing.T) { request(t, &Service{now: time.Now}, clientOverviewPath+"?"+query, 400) })
 	}
@@ -88,6 +89,38 @@ func TestClientOverviewEmpty(t *testing.T) {
 	}
 	if _, exists := out["last_received_at"]; exists {
 		t.Fatal("不应暴露内部聚合字段")
+	}
+}
+
+func TestClientCustomPlatform(t *testing.T) {
+	s, user, model := fixture(t)
+	for _, platform := range []string{"HarmonyOS", "future-os"} {
+		id := clientSession(t, s, user, "desktop", platform)
+		clientTurn(t, s, id, 1, s.now().Add(-time.Hour), "complete", "26.1017.2", model)
+	}
+	checkClientOverview(t, request(t, s, clientOverviewPath, 200), 2, map[string]map[string]int{
+		"platform": {"HarmonyOS": 1, "future-os": 1},
+	})
+	for _, platform := range []string{"HarmonyOS", "future-os", "not-registered"} {
+		t.Run(platform, func(t *testing.T) {
+			count := 1
+			if platform == "not-registered" {
+				count = 0
+			}
+			query := "?platform=" + url.QueryEscape(platform)
+			checkClientOverview(t, request(t, s, clientOverviewPath+query, 200), count, nil)
+			out := request(t, s, "/statistics/session-reporting/clients"+query, 200)
+			items := out["items"].([]any)
+			if len(items) != count {
+				t.Fatalf("平台筛选条数错误: %v", items)
+			}
+			if count > 0 {
+				item := items[0].(map[string]any)
+				if item["platform"] != platform || item["os_version"] != "test" {
+					t.Fatalf("客户端设备信息缺失: %v", item)
+				}
+			}
+		})
 	}
 }
 

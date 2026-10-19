@@ -1419,3 +1419,7 @@ ALTER TABLE api_keys
 
 ALTER TABLE device_client_connections
     ADD COLUMN IF NOT EXISTS access_version bigint NOT NULL DEFAULT 1 CHECK (access_version > 0);
+
+ALTER TABLE endpoints
+    DROP CONSTRAINT endpoints_platform_check,
+    ADD CONSTRAINT endpoints_platform_check CHECK (octet_length(platform) BETWEEN 1 AND 64);

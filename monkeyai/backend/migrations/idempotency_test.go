@@ -100,7 +100,7 @@ func TestRuntimeMigrationsIdempotent(t *testing.T) {
 	for _, path := range up {
 		if path < "000024_" {
 			apply(path)
-		} else {
+		} else if strings.Contains(path, "_remote_runtime") {
 			runtimeUp = append(runtimeUp, path)
 		}
 	}

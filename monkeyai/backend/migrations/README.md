@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=25, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=26, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -46,6 +46,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000023_video_seedance_provider` | 视频模型供应商增加 `volcengine` 和 `agnes`；up/down 均可在约束存在或缺失时重复执行 |
 | `000024_remote_runtime` | 合并设备授权族、设备证明、中转连接、会话目录、独立设备码授权和独立密钥绑定 |
 | `000025_remote_runtime_access_version` | 为连接权限代次增加独立 access_version，区分票据轮换和权限收窄 |
+| `000026_endpoint_platform_text` | 设备平台改为非空、最多 64 字节的文本，不再限制固定枚举 |
 
 从 `backend` 目录执行：
 
@@ -55,9 +56,9 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `25` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `26` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
-版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
+版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 
 升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
 

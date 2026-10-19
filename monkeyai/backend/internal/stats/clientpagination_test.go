@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,6 +18,16 @@ func TestReportingLimitRanges(t *testing.T) {
 			if valid && (err != nil || f.limit != limit) || !valid && err == nil {
 				t.Fatalf("limit=%d maximum=%d: filter=%+v err=%v", limit, maximum, f, err)
 			}
+		}
+	}
+}
+
+func TestReportingPlatformFilter(t *testing.T) {
+	for _, platform := range []string{"", "HarmonyOS", "future-os", strings.Repeat("x", 64), strings.Repeat("x", 65)} {
+		r := httptest.NewRequest("GET", "/?platform="+url.QueryEscape(platform), nil)
+		f, err := parseReportingFilter(r, time.Now(), 500)
+		if (err == nil) != (len(platform) <= 64) || (err == nil && f.platform != platform) {
+			t.Fatalf("平台筛选未按原值接受有界字符串: platform=%q err=%v", platform, err)
 		}
 	}
 }
