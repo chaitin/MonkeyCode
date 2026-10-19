@@ -198,7 +198,7 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 	if err != nil {
 		return Endpoint{}, err
 	}
-	if count > 10 {
+	if count > 100 {
 		return Endpoint{}, fault{"rate_limited"}
 	}
 	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
