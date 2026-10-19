@@ -815,6 +815,11 @@ export const es419 = {
       groupQuota: {
         title: "Cuotas de grupos",
         memberTitle: "Cuotas de miembros",
+        memberSort: "Ordenar miembros",
+        nameAscending: "Nombre A–Z",
+        nameDescending: "Nombre Z–A",
+        creditsDescending: "Créditos de mayor a menor",
+        creditsAscending: "Créditos de menor a mayor",
         manageGroups: "Administrar grupos",
         description:
           "El grupo raíz requiere una cuota. Los grupos secundarios y usuarios vacíos heredan del grupo superior más cercano.",

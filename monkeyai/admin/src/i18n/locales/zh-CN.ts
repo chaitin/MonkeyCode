@@ -1215,6 +1215,11 @@ export const zhCN = {
       groupQuota: {
         title: "分组额度",
         memberTitle: "成员额度",
+        memberSort: "成员排序",
+        nameAscending: "姓名正序",
+        nameDescending: "姓名倒序",
+        creditsDescending: "积分从高到低",
+        creditsAscending: "积分从低到高",
         manageGroups: "管理分组",
         description:
           "根分组必须设置额度；子分组和员工留空时，自动跟随最近上级分组的额度。",

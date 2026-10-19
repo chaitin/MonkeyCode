@@ -50,6 +50,40 @@ export type Quotas = {
   revision: number
   effective_at: string
 }
+export type QuotaMemberSort =
+  "name-asc" | "name-desc" | "credits-desc" | "credits-asc"
+
+export function sortQuotaUsers(
+  users: QuotaUser[],
+  sort: QuotaMemberSort,
+  locale: string
+) {
+  const collator = new Intl.Collator(locale, {
+    numeric: true,
+    sensitivity: "base",
+  })
+  const balance = (value: string | undefined) => {
+    if (!value || !/^-?\d+(?:\.\d{1,6})?$/.test(value)) return null
+    const [whole, fraction = ""] = value.replace(/^-/, "").split(".")
+    const units = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"))
+    return value.startsWith("-") ? -units : units
+  }
+  return [...users].sort((a, b) => {
+    const nameOrder =
+      collator.compare(a.name || a.email || a.id, b.name || b.email || b.id) ||
+      collator.compare(a.email, b.email) ||
+      a.id.localeCompare(b.id)
+    if (sort === "name-asc") return nameOrder
+    if (sort === "name-desc") return -nameOrder
+    const left = balance(a.balance_credits)
+    const right = balance(b.balance_credits)
+    if (left === null) return right === null ? nameOrder : 1
+    if (right === null) return -1
+    const order = left < right ? -1 : left > right ? 1 : 0
+    return (sort === "credits-asc" ? order : -order) || nameOrder
+  })
+}
+
 export function userQuota(
   user: QuotaUser,
   groups: QuotaGroup[],

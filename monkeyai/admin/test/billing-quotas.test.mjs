@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { userQuota } from "../src/lib/billing.ts"
+import { sortQuotaUsers, userQuota } from "../src/lib/billing.ts"
 
 const rootID = "00000000-0000-0000-0000-000000000000"
 
@@ -99,6 +99,80 @@ test("最高额度比较保留大金额的六位小数精度", () => {
     }).effective,
     "999999999999.000001"
   )
+})
+
+test("成员姓名排序使用本地语言和自然数字顺序，不改动原列表", () => {
+  const members = Object.freeze(
+    [10, 2, 1].map((id) => ({ ...user, id: String(id), name: `Member ${id}` }))
+  )
+  const names = (sort) =>
+    sortQuotaUsers(members, sort, "en-US").map((member) => member.name)
+  assert.deepEqual(names("name-asc"), ["Member 1", "Member 2", "Member 10"])
+  assert.deepEqual(names("name-desc"), ["Member 10", "Member 2", "Member 1"])
+  assert.deepEqual(
+    members.map((member) => member.id),
+    ["10", "2", "1"]
+  )
+  const chinese = ["张三", "李四", "王五"].map((name) => ({ ...user, name }))
+  assert.deepEqual(
+    sortQuotaUsers(chinese, "name-asc", "zh-CN").map((member) => member.name),
+    ["李四", "王五", "张三"]
+  )
+})
+
+test("成员积分按实际余额排序，保留大额六位精度、负数和缺失值", () => {
+  const values = [
+    "999999999999.000001",
+    "-2.000000",
+    undefined,
+    "0",
+    "999999999999.000000",
+    "-2.000001",
+    "-0.000001",
+  ]
+  const members = values.map((balance_credits, index) => ({
+    ...user,
+    id: String(index),
+    balance_credits,
+    effective_credits: String(100 - index),
+  }))
+  const balances = (sort) =>
+    sortQuotaUsers(members, sort, "en-US").map(
+      (member) => member.balance_credits
+    )
+  assert.deepEqual(balances("credits-asc"), [
+    "-2.000001",
+    "-2.000000",
+    "-0.000001",
+    "0",
+    "999999999999.000000",
+    "999999999999.000001",
+    undefined,
+  ])
+  assert.deepEqual(balances("credits-desc"), [
+    "999999999999.000001",
+    "999999999999.000000",
+    "0",
+    "-0.000001",
+    "-2.000000",
+    "-2.000001",
+    undefined,
+  ])
+})
+
+test("相同积分按姓名稳定排序，空或无效积分不当作零", () => {
+  const members = [
+    { ...user, id: "b", name: "Bravo", balance_credits: "1.000000" },
+    { ...user, id: "a", name: "Alpha", balance_credits: "1" },
+    { ...user, id: "empty", name: "Empty", balance_credits: "" },
+    { ...user, id: "invalid", name: "Invalid", balance_credits: "—" },
+  ]
+  for (const sort of ["credits-asc", "credits-desc"]) {
+    assert.deepEqual(
+      sortQuotaUsers(members, sort, "en-US").map((member) => member.id),
+      ["a", "b", "empty", "invalid"]
+    )
+  }
 })
 
 test("移动分组后跟随新上级额度", () => {

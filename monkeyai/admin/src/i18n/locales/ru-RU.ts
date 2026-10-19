@@ -815,6 +815,11 @@ export const ruRU = {
       groupQuota: {
         title: "Квоты групп",
         memberTitle: "Квоты участников",
+        memberSort: "Сортировка участников",
+        nameAscending: "Имя А–Я",
+        nameDescending: "Имя Я–А",
+        creditsDescending: "Кредиты по убыванию",
+        creditsAscending: "Кредиты по возрастанию",
         manageGroups: "Управление группами",
         description:
           "Для корневой группы квота обязательна. Пустые подгруппы и пользователи наследуют квоту ближайшей родительской группы.",

@@ -69,6 +69,8 @@ import {
   cycleNames,
   dateTime,
   validCredits,
+  sortQuotaUsers,
+  type QuotaMemberSort,
   type BillingSettings,
   type Policy,
   type QuotaGroup,
@@ -112,6 +114,7 @@ export function BillingSettingsPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [walletVersion, setWalletVersion] = useState(0)
   const [query, setQuery] = useState("")
+  const [memberSort, setMemberSort] = useState<QuotaMemberSort>("name-asc")
   const [target, setTarget] = useState<Target | null>(null)
   const [quotaValue, setQuotaValue] = useState("")
   const [quotaMode, setQuotaMode] = useState<"inherit" | "custom">("custom")
@@ -489,6 +492,31 @@ export function BillingSettingsPage() {
       label: t("pages.billingSettings.chargingMethod.modes.remote"),
     },
   ]
+  const memberSortItems = [
+    {
+      value: "name-asc",
+      label: t("pages.billingSettings.groupQuota.nameAscending"),
+    },
+    {
+      value: "name-desc",
+      label: t("pages.billingSettings.groupQuota.nameDescending"),
+    },
+    {
+      value: "credits-desc",
+      label: t("pages.billingSettings.groupQuota.creditsDescending"),
+    },
+    {
+      value: "credits-asc",
+      label: t("pages.billingSettings.groupQuota.creditsAscending"),
+    },
+  ] satisfies { value: QuotaMemberSort; label: string }[]
+  const visibleUsers = sortQuotaUsers(
+    quotas.users.filter((user) =>
+      `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase())
+    ),
+    memberSort,
+    i18n.resolvedLanguage ?? i18n.language
+  )
   const selectedMode = enabled ? mode : "disabled"
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100svh-5rem)] lg:flex-none lg:overflow-hidden">
@@ -520,11 +548,11 @@ export function BillingSettingsPage() {
             </CardContent>
           </Card>
           <Card className="min-h-80 lg:min-h-0">
-            <CardHeader className="gap-3">
+            <CardHeader className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>
                 {t("pages.billingSettings.groupQuota.memberTitle")}
               </CardTitle>
-              <CardAction>
+              <CardAction className="flex min-w-0 items-center gap-2 self-auto">
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -532,31 +560,50 @@ export function BillingSettingsPage() {
                     "pages.membersAndGroups.searchMembersPlaceholder"
                   )}
                   aria-label={t("pages.membersAndGroups.searchMembers")}
-                  className="h-8 w-40 min-w-0 sm:w-52"
+                  className="h-8 w-28 min-w-0 sm:w-32"
                 />
+                <Select
+                  items={memberSortItems}
+                  value={memberSort}
+                  onValueChange={(value) => {
+                    if (value !== null) setMemberSort(value as QuotaMemberSort)
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-36 shrink-0"
+                    aria-label={t(
+                      "pages.billingSettings.groupQuota.memberSort"
+                    )}
+                    title={
+                      memberSortItems.find((item) => item.value === memberSort)
+                        ?.label
+                    }
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="end">
+                    <SelectGroup>
+                      {memberSortItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
               <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
                 <ItemGroup className="gap-2">
-                  {quotas.users
-                    .filter((user) =>
-                      `${user.name} ${user.email}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase())
-                    )
-                    .map(userItem)}
+                  {visibleUsers.map(userItem)}
                 </ItemGroup>
-                {query &&
-                  !quotas.users.some((user) =>
-                    `${user.name} ${user.email}`
-                      .toLowerCase()
-                      .includes(query.toLowerCase())
-                  ) && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      {t("pages.membersAndGroups.noMembersFound")}
-                    </p>
-                  )}
+                {query && visibleUsers.length === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    {t("pages.membersAndGroups.noMembersFound")}
+                  </p>
+                )}
               </ScrollArea>
             </CardContent>
           </Card>

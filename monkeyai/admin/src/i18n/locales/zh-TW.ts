@@ -778,6 +778,11 @@ export const zhTW = {
       groupQuota: {
         title: "群組額度",
         memberTitle: "成員額度",
+        memberSort: "成員排序",
+        nameAscending: "姓名正序",
+        nameDescending: "姓名倒序",
+        creditsDescending: "點數由高至低",
+        creditsAscending: "點數由低至高",
         manageGroups: "管理群組",
         description:
           "根群組必須設定額度；子群組與使用者留空時，會自動跟隨最近的上層群組額度。",

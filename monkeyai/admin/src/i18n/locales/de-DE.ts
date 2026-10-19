@@ -829,6 +829,11 @@ export const deDE = {
       groupQuota: {
         title: "Gruppenkontingente",
         memberTitle: "Mitgliederkontingente",
+        memberSort: "Mitglieder sortieren",
+        nameAscending: "Name A–Z",
+        nameDescending: "Name Z–A",
+        creditsDescending: "Credits absteigend",
+        creditsAscending: "Credits aufsteigend",
         manageGroups: "Gruppen verwalten",
         description:
           "Für die Stammgruppe ist ein Kontingent erforderlich. Leere Untergruppen und Benutzer erben von der nächsten übergeordneten Gruppe.",

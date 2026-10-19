@@ -821,6 +821,11 @@ export const frFR = {
       groupQuota: {
         title: "Quotas des groupes",
         memberTitle: "Quotas des membres",
+        memberSort: "Trier les membres",
+        nameAscending: "Nom A–Z",
+        nameDescending: "Nom Z–A",
+        creditsDescending: "Crédits décroissants",
+        creditsAscending: "Crédits croissants",
         manageGroups: "Gérer les groupes",
         description:
           "Le groupe racine doit avoir un quota. Les sous-groupes et utilisateurs vides héritent du groupe parent le plus proche.",
