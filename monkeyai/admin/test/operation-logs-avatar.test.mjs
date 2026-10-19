@@ -11,7 +11,7 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
-test("operation log header uses muted text over a muted background", async () => {
+test("operation log header uses muted text over a half-opacity muted background", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
@@ -19,7 +19,7 @@ test("operation log header uses muted text over a muted background", async () =>
   assert.match(source, /\[&_th\]:text-muted-foreground/)
   assert.match(
     source,
-    /<TableRow\s+className="bg-muted hover:bg-muted"\s+style=\{\{ height: 48 \}\}/
+    /<TableRow\s+className="bg-muted\/50 hover:bg-muted\/50"\s+style=\{\{ height: 48 \}\}/
   )
   assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
   assert.match(
