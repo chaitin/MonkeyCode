@@ -462,8 +462,11 @@ export function OperationLogsPage() {
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-                <TableRow>
+              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                <TableRow
+                  className="bg-foreground/5 hover:bg-foreground/5"
+                  style={{ height: 48 }}
+                >
                   <TableHead className="ps-(--card-spacing)">
                     {t("pages.operationLogs.columns.time")}
                   </TableHead>

@@ -11,10 +11,15 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
-test("operation log time data is muted while its header uses the standard text color", async () => {
+test("operation log header uses muted text over a tinted background", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
+  )
+  assert.match(source, /\[&_th\]:text-muted-foreground/)
+  assert.match(
+    source,
+    /<TableRow\s+className="bg-foreground\/5 hover:bg-foreground\/5"\s+style=\{\{ height: 48 \}\}/
   )
   assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
   assert.match(
@@ -283,7 +288,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
   assert.match(
     source,
-    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_tr\]:border-b-0">/
+    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_tr\]:border-b-0">/
   )
   assert.ok(
     source.indexOf("</ScrollArea>") <
