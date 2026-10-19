@@ -224,11 +224,12 @@ export function credits(
 }
 export const validCredits = (value: string, signed = false) =>
   (signed ? /^-?\d{1,12}(\.\d{1,6})?$/ : /^\d{1,12}(\.\d{1,6})?$/).test(value)
-export function dateTime(value?: string) {
+export function dateTime(value?: string, options?: Intl.DateTimeFormatOptions) {
   return value
     ? new Date(value).toLocaleString("zh-CN", {
         timeZone: "Asia/Shanghai",
         hour12: false,
+        ...options,
       })
     : "—"
 }

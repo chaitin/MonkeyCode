@@ -248,7 +248,7 @@ test("billing entries omit mode and use directional integer rounding", async () 
   assert.doesNotMatch(source, /hover:text-primary hover:underline/)
   assert.match(
     source,
-    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground">\s*\{dateTime\(e\.occurred_at\)\}/
+    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground">\s*\{dateTime\(\s*e\.occurred_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)\}/
   )
   assert.match(
     source,
@@ -256,7 +256,7 @@ test("billing entries omit mode and use directional integer rounding", async () 
   )
   assert.match(
     source,
-    /ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(tx\.started_at\)/
+    /ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(\s*tx\.started_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)/
   )
   assert.match(
     source,

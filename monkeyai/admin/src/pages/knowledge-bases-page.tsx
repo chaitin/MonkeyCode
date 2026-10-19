@@ -16,6 +16,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceList } from "@/components/resource-list"
@@ -390,16 +391,7 @@ export function KnowledgeBasesPage() {
     (content) => content.id === editingContentId
   )
   const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(i18n.language, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+    () => new Intl.DateTimeFormat(i18n.language, TABLE_DATE_TIME_OPTIONS),
     [i18n.language]
   )
 

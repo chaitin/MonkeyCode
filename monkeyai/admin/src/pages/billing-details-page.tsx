@@ -9,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -593,7 +594,7 @@ export function BillingDetailsPage() {
                     {entries?.items.map((e) => (
                       <TableRow key={e.id}>
                         <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
-                          {dateTime(e.occurred_at)}
+                          {dateTime(e.occurred_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button
@@ -737,7 +738,7 @@ export function BillingDetailsPage() {
                     {pending?.items.map((tx) => (
                       <TableRow key={tx.id}>
                         <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
-                          {dateTime(tx.started_at)}
+                          {dateTime(tx.started_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button

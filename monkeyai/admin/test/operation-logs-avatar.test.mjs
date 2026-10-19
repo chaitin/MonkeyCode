@@ -219,7 +219,7 @@ test("operation log operator appears before the result with regular text", async
   )
   assert.match(
     row,
-    /<TableCell className="ps-\(--card-spacing\) text-muted-foreground">\s*\{dateFormatter\.format/
+    /<TableCell className="ps-\(--card-spacing\) text-muted-foreground">\s*\{tableDateFormatter\.format/
   )
   assert.doesNotMatch(row, /font-mono text-muted-foreground/)
 })

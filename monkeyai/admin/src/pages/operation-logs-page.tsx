@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -217,6 +218,10 @@ export function OperationLogsPage() {
     label: t("pages.operationLogs.pagination.perPage", { count: value }),
   }))
   const locale = i18n.resolvedLanguage ?? i18n.language
+  const tableDateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
+    [locale]
+  )
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -489,7 +494,7 @@ export function OperationLogsPage() {
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                        {dateFormatter.format(new Date(log.occurred_at))}
+                        {tableDateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
                       <TableCell>
                         <button

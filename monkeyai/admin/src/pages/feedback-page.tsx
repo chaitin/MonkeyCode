@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { PageSizeSelect } from "@/components/page-size-select"
 
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -319,16 +320,7 @@ export function FeedbackPage() {
   }>()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const formatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+    () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
   )
   const query = new URLSearchParams({
