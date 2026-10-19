@@ -487,7 +487,7 @@ export function OperationLogsPage() {
               <TableBody className={!visibleLogs.length ? "h-full" : undefined}>
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
-                    <TableRow key={log.id}>
+                    <TableRow key={log.id} className="h-16">
                       <TableCell className="ps-(--card-spacing) text-muted-foreground">
                         {dateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
