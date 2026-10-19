@@ -516,7 +516,7 @@ func TestBillingIntegration(t *testing.T) {
 	if modelStats["last_24h"].(map[string]any)["model_calls"].(float64) == 0 {
 		t.Fatal("真实模型调用未进入统计")
 	}
-	for _, path := range []string{"realtime", "tasks", "history"} {
+	for _, path := range []string{"realtime", "tasks/overview", "history"} {
 		must("GET", "/api/admin/v1/statistics/"+path, nil, "")
 	}
 	savedCookie := cookie
