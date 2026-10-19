@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
 
 import { Dashboard } from "@/components/dashboard"
+import { LicenseGuard } from "@/components/license-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   CONSOLE_PAGES,
@@ -55,7 +56,11 @@ function RequireAuth() {
     )
   }
 
-  return <Outlet />
+  return (
+    <LicenseGuard>
+      <Outlet />
+    </LicenseGuard>
+  )
 }
 
 function PageLoading() {
