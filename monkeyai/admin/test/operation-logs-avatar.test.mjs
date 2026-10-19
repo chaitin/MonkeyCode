@@ -19,7 +19,7 @@ test("operation log header uses muted text over a 70-percent muted background", 
   assert.match(source, /\[&_th\]:text-muted-foreground/)
   assert.match(
     source,
-    /<TableRow\s+className="border-muted-foreground\/15 bg-muted\/70 hover:bg-muted\/70"\s+style=\{\{ height: 48 \}\}/
+    /<TableRow\s+className="bg-muted\/70 hover:bg-muted\/70"\s+style=\{\{ height: 48 \}\}/
   )
   assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
   assert.match(
@@ -288,7 +288,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
   assert.match(
     source,
-    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground">/
+    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground \[&_tr\]:border-b-0">/
   )
   assert.ok(
     source.indexOf("</ScrollArea>") <

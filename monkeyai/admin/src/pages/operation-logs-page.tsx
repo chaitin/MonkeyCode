@@ -462,9 +462,9 @@ export function OperationLogsPage() {
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground">
+              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground [&_tr]:border-b-0">
                 <TableRow
-                  className="border-muted-foreground/15 bg-muted/70 hover:bg-muted/70"
+                  className="bg-muted/70 hover:bg-muted/70"
                   style={{ height: 48 }}
                 >
                   <TableHead className="ps-(--card-spacing)">
