@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
@@ -10,7 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
-import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
+import { TablePagination } from "@/components/table-pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -27,14 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -127,12 +117,7 @@ export function ResourceAnalysisPage() {
   const kindOptions = Array.from(
     new Set([...knownKinds, ...(kind ? [kind] : [])])
   )
-  const from = items.length ? active * pageSize + 1 : 0
-  const to = items.length ? active * pageSize + items.length : 0
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const path = `${reportPaths.resources}${reportQuery(filters, cursors[active])}&limit=${pageSize}`
 
   useEffect(() => {
@@ -535,80 +520,26 @@ export function ResourceAnalysisPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null && Number(value) !== pageSize) {
-                    setPageSize(Number(value))
-                    setCursors([undefined])
-                    setActive(0)
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t(`${key}.clients.cursorSummary`, { from, to })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t(`${key}.clients.cursorPage`, { page: active + 1 })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || searching || active === 0}
-                onClick={() => setActive((value) => value - 1)}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={
-                  loading || searching || Boolean(error) || !data?.next_cursor
-                }
-                onClick={() => {
-                  if (!data?.next_cursor) return
-                  setCursors((current) => [
-                    ...current.slice(0, active + 1),
-                    data.next_cursor ?? undefined,
-                  ])
-                  setActive((value) => value + 1)
-                }}
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={active + 1}
+            pageSize={pageSize}
+            itemCount={items.length}
+            loading={loading || searching}
+            error={Boolean(error)}
+            hasNext={Boolean(data?.next_cursor)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCursors([undefined])
+              setActive(0)
+            }}
+            onPrevious={() => setActive((value) => Math.max(0, value - 1))}
+            onNext={() => {
+              const next = data?.next_cursor
+              if (!next) return
+              setCursors((current) => [...current.slice(0, active + 1), next])
+              setActive((value) => value + 1)
+            }}
+          />
         </CardContent>
       </Card>
       {accountUserID && (

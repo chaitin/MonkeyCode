@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { PageSizeSelect } from "@/components/page-size-select"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -309,7 +309,7 @@ export function FeedbackPage() {
   const [category, setCategory] = useState<Category | "all">("all")
   const [state, setState] = useState<State | "all">("all")
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
@@ -523,43 +523,20 @@ export function FeedbackPage() {
               </TableBody>
             </Table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing) text-sm text-muted-foreground">
-            <span>
-              {t("pages.feedback.pagination.summary", {
-                from: rows.length ? (page - 1) * pageSize + 1 : 0,
-                to: rows.length ? (page - 1) * pageSize + rows.length : 0,
-                total,
-              })}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <PageSizeSelect
-                value={pageSize}
-                onValueChange={(size) => {
-                  setPageSize(size)
-                  setPage(1)
-                }}
-              />
-              <span>
-                {t("pages.feedback.pagination.page", { page, pages })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loading || page <= 1}
-                onClick={() => setPage((value) => value - 1)}
-              >
-                {t("pages.feedback.pagination.previous")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loading || Boolean(error) || page >= pages}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                {t("pages.feedback.pagination.next")}
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            itemCount={rows.length}
+            total={total}
+            loading={loading}
+            error={Boolean(error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pages, value + 1))}
+          />
         </CardContent>
       </Card>
       <Dialog

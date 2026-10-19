@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type InputHTMLAttributes } from "react"
 import { ArrowDown01Icon, FileArchiveIcon, FolderOpenIcon, Upload04Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 
 import { api } from "@/lib/api"
 import { stageDirectoryZip } from "@/lib/stream-zip"
@@ -123,6 +124,7 @@ export function ResourceImportsPage() {
   const [request, setRequest] = useState<HistoryRequest | null>(null)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   const [active, setActive] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
   const [refresh, setRefresh] = useState(0)
   const [modes, setModes] = useState<Record<string, string>>({})
   const [confirmed, setConfirmed] = useState(false)
@@ -131,7 +133,7 @@ export function ResourceImportsPage() {
   const [error, setError] = useState("")
 
   const cursor = cursors[active]
-  const historyKey = `${refresh}:${cursor ?? ""}`
+  const historyKey = `${refresh}:${pageSize}:${cursor ?? ""}`
   const current = request?.key === historyKey ? request : null
   const history = current?.page ?? null
   const historyError = current?.error ?? ""
@@ -139,15 +141,17 @@ export function ResourceImportsPage() {
 
   useEffect(() => {
     let activeRequest = true
-    const key = `${refresh}:${cursor ?? ""}`
-    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""
-    void api<HistoryPage>(`${base}${query}`)
+    const controller = new AbortController()
+    const key = `${refresh}:${pageSize}:${cursor ?? ""}`
+    const query = new URLSearchParams({ limit: String(pageSize) })
+    if (cursor) query.set("cursor", cursor)
+    void api<HistoryPage>(`${base}?${query}`, { signal: controller.signal })
       .then((page) => { if (activeRequest) setRequest({ key, page }) })
       .catch((reason: unknown) => {
         if (activeRequest) setRequest({ key, error: reason instanceof Error ? reason.message : "读取记录失败" })
       })
-    return () => { activeRequest = false }
-  }, [cursor, refresh])
+    return () => { activeRequest = false; controller.abort() }
+  }, [cursor, refresh, pageSize])
 
   useEffect(() => () => {
     if (stagedCleanupRef.current) void stagedCleanupRef.current().catch(() => {})
@@ -223,7 +227,10 @@ export function ResourceImportsPage() {
     <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">资源包导入记录</h1>
-        <Button type="button" onClick={() => setDialogOpen(true)}>导入资源包</Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
+          <Button type="button" onClick={() => setDialogOpen(true)}>导入资源包</Button>
+        </div>
       </div>
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
@@ -260,19 +267,22 @@ export function ResourceImportsPage() {
               </Table>
             </ScrollArea>
           )}
-          {history && (
-            <div className="flex justify-end gap-2 px-(--card-spacing)">
-              <Button size="sm" variant="outline" disabled={active === 0 || historyLoading} onClick={() => setActive(active - 1)}>上一页</Button>
-              <Button size="sm" variant="outline" disabled={!history.next_cursor || historyLoading || !!historyError} onClick={() => {
-                const next = history.next_cursor
-                if (next) {
-                  setCursors((current) => [...current.slice(0, active + 1), next])
-                  setActive(active + 1)
-                }
-              }}>下一页</Button>
-              <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
-            </div>
-          )}
+          <TablePagination
+            page={active + 1}
+            pageSize={pageSize}
+            itemCount={history?.items.length ?? 0}
+            loading={historyLoading}
+            error={Boolean(historyError)}
+            hasNext={Boolean(history?.next_cursor)}
+            onPageSizeChange={(size) => { setPageSize(size); setCursors([undefined]); setActive(0) }}
+            onPrevious={() => setActive((value) => Math.max(0, value - 1))}
+            onNext={() => {
+              const next = history?.next_cursor
+              if (!next) return
+              setCursors((current) => [...current.slice(0, active + 1), next])
+              setActive((value) => value + 1)
+            }}
+          />
         </CardContent>
       </Card>
       <Dialog open={dialogOpen} onOpenChange={closeDialog}>

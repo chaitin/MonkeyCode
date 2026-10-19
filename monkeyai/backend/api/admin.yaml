@@ -49,8 +49,9 @@ paths:
       summary: 分页查询资源包导入批次
       parameters:
         - {name: cursor, in: query, schema: {type: string}, description: 上一页返回的 next_cursor}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 20}}
       responses:
-        '200': {description: 每页最多 20 条，返回 items 与 next_cursor}
+        '200': {description: 返回 items 与 next_cursor，支持每页最多 500 条}
   /api/admin/v1/resource-imports/{id}:
     get:
       summary: 读取资源包导入批次详情

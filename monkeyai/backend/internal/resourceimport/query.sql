@@ -11,7 +11,7 @@ SELECT to_jsonb(i) FROM resource_imports i
 WHERE sqlc.arg(cursor)::jsonb = '{}'::jsonb
    OR (i.created_at, i.id) < ((sqlc.arg(cursor)::jsonb->>'created_at')::timestamptz, (sqlc.arg(cursor)::jsonb->>'id')::uuid)
 ORDER BY i.created_at DESC, i.id DESC
-LIMIT 21;
+LIMIT sqlc.arg(page_limit)::integer;
 
 -- name: GetImportHistory :one
 SELECT to_jsonb(i) FROM resource_imports i WHERE id = $1::uuid;

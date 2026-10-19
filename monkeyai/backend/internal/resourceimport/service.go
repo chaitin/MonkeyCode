@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"uuid"
@@ -144,19 +145,28 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		resource.JSON(w, http.StatusOK, out)
 	})
 	router.Get("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
+		limit := 20
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > 500 {
+				resource.Fail(w, resource.Invalid("limit 必须为 1 至 500"))
+				return
+			}
+			limit = n
+		}
 		cursor, err := decodeHistoryCursor(r.URL.Query().Get("cursor"))
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
-		rows, err := sqlc.New(s.Pool).ListImportHistory(r.Context(), cursor)
+		rows, err := sqlc.New(s.Pool).ListImportHistory(r.Context(), sqlc.ListImportHistoryParams{Cursor: cursor, PageLimit: int32(limit + 1)})
 		if err != nil {
 			resource.Fail(w, err)
 			return
 		}
-		hasMore := len(rows) > 20
+		hasMore := len(rows) > limit
 		if hasMore {
-			rows = rows[:20]
+			rows = rows[:limit]
 		}
 		list := []resource.Object{}
 		for _, data := range rows {

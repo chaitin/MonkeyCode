@@ -244,11 +244,16 @@ SELECT to_jsonb(i) FROM resource_imports i
 WHERE $1::jsonb = '{}'::jsonb
    OR (i.created_at, i.id) < (($1::jsonb->>'created_at')::timestamptz, ($1::jsonb->>'id')::uuid)
 ORDER BY i.created_at DESC, i.id DESC
-LIMIT 21
+LIMIT $2::integer
 `
 
-func (q *Queries) ListImportHistory(ctx context.Context, cursor []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listImportHistory, cursor)
+type ListImportHistoryParams struct {
+	Cursor    []byte
+	PageLimit int32
+}
+
+func (q *Queries) ListImportHistory(ctx context.Context, arg ListImportHistoryParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listImportHistory, arg.Cursor, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}

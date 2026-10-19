@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { UserAvatar } from "@/components/user-avatar"
@@ -163,6 +161,11 @@ export function BillingDetailsPage() {
   useEffect(() => {
     let cancelled = false
     const isSearch = searchRefreshRef.current === refresh
+    const controller = new AbortController()
+    if (!isSearch) {
+      setLoading(true)
+      setLoadFailed(false)
+    }
     const next = new URLSearchParams(query)
     next.delete("mode")
     for (const key of ["from", "until"] as const) {
@@ -179,14 +182,16 @@ export function BillingDetailsPage() {
     }
     const request =
       view === "entries"
-        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`).then((list) => {
+        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`, {
+            signal: controller.signal,
+          }).then((list) => {
             if (!cancelled) setEntries(list)
           })
-        : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`).then(
-            (set) => {
-              if (!cancelled) setPending(set)
-            }
-          )
+        : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`, {
+            signal: controller.signal,
+          }).then((set) => {
+            if (!cancelled) setPending(set)
+          })
     void request
       .then(() => {
         if (!cancelled && isSearch) {
@@ -213,6 +218,7 @@ export function BillingDetailsPage() {
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [query, view, refresh, showToast, t])
   const navigate = (change: Record<string, string>) => {
@@ -258,9 +264,6 @@ export function BillingDetailsPage() {
     view === "entries"
       ? (entries?.items.length ?? 0)
       : (pending?.items.length ?? 0)
-  const firstVisible = visibleCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const lastVisible =
-    visibleCount === 0 ? 0 : (page - 1) * pageSize + visibleCount
   const locale = i18n.resolvedLanguage ?? i18n.language
   const fromInput = filterDate(draft.from)
   const untilInput = filterDate(draft.until)
@@ -282,75 +285,24 @@ export function BillingDetailsPage() {
     { key: "category", label: t("pages.billingDetails.filters.category") },
     { key: "entryType", label: t("pages.billingDetails.filters.entryType") },
   ]
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const field = (key: string, value: string) =>
     setDraft({ ...draft, [key]: value })
   const pagination = (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          items={pageSizeItems}
-          value={String(pageSize)}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setPageSize(Number(value))
-              setPage(1)
-            }
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-            aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
-            <SelectGroup>
-              {pageSizeItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <p className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.summary", {
-            from: firstVisible,
-            to: lastVisible,
-            total,
-          })}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.page", { page, pages })}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          disabled={loading || page === 1}
-          onClick={() => setPage((value) => Math.max(1, value - 1))}
-          aria-label={t("pages.operationLogs.pagination.previous")}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          disabled={loading || loadFailed || page >= pages}
-          onClick={() => setPage((value) => Math.min(pages, value + 1))}
-          aria-label={t("pages.operationLogs.pagination.next")}
-        >
-          <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
-        </Button>
-      </div>
-    </div>
+    <TablePagination
+      page={page}
+      pageSize={pageSize}
+      itemCount={visibleCount}
+      total={total}
+      loading={loading || searching}
+      error={loadFailed}
+      onPageSizeChange={(size) => {
+        setPageSize(size)
+        setPage(1)
+      }}
+      onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+      onNext={() => setPage((value) => Math.min(pages, value + 1))}
+    />
   )
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">

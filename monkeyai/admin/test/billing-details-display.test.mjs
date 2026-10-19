@@ -156,16 +156,25 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
   assert.match(source, /next\.delete\("page"\)/)
   assert.match(source, /next\.delete\("page_size"\)/)
   assert.doesNotMatch(source, /navigate\(\{ page|navigate\(\{ page_size/)
+  assert.match(source, /<TablePagination/)
+  const pagination = await readFile(
+    new URL("../src/components/table-pagination.tsx", import.meta.url),
+    "utf8"
+  )
+  const selector = await readFile(
+    new URL("../src/components/page-size-select.tsx", import.meta.url),
+    "utf8"
+  )
   assert.match(
-    source,
+    selector,
     /import \{ PAGE_SIZE_OPTIONS \} from "@\/lib\/pagination"/
   )
-  assert.match(source, /pages\.operationLogs\.pagination\.summary/)
-  assert.match(source, /pages\.operationLogs\.pagination\.pageSizeLabel/)
-  assert.match(source, /size="icon-sm"/)
-  assert.match(source, /icon=\{ArrowLeft01Icon\}/)
-  assert.match(source, /icon=\{ArrowRight01Icon\}/)
-  assert.match(source, /className="rtl:rotate-180"/)
+  assert.match(pagination, /pages\.operationLogs\.pagination\.summary/)
+  assert.match(selector, /pages\.operationLogs\.pagination\.pageSizeLabel/)
+  assert.match(pagination, /size="icon-sm"/)
+  assert.match(pagination, /icon=\{ArrowLeft01Icon\}/)
+  assert.match(pagination, /icon=\{ArrowRight01Icon\}/)
+  assert.match(pagination, /className="rtl:rotate-180"/)
 })
 
 test("billing transaction details follow the credit account key-value layout", async () => {

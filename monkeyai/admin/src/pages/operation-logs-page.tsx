@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -40,14 +38,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -207,16 +197,9 @@ export function OperationLogsPage() {
   const visibleLogs = data?.items ?? []
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = page
-  const pageStart = (page - 1) * pageSize
-  const firstVisible = visibleLogs.length === 0 ? 0 : pageStart + 1
-  const lastVisible =
-    visibleLogs.length === 0 ? 0 : pageStart + visibleLogs.length
   const actionLabel = (log: AuditLog) =>
     `${t(`audit.targets.${log.target_type}`, { defaultValue: log.target_type ?? categoryLabel(log.category) })} - ${t(`audit.actions.${log.action}`, { defaultValue: log.action })}`
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const locale = i18n.resolvedLanguage ?? i18n.language
   const tableDateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
@@ -623,79 +606,20 @@ export function OperationLogsPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setPageSize(Number(value))
-                    setPage(1)
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.summary", {
-                  from: firstVisible,
-                  to: lastVisible,
-                  total,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.page", {
-                  page: currentPage,
-                  pages: pageCount,
-                })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || Boolean(error) || currentPage >= pageCount}
-                onClick={() =>
-                  setPage((value) => Math.min(pageCount, value + 1))
-                }
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            itemCount={visibleLogs.length}
+            total={total}
+            loading={loading || searching}
+            error={Boolean(error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+          />
         </CardContent>
       </Card>
       {accountUserID && (

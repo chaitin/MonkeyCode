@@ -152,7 +152,7 @@ test("operation log search only loads inside its button and preserves current ro
 
 test("operation log pagination uses matching arrow icons", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/components/table-pagination.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /icon=\{ArrowLeft01Icon\}/)
@@ -294,8 +294,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
   assert.match(source, /<TableHeader className="sticky top-0 z-10">/)
   assert.ok(
-    source.indexOf("</ScrollArea>") <
-      source.indexOf('pagination.pageSizeLabel")')
+    source.indexOf("</ScrollArea>") < source.indexOf("<TablePagination")
   )
   assert.match(
     source,

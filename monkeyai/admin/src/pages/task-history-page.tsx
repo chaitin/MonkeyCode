@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  FilterHorizontalIcon,
-  Search02Icon,
-} from "@hugeicons/core-free-icons"
+import { FilterHorizontalIcon, Search02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { Link } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -31,14 +26,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -159,11 +146,7 @@ export function TaskHistoryPage() {
   const total = request.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = request.data?.page ?? page
-  const pageStart = (currentPage - 1) * pageSize
   const visibleTasks = request.data?.items ?? []
-  const firstVisible = visibleTasks.length === 0 ? 0 : pageStart + 1
-  const lastVisible =
-    visibleTasks.length === 0 ? 0 : pageStart + visibleTasks.length
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const relativeFormatter = useMemo(
     () => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }),
@@ -173,10 +156,7 @@ export function TaskHistoryPage() {
     () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
   )
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const fieldOptions: { key: SearchField; label: string }[] = [
     { key: "taskName", label: t("pages.taskHistory.filters.taskName") },
     { key: "userName", label: t("pages.taskHistory.filters.userName") },
@@ -445,83 +425,20 @@ export function TaskHistoryPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setPageSize(Number(value))
-                    resetPage()
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.summary", {
-                  from: firstVisible,
-                  to: lastVisible,
-                  total,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.page", {
-                  page: currentPage,
-                  pages: pageCount,
-                })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={request.loading || currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={
-                  request.loading ||
-                  Boolean(request.error) ||
-                  currentPage >= pageCount
-                }
-                onClick={() =>
-                  setPage((value) => Math.min(pageCount, value + 1))
-                }
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            itemCount={visibleTasks.length}
+            total={total}
+            loading={request.loading}
+            error={Boolean(request.error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              resetPage()
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+          />
         </CardContent>
       </Card>
       {accountUserID && (

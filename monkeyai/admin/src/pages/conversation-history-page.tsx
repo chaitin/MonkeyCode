@@ -1,7 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
@@ -9,8 +7,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { PAGE_SIZE_OPTIONS } from "@/lib/pagination"
 import { useSearchParams } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -28,14 +26,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -226,12 +216,8 @@ export function ConversationHistoryPage() {
   const total = request.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = request.data?.page ?? page
-  const start = (currentPage - 1) * pageSize
   const visible = request.data?.items ?? []
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((size) => ({
-    value: String(size),
-    label: t("pages.operationLogs.pagination.perPage", { count: size }),
-  }))
+
   const formatter = useMemo(
     () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
@@ -578,78 +564,20 @@ export function ConversationHistoryPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                disabled={request.loading}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setPageSize(Number(value))
-                    setPage(1)
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.summary", {
-                  from: visible.length ? start + 1 : 0,
-                  to: start + visible.length,
-                  total,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.page", {
-                  page: currentPage,
-                  pages,
-                })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={request.loading || currentPage === 1}
-                onClick={() => setPage(Math.max(1, currentPage - 1))}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={request.loading || currentPage >= pages}
-                onClick={() => setPage(Math.min(pages, currentPage + 1))}
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            itemCount={visible.length}
+            total={total}
+            loading={request.loading}
+            error={Boolean(request.error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            onPrevious={() => setPage(Math.max(1, currentPage - 1))}
+            onNext={() => setPage(Math.min(pages, currentPage + 1))}
+          />
         </CardContent>
       </Card>
       {accountUserID && (
