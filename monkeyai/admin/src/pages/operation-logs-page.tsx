@@ -464,7 +464,7 @@ export function OperationLogsPage() {
             >
               <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
                 <TableRow
-                  className="bg-muted hover:bg-muted"
+                  className="bg-sidebar hover:bg-sidebar"
                   style={{ height: 48 }}
                 >
                   <TableHead className="ps-(--card-spacing)">
