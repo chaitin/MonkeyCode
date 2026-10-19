@@ -300,6 +300,18 @@ export const zhCN = {
       chooseFile: "选择文件",
       import: "导入",
       importSuccess: "付费授权导入成功",
+      expiredTitle: "授权已到期",
+      expiredDescription:
+        "当前授权已到期，请降级到免费版或上传新授权后继续使用管理端。",
+      freeLimit: "免费版最多支持 {{count}} 个启用用户，包含管理员。",
+      downgrade: "降级到免费版",
+      downgradeSuccess: "已降级到免费版",
+      downgradeBlocked:
+        "当前有 {{count}} 个启用用户，超过免费版 {{limit}} 人限制，无法降级到免费版，请上传新授权。",
+      memberCountUnavailable: "暂时无法确认用户数量，请重试或上传新授权。",
+      uploadNew: "上传新授权",
+      processing: "正在处理…",
+      retry: "重试",
     },
     realtimeStatus: {
       title: "数据总览",

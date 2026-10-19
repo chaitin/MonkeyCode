@@ -328,6 +328,20 @@ export const enUS = {
       chooseFile: "Choose file",
       import: "Import",
       importSuccess: "License imported",
+      expiredTitle: "License expired",
+      expiredDescription:
+        "Your license has expired. Downgrade to the free edition or upload a new license to continue using the admin console.",
+      freeLimit:
+        "The free edition supports up to {{count}} enabled users, including administrators.",
+      downgrade: "Downgrade to free edition",
+      downgradeSuccess: "Switched to the free edition",
+      downgradeBlocked:
+        "There are {{count}} enabled users, exceeding the free edition limit of {{limit}}. You cannot downgrade. Please upload a new license.",
+      memberCountUnavailable:
+        "The user count is temporarily unavailable. Please retry or upload a new license.",
+      uploadNew: "Upload new license",
+      processing: "Processing…",
+      retry: "Retry",
     },
     realtimeStatus: {
       title: "Data Overview",

@@ -157,6 +157,18 @@ export const zhTW = {
       chooseFile: "選擇檔案",
       import: "匯入",
       importSuccess: "付費授權匯入成功",
+      expiredTitle: "授權已到期",
+      expiredDescription:
+        "目前授權已到期，請降級到免費版或上傳新授權後繼續使用管理端。",
+      freeLimit: "免費版最多支援 {{count}} 個啟用使用者，包含管理員。",
+      downgrade: "降級到免費版",
+      downgradeSuccess: "已降級到免費版",
+      downgradeBlocked:
+        "目前有 {{count}} 個啟用使用者，超過免費版 {{limit}} 人限制，無法降級到免費版，請上傳新授權。",
+      memberCountUnavailable: "暫時無法確認使用者數量，請重試或上傳新授權。",
+      uploadNew: "上傳新授權",
+      processing: "正在處理…",
+      retry: "重試",
     },
     realtimeStatus: {
       title: "數據總覽",
