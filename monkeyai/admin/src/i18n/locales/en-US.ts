@@ -1291,10 +1291,8 @@ export const enUS = {
         title: "Group quotas",
         memberTitle: "Member quotas",
         memberSort: "Sort members",
-        nameAscending: "Name A–Z",
-        nameDescending: "Name Z–A",
-        creditsDescending: "Credits high to low",
-        creditsAscending: "Credits low to high",
+        nameAscending: "Name",
+        creditsAscending: "Credits",
         manageGroups: "Manage groups",
         description:
           "The root group requires a quota. Empty child groups and users inherit from their nearest parent group.",

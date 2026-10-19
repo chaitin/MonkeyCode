@@ -108,7 +108,6 @@ test("成员姓名排序使用本地语言和自然数字顺序，不改动原�
   const names = (sort) =>
     sortQuotaUsers(members, sort, "en-US").map((member) => member.name)
   assert.deepEqual(names("name-asc"), ["Member 1", "Member 2", "Member 10"])
-  assert.deepEqual(names("name-desc"), ["Member 10", "Member 2", "Member 1"])
   assert.deepEqual(
     members.map((member) => member.id),
     ["10", "2", "1"]
@@ -149,15 +148,6 @@ test("成员积分按实际余额排序，保留大额六位精度、负数和�
     "999999999999.000001",
     undefined,
   ])
-  assert.deepEqual(balances("credits-desc"), [
-    "999999999999.000001",
-    "999999999999.000000",
-    "0",
-    "-0.000001",
-    "-2.000000",
-    "-2.000001",
-    undefined,
-  ])
 })
 
 test("相同积分按姓名稳定排序，空或无效积分不当作零", () => {
@@ -167,12 +157,10 @@ test("相同积分按姓名稳定排序，空或无效积分不当作零", () =>
     { ...user, id: "empty", name: "Empty", balance_credits: "" },
     { ...user, id: "invalid", name: "Invalid", balance_credits: "—" },
   ]
-  for (const sort of ["credits-asc", "credits-desc"]) {
-    assert.deepEqual(
-      sortQuotaUsers(members, sort, "en-US").map((member) => member.id),
-      ["a", "b", "empty", "invalid"]
-    )
-  }
+  assert.deepEqual(
+    sortQuotaUsers(members, "credits-asc", "en-US").map((member) => member.id),
+    ["a", "b", "empty", "invalid"]
+  )
 })
 
 test("移动分组后跟随新上级额度", () => {

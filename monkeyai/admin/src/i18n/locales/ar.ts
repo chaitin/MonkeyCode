@@ -778,10 +778,8 @@ export const ar = {
         title: "حصص المجموعات",
         memberTitle: "حصص الأعضاء",
         memberSort: "ترتيب الأعضاء",
-        nameAscending: "الاسم تصاعديًا",
-        nameDescending: "الاسم تنازليًا",
-        creditsDescending: "الرصيد من الأعلى للأقل",
-        creditsAscending: "الرصيد من الأقل للأعلى",
+        nameAscending: "الاسم",
+        creditsAscending: "الرصيد",
         manageGroups: "إدارة المجموعات",
         description:
           "يجب تعيين حصة للمجموعة الجذرية. ترث المجموعات الفرعية والمستخدمون غير المعينين من أقرب مجموعة أصل.",

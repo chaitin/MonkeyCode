@@ -782,10 +782,8 @@ export const koKR = {
         title: "그룹 한도",
         memberTitle: "구성원 한도",
         memberSort: "구성원 정렬",
-        nameAscending: "이름 오름차순",
-        nameDescending: "이름 내림차순",
-        creditsDescending: "크레딧 높은 순",
-        creditsAscending: "크레딧 낮은 순",
+        nameAscending: "이름",
+        creditsAscending: "크레딧",
         manageGroups: "그룹 관리",
         description:
           "루트 그룹은 한도를 반드시 설정해야 합니다. 비어 있는 하위 그룹과 사용자는 가장 가까운 상위 그룹의 한도를 상속합니다.",

@@ -50,8 +50,7 @@ export type Quotas = {
   revision: number
   effective_at: string
 }
-export type QuotaMemberSort =
-  "name-asc" | "name-desc" | "credits-desc" | "credits-asc"
+export type QuotaMemberSort = "name-asc" | "credits-asc"
 
 export function sortQuotaUsers(
   users: QuotaUser[],
@@ -74,13 +73,12 @@ export function sortQuotaUsers(
       collator.compare(a.email, b.email) ||
       a.id.localeCompare(b.id)
     if (sort === "name-asc") return nameOrder
-    if (sort === "name-desc") return -nameOrder
     const left = balance(a.balance_credits)
     const right = balance(b.balance_credits)
     if (left === null) return right === null ? nameOrder : 1
     if (right === null) return -1
     const order = left < right ? -1 : left > right ? 1 : 0
-    return (sort === "credits-asc" ? order : -order) || nameOrder
+    return order || nameOrder
   })
 }
 

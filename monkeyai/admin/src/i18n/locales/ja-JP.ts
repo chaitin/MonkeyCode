@@ -797,10 +797,8 @@ export const jaJP = {
         title: "グループ枠",
         memberTitle: "メンバー枠",
         memberSort: "メンバーの並び順",
-        nameAscending: "名前の昇順",
-        nameDescending: "名前の降順",
-        creditsDescending: "クレジットの多い順",
-        creditsAscending: "クレジットの少ない順",
+        nameAscending: "名前",
+        creditsAscending: "クレジット",
         manageGroups: "グループを管理",
         description:
           "ルートグループの枠は必須です。子グループとユーザーが未設定の場合、最も近い親グループの枠を継承します。",

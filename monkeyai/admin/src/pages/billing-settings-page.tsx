@@ -498,14 +498,6 @@ export function BillingSettingsPage() {
       label: t("pages.billingSettings.groupQuota.nameAscending"),
     },
     {
-      value: "name-desc",
-      label: t("pages.billingSettings.groupQuota.nameDescending"),
-    },
-    {
-      value: "credits-desc",
-      label: t("pages.billingSettings.groupQuota.creditsDescending"),
-    },
-    {
       value: "credits-asc",
       label: t("pages.billingSettings.groupQuota.creditsAscending"),
     },
@@ -571,7 +563,7 @@ export function BillingSettingsPage() {
                 >
                   <SelectTrigger
                     size="sm"
-                    className="w-36 shrink-0"
+                    className="w-28 shrink-0"
                     aria-label={t(
                       "pages.billingSettings.groupQuota.memberSort"
                     )}
