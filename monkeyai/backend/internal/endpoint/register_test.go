@@ -34,6 +34,67 @@ func TestRegistrationValidation(t *testing.T) {
 	}
 }
 
+func TestPlatformValidation(t *testing.T) {
+	for _, test := range []struct {
+		platform string
+		valid    bool
+	}{
+		{"macos", true}, {"web", true}, {"HarmonyOS", true}, {"harmonyos", true}, {"future-os", true},
+		{strings.Repeat("x", 64), true}, {strings.Repeat("鸿", 21), true},
+		{"", false}, {"   ", false}, {"HarmonyOS\n", false},
+		{strings.Repeat("x", 65), false}, {strings.Repeat("鸿", 22), false},
+	} {
+		t.Run(test.platform, func(t *testing.T) {
+			platform, err := json.Marshal(test.platform)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := strings.Replace(deviceBody, `"platform":"web"`, `"platform":`+string(platform), 1)
+			r, err := registration([]byte(body))
+			if (err == nil) != test.valid || (test.valid && r.Platform != test.platform) {
+				t.Fatalf("设备登记平台校验错误: platform=%q err=%v", test.platform, err)
+			}
+			data, err := json.Marshal(Hello{Type: "hello", Versions: []int{1}, MachineID: machineA,
+				Profile: Profile{"电脑", test.platform, "6.0.1.125", "arm64", "1"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			h, err := hello(data)
+			if (err == nil) != test.valid || (test.valid && h.Profile.Platform != test.platform) {
+				t.Fatalf("WebSocket 平台校验错误: platform=%q err=%v", test.platform, err)
+			}
+		})
+	}
+}
+
+func TestDeviceRegistrationCustomPlatform(t *testing.T) {
+	f := newFixture(t)
+	for _, platform := range []string{"HarmonyOS", "future-os", strings.Repeat("x", 64)} {
+		t.Run(platform, func(t *testing.T) {
+			machine := uuid.New().String()
+			body := strings.Replace(deviceBody, `"platform":"web"`, `"platform":"`+platform+`"`, 1)
+			body = strings.Replace(body, `"os_version":"15"`, `"os_version":"6.0.1.125"`, 1)
+			for _, method := range []string{"PUT", "GET"} {
+				code, data := call(t, f, method, "/endpoints/"+machine, body, "owner")
+				var out struct {
+					Platform  string `json:"platform"`
+					OSVersion string `json:"os_version"`
+				}
+				if code != 200 || json.Unmarshal(data, &out) != nil || out.Platform != platform || out.OSVersion != "6.0.1.125" {
+					t.Fatalf("%s 未保留客户端平台和系统版本: %d %s", method, code, data)
+				}
+			}
+		})
+	}
+	for _, platform := range []string{"", strings.Repeat("x", 65)} {
+		_, err := f.pool.Exec(t.Context(), `INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version,protocol_version)
+			VALUES($1,$2,'test',$3,'test','arm64','1',1)`, f.user, uuid.New().String(), platform)
+		if err == nil {
+			t.Fatalf("数据库未拒绝无效平台: %q", platform)
+		}
+	}
+}
+
 func TestDeviceRegistration(t *testing.T) {
 	f := newFixture(t)
 	if code, _ := call(t, f, "PUT", "/endpoints/"+machineA, deviceBody, ""); code != 401 {

@@ -680,7 +680,7 @@ paths:
               required: [device_name, platform, os_version, arch, client_version]
               properties:
                 device_name: {type: string, maxLength: 128}
-                platform: {type: string, enum: [macos, windows, linux, ios, android, web]}
+                platform: {type: string, minLength: 1, maxLength: 64, description: 客户端上报的平台名称，最多 64 个 UTF-8 字节，不限制固定枚举。}
                 os_version: {type: string, maxLength: 64}
                 arch: {type: string, maxLength: 32}
                 client_version: {type: string, maxLength: 64}
@@ -3809,7 +3809,7 @@ components:
         device_name: {type: string}
         alias: {type: [string, 'null']}
         display_name: {type: string}
-        platform: {type: string, enum: [macos, windows, linux, ios, android]}
+        platform: {type: string, minLength: 1, maxLength: 64, description: 客户端上报的平台名称，最多 64 个 UTF-8 字节。}
         os_version: {type: string}
         arch: {type: string}
         client_version: {type: string}

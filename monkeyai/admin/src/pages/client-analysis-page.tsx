@@ -103,7 +103,6 @@ const searchFields: ClientSearchField[] = [
 ]
 const selectValues = {
   client_type: ["desktop", "web", "extension", "mobile", "unknown"],
-  platform: ["macos", "windows", "linux", "ios", "android", "web"],
   outcome: [
     "complete",
     "interrupted",
@@ -344,39 +343,48 @@ export function ClientAnalysisPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {(["platform", "outcome"] as const).map(
-              (field) =>
-                visibleFields.has(field) && (
-                  <Select
-                    key={field}
-                    value={draft[field] || "__all__"}
-                    onValueChange={(value) =>
-                      setDraft((current) => ({
-                        ...current,
-                        [field]: value === "__all__" ? "" : (value ?? ""),
-                      }))
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label={t(`${key}.fields.${field}`)}
-                      className="min-w-32"
-                    >
-                      <SelectValue placeholder={t(`${key}.fields.${field}`)} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">
-                        {t(`${key}.fields.${field}`)}
-                      </SelectItem>
-                      {selectValues[field].map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {field === "outcome"
-                            ? t(`${key}.outcomes.${option}`)
-                            : option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )
+            {visibleFields.has("platform") && (
+              <Input
+                className="w-40"
+                maxLength={64}
+                placeholder={t(`${key}.fields.platform`)}
+                aria-label={t(`${key}.fields.platform`)}
+                value={draft.platform ?? ""}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    platform: event.target.value,
+                  }))
+                }
+              />
+            )}
+            {visibleFields.has("outcome") && (
+              <Select
+                value={draft.outcome || "__all__"}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    outcome: value === "__all__" ? "" : (value ?? ""),
+                  }))
+                }
+              >
+                <SelectTrigger
+                  aria-label={t(`${key}.fields.outcome`)}
+                  className="min-w-32"
+                >
+                  <SelectValue placeholder={t(`${key}.fields.outcome`)} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">
+                    {t(`${key}.fields.outcome`)}
+                  </SelectItem>
+                  {selectValues.outcome.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {t(`${key}.outcomes.${option}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
             {(["user_id", "group_id", "model_id", "expert_id"] as const).map(
               (field) =>

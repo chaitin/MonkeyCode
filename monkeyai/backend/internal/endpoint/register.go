@@ -52,7 +52,7 @@ func registration(data []byte) (Registration, error) {
 		return r, errInvalid
 	}
 	if !text(r.DeviceName, 128) || !text(r.OSVersion, 64) || !text(r.Arch, 32) || !text(r.ClientVersion, 64) ||
-		!slices.Contains([]string{"macos", "windows", "linux", "ios", "android", "web"}, r.Platform) ||
+		!text(r.Platform, 64) ||
 		(r.ProtocolVersion != nil && *r.ProtocolVersion <= 0) {
 		return r, errInvalid
 	}

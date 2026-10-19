@@ -246,8 +246,8 @@ export function ClientDistributionCards({
                 ? t(`${key}.unknown`)
                 : field === "client_type"
                   ? t(`${key}.types.${value}`, { defaultValue: value })
-                  : field === "platform"
-                    ? (platformLabels[value] ?? value)
+                  : field === "platform" && Object.hasOwn(platformLabels, value)
+                    ? platformLabels[value]
                     : value,
             count,
             fill: categoryColor(field, value),

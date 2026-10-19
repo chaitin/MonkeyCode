@@ -77,6 +77,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
+		"26/u endpoint_platform_text",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {

@@ -83,8 +83,8 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 	if f.clientType != "" && !oneOf(f.clientType, "desktop", "web", "extension", "mobile", "unknown") {
 		return f, resource.Invalid("client_type 无效")
 	}
-	if f.platform != "" && !oneOf(f.platform, "macos", "windows", "linux", "ios", "android", "web") {
-		return f, resource.Invalid("platform 无效")
+	if len(f.platform) > 64 {
+		return f, resource.Invalid("platform 过长")
 	}
 	if f.outcome != "" && !oneOf(f.outcome, "complete", "interrupted", "error", "max_turns", "output_limit", "unknown") {
 		return f, resource.Invalid("outcome 无效")
