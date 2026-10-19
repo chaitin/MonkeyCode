@@ -143,10 +143,10 @@ func TestDeviceRegistration(t *testing.T) {
 
 func TestDeviceRegistrationRateLimit(t *testing.T) {
 	f := newFixture(t)
-	for range 10 {
+	for range 100 {
 		code, data := call(t, f, "PUT", "/endpoints/"+machineA, deviceBody, "owner")
 		if code != 200 {
-			t.Fatalf("十次登记以内不应限速: %d %s", code, data)
+			t.Fatalf("一百次登记以内不应限速: %d %s", code, data)
 		}
 	}
 	req, err := http.NewRequestWithContext(t.Context(), "PUT", f.server.URL+"/endpoints/"+machineA, strings.NewReader(deviceBody))
@@ -160,7 +160,7 @@ func TestDeviceRegistrationRateLimit(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
-		t.Fatalf("第十一次登记应限速并给出等待时间: %d %s", resp.StatusCode, resp.Header.Get("Retry-After"))
+		t.Fatalf("第一百零一次登记应限速并给出等待时间: %d %s", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
 }
 
