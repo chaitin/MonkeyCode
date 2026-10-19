@@ -462,7 +462,7 @@ export function OperationLogsPage() {
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:text-muted-foreground [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_th]:shadow-muted/60 [&_tr]:border-b-0">
                 <TableRow
                   className="bg-muted/70 hover:bg-muted/70"
                   style={{ height: 48 }}
@@ -490,7 +490,11 @@ export function OperationLogsPage() {
               <TableBody className={!visibleLogs.length ? "h-full" : undefined}>
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
-                    <TableRow key={log.id} style={{ height: 48 }}>
+                    <TableRow
+                      key={log.id}
+                      className="border-muted/60"
+                      style={{ height: 48 }}
+                    >
                       <TableCell className="ps-(--card-spacing) text-muted-foreground">
                         {dateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
