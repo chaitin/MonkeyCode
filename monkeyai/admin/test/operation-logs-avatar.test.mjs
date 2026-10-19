@@ -288,7 +288,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
   assert.match(
     source,
-    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_th\]:shadow-muted\/70 \[&_tr\]:border-b-0">/
+    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:text-muted-foreground \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_th\]:shadow-muted \[&_tr\]:border-b-0">/
   )
   assert.ok(
     source.indexOf("</ScrollArea>") <
