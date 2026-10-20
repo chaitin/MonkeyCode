@@ -5303,6 +5303,7 @@ components:
       description: 查询窗口终点，不包含；由服务端统一确定。
     StatisticsModelsOverview:
       type: object
+      description: 模型调用与积分通过事务内维护的小时汇总统计；完整小时读取汇总，滚动窗口边界和最近 30 分钟耗时读取明细。北京时间日界、用量明确判定与截尾平均规则保持一致。
       required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]
       properties:
         timezone: {type: string, const: Asia/Shanghai}

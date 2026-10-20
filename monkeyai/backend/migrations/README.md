@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=26, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=28, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -47,6 +47,8 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000024_remote_runtime` | 合并设备授权族、设备证明、中转连接、会话目录、独立设备码授权和独立密钥绑定 |
 | `000025_remote_runtime_access_version` | 为连接权限代次增加独立 access_version，区分票据轮换和权限收窄 |
 | `000026_endpoint_platform_text` | 设备平台改为非空、最多 64 字节的文本，不再限制固定枚举 |
+| `000027_resource_import_uploads` | 增加资源包分片上传与续传任务 |
+| `000028_stats_model_hourly` | 回填模型调用及模型账本的小时汇总，并安装事务内增量维护触发器 |
 
 从 `backend` 目录执行：
 
@@ -56,7 +58,9 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `26` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `28` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+
+版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
 版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 

@@ -1443,3 +1443,24 @@ CREATE TABLE resource_import_chunks (
     sha256 text NOT NULL CHECK (sha256 ~ '^sha256:[0-9a-f]{64}$'),
     PRIMARY KEY (upload_id, index)
 );
+
+ALTER TABLE model_calls ADD COLUMN usage_known boolean NOT NULL DEFAULT true;
+
+CREATE TABLE stats_model_hourly (
+    hour_start timestamptz NOT NULL,
+    model_id uuid NOT NULL,
+    calls bigint NOT NULL DEFAULT 0 CHECK (calls >= 0),
+    succeeded bigint NOT NULL DEFAULT 0 CHECK (succeeded >= 0),
+    cache_hits bigint NOT NULL DEFAULT 0 CHECK (cache_hits >= 0),
+    input_tokens numeric NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+    output_tokens numeric NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+    PRIMARY KEY (hour_start, model_id),
+    CHECK (hour_start = date_trunc('hour', hour_start, 'UTC')),
+    CHECK (succeeded <= calls AND cache_hits <= calls)
+);
+
+CREATE TABLE stats_model_credit_hourly (
+    hour_start timestamptz PRIMARY KEY,
+    credits numeric NOT NULL DEFAULT 0,
+    CHECK (hour_start = date_trunc('hour', hour_start, 'UTC'))
+);
