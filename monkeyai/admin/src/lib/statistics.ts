@@ -1,5 +1,5 @@
 export type ModelOverview = {
-  timezone: "UTC"
+  timezone: "Asia/Shanghai"
   generated_at: string
   last_24h: { model_calls: number; input_tokens: number; output_tokens: number }
   previous_24h: {
@@ -27,7 +27,7 @@ export type TaskOverview = {
   total_tasks: number
   new_tasks_24h: number
   active_tasks_24h: number
-  timezone: "UTC"
+  timezone: "Asia/Shanghai"
   generated_at: string
   days: { date: string; new_tasks: number; active_tasks: number }[]
 }
@@ -36,7 +36,7 @@ export type UserStatistics = {
   total_users: number
   new_users_24h: number
   active_users_24h: number
-  timezone: "UTC"
+  timezone: "Asia/Shanghai"
   generated_at: string
   days: { date: string; new_users: number; active_users: number }[]
 }

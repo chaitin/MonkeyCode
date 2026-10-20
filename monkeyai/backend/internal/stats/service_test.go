@@ -150,7 +150,7 @@ func TestModelsOverview(t *testing.T) {
 		exec(t, s, `INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,resource_type,resource_id,item_name,credit_delta,balance_after,occurred_at) VALUES($1,$2,$3,$4,'model',$5,'测试',$6,0,$7)`, account, user, entry.kind, entry.category, model, entry.amount, entry.at)
 	}
 	out := request(t, s, "/statistics/models/overview", 200)
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	last24 := out["last_24h"].(map[string]any)
@@ -345,7 +345,7 @@ func TestUsersOverview(t *testing.T) {
 	for key, want := range map[string]float64{"total_users": 3, "new_users_24h": 2, "active_users_24h": 2} {
 		number(t, out, key, want)
 	}
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	days, ok := out["days"].([]any)
@@ -427,7 +427,7 @@ func TestTasksOverview(t *testing.T) {
 	for key, want := range map[string]float64{"total_tasks": 3, "new_tasks_24h": 1, "active_tasks_24h": 2} {
 		number(t, out, key, want)
 	}
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	days, ok := out["days"].([]any)

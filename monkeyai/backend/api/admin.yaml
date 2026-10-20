@@ -907,7 +907,7 @@ paths:
   /api/admin/v1/statistics/models/overview:
     get:
       summary: 模型调用的固定窗口汇总与近 90 天每日趋势
-      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为 UTC 自然日，今天仅统计到 generated_at。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
+      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为北京时间（Asia/Shanghai）自然日，今天仅统计到 generated_at。Token 和 TPM 仅累计用量明确的调用：优先采用 billing_transactions.usage.known，缺失时以 model_calls.error_code 为空判断；输入包含缓存输入。调用次数、成功率和耗时仍统计全部已完成调用。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
       responses:
         "200":
           description: 同一数据库快照下的模型总览。
@@ -931,7 +931,7 @@ paths:
   /api/admin/v1/statistics/tasks/overview:
     get:
       summary: 任务总量、近 24 小时新增和活跃任务及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按 UTC 自然日，包含当天部分数据。
+      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
       responses:
         "200":
           description: 任务统计及完整的 90 天日序列。
@@ -996,7 +996,7 @@ paths:
   /api/admin/v1/statistics/users:
     get:
       summary: 用户总量、近 24 小时新增和活跃用户及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按 UTC 自然日，包含当天部分数据。
+      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
       responses:
         "200":
           description: 用户统计及完整的 90 天日序列。
@@ -5305,7 +5305,7 @@ components:
       type: object
       required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]
       properties:
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         last_24h:
           type: object
@@ -5327,7 +5327,7 @@ components:
           type: object
           required: [tpm, rpm, cache_hit_rate, model_success_rate, avg_response_time, avg_first_token_time]
           properties:
-            tpm: {type: number, minimum: 0, description: 近 30 分钟完成调用的输入和输出 Token 总量除以 30。}
+            tpm: {type: number, minimum: 0, description: 近 30 分钟完成且用量明确的调用的输入和输出 Token 总量除以 30。}
             rpm: {type: number, minimum: 0, description: 近 30 分钟完成调用数除以 30。}
             cache_hit_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
             model_success_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
@@ -5337,7 +5337,7 @@ components:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天，按日期升序；空白日期补零。
+          description: 从 89 天前到今天的北京时间自然日，按日期升序；空白日期补零。Token 仅累计用量明确的调用，输入包含缓存输入。
           items:
             type: object
             required: [date, model_calls, input_tokens, output_tokens, credits]
@@ -5354,13 +5354,13 @@ components:
         total_tasks: {type: integer, minimum: 0, description: 当前上报启用且未删除的根任务总量。}
         new_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内开始的根任务数。}
         active_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内有上报轮次的去重根任务数。}
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
           items:
             type: object
             required: [date, new_tasks, active_tasks]
@@ -5375,13 +5375,13 @@ components:
         total_users: {type: integer, minimum: 0, description: users 表的全部用户行数，包含软删除和停用用户。}
         new_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内创建的用户数，包含此后软删除的用户。}
         active_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内存在 session_turns 记录的去重任务所属用户数。}
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
           items:
             type: object
             required: [date, new_users, active_users]
@@ -5426,18 +5426,18 @@ components:
           description: 窗口内完成的模型调用总数。
         tpm:
           type: number
-          description: 窗口内完成调用的输入加输出 Token 总量 / 窗口分钟数。
+          description: 窗口内完成且用量明确的调用的输入加输出 Token 总量 / 窗口分钟数。
         rpm:
           type: number
           description: 窗口内完成调用总数 / 窗口分钟数。
         input_tokens:
           type: integer
           minimum: 0
-          description: 窗口内完成调用的输入 Token，包含缓存输入。
+          description: 窗口内完成且用量明确的调用的输入 Token，包含缓存输入。
         output_tokens:
           type: integer
           minimum: 0
-          description: 窗口内完成调用的输出 Token。
+          description: 窗口内完成且用量明确的调用的输出 Token。
         total_users:
           type: integer
           minimum: 0

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// usersOverview returns a fixed rolling 24-hour summary and 90 UTC calendar days.
+// usersOverview returns a fixed rolling 24-hour summary and 90 Asia/Shanghai calendar days.
 func (s *Service) usersOverview(w http.ResponseWriter, r *http.Request) {
 	if len(r.URL.Query()) != 0 {
 		resource.Fail(w, resource.Invalid("用户统计不支持查询参数"))
