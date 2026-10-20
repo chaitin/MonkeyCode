@@ -190,15 +190,6 @@ func (s *Service) ensureLocked(ctx context.Context, tx pgx.Tx, userID, sessionID
 			return sessionRow{}, err
 		}
 	}
-	if groupID == "" {
-		group, err := sqlc.New(tx).CurrentSessionGroup(ctx, sqlc.CurrentSessionGroupParams{ParentID: parentID, UserID: userID})
-		if err != nil {
-			return sessionRow{}, err
-		}
-		if group != "" {
-			groupID = group
-		}
-	}
 	err := sqlc.New(tx).InsertPlaceholder(ctx, sqlc.InsertPlaceholderParams{
 		ID: sessionID, OwnerUserID: userID, GroupID: groupID,
 		ParentSessionID: parentID, MachineID: machineID, StartedAt: s.now().UTC(),
@@ -224,6 +215,16 @@ func (s *Service) ensureLocked(ctx context.Context, tx pgx.Tx, userID, sessionID
 	if parentID != "" {
 		if row.ParentSessionID != nil && *row.ParentSessionID != parentID {
 			return sessionRow{}, invalidSession("父会话不可更换")
+		}
+	}
+	if groupID == "" && row.GroupID == nil {
+		groupParentID := parentID
+		if groupParentID == "" && row.ParentSessionID != nil {
+			groupParentID = *row.ParentSessionID
+		}
+		groupID, err = sqlc.New(tx).CurrentSessionGroup(ctx, sqlc.CurrentSessionGroupParams{ParentID: groupParentID, UserID: userID})
+		if err != nil {
+			return sessionRow{}, err
 		}
 	}
 	if groupID != "" && row.GroupID != nil && *row.GroupID != groupID {
