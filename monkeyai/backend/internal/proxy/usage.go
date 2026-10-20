@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,6 +63,7 @@ func (r usageResult) hasTokens() bool {
 type usageCaptureContext struct {
 	ctx      context.Context
 	path     string
+	encoding string
 	stream   bool
 	proxyCtx *proxyContext
 	proxy    *Proxy
@@ -71,7 +73,7 @@ type usageCapture struct {
 	logger     *slog.Logger
 	src        io.ReadCloser
 	ctx        usageCaptureContext
-	reader     *io.PipeReader
+	reader     io.ReadCloser
 	writer     *io.PipeWriter
 	copyFailed bool
 }
@@ -108,6 +110,7 @@ func (p *Proxy) modifyResponse(response *http.Response) error {
 	response.Body = newUsageCapture(p.logger, response.Body, usageCaptureContext{
 		ctx:      response.Request.Context(),
 		path:     normalizeUsagePath(response.Request.URL.Path),
+		encoding: response.Header.Get("Content-Encoding"),
 		stream:   ctx.stream,
 		proxyCtx: ctx,
 		proxy:    p,
@@ -182,19 +185,36 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 }
 
 func (c *usageCapture) handleShadow() {
+	reader := c.reader
 	defer func() {
-		if err := c.reader.Close(); err != nil {
+		if err := reader.Close(); err != nil {
 			c.logPipeError("close_usage_reader", err)
 		}
 	}()
 	var result usageResult
+	defer func() {
+		if c.ctx.proxy != nil {
+			c.ctx.proxy.recordUsage(c.ctx.ctx, c.ctx.proxyCtx, result)
+		}
+	}()
+	if strings.EqualFold(strings.TrimSpace(c.ctx.encoding), "gzip") {
+		decoded, err := gzip.NewReader(reader)
+		if err != nil {
+			c.logPipeError("decode_usage_gzip", err)
+			result = usageResult{Result: "failed", ErrorCode: "usage_read_failed"}
+			return
+		}
+		defer func() {
+			if err := decoded.Close(); err != nil {
+				c.logPipeError("close_usage_decoder", err)
+			}
+		}()
+		c.reader = decoded
+	}
 	if c.ctx.stream {
 		result = c.handleStream()
 	} else {
 		result = c.handleNonStream()
-	}
-	if c.ctx.proxy != nil {
-		c.ctx.proxy.recordUsage(c.ctx.ctx, c.ctx.proxyCtx, result)
 	}
 }
 
