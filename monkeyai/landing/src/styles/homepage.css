@@ -9,10 +9,6 @@
 .studio-hero-copy { min-width: 0; container-type: inline-size; animation: studio-enter 700ms ease-out both; }
 .studio-status-dot { display: inline-block; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px color-mix(in srgb, var(--green) 15%, transparent); }
 .studio-hero h1 { position: relative; isolation: isolate; margin-top: 0; font-weight: 700; font-style: italic; letter-spacing: -.045em; }
-.studio-title-shadow { position: absolute; z-index: -1; inset: 0; transform: translate(3px, 3px); color: transparent; -webkit-text-fill-color: transparent; background-image: repeating-linear-gradient(225deg, color-mix(in srgb, var(--green) 50%, transparent) 0 2px, transparent 2px 4px); background-size: 11.3137085px 11.3137085px; background-clip: text; -webkit-background-clip: text; pointer-events: none; user-select: none; animation: studio-title-stripes 900ms linear infinite; }
-@keyframes studio-title-stripes {
-  to { background-position: 11.3137085px 0; }
-}
 .studio-hero-tagline { margin-top: 16px; color: var(--green); font-size: clamp(22px, 7.8cqi, 40px); line-height: 1.4; white-space: nowrap; }
 .studio-hero-description { margin-top: 24px; color: var(--studio-subtle); font-size: 14px; line-height: 1.9; }
 .studio-actions { display: flex; flex-wrap: wrap; gap: 16px; max-width: 100%; margin-top: 30px; }
@@ -288,7 +284,6 @@ body.site-theme .studio-actions [data-slot='button'][data-variant='outline']:not
   .studio-start h2 { font-size: 27px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .studio-title-shadow { animation: none; }
   .studio-faq-list details::details-content, .studio-faq-list summary > svg { transition: none; }
   .studio-hero-copy, .studio-flow, .studio-flow-stem::after { animation: none; }
   .studio-flow-stem::after { opacity: .6; }
