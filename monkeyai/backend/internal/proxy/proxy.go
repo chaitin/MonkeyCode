@@ -169,6 +169,14 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	encoding, ok := negotiateEncoding(r.Header.Values("Accept-Encoding"))
+	if !ok {
+		http.Error(w, "客户端不接受代理支持的响应编码", http.StatusNotAcceptable)
+		return
+	}
+	if encoding != "" {
+		r.Header.Set("Accept-Encoding", encoding)
+	}
 	if p.resolver == nil {
 		p.logger.ErrorContext(r.Context(), "模型代理未配置凭据解析器")
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
