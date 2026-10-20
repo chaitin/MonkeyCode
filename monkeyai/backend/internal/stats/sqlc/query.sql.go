@@ -451,18 +451,19 @@ func (q *Queries) ReportingFreshness(ctx context.Context, filters []byte) (inter
 const reportingModelsOverview = `-- name: ReportingModelsOverview :one
 WITH bounds AS (
     SELECT $1::timestamptz AS now_at,
-           ($1::timestamptz AT TIME ZONE 'UTC')::date AS today
+           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), days AS (
     SELECT d.day::date AS day
     FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
 ), calls AS (
     SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit,
-           c.response_duration_ms, c.first_token_duration_ms, c.started_at
+           c.response_duration_ms, c.first_token_duration_ms, c.started_at,
+           coalesce((SELECT (t.usage->>'known')::boolean FROM billing_transactions t WHERE t.id = c.id), coalesce(c.error_code,'') = '') AS usage_known
     FROM model_calls c CROSS JOIN bounds b
-    WHERE c.completed_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC')
+    WHERE c.completed_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai')
         AND c.completed_at < b.now_at AND c.status <> 'running'
 ), successful_calls AS (
-    SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit, c.response_duration_ms, c.first_token_duration_ms, c.started_at FROM calls c CROSS JOIN bounds b
+    SELECT c.completed_at, c.status, c.input_tokens, c.output_tokens, c.cache_hit, c.response_duration_ms, c.first_token_duration_ms, c.started_at, c.usage_known FROM calls c CROSS JOIN bounds b
     WHERE c.completed_at >= b.now_at - interval '30 minutes' AND c.status = 'succeeded'
 ), duration_samples AS (
     SELECT 'response'::text AS metric,
@@ -482,28 +483,28 @@ WITH bounds AS (
     WHERE sample_index <= sample_count - floor(sample_count * 0.05)
     GROUP BY metric
 ), calls_by_day AS (
-    SELECT (completed_at AT TIME ZONE 'UTC')::date AS day, count(*) AS calls,
-           coalesce(sum(input_tokens),0) AS input_tokens, coalesce(sum(output_tokens),0) AS output_tokens
+    SELECT (completed_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS calls,
+           coalesce(sum(input_tokens) FILTER (WHERE usage_known),0) AS input_tokens, coalesce(sum(output_tokens) FILTER (WHERE usage_known),0) AS output_tokens
     FROM calls GROUP BY 1
 ), credits_by_day AS (
-    SELECT (e.occurred_at AT TIME ZONE 'UTC')::date AS day, -sum(e.credit_delta) AS credits
+    SELECT (e.occurred_at AT TIME ZONE 'Asia/Shanghai')::date AS day, -sum(e.credit_delta) AS credits
     FROM credit_ledger_entries e CROSS JOIN bounds b
-    WHERE e.occurred_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC')
+    WHERE e.occurred_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai')
         AND e.occurred_at < b.now_at AND e.category = 'model' AND e.entry_type IN ('charge','refund')
     GROUP BY 1
 )
 SELECT jsonb_build_object(
-    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
     'last_24h', (SELECT jsonb_build_object('model_calls', count(*),
-        'input_tokens', coalesce(sum(input_tokens),0), 'output_tokens', coalesce(sum(output_tokens),0))
+        'input_tokens', coalesce(sum(input_tokens) FILTER (WHERE usage_known),0), 'output_tokens', coalesce(sum(output_tokens) FILTER (WHERE usage_known),0))
         FROM calls CROSS JOIN bounds b WHERE completed_at >= b.now_at - interval '24 hours'),
     'previous_24h', (SELECT jsonb_build_object('model_calls', count(*),
-        'input_tokens', coalesce(sum(input_tokens),0), 'output_tokens', coalesce(sum(output_tokens),0))
+        'input_tokens', coalesce(sum(input_tokens) FILTER (WHERE usage_known),0), 'output_tokens', coalesce(sum(output_tokens) FILTER (WHERE usage_known),0))
         FROM calls CROSS JOIN bounds b
         WHERE completed_at >= b.now_at - interval '48 hours'
             AND completed_at < b.now_at - interval '24 hours'),
     'last_30m', (SELECT jsonb_build_object(
-        'tpm', coalesce(sum(input_tokens + output_tokens),0) / 30.0,
+        'tpm', coalesce(sum(input_tokens + output_tokens) FILTER (WHERE usage_known),0) / 30.0,
         'rpm', count(*) / 30.0,
         'cache_hit_rate', 100.0 * count(*) FILTER (WHERE cache_hit) / nullif(count(*),0),
         'model_success_rate', 100.0 * count(*) FILTER (WHERE status = 'succeeded') / nullif(count(*),0),
@@ -526,7 +527,9 @@ func (q *Queries) ReportingModelsOverview(ctx context.Context, at time.Time) ([]
 
 const reportingRealtime = `-- name: ReportingRealtime :one
 WITH calls AS (
-    SELECT id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens, output_tokens, cache_hit, response_duration_ms, error_code, error_message, started_at, completed_at, created_at, first_token_duration_ms FROM model_calls WHERE completed_at >= $1::timestamptz AND completed_at < $2::timestamptz
+    SELECT c.id, c.session_id, c.user_id, c.model_id, c.request_id, c.status, c.input_tokens, c.cached_input_tokens, c.output_tokens, c.cache_hit, c.response_duration_ms, c.error_code, c.error_message, c.started_at, c.completed_at, c.created_at, c.first_token_duration_ms,
+        coalesce((SELECT (b.usage->>'known')::boolean FROM billing_transactions b WHERE b.id = c.id), coalesce(c.error_code,'') = '') AS usage_known
+    FROM model_calls c WHERE c.completed_at >= $1::timestamptz AND c.completed_at < $2::timestamptz
 ), activity AS (
     SELECT session_id FROM model_calls WHERE session_id IS NOT NULL AND (completed_at >= $1::timestamptz AND completed_at < $2::timestamptz OR status = 'running' AND started_at >= $1::timestamptz AND started_at < $2::timestamptz)
     UNION SELECT session_id FROM mcp_tool_calls WHERE session_id IS NOT NULL AND (completed_at >= $1::timestamptz AND completed_at < $2::timestamptz OR status = 'running' AND started_at >= $1::timestamptz AND started_at < $2::timestamptz)
@@ -548,10 +551,10 @@ SELECT jsonb_build_object(
     'p95_response_time', (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY coalesce(response_duration_ms,extract(epoch FROM (completed_at-started_at))*1000)) FROM calls WHERE status <> 'running'),
     'model_success_rate', (SELECT 100.0*count(*) FILTER (WHERE status = 'succeeded')/NULLIF(count(*) FILTER (WHERE status <> 'running'),0) FROM calls),
     'model_calls', (SELECT count(*) FROM calls),
-    'tpm', (SELECT coalesce(sum(input_tokens+output_tokens),0) FROM calls)/$3::text::numeric,
+    'tpm', (SELECT coalesce(sum(input_tokens+output_tokens) FILTER (WHERE usage_known),0) FROM calls)/$3::text::numeric,
     'rpm', (SELECT count(*) FROM calls)/$3::text::numeric,
-    'input_tokens', (SELECT coalesce(sum(input_tokens),0) FROM calls),
-    'output_tokens', (SELECT coalesce(sum(output_tokens),0) FROM calls),
+    'input_tokens', (SELECT coalesce(sum(input_tokens) FILTER (WHERE usage_known),0) FROM calls),
+    'output_tokens', (SELECT coalesce(sum(output_tokens) FILTER (WHERE usage_known),0) FROM calls),
     'total_users', (SELECT count(*) FROM users WHERE deleted_at IS NULL),
     'active_users', (SELECT count(*) FROM active_users),
     'active_tasks', (SELECT count(*) FROM active_tasks),
@@ -711,7 +714,7 @@ func (q *Queries) ReportingSessionStatus(ctx context.Context, sessionID string) 
 const reportingTasksOverview = `-- name: ReportingTasksOverview :one
 WITH bounds AS (
     SELECT $1::timestamptz AS now_at,
-           ($1::timestamptz AT TIME ZONE 'UTC')::date AS today
+           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), roots AS (
     SELECT id, started_at FROM sessions
     WHERE parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL
@@ -725,21 +728,21 @@ WITH bounds AS (
         JOIN roots root ON root.id = coalesce(s.parent_session_id, s.id)
         CROSS JOIN bounds b
     WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
-        AND t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND t.started_at < b.now_at
+        AND t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
 ), new_by_day AS (
-    SELECT (root.started_at AT TIME ZONE 'UTC')::date AS day, count(*) AS total
+    SELECT (root.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
     FROM roots root CROSS JOIN bounds b
-    WHERE root.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND root.started_at < b.now_at
+    WHERE root.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND root.started_at < b.now_at
     GROUP BY 1
 ), active_by_day AS (
-    SELECT (t.started_at AT TIME ZONE 'UTC')::date AS day, count(DISTINCT t.root_id) AS total
+    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(DISTINCT t.root_id) AS total
     FROM turns t GROUP BY 1
 )
 SELECT jsonb_build_object(
     'total_tasks', (SELECT count(*) FROM roots),
     'new_tasks_24h', (SELECT count(*) FROM roots root CROSS JOIN bounds b WHERE root.started_at >= b.now_at - interval '24 hours' AND root.started_at < b.now_at),
     'active_tasks_24h', (SELECT count(DISTINCT t.root_id) FROM turns t CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours'),
-    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
     'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_tasks', coalesce(n.total, 0), 'active_tasks', coalesce(a.total, 0)) ORDER BY d.day)
              FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
 )
@@ -755,26 +758,26 @@ func (q *Queries) ReportingTasksOverview(ctx context.Context, at time.Time) ([]b
 const reportingUsersOverview = `-- name: ReportingUsersOverview :one
 WITH bounds AS (
     SELECT $1::timestamptz AS now_at,
-           ($1::timestamptz AT TIME ZONE 'UTC')::date AS today
+           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
 ), days AS (
     SELECT d.day::date AS day
     FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
 ), new_by_day AS (
-    SELECT (u.created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS total
+    SELECT (u.created_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
     FROM users u CROSS JOIN bounds b
-    WHERE u.created_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND u.created_at < b.now_at
+    WHERE u.created_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND u.created_at < b.now_at
     GROUP BY 1
 ), active_by_day AS (
-    SELECT (t.started_at AT TIME ZONE 'UTC')::date AS day, count(DISTINCT s.owner_user_id) AS total
+    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(DISTINCT s.owner_user_id) AS total
     FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b
-    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'UTC') AND t.started_at < b.now_at
+    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
     GROUP BY 1
 )
 SELECT jsonb_build_object(
     'total_users', (SELECT count(*) FROM users),
     'new_users_24h', (SELECT count(*) FROM users u CROSS JOIN bounds b WHERE u.created_at >= b.now_at - interval '24 hours' AND u.created_at < b.now_at),
     'active_users_24h', (SELECT count(DISTINCT s.owner_user_id) FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at),
-    'timezone', 'UTC', 'generated_at', (SELECT now_at FROM bounds),
+    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
     'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_users', coalesce(n.total, 0), 'active_users', coalesce(a.total, 0)) ORDER BY d.day)
              FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
 )
