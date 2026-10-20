@@ -191,7 +191,7 @@ export function LandingPage() {
                 components={{
                   repo: (
                     <a
-                      href="https://github.com/chaitin/monkeycode"
+                      href="https://work.baizhi.cloud/"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-medium text-foreground underline-offset-4 hover:underline"
