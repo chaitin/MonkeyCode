@@ -28,6 +28,7 @@ type Config struct {
 	Database
 	RuntimeDesktopOrigins        []string
 	RuntimeRelay                 bool
+	RuntimeTerminalWS            bool
 	RuntimeStateDir              string
 	RuntimeServerID              string
 	RuntimeVerificationKeysFile  string
@@ -74,7 +75,12 @@ func Load(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
 	}
+	terminalWS, err := strconv.ParseBool(envOr("MONKEYAI_RUNTIME_TERMINAL_WS", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("解析远程终端开关: %w", err)
+	}
 	cfg := Config{
+		RuntimeTerminalWS:            terminalWS,
 		RuntimeDesktopOrigins:        strings.FieldsFunc(os.Getenv("MONKEYAI_RUNTIME_DESKTOP_ORIGINS"), func(r rune) bool { return r == ',' || r == ' ' }),
 		RuntimeRelay:                 runtimeRelay,
 		RuntimeStateDir:              envOr("MONKEYAI_RUNTIME_STATE_DIR", "data/runtime"),

@@ -25,15 +25,20 @@ type access struct {
 	stream                                     net.Conn
 	cancel                                     context.CancelFunc
 	closed                                     bool
+	started                                    time.Time
+	reason                                     string
 }
 
-func (a *access) close() {
+func (a *access) close() { a.closeReason("stream_closed") }
+
+func (a *access) closeReason(reason string) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		return
 	}
 	a.closed = true
+	a.reason = reason
 	conn, cancel := a.stream, a.cancel
 	a.mu.Unlock()
 	if cancel != nil {
@@ -88,8 +93,9 @@ func (s *Service) refreshAccesses(r *route, row sqlc.DeviceClientConnection, res
 		if same {
 			a.renew(time.Now(), row.ExpiresAt)
 		} else {
+			s.metrics.revoked.Add(1)
 			s.pushControlForAccess(a)
-			a.close()
+			a.closeReason("authorization_revoked")
 		}
 	}
 	s.pushControl(r, map[string]string{"type": "refresh", "connection_id": row.ID})
@@ -147,6 +153,16 @@ func (s *Service) pushControlForAccess(a *access) {
 func (s *Service) pushDeviceRevoked(r *route) {
 	if r != nil {
 		s.pushControl(r, map[string]string{"type": "revocation", "signed": s.revocation(r, "", 0)})
+		s.mu.Lock()
+		all := make([]*access, 0, len(r.streams))
+		for a := range r.streams {
+			all = append(all, a)
+		}
+		s.mu.Unlock()
+		for _, a := range all {
+			s.metrics.revoked.Add(1)
+			a.closeReason("authorization_revoked")
+		}
 	}
 }
 
@@ -179,11 +195,11 @@ func (s *Service) lease(ctx context.Context, r *route, in LeaseRequest) (leaseRe
 	}
 	s.mu.Unlock()
 	revoked := func() (leaseResponse, int) {
-		s.mu.Lock()
-		delete(r.leaseSequences, auth.ConnectionID)
-		s.mu.Unlock()
 		for _, a := range all {
-			a.close()
+			if a.accessVersion == auth.AccessVersion {
+				s.metrics.revoked.Add(1)
+				a.close()
+			}
 		}
 		return leaseResponse{Revocation: s.revocation(r, auth.ConnectionID, auth.AccessVersion)}, 200
 	}
@@ -218,7 +234,7 @@ func (s *Service) lease(ctx context.Context, r *route, in LeaseRequest) (leaseRe
 		}
 		if in.RequireFresh {
 			s.mu.Lock()
-			if seq == 0 {
+			if seq == 0 && r.leaseSequences[auth.ConnectionID] == in.LeaseSeq {
 				delete(r.leaseSequences, auth.ConnectionID)
 			}
 			s.mu.Unlock()
@@ -234,7 +250,7 @@ func (s *Service) lease(ctx context.Context, r *route, in LeaseRequest) (leaseRe
 		}
 		if verified.IsZero() {
 			s.mu.Lock()
-			if seq == 0 {
+			if seq == 0 && r.leaseSequences[auth.ConnectionID] == in.LeaseSeq {
 				delete(r.leaseSequences, auth.ConnectionID)
 			}
 			s.mu.Unlock()
@@ -468,7 +484,7 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 					a.renew(lastHostVerification, expiry)
 				}
 				if !time.Now().Before(a.deadline()) {
-					a.close()
+					a.closeReason("access_expired")
 					continue
 				}
 				if a.id == "" || verifyErr != nil {
@@ -479,8 +495,9 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 				changed := !found || !slices.Equal(row.Scopes, a.scopes) || row.GrantVersion != a.grantVersion || row.AccessVersion != a.accessVersion
 				a.mu.Unlock()
 				if changed {
+					s.metrics.revoked.Add(1)
 					s.pushControlForAccess(a)
-					a.close()
+					a.closeReason("authorization_revoked")
 				} else {
 					a.renew(time.Now(), row.ExpiresAt)
 				}
@@ -490,7 +507,7 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 }
 func streamSession(r *route, data bool) (*yamux.Session, chan struct{}) {
 	if data {
-		return r.data, r.slotsData
+		return r.data, nil
 	}
 	return r.control, r.slotsControl
 }

@@ -104,9 +104,20 @@ func TestRuntimeRelayApplication(t *testing.T) {
 	if err = os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0600); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://192.168.1.20:8080", RuntimeRelay: true, RuntimeServerID: uuid.New().String(), RuntimeSigningKeyFile: keyPath, RuntimeFilesOrigin: "http://203.0.113.20:8080"})
+	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://192.168.1.20:8080", RuntimeRelay: true, RuntimeTerminalWS: true, RuntimeServerID: uuid.New().String(), RuntimeSigningKeyFile: keyPath, RuntimeFilesOrigin: "http://203.0.113.20:8080"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	discovery := httptest.NewRecorder()
+	handler.ServeHTTP(discovery, httptest.NewRequest("GET", "/.well-known/oauth-authorization-server", nil))
+	var metadata struct {
+		Issuer  string `json:"issuer"`
+		Runtime struct {
+			Features map[string]bool `json:"features"`
+		} `json:"monkeyai_runtime"`
+	}
+	if err := json.Unmarshal(discovery.Body.Bytes(), &metadata); err != nil || discovery.Code != 200 || discovery.Header().Get("Cache-Control") != "no-store" || metadata.Issuer != "http://192.168.1.20:8080" || !metadata.Runtime.Features["terminal_ws"] || !metadata.Runtime.Features["runtime_relay"] {
+		t.Fatalf("终端发现声明未正确集成: %s %v", discovery.Body.String(), err)
 	}
 	badState := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(badState, []byte("blocked"), 0o600); err != nil {

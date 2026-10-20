@@ -362,12 +362,20 @@ func TestDataOverloadLeavesControlChannelAvailable(t *testing.T) {
 	scopes := []string{"session:read", "files:write"}
 	connection := f.connection(t, runtime.hello.MachineID, ConnectionRequest{Scopes: &scopes, SupportedProtocols: runtime.hello.Protocols}, f.token)
 	route := f.s.current(target{f.user, runtime.hello.MachineID})
-	for range 16 {
-		route.slotsData <- struct{}{}
+	f.s.mu.Lock()
+	budget := route.dataBudget
+	f.s.mu.Unlock()
+	permits := make([]*dataPermit, 0, 15)
+	for range 15 {
+		permit := budget.reserve(false, false, func() {})
+		if permit == nil {
+			t.Fatal("未能占满常规数据流")
+		}
+		permits = append(permits, permit)
 	}
 	defer func() {
-		for range 16 {
-			<-route.slotsData
+		for _, permit := range permits {
+			permit.release()
 		}
 	}()
 	request, _ := http.NewRequestWithContext(t.Context(), "PUT", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID+"/proxy/uploads/test", strings.NewReader("data"))

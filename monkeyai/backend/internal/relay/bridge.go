@@ -167,7 +167,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	var current *route
 	if channel == "control" && hello.Intent == "publish" {
-		current = &route{runtimeStatus: "online", engineHealth: "unknown", controlQueue: make(chan any, 16), target: key, principal: p, hello: hello, state: state, ws: ws, seen: time.Now(), slotsControl: make(chan struct{}, 64), slotsData: make(chan struct{}, 16), streams: make(map[*access]struct{}), connectionVersions: make(map[string]connectionVersion)}
+		current = &route{runtimeStatus: "online", engineHealth: "unknown", controlQueue: make(chan any, 16), target: key, principal: p, hello: hello, state: state, ws: ws, seen: time.Now(), slotsControl: make(chan struct{}, 64), opensControl: make(chan struct{}, 64), streams: make(map[*access]struct{}), connectionVersions: make(map[string]connectionVersion)}
 		s.mu.Lock()
 		s.routes[key] = current
 		s.mu.Unlock()
@@ -212,6 +212,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		}
 		previous := old.data
 		old.data = mux
+		old.dataBudget = newDataBudget(&s.metrics)
 		s.mu.Unlock()
 		gate.Unlock()
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")

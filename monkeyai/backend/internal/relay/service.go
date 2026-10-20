@@ -39,6 +39,7 @@ type Config struct {
 	VerificationKeysFile  string
 	SigningKeyFile        string
 	MaxDevices            int
+	TerminalWS            bool
 }
 
 type Service struct {
@@ -58,6 +59,7 @@ type Service struct {
 	limiter          map[string]rateWindow
 	active           map[*websocket.Conn]struct{}
 	draining         atomic.Bool
+	metrics          relayMetrics
 }
 
 type rateWindow struct {
@@ -89,7 +91,8 @@ type route struct {
 	ready              bool
 	seen               time.Time
 	slotsControl       chan struct{}
-	slotsData          chan struct{}
+	opensControl       chan struct{}
+	dataBudget         *dataBudget
 	connectionVersions map[string]connectionVersion
 	streams            map[*access]struct{}
 }
@@ -207,7 +210,7 @@ func (s *Service) DeviceAuthorizationKey() []byte {
 func (s *Service) Metadata() map[string]any {
 	metadata := map[string]any{"server_id": s.config.ServerID, "bridge_url": strings.Replace(s.config.PublicURL, "http", "ws", 1) + "/api/v1/endpoint-bridge",
 		"files_origin": s.config.FilesOrigin, "access_signing_keys": s.verificationKeys,
-		"runtime_api": []int{1}, "tunnel_versions": []int{Version}, "features": map[string]bool{"device_binding": true, "desktop_managed": true, "runtime_relay": true}}
+		"runtime_api": []int{1}, "tunnel_versions": []int{Version}, "features": map[string]bool{"device_binding": true, "desktop_managed": true, "runtime_relay": true, "terminal_ws": s.config.TerminalWS}}
 	metadata["time_policy"] = map[string]int64{"access_lease_ttl_ms": 60000, "access_lease_renew_ms": 20000, "max_auth_staleness_ms": 180000, "max_time_reference_age_ms": 120000, "max_time_uncertainty_ms": 5000, "max_grant_clock_skew_ms": 5000, "max_file_grant_ttl_ms": 300000}
 	if s.config.PreviewOriginTemplate != "" {
 		metadata["preview_origin_template"] = s.config.PreviewOriginTemplate
@@ -241,7 +244,7 @@ func failure(ctx context.Context, w http.ResponseWriter, status int, code string
 		"device_draining": "执行服务正在停止", "device_process_conflict": "此设备已有活动执行进程", "device_registration_changed": "设备登记已变化",
 		"device_revoked": "远程访问已撤销", "upgrade_required": "需要升级协议版本", "connection_expired": "连接授权已过期或撤销",
 		"authorization_state_unavailable": "授权核验暂不可用", "relay_overloaded": "中转资源达到上限", "device_connection_limit": "设备连接数达到上限",
-		"clock_sync_unavailable": "授时参考不可用",
+		"clock_sync_unavailable": "授时参考不可用", "not_found": "入口不存在", "terminal_limit_reached": "终端或数据流名额已满",
 	}[code]})
 }
 
@@ -318,8 +321,9 @@ func (s *Service) InvalidateGrant(id string) {
 	}
 	s.mu.Unlock()
 	for _, a := range accesses {
+		s.metrics.revoked.Add(1)
 		s.pushControlForAccess(a)
-		a.close()
+		a.closeReason("authorization_revoked")
 	}
 	for _, r := range routes {
 		s.pushDeviceRevoked(r)
@@ -339,9 +343,6 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		connections = append(connections, ws)
 	}
 	s.mu.Unlock()
-	for _, r := range routes {
-		s.pushDeviceRevoked(r)
-	}
 	for _, r := range routes {
 		s.closeRoute(r)
 	}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -121,7 +122,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 			},
 			{
 				Addr:              cfg.PprofAddr,
-				Handler:           http.DefaultServeMux,
+				Handler:           debugHandler(handler.(*applicationHandler).relay),
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
@@ -142,6 +143,19 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
 	}, nil
+}
+
+func debugHandler(runtime *relay.Service) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/", http.DefaultServeMux)
+	if runtime != nil {
+		mux.HandleFunc("GET /debug/relay", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			json.NewEncoder(w).Encode(runtime.Metrics())
+		})
+	}
+	return mux
 }
 
 func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
@@ -287,7 +301,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	var runtimeRelay *relay.Service
 	if cfg.RuntimeRelay {
-		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
+		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{TerminalWS: cfg.RuntimeTerminalWS, DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
 		}

@@ -54,6 +54,7 @@ func (s *Service) AuthRouter() http.Handler {
 }
 
 func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	scopes := make([]string, 0, len(scopeNames))
 	for scope := range scopeNames {
 		scopes = append(scopes, scope)
