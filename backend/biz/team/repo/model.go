@@ -172,23 +172,18 @@ func (r *teamModelRepo) Update(ctx context.Context, teamID uuid.UUID, req *domai
 			return err
 		}
 
-		if len(req.GroupIDs) == 0 {
-			return nil
-		}
-
-		_, err = tx.TeamGroupModel.Delete().Where(teamgroupmodel.ModelID(req.ModelID)).Exec(ctx)
-		if err != nil {
-			return err
-		}
-		builders := make([]*db.TeamGroupModelCreate, 0)
-		for _, gid := range req.GroupIDs {
-			builders = append(builders, tx.TeamGroupModel.Create().
-				SetGroupID(gid).
-				SetModelID(req.ModelID))
-		}
-		if len(builders) > 0 {
-			_, err = tx.TeamGroupModel.CreateBulk(builders...).Save(ctx)
-			if err != nil {
+		if len(req.GroupIDs) > 0 {
+			if _, err := tx.TeamGroupModel.Delete().Where(teamgroupmodel.ModelID(req.ModelID)).Exec(ctx); err != nil {
+				return err
+			}
+			builders := make([]*db.TeamGroupModelCreate, 0, len(req.GroupIDs))
+			for _, gid := range req.GroupIDs {
+				builders = append(builders, tx.TeamGroupModel.Create().
+					SetID(uuid.New()).
+					SetGroupID(gid).
+					SetModelID(req.ModelID))
+			}
+			if _, err := tx.TeamGroupModel.CreateBulk(builders...).Save(ctx); err != nil {
 				return err
 			}
 		}
