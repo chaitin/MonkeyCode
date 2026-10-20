@@ -1,0 +1,88 @@
+---
+import '../styles/global.css';
+import '../styles/site.css';
+import '../styles/legal.css';
+import '../styles/shadcn.css';
+import '../styles/typography.css';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  pathname?: string;
+  image?: string;
+  type?: 'website' | 'article';
+  schema?: Record<string, unknown> | Array<Record<string, unknown>>;
+  bodyClass?: string;
+}
+
+const {
+  title,
+  description,
+  pathname = '/',
+  image = '/monkeyai-logo.png',
+  type = 'website',
+  schema,
+  bodyClass = '',
+} = Astro.props;
+
+const siteOrigin = Astro.site ?? Astro.url.origin;
+const baseUrl = new URL(import.meta.env.BASE_URL, siteOrigin);
+const canonical = new URL(pathname.replace(/^\//, ''), baseUrl);
+const socialImage = new URL(image.replace(/^\//, ''), baseUrl);
+const gaId = import.meta.env.PUBLIC_GA_ID?.trim() || 'G-BW65KYSTXM';
+const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <meta name="theme-color" content="#fafcfb" />
+    <meta name="color-scheme" content="light" />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="zh-CN" href={canonical} />
+    <link rel="alternate" hreflang="x-default" href={canonical} />
+    <link rel="icon" type="image/png" href={`${import.meta.env.BASE_URL}monkeyai-logo.png`} />
+
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:type" content={type} />
+    <meta property="og:site_name" content="百智办公" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={socialImage} />
+    <meta property="og:image:alt" content="百智办公产品标志" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage} />
+    <script is:inline>document.documentElement.classList.add('js');</script>
+
+    {schema && <script is:inline type="application/ld+json" set:html={JSON.stringify(schema)} />}
+
+    {hasValidGaId && (
+      <>
+        <script is:inline define:vars={{ gaId }}>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', gaId);
+        </script>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} />
+      </>
+    )}
+  </head>
+  <body class:list={['site-theme', bodyClass]}>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <SiteHeader />
+    <slot />
+    <SiteFooter />
+  </body>
+</html>

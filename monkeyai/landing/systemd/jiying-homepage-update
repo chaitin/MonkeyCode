@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly homepage_directory="/data/homepage"
+readonly container_name="jiying-homepage"
+
+exec 9>/run/lock/jiying-homepage-update.lock
+if ! /usr/bin/flock -n 9; then
+  echo "Homepage update is already running"
+  exit 0
+fi
+
+cd "${homepage_directory}"
+
+image_before=$(/usr/bin/docker inspect --format '{{.Image}}' "${container_name}" 2>/dev/null || true)
+/usr/bin/docker compose up -d --pull always --remove-orphans
+image_after=$(/usr/bin/docker inspect --format '{{.Image}}' "${container_name}")
+
+if [[ "${image_before}" == "${image_after}" ]]; then
+  echo "Homepage image is already current: ${image_after}"
+else
+  echo "Homepage image updated: ${image_before:-none} -> ${image_after}"
+fi
+
+for _attempt in {1..12}; do
+  health=$(/usr/bin/docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_name}")
+  if [[ "${health}" == "healthy" || "${health}" == "running" ]]; then
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "Homepage container did not become healthy" >&2
+exit 1

@@ -1,0 +1,76 @@
+{
+	servers {
+		protocols h1 h2
+	}
+
+	log default {
+		output file /var/log/caddy/error.log {
+			mode 0640
+			roll_size 100MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level ERROR
+	}
+}
+
+http://127.0.0.1:8080 {
+	route {
+		handle /healthz {
+			root * /srv
+			rewrite * /index.html
+			file_server
+		}
+
+		handle {
+			respond 404
+		}
+	}
+}
+
+{$SITE_ADDRESS:jiying.chat} {
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/access.log {
+			mode 0640
+			roll_size 100MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+	}
+
+	@immutable path /_astro/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@releaseManifest path /releases/version.json
+	header @releaseManifest {
+		Access-Control-Allow-Origin "*"
+		Cache-Control "no-store, no-cache, must-revalidate"
+	}
+	@releasePackages path /releases/jiying.exe /releases/jiying.dmg /releases/jiying.amd.AppImage /releases/jiying.arm.AppImage /releases/jiying.apk
+	header @releasePackages Cache-Control "no-cache"
+
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	route {
+		handle /healthz {
+			respond "ok" 200
+		}
+
+		handle_path /releases/* {
+			root * /srv/releases
+			file_server
+		}
+
+		handle {
+			root * /srv
+			file_server
+		}
+	}
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Update the Jiying homepage container
+Wants=network-online.target
+After=network-online.target docker.service
+RequiresMountsFor=/data/homepage
+ConditionPathExists=/data/homepage/compose.yml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jiying-homepage-update
+Nice=10
+IOSchedulingClass=idle
+UMask=0027

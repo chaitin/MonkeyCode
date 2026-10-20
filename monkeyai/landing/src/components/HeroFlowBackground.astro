@@ -1,0 +1,637 @@
+<div class="hero-flow-background" data-hero-flow aria-hidden="true">
+  <canvas class="hero-flow-fallback" data-hero-flow-fallback></canvas>
+</div>
+
+<style>
+  .hero-flow-background {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background: #010504;
+  }
+
+  .hero-flow-background::before,
+  .hero-flow-background::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: '';
+  }
+
+  .hero-flow-background::before {
+    z-index: 2;
+    background:
+      radial-gradient(circle at 52% 48%, transparent 0 20%, rgb(0 0 0 / 8%) 48%, rgb(0 0 0 / 62%) 100%),
+      linear-gradient(180deg, rgb(0 0 0 / 38%), transparent 32%, rgb(0 8 6 / 20%));
+  }
+
+  .hero-flow-background::after {
+    z-index: 3;
+    opacity: .012;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.24'/%3E%3C/svg%3E");
+  }
+
+  .hero-flow-background :global(canvas) {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    filter: none;
+    transform: none;
+    transform-origin: 50% 50%;
+    transition: opacity 1200ms cubic-bezier(.16, 1, .3, 1);
+    will-change: opacity;
+  }
+
+  .hero-flow-background.is-flow-entered :global(canvas) {
+    opacity: 1;
+    filter: none;
+  }
+
+  .hero-flow-background.is-flow-settled :global(canvas) {
+    will-change: auto;
+  }
+
+  .hero-flow-background :global(canvas.hero-flow-fallback) {
+    display: none;
+    clip-path: inset(0 100% 0 0);
+    transition: opacity 1200ms cubic-bezier(.16, 1, .3, 1), clip-path 1500ms cubic-bezier(.16, 1, .3, 1);
+  }
+
+  .hero-flow-background.is-flow-entered :global(canvas.hero-flow-fallback) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-flow-background::after { display: none; }
+    .hero-flow-background :global(canvas) {
+      opacity: 1;
+      filter: none;
+      transform: none;
+      transition: none;
+      will-change: auto;
+    }
+    .hero-flow-background :global(canvas.hero-flow-fallback) {
+      clip-path: inset(0 0 0 0);
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  const vertexShader = `
+    uniform float uTime;
+    uniform float uOffset;
+    varying vec2 vUv;
+    varying vec3 vWorldPosition;
+
+    void main() {
+      vUv = uv;
+      vec3 animatedPosition = position;
+      float slowWave = sin(position.x * 0.52 + uTime * 0.34 + uOffset * 6.2831);
+      float crossWave = cos(position.x * 0.31 - uTime * 0.22 + uOffset * 9.0);
+      animatedPosition.y += slowWave * 0.025;
+      animatedPosition.z += crossWave * 0.018;
+      vec4 worldPosition = modelMatrix * vec4(animatedPosition, 1.0);
+      vWorldPosition = worldPosition.xyz;
+      gl_Position = projectionMatrix * viewMatrix * worldPosition;
+    }
+  `;
+
+  const fragmentShader = `
+    uniform float uTime;
+    uniform float uOffset;
+    uniform float uSpeed;
+    uniform float uReveal;
+    uniform vec3 uInputColor;
+    uniform vec3 uContextColor;
+    uniform vec3 uActionColor;
+    varying vec2 vUv;
+    varying vec3 vWorldPosition;
+
+    float circularDistance(float a, float b) {
+      float distanceValue = abs(a - b);
+      return min(distanceValue, 1.0 - distanceValue);
+    }
+
+    void main() {
+      float along = vUv.x;
+      float headA = fract(uTime * uSpeed + uOffset);
+      float headB = fract(headA + 0.47);
+      float pulseA = exp(-pow(circularDistance(along, headA) * 31.0, 2.0));
+      float pulseB = exp(-pow(circularDistance(along, headB) * 38.0, 2.0)) * 0.42;
+      float wake = exp(-pow(circularDistance(along, headA - 0.045) * 11.0, 2.0)) * 0.24;
+      float pulse = pulseA + pulseB + wake;
+
+      vec3 leftColor = mix(uInputColor, uContextColor, smoothstep(0.05, 0.55, along));
+      vec3 color = mix(leftColor, uActionColor, smoothstep(0.52, 0.98, along));
+      color = mix(color, vec3(0.82, 1.0, 0.96), pulseA * 0.24);
+
+      float distanceFromCamera = distance(cameraPosition, vWorldPosition);
+      float fog = smoothstep(9.0, 25.0, distanceFromCamera);
+      float edgeFade = smoothstep(0.0, 0.07, along) * smoothstep(0.0, 0.07, 1.0 - along);
+      float reveal = smoothstep(0.0, 0.18, uReveal - along);
+      float energy = 0.15 + pulse * 0.92;
+      color *= energy;
+      color = mix(color, vec3(0.0), fog);
+
+      float alpha = (0.16 + pulse * 0.42) * edgeFade * (1.0 - fog) * reveal;
+      gl_FragColor = vec4(color, alpha);
+    }
+  `;
+
+  type FlowUniforms = {
+    uTime: { value: number };
+    uOffset: { value: number };
+    uSpeed: { value: number };
+    uReveal: { value: number };
+    uInputColor: { value: import('three').Color };
+    uContextColor: { value: import('three').Color };
+    uActionColor: { value: import('three').Color };
+  };
+
+  type FlowStream = {
+    uniforms: FlowUniforms;
+  };
+
+  const loadThree = () => import('../lib/hero-flow-three');
+
+  let threeModules: ReturnType<typeof loadThree> | null = null;
+
+  const initialiseFlow = async (host: HTMLElement) => {
+    if (host.dataset.flowReady === 'true') return;
+    host.dataset.flowReady = 'true';
+
+    const fallback = host.querySelector<HTMLCanvasElement>('[data-hero-flow-fallback]');
+    const hero = host.closest<HTMLElement>('.scene-hero');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let flowReady = false;
+    let flowRevealRequested = reducedMotion || hero?.classList.contains('is-icon-reveal-ready') === true;
+    let flowRevealed = false;
+    let revealTimer = 0;
+    let settleTimer = 0;
+    let flowRevealStartTime = -1;
+    let flowRevealValue = 0;
+    const flowRevealDuration = 1600;
+
+    const revealFlow = () => {
+      if (flowRevealed) return;
+      flowRevealed = true;
+      if (reducedMotion) {
+        flowRevealValue = 1;
+        host.classList.add('is-flow-entered', 'is-flow-settled');
+        return;
+      }
+      if (flowRevealStartTime < 0) flowRevealStartTime = performance.now();
+      revealTimer = window.requestAnimationFrame(() => {
+        // Let the transparent canvas state reach a paint before starting
+        // the transition; otherwise a dynamically inserted WebGL canvas can
+        // jump straight to full opacity on the first frame.
+        revealTimer = window.requestAnimationFrame(() => {
+          host.classList.add('is-flow-entered');
+          settleTimer = window.setTimeout(() => host.classList.add('is-flow-settled'), 1500);
+        });
+      });
+    };
+
+    const handleHeroIconReveal = () => {
+      flowRevealRequested = true;
+      if (flowRevealStartTime < 0) flowRevealStartTime = performance.now();
+      if (flowReady) revealFlow();
+    };
+    window.addEventListener('hero-icons-reveal', handleHeroIconReveal, { passive: true });
+
+    let modules: Awaited<ReturnType<typeof loadThree>>;
+    try {
+      threeModules ??= loadThree();
+      modules = await threeModules;
+    } catch (error) {
+      console.warn('Hero flow background could not load WebGL modules.', error);
+      if (fallback) renderFallback(fallback, host, reducedMotion);
+      flowReady = true;
+      if (flowRevealRequested) revealFlow();
+      return;
+    }
+    if (!host.isConnected) return;
+
+    const { THREE, EffectComposer, OutputPass, RenderPass, UnrealBloomPass } = modules;
+    const disposables: Array<{ dispose: () => void }> = [];
+    let renderer: import('three').WebGLRenderer | null = null;
+    let composer: import('three/examples/jsm/postprocessing/EffectComposer.js').EffectComposer | null = null;
+    let frameId = 0;
+    let resizeTimer = 0;
+    let isResizing = false;
+    let active = !document.hidden && flowRevealRequested;
+    let destroyed = false;
+
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance',
+      });
+    } catch (error) {
+      console.warn('Hero flow background fell back to Canvas 2D.', error);
+      if (fallback) {
+        renderFallback(fallback, host, reducedMotion);
+        flowReady = true;
+        if (flowRevealRequested) revealFlow();
+      }
+      return;
+    }
+
+    const getSize = () => ({
+      width: Math.max(host.clientWidth, 1),
+      height: Math.max(host.clientHeight, 1),
+    });
+    const deviceMemory = Number((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8);
+    const isConstrainedDevice = (navigator.hardwareConcurrency || 8) <= 4 || deviceMemory <= 4;
+    const getPixelRatio = (width: number) => width > 720
+      ? Math.min(Math.max(window.devicePixelRatio, isConstrainedDevice ? 1.2 : 1.35), isConstrainedDevice ? 1.6 : 1.9)
+      : Math.min(Math.max(window.devicePixelRatio, isConstrainedDevice ? 1.15 : 1.25), isConstrainedDevice ? 1.5 : 1.7);
+    const initialSize = getSize();
+
+    renderer.setPixelRatio(getPixelRatio(initialSize.width));
+    renderer.setSize(initialSize.width, initialSize.height);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.88;
+    host.insertBefore(renderer.domElement, fallback ?? null);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x010504);
+    const camera = new THREE.PerspectiveCamera(49, initialSize.width / initialSize.height, 0.1, 60);
+    camera.position.set(0, 0.25, 12.5);
+    const cameraTarget = new THREE.Vector3(0.7, 0, -1.2);
+    camera.lookAt(cameraTarget);
+
+    const initialPixelRatio = getPixelRatio(initialSize.width);
+    const renderTarget = new THREE.WebGLRenderTarget(initialSize.width, initialSize.height, {
+      depthBuffer: true,
+      stencilBuffer: false,
+      samples: isConstrainedDevice ? 0 : 2,
+    });
+    composer = new EffectComposer(renderer, renderTarget);
+    composer.setPixelRatio(initialPixelRatio);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(
+      new THREE.Vector2(initialSize.width, initialSize.height),
+      0.24,
+      0.38,
+      0.62,
+    ));
+    composer.addPass(new OutputPass());
+
+    const palette = {
+      input: new THREE.Color(0x05f59d),
+      context: new THREE.Color(0x35e4e0),
+      action: new THREE.Color(0x7b75ff),
+    };
+    const streamGroup = new THREE.Group();
+    streamGroup.position.x = initialSize.width < 720 ? 0.5 : 1.15;
+    scene.add(streamGroup);
+    const streamCount = initialSize.width < 720
+      ? (isConstrainedDevice ? 7 : 8)
+      : (isConstrainedDevice ? 11 : 13);
+    const streams: FlowStream[] = [];
+
+    for (let index = 0; index < streamCount; index += 1) {
+      const normalized = index / (streamCount - 1);
+      const lane = (normalized - 0.5) * 2;
+      const waveSeed = Math.sin(index * 2.31) * 0.42;
+      const depthSeed = Math.sin(index * 1.73) * 1.7;
+      const split = Math.sin(index * 0.91 + 0.8) * 0.9;
+      const titleSide = lane < 0 ? -1 : 1;
+      const sideBias = titleSide > 0 ? 0.62 : 0.18;
+      const fanOffset = Math.sin(index * 1.87 + 0.4) * 0.72 + Math.cos(index * 0.61) * 0.28;
+      const lowerClearance = titleSide < 0
+        ? (initialSize.width < 720 ? 0.12 : 0.18) + Math.abs(lane) * (initialSize.width < 720 ? 0.2 : 0.28)
+        : 0;
+      const lowerFan = titleSide < 0 ? fanOffset * 0.08 : 0;
+      const laneSpacing = Math.abs(lane) * (titleSide < 0 ? 1.72 : 1.45);
+      const outerLowerPullback = titleSide < 0 && lane < -0.7
+        ? (Math.abs(lane) - 0.7) * 1.65 + 0.2
+        : 0;
+      const titleClearance = 2.62 + sideBias + laneSpacing - outerLowerPullback;
+      const approachY = titleSide * Math.max(2.42 + sideBias, titleClearance - 0.38 + fanOffset * 0.38 + lowerClearance + lowerFan);
+      const middleY = titleSide * Math.max(2.7 + sideBias, titleClearance + fanOffset * 0.72 + lowerClearance + lowerFan * 1.35);
+      const departureY = titleSide * Math.max(2.52 + sideBias, titleClearance - 0.08 - fanOffset * 0.48 + lowerClearance - lowerFan) + split * 0.16;
+      const middleZ = -1.25 + Math.cos(index * 0.83) * 1.65;
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-13, lane * 7.2 + waveSeed, -4.8 + depthSeed),
+        new THREE.Vector3(-9.2, lane * 5.5 + Math.sin(index) * 0.65, -2.8 + depthSeed * 0.65),
+        new THREE.Vector3(-5.5, approachY, -1.4 + depthSeed * 0.35),
+        new THREE.Vector3(-1.7, middleY * 0.94 + waveSeed * 0.12, middleZ * 0.9),
+        new THREE.Vector3(1.25, middleY, middleZ),
+        new THREE.Vector3(4.3, departureY, middleZ * 0.82),
+        new THREE.Vector3(8.0, lane * 3.8 + split * 1.25, -2.0 + depthSeed * 0.45),
+        new THREE.Vector3(13, lane * 6.7 + split * 1.5, -5.2 + depthSeed),
+      ], false, 'centripetal', 0.45);
+      const geometry = new THREE.TubeGeometry(
+        curve,
+        isConstrainedDevice ? 160 : 200,
+        0.016 + (index % 4) * 0.0038,
+        isConstrainedDevice ? 8 : 10,
+        false,
+      );
+      const uniforms: FlowUniforms = {
+        uTime: { value: 0 },
+        uOffset: { value: (index * 0.137) % 1 },
+        uSpeed: { value: 0.055 + (index % 5) * 0.006 },
+        uReveal: { value: flowRevealValue },
+        uInputColor: { value: palette.input },
+        uContextColor: { value: palette.context },
+        uActionColor: { value: palette.action },
+      };
+      const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader,
+        fragmentShader,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.frustumCulled = false;
+      streamGroup.add(mesh);
+      disposables.push(geometry, material);
+      streams.push({
+        uniforms,
+      });
+    }
+
+    const dustCount = initialSize.width < 720
+      ? (isConstrainedDevice ? 70 : 100)
+      : (isConstrainedDevice ? 140 : 200);
+    const dustPositions = new Float32Array(dustCount * 3);
+    for (let index = 0; index < dustCount; index += 1) {
+      dustPositions[index * 3] = (Math.random() - 0.5) * 27;
+      dustPositions[index * 3 + 1] = (Math.random() - 0.5) * 14;
+      dustPositions[index * 3 + 2] = -Math.random() * 14 + 3;
+    }
+    const dustGeometry = new THREE.BufferGeometry();
+    dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dustMaterial = new THREE.PointsMaterial({
+      color: 0x55d6b2,
+      size: 0.018,
+      transparent: true,
+      opacity: 0.2,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+      toneMapped: false,
+    });
+    const dust = new THREE.Points(dustGeometry, dustMaterial);
+    scene.add(dust);
+    disposables.push(dustGeometry, dustMaterial);
+
+    const clock = new THREE.Clock();
+    const minFrameTime = isConstrainedDevice ? 1000 / 42 : 1000 / 52;
+    const iconEntryFrameTime = 1000 / 30;
+    let lastRenderTime = 0;
+
+    const stopRenderLoop = () => {
+      if (!frameId) return;
+      window.cancelAnimationFrame(frameId);
+      frameId = 0;
+    };
+
+    const startRenderLoop = () => {
+      if (!active || destroyed || frameId || isResizing) return;
+      clock.getDelta();
+      renderFrame();
+    };
+
+    let lastWidth = initialSize.width;
+    let lastHeight = initialSize.height;
+    let lastPixelRatio = initialPixelRatio;
+    const applyResize = () => {
+      if (!renderer || !composer || destroyed) return;
+      const { width, height } = getSize();
+      const pixelRatio = getPixelRatio(width);
+      if (width === lastWidth && height === lastHeight && pixelRatio === lastPixelRatio) return;
+      const pixelRatioChanged = pixelRatio !== lastPixelRatio;
+      lastWidth = width;
+      lastHeight = height;
+      lastPixelRatio = pixelRatio;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      if (pixelRatioChanged) renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(width, height);
+      if (pixelRatioChanged) composer.setPixelRatio(pixelRatio);
+      composer.setSize(width, height);
+    };
+    const scheduleResize = () => {
+      if (destroyed) return;
+      isResizing = true;
+      stopRenderLoop();
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = 0;
+        applyResize();
+        isResizing = false;
+        startRenderLoop();
+      }, 140);
+    };
+    const resizeObserver = new ResizeObserver(scheduleResize);
+    resizeObserver.observe(host);
+
+    const renderFrame = (timestamp = performance.now()) => {
+      if (!active || destroyed || !composer) return;
+      frameId = window.requestAnimationFrame(renderFrame);
+      const activeFrameTime = hero?.classList.contains('is-icon-entering') ? iconEntryFrameTime : minFrameTime;
+      if (timestamp - lastRenderTime < activeFrameTime) return;
+      lastRenderTime = timestamp;
+      const time = reducedMotion ? 5 : clock.getElapsedTime();
+      const revealProgress = flowRevealStartTime < 0
+        ? 0
+        : Math.min((timestamp - flowRevealStartTime) / flowRevealDuration, 1);
+      const reveal = revealProgress * revealProgress * (3 - 2 * revealProgress);
+      flowRevealValue = reducedMotion ? 1 : reveal;
+
+      streams.forEach((stream) => {
+        stream.uniforms.uTime.value = time;
+        stream.uniforms.uReveal.value = flowRevealValue;
+      });
+
+      streamGroup.rotation.x = Math.sin(time * 0.075) * 0.004;
+      streamGroup.rotation.y = Math.sin(time * 0.055) * 0.006;
+      camera.position.x += (Math.sin(time * 0.055) * 0.035 - camera.position.x) * 0.008;
+      camera.position.y += (0.25 + Math.cos(time * 0.045) * 0.025 - camera.position.y) * 0.008;
+      camera.lookAt(cameraTarget);
+      dust.rotation.y = time * 0.006;
+      dust.rotation.x = Math.sin(time * 0.08) * 0.015;
+      composer.render();
+    };
+
+    const syncActiveState = () => {
+      const nextActive = flowRevealRequested && !document.hidden && !hero?.classList.contains('is-animation-paused');
+      if (nextActive === active) {
+        if (nextActive) startRenderLoop();
+        return;
+      }
+      active = nextActive;
+      stopRenderLoop();
+      startRenderLoop();
+    };
+    const visibilityObserver = new MutationObserver(syncActiveState);
+    if (hero) visibilityObserver.observe(hero, { attributes: true, attributeFilter: ['class'] });
+    document.addEventListener('visibilitychange', syncActiveState);
+
+    flowReady = true;
+    if (flowRevealRequested) {
+      active = !document.hidden && !hero?.classList.contains('is-animation-paused');
+      renderFrame();
+      if (reducedMotion) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+        active = false;
+      }
+      revealFlow();
+    }
+
+    const destroy = () => {
+      destroyed = true;
+      stopRenderLoop();
+      window.cancelAnimationFrame(revealTimer);
+      window.clearTimeout(settleTimer);
+      window.clearTimeout(resizeTimer);
+      resizeObserver.disconnect();
+      visibilityObserver.disconnect();
+      window.removeEventListener('hero-icons-reveal', handleHeroIconReveal);
+      document.removeEventListener('visibilitychange', syncActiveState);
+      disposables.forEach((item) => item.dispose());
+      composer?.dispose();
+      renderer?.dispose();
+      renderer?.domElement.remove();
+      host.classList.remove('is-flow-entered', 'is-flow-settled');
+      delete host.dataset.flowReady;
+    };
+    document.addEventListener('astro:before-swap', destroy, { once: true });
+  };
+
+  const renderFallback = (
+    canvas: HTMLCanvasElement,
+    host: HTMLElement,
+    reducedMotion: boolean,
+  ) => {
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    canvas.style.display = 'block';
+    const lanes = Array.from({ length: host.clientWidth < 720 ? 10 : 16 }, (_, index) => ({
+      lane: (index / (host.clientWidth < 720 ? 9 : 15) - 0.5) * 2,
+      offset: index * 17.3,
+    }));
+    let frame = 0;
+    let frameId = 0;
+    let resizeTimer = 0;
+    let inViewport = true;
+    let active = !document.hidden;
+
+    const resize = () => {
+      const width = Math.max(host.clientWidth, 1);
+      const height = Math.max(host.clientHeight, 1);
+      const pixelRatio = Math.min(window.devicePixelRatio, 2);
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    };
+    const draw = () => {
+      frameId = 0;
+      if (!active) return;
+      const width = host.clientWidth;
+      const height = host.clientHeight;
+      frame += reducedMotion ? 0 : 0.6;
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = '#010504';
+      context.fillRect(0, 0, width, height);
+      context.save();
+      context.translate(width * (width < 720 ? 0.038 : 0.065), 0);
+      const gradient = context.createLinearGradient(0, 0, width, 0);
+      gradient.addColorStop(0, '#05f59d');
+      gradient.addColorStop(0.55, '#35e4e0');
+      gradient.addColorStop(1, '#7b75ff');
+      lanes.forEach((lane) => {
+        const startY = height * 0.5 + lane.lane * height * 0.42;
+        const endY = height * 0.5 + lane.lane * height * 0.39 + Math.sin(lane.offset) * 32;
+        const titleSide = lane.lane < 0 ? -1 : 1;
+        const sideBias = titleSide > 0 ? height * 0.035 : height * 0.012;
+        const fanOffset = Math.sin(lane.offset * 0.108 + 0.4) * height * 0.045 + Math.cos(lane.offset * 0.035) * height * 0.018;
+        const lowerClearance = titleSide < 0
+          ? height * (width < 720 ? 0.012 : 0.018) + Math.abs(lane.lane) * height * (width < 720 ? 0.018 : 0.026)
+          : 0;
+        const lowerFan = titleSide < 0 ? fanOffset * 0.08 : 0;
+        const laneSpacing = Math.abs(lane.lane) * height * (titleSide < 0 ? 0.128 : 0.11);
+        const outerLowerPullback = titleSide < 0 && lane.lane < -0.7
+          ? ((Math.abs(lane.lane) - 0.7) * 0.12 + 0.016) * height
+          : 0;
+        const middleY = height * 0.5
+          + titleSide * (
+            height * 0.245
+            + sideBias
+            + laneSpacing
+            + fanOffset
+            + lowerClearance
+            + lowerFan
+            - outerLowerPullback
+          );
+        context.beginPath();
+        context.moveTo(-30, startY);
+        context.bezierCurveTo(width * 0.25, startY * 0.72 + middleY * 0.28, width * 0.42, middleY, width * 0.58, middleY);
+        context.bezierCurveTo(width * 0.7, middleY + Math.sin(lane.offset) * 28, width * 0.78, endY * 0.78 + middleY * 0.22, width + 30, endY);
+        context.strokeStyle = gradient;
+        context.globalAlpha = 0.16;
+        context.lineWidth = 1.25;
+        context.setLineDash([2, 24]);
+        context.lineDashOffset = -frame - lane.offset;
+        context.stroke();
+      });
+      context.restore();
+      if (!reducedMotion) frameId = window.requestAnimationFrame(draw);
+    };
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        inViewport = entries.some((entry) => entry.isIntersecting);
+        active = inViewport && !document.hidden;
+        window.cancelAnimationFrame(frameId);
+        frameId = active && !reducedMotion ? window.requestAnimationFrame(draw) : 0;
+      }, { threshold: 0 });
+      observer.observe(host);
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        active = false;
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      } else if (!reducedMotion) {
+        active = inViewport;
+        if (active && !frameId) frameId = window.requestAnimationFrame(draw);
+      }
+    });
+    const scheduleResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = 0;
+        resize();
+      }, 120);
+    };
+    resize();
+    window.addEventListener('resize', scheduleResize, { passive: true });
+    draw();
+  };
+
+  const startFlows = () => {
+    document.querySelectorAll<HTMLElement>('[data-hero-flow]').forEach((host) => {
+      void initialiseFlow(host);
+    });
+  };
+
+  window.requestAnimationFrame(startFlows);
+</script>

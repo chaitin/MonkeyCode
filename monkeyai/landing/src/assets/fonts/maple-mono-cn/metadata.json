@@ -1,0 +1,18 @@
+{
+  "family": "Maple Mono CN",
+  "version": "v7.9",
+  "source": "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-CN-unhinted.zip",
+  "sha256": "d41cb72721e99cfe4fbd1a7b0f182a013457de46aa612018f924dd024699d3b9",
+  "weights": [
+    400,
+    500,
+    600,
+    700
+  ],
+  "characters": 22731,
+  "subsetsPerWeight": 26,
+  "bytes": {
+    "woff2": 25408324,
+    "woff": 33667916
+  }
+}

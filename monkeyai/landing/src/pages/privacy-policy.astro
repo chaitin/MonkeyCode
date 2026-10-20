@@ -1,0 +1,105 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LegalNav from '../components/LegalNav.astro';
+import { ActionButton } from '../components/ActionButton';
+
+const title = '隐私政策｜百智办公';
+const description = '百智办公隐私政策，说明百智办公官网、官方在线体验及相关客户端中个人信息的收集、使用、存储和保护方式。';
+const updatedAt = '2026 年 9 月 4 日';
+const sections = [
+  ['collection', '我们如何收集信息'],
+  ['use', '我们如何使用信息'],
+  ['moderation', '内容安全、举报与拉黑'],
+  ['security', '信息的存储与保护'],
+  ['sharing', '信息的共享、转让与公开披露'],
+  ['self-hosting', '企业自建部署'],
+  ['rights', '你的权利'],
+  ['minors', '未成年人保护'],
+  ['cookies', 'Cookies、会话与日志'],
+  ['updates', '政策更新与联系我们'],
+];
+---
+
+<BaseLayout title={title} description={description} pathname="/privacy-policy/" type="article" bodyClass="page-legal">
+  <main id="main-content" class="legal-page">
+    <article class="container legal-content legal-document">
+      <div class="legal-body">
+        <LegalNav label="隐私政策导航" sections={sections} />
+
+        <div class="legal-main">
+          <header class="legal-header">
+            <span class="eyebrow">PRIVACY POLICY</span>
+            <div class="legal-title-row">
+              <h1>百智办公隐私政策</h1>
+              <ActionButton client:load href={`${import.meta.env.BASE_URL}user-service/`} label="返回" icon="arrow-left" variant="outline" />
+            </div>
+            <p class="legal-lead">本政策适用于北京长亭科技有限公司运营的百智办公官网、官方在线体验及相关客户端。百智办公是一款开源的即时通讯工具，连接消息、知识与任务，让 Agent 融入团队工作流，并支持企业在自有基础设施中私有化部署。</p>
+            <p class="legal-updated">生效及更新日期：{updatedAt}</p>
+          </header>
+
+          <div class="legal-sections">
+      <section id="collection">
+        <h2>1. 我们如何收集信息</h2>
+        <p>为提供和维护官网、官方在线体验及相关客户端功能，我们仅在必要范围内收集以下信息：</p>
+        <ul>
+          <li><strong>账号信息：</strong>注册、登录或加入工作空间时提供的姓名、昵称、头像、邮箱、手机号、团队归属及必要的身份标识。</li>
+          <li><strong>协作内容：</strong>你创建、发送或上传的消息、任务、项目、文件、评论、通知及相关权限信息。</li>
+          <li><strong>内容安全信息：</strong>你主动提交的举报原因、被举报内容及必要上下文、被举报用户、拉黑关系、处理状态和相关操作记录。</li>
+          <li><strong>设备日志：</strong>设备与操作系统、应用版本、浏览器、IP 地址、访问时间、操作日志和错误诊断信息。</li>
+          <li><strong>官网数据：</strong>Google Analytics 4 统计的页面访问、设备类型和基础交互数据，不读取产品内的消息、任务或文件。</li>
+        </ul>
+      </section>
+
+      <section id="use">
+        <h2>2. 我们如何使用信息</h2>
+        <p>我们使用这些信息提供账号登录、团队协作、消息传递、问题排查、安全维护、功能优化和必要通知，并在法律要求的范围内履行合规义务。使用 AI 助理时，系统仅在工作空间权限范围内处理你提交的内容及完成请求所需的上下文。</p>
+      </section>
+
+      <section id="moderation">
+        <h2>3. 内容安全、举报与拉黑</h2>
+        <p>当你举报消息或拉黑用户时，我们会处理举报人和被举报人的账号标识、被举报内容及必要上下文、举报原因、拉黑关系、提交时间和处置记录，用于识别违规内容、防止骚扰和滥用、保障其他用户安全，并履行平台治理及法律义务。</p>
+        <p>拉黑后，被拉黑用户的相关内容会立即从你的消息流中移除；拉黑及关联内容会作为安全举报通知我们。官方在线体验的举报会在收到后 24 小时内完成审查。经核实后，我们可能删除违规内容、限制功能、暂停或终止违规账号，并仅在调查、申诉、审计及法律要求所需期限内保留相关记录。</p>
+        <p>举报信息仅会提供给负责安全审核、客户支持、系统运维及依法有权获取信息的人员或机构。自建部署版本由相应部署方或组织管理员负责处理举报和拉黑信息，并应向用户提供适用的隐私说明。</p>
+      </section>
+
+      <section id="security">
+        <h2>4. 信息的存储与保护</h2>
+        <p>我们通过账号认证、权限管理、传输加密和运行日志等措施保护信息，并按实现服务功能及履行法律义务所需的期限保存，超期后删除或匿名化。发生安全事件时，我们会依法采取补救措施。</p>
+      </section>
+
+      <section id="sharing">
+        <h2>5. 信息的共享、转让与公开披露</h2>
+        <p>除取得你的同意、提供服务所必需、依法接受机关要求或保护合法权益外，我们不会向无关第三方共享、转让或公开披露信息。第三方登录、基础设施、统计工具及你选择接入的模型服务，可能按其规则处理必要信息。</p>
+      </section>
+
+      <section id="self-hosting">
+        <h2>6. 企业自建部署</h2>
+        <p>百智办公支持部署在企业或其他组织自有的服务器、云基础设施中。自建实例由部署方自行管理数据、权限、留存和第三方接入，并负责向工作空间成员提供相应隐私说明；本政策主要说明北京长亭科技有限公司运营的官网、官方在线体验及相关客户端。</p>
+      </section>
+
+      <section id="rights">
+        <h2>7. 你的权利</h2>
+        <p>在法律允许范围内，你可查询、更正或删除相关信息，撤回授权、注销账号或要求解释本政策。部分请求需要组织管理员协助或进行身份核验；自建部署实例的相关请求应向部署方或组织管理员提出。依法需保留的信息将在期限届满后删除或匿名化。</p>
+      </section>
+
+      <section id="minors">
+        <h2>8. 未成年人保护</h2>
+        <p>百智办公主要面向企业和成年用户。未成年人应在监护人同意和指导下使用；如发现未经有效同意收集相关信息，我们会依法处理。</p>
+      </section>
+
+      <section id="cookies">
+        <h2>9. Cookies、会话与日志</h2>
+        <p>官网、官方在线体验和相关客户端可能使用 Cookies、本地存储、会话标识符及运行日志，以维持登录状态、保障安全、提升访问效率和分析运行情况。你可通过浏览器或设备设置进行管理，但部分功能可能因此受到影响。</p>
+      </section>
+
+      <section id="updates">
+        <h2>10. 政策更新与联系我们</h2>
+        <p>我们会根据服务变化或法律法规要求更新本政策，并通过官网、产品内通知或其他合理方式提示重大变更。</p>
+        <p>如对本政策或个人信息处理有疑问、意见或请求，可通过以下官方渠道联系我们：<a href="https://www.chaitin.cn/" target="_blank" rel="noopener noreferrer">长亭科技官网</a> 或 <a href="https://www.baizhi.cloud/" target="_blank" rel="noopener noreferrer">长亭百智云官网</a>。</p>
+      </section>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+</BaseLayout>

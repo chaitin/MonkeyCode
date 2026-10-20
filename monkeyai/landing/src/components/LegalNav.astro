@@ -1,0 +1,40 @@
+---
+interface Props {
+  label: string;
+  sections: string[][];
+}
+const { label, sections } = Astro.props;
+---
+
+<nav class="legal-nav" aria-label={label} data-legal-nav>
+  <div class="legal-nav-track" data-legal-nav-track>
+    <ol>{sections.map(([id, title], index) => <li><a href={`#${id}`}><b>{String(index + 1).padStart(2, '0')}</b>{title}</a></li>)}</ol>
+  </div>
+</nav>
+
+<script>
+  const nav = document.querySelector<HTMLElement>('[data-legal-nav]');
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('.legal-sections > section'));
+
+  if (nav && sections.length) {
+    const links = new Map(Array.from(nav.querySelectorAll<HTMLAnchorElement>('a')).map((link) => [link.hash.slice(1), link]));
+    let currentId = '';
+    const updateCurrentSection = () => {
+      const pageOffset = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+      const sectionOffset = Number.parseFloat(getComputedStyle(sections[0]).scrollMarginTop) || 0;
+      const activeSection = sections.reduce((current, section) => section.getBoundingClientRect().top <= pageOffset + sectionOffset + 12 ? section : current, sections[0]);
+      if (activeSection.id !== currentId) {
+        currentId = activeSection.id;
+        links.forEach((link, id) => {
+          const isCurrent = id === currentId;
+          link.classList.toggle('is-current', isCurrent);
+          if (isCurrent) link.setAttribute('aria-current', 'true');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    };
+    updateCurrentSection();
+    window.addEventListener('scroll', updateCurrentSection, { passive: true });
+    window.addEventListener('resize', updateCurrentSection);
+  }
+</script>

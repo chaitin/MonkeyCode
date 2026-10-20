@@ -1,0 +1,53 @@
+import {
+  ACESFilmicToneMapping,
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  CatmullRomCurve3,
+  Clock,
+  Color,
+  Group,
+  Mesh,
+  PerspectiveCamera,
+  Plane,
+  Points,
+  PointsMaterial,
+  Raycaster,
+  Scene,
+  ShaderMaterial,
+  SRGBColorSpace,
+  TubeGeometry,
+  Vector2,
+  Vector3,
+  WebGLRenderTarget,
+  WebGLRenderer,
+} from 'three';
+export const THREE = {
+  ACESFilmicToneMapping,
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  CatmullRomCurve3,
+  Clock,
+  Color,
+  Group,
+  Mesh,
+  PerspectiveCamera,
+  Plane,
+  Points,
+  PointsMaterial,
+  Raycaster,
+  Scene,
+  ShaderMaterial,
+  SRGBColorSpace,
+  TubeGeometry,
+  Vector2,
+  Vector3,
+  WebGLRenderTarget,
+  WebGLRenderer,
+};
+
+export { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+export { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+export { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+export { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';

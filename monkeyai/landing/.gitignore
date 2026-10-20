@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.venv-fonts/
+.DS_Store
+.env
+.env.*
+!.env.example

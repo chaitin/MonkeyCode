@@ -1,0 +1,40 @@
+---
+import hugeicons from '@iconify-json/hugeicons/icons.json';
+import downloads from '../../public/downloads.json';
+import { ClientPlatforms } from './ClientPlatformButton';
+import SectionTitle from './SectionTitle.astro';
+import '../styles/clients.css';
+
+const clients = [
+  { label: 'Web', icon: 'internet', description: '浏览器中打开', href: 'https://demo.monkeycode-ai.com/' },
+  { label: 'Android', icon: 'android', description: '下载客户端', href: downloads.android },
+  { label: 'iOS', icon: 'apple-01', description: '下载客户端', href: downloads.ios },
+  { label: 'Windows', icon: 'windows-new', description: 'x64 下载', href: downloads.windows },
+  { label: 'macOS ARM', icon: 'apple-01', description: 'Apple Silicon 下载', href: downloads.macos_arm64 },
+  { label: 'macOS Intel', icon: 'apple-01', description: 'Intel 下载', href: downloads.macos_x64 },
+  { label: 'Linux x64', icon: 'computer-terminal-01', description: 'x64 下载', href: downloads.linux_x64 },
+  { label: 'Linux ARM', icon: 'computer-terminal-01', description: 'ARM64 下载', href: downloads.linux_arm64 },
+  { label: '鸿蒙桌面', icon: 'computer-terminal-01', description: '下载客户端', href: downloads.harmony_desktop },
+] as const;
+---
+
+<section class="studio-section studio-clients" id="clients" aria-labelledby="clients-title">
+  <div class="studio-container">
+    <div class="studio-section-heading">
+      <span class="studio-eyebrow"><i></i>全平台支持 <span>YOUR WORKSPACE, EVERYWHERE</span></span>
+      <SectionTitle id="clients-title">Web / 桌面 / 移动端，<span>全平台支持</span></SectionTitle>
+      <p>不必为了协作更换设备。电脑、手机或浏览器，都能连接同一个团队。</p>
+    </div>
+
+    <ClientPlatforms client:load clients={clients.map(client => ({
+      href: client.href, label: client.label, description: client.description,
+      iconBody: hugeicons.icons[client.icon].body,
+    }))} />
+
+    <div class="studio-client-benefits">
+      <article><h3>设备不同，团队同在</h3><p>沿用熟悉的设备，进入同一个工作空间，减少跨平台沟通的障碍。</p></article>
+      <article><h3>切换设备，接着协作</h3><p>电脑上集中处理工作，手机上查看消息与进展，让协作延续下去。</p></article>
+      <article><h3>随时接入，灵活办公</h3><p>办公室、出差途中或远程办公，安装客户端或打开浏览器即可接入。</p></article>
+    </div>
+  </div>
+</section>

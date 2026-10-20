@@ -1,0 +1,11 @@
+[Unit]
+Description=Check hourly for Jiying homepage image updates
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+Unit=jiying-homepage-update.service
+
+[Install]
+WantedBy=timers.target

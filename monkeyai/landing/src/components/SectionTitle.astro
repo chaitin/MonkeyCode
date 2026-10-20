@@ -1,0 +1,13 @@
+---
+import { DitherLoader } from './motion/loader-dither';
+
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<h2 id={id} class="studio-section-title">
+  <span class="studio-title-loader" aria-hidden="true"><DitherLoader client:visible /></span>
+  <span class="studio-section-title-text"><slot /></span>
+</h2>

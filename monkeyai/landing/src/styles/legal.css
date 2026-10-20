@@ -1,0 +1,49 @@
+/* Document pages use the shared site theme, with a quiet reading surface. */
+.site-theme .legal-page { min-height: calc(100svh - 72px); padding: 64px 0 24px; color: var(--studio-text); background: transparent; }
+.site-theme .legal-content { width: min(calc(100% - 64px), var(--container)); max-width: var(--container); padding: 0; }
+.site-theme .legal-body { display: block; margin-top: 0; }
+.site-theme .legal-main { min-width: 0; padding: 36px; border: 1px solid var(--studio-line); border-radius: 8px; background: #fffffff5; }
+.site-theme .legal-header { padding-bottom: 28px; margin-bottom: 30px; border-bottom: 1px solid var(--studio-line); }
+.site-theme .legal-content .eyebrow { color: var(--green); font-size: 11px; font-weight: 500; }
+.site-theme .legal-title-row { align-items: flex-start; }
+.site-theme .legal-content h1 { color: var(--studio-text); font-size: clamp(26px, 3vw, 36px); font-weight: 400; line-height: 1.5; }
+.site-theme .legal-content h2 { color: var(--studio-text); font-size: 20px; font-weight: 500; line-height: 1.6; }
+.site-theme .legal-content h3 { color: var(--studio-text); font-size: 16px; font-weight: 500; }
+.site-theme .legal-content p, .site-theme .legal-content li { color: var(--studio-muted); font-size: 14px; line-height: 2; overflow-wrap: anywhere; }
+.site-theme .legal-content strong { color: var(--studio-text); font-weight: 600; }
+.site-theme .legal-lead { color: var(--studio-muted) !important; }
+.site-theme .legal-updated { color: var(--footer-text) !important; font-size: 12px; }
+.site-theme .legal-home-link { min-height: 38px; padding-inline: 12px; border-color: color-mix(in srgb, var(--green) 23%, transparent); border-radius: 6px; color: var(--green); background: color-mix(in srgb, var(--green) 3%, transparent); font-size: 12px; font-weight: 400; white-space: nowrap; }
+.site-theme .legal-home-link:hover { background: color-mix(in srgb, var(--green) 8%, transparent); }
+/* html already reserves 80px via scroll-padding-top. */
+.site-theme .legal-document section { scroll-margin-top: 20px; }
+.site-theme .legal-document section + section { margin-top: 34px; }
+.site-theme .user-service-document section > h2 { border-color: var(--studio-line); }
+.site-theme .user-service-document .user-service-indent { color: var(--studio-muted); }
+.site-theme .user-service-document .user-service-path { color: var(--green); font-weight: 500; }
+.site-theme .legal-nav { position: static; margin: 0 0 24px; padding: 0; }
+.site-theme .legal-nav-track { overflow-x: auto; scrollbar-color: var(--studio-line-hover) transparent; scrollbar-width: thin; }
+.site-theme .legal-nav ol { display: flex; width: max-content; gap: 6px; padding: 4px 4px 10px; }
+.site-theme .legal-nav li { border-radius: 6px; background: var(--studio-surface); }
+.site-theme .legal-nav a { min-height: 40px; padding: 10px 12px; border-radius: 6px; color: var(--footer-text); font-size: 12px; line-height: 1.7; }
+.site-theme .legal-nav b { color: var(--green); font-size: 11px; font-weight: 400; }
+.site-theme .legal-nav a:hover, .site-theme .legal-nav a.is-current { color: var(--green); background: color-mix(in srgb, var(--green) 5%, transparent); }
+
+@media (min-width: 1100px) {
+  .site-theme .legal-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 32px; }
+  .site-theme .legal-nav { position: sticky; top: 100px; margin: 0; }
+  .site-theme .legal-nav ol { display: grid; width: auto; gap: 5px; padding: 4px; }
+  .site-theme .legal-nav li { background: transparent; }
+}
+@media (max-width: 800px) {
+  .site-theme .legal-page { min-height: calc(100svh - 64px); padding-top: 36px; }
+  .site-theme .legal-content { width: calc(100% - 40px); }
+  .site-theme .legal-main { padding: 24px; }
+}
+@media (max-width: 520px) {
+  .site-theme .legal-main { padding: 22px 18px; }
+  .site-theme .legal-title-row { flex-direction: column; gap: 14px; }
+  .site-theme .legal-content h1 { font-size: 26px; }
+  .site-theme .legal-content h2 { font-size: 18px; }
+  .site-theme .legal-updated { text-align: left; }
+}

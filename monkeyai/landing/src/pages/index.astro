@@ -1,0 +1,108 @@
+---
+import { Icon } from 'astro-icon/components';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import StudioHero from '../components/StudioHero.astro';
+import StudioWorkspace from '../components/StudioWorkspace.astro';
+import DeploymentSection from '../components/DeploymentSection.astro';
+import ClientsSection from '../components/ClientsSection.astro';
+import PricingSection from '../components/PricingSection.astro';
+import { ActionButton } from '../components/ActionButton';
+import { FaqAccordion } from '../components/FaqQuestion';
+import { TextCascade } from '../components/motion/text-cascade';
+import SectionTitle from '../components/SectionTitle.astro';
+import '../styles/homepage.css';
+
+const title = '百智办公 - 团队 AI 办公工作台';
+const description = '百智办公是一款面向团队的开源 AI 办公工作台。用自然语言提出需求，让 AI 完成办公、编程与设计任务，直接交付工作成果。支持团队资源共享、统一管控与私有化部署。';
+const siteOrigin = Astro.site ?? Astro.url.origin;
+const pageUrl = new URL(import.meta.env.BASE_URL, siteOrigin).href;
+const logoUrl = new URL(`${import.meta.env.BASE_URL}monkeyai-logo.png`, siteOrigin).href;
+const schema = [
+  { '@context': 'https://schema.org', '@type': 'Organization', name: '百智办公', url: pageUrl, logo: logoUrl },
+  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: '百智办公', applicationCategory: 'BusinessApplication', operatingSystem: 'Web, macOS, Windows, Linux, iOS, Android', description, url: pageUrl },
+];
+const teamBenefits = [
+  ['hugeicons:share-01', '团队资源共享', '在团队内共享大模型、知识库、技能、专家、MCP 和规则等资源。'],
+  ['hugeicons:coins-01', '资源使用与计费', '掌握资源使用情况，并对资源使用进行计费管理。'],
+  ['hugeicons:security-check', '权限控制与使用审计', '完整控制资源权限，记录并审计资源使用情况。'],
+  ['hugeicons:chart-line', '团队使用统计', '查看团队的资源使用情况和统计数据。'],
+];
+const comparisonRows = [
+  ['团队管控', true, true, false, false],
+  ['代码开源', true, false, false, false],
+  ['私有化部署', true, false, false, false],
+  ['知识库', true, true, true, false],
+  ['技能', true, true, true, true],
+  ['连接器', true, true, true, true],
+  ['专家', true, true, true, false],
+  ['规则', true, false, false, false],
+  ['生图', true, true, true, true],
+  ['生视频', true, false, false, false],
+  ['云电脑', true, false, true, false],
+  ['兼容 Win7', true, false, false, false],
+];
+const faqs = [
+  ['百智办公和普通 AI 聊天工具有什么不同？', '百智办公不止回答问题，还能围绕需求执行任务、交付成果。你可以让 AI 制作 PPT、处理表格、编写代码或开展设计工作，并通过企业管理面板统一管理团队资源、权限和使用情况。'],
+  ['不会编程，也能使用百智办公吗？', '可以。日常办公和创作任务可以用自然语言描述，例如“把这些资料整理成汇报 PPT”或“分析这份表格”。提供相关文件、说明目标和交付要求即可；涉及专业判断或重要数据时，仍建议人工核对成果。'],
+  ['团队可以共享哪些 AI 资源？', '团队可以共享大模型、知识库、技能、专家、连接器（MCP）和规则。管理员可以控制资源访问权限，查看使用审计、使用统计，并进行资源使用与计费管理。'],
+  ['可以接入自己的模型和业务工具吗？', '可以。团队可以配置模型服务，并通过连接器（MCP）接入工具，结合知识库、技能和规则适配自己的工作流程。具体接口要求和配置方式请参考帮助文档。'],
+  ['支持私有化部署吗？企业数据会发送到哪里？', '支持部署到企业自有服务器。私有化部署不等于所有数据都不出网：使用外部模型或工具时，相关内容可能发送到对应服务。企业应根据安全要求选择服务、配置访问权限，并核对数据流向。'],
+  ['百智办公开源吗？可以做二次开发吗？', '百智办公代码开源，可以查看源码，并在遵循仓库许可证的前提下进行修改和二次开发。具体使用、修改及分发要求，请以 GitHub 仓库中的许可证为准。'],
+  ['免费版和付费版应该怎么选？', '可以先体验产品，再根据团队的使用规模、管理和服务需求选择方案。具体版本权益、使用额度及价格以正式公布的信息为准；如需确认适合团队的方案，可以通过“咨询购买”联系咨询。'],
+  ['如何开始使用？需要先安装吗？', '可以先点击“在线体验”，通过浏览器了解产品，无需先安装客户端。如需连接自己的团队服务，可按帮助文档完成部署，并在客户端下载区域选择已提供的平台版本。'],
+];
+---
+
+<BaseLayout title={title} description={description} schema={schema} bodyClass="page-studio">
+  <main id="main-content" class="studio-main">
+    <section class="studio-hero studio-container" aria-labelledby="hero-title">
+      <div class="studio-hero-copy">
+        <h1 id="hero-title"><span class="studio-title-shadow" aria-hidden="true">百智办公</span>百智办公</h1>
+        <p class="studio-hero-tagline"><TextCascade client:load text="团队 AI 办公工作台" /></p>
+        <p class="studio-hero-description">百智办公是一款面向团队的开源 AI 办公工作台。用自然语言提出需求，让 AI 完成办公、编程与设计任务，直接交付工作成果。支持团队资源共享、统一管控与私有化部署。</p>
+        <div class="studio-actions">
+          <ActionButton client:load href="#deployment" label="独立部署" icon="server" size="lg" />
+          <ActionButton client:load href="#clients" label="下载客户端" icon="download" variant="outline" size="lg" />
+        </div>
+      </div>
+      <StudioHero />
+    </section>
+
+    <DeploymentSection />
+
+    <section class="studio-section studio-container" id="solution" aria-labelledby="solution-title">
+      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>三大场景 <span>WORK SCENARIOS</span></span><SectionTitle id="solution-title">办公、编程、设计，<span>让 AI 直接交付工作成果</span></SectionTitle><p>办公、编程、设计，一个工作台覆盖多种工作模式。<br class="studio-mobile-break" />只要说出需求，AI 就会开始执行任务，并交付完整成果。</p></div>
+      <StudioWorkspace />
+    </section>
+
+    <section class="studio-section-band" id="why" aria-labelledby="advantages-title">
+      <div class="studio-container">
+      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>四大优势 <span>BUILT FOR TEAMS</span></span><SectionTitle id="advantages-title">企业级管理，<span>让团队协作有章可循</span></SectionTitle><p>完善的企业管理面板，覆盖资源共享、计费管理、权限审计与使用统计。</p></div>
+      <div class="studio-capabilities" aria-label="为什么选择百智办公">{teamBenefits.map(([icon, heading, body]) => <article><Icon name={icon} size={23} aria-hidden="true" /><h3>{heading}</h3><p>{body}</p></article>)}</div>
+      </div>
+    </section>
+
+    <ClientsSection />
+
+    <section class="studio-section-band" id="capabilities" aria-labelledby="capability-title">
+      <div class="studio-container">
+      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>产品对比 <span>THE DIFFERENCE</span></span><SectionTitle id="capability-title">WorkBuddy 的<span>企业级开源平替</span></SectionTitle><p>从团队协作到部署方式，找到适合你的工作空间。</p></div>
+      <div class="studio-comparison" role="region" aria-label="产品能力对比，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">比较维度</th><th scope="col" class="studio-highlight">百智办公</th>{['WorkBuddy', '豆包工作', 'Codex'].map((product) => <th scope="col">{product}</th>)}</tr></thead><tbody>{comparisonRows.map(([dimension, ...support]) => <tr><th scope="row">{dimension}</th>{support.map((supported, index) => <td class:list={[index === 0 && 'studio-highlight', supported === false && 'studio-unsupported']}>{supported === null ? <span>待确认</span> : <><span class="sr-only">{supported ? '支持' : '不支持'}</span><Icon name={supported ? 'hugeicons:tick-02' : 'hugeicons:cancel-01'} size={17} aria-hidden="true" /></>}</td>)}</tr>)}</tbody></table></div>
+      </div>
+    </section>
+
+    <PricingSection />
+
+    <section class="studio-section-band" id="faq" aria-labelledby="faq-title">
+      <div class="studio-container studio-faq">
+      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>常见问题 <span>FAQ</span></span><SectionTitle id="faq-title">你可能还想了解</SectionTitle><p>关于产品、部署和 AI 协作。</p><a class="studio-resource-link studio-text-action" href="https://monkeyai.docs.baizhi.cloud/" target="_blank" rel="noopener noreferrer"><span>查看产品文档</span><Icon name="hugeicons:arrow-up-right-01" size={20} aria-hidden="true" /></a></div>
+      <FaqAccordion client:visible items={faqs.map(([question, answer], index) => ({ id: `faq-${index}`, question, answer }))} />
+      </div>
+    </section>
+
+    <section class="studio-start studio-container" id="get-started" aria-labelledby="start-title">
+      <div><SectionTitle id="start-title">现在开始使用<span>百智办公</span></SectionTitle><p>在线体验百智办公，或在自己的环境中部署。</p></div>
+      <div class="studio-actions"><ActionButton client:load href="https://demo.monkeycode-ai.com/" label="在线体验" icon="monitor-play" size="lg" external /><ActionButton client:load href="https://monkeyai.docs.baizhi.cloud/" label="私有化部署" icon="server" variant="outline" size="lg" external /></div>
+    </section>
+  </main>
+</BaseLayout>

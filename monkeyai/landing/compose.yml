@@ -1,0 +1,33 @@
+name: jiying-homepage
+
+services:
+  homepage:
+    container_name: jiying-homepage
+    image: ${HOMEPAGE_IMAGE:-ghcr.1ms.run/chaitin/magicchat/homepage}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-jiying.chat}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+      - ./data/caddy/logs:/var/log/caddy
+      - ./data/releases:/srv/releases:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
