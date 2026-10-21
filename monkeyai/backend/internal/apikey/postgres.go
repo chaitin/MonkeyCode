@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey/sqlc"
@@ -102,7 +103,7 @@ func (p *Postgres) Authenticate(ctx context.Context, keyHash, scope string) (str
 		return "", fmt.Errorf("验证调用密钥: %w", err)
 	}
 	if _, err := sqlc.New(p.pool).TouchKey(ctx, id); err != nil {
-		slog.ErrorContext(ctx, "更新调用密钥使用时间失败", "key_id", id, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "更新调用密钥使用时间失败", "module", "apikey", "operation", "Authenticate", "key_id", id, "error", err)
 	}
 	return userID, nil
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
@@ -28,7 +29,7 @@ func runImageCleanup(ctx context.Context, inputs *imagegen.Inputs) {
 		_, err := inputs.Cleanup(cleanupCtx, 100)
 		cancel()
 		if err != nil && ctx.Err() == nil {
-			slog.Error("清理过期生图文件失败", "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "app.operation.error", "清理过期生图文件失败", "module", "app", "operation", "runImageCleanup", "error", err)
 		}
 		select {
 		case <-ctx.Done():

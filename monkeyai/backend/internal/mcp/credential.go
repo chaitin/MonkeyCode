@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,7 @@ func credentialStatus(c, cred resource.Object) string {
 	if c.String("authorization_method") == "http_header" {
 		b, err := json.Marshal(cred["http_headers"])
 		if err != nil {
-			slog.Error("编码认证 Header 失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
+			logging.Event(context.Background(), slog.Default(), slog.LevelError, "mcp.operation.error", "编码认证 Header 失败", "module", "mcp", "operation", "credentialStatus", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
 			return "authorization_required"
 		}
 		if _, err := decodeHeaders(b); err == nil {
@@ -227,39 +228,39 @@ func (s *Service) readCredentials(w http.ResponseWriter, r *http.Request, admin 
 		err = manageCredential(c, admin)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	if id := chi.URLParam(r, "credentialID"); id != "" {
 		cred, err := s.Credential(r.Context(), s.Store.Pool, c, u.ID, id)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		out, err := credentialViews(r.Context(), s.Store.Pool, c, cred)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		resource.ETag(w, cred)
 		w.Header().Set("Cache-Control", "private, no-store")
-		resource.JSON(w, 200, out[0])
+		resource.JSON(r.Context(), w, 200, out[0])
 		return
 	}
 	creds, err := s.Credentials(r.Context(), s.Store.Pool, c, u.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, 200, resource.Object{"items": creds})
+	resource.JSON(r.Context(), w, 200, resource.Object{"items": creds})
 }
 func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin bool) {
 	ctx := r.Context()
 	u, _ := identity.UserFromContext(ctx)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), chi.URLParam(r, "credentialID"), "save_credential")
@@ -268,7 +269,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		err = manageCredential(c, admin)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	id := chi.URLParam(r, "credentialID")
@@ -281,7 +282,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 			err = matchCredential(r, cred)
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 	}
@@ -298,7 +299,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 			err = tx.Commit(ctx)
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(204)
@@ -309,25 +310,25 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		Headers json.RawMessage `json:"http_headers"`
 	}
 	if err = resource.Decode(w, r, &in); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	data := resource.Object{"id": id}
 	if in.Name != nil {
 		data["name"], err = credentialName(*in.Name)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 	}
 	if in.Headers != nil {
 		if c.String("authorization_method") != "http_header" {
-			resource.Fail(w, resource.Invalid("OAuth 凭证通过授权流程更新"))
+			resource.Fail(r.Context(), w, resource.Invalid("OAuth 凭证通过授权流程更新"))
 			return
 		}
 		data["http_headers"], err = decodeHeaders(in.Headers)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		data["oauth_access_token"], data["oauth_refresh_token"], data["oauth_expires_at"] = "", "", nil
@@ -335,7 +336,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	}
 	if id == "" {
 		if in.Name == nil || in.Headers == nil {
-			resource.Fail(w, resource.Invalid("新增 Header 凭证需要名称和认证 Header"))
+			resource.Fail(r.Context(), w, resource.Invalid("新增 Header 凭证需要名称和认证 Header"))
 			return
 		}
 		id = resource.ID()
@@ -344,12 +345,12 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 			data["user_id"] = ""
 		}
 	} else if in.Name == nil && in.Headers == nil {
-		resource.Fail(w, resource.Invalid("请提供凭证名称或认证 Header"))
+		resource.Fail(r.Context(), w, resource.Invalid("请提供凭证名称或认证 Header"))
 		return
 	}
 	b, err := json.Marshal(data)
 	if err != nil {
-		resource.Fail(w, fmt.Errorf("编码凭证更新: %w", err))
+		resource.Fail(r.Context(), w, fmt.Errorf("编码凭证更新: %w", err))
 		return
 	}
 	var out resource.Object
@@ -368,14 +369,14 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if in.Headers != nil {
 		check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancel()
 		if _, testErr := s.testConnection(check, c, out, u.ID, admin); testErr != nil {
-			slog.WarnContext(check, "保存凭证后连接测试失败", "connector_id", c.String("id"), "credential_id", id, "failure", safeMCPFailure(testErr))
+			logging.Event(check, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "保存凭证后连接测试失败", "module", "mcp", "operation", "saveCredential", "connector_id", c.String("id"), "credential_id", id, "failure", testErr)
 		}
 		out, err = s.Credential(check, s.Store.Pool, c, u.ID, id)
 	}
@@ -384,7 +385,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 		views, err = credentialViews(ctx, s.Store.Pool, c, out)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	out = views[0]
@@ -394,5 +395,5 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	if r.Method == http.MethodPost {
 		status = 201
 	}
-	resource.JSON(w, status, out)
+	resource.JSON(r.Context(), w, status, out)
 }

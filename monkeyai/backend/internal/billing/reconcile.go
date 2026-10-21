@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
@@ -48,7 +49,7 @@ func (s *Service) reconcileUnknown(ctx context.Context) error {
 			if _, err := sqlc.New(s.pool).StopReconciliation(ctx, row.ID); err != nil {
 				return err
 			}
-			slog.WarnContext(ctx, "模型用量自动对账已停止", "transaction_id", row.ID, "attempts", row.Attempts)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "billing.operation.warn", "模型用量自动对账已停止", "module", "billing", "operation", "reconcileUnknown", "transaction_id", row.ID, "attempts", row.Attempts)
 			continue
 		}
 		attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -57,7 +58,7 @@ func (s *Service) reconcileUnknown(ctx context.Context) error {
 		if err == nil {
 			continue
 		}
-		slog.WarnContext(ctx, "模型用量自动对账失败", "transaction_id", row.ID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "billing.operation.warn", "模型用量自动对账失败", "module", "billing", "operation", "reconcileUnknown", "transaction_id", row.ID, "error", err)
 		if _, scheduleErr := sqlc.New(s.pool).ScheduleRetry(ctx, row.ID); scheduleErr != nil {
 			return scheduleErr
 		}
@@ -82,9 +83,9 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, releaseErr := sqlc.New(conn).ReleaseReconciliationLock(releaseCtx, row.ID); releaseErr != nil {
-			slog.ErrorContext(releaseCtx, "释放对账锁失败", "transaction_id", row.ID, "operation", "release_reconciliation_lock", "error", releaseErr)
+			logging.Event(releaseCtx, slog.Default(), slog.LevelError, "billing.operation.error", "释放对账锁失败", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID, "operation", "release_reconciliation_lock", "error", releaseErr)
 			if closeErr := conn.Conn().Close(releaseCtx); closeErr != nil {
-				slog.ErrorContext(releaseCtx, "关闭对账连接失败", "transaction_id", row.ID, "operation", "close_reconciliation_connection", "error", closeErr)
+				logging.Event(releaseCtx, slog.Default(), slog.LevelError, "billing.operation.error", "关闭对账连接失败", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID, "operation", "close_reconciliation_connection", "error", closeErr)
 			}
 		}
 	}()
@@ -115,14 +116,14 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 		if !result.Usage.Known {
 			_, err = sqlc.New(conn).StopReconciliation(ctx, row.ID)
 			if err == nil {
-				slog.ErrorContext(ctx, "对账器返回了不可信用量", "transaction_id", row.ID)
+				logging.Event(ctx, slog.Default(), slog.LevelError, "billing.operation.error", "对账器返回了不可信用量", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID)
 			}
 			return err
 		}
 	default:
 		_, err = sqlc.New(conn).StopReconciliation(ctx, row.ID)
 		if err == nil {
-			slog.ErrorContext(ctx, "对账器返回了未知结果", "transaction_id", row.ID, "state", result.State)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "billing.operation.error", "对账器返回了未知结果", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID, "state", result.State)
 		}
 		return err
 	}
@@ -141,6 +142,6 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 	if err := s.Finish(ctx, row.ID, result.Usage); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "模型用量自动对账已补全", "transaction_id", row.ID, "request_id", row.RequestID)
+	logging.Event(ctx, slog.Default(), slog.LevelInfo, "billing.operation.info", "模型用量自动对账已补全", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID, "request_id", row.RequestID)
 	return nil
 }

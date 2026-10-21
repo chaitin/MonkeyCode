@@ -136,21 +136,21 @@ type DeviceResponse struct {
 
 func (s *Service) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	if !s.deviceEnabled() {
-		s.writeOAuthError(w, oauthError("unsupported_grant_type", "设备授权当前不可用"))
+		s.writeOAuthError(r.Context(), w, oauthError("unsupported_grant_type", "设备授权当前不可用"))
 		return
 	}
 	if !s.deviceLimit(r, "request", 60) {
 		w.Header().Set("Retry-After", "60")
-		writeJSON(w, 429, protocolError{Code: "temporarily_unavailable", Description: "设备授权申请过于频繁"})
+		writeJSON(r.Context(), w, 429, protocolError{Code: "temporarily_unavailable", Description: "设备授权申请过于频繁"})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if r.ParseForm() != nil {
-		s.writeOAuthError(w, oauthError("invalid_request", "请求格式无效"))
+		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "请求格式无效"))
 		return
 	}
 	if r.PostForm.Get("client_id") != RuntimeClientID {
-		s.writeOAuthError(w, oauthError("invalid_client", "仅独立 runtime 使用设备授权"))
+		s.writeOAuthError(r.Context(), w, oauthError("invalid_client", "仅独立 runtime 使用设备授权"))
 		return
 	}
 	scope := r.PostForm.Get("scope")
@@ -159,43 +159,43 @@ func (s *Service) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	}
 	scopes, err := parseScopes(RuntimeClientID, scope)
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	machine, display, platform, arch := r.PostForm.Get("machine_id"), r.PostForm.Get("display_name"), r.PostForm.Get("platform"), r.PostForm.Get("arch")
 	public, err := base64.RawURLEncoding.Strict().DecodeString(r.PostForm.Get("execution_public_key"))
 	if err != nil || len(public) != ed25519.PublicKeySize || !deviceUUID(machine) || !deviceText(display, 128) || !deviceText(arch, 32) || !slices.Contains([]string{"macos", "windows", "linux"}, platform) {
-		s.writeOAuthError(w, oauthError("invalid_request", "设备信息或公钥无效"))
+		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "设备信息或公钥无效"))
 		return
 	}
 	deviceCode, err := randomToken(32)
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	userCode, err := randomUserCode()
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	fingerprint := sha256.Sum256(public)
 	_, err = sqlc.New(s.db).CreateDeviceRequest(r.Context(), sqlc.CreateDeviceRequestParams{ClientID: RuntimeClientID, DeviceCodeHash: tokenHash(deviceCode), UserCodeHash: s.userCodeHash(userCode), MachineID: machine, ExecutionPublicKey: public, KeyID: base64.RawURLEncoding.EncodeToString(fingerprint[:]), DisplayName: display, Platform: platform, Arch: arch, RequestedScopes: scopes, ExpiresAt: s.now().Add(10 * time.Minute)})
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	formatted := userCode[:4] + "-" + userCode[4:]
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, DeviceResponse{DeviceCode: deviceCode, UserCode: formatted, VerificationURI: s.publicURL + "/device", VerificationURIComplete: s.publicURL + "/device?user_code=" + url.QueryEscape(formatted), ExpiresIn: 600, Interval: 5})
+	writeJSON(r.Context(), w, 200, DeviceResponse{DeviceCode: deviceCode, UserCode: formatted, VerificationURI: s.publicURL + "/device", VerificationURIComplete: s.publicURL + "/device?user_code=" + url.QueryEscape(formatted), ExpiresIn: 600, Interval: 5})
 }
 
 func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 	if !s.deviceEnabled() {
-		writeError(w, 404, "request_not_found", "设备申请不可用")
+		writeError(r.Context(), w, 404, "request_not_found", "设备申请不可用")
 		return
 	}
 	if !s.deviceLimit(r, "verify", 60) {
-		writeError(w, 429, "rate_limited", "设备码查询过于频繁")
+		writeError(r.Context(), w, 429, "rate_limited", "设备码查询过于频繁")
 		return
 	}
 	var request sqlc.OauthDeviceRequest
@@ -206,22 +206,22 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		code, valid := canonicalUserCode(r.URL.Query().Get("user_code"))
 		if !valid {
-			writeError(w, 404, "request_not_found", "设备码无效或已过期")
+			writeError(r.Context(), w, 404, "request_not_found", "设备码无效或已过期")
 			return
 		}
 		request, err = sqlc.New(s.db).DeviceRequestByCode(r.Context(), s.userCodeHash(code))
 	}
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !s.now().Before(request.ExpiresAt) {
-		writeError(w, 404, "request_not_found", "设备码无效或已过期")
+		writeError(r.Context(), w, 404, "request_not_found", "设备码无效或已过期")
 		return
 	}
 	if err != nil {
-		writeError(w, 503, "authorization_state_unavailable", "设备申请暂不可用")
+		writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备申请暂不可用")
 		return
 	}
 	connections, err := s.connections(r.Context())
 	if err != nil {
-		writeError(w, 503, "settings_unavailable", "登录方式暂不可用")
+		writeError(r.Context(), w, 503, "settings_unavailable", "登录方式暂不可用")
 		return
 	}
 	user, authenticated := s.BrowserUser(r)
@@ -229,7 +229,7 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 	if authenticated {
 		tx, beginErr := s.db.BeginTx(r.Context(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
 		if beginErr != nil {
-			writeError(w, 503, "authorization_state_unavailable", "设备状态暂不可用")
+			writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备状态暂不可用")
 			return
 		}
 		requiresRestore, err = s.device.registry.VerifyDeviceRequest(r.Context(), tx, user.ID, request.MachineID, request.ExecutionPublicKey)
@@ -237,17 +237,17 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrDeviceBindingConflict) {
 			conflict = true
 		} else if err != nil {
-			writeError(w, 503, "authorization_state_unavailable", "设备状态暂不可用")
+			writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备状态暂不可用")
 			return
 		}
 	}
 	if request.Status == "approved" || request.Status == "consumed" {
 		if request.OwnerUserID == nil || !authenticated || *request.OwnerUserID != user.ID {
-			writeError(w, 404, "request_not_found", "设备申请不存在或已处理")
+			writeError(r.Context(), w, 404, "request_not_found", "设备申请不存在或已处理")
 			return
 		}
 	}
-	writeJSON(w, 200, map[string]any{"requires_restore": requiresRestore, "registration_conflict": conflict, "purpose": "device", "request_id": request.ID, "client": Clients[RuntimeClientID], "authenticated": authenticated, "user": nullableUser(user, authenticated), "providers": publicConnections(connections), "machine_id": request.MachineID, "display_name": request.DisplayName, "platform": request.Platform, "arch": request.Arch, "key_fingerprint": request.KeyID, "scopes": request.RequestedScopes, "scope_descriptions": scopeNames, "expires_at": request.ExpiresAt, "status": request.Status, "csrf_token": consentToken(r, request.ID)})
+	writeJSON(r.Context(), w, 200, map[string]any{"requires_restore": requiresRestore, "registration_conflict": conflict, "purpose": "device", "request_id": request.ID, "client": Clients[RuntimeClientID], "authenticated": authenticated, "user": nullableUser(user, authenticated), "providers": publicConnections(connections), "machine_id": request.MachineID, "display_name": request.DisplayName, "platform": request.Platform, "arch": request.Arch, "key_fingerprint": request.KeyID, "scopes": request.RequestedScopes, "scope_descriptions": scopeNames, "expires_at": request.ExpiresAt, "status": request.Status, "csrf_token": consentToken(r, request.ID)})
 }
 
 type deviceDecision struct {
@@ -259,90 +259,90 @@ type deviceDecision struct {
 
 func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 	if !s.deviceEnabled() {
-		writeError(w, 404, "request_not_found", "设备授权不可用")
+		writeError(r.Context(), w, 404, "request_not_found", "设备授权不可用")
 		return
 	}
 	var in deviceDecision
 	if readDeviceJSON(w, r, &in) != nil || !deviceUUID(in.RequestID) || !slices.Contains([]string{"approve", "deny"}, in.Decision) {
-		writeError(w, 400, "invalid_request", "设备授权决定无效")
+		writeError(r.Context(), w, 400, "invalid_request", "设备授权决定无效")
 		return
 	}
 	if err := verifyConsent(r, in.RequestID, s.publicURL); err != nil {
-		writeError(w, 403, "consent_required", err.Error())
+		writeError(r.Context(), w, 403, "consent_required", err.Error())
 		return
 	}
 	user, _ := UserFromContext(r.Context())
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		writeError(w, 503, "authorization_state_unavailable", "授权状态暂不可用")
+		writeError(r.Context(), w, 503, "authorization_state_unavailable", "授权状态暂不可用")
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(r.Context()))
 	q := sqlc.New(tx)
 	request, err := q.LockDeviceRequest(r.Context(), in.RequestID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, 404, "request_not_found", "设备申请不存在")
+		writeError(r.Context(), w, 404, "request_not_found", "设备申请不存在")
 		return
 	}
 	if err != nil {
-		writeError(w, 503, "authorization_state_unavailable", "设备申请暂不可用")
+		writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备申请暂不可用")
 		return
 	}
 	if !s.now().Before(request.ExpiresAt) {
 		q.ResolveDeviceRequest(r.Context(), sqlc.ResolveDeviceRequestParams{ID: request.ID, Status: "expired"})
 		tx.Commit(r.Context())
-		writeError(w, 409, "device_request_resolved", "设备申请已过期")
+		writeError(r.Context(), w, 409, "device_request_resolved", "设备申请已过期")
 		return
 	}
 	if request.Status != "pending" {
-		writeError(w, 409, "device_request_resolved", "设备申请已经处理")
+		writeError(r.Context(), w, 409, "device_request_resolved", "设备申请已经处理")
 		return
 	}
 	if _, err = q.LockDeviceOwner(r.Context(), user.ID); err != nil {
-		writeError(w, 403, "permission_denied", "账号不可用于设备授权")
+		writeError(r.Context(), w, 403, "permission_denied", "账号不可用于设备授权")
 		return
 	}
 	status := "denied"
 	scopes := []string{}
 	if in.Decision == "approve" {
 		if in.Scopes == nil {
-			writeError(w, 400, "invalid_scope", "请明确批准权限")
+			writeError(r.Context(), w, 400, "invalid_scope", "请明确批准权限")
 			return
 		}
 		scopes, err = approvedScopes(request.RequestedScopes, *in.Scopes)
 		if err != nil {
-			writeError(w, 400, "invalid_scope", err.Error())
+			writeError(r.Context(), w, 400, "invalid_scope", err.Error())
 			return
 		}
 		revoked, checkErr := s.device.registry.VerifyDeviceRequest(r.Context(), tx, user.ID, request.MachineID, request.ExecutionPublicKey)
 		if checkErr != nil {
 			if errors.Is(checkErr, ErrDeviceBindingConflict) {
-				writeError(w, 409, "device_registration_conflict", "设备公钥与已登记身份冲突")
+				writeError(r.Context(), w, 409, "device_registration_conflict", "设备公钥与已登记身份冲突")
 			} else {
-				writeError(w, 503, "authorization_state_unavailable", "设备登记暂不可用")
+				writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备登记暂不可用")
 			}
 			return
 		}
 		if revoked && !in.RestoreRevoked {
-			writeError(w, 409, "device_revoked", "请明确批准恢复已撤销设备")
+			writeError(r.Context(), w, 409, "device_revoked", "请明确批准恢复已撤销设备")
 			return
 		}
 		status = "approved"
 	}
 	changed, err := q.DecideDeviceRequest(r.Context(), sqlc.DecideDeviceRequestParams{ID: request.ID, Status: status, OwnerUserID: new(user.ID), ApprovedScopes: scopes, RestoreRevoked: in.RestoreRevoked})
 	if err != nil || changed != 1 {
-		writeError(w, 409, "device_request_resolved", "设备申请已被其他操作处理")
+		writeError(r.Context(), w, 409, "device_request_resolved", "设备申请已被其他操作处理")
 		return
 	}
 	if err = audit.Write(r.Context(), tx, audit.Event{ActorID: user.ID, Action: "device." + status, Category: "security", TargetType: "endpoint", TargetID: request.MachineID, Params: map[string]any{"request_id": request.ID, "scopes": scopes, "restore_revoked": in.RestoreRevoked}}); err != nil {
-		writeError(w, 503, "authorization_state_unavailable", "无法保存授权决定")
+		writeError(r.Context(), w, 503, "authorization_state_unavailable", "无法保存授权决定")
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, 503, "authorization_state_unavailable", "无法保存授权决定")
+		writeError(r.Context(), w, 503, "authorization_state_unavailable", "无法保存授权决定")
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": status})
+	writeJSON(r.Context(), w, 200, map[string]string{"status": status})
 }
 
 func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string) (Token, error) {

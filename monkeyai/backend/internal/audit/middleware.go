@@ -3,10 +3,9 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -67,18 +67,17 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 				next.ServeHTTP(w, r)
 				return
 			}
-			var random [16]byte
-			if _, err := rand.Read(random[:]); err != nil {
-				s.logger.ErrorContext(r.Context(), "初始化操作审计失败", "error", err)
-				failure(r.Context(), w, 500, "server_error", "初始化操作审计失败")
+			id := logging.RequestID(r.Context())
+			if id == "" {
+				failure(r.Context(), w, 500, "server_error", "缺少请求观测上下文")
 				return
 			}
-			state := &requestState{id: hex.EncodeToString(random[:]), actor: user, at: time.Now().UTC(), ip: clientIP(r), agent: clean(r.UserAgent(), 512)}
+			state := &requestState{id: id, actor: user, at: time.Now().UTC(), ip: clientIP(r), agent: clean(r.UserAgent(), 512)}
 			r = r.WithContext(context.WithValue(r.Context(), requestKey{}, state))
 			var body, response capture
 			media, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if mediaErr != nil && r.Header.Get("Content-Type") != "" {
-				s.logger.WarnContext(r.Context(), "操作审计请求类型无法解析", "error", mediaErr)
+				logging.Event(r.Context(), s.logger, slog.LevelWarn, "audit.operation.warn", "操作审计请求类型无法解析", "module", "audit", "operation", "Middleware", "error", mediaErr)
 			}
 			if r.Body != nil && media == "application/json" {
 				r.Body = bodyReader{Reader: io.TeeReader(r.Body, &body), Closer: r.Body}
@@ -97,7 +96,7 @@ func (s *Service) Middleware(actor func(*http.Request) Actor) func(http.Handler)
 				ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 				defer cancel()
 				if err := s.complete(ctx, r, state, &body, &response, media, status); err != nil {
-					s.logger.ErrorContext(ctx, "操作审计写入失败", "request_id", state.id, "method", r.Method, "status", status, "error", err)
+					logging.Event(ctx, s.logger, slog.LevelError, "audit.operation.error", "操作审计写入失败", "module", "audit", "operation", "Middleware", "event", "audit.write.failed", "request_id", state.id, "method", r.Method, "status", status, "error", err)
 				}
 				if panicked != nil {
 					panic(panicked)

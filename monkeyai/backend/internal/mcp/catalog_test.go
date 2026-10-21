@@ -20,7 +20,7 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 			f.sql(`UPDATE users SET role='user' WHERE id=$1`, f.users["other"])
 			remote := mcpRemote(t, nil)
 			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				resource.JSON(w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+				resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
 			}))
 			defer oauth.Close()
 			c := f.call("POST", "/admin/connectors", resource.Object{

@@ -208,7 +208,7 @@ func TestUsageCapturePipeErrorLogsDetailWithoutResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := logs.String()
-	if strings.Count(text, "write_usage_pipe") != 1 || !strings.Contains(text, "用量解析器意外失败") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "model-1") || strings.Contains(text, "private-upstream-response") {
+	if strings.Count(text, "write_usage_pipe") != 1 || !strings.Contains(text, "error.error_code=internal_error") || strings.Contains(text, "用量解析器意外失败") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "model-1") || strings.Contains(text, "private-upstream-response") {
 		t.Fatalf("管道错误日志缺少详情或泄漏响应: %s", text)
 	}
 }

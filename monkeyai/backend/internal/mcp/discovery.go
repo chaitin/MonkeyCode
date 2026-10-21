@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -57,7 +58,7 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			slog.WarnContext(ctx, "关闭 OAuth 元数据响应失败", "operation", "read_metadata", "failure", safeMCPFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 OAuth 元数据响应失败", "module", "mcp", "operation", "readOAuthMetadata", "operation", "read_metadata", "failure", err)
 		}
 	}()
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {

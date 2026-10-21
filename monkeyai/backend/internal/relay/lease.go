@@ -3,7 +3,9 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"slices"
@@ -297,11 +299,12 @@ func (s *Service) control(ctx context.Context, r *route) {
 	r.ready = true
 	r.seen = time.Now()
 	s.mu.Unlock()
+	logging.Event(ctx, s.logger, slog.LevelInfo, "relay.bridge.ready", "设备控制通道已就绪", "channel_kind", "control")
 	stop := make(chan struct{})
 	defer close(stop)
 	go s.monitor(r, stop)
 	go s.probe(r, stop)
-	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10,
+	server := &http.Server{ErrorLog: logging.ErrorLog(s.logger), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10,
 		BaseContext: func(net.Listener) context.Context { return ctx }, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { s.controlHTTP(w, req, r) })}
 	defer server.Close()
 	_ = server.Serve(&controlListener{session: r.control, slots: make(chan struct{}, 16)})

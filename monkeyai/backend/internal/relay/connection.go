@@ -44,83 +44,83 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 	p, _ := identity.PrincipalFromContext(r.Context())
 	if !s.allow(p.GrantID) {
 		w.Header().Set("Retry-After", "1")
-		failure(w, 429, "relay_overloaded")
+		failure(r.Context(), w, 429, "relay_overloaded")
 		return
 	}
 	machine := chi.URLParam(r, "machine")
 	if !validUUID(machine) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	var in ConnectionRequest
 	data, err := readBody(w, r, maxControlMessage)
 	if err != nil || decodeMessage(data, &in) != nil {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	state, err := s.devices.State(r.Context(), p.UserID, machine)
 	if err != nil {
-		fail(w, err)
+		fail(r.Context(), w, err)
 		return
 	}
 	key := target{p.UserID, machine}
 	route := s.current(key)
 	if route == nil {
-		failure(w, 503, "device_offline")
+		failure(r.Context(), w, 503, "device_offline")
 		return
 	}
 	s.mu.Lock()
 	runtimeStatus := route.runtimeStatus
 	s.mu.Unlock()
 	if runtimeStatus != "online" {
-		failure(w, 503, "device_draining")
+		failure(r.Context(), w, 503, "device_draining")
 		return
 	}
 	if state.RemoteAccessState != "enabled" {
-		failure(w, 403, "device_revoked")
+		failure(r.Context(), w, 403, "device_revoked")
 		return
 	}
 	ticket, err := randomSecret()
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(r.Context()))
 	q := sqlc.New(tx)
 	if _, err = q.LockUser(r.Context(), p.UserID); err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	valid, err := s.identity.AuthorizeDevice(r.Context(), tx, p, "device:connect")
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	if !valid {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	state, err = s.devices.ReadState(r.Context(), tx, p.UserID, machine)
 	if err != nil {
-		fail(w, err)
+		fail(r.Context(), w, err)
 		return
 	}
 	if state.RemoteAccessState != "enabled" || state.GrantVersion != route.state.GrantVersion || state.LeaseEpoch != route.state.LeaseEpoch || s.current(key) != route {
-		failure(w, 503, "device_offline")
+		failure(r.Context(), w, 503, "device_offline")
 		return
 	}
 	hostValid, hostErr := s.identity.AuthorizeDevice(r.Context(), tx, route.principal, "device:publish")
 	if hostErr != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	if !hostValid {
-		failure(w, 403, "device_revoked")
+		failure(r.Context(), w, 403, "device_revoked")
 		return
 	}
 	var row sqlc.DeviceClientConnection
@@ -129,15 +129,15 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 	expiry := time.Now().UTC().Add(15 * time.Minute)
 	if in.ConnectionID != "" {
 		if !validUUID(in.ConnectionID) {
-			failure(w, 400, "invalid_request")
+			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
 		row, err = q.LockConnection(r.Context(), sqlc.LockConnectionParams{ID: in.ConnectionID, UserID: p.UserID, ClientGrantID: p.GrantID})
 		if err != nil || row.MachineID != machine || row.RevokedAt != nil || !time.Now().Before(row.ExpiresAt) || row.GrantVersion != state.GrantVersion {
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				failure(w, 503, "authorization_state_unavailable")
+				failure(r.Context(), w, 503, "authorization_state_unavailable")
 			} else {
-				failure(w, 401, "connection_expired")
+				failure(r.Context(), w, 401, "connection_expired")
 			}
 			return
 		}
@@ -146,7 +146,7 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		if in.Scopes != nil {
 			for _, scope := range *in.Scopes {
 				if !slices.Contains(scopes, scope) {
-					failure(w, 400, "invalid_scope")
+					failure(r.Context(), w, 400, "invalid_scope")
 					return
 				}
 			}
@@ -163,23 +163,23 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 			scopes = slices.Clone(*in.Scopes)
 		}
 		if len(scopes) == 0 {
-			failure(w, 400, "invalid_scope")
+			failure(r.Context(), w, 400, "invalid_scope")
 			return
 		}
 		count, err := q.CountConnections(r.Context(), sqlc.CountConnectionsParams{UserID: p.UserID, MachineID: machine, GrantVersion: state.GrantVersion})
 		if err != nil {
-			failure(w, 503, "authorization_state_unavailable")
+			failure(r.Context(), w, 503, "authorization_state_unavailable")
 			return
 		}
 		if count >= 8 {
 			w.Header().Set("Retry-After", "30")
-			failure(w, 429, "device_connection_limit")
+			failure(r.Context(), w, 429, "device_connection_limit")
 			return
 		}
 	}
 	for _, scope := range scopes {
 		if !slices.Contains(businessScopes, scope) || !p.Has(scope) {
-			failure(w, 403, "permission_denied")
+			failure(r.Context(), w, 403, "permission_denied")
 			return
 		}
 	}
@@ -189,14 +189,14 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		negotiated := make(map[string]int)
 		for _, name := range []string{"acp", "runtime_api"} {
 			if !slices.Contains(in.SupportedProtocols[name], 1) || !slices.Contains(route.hello.Protocols[name], 1) {
-				failure(w, 409, "upgrade_required")
+				failure(r.Context(), w, 409, "upgrade_required")
 				return
 			}
 			negotiated[name] = 1
 		}
 		protocol, _ = json.Marshal(negotiated)
 		if in.ConnectionID != "" && !sameProtocol(row.Protocol, protocol) {
-			failure(w, 409, "upgrade_required")
+			failure(r.Context(), w, 409, "upgrade_required")
 			return
 		}
 	}
@@ -207,18 +207,18 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		row, err = q.RotateTicket(r.Context(), sqlc.RotateTicketParams{ID: row.ID, TicketHash: secretHash(ticket), Scopes: scopes, ExpiresAt: expiry})
 	}
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	if in.ConnectionID != "" {
 		s.refreshAccesses(route, row, restricted)
 	}
 	now := time.Now().UTC()
-	resource.JSON(w, 200, ConnectionResponse{ConnectionID: row.ID, MachineID: machine, HTTPBase: s.config.PublicURL + "/api/v1/endpoints/" + machine + "/proxy/", Ticket: ticket, TicketVersion: row.TicketVersion, ExpiresAt: row.ExpiresAt, ExpiresIn: max(0, int64(row.ExpiresAt.Sub(now).Seconds())), ServerTime: now, Scopes: row.Scopes, Protocol: row.Protocol})
+	resource.JSON(r.Context(), w, 200, ConnectionResponse{ConnectionID: row.ID, MachineID: machine, HTTPBase: s.config.PublicURL + "/api/v1/endpoints/" + machine + "/proxy/", Ticket: ticket, TicketVersion: row.TicketVersion, ExpiresAt: row.ExpiresAt, ExpiresIn: max(0, int64(row.ExpiresAt.Sub(now).Seconds())), ServerTime: now, Scopes: row.Scopes, Protocol: row.Protocol})
 }
 
 func sameProtocol(a, b []byte) bool {

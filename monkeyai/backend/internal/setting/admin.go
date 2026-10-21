@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 
@@ -15,7 +16,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
 		records, err := s.AdminList(r.Context())
 		if err != nil {
-			slog.ErrorContext(r.Context(), "读取设置列表失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "读取设置列表失败", "module", "setting", "operation", "RegisterAdmin", "error", err)
 			settingError(r.Context(), w, http.StatusInternalServerError, "读取设置失败")
 			return
 		}
@@ -28,7 +29,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			if errors.Is(err, ErrUnknownKey) || errors.Is(err, ErrNotFound) {
 				status = http.StatusNotFound
 			} else {
-				slog.ErrorContext(r.Context(), "读取设置失败", "key", chi.URLParam(r, "key"), "error", err)
+				logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "读取设置失败", "module", "setting", "operation", "RegisterAdmin", "key", chi.URLParam(r, "key"), "error", err)
 			}
 			settingError(r.Context(), w, status, "设置不存在")
 			return
@@ -56,7 +57,7 @@ func (s *Service) putSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	record.Value, err = redact(record.Key, record.Value)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "设置响应脱敏失败", "key", record.Key, "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "设置响应脱敏失败", "module", "setting", "operation", "putSetting", "key", record.Key, "error", err)
 		settingError(r.Context(), w, http.StatusInternalServerError, "设置已保存，但响应脱敏失败")
 		return
 	}
@@ -67,7 +68,7 @@ func settingJSON(ctx context.Context, w http.ResponseWriter, status int, value a
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
-		slog.WarnContext(ctx, "写入设置响应失败", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "写入设置响应失败", "module", "setting", "operation", "settingJSON", "error", err)
 	}
 }
 

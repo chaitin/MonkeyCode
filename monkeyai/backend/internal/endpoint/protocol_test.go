@@ -100,7 +100,7 @@ func TestOrigin(t *testing.T) {
 
 func TestEndpointResponseSerializationFailure(t *testing.T) {
 	w := httptest.NewRecorder()
-	respond(w, http.StatusOK, make(chan int))
+	respond(t.Context(), w, http.StatusOK, make(chan int))
 	if w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "chan") {
 		t.Fatalf("未正确处理序列化失败: %d %q", w.Code, w.Body.String())
 	}

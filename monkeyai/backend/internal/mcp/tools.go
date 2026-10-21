@@ -39,46 +39,46 @@ func (s *Service) tools(w http.ResponseWriter, r *http.Request, admin bool) {
 	u, _ := identity.UserFromContext(r.Context())
 	c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, admin)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	id, user := chi.URLParam(r, "credentialID"), u.ID
 	if admin && c.String("authorization_mode") == "independent" && id != "" {
 		cred, err := resource.DecodeObject(sqlc.New(s.Store.Pool).GetCredential(r.Context(), sqlc.GetCredentialParams{ID: id, ConnectorID: c.String("id")}))
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		user = cred.String("user_id")
 	}
 	out, err := s.Tools(r.Context(), s.Store.Pool, c, user, id, admin)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if !admin {
 		out = safeTools(out)
 	}
-	resource.JSON(w, 200, resource.Object{"items": out})
+	resource.JSON(r.Context(), w, 200, resource.Object{"items": out})
 }
 func (s *Service) toolContexts(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
 	c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, true)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	creds, err := resource.DecodeObjects(sqlc.New(s.Store.Pool).ListToolContexts(r.Context(), c.String("id")))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	out, err := credentialViews(r.Context(), s.Store.Pool, c, creds...)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, 200, resource.Object{"items": out})
+	resource.JSON(r.Context(), w, 200, resource.Object{"items": out})
 }
 func (s *Service) headers(ctx context.Context, c, cred resource.Object) (map[string]string, resource.Object, error) {
 	if c.String("authorization_mode") == "none" {
@@ -106,28 +106,28 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 	u, _ := identity.UserFromContext(ctx)
 	c, err := s.Connector(ctx, s.Store.Pool, chi.URLParam(r, "id"), u.ID, admin)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if admin && c.String("authorization_mode") == "independent" {
-		resource.Fail(w, resource.Invalid("独立认证连接由凭证所有者测试"))
+		resource.Fail(r.Context(), w, resource.Invalid("独立认证连接由凭证所有者测试"))
 		return
 	}
 	if !admin && c.String("authorization_mode") == "centralized" {
-		resource.Fail(w, resource.Invalid("集中认证连接由管理员测试"))
+		resource.Fail(r.Context(), w, resource.Invalid("集中认证连接由管理员测试"))
 		return
 	}
 	cred, err := s.Credential(ctx, s.Store.Pool, c, u.ID, chi.URLParam(r, "credentialID"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	out, err := s.testConnection(ctx, c, cred, u.ID, admin)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, 200, out)
+	resource.JSON(r.Context(), w, 200, out)
 }
 func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, user string, admin bool) (resource.Object, error) {
 	headers, cred, err := s.headers(ctx, c, cred)

@@ -27,7 +27,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			limit, err = strconv.Atoi(raw)
 		}
 		if err != nil || limit < 1 || limit > 100 {
-			resource.Fail(w, resource.Invalid("limit 必须为 1—100"))
+			resource.Fail(r.Context(), w, resource.Invalid("limit 必须为 1—100"))
 			return
 		}
 		var groups []GroupSummary
@@ -37,10 +37,10 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			groups, err = s.Search(r.Context(), query, limit)
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(w, http.StatusOK, map[string]any{"groups": groups})
+		resource.JSON(r.Context(), w, http.StatusOK, map[string]any{"groups": groups})
 	})
 }
 

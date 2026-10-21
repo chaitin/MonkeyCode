@@ -72,51 +72,51 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 	r.Get("/resources/{type}/{id}/grants", func(w http.ResponseWriter, r *http.Request) {
 		c := resources[chi.URLParam(r, "type")]
 		if c == nil {
-			Fail(w, NotFound)
+			Fail(r.Context(), w, NotFound)
 			return
 		}
 		o, err := c.Get(r.Context(), s.Pool, chi.URLParam(r, "id"))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ETag(w, o)
-		JSON(w, 200, Object{"grants": o["grants"], "revision": o["revision"]})
+		JSON(r.Context(), w, 200, Object{"grants": o["grants"], "revision": o["revision"]})
 	})
 	r.Put("/resources/{type}/{id}/grants", func(w http.ResponseWriter, r *http.Request) {
 		c := resources[chi.URLParam(r, "type")]
 		if c == nil {
-			Fail(w, NotFound)
+			Fail(r.Context(), w, NotFound)
 			return
 		}
 		var in Object
 		if err := Decode(w, r, &in); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ctx := r.Context()
 		tx, err := s.Pool.Begin(ctx)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		defer func() { rollback(ctx, tx, "update_grants", chi.URLParam(r, "id")) }()
 		id := chi.URLParam(r, "id")
 		o, err := DecodeObject(c.Def.Repository(tx).LockResource(ctx, id))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		if o.String("ownership_type") == "user" {
-			Fail(w, Invalid("个人资源不支持在管理端调整授权"))
+			Fail(r.Context(), w, Invalid("个人资源不支持在管理端调整授权"))
 			return
 		}
 		if r.Header.Get("If-Match") != fmt.Sprintf(`"%v"`, o["revision"]) {
-			Fail(w, Conflict)
+			Fail(r.Context(), w, Conflict)
 			return
 		}
 		if err = checkRetiredGrants(ctx, tx, c.Def.Kind, id, in["grants"]); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		u, _ := identity.UserFromContext(ctx)
@@ -131,16 +131,16 @@ func (s *Store) RegisterGrants(r chi.Router, resources map[string]*CRUD) {
 			err = tx.Commit(ctx)
 		}
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 
 		o, err = c.Get(ctx, s.Pool, id)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ETag(w, o)
-		JSON(w, 200, Object{"grants": o["grants"], "revision": o["revision"]})
+		JSON(r.Context(), w, 200, Object{"grants": o["grants"], "revision": o["revision"]})
 	})
 }

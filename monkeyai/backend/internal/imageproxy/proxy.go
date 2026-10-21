@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -153,7 +154,7 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
 		if err != nil && r.Context().Err() == nil {
-			slog.Warn("生图鉴权失败", "operation", "authenticate_upload", "error", credentialError(err, credential))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "upload", "operation", "authenticate_upload", "error", credentialError(err, credential))
 		}
 		unauthorized(w)
 		return
@@ -161,29 +162,29 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 17<<20)
 	parts, err := r.MultipartReader()
 	if err != nil {
-		resource.Fail(w, resource.Invalid("参考图上传格式无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("参考图上传格式无效"))
 		return
 	}
 	part, err := parts.NextPart()
 	if err != nil || part.FormName() != "file" {
-		resource.Fail(w, resource.Invalid("缺少参考图 file 字段"))
+		resource.Fail(r.Context(), w, resource.Invalid("缺少参考图 file 字段"))
 		return
 	}
 	data, err := io.ReadAll(io.LimitReader(part, (16<<20)+1))
 	if err != nil || len(data) == 0 || len(data) > 16<<20 {
-		resource.Fail(w, resource.Invalid("参考图超过大小限制"))
+		resource.Fail(r.Context(), w, resource.Invalid("参考图超过大小限制"))
 		return
 	}
 	if _, err := parts.NextPart(); !errors.Is(err, io.EOF) {
-		resource.Fail(w, resource.Invalid("每次只能上传一张参考图"))
+		resource.Fail(r.Context(), w, resource.Invalid("每次只能上传一张参考图"))
 		return
 	}
 	result, err := p.inputs.Upload(r.Context(), userID, data)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusCreated, result)
+	resource.JSON(r.Context(), w, http.StatusCreated, result)
 }
 
 func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
@@ -199,25 +200,25 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
 		if err != nil && r.Context().Err() == nil {
-			slog.Warn("生图鉴权失败", "operation", "authenticate_output", "error", credentialError(err, credential))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "output", "operation", "authenticate_output", "error", credentialError(err, credential))
 		}
 		unauthorized(w)
 		return
 	}
 	data, mime, err := p.outputs.Open(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if (mime != "image/png" && mime != "image/jpeg" && mime != "image/webp") || http.DetectContentType(data) != mime {
-		resource.Fail(w, errors.New("图片内容校验失败"))
+		resource.Fail(r.Context(), w, errors.New("图片内容校验失败"))
 		return
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if _, err := w.Write(data); err != nil && r.Context().Err() == nil {
-		slog.Warn("生图结果响应写入失败", "operation", "write_output", "user_id", userID, "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图结果响应写入失败", "module", "imageproxy", "operation", "output", "operation", "write_output", "user_id", userID, "error", err)
 	}
 }
 
@@ -229,17 +230,17 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	var input GenerateRequest
 	if err := decode(w, r, &input); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	input.IdempotencyKey = r.Header.Get("Idempotency-Key")
 	if err := valid(input.Model, input.Prompt, input.Count); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	for _, image := range input.ReferenceImages {
 		if strings.TrimSpace(image.FileID) == "" {
-			resource.Fail(w, resource.Invalid("参考图 file_id 不能为空"))
+			resource.Fail(r.Context(), w, resource.Invalid("参考图 file_id 不能为空"))
 			return
 		}
 	}
@@ -252,7 +253,7 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	task, err := p.generator.Generate(r.Context(), target, input)
-	respond(w, task, err)
+	respond(r.Context(), w, task, err)
 }
 
 func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
@@ -263,26 +264,26 @@ func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
 	}
 	var input EditRequest
 	if err := decode(w, r, &input); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	input.IdempotencyKey = r.Header.Get("Idempotency-Key")
 	if err := valid(input.Model, input.Prompt, input.Count); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if len(input.Images) == 0 {
-		resource.Fail(w, resource.Invalid("编辑至少需要一张原图"))
+		resource.Fail(r.Context(), w, resource.Invalid("编辑至少需要一张原图"))
 		return
 	}
 	for _, image := range input.Images {
 		if strings.TrimSpace(image.FileID) == "" {
-			resource.Fail(w, resource.Invalid("原图 file_id 不能为空"))
+			resource.Fail(r.Context(), w, resource.Invalid("原图 file_id 不能为空"))
 			return
 		}
 	}
 	if input.Mask != nil && strings.TrimSpace(input.Mask.FileID) == "" {
-		resource.Fail(w, resource.Invalid("蒙版 file_id 不能为空"))
+		resource.Fail(r.Context(), w, resource.Invalid("蒙版 file_id 不能为空"))
 		return
 	}
 	target, ok := p.resolve(w, r, credential, input.Model)
@@ -294,7 +295,7 @@ func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	task, err := p.editor.Edit(r.Context(), target, input)
-	respond(w, task, err)
+	respond(r.Context(), w, task, err)
 }
 
 func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +311,7 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
 		if err != nil && r.Context().Err() == nil {
-			slog.Warn("生图鉴权失败", "operation", "authenticate_task", "error", credentialError(err, credential))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "task", "operation", "authenticate_task", "error", credentialError(err, credential))
 		}
 		unauthorized(w)
 		return
@@ -318,14 +319,14 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "id")
 	result, err := p.tasks.Get(r.Context(), userID, taskID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if result.UserID != userID || result.ID != taskID {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
-	resource.JSON(w, http.StatusOK, result)
+	resource.JSON(r.Context(), w, http.StatusOK, result)
 }
 
 func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, model string) (proxy.Target, bool) {
@@ -336,13 +337,13 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 	target, err := p.resolver.Resolve(r.Context(), credential, model)
 	if err != nil || target.UserID == "" {
 		if err != nil && r.Context().Err() == nil {
-			slog.Warn("生图模型解析失败", "operation", "resolve", "error", credentialError(err, credential))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图模型解析失败", "module", "imageproxy", "operation", "resolve", "operation", "resolve", "error", credentialError(err, credential))
 		}
 		unauthorized(w)
 		return proxy.Target{}, false
 	}
 	if target.Protocol != imageProtocol {
-		resource.Fail(w, resource.Invalid("模型不支持生图"))
+		resource.Fail(r.Context(), w, resource.Invalid("模型不支持生图"))
 		return proxy.Target{}, false
 	}
 	sessionID, parentID := requestSession(r)
@@ -352,7 +353,7 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 				if errors.Is(err, sessionreporting.ErrReportingDisabled) {
 					sessionID = ""
 				} else {
-					resource.Fail(w, err)
+					resource.Fail(r.Context(), w, err)
 					return proxy.Target{}, false
 				}
 			}
@@ -393,16 +394,16 @@ func decode(w http.ResponseWriter, r *http.Request, value any) error {
 	return nil
 }
 
-func respond(w http.ResponseWriter, task Task, err error) {
+func respond(ctx context.Context, w http.ResponseWriter, task Task, err error) {
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(ctx, w, err)
 		return
 	}
 	if task.ID == "" {
-		resource.Fail(w, errors.New("生图任务缺少 ID"))
+		resource.Fail(ctx, w, errors.New("生图任务缺少 ID"))
 		return
 	}
-	resource.JSON(w, http.StatusAccepted, task)
+	resource.JSON(ctx, w, http.StatusAccepted, task)
 }
 
 func credentialError(err error, credential string) string {

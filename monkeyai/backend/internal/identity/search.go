@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -24,17 +25,17 @@ func (s *Service) searchUsers(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.Atoi(raw)
 	}
 	if err != nil || limit < 1 || limit > 100 || query == "" || len(query) > 200 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "q 必须为 1—200 字节，limit 必须为 1—100")
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "q 必须为 1—200 字节，limit 必须为 1—100")
 		return
 	}
 	user, _ := UserFromContext(r.Context())
 	users, err := s.SearchUsers(r.Context(), user.ID, query, limit)
 	if err != nil {
-		slog.Error("查找用户失败", "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "查找用户失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查找用户失败", "module", "identity", "operation", "searchUsers", "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "查找用户失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": users})
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"users": users})
 }
 
 func (s *Service) SearchUsers(ctx context.Context, actor, query string, limit int) ([]UserSummary, error) {

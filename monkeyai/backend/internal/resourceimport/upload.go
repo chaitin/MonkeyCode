@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -115,6 +116,7 @@ func (s *Service) lockUpload(ctx context.Context, id, actor string) (Upload, pgx
 	if _, err := uuid.Parse(id); err != nil {
 		return Upload{}, nil, resource.NotFound
 	}
+	logging.Bind(ctx, slog.String("upload_id", id), slog.String("module", "resourceimport"), slog.String("phase", "lock_upload"))
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return Upload{}, nil, err
@@ -141,7 +143,7 @@ func (s *Service) RegisterUploads(router chi.Router) {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				actor, ok := identity.UserFromContext(r.Context())
 				if !ok || actor.Role != "admin" {
-					resource.Fail(w, resource.NotFound)
+					resource.Fail(r.Context(), w, resource.NotFound)
 					return
 				}
 				next.ServeHTTP(w, r)
@@ -161,12 +163,12 @@ func (s *Service) createUpload(w http.ResponseWriter, r *http.Request) {
 		Files []UploadFile `json:"files"`
 	}
 	if err := resource.Decode(w, r, &input); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	total, err := validateUpload(input.Files)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	actor, _ := identity.UserFromContext(r.Context())
@@ -177,22 +179,23 @@ func (s *Service) createUpload(w http.ResponseWriter, r *http.Request) {
 		err = conflict("最多保留 5 个未完成上传任务，请先继续或放弃已有任务")
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	upload, err := decodeUpload(data)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusCreated, upload)
+	logging.Bind(r.Context(), slog.String("upload_id", upload.ID), slog.String("module", "resourceimport"))
+	resource.JSON(r.Context(), w, http.StatusCreated, upload)
 }
 
 func (s *Service) listUploads(w http.ResponseWriter, r *http.Request) {
 	actor, _ := identity.UserFromContext(r.Context())
 	rows, err := sqlc.New(s.Pool).ListImportUploads(r.Context(), actor.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	uploads := []Upload{}
@@ -202,24 +205,24 @@ func (s *Service) listUploads(w http.ResponseWriter, r *http.Request) {
 			err = s.uploadChunks(r.Context(), s.Pool, &upload)
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		uploads = append(uploads, upload)
 	}
-	resource.JSON(w, http.StatusOK, resource.Object{"items": uploads})
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": uploads})
 }
 
 func (s *Service) getUpload(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if _, err := uuid.Parse(id); err != nil {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 	actor, _ := identity.UserFromContext(r.Context())
 	data, err := sqlc.New(s.Pool).GetImportUpload(r.Context(), sqlc.GetImportUploadParams{ID: id, ActorUserID: actor.ID})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	upload, err := decodeUpload(data)
@@ -227,51 +230,52 @@ func (s *Service) getUpload(w http.ResponseWriter, r *http.Request) {
 		err = s.uploadChunks(r.Context(), s.Pool, &upload)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusOK, upload)
+	resource.JSON(r.Context(), w, http.StatusOK, upload)
 }
 
 func (s *Service) putChunk(w http.ResponseWriter, r *http.Request) {
 	actor, _ := identity.UserFromContext(r.Context())
 	upload, tx, err := s.lockUpload(r.Context(), chi.URLParam(r, "id"), actor.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(r.Context()))
 	index, err := strconv.Atoi(chi.URLParam(r, "index"))
 	size := upload.chunkSize(index)
 	if err != nil || size == 0 {
-		resource.Fail(w, resource.Invalid("传输块编号无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("传输块编号无效"))
 		return
 	}
+	logging.Bind(r.Context(), slog.Int("chunk_index", index), slog.String("phase", "validate_chunk"))
 	if upload.Status != "uploading" {
-		resource.Fail(w, conflict("上传内容已封存，不能再修改"))
+		resource.Fail(r.Context(), w, conflict("上传内容已封存，不能再修改"))
 		return
 	}
 	expected := r.Header.Get("X-Content-SHA256")
 	if len(expected) != 71 || !strings.HasPrefix(expected, "sha256:") {
-		resource.Fail(w, resource.Invalid("缺少传输块 SHA-256"))
+		resource.Fail(r.Context(), w, resource.Invalid("缺少传输块 SHA-256"))
 		return
 	}
 	file, err := os.CreateTemp("", "resource-import-chunk-*")
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer func() { _ = file.Close(); _ = os.Remove(file.Name()) }()
 	hash := sha256.New()
 	length, err := io.Copy(io.MultiWriter(file, hash), http.MaxBytesReader(w, r.Body, size))
 	if err != nil || length != size || "sha256:"+hex.EncodeToString(hash.Sum(nil)) != expected {
-		resource.Fail(w, resource.Invalid("传输块大小或校验值不匹配，请重试"))
+		resource.Fail(r.Context(), w, resource.Invalid("传输块大小或校验值不匹配，请重试"))
 		return
 	}
 	for _, chunk := range upload.Chunks {
 		if chunk.Index == index {
 			if chunk.SHA256 != expected {
-				resource.Fail(w, conflict("该传输块已有不同内容，请重新选择资源包创建任务"))
+				resource.Fail(r.Context(), w, conflict("该传输块已有不同内容，请重新选择资源包创建任务"))
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
@@ -279,9 +283,10 @@ func (s *Service) putChunk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("phase", "write_chunk"))
 	if writer, ok := s.Storage.(interface {
 		PutReader(context.Context, string, io.ReadSeeker, int64, string) error
 	}); ok {
@@ -294,17 +299,18 @@ func (s *Service) putChunk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("phase", "record_chunk"))
 	if err := sqlc.New(tx).CreateImportChunk(r.Context(), payload(resource.Object{
 		"upload_id": upload.ID, "index": index, "size": size, "sha256": expected,
 	})); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -314,17 +320,18 @@ func (s *Service) completeUpload(w http.ResponseWriter, r *http.Request) {
 	actor, _ := identity.UserFromContext(r.Context())
 	upload, tx, err := s.lockUpload(r.Context(), chi.URLParam(r, "id"), actor.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(r.Context()))
 	if upload.Status != "uploading" {
-		resource.JSON(w, http.StatusOK, upload)
+		resource.JSON(r.Context(), w, http.StatusOK, upload)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("phase", "seal"))
 	reader, sha, cleanup, err := s.openUpload(r.Context(), upload)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer cleanup()
@@ -345,39 +352,40 @@ func (s *Service) completeUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		resource.Fail(w, resource.Invalid("资源包不完整或格式无效："+err.Error()))
+		resource.Fail(r.Context(), w, resource.Invalid("资源包不完整或格式无效："+err.Error()))
 		return
 	}
 	if err := sqlc.New(tx).ReadyImportUpload(r.Context(), sqlc.ReadyImportUploadParams{ID: upload.ID, PackageSha256: sha}); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	upload.Status, upload.PackageSHA256 = "ready", sha
-	resource.JSON(w, http.StatusOK, upload)
+	logging.Event(r.Context(), slog.Default(), slog.LevelInfo, "resource.upload.sealed", "资源包上传已封存", "upload_id", upload.ID)
+	resource.JSON(r.Context(), w, http.StatusOK, upload)
 }
 
 func (s *Service) cancelUpload(w http.ResponseWriter, r *http.Request) {
 	actor, _ := identity.UserFromContext(r.Context())
 	upload, tx, err := s.lockUpload(r.Context(), chi.URLParam(r, "id"), actor.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer tx.Rollback(context.WithoutCancel(r.Context()))
 	if upload.Status == "imported" {
-		resource.Fail(w, conflict("该任务已完成导入"))
+		resource.Fail(r.Context(), w, conflict("该任务已完成导入"))
 		return
 	}
 	if err := sqlc.New(tx).CancelImportUpload(r.Context(), upload.ID); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -414,13 +422,12 @@ func (s *Service) CleanupUploads(ctx context.Context) error {
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+	worker := logging.NewWorker(slog.Default(), "resourceimport", "cleanup_uploads", "storage")
 	for {
 		cleanupCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
 		err := s.CleanupUploads(cleanupCtx)
 		cancel()
-		if err != nil && ctx.Err() == nil {
-			slog.WarnContext(ctx, "清理资源包上传失败", "error", err)
-		}
+		worker.Report(ctx, err)
 		select {
 		case <-ctx.Done():
 			return

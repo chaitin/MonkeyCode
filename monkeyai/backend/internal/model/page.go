@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -86,7 +87,7 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 		items, err = s.List(r.Context(), ownership)
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取模型列表失败", "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "读取模型列表失败", "module", "model", "operation", "listModels", "error", err)
 		modelError(w, http.StatusInternalServerError, "读取模型列表失败")
 		return
 	}

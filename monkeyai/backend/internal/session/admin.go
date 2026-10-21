@@ -22,28 +22,28 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 func (s *Service) sessionDetail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		resource.Fail(w, invalidSession("会话 ID 无效"))
+		resource.Fail(r.Context(), w, invalidSession("会话 ID 无效"))
 		return
 	}
 	row, err := readSession(r.Context(), s.pool, id, false)
 	if errors.Is(err, pgx.ErrNoRows) {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if row.PurgedAt != nil {
-		resource.Fail(w, sessionFailure(http.StatusGone, "session_purged", "会话统计数据已清除"))
+		resource.Fail(r.Context(), w, sessionFailure(http.StatusGone, "session_purged", "会话统计数据已清除"))
 		return
 	}
 	stats, err := s.sessionStats(r.Context(), id)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusOK, resource.Object{
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{
 		"id": row.ID, "owner_user_id": row.OwnerUserID, "group_id": row.GroupID,
 		"parent_session_id": row.ParentSessionID, "model_id": row.ModelID, "device_id": row.DeviceID,
 		"title": row.Title, "title_source": row.TitleSource, "session_type": row.SessionType, "client_type": row.ClientType, "client_name": row.ClientName,
@@ -70,52 +70,52 @@ func (s *Service) sessionStats(ctx context.Context, id string) (resource.Object,
 
 func (s *Service) clearSession(w http.ResponseWriter, r *http.Request) {
 	if !s.canPurge(r.Context()) {
-		resource.Fail(w, &resource.Error{Status: http.StatusForbidden, Code: "forbidden", Message: "没有清除会话的权限"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusForbidden, Code: "forbidden", Message: "没有清除会话的权限"})
 		return
 	}
 	operator, err := agentUser(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		resource.Fail(w, invalidSession("会话 ID 无效"))
+		resource.Fail(r.Context(), w, invalidSession("会话 ID 无效"))
 		return
 	}
 	confirm := strings.TrimSpace(r.Header.Get("X-Confirm-Session-ID"))
 	if confirm != id {
-		resource.Fail(w, invalidSession("必须确认要清除的会话 ID"))
+		resource.Fail(r.Context(), w, invalidSession("必须确认要清除的会话 ID"))
 		return
 	}
 	tx, err := s.begin(r.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollback(r.Context(), tx)
 	row, err := readSession(r.Context(), tx, id, false)
 	if errors.Is(err, pgx.ErrNoRows) {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if row.ParentSessionID != nil {
-		resource.Fail(w, invalidSession("只能从顶层会话清除统计数据"))
+		resource.Fail(r.Context(), w, invalidSession("只能从顶层会话清除统计数据"))
 		return
 	}
 	rootID := id
 	q := sqlc.New(tx)
 	ids, err := q.LockFamily(r.Context(), rootID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if len(ids) == 0 {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 	for _, erase := range []func(context.Context, []string) error{
@@ -124,16 +124,16 @@ func (s *Service) clearSession(w http.ResponseWriter, r *http.Request) {
 		q.DeleteSnapshotItems, q.DeleteSnapshots, q.PurgeSessions,
 	} {
 		if err := erase(r.Context(), ids); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 	}
 	if err := audit.Write(r.Context(), tx, audit.Event{ActorID: operator.ID, Action: "session.purge", Category: "security", TargetType: "session", TargetID: rootID, Params: map[string]any{"confirmed_session_id": id, "session_count": len(ids)}}); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

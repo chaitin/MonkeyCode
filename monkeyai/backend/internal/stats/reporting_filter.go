@@ -205,14 +205,14 @@ func (s *Service) reportingRead(allowPurged bool, maxLimit int, query func(conte
 			}
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		defer rollbackStats(ctx, tx, "session-reporting")
@@ -221,7 +221,7 @@ func (s *Service) reportingRead(allowPurged bool, maxLimit int, query func(conte
 			err = resource.NotFound
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		if out["tombstone"] != true {
@@ -230,7 +230,7 @@ func (s *Service) reportingRead(allowPurged bool, maxLimit int, query func(conte
 				out["data_freshness_seconds"] = nil
 			}
 		}
-		resource.JSON(w, http.StatusOK, out)
+		resource.JSON(r.Context(), w, http.StatusOK, out)
 	}
 }
 

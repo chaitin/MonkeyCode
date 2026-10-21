@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math"
 	"time"
@@ -310,6 +311,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			return Reservation{}, err
 		}
 	}
+	logging.Bind(ctx, slog.String("transaction_id", id))
 	return Reservation{ID: id, OutputLimit: limit}, nil
 }
 func (s *Service) Start(ctx context.Context, id string) error {
@@ -451,9 +453,9 @@ func (s *Service) Settle(ctx context.Context, id string) error {
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, e := sqlc.New(conn).ReleaseSettlementLock(c, id); e != nil {
-			slog.ErrorContext(c, "释放结算锁失败", "transaction_id", id, "operation", "release_settlement_lock", "error", e)
+			logging.Event(c, slog.Default(), slog.LevelError, "billing.operation.error", "释放结算锁失败", "module", "billing", "operation", "Settle", "transaction_id", id, "operation", "release_settlement_lock", "error", e)
 			if closeErr := conn.Conn().Close(c); closeErr != nil {
-				slog.ErrorContext(c, "关闭结算连接失败", "transaction_id", id, "operation", "close_settlement_connection", "error", closeErr)
+				logging.Event(c, slog.Default(), slog.LevelError, "billing.operation.error", "关闭结算连接失败", "module", "billing", "operation", "Settle", "transaction_id", id, "operation", "close_settlement_connection", "error", closeErr)
 			}
 		}
 	}()
@@ -527,7 +529,7 @@ func (s *Service) recover(ctx context.Context) error {
 		e := s.Settle(c, id)
 		cancel()
 		if e != nil {
-			slog.WarnContext(ctx, "恢复交易结算失败", "transaction_id", id, "operation", "settle", "error", e)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "billing.retry.failed", "恢复交易结算失败", "module", "billing", "operation", "recover", "transaction_id", id, "operation", "settle", "error", e)
 			if _, retryErr := sqlc.New(s.pool).ScheduleRetry(ctx, id); retryErr != nil {
 				return fmt.Errorf("安排交易 %s 结算重试: %w", id, retryErr)
 			}
@@ -538,13 +540,11 @@ func (s *Service) recover(ctx context.Context) error {
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+	recoveries := logging.NewWorker(slog.Default(), "billing", "recover_transactions", "database")
+	accounts := logging.NewWorker(slog.Default(), "billing", "refresh_accounts", "database")
 	for {
-		if err := s.recover(ctx); err != nil {
-			slog.ErrorContext(ctx, "恢复计费交易失败", "error", err)
-		}
-		if err := s.refresh(ctx); err != nil {
-			slog.ErrorContext(ctx, "刷新周期账户失败", "error", err)
-		}
+		recoveries.Report(ctx, s.recover(ctx))
+		accounts.Report(ctx, s.refresh(ctx))
 		select {
 		case <-ctx.Done():
 			return

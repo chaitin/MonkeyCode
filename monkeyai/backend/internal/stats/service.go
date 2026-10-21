@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"time"
@@ -70,7 +71,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 
 func rollbackStats(ctx context.Context, tx pgx.Tx, operation string) {
 	if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.ErrorContext(ctx, "回滚统计查询事务失败", "operation", operation, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "stats.operation.error", "回滚统计查询事务失败", "module", "stats", "operation", "rollbackStats", "operation", operation, "error", err)
 	}
 }
 
@@ -78,24 +79,24 @@ func (s *Service) read(query func(context.Context, pgx.Tx, window) (resource.Obj
 	return func(w http.ResponseWriter, r *http.Request) {
 		period, err := period(r, s.now().UTC())
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		defer func() { rollbackStats(ctx, tx, "read") }()
 		out, err := query(ctx, tx, period)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		out["from"], out["until"] = period.from, period.until
 		w.Header().Set("Cache-Control", "private, no-store")
-		resource.JSON(w, http.StatusOK, out)
+		resource.JSON(r.Context(), w, http.StatusOK, out)
 	}
 }

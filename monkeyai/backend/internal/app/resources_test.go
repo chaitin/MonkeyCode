@@ -1087,7 +1087,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			case "tools/list":
 				result = resource.Object{"tools": []resource.Object{{"name": "shared_tool-" + r.Header.Get("X-Test-User"), "inputSchema": resource.Object{"type": "object"}}}}
 			}
-			resource.JSON(w, 200, resource.Object{"jsonrpc": "2.0", "id": in["id"], "result": result})
+			resource.JSON(r.Context(), w, 200, resource.Object{"jsonrpc": "2.0", "id": in["id"], "result": result})
 		}))
 		defer remote.Close()
 		for _, mode := range []string{"none", "independent"} {

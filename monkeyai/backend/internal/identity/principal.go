@@ -51,7 +51,7 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := PrincipalFromContext(r.Context())
 			if !ok || !p.Has(scope) {
-				writeError(w, http.StatusForbidden, "permission_denied", "授权不包含所需权限")
+				writeError(r.Context(), w, http.StatusForbidden, "permission_denied", "授权不包含所需权限")
 				return
 			}
 			next.ServeHTTP(w, r)

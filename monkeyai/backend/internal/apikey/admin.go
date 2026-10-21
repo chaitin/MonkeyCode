@@ -2,6 +2,7 @@ package apikey
 
 import (
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 
@@ -12,11 +13,11 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/api-keys", func(w http.ResponseWriter, r *http.Request) {
 		keys, err := s.AdminList(r.Context(), r.URL.Query().Get("user_id"))
 		if err != nil {
-			slog.ErrorContext(r.Context(), "读取管理员调用密钥列表失败", "error", err)
-			keyError(w, http.StatusInternalServerError, "读取调用密钥失败")
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "apikey.request.failed", "读取管理员调用密钥列表失败", "module", "apikey", "operation", "RegisterAdmin", "error", err)
+			keyError(r.Context(), w, http.StatusInternalServerError, "读取调用密钥失败")
 			return
 		}
-		keyJSON(w, http.StatusOK, map[string]any{"api_keys": keys})
+		keyJSON(r.Context(), w, http.StatusOK, map[string]any{"api_keys": keys})
 	})
 	router.Delete("/api-keys/{keyID}", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.AdminRevoke(r.Context(), chi.URLParam(r, "keyID")); err != nil {
@@ -24,9 +25,9 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			if errors.Is(err, ErrNotFound) {
 				status = http.StatusNotFound
 			} else {
-				slog.ErrorContext(r.Context(), "撤销调用密钥失败", "key_id", chi.URLParam(r, "keyID"), "error", err)
+				logging.Event(r.Context(), slog.Default(), slog.LevelError, "apikey.request.failed", "撤销调用密钥失败", "module", "apikey", "operation", "RegisterAdmin", "key_id", chi.URLParam(r, "keyID"), "error", err)
 			}
-			keyError(w, status, "调用密钥不存在")
+			keyError(r.Context(), w, status, "调用密钥不存在")
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

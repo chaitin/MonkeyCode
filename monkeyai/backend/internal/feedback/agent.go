@@ -2,6 +2,7 @@ package feedback
 
 import (
 	"bytes"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -16,7 +17,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	_ "golang.org/x/image/webp"
 )
 
@@ -56,30 +56,30 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 	if r.MultipartForm != nil {
 		defer func() {
 			if err := r.MultipartForm.RemoveAll(); err != nil {
-				slog.WarnContext(r.Context(), "清理反馈上传临时文件失败", "error", err)
+				logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "feedback.operation.warn", "清理反馈上传临时文件失败", "module", "feedback", "operation", "create", "error", err)
 			}
 		}()
 	}
 	if parseErr != nil {
-		resource.Fail(w, resource.Invalid("反馈请求无效或超过 16 MiB"))
+		resource.Fail(r.Context(), w, resource.Invalid("反馈请求无效或超过 16 MiB"))
 		return
 	}
 
 	rating, err := parseRating(r.FormValue("rating"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	files := r.MultipartForm.File["images"]
 	if len(files) > maxAttachments {
-		resource.Fail(w, resource.Invalid("最多上传 3 张图片"))
+		resource.Fail(r.Context(), w, resource.Invalid("最多上传 3 张图片"))
 		return
 	}
 	images := make([]Image, 0, len(files))
 	for _, header := range files {
 		image, err := readImage(header)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		images = append(images, image)
@@ -94,17 +94,17 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 	out, created, err := s.Submit(r.Context(), user.ID, Request{
 		Category: strings.TrimSpace(r.FormValue("category")), Content: r.FormValue("content"), Rating: rating,
 		Platform: platform, ClientVersion: r.FormValue("client_version"),
-		RequestID: middleware.GetReqID(r.Context()), IdempotencyKey: idempotencyKey, Images: images,
+		RequestID: logging.RequestID(r.Context()), IdempotencyKey: idempotencyKey, Images: images,
 	})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	status := http.StatusOK
 	if created {
 		status = http.StatusCreated
 	}
-	resource.JSON(w, status, agentResponse(out))
+	resource.JSON(r.Context(), w, status, agentResponse(out))
 }
 
 func parseRating(value string) (*int32, error) {

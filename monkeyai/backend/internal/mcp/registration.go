@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,7 +33,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 		requestedScopes := o.Scopes
 		o, err = discoverOAuthWithClient(ctx, c.String("url"), h)
 		if err != nil {
-			slog.WarnContext(ctx, "OAuth 自动发现失败", "connector_id", c.String("id"), "operation", "discovery", "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth 自动发现失败", "module", "mcp", "operation", "ensureOAuthClient", "connector_id", c.String("id"), "operation", "discovery", "error", err)
 			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
 		}
 		if requestedScopes != "" {
@@ -41,7 +42,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	}
 	registered, err := registerOAuthClientWithClient(ctx, o, redirect, h)
 	if err != nil {
-		slog.WarnContext(ctx, "OAuth 客户端注册失败", "connector_id", c.String("id"), "operation", "registration", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth 客户端注册失败", "module", "mcp", "operation", "ensureOAuthClient", "connector_id", c.String("id"), "operation", "registration", "error", err)
 		return &resource.Error{Status: 502, Code: "oauth_registration_failed", Message: "OAuth 动态客户端注册失败，请检查注册端点或手动配置 Client ID"}
 	}
 	revision := c.Int("config_revision")
@@ -117,7 +118,7 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			slog.WarnContext(ctx, "关闭 OAuth 注册响应失败", "operation", "register_client", "failure", safeMCPFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 OAuth 注册响应失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "operation", "register_client", "failure", err)
 		}
 	}()
 	if resp.StatusCode != http.StatusCreated {

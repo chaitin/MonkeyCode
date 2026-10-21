@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -87,7 +88,7 @@ func (s *Service) checkRequestLimit(w http.ResponseWriter, ctx context.Context, 
 		UserID: userID, Kind: kind, BucketStart: bucket,
 	})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(ctx, w, err)
 		return false
 	}
 	if count <= limit {
@@ -95,7 +96,7 @@ func (s *Service) checkRequestLimit(w http.ResponseWriter, ctx context.Context, 
 	}
 	retry := int(bucket.Add(time.Minute).Sub(now).Seconds()) + 1
 	w.Header().Set("Retry-After", strconv.Itoa(retry))
-	resource.Fail(w, sessionFailure(http.StatusTooManyRequests, "rate_limited", "请求过于频繁"))
+	resource.Fail(ctx, w, sessionFailure(http.StatusTooManyRequests, "rate_limited", "请求过于频繁"))
 	return false
 }
 
@@ -173,7 +174,7 @@ func readSession(ctx context.Context, db sqlc.DBTX, id string, lock bool) (sessi
 
 func rollback(ctx context.Context, tx pgx.Tx) {
 	if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.ErrorContext(ctx, "回滚会话事务失败", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "session.operation.error", "回滚会话事务失败", "module", "session", "operation", "rollback", "error", err)
 	}
 }
 

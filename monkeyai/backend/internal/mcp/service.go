@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -278,28 +279,28 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		Credits billing.Amount `json:"credits_per_call"`
 	}
 	if err := resource.Decode(w, r, &in); err != nil || in.Enabled == nil || in.Credits < 0 {
-		resource.Fail(w, resource.Invalid("工具配置无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("工具配置无效"))
 		return
 	}
 	tx, err := s.Store.Pool.Begin(r.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackMCP(r.Context(), tx, chi.URLParam(r, "id"), "", "update_tool")
 	var mode string
 	mode, err = sqlc.New(tx).GetAuthorizationMode(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 
 	if mode != "centralized" && in.Credits != 0 {
-		resource.Fail(w, resource.Invalid("仅集中认证工具可以设置非零积分"))
+		resource.Fail(r.Context(), w, resource.Invalid("仅集中认证工具可以设置非零积分"))
 		return
 	}
 	if err = resource.RequireEditable(r.Context(), tx, "connector", chi.URLParam(r, "id")); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	o, err := resource.DecodeObject(sqlc.New(tx).UpdateTool(r.Context(), sqlc.UpdateToolParams{
@@ -309,7 +310,7 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		CreditsPerCall: in.Credits.String(),
 	}))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	u, _ := identity.UserFromContext(r.Context())
@@ -319,15 +320,15 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(r.Context())
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 
-	resource.JSON(w, 200, o)
+	resource.JSON(r.Context(), w, 200, o)
 }
 
 func rollbackMCP(ctx context.Context, tx pgx.Tx, connectorID, credentialID, operation string) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.WarnContext(ctx, "回滚 MCP 事务失败", "operation", operation, "connector_id", connectorID, "credential_id", credentialID, "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "回滚 MCP 事务失败", "module", "mcp", "operation", "rollbackMCP", "operation", operation, "connector_id", connectorID, "credential_id", credentialID, "failure", err)
 	}
 }

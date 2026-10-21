@@ -70,27 +70,27 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 	p, _ := identity.PrincipalFromContext(ctx)
 	enabled, full, err := s.indexPolicy(ctx)
 	if err != nil {
-		resource.Fail(w, sessionFailure(503, "authorization_state_unavailable", "摘要策略暂不可用"))
+		resource.Fail(r.Context(), w, sessionFailure(503, "authorization_state_unavailable", "摘要策略暂不可用"))
 		return
 	}
 	if !enabled {
-		resource.Fail(w, ErrReportingDisabled)
+		resource.Fail(r.Context(), w, ErrReportingDisabled)
 		return
 	}
 	machine, id := r.URL.Query().Get("machine_id"), chi.URLParam(r, "id")
 	if machine != "" && !validUUID(machine) || id != "" && !validUUID(id) {
-		resource.Fail(w, resource.Invalid("设备或会话标识无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("设备或会话标识无效"))
 		return
 	}
 	for key := range r.URL.Query() {
 		if key != "machine_id" && key != "page" && key != "page_size" {
-			resource.Fail(w, resource.Invalid("不支持的会话目录参数"))
+			resource.Fail(r.Context(), w, resource.Invalid("不支持的会话目录参数"))
 			return
 		}
 	}
 	page, size, err := resource.PageParams(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if id != "" {
@@ -98,27 +98,27 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollback(ctx, tx)
 	q := sqlc.New(tx)
 	rows, err := q.SessionIndex(ctx, sqlc.SessionIndexParams{OwnerUserID: p.UserID, MachineID: machine, SessionID: id, PageSize: int32(size), PageOffset: int32((page - 1) * size)})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	total, err := q.CountSessionIndex(ctx, sqlc.CountSessionIndexParams{OwnerUserID: p.UserID, MachineID: machine, SessionID: id})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err = tx.Commit(ctx); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if id != "" && len(rows) == 0 {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 	type state struct {
@@ -135,7 +135,7 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 			if s.runtime != nil {
 				current.status, current.boot, current.epoch, err = s.runtime.RuntimeStatus(ctx, p.UserID, machine)
 				if err != nil {
-					resource.Fail(w, sessionFailure(503, "authorization_state_unavailable", "设备状态暂不可用"))
+					resource.Fail(r.Context(), w, sessionFailure(503, "authorization_state_unavailable", "设备状态暂不可用"))
 					return
 				}
 			}
@@ -150,8 +150,8 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if id != "" {
-		resource.JSON(w, 200, items[0])
+		resource.JSON(r.Context(), w, 200, items[0])
 		return
 	}
-	resource.JSON(w, 200, resource.Object{"items": items, "pagination": resource.Object{"page": page, "page_size": size, "total": total}, "server_time": s.now().UTC()})
+	resource.JSON(r.Context(), w, 200, resource.Object{"items": items, "pagination": resource.Object{"page": page, "page_size": size, "total": total}, "server_time": s.now().UTC()})
 }

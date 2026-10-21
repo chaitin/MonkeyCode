@@ -136,7 +136,7 @@ export MONKEYAI_DATABASE_URL='postgres://monkeyai:password@127.0.0.1:5432/monkey
 go run ./cmd/server
 ```
 
-可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL` 和 `MONKEYAI_PUBLIC_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，统一用于 OAuth 回调、元数据和登录后的页面跳转，默认 `http://localhost:8080`，支持公网和内网 HTTP(S) 根地址。
+可选环境变量为 `MONKEYAI_HTTP_ADDR`、`MONKEYAI_PPROF_ADDR`、`MONKEYAI_SHUTDOWN_TIMEOUT`、`MONKEYAI_LOG_LEVEL` 和 `MONKEYAI_PUBLIC_URL`，对应命令行参数可通过 `go run ./cmd/server -h` 查看。安全日志、请求关联、去重参数、计数及容器日志轮转见[运行日志说明](docs/logging.md)，验证范围和性能数据见[验收记录](docs/logging-validation.md)。`MONKEYAI_PUBLIC_URL` 是管理页面和 API 共用的对外访问地址，统一用于 OAuth 回调、元数据和登录后的页面跳转，默认 `http://localhost:8080`，支持公网和内网 HTTP(S) 根地址。
 
 前后端分别启动时，将后端的 `MONKEYAI_PUBLIC_URL` 设置为浏览器访问的 Vite 地址，例如 `http://localhost:5173`。Vite 将 `/api`、`/oauth`、`/mcp`、`/v1` 和 OAuth 元数据请求代理到后端；后端实际监听地址仍由 `MONKEYAI_HTTP_ADDR` 配置，开发代理目标由 `MONKEYAI_DEV_BACKEND_URL` 配置，默认 `http://localhost:8080`。
 
