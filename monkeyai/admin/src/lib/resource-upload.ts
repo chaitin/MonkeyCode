@@ -81,8 +81,12 @@ export function uploadedFileBytes(files: UploadFile[], chunkSize: number, progre
 }
 
 async function chunkSHA(blob: Blob): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())
-  return "sha256:" + Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  const data = await blob.arrayBuffer()
+  const subtle = globalThis.crypto?.subtle
+  const hash = subtle
+    ? new Uint8Array(await subtle.digest("SHA-256", data))
+    : (await import("@noble/hashes/sha2.js")).sha256(new Uint8Array(data))
+  return "sha256:" + Array.from(hash, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
 function putChunk(path: string, blob: Blob, sha: string, signal: AbortSignal, onProgress: (loaded: number) => void): Promise<void> {
