@@ -1,6 +1,8 @@
 # 后端日志实施验收记录
 
-日期：2026-10-20。对应[设计方案](../../design/error-logging-optimization-plan.md)与[运行日志说明](logging.md)。本记录描述本地实现和测试，不代表镜像已发布或已部署。
+日期：2026-10-20；范围调整：2026-10-21。对应[设计方案](../../design/error-logging-optimization-plan.md)与[运行日志说明](logging.md)。本记录描述本地实现和测试，不代表镜像已发布或已部署。
+
+本次范围调整暂缓 Nginx 日志改造，已还原两份 Nginx 配置并移除新增的 `TestNginxSafeLogging`。下述完整回归数字保留为调整前的历史记录，不将此前 Nginx 日志验证结果作为当前版本的验收依据。
 
 ## 实现结果
 
@@ -11,16 +13,15 @@
 - 明确登记的事件策略、有界指纹、固定窗口、定时摘要、有限样本、恢复前刷新、关闭幂等及迟到事件直出。
 - 日志／HTTP／业务调用统计、容量和输出错误计数；实际依赖检查的恢复事件。
 - 默认入口读取日志构造配置并在业务退出后关闭 Runtime；嵌入入口不覆盖调用方 logger。
-- Compose 日志参数及日志轮转，Nginx 受控 JSON、敏感路径禁日志、HTTP 错误日志隔离。
+- Compose 日志参数及容器日志轮转。Nginx 日志配置调整暂缓。
 
 ## 已执行验证
 
 | 验证 | 结果与边界 |
 | --- | --- |
 | 专用 PostgreSQL / RustFS 全量集成 | 普通完整回归 1404 项通过；共享能力的嵌入式入口验证中，完整 `-race` 回归 38 个测试包、1411 项通过；最终同步后的开源工作树完整 `-race` 回归 1422 项通过。两轮各有 8 项因专项环境跳过 |
-| 专项 Nginx | `TestNginxSafeLogging`、`TestNginxRelay`、`TestNginxPreviewTLS`、`TestNginxUpgrade` 均通过 |
-| 实际展开配置 | `nginx -T` 验证 64 MiB 分块、2064 MiB 传统导入、无请求缓冲、长超时及 Upgrade 配置保留 |
-| Nginx 日志安全 | 普通路由本地 ID、OAuth 查询参数、路径 grant、未知路径、过大 Header 提前拒绝、上游断开；access/error 均未出现测试秘密 |
+| 现有 Nginx 协议专项 | `TestNginxRelay`、`TestNginxPreviewTLS`、`TestNginxUpgrade` 此前通过；保留这些协议测试 |
+| 现有转发配置 | 分块上传、传统导入、无请求缓冲、长超时及 Upgrade 配置沿用现状 |
 | 浏览器预览 | 使用 ego-browser / Chromium 运行 `TestBrowserPreviewSandbox`；localStorage、Cookie、IndexedDB、Service Worker 均为 blocked |
 | 竞态与安全单元 | logging/config/server、资源、HTTP、模型、relay、上传、计费、媒体、MCP、认证及 app 定向 `-race` 通过；后续新增分类／生命周期检查已复跑 |
 | 生命周期 | 并发提交和 Close、重复 Close、关闭后迟到事件、所有事件计数一致、调度器和指纹容量有界 |
@@ -30,9 +31,11 @@
 
 提交 PR 前已同步 `a1cccb86` 主线，再次使用隔离 PostgreSQL / RustFS 执行完整竞态回归：1442 项通过、8 项跳过。随后将未提交响应的 panic 恢复补为通用 JSON 错误，并补充格式断言；logging/httpapi/app/audit 的定向竞态回归通过。
 
-完整后端竞态回归中跳过的 8 项里，5 项已通过上述 Nginx／浏览器专项补验。其余为已有的 `TestPublishedReleaseZIP`、`TestPublishedReleaseFixture`（没有提供实际发布资源包）以及 `TestBrowserDeviceConsent`（设备确认 UI 专项）；它们不作为本轮日志验收通过的证据。
+历史完整后端竞态回归中包含现已删除的 Nginx 日志专项。现有 Nginx 协议测试及浏览器预览专项此前通过；`TestPublishedReleaseZIP`、`TestPublishedReleaseFixture`（没有提供实际发布资源包）以及 `TestBrowserDeviceConsent`（设备确认 UI 专项）未执行，不作为本轮日志验收通过的证据。
 
-测试基础设施是本次新建的隔离 PostgreSQL 18.6 和 RustFS，不使用生产数据库。大量 schema 迁移并行运行时，默认 PostgreSQL 锁容量不足；隔离实例提高 `max_locks_per_transaction` 后重新执行通过。协议测试使用临时 root 测试镜像兼容已有夹具；Nginx 日志安全还单独在实际 nginx 用户与只读根文件系统下验证。
+测试基础设施是本次新建的隔离 PostgreSQL 18.6 和 RustFS，不使用生产数据库。大量 schema 迁移并行运行时，默认 PostgreSQL 锁容量不足；隔离实例提高 `max_locks_per_transaction` 后重新执行通过。协议测试使用临时 root 测试镜像兼容已有夹具。
+
+范围调整后，`go test ./... -count=1`、`go vet ./...` 及 `go test -race ./logging ./internal/relay -count=1` 通过；两份 Nginx 配置与主线逐字一致。
 
 ## 性能
 
@@ -60,6 +63,6 @@ go vet ./...
 go test ./logging -run '^$' -bench . -benchmem
 ```
 
-完整集成需专用 `MONKEYAI_TEST_DATABASE_URL` 和 `MONKEYAI_S3_*`。Nginx 专项需 `MONKEYAI_TEST_NGINX_IMAGE`、Docker，以及镜像架构匹配；`TestNginxSafeLogging` 使用包含实际 ACME 模块与 entrypoint 的管理镜像。已有协议夹具会复制 0600 配置及测试证书，需使用允许读取这些文件的专用测试镜像。浏览器专项通过 `MONKEYAI_BROWSER_PREVIEW_DIR` 的 ready/result 协议驱动。
+完整集成需专用 `MONKEYAI_TEST_DATABASE_URL` 和 `MONKEYAI_S3_*`。现有 Nginx 协议专项需 `MONKEYAI_TEST_NGINX_IMAGE`、Docker，以及镜像架构匹配。已有协议夹具会复制 0600 配置及测试证书，需使用允许读取这些文件的专用测试镜像。浏览器专项通过 `MONKEYAI_BROWSER_PREVIEW_DIR` 的 ready/result 协议驱动。
 
 强杀、崩溃及输出目标失败仍可能丢失日志；没有跨实例去重、强一致审计或自动发布承诺。业务证据继续以审计、交易及任务的原持久化记录为准。

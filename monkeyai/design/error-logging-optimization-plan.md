@@ -1,8 +1,8 @@
 # 后端错误日志优化方案
 
-- 创建日期：2026-10-16；修订日期：2026-10-20
+- 创建日期：2026-10-16；修订日期：2026-10-21
 - 代码基线：最初基于 `5b5c3d91` 实施；提交 PR 前同步 `a1cccb86` 主线，保留统计小时汇总和会话分组修复。
-- 状态：三个实施阶段的代码已完成；已执行专用数据库、对象存储、真实 Nginx、预览浏览器和竞态回归。性能及验证边界见[实施验收记录](../backend/docs/logging-validation.md)，不代表镜像已发布或部署。
+- 状态：后端日志和容器日志轮转已完成；已执行专用数据库、对象存储、协议、预览浏览器和竞态回归。2026-10-21 调整范围，暂缓 Nginx 日志改造并还原相关配置。性能及验证边界见[实施验收记录](../backend/docs/logging-validation.md)，不代表镜像已发布或部署。
 - 范围：MonkeyAI 后端运行日志、可嵌入服务入口、HTTP 网关、远程执行中转与预览、资源包上传/导入、审计、异步任务和部署日志边界。文中路径均相对本项目根目录。
 - 核心决策：保留 Go `slog`；服务入口接收调用方提供的 `*slog.Logger` 并统一全局默认 logger，不在入口创建第二个实例。字段规范、错误分类、请求结果、异常恢复、记录边界和去重汇总均基于同一日志链路。
 
@@ -63,7 +63,7 @@
 | 导入补偿和每分钟上传清理直接打印原始 error，补偿还打印存储 key | `backend/internal/resourceimport/service.go:214`、`backend/internal/resourceimport/upload.go:414` | 保留独立副作用诊断；改安全字段，清理故障按批次汇总 |
 | readiness 检查端点停止状态、数据库和对象存储，路由却统称数据库失败 | `backend/internal/app/app.go:484`、`backend/internal/httpapi/router.go:31` | 保留检查顺序、超时与状态码，以安全依赖分类准确归因 |
 | 应用已包含 relay 排空、HTTP 关闭、异步 Wait 和上传清理 worker 等待 | `backend/internal/app/app.go:402`、`backend/internal/app/app.go:444` | 沿用既有退出顺序；创建方最后刷新日志，不在单个组件关闭时提前关闭 logger |
-| Nginx 普通路由仍使用默认 access log，若干敏感路径已关闭 access/error log | `admin/nginx.conf:14`、`admin/nginx/app.conf:4`、`admin/nginx/app.conf:43`、`admin/nginx/preview.conf.template:7` | 普通路由用受控模板，不输出原始 URI；敏感路径保持禁日志，不因统一格式重新开启 |
+| Nginx 普通路由仍使用默认 access log，若干敏感路径已关闭 access/error log | `admin/nginx.conf:14`、`admin/nginx/app.conf:4`、`admin/nginx/app.conf:43`、`admin/nginx/preview.conf.template:7` | 本次暂缓 Nginx 日志改造，保留原有配置 |
 
 现有安全测试必须保留并扩展：
 
@@ -73,7 +73,7 @@
 - `backend/internal/relay/relay_test.go`、`interop_test.go`、`preview_test.go`、`nginx_test.go`、`previewtls_test.go`：代理、租约、撤销、隔离、预览与 Nginx 边界。
 - `backend/internal/resourceimport/upload_test.go:153`：真实数据库中的上传、续传及导入集成路径；保留包解析与导入历史分页测试。
 
-本轮已用独立 PostgreSQL / RustFS 执行后端完整集成回归，并执行公共日志、网关、relay、上传、计费、媒体、认证等包的竞态测试及 `go vet ./...`。真实 Nginx 的普通路由关联、敏感路径、提前拒绝、上游连接失败、Upgrade 和预览 TLS，以及 Chromium 预览存储隔离已单独验证。完整测试数字、跳过项、性能开销和命令见[实施验收记录](../backend/docs/logging-validation.md)。已修改本地 Compose/Nginx 配置，未发布镜像或部署。
+本轮已用独立 PostgreSQL / RustFS 执行后端完整集成回归，并执行公共日志、网关、relay、上传、计费、媒体、认证等包的竞态测试及 `go vet ./...`。真实 Nginx 的 Upgrade、上传和预览 TLS 协议测试，以及 Chromium 预览存储隔离此前已单独验证。完整测试数字、跳过项、性能开销和命令见[实施验收记录](../backend/docs/logging-validation.md)。Compose 日志参数及轮转保留；Nginx 日志配置已还原，相关日志验证不作为当前验收依据。未发布镜像或部署。
 
 ## 三、整体架构
 
@@ -321,6 +321,8 @@ pprof 是独立监听入口：仅统一安全的服务器日志，不把业务�
 公共 Handler 对历史 `error` 属性做安全转换兜底，不能先调用其 `Error()` 再脱敏；对敏感键屏蔽，对不受控对象不做通用序列化。逐步迁移已存在的 `failure`、`reason`、字符串化错误和动态文案；Handler 不能保证清除已经拼进任意字符串的秘密，必须配合调用点清理和测试。
 
 ### 6.3 标准库与部署层
+
+本次仅实施 Go 标准库日志适配。下列 Nginx 日志条目保留为后续设计，本次暂缓，不修改其 access/error 输出格式、开关或诊断范围。
 
 - 主 HTTP、pprof、relay 控制 HTTP 以及模型/relay 的 `ReverseProxy.ErrorLog` 均显式接入 `logging.ErrorLog(logger)`。适配器只输出固定安全事件；原始原因由代理错误边界分类，不依赖标准库全局重定向。
 - 标准库格式化字符串通常已丢失原始错误类型：使用专用适配器输出受控事件，不能把未知整行文本视为安全内容；详细原因仍由代理边界中的原始错误分类提供。适配器不得另建根 logger 或形成标准库日志回流递归。
@@ -607,7 +609,8 @@ sample_request_ids / sample_job_ids / sample_transaction_ids
 - [x] 计费、媒体任务、MCP 后台扫描、端点与 relay 生命周期、资源包/运行密钥清理接入同一日志链路和事件策略。
 - [x] 中间重试按对象汇总，最终状态、审计、结算等关键事件保留。
 - [x] 有明确健康状态的 worker 增加一次性恢复事件，不改重试节奏。
-- [x] 检查标准库日志旁路、Nginx 查询串/敏感路径泄漏及安全请求关联，保留现有敏感 location 和预览站点的禁日志策略。
+- [x] 检查 Go 标准库日志旁路与后端安全请求关联。
+- Nginx 日志调整暂缓，不纳入本次实施范围。
 - [x] 配置现有容器日志驱动的轮转/保留上限；去重不能替代磁盘容量管理，具体值依部署容量确定。
 - [x] 完成并发、性能、故障注入与退出验证。
 
@@ -628,7 +631,7 @@ sample_request_ids / sample_job_ids / sample_transaction_ids
 | `backend/internal/relay/` | 代理 cause 安全分类、请求/设备/通道关联、生命周期与传输结果，保留授权和预览安全边界 |
 | `backend/internal/resourceimport/` | 分卷续传/块关联、封存与导入结果、独立补偿及清理聚合，不改事务与幂等 |
 | `backend/internal/billing/`、`imagegen/`、`videogen/`、`mcp/` | 重试、状态事件、恢复及关键业务保护 |
-| `admin/nginx.conf`、`admin/nginx/` 与 `admin/entrypoint.sh` | 普通路由的安全日志标签及关联 ID，保留敏感路径禁日志，验证最终生成配置与日志旁路 |
+| `admin/nginx.conf`、`admin/nginx/` 与 `admin/entrypoint.sh` | Nginx 日志改造暂缓，本次不修改配置 |
 | `docker-compose.yml` 与部署说明 | 默认容器日志构造选项、轮转与部署检查；不修改数据库 |
 
 ## 十三、测试与验收标准
@@ -681,7 +684,7 @@ sample_request_ids / sample_job_ids / sample_transaction_ids
 - 批次和单任务失败不重复计数；分钟级扫描故障在 5 分钟策略下可实际汇总。
 - 默认部署中的日志构造选项实际传入容器并用于创建根 logger；外部注入场景不被环境变量改变。
 - 每个独立交易/任务的最终失败都可定位；同一对象中间重试可汇总。
-- 经真实 Nginx 验证普通路由的后端 ID 关联、SSE、Upgrade、长连接/分卷上传设置，以及 OAuth 查询参数与路径 grant 不泄漏；同时检查 access/error 两条输出、最终配置和提前拒绝路径，敏感 location/预览站点仍禁日志。
+- 保留现有 Nginx 的 SSE、Upgrade、长连接和分卷上传协议配置及测试；Nginx access/error 日志改造不纳入本次验收。
 - 退出场景覆盖 relay/端点排空、上传/运行密钥清理及其他 worker 等待、数据库关闭和最终日志刷新；超时路径不假设全部协程已退出。
 
 ### 13.4 建议检查命令
@@ -718,7 +721,7 @@ go vet ./...
 - 先完成代码与测试，再按实际部署的灰度能力启用；观察错误实际计数、输出量、汇总延迟、容量溢出和流式表现。
 - 初始使用 60 秒窗口、4096 指纹；异常时可关闭去重恢复逐事件输出，但仍保持脱敏和本地请求 ID。
 - 字段迁移影响已有日志检索与告警，按本地 ID/上游 ID 新语义同步规则，不为兼容旧查询继续输出错误语义的字段。
-- 无数据库迁移，回退应用无需回滚业务数据；Nginx 与容器轮转配置独立验证、独立回退。
+- 无数据库迁移，回退应用无需回滚业务数据；容器轮转配置可独立验证、独立回退。Nginx 日志配置保持原样。
 - 本轮不保证跨实例去重、不保证崩溃前未刷新日志不丢、不保证每个被压制请求都可通过日志单独检索；需要逐请求证据的业务依赖审计和持久化记录。
 
 最终验收不是“日志明显少了”，而是：**常见失败能快速定位，重复故障有准确数量和样本，关键业务事件不被吞掉，凭据不泄漏，协议与业务行为不变。**
