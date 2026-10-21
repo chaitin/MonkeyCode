@@ -19,6 +19,7 @@
     "@fontsource-variable/noto-sans-sc": "^5.3.0",
     "@hugeicons/core-free-icons": "^4.3.0",
     "@hugeicons/react": "^1.1.10",
+    "@noble/hashes": "^2.4.0",
     "@paper-design/shaders-react": "^0.0.80",
     "@tailwindcss/vite": "^4",
     "class-variance-authority": "^0.7.1",
