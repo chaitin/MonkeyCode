@@ -134,7 +134,7 @@ function DeviceAuthorizationForm({
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <meta name="referrer" content="no-referrer" />
       <Card className="w-full max-w-lg">
         <CardHeader>

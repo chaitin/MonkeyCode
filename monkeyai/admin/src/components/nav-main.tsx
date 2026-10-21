@@ -98,18 +98,18 @@ export function NavMain({
                     aria-hidden="true"
                     className={cn(
                       "pointer-events-none ms-auto size-4 transition-transform motion-reduce:transition-none",
-                      openSection === item.url ? "rotate-90" : "rtl:rotate-180"
+                      openSection === item.url ? "rotate-90" : "[[dir=rtl]_&]:rotate-180"
                     )}
                     icon={ArrowRight01Icon}
                     strokeWidth={2}
                   />
                 </CollapsibleTrigger>
-                <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height,opacity] duration-200 ease-out data-ending-style:h-0 data-ending-style:opacity-0 data-starting-style:h-0 data-starting-style:opacity-0 motion-reduce:transition-none">
-                  <SidebarMenuSub className="mx-0 translate-x-0 border-s-0 px-0 pt-1 pb-0 rtl:translate-x-0">
+                <CollapsibleContent className="h-[var(--collapsible-panel-height)] overflow-hidden transition-[height,opacity] duration-200 ease-out data-ending-style:h-0 data-ending-style:opacity-0 data-starting-style:h-0 data-starting-style:opacity-0 motion-reduce:transition-none">
+                  <SidebarMenuSub className="mx-0 translate-x-0 border-s-0 px-0 pt-1 pb-0 [[dir=rtl]_&]:translate-x-0">
                     {item.items.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton
-                          className="h-10 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 rtl:translate-x-0 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground"
+                          className="h-10 translate-x-0 text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/85 [[dir=rtl]_&]:translate-x-0 data-active:bg-sidebar-accent data-active:font-medium data-active:text-foreground data-active:hover:bg-sidebar-accent data-active:hover:text-foreground [&>svg]:text-sidebar-foreground/40 data-active:[&>svg]:text-foreground"
                           isActive={isActiveSubItem(subItem.url)}
                           size="md"
                           render={<NavLink to={subItem.url} />}

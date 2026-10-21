@@ -230,7 +230,7 @@ function ExpertAssociationSelect({
         </span>
         <HugeiconsIcon icon={UnfoldMoreIcon} data-icon="inline-end" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-(--anchor-width) gap-1 p-1">
+      <PopoverContent align="start" className="w-[var(--anchor-width)] gap-1 p-1">
         <PopoverHeader className="sr-only">
           <PopoverTitle>{label}</PopoverTitle>
         </PopoverHeader>
@@ -473,7 +473,7 @@ export function ExpertsPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
         page={remote}
         error={subjects.error}
@@ -638,7 +638,7 @@ export function ExpertsPage() {
         }}
       >
         <DialogContent
-          className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-3xl"
+          className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-3xl"
           closeLabel={t("common.close")}
           aria-describedby={
             importedExpert ? "imported-expert-readonly" : undefined
@@ -656,7 +656,7 @@ export function ExpertsPage() {
             className="flex min-h-0 flex-1 flex-col gap-6"
             onSubmit={saveExpert}
           >
-            <FieldGroup className="max-h-[calc(100dvh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
+            <FieldGroup className="max-h-[calc(100vh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
               <Field>
                 <FieldLabel htmlFor="expert-authorization">
                   {t("resources.availableScope")}

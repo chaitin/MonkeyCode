@@ -278,12 +278,12 @@ export function ResourceAnalysisPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col overflow-hidden p-4 pt-px md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col overflow-hidden p-4 pt-px md:h-[calc(100vh-5rem)]">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
             onSubmit={applySearch}
-            className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
+            className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
           >
             {showDateRange && (
               <>
@@ -435,7 +435,7 @@ export function ResourceAnalysisPage() {
             )}
           </form>
           {error && (
-            <div className="px-(--card-spacing)">
+            <div className="px-[var(--card-spacing)]">
               <Button
                 type="button"
                 variant="outline"
@@ -452,7 +452,7 @@ export function ResourceAnalysisPage() {
             <Table
               className={cn(
                 !items.length && "h-full",
-                "[&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)"
+                "[&_td:first-child]:ps-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)] [&_th:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)]"
               )}
               aria-label={t(`${key}.resources.title`)}
               aria-busy={loading || searching}

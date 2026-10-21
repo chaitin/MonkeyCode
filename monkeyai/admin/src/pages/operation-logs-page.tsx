@@ -250,10 +250,10 @@ export function OperationLogsPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-2 px-(--card-spacing)">
+          <div className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
             {visibleFields.has("operator") && (
               <Input
                 className="w-32"
@@ -432,7 +432,7 @@ export function OperationLogsPage() {
             )}
           </div>
           {error && (
-            <div className="px-(--card-spacing)">
+            <div className="px-[var(--card-spacing)]">
               <Button
                 variant="outline"
                 onClick={() => setRevision((value) => value + 1)}
@@ -452,7 +452,7 @@ export function OperationLogsPage() {
             >
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="ps-[var(--card-spacing)]">
                     {t("pages.operationLogs.columns.time")}
                   </TableHead>
                   <TableHead>
@@ -467,7 +467,7 @@ export function OperationLogsPage() {
                   <TableHead>
                     {t("pages.operationLogs.columns.ipAddress")}
                   </TableHead>
-                  <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                  <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                     {t("pages.operationLogs.columns.operations")}
                   </TableHead>
                 </TableRow>
@@ -476,7 +476,7 @@ export function OperationLogsPage() {
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
                         {tableDateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
                       <TableCell>
@@ -509,7 +509,7 @@ export function OperationLogsPage() {
                       <TableCell className="font-mono">
                         {log.source_ip || "—"}
                       </TableCell>
-                      <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         <Dialog>
                           <DialogTrigger
                             render={

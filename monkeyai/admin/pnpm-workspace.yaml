@@ -1,5 +1,9 @@
 packages: []
 
 allowBuilds:
+  core-js: false
   esbuild: true
   msw: false
+
+patchedDependencies:
+  '@base-ui/react@1.7.0': patches/@base-ui__react.patch

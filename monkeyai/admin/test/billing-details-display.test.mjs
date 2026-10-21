@@ -40,7 +40,7 @@ test("billing views use tabs and tables scroll inside the available page height"
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /md:h-\[calc\(100svh-5rem\)\]/)
+  assert.match(source, /md:h-\[calc\(100vh-5rem\)\]/)
   assert.match(source, /<Tabs\s+value=\{view\}/)
   assert.match(source, /<TabsTrigger value="entries">积分流水<\/TabsTrigger>/)
   assert.match(
@@ -68,13 +68,13 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.doesNotMatch(source, /billing\/summary|summary\.charges|扣费积分/)
   assert.doesNotMatch(source, /w-px|max-w-52|table-fixed/)
   assert.equal(
-    (source.match(/TableHead className="ps-\(--card-spacing\)"/g) ?? []).length,
+    (source.match(/TableHead className="ps-\[var\(--card-spacing\)\]"/g) ?? []).length,
     2
   )
   assert.equal(
     (
       source.match(
-        /TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground"/g
+        /TableCell className="ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground"/g
       ) ?? []
     ).length,
     2
@@ -82,7 +82,7 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.equal(
     (
       source.match(
-        /className="w-20 pe-\(--card-spacing\) whitespace-nowrap"/g
+        /className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap"/g
       ) ?? []
     ).length,
     4
@@ -110,7 +110,7 @@ test("billing filters match the compact operation-log interaction", async () => 
   const filters = source.split("onSubmit={search}")[1].split("</form>")[0]
   assert.match(
     filters,
-    /flex flex-wrap items-center gap-2 px-\(--card-spacing\)/
+    /flex flex-wrap items-center gap-2 px-\[var\(--card-spacing\)\]/
   )
   assert.equal((filters.match(/className="w-32"/g) ?? []).length, 2)
   assert.equal((filters.match(/<DatePickerField/g) ?? []).length, 2)
@@ -174,7 +174,7 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
   assert.match(pagination, /size="icon-sm"/)
   assert.match(pagination, /icon=\{ArrowLeft01Icon\}/)
   assert.match(pagination, /icon=\{ArrowRight01Icon\}/)
-  assert.match(pagination, /className="rtl:rotate-180"/)
+  assert.match(pagination, /className="\[\[dir=rtl\]_&\]:rotate-180"/)
 })
 
 test("billing transaction details follow the credit account key-value layout", async () => {
@@ -257,19 +257,19 @@ test("billing entries omit mode and use directional integer rounding", async () 
   assert.doesNotMatch(source, /hover:text-primary hover:underline/)
   assert.match(
     source,
-    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground">\s*\{dateTime\(\s*e\.occurred_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)\}/
+    /<TableCell className="ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground">\s*\{dateTime\(\s*e\.occurred_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)\}/
   )
   assert.match(
     source,
-    /pe-\(--card-spacing\) whitespace-nowrap[\s\S]*?pages\.operationLogs\.columns\.operations/
+    /pe-\[var\(--card-spacing\)\] whitespace-nowrap[\s\S]*?pages\.operationLogs\.columns\.operations/
   )
   assert.match(
     source,
-    /ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(\s*tx\.started_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)/
+    /ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(\s*tx\.started_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)/
   )
   assert.match(
     source,
-    /<TableCell className="w-20 pe-\(--card-spacing\) whitespace-nowrap">[\s\S]*?<Button/
+    /<TableCell className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap">[\s\S]*?<Button/
   )
   assert.match(source, /next\.delete\("mode"\)/)
   assert.doesNotMatch(

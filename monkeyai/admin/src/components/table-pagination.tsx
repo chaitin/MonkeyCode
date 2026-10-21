@@ -37,7 +37,7 @@ export function TablePagination({
     <div
       data-slot="table-pagination"
       aria-busy={loading}
-      className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-(--card-spacing)"
+      className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-[var(--card-spacing)]"
     >
       <div className="flex flex-wrap items-center gap-3">
         <PageSizeSelect
@@ -66,7 +66,7 @@ export function TablePagination({
           onClick={onPrevious}
           aria-label={t("pages.operationLogs.pagination.previous")}
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
         </Button>
         <Button
           type="button"
@@ -76,7 +76,7 @@ export function TablePagination({
           onClick={onNext}
           aria-label={t("pages.operationLogs.pagination.next")}
         >
-          <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
+          <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
         </Button>
       </div>
     </div>

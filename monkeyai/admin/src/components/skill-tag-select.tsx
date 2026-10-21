@@ -83,7 +83,7 @@ export function SkillTagSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-72 w-(--anchor-width) gap-1 p-1"
+        className="max-h-72 w-[var(--anchor-width)] gap-1 p-1"
       >
         <PopoverHeader className="sr-only">
           <PopoverTitle>{t("pages.skills.tags")}</PopoverTitle>

@@ -229,7 +229,7 @@ export function GroupSelect({
   }
   const rowClass = "flex w-full min-w-0 items-center gap-1 rounded-md"
   const checkboxClass =
-    "ms-auto shrink-0 data-disabled:border-muted-foreground/30! data-disabled:bg-muted! data-disabled:text-muted-foreground! data-disabled:opacity-100!"
+    "ms-auto shrink-0 data-disabled:!border-muted-foreground/30 data-disabled:!bg-muted data-disabled:!text-muted-foreground data-disabled:!opacity-100"
   const labelClass = (unavailable: boolean) =>
     cn(
       "flex h-9 min-w-0 flex-1 items-center gap-2 pe-2 text-start font-normal",
@@ -428,7 +428,7 @@ export function GroupSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-(--available-height) w-(--anchor-width) gap-2 overflow-hidden py-2 ps-2 pe-0"
+        className="max-h-[var(--available-height)] w-[var(--anchor-width)] gap-2 overflow-hidden py-2 ps-2 pe-0"
       >
         <PopoverTitle className="sr-only">{label}</PopoverTitle>
         {searchable && (
@@ -444,7 +444,7 @@ export function GroupSelect({
           </div>
         )}
         <ScrollArea
-          className="min-h-0 w-full overflow-hidden [&_[data-slot=scroll-area-viewport]]:h-auto [&_[data-slot=scroll-area-viewport]]:max-h-[min(14rem,calc(var(--available-height,100dvh)-var(--group-select-chrome)))]"
+          className="min-h-0 w-full overflow-hidden [&_[data-slot=scroll-area-viewport]]:h-auto [&_[data-slot=scroll-area-viewport]]:max-h-[min(14rem,calc(var(--available-height,100vh)-var(--group-select-chrome)))]"
           style={
             {
               "--group-select-chrome": searchable ? "4rem" : "1rem",

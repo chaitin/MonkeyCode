@@ -324,7 +324,7 @@ export function BillingDetailsPage() {
     />
   )
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Tabs
         value={view}
         onValueChange={(value) => {
@@ -350,7 +350,7 @@ export function BillingDetailsPage() {
             <CardContent className="min-h-0 flex-1 gap-4 px-0">
               <form
                 onSubmit={search}
-                className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
+                className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
               >
                 {visibleFields.has("user") && (
                   <Input
@@ -544,7 +544,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-[var(--card-spacing)]">
                         入账时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -554,7 +554,7 @@ export function BillingDetailsPage() {
                       </TableHead>
                       <TableHead className="text-start">积分变动</TableHead>
                       <TableHead className="text-start">剩余积分</TableHead>
-                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -564,7 +564,7 @@ export function BillingDetailsPage() {
                   >
                     {entries?.items.map((e) => (
                       <TableRow key={e.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
+                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
                           {dateTime(e.occurred_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
@@ -591,7 +591,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
                           {balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           {e.transaction_id ? (
                             <Button
                               type="button"
@@ -688,7 +688,7 @@ export function BillingDetailsPage() {
                 >
                   <TableHeader className="sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-[var(--card-spacing)]">
                         调用时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -698,7 +698,7 @@ export function BillingDetailsPage() {
                       <TableHead>状态</TableHead>
                       <TableHead>原因</TableHead>
                       <TableHead className="text-end">预留积分</TableHead>
-                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -708,7 +708,7 @@ export function BillingDetailsPage() {
                   >
                     {pending?.items.map((tx) => (
                       <TableRow key={tx.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
+                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
                           {dateTime(tx.started_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
@@ -734,7 +734,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-end tabular-nums">
                           {billingCredits(tx.reserve, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           <Button
                             type="button"
                             variant="outline"

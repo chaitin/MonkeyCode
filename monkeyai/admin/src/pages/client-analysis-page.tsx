@@ -272,7 +272,7 @@ export function ClientAnalysisPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px lg:h-[calc(100svh-5rem)] lg:flex-none lg:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px lg:h-[calc(100vh-5rem)] lg:flex-none lg:overflow-hidden">
       <ClientDistributionCards
         data={overview}
         loading={overviewLoading}
@@ -283,7 +283,7 @@ export function ClientAnalysisPage() {
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
             onSubmit={applySearch}
-            className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
+            className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
           >
             <DatePickerField
               id="client-analysis-from"
@@ -488,7 +488,7 @@ export function ClientAnalysisPage() {
             )}
           </form>
           {error && (
-            <div className="px-(--card-spacing)">
+            <div className="px-[var(--card-spacing)]">
               <Button
                 variant="outline"
                 onClick={() => setListRetry((value) => value + 1)}
@@ -504,7 +504,7 @@ export function ClientAnalysisPage() {
             <Table
               className={cn(
                 !items.length && "h-full",
-                "[&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)"
+                "[&_td:first-child]:ps-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)] [&_th:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)]"
               )}
               aria-label={t(`${key}.clients.title`)}
               aria-busy={loading || searching}

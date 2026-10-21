@@ -153,7 +153,7 @@ export function ReportShell({
       className={cn(
         "flex flex-1 flex-col gap-4 p-4 pt-0",
         fillHeight &&
-          "min-h-0 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden"
+          "min-h-0 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden"
       )}
     >
       <h1 className="text-xl font-semibold">{title}</h1>

@@ -428,7 +428,7 @@ export function MembersAndGroupsPage() {
         )
     : []
   return (
-    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
+    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
       {pendingMove && (
         <div
           role="status"
@@ -542,7 +542,7 @@ export function MembersAndGroupsPage() {
             </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1">
-            <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
+            <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
               <ul
                 className="flex flex-col gap-1"
                 aria-label={t("pages.membersAndGroups.groupsTitle")}
@@ -613,7 +613,7 @@ export function MembersAndGroupsPage() {
             </CardAction>
           </CardHeader>
           <CardContent className="min-h-0 flex-1">
-            <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
+            <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
               {loading && (
                 <p
                   role="status"
@@ -792,7 +792,7 @@ export function MembersAndGroupsPage() {
         }}
       >
         <DialogContent
-          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
           closeLabel={t("common.close")}
           showCloseButton={!creating && !batchSaving}
         >

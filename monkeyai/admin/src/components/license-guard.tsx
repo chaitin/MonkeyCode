@@ -134,7 +134,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   if (info?.state !== "expired") {
     if (info && !error) return children
     return (
-      <main className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background p-6 text-sm text-muted-foreground">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-sm text-muted-foreground">
         <p role={error ? "alert" : "status"}>
           {error || t("pages.license.loading")}
         </p>
@@ -152,11 +152,11 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
     info.current_members > (info.free_member_limit ?? 10)
 
   return (
-    <main className="min-h-svh bg-background">
+    <main className="min-h-screen bg-background">
       <Dialog open disablePointerDismissal onOpenChange={() => {}}>
         <DialogContent
           showCloseButton={false}
-          className="max-h-[calc(100svh-2rem)] overflow-y-auto"
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto"
         >
           <DialogHeader>
             <DialogTitle>{t("pages.license.expiredTitle")}</DialogTitle>

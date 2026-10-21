@@ -205,7 +205,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) close() }}>
-      <DialogContent className={`max-h-[90svh] overflow-y-auto ${preview ? "sm:max-w-3xl" : "sm:max-w-xl"}`} closeLabel="关闭">
+      <DialogContent className={`max-h-[90vh] overflow-y-auto ${preview ? "sm:max-w-3xl" : "sm:max-w-xl"}`} closeLabel="关闭">
         <DialogHeader>
           <DialogTitle>导入资源包</DialogTitle>
           <p className="text-sm text-muted-foreground">支持普通 ZIP、按字节拆分的 .zip.001 等全部分卷，或包含 manifest.json 的解压目录。总大小不超过 2 GiB。</p>

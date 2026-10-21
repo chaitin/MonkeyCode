@@ -190,11 +190,11 @@ export function TaskHistoryPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <StatisticsFeedback {...request} />
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <form onSubmit={applySearch} className="px-(--card-spacing)">
+          <form onSubmit={applySearch} className="px-[var(--card-spacing)]">
             <FieldGroup className="flex-row flex-wrap items-end gap-3">
               {visibleFields.has("taskName") && (
                 <Field className="sm:w-44">
@@ -335,7 +335,7 @@ export function TaskHistoryPage() {
             >
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="w-52 ps-(--card-spacing)">
+                  <TableHead className="w-52 ps-[var(--card-spacing)]">
                     {t("pages.taskHistory.columns.startedAt")}
                   </TableHead>
                   <TableHead className="w-44">
@@ -345,7 +345,7 @@ export function TaskHistoryPage() {
                   <TableHead className="w-28">
                     {t("pages.taskHistory.columns.conversationCount")}
                   </TableHead>
-                  <TableHead className="w-36 pe-(--card-spacing)">
+                  <TableHead className="w-36 pe-[var(--card-spacing)]">
                     {t("pages.taskHistory.columns.lastActiveAt")}
                   </TableHead>
                 </TableRow>
@@ -356,7 +356,7 @@ export function TaskHistoryPage() {
                 {visibleTasks.length > 0 ? (
                   visibleTasks.map((task) => (
                     <TableRow key={task.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
                         <span
                           className="block truncate"
                           title={dateFormatter.format(
@@ -392,7 +392,7 @@ export function TaskHistoryPage() {
                         {numberFormatter.format(task.turn_count)}
                       </TableCell>
                       <TableCell
-                        className="pe-(--card-spacing) whitespace-nowrap text-muted-foreground"
+                        className="pe-[var(--card-spacing)] whitespace-nowrap text-muted-foreground"
                         title={dateFormatter.format(
                           new Date(task.last_active_at)
                         )}

@@ -484,7 +484,7 @@ export function ToolsPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
         page={remote}
         error={subjects.error}
@@ -509,7 +509,7 @@ export function ToolsPage() {
                   {t("pages.tools.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
                   closeLabel={t("common.close")}
                   aria-describedby={
                     importedServer ? "imported-connector-readonly" : undefined
@@ -1108,7 +1108,7 @@ export function ToolsPage() {
         }}
       >
         <DialogContent
-          className="max-h-[calc(100dvh-2rem)] sm:max-w-4xl"
+          className="max-h-[calc(100vh-2rem)] sm:max-w-4xl"
           closeLabel={t("common.close")}
           aria-describedby={
             readOnlyTools ? "imported-connector-tools-readonly" : undefined
@@ -1158,7 +1158,7 @@ export function ToolsPage() {
             pending={remote.pending}
             loading={false}
           />
-          <div className="max-h-[min(60dvh,36rem)] overflow-y-auto rounded-md border">
+          <div className="max-h-[min(60vh,36rem)] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>

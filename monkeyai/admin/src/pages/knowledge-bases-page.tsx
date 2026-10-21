@@ -702,7 +702,7 @@ export function KnowledgeBasesPage() {
           }}
         >
           <DialogContent
-            className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl"
+            className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl"
             closeLabel={t("common.close")}
           >
             <div className="flex min-w-0 items-start gap-3 pe-8">
@@ -945,7 +945,7 @@ export function KnowledgeBasesPage() {
             onOpenChange={handleContentDialogOpenChange}
           >
             <DialogContent
-              className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+              className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
               closeLabel={t("common.close")}
             >
               <form
@@ -1087,7 +1087,7 @@ export function KnowledgeBasesPage() {
                 {previewContent?.name}
               </DialogTitle>
             </DialogHeader>
-            <pre className="max-h-[60dvh] overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap">
+            <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap">
               {previewContent?.body}
             </pre>
           </DialogContent>
@@ -1129,7 +1129,7 @@ export function KnowledgeBasesPage() {
 
   function renderKnowledgeBaseList() {
     return (
-      <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+      <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
         <ResourceList
           page={list}
           typeLabel={t("pages.knowledgeBases.type")}
@@ -1160,7 +1160,7 @@ export function KnowledgeBasesPage() {
                     {t("pages.knowledgeBases.add")}
                   </DialogTrigger>
                   <DialogContent
-                    className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                    className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
                     closeLabel={t("common.close")}
                   >
                     <form

@@ -123,8 +123,8 @@ export function ClientLoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-4 py-12">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,hsl(var(--primary)/0.14),transparent_48%)]" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgb(var(--primary-rgb)/0.14),transparent_48%)]" />
       <Card className="relative w-full max-w-md border-border/80 bg-card/95 shadow-2xl shadow-black/5 backdrop-blur">
         <CardHeader className="items-center text-center">
           <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">

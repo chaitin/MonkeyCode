@@ -757,7 +757,7 @@ export function ModelsPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
         page={remote}
         pending={saving}
@@ -784,7 +784,7 @@ export function ModelsPage() {
                   {t("pages.models.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
+                  className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
                   closeLabel={t("common.close")}
                 >
                   <form
@@ -1098,7 +1098,7 @@ export function ModelsPage() {
                         )}
 
                         {kind === "text" && (
-                          <ItemGroup className="grid grid-cols-2 gap-4 has-data-[size=sm]:gap-4">
+                          <ItemGroup className="grid grid-cols-2 gap-4 has-[[data-size=sm]]:gap-4">
                             <Item
                               variant="outline"
                               size="sm"
@@ -1466,7 +1466,7 @@ export function ModelsPage() {
                     {kindModels.length}
                   </Badge>
                   <HugeiconsIcon
-                    className="size-4 transition-transform group-aria-expanded:rotate-90 rtl:rotate-180 rtl:group-aria-expanded:-rotate-90"
+                    className="size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
                     icon={ArrowRight01Icon}
                     strokeWidth={2}
                   />

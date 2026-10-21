@@ -31,8 +31,8 @@ test("members page keeps the original split cards and compact member list", asyn
     "utf8"
   )
 
-  assert.match(source, /md:h-\[calc\(100svh-5rem\)\]/)
-  assert.doesNotMatch(source, /md:h-\[calc\(100svh-4rem\)\]/)
+  assert.match(source, /md:h-\[calc\(100vh-5rem\)\]/)
+  assert.doesNotMatch(source, /md:h-\[calc\(100vh-4rem\)\]/)
   assert.match(
     source,
     /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/
@@ -92,11 +92,11 @@ test("both members panels scroll inside shadcn Scroll Areas", async () => {
   assert.equal((panels.match(/<ScrollArea className=/g) ?? []).length, 2)
   assert.match(
     panels,
-    /<ScrollArea className="-ms-1 -me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
+    /<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
   )
   assert.match(
     panels,
-    /<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">/
+    /<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">/
   )
   assert.equal((panels.match(/<\/ScrollArea>/g) ?? []).length, 2)
   assert.match(panels, /<ul\s+className="flex flex-col gap-1"/)
@@ -403,7 +403,7 @@ test("tree and list share the same member action menu", async () => {
   assert.match(tree, /<MemberActions/)
   assert.match(
     tree,
-    /<UserAvatar src=\{member\.avatar_url\} className="size-4!"/
+    /<UserAvatar src=\{member\.avatar_url\} className="!size-4"/
   )
   assert.doesNotMatch(tree, /User02Icon|MemberAvatar/)
   assert.match(tree, /member\.status === "disabled" && "text-muted-foreground"/)

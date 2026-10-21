@@ -67,7 +67,7 @@ export function ResourceImportsPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">资源包导入记录</h1>
         <div className="flex items-center gap-2">
@@ -89,11 +89,11 @@ export function ResourceImportsPage() {
       </div>}
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          {historyError && <div role="alert" className="mx-(--card-spacing) flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive"><span>{historyError}</span><Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button></div>}
-          {historyLoading && !history && <p role="status" className="px-(--card-spacing) text-sm text-muted-foreground">加载中…</p>}
-          {history && history.items.length === 0 && !historyLoading && <p className="px-(--card-spacing) text-sm text-muted-foreground">暂无导入记录</p>}
+          {historyError && <div role="alert" className="mx-[var(--card-spacing)] flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive"><span>{historyError}</span><Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button></div>}
+          {historyLoading && !history && <p role="status" className="px-[var(--card-spacing)] text-sm text-muted-foreground">加载中…</p>}
+          {history && history.items.length === 0 && !historyLoading && <p className="px-[var(--card-spacing)] text-sm text-muted-foreground">暂无导入记录</p>}
           {history && history.items.length > 0 && <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
-            <Table className="[&_th:first-child]:ps-(--card-spacing) [&_td:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing) [&_td:last-child]:pe-(--card-spacing)">
+            <Table className="[&_th:first-child]:ps-[var(--card-spacing)] [&_td:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)]">
               <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "发布者", "版本", "发布 ID", "状态", "资源变更"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
               <TableBody>{history.items.map((batch) => <TableRow key={batch.id}>
                 <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>

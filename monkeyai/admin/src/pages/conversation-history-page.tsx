@@ -336,11 +336,11 @@ export function ConversationHistoryPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
-            className="flex flex-wrap items-end gap-3 px-(--card-spacing)"
+            className="flex flex-wrap items-end gap-3 px-[var(--card-spacing)]"
             onSubmit={search}
           >
             {visibleFields.has("taskName") && (
@@ -490,7 +490,7 @@ export function ConversationHistoryPage() {
           >
             <Table
               className={cn(
-                "table-auto [&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)",
+                "table-auto [&_td:first-child]:ps-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)] [&_th:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)]",
                 !visible.length && "h-full"
               )}
               aria-label={t("pages.conversationHistory.title")}

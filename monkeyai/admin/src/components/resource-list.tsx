@@ -125,7 +125,7 @@ export function ResourceList({
             onClick={() => page.previousPage()}
             aria-label={t("pages.operationLogs.pagination.previous")}
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
           </Button>
           <Button
             type="button"
@@ -135,7 +135,7 @@ export function ResourceList({
             onClick={page.nextPage}
             aria-label={t("pages.operationLogs.pagination.next")}
           >
-            <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
+            <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
           </Button>
         </div>
       </div>

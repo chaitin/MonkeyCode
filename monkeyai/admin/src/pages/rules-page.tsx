@@ -232,7 +232,7 @@ export function RulesPage() {
   }
 
   return (
-    <section className="flex h-[calc(100svh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100svh-5rem)]">
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <Tabs
         className="-m-1 min-h-0 flex-1 gap-4 overflow-hidden p-1"
         value={activeRuleType}
@@ -278,7 +278,7 @@ export function RulesPage() {
                 {t("pages.rules.add")}
               </DialogTrigger>
               <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
                 closeLabel={t("common.close")}
                 aria-describedby={
                   importedRule ? "imported-rule-readonly" : undefined
@@ -585,7 +585,7 @@ export function RulesPage() {
             onClick={() => previousPage()}
             aria-label={t("pages.operationLogs.pagination.previous")}
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
           </Button>
           <Button
             type="button"
@@ -604,7 +604,7 @@ export function RulesPage() {
             }}
             aria-label={t("pages.operationLogs.pagination.next")}
           >
-            <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
+            <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
           </Button>
         </div>
       </div>

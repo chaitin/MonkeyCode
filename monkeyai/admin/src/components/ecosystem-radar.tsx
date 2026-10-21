@@ -52,7 +52,7 @@ export function EcosystemRadar() {
       <div className="ecosystem-radar-grid absolute inset-0" />
       <div className="ecosystem-radar-glow absolute inset-0" />
 
-      <div className="ecosystem-radar-stage relative aspect-square w-[92%] max-w-[30rem]">
+      <div className="ecosystem-radar-stage legacy-aspect-square relative aspect-square w-[92%] max-w-[30rem]">
         <svg
           className="absolute inset-0 size-full overflow-visible"
           viewBox="0 0 100 100"

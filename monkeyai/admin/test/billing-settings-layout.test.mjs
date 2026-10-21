@@ -20,7 +20,7 @@ test("billing settings use equal left and right columns on desktop", async () =>
 
   assert.match(
     page,
-    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-\[calc\(100svh-5rem\)\] lg:flex-none lg:overflow-hidden">/
+    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-\[calc\(100vh-5rem\)\] lg:flex-none lg:overflow-hidden">/
   )
   assert.match(
     page,
@@ -38,11 +38,11 @@ test("billing settings use equal left and right columns on desktop", async () =>
   )
   assert.match(
     page,
-    /<CardContent className="min-h-0 flex-1">[\s\S]*?<ScrollArea className="-ms-1 -me-\(--card-spacing\) min-h-0 lg:flex-1">[\s\S]*?<div className="flex flex-col gap-1 ps-1 pe-\(--card-spacing\)">/
+    /<CardContent className="min-h-0 flex-1">[\s\S]*?<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 lg:flex-1">[\s\S]*?<div className="flex flex-col gap-1 ps-1 pe-\[var\(--card-spacing\)\]">/
   )
   assert.match(
     page,
-    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">[\s\S]*?<ItemGroup className="gap-2">/
+    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">[\s\S]*?<ItemGroup className="gap-2">/
   )
   assert.match(
     page,

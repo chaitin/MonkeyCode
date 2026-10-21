@@ -358,10 +358,10 @@ export function FeedbackPage() {
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-3 px-(--card-spacing)">
+          <div className="flex flex-wrap items-center gap-3 px-[var(--card-spacing)]">
             <Select
               items={[
                 { value: "all", label: t("pages.feedback.allCategories") },
@@ -437,7 +437,7 @@ export function FeedbackPage() {
             <Table aria-label={t("pages.feedback.title")} aria-busy={loading}>
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="ps-[var(--card-spacing)]">
                     {t("pages.feedback.columns.time")}
                   </TableHead>
                   <TableHead>{t("pages.feedback.columns.user")}</TableHead>
@@ -445,7 +445,7 @@ export function FeedbackPage() {
                   <TableHead>{t("pages.feedback.columns.content")}</TableHead>
                   <TableHead>{t("pages.feedback.columns.rating")}</TableHead>
                   <TableHead>{t("pages.feedback.columns.state")}</TableHead>
-                  <TableHead className="pe-(--card-spacing)">
+                  <TableHead className="pe-[var(--card-spacing)]">
                     {t("pages.feedback.columns.actions")}
                   </TableHead>
                 </TableRow>
@@ -454,7 +454,7 @@ export function FeedbackPage() {
                 {rows.length ? (
                   rows.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
                         {formatter.format(new Date(item.created_at))}
                       </TableCell>
                       <TableCell>
@@ -483,7 +483,7 @@ export function FeedbackPage() {
                       <TableCell>
                         <StateBadge state={item.state} />
                       </TableCell>
-                      <TableCell className="pe-(--card-spacing)">
+                      <TableCell className="pe-[var(--card-spacing)]">
                         <Button
                           size="xs"
                           variant="outline"

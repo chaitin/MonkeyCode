@@ -66,7 +66,7 @@ function RequireAuth() {
 function PageLoading() {
   return (
     <main
-      className="flex min-h-svh items-center justify-center bg-background text-sm text-muted-foreground"
+      className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground"
       role="status"
     >
       正在检查登录状态…

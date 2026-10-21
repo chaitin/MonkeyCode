@@ -391,7 +391,7 @@ export function BillingSettingsPage() {
             type="button"
             variant="ghost"
             size="sm"
-            className="w-full cursor-pointer justify-between gap-2 pe-2 text-start font-normal hover:bg-foreground/5!"
+            className="w-full cursor-pointer justify-between gap-2 pe-2 text-start font-normal hover:!bg-foreground/5"
             style={{
               paddingInlineStart: `${depth * 1.25 + 2.5}rem`,
             }}
@@ -410,7 +410,7 @@ export function BillingSettingsPage() {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="group absolute top-0 z-10 cursor-pointer hover:bg-transparent! active:translate-y-0! aria-expanded:bg-transparent!"
+                className="group absolute top-0 z-10 cursor-pointer hover:!bg-transparent active:!translate-y-0 aria-expanded:!bg-transparent"
                 style={{ insetInlineStart: `${depth * 1.25 + 0.25}rem` }}
                 aria-label={`展开或折叠 ${g.name}`}
               />
@@ -511,7 +511,7 @@ export function BillingSettingsPage() {
   )
   const selectedMode = enabled ? mode : "disabled"
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100svh-5rem)] lg:flex-none lg:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100vh-5rem)] lg:flex-none lg:overflow-hidden">
       <div className="grid min-h-0 flex-1 items-start gap-4 lg:grid-cols-2 lg:items-stretch">
         <div className="grid min-h-0 gap-4 lg:h-full lg:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
           <Card className="min-h-80 lg:min-h-0">
@@ -531,8 +531,8 @@ export function BillingSettingsPage() {
               </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
-              <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 lg:flex-1">
-                <div className="flex flex-col gap-1 ps-1 pe-(--card-spacing)">
+              <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 lg:flex-1">
+                <div className="flex flex-col gap-1 ps-1 pe-[var(--card-spacing)]">
                   {quotas.groups
                     .filter((g) => !g.parent_id)
                     .map((g) => renderGroup(g, "10000"))}
@@ -588,7 +588,7 @@ export function BillingSettingsPage() {
               </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
-              <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
+              <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
                 <ItemGroup className="gap-2">
                   {visibleUsers.map(userItem)}
                 </ItemGroup>

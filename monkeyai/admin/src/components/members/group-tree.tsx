@@ -140,7 +140,7 @@ export function GroupTreeItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 border-0 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 border-0 text-start font-normal hover:!bg-transparent aria-expanded:!bg-transparent"
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
     />
   )
@@ -219,7 +219,7 @@ export function GroupTreeItem({
               checked={false}
               disabled
               aria-label={group.name}
-              className="ms-1 shrink-0 border-muted-foreground/30! bg-muted! text-muted-foreground! opacity-100!"
+              className="ms-1 shrink-0 !border-muted-foreground/30 !bg-muted !text-muted-foreground !opacity-100"
             />
           )}
           <CollapsibleTrigger render={triggerButton}>
@@ -442,7 +442,7 @@ function GroupTreeMemberRow({
             : undefined
         }
       >
-        <UserAvatar src={member.avatar_url} className="size-4!" />
+        <UserAvatar src={member.avatar_url} className="!size-4" />
         <span className="min-w-0 flex-1 truncate" title={member.email}>
           {member.name}
         </span>

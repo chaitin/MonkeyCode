@@ -1,3 +1,4 @@
+import { useContainerBreakpoint } from "@/hooks/use-container-breakpoint"
 import {
   ComputerIcon,
   GlobeIcon,
@@ -90,6 +91,8 @@ function DistributionCard({
   onRetry: () => void
 }) {
   const { i18n, t } = useTranslation()
+  const { ref: containerRef, wide } =
+    useContainerBreakpoint<HTMLDivElement>(300)
   const formatter = new Intl.NumberFormat(i18n.language)
   const chartDescription = items
     .map((item) => `${item.label}: ${formatter.format(item.count)}`)
@@ -97,9 +100,11 @@ function DistributionCard({
 
   return (
     <Card
+      ref={containerRef}
+      data-container-wide={wide}
       role="figure"
       aria-label={title}
-      className="@container/distribution min-w-0 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70"
+      className="group/distribution min-w-0 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70"
     >
       <CardHeader className="flex min-h-7 flex-row items-center gap-3 px-3 py-0">
         <HugeiconsIcon
@@ -113,14 +118,14 @@ function DistributionCard({
           role="heading"
           aria-level={2}
           title={title}
-          className="min-w-0 flex-1 truncate font-mono text-sm font-medium tracking-wide text-muted-foreground uppercase"
+          className="min-w-0 flex-1 truncate font-mono text-sm font-medium uppercase tracking-wide text-muted-foreground"
         >
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent
         aria-busy={loading}
-        className="min-h-40 flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-border/60 bg-card p-3 @min-[300px]/distribution:flex-row"
+        className="min-h-40 flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-border/60 bg-card p-3 group-data-[container-wide=true]/distribution:flex-row"
       >
         {loading ? (
           <span
@@ -149,7 +154,7 @@ function DistributionCard({
           </div>
         ) : (
           <>
-            <div className="relative aspect-square w-32 max-w-40 shrink-0 @min-[300px]/distribution:w-[42%]">
+            <div className="legacy-aspect-square relative aspect-square w-32 max-w-40 shrink-0 group-data-[container-wide=true]/distribution:w-[42%]">
               {items.length ? (
                 <ChartContainer
                   config={{ count: { label: t(`${key}.sessions`) } }}
@@ -184,13 +189,13 @@ function DistributionCard({
                 <div className="size-full rounded-full border-[12px] border-muted" />
               )}
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <span className="font-mono text-base leading-none font-semibold tabular-nums">
+                <span className="font-mono text-base font-semibold tabular-nums leading-none">
                   {total === undefined ? "—" : formatter.format(total)}
                 </span>
               </div>
             </div>
             {items.length ? (
-              <ul className="grid w-full min-w-0 gap-2.5 @min-[300px]/distribution:flex-1">
+              <ul className="grid w-full min-w-0 gap-2.5 group-data-[container-wide=true]/distribution:flex-1">
                 {items.slice(0, 4).map((item) => (
                   <li
                     key={item.id}
