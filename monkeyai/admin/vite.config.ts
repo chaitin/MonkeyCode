@@ -36,7 +36,10 @@ export default defineConfig({
       "/oauth": backend,
       "/mcp": backend,
       "/v1": backend,
-      "/.well-known/oauth-authorization-server": backend,
+      "/.well-known/oauth-authorization-server": {
+        target: apiBackend,
+        changeOrigin: true,
+      },
     },
   },
   resolve: {
