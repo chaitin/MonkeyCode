@@ -16,12 +16,14 @@ import (
 )
 
 type Service struct {
-	Pool    *pgxpool.Pool
-	Storage resource.Storage
+	Pool        *pgxpool.Pool
+	Storage     resource.Storage
+	design      DesignCatalog
+	importSlots chan struct{}
 }
 
 func NewService(pool *pgxpool.Pool, storage resource.Storage) *Service {
-	return &Service{Pool: pool, Storage: storage}
+	return &Service{Pool: pool, Storage: storage, importSlots: make(chan struct{}, 2)}
 }
 
 type Options struct {
@@ -44,15 +46,17 @@ type Change struct {
 }
 
 type Preview struct {
-	Publisher       string   `json:"publisher"`
-	ReleaseID       string   `json:"release_id"`
-	Version         int64    `json:"version"`
-	PackageSHA256   string   `json:"package_sha256"`
-	PlanDigest      string   `json:"plan_digest"`
-	Changes         []Change `json:"changes"`
-	IgnoredStatic   []string `json:"ignored_static"`
-	RequiresConfirm bool     `json:"requires_confirmation"`
-	AlreadyImported bool     `json:"already_imported"`
+	Publisher       string                 `json:"publisher"`
+	ReleaseID       string                 `json:"release_id"`
+	Version         int64                  `json:"version"`
+	PackageSHA256   string                 `json:"package_sha256"`
+	PlanDigest      string                 `json:"plan_digest"`
+	Changes         []Change               `json:"changes"`
+	IgnoredStatic   []string               `json:"ignored_static"`
+	RequiresConfirm bool                   `json:"requires_confirmation"`
+	AlreadyImported bool                   `json:"already_imported"`
+	Sections        []string               `json:"sections,omitempty"`
+	SectionPlans    map[string]SectionPlan `json:"section_plans,omitempty"`
 }
 
 type binding struct {

@@ -1,6 +1,6 @@
 # MonkeyAI 服务端设计资源导入与分发实施计划
 
-> **状态：方案已入库，功能尚未实现。** 本文依据原实施计划与 v30 实际发布包离线验证结果修订；执行前先完成 M0 契约与夹具冻结，再按任务设置检查点。仅在用户明确要求时使用子代理。实施进度用复选框追踪，离线包校验通过不代表数据库、S3、HTTP 或 Desktop 联调通过。
+> **状态：本地实现与验证已完成，跨项目联合验收待完成。** M1–M7 的本地链路已落地：v30 包校验、PostgreSQL/S3 快照、分区导入、控制面与资源 API、管理台和操作文档。M0 的本地契约/夹具已提交，respub 生产端互验及新增 source_skill_path 的 Desktop 消费仍待外部项目；M8 不标记完成。复合检查项仅在所有子项有证据时勾选。
 
 **目标：** 导入 respub 设计快照 ZIP，离线提供兼容资源 API，并向 Desktop 下发双源配置与短期凭据。
 
@@ -16,32 +16,43 @@
 
 后端命令工作目录为项目内 `backend`；管理台命令工作目录为同项目的 `admin`。
 
-本次入库仅交付实施方案及真实包验证基线，不导入线上包，不将约 275 MiB 的原始包提交到 Git。[现有 Agent 导入约定](resource-package-import-plan.md) 继续描述当前行为；本文描述后续设计分区扩展，未选择设计分区时保留旧 Agent 宽松业务解析。
+本轮在独立 worktree 实施服务端和管理台，不导入线上包，不将约275 MiB的原包提交到Git。普通测试使用小型冻结夹具，真实包通过显式环境变量启用。旧 [Agent 导入约定](resource-package-import-plan.md) 的宽松业务解析仅在未选择设计分区时保留。操作说明见 [导入指南](design-resource-import.md)。
 
-原计划提到的 `docs/design-resource-contract-v1.md` 与 `testdata/design-contract/v1/` 在本次提供的材料和当前项目中未找到，不视为已经交付。执行 M0 时在本项目 `design/design-resource-contract-v1.md` 固化与上游互验后的契约，在 `backend/testdata/design-contract/v1/` 保存小型夹具、规范摘要向量与 `SHA256SUMS`；普通自动化测试只读本地副本，不依赖 Downloads、其他仓库或线上服务。
+原计划引用的外部契约/夹具未提供；本地已新增 [v1 契约](design-resource-contract-v1.md) 与 `backend/testdata/design-contract/v1/`（含 SHA256SUMS、独立生成器及 JCS 向量）。这些是本地冻结结果，不能替代尚未取得的 respub 生产验证器、金样 API 或 Desktop 互验。
 
 先读 `backend/AGENTS.md`。`api/{admin,agent}.yaml`、`internal/app`、`internal/httpapi`、迁移、sqlc 配置和依赖由集成任务统一修改，生成产物只能执行生成命令。手写 Go 文件采用连续小写名称。未经用户要求不推送、不部署、不导入线上包。
 
+## 本地验证记录
+
+- [x] v30真实包校验：472个资源、源身份、manifest投影、JCS摘要、逻辑源文件与提示词/正文；真实大包未提交。
+- [x] 专用PostgreSQL/S3：迁移升级→回滚30→再次升级；R1/R2共存、同release冲突、并发激活、失败保留current、条件写入及Range。
+- [x] 分区HTTP：设计-only不退役Agent、同上传补导、部分成功、失败重试、重放不激活、过期上传保留历史。
+- [x] 资源HTTP：四类目录、过滤/分页/快照绑定、Token/归属、媒体与ZIP的HEAD/Range/ETag，认证先于304/206。
+- [x] 管理台234项测试、类型检查、构建、改动文件ESLint；浏览器完成小型设计-only导入，并检查窄屏布局。
+- [x] 后端全量 `go test -p 4 ./...` 使用独立PostgreSQL/S3通过；收尾变更再次运行涉及业务测试及v30回归通过。
+- [x] `go vet ./...`、`make sqlc-check`、OpenAPI YAML解析、编译期-X构建及Git差异检查。
+- [ ] respub生产验证器/JWT互验、Desktop双源与断网刷新联调、生产部署；详见M8。
+
 ## M0. 冻结真实包契约与最小夹具
 
-**交付：** `design/design-resource-contract-v1.md`、`backend/testdata/design-contract/v1/`；以 [v30 验证基线](design-resource-package-baseline.md) 记录的包 SHA 为真实包识别依据。本阶段是 M1–M5 的前置依赖，未完成项不得标记通过。
+**交付：** `design/design-resource-contract-v1.md`、`backend/testdata/design-contract/v1/`；以 [v30 验证基线](design-resource-package-baseline.md) 记录的包 SHA 为真实包识别依据。本阶段拆为“本地契约冻结”和“外部互验”：前者是本地实现前置，后者是跨渠道兼容验收前置。外部项目代码/验证器未提供时可以继续独立实现，不得把本地样本通过标作外部互验通过。
 
 - [ ] 按 A.7 固定四类资源的 metadata 字段、缺省/空值规则、集合排序及 JCS 测试向量；使用 respub 生产端和 MonkeyAI 校验器交叉验证。保留包内 `catalog.metadata` 的 camelCase 业务字段，不套用发布层 snake_case DTO。
 - [ ] 固定 `manifest_sha256` 的 DTO 投影、字段顺序、Go JSON 转义和排除字段，验证 v30 的声明摘要；不以原始 manifest 字节 SHA 或 JCS 代替。
-- [ ] 固定 catalog 权威规则：嵌套摘要允许为空，非空时必须匹配；嵌套 files 可缺 role，由 catalog 提供；其余文件引用逐项核验。覆盖实际 371 个嵌套 ZIP 的行为。
+- [x] 固定 catalog 权威规则：嵌套摘要允许为空，非空时必须匹配；嵌套 files 可缺 role，由 catalog 提供；其余文件引用逐项核验。覆盖实际 371 个嵌套 ZIP 的行为。
 - [ ] 与 respub/Desktop 同步 A.6.11 的 `source_skill_path` 详情字段：`has_skill=false` 时为 null；为 true 时按原逻辑路径或显式反向映射解析，禁止按 basename 猜测。保留参与摘要的原 `skillPath`。该新增字段需两端契约互验后才能进入 M5/Desktop 联调。
-- [ ] 固定单一活跃发布者、分区独立提交、部分成功与重试协议，以及 A.10 中 sections 和计划修订的规则；记录到 OpenAPI 源文件变更清单，首次 preview 不要求输入尚未生成的 plan_digest。
-- [ ] 构造四类资源、小型 bundle/prompt、外置提示词、设计系统正文、预览与 taxonomy 的合法夹具；冻结预期元数据、逻辑源文件、内容摘要及 manifest 摘要，不从待测导入代码生成期望值。
+- [x] 固定单一活跃发布者、分区独立提交、部分成功与重试协议，以及 A.10 中 sections 和计划修订的规则；记录到 OpenAPI 源文件变更清单，首次 preview 不要求输入尚未生成的 plan_digest。
+- [x] 构造四类资源、小型 bundle/prompt、外置提示词、设计系统正文、预览与 taxonomy 的合法夹具；冻结预期元数据、逻辑源文件、内容摘要及 manifest 摘要，不从待测导入代码生成期望值。
 - [ ] 补充真实包未覆盖的反例：多源共享 archive_path、保留名避让及占用冲突、普通 `._source`、重复 ZIP 条目、文件/目录冲突、损坏摘要、不安全映射，以及同 release 变更 taxonomy/排序。损坏夹具在其他校验层保持有效，以验证对应业务拒绝路径。
-- [ ] 明确校验清单仅证明内容完整性；首期接受管理员选择的包，不声称验证发布者签名。若新增 release 的发布者真实性也要求验证，必须先补充发布签名或可信分发契约。
+- [x] 明确校验清单仅证明内容完整性；首期接受管理员选择的包，不声称验证发布者签名。若新增 release 的发布者真实性也要求验证，必须先补充发布签名或可信分发契约。
 
 
 ## M1. 类型化设计契约及包校验
 
 **文件：** 新增 `backend/internal/designcatalog/{model,package,package_test}.go`；修改 `backend/internal/resourceimport/{package,artifact}.go`、`package_test.go`；新增 `backend/testdata/design-contract/v1/`。
 
-- [ ] 增加测试：合法新设计分区可解析；未知 schema 拒绝设计导入；旧 Agent 包仍可导入；publisher_id 缺失、条目重复及文件 SHA 错误明确失败。运行 `go test ./internal/designcatalog ./internal/resourceimport -run 'TestDesignPackage|TestParse' -v`，先看到新测试失败。
-- [ ] 在 designcatalog 定义独立类型，与 respub DTO 保持 JSON 等价：
+- [x] 增加测试：合法新设计分区可解析；未知 schema 拒绝设计导入；旧 Agent 包仍可导入；publisher_id 缺失、条目重复及文件 SHA 错误明确失败。运行 `go test ./internal/designcatalog ./internal/resourceimport -run 'TestDesignPackage|TestParse' -v`，先看到新测试失败。
+- [x] 在 designcatalog 定义独立类型，与 respub DTO 保持 JSON 等价：
 
 ```go
 type Key struct {
@@ -64,13 +75,13 @@ type File struct {
 }
 ```
 
-- [ ] 在现有包加载入口先保留原始 release/manifest 和分区是否存在，再执行所选分区的解析；不得在设计校验前进入会重写 release_id、manifest 摘要和 slug 的 Agent 规范化流程。Agent 使用独立内部批次身份；设计始终读取原始发布身份。修改 `load.go` 的无条件 `ParseResources` 调用，使设计-only 不解析 Agent 业务内容。
-- [ ] 解析模板/系统嵌套 ZIP、提示词路径、风格媒体与 taxonomy。区分导出元数据与源文件；严格校验路径、保留文件冲突及摘要，不通过宽松 decodeJSON 吞掉设计字段类型错误。catalog 是业务摘要与 files.role 的权威来源；嵌套摘要空字符串允许，非空不符拒绝；嵌套 files 缺 role 时用 catalog 值校验，显式 role 冲突拒绝，不能要求两个 DTO 整体相等。
+- [x] 在现有包加载入口先保留原始 release/manifest 和分区是否存在，再执行所选分区的解析；不得在设计校验前进入会重写 release_id、manifest 摘要和 slug 的 Agent 规范化流程。Agent 使用独立内部批次身份；设计始终读取原始发布身份。修改 `load.go` 的无条件 `ParseResources` 调用，使设计-only 不解析 Agent 业务内容。
+- [x] 解析模板/系统嵌套 ZIP、提示词路径、风格媒体与 taxonomy。区分导出元数据与源文件；严格校验路径、保留文件冲突及摘要，不通过宽松 decodeJSON 吞掉设计字段类型错误。catalog 是业务摘要与 files.role 的权威来源；嵌套摘要空字符串允许，非空不符拒绝；嵌套 files 缺 role 时用 catalog 值校验，显式 role 冲突拒绝，不能要求两个 DTO 整体相等。
 - [ ] 实现发布路径反向恢复：解析 `source_file_paths` 与 `source_file_refs`（`source_path`/`archive_path`），两者同时存在时必须一致；校验两端均为安全相对路径（拒绝绝对路径、反斜杠、空段、`.`/`..`），源路径唯一、目标存在，拒绝重复 ZIP 条目、文件/目录前缀冲突及恢复后覆盖。允许多个逻辑源路径共享同一 archive_path：bundle 的确定一级包装前缀展平后，带前缀附件和已展平附件同字节只保存一份；须按 catalog files.path 逐个恢复原路径并验证 SHA/size，不能要求归档目标唯一或将显式映射目标从普通源文件集合直接删除。sourceFileMetadata 对无 mapping 的普通文件按原路径兼容，不猜测 strip 前缀；额外媒体不随意改名。可能的保留名避让目标为 `template.json._source`、`design-system.json._source`、`DESIGN.md._source`（v30 未覆盖此类冲突，M0 另造夹具），避让在路径归一后应用；普通 `._source` 文件不得按后缀排除。源文件占用避让目标时即使同字节也拒绝，不能静默覆盖。历史 `.source/<原路径>` 仅依据旧包显式映射读取，不猜测或批量改写旧引用。
-- [ ] 校验先于恢复与激活：先按 release/manifest 引用及 `CHECKSUMS.sha256` 验证外包条目和嵌套 ZIP 原始 archive bytes，再核验恢复后的源文件 SHA/size 与 catalog 规范引用。按原逻辑源路径计算 `design-content-v1`，保持 publisher_id、catalog_id、content_digest；生成 template.json/design-system.json、外置提示词等属于导出层元数据，不可作为源文件存储或混入 native ZIP，映射指向的上游同名源文件必须保留。
+- [x] 校验先于恢复与激活：先按 release/manifest 引用及 `CHECKSUMS.sha256` 验证外包条目和嵌套 ZIP 原始 archive bytes，再核验恢复后的源文件 SHA/size 与 catalog 规范引用。按原逻辑源路径计算 `design-content-v1`，保持 publisher_id、catalog_id、content_digest；生成 template.json/design-system.json、外置提示词等属于导出层元数据，不可作为源文件存储或混入 native ZIP，映射指向的上游同名源文件必须保留。
 - [ ] 增加导入回归：上游自带 template.json 能恢复原路径和字节；包装 bundle + 带包装前缀 files 仅一套字体/assets，精确映射恢复完整原源路径；同时存在已展平/带前缀附件时，多源同 archive_path 可恢复，任一源 SHA/size 不符拒绝；不同合法路径即使同字节仍保留；无 mapping 普通文件和无 bundle prompt 路径保持兼容；额外媒体仅补缺。`._source` 目标被源占用拒绝；普通 `._source` 文件通过；不安全、重复源、悬空、两表不一致及恢复覆盖映射拒绝；archive SHA 损坏拒绝；发布包与原生 API 两渠道源字节、规范业务摘要一致。模板包装目录已在发布层展平，不可声称恢复原 ZIP 容器字节或无记录的包装前缀。旧冻结包按原 SHA 读取；布局修复需要新 release，不重新导出并覆盖旧摘要。
-- [ ] publisher_id 读取 `release.json.publisher.id`，并核对 `manifest.json.publisher_id`；保存资源 catalog_id 与 provenance，不能用内部 slug 或名称替代这些字段。
-- [ ] 旧 design_resources 仅 RawMessage 的逻辑改为有设计导入结果；旧未版本化分区返回 unsupported_design_section 提示，不标记成功。
+- [x] publisher_id 读取 `release.json.publisher.id`，并核对 `manifest.json.publisher_id`；保存资源 catalog_id 与 provenance，不能用内部 slug 或名称替代这些字段。
+- [x] 旧 design_resources 仅 RawMessage 的逻辑改为有设计导入结果；旧未版本化分区返回 unsupported_design_section 提示，不标记成功。
 - [ ] 按 A.6.11 解析并保存独立 `source_skill_path`，不改 metadata.skillPath 或摘要；实际包 110 个 bundle 的路径可由显式映射唯一恢复，109 个 prompt 的 has_skill=false，忽略其遗留 `SKILL.md` 默认值。补充有技能但缺文件/映射歧义拒绝、无技能默认值不误报的测试。
 - [ ] 测量夹具及真实测试包的条目数/大小，在外包现有 2 GiB/解压 4 GiB 限制内做流式读取；分别限制嵌套 ZIP，防止层层放大和全包读内存。外包条目上限保留 5000，嵌套单包先使用 5000 条/512 MiB 展开上限，整次导入按所有层实际读取字节累计不超过 4 GiB；v30 嵌套总计 5358 条，不能把 5000 当作所有层条目总和。补充元数据、单文件、临时磁盘与并发导入预算，按实际读取量计数，不只相信 ZIP 声明。运行针对性测试，预期全部 PASS。
 
@@ -78,8 +89,8 @@ type File struct {
 
 **文件：** 新增 `backend/migrations/<递增序号>_design_catalog_snapshots.{up,down}.sql`（用 migrate 生成）；新增 `backend/internal/designcatalog/{postgres,storage}.go`、`query.sql`、`postgres_test.go`、`storage_test.go`；由集成任务修改 `backend/internal/resource/storage.go` 和 `backend/sqlc.yaml`，生成 `backend/schema/schema.sql` 和 `internal/designcatalog/sqlc/`。
 
-- [ ] 写快照持久化测试：同 catalog ID 的 R1/R2 可以共存；同 release 不同内容冲突；current 切换不修改 R1；失败不切 current。运行 `go test ./internal/designcatalog -run 'TestSnapshot|TestStorage' -v`，确认失败。
-- [ ] 用迁移工具生成文件：`migrate create -ext sql -dir migrations -seq design_catalog_snapshots`。在 up 中建立设计快照、条目、文件、taxonomy 与设计当前指针表；down 仅用于专用测试库回滚。
+- [x] 写快照持久化测试：同 catalog ID 的 R1/R2 可以共存；同 release 不同内容冲突；current 切换不修改 R1；失败不切 current。运行 `go test ./internal/designcatalog -run 'TestSnapshot|TestStorage' -v`，确认失败。
+- [x] 用迁移工具生成文件：`migrate create -ext sql -dir migrations -seq design_catalog_snapshots`。在 up 中建立设计快照、条目、文件、taxonomy 与设计当前指针表；down 仅用于专用测试库回滚。
 
 ```sql
 -- 按此身份建立约束，列类型与项目 UUID 约定保持一致。
@@ -91,19 +102,19 @@ CREATE UNIQUE INDEX design_file_key
 ON design_files(entry_id, path);
 ```
 
-- [ ] 写 `query.sql`，在 sqlc.yaml 注册本业务目录；执行 `make generate`，不得手工改生成文件。复用 S3 实现，通过消费者接口注入流式写入、对象头信息及区间读取能力；现有 `Storage.Get` 仅顺序读取、`Put` 接受完整字节数组，不能直接满足本期能力。可复用已有 S3.PutReader，新增接口及调用方适配由集成任务完成。
-- [ ] 文件写入字节 SHA 内容地址；元数据存 MIME/尺寸/路径。导入时在受限临时文件中按逻辑路径排序生成确定性 native ZIP，固定时间、权限、压缩方式及打包器版本，保存 ZIP 实际 SHA/size/object_key。current 只指向源文件、元数据及可下载 ZIP 均已持久化的 ready 快照；不在下载请求中重建 ZIP。
-- [ ] 使用部署级单行 `design_current` 保存 publisher_id、snapshot_id 和单调递增 revision；该行由迁移预建（无快照时 publisher_id/snapshot_id 为 null、revision=0），外键关联快照，事务保证仅激活完整 ready 快照。提供 `Find(ctx, publisherID, releaseID, kind, id)` 与带 expectedRevision 的激活能力；快照查询不依赖 current 发布者。未配置预期 publisher 时首次激活绑定发布者，后续其他 publisher 返回 409；配置预期 publisher 时导入/激活均须一致。首期不实现跨发布者切换。
-- [ ] 将已校验且反向恢复的逻辑源路径关联至不可变内容对象，分别保存导出元数据与源文件清单；不使用 archive 避让路径替代 catalog files.path，不从 respub 在线补文件。旧快照继续引用原不可变对象，新导入不能覆盖其路径或摘要。
-- [ ] 内容地址对象采用条件创建或等价的并发安全写入，已有对象必须核对 SHA/size；不得覆盖同 key 的不同字节。失败只清理本次临时文件，不沿用 Agent prepareObjects 的立即删除对象补偿：并发任务或历史快照可能已经引用相同 key。首期保留未引用对象，回收作为独立任务实施，必须具备宽限期及引用复核；补充共享对象下失败不删、并发写入不损坏的测试。
-- [ ] 执行 `make sqlc-check` 与针对性测试；预期无生成差异、R1/R2 对象互不覆盖、预生成 ZIP 可进行随机区间读取。
+- [x] 写 `query.sql`，在 sqlc.yaml 注册本业务目录；执行 `make generate`，不得手工改生成文件。复用 S3 实现，通过消费者接口注入流式写入、对象头信息及区间读取能力；现有 `Storage.Get` 仅顺序读取、`Put` 接受完整字节数组，不能直接满足本期能力。可复用已有 S3.PutReader，新增接口及调用方适配由集成任务完成。
+- [x] 文件写入字节 SHA 内容地址；元数据存 MIME/尺寸/路径。导入时在受限临时文件中按逻辑路径排序生成确定性 native ZIP，固定时间、权限、压缩方式及打包器版本，保存 ZIP 实际 SHA/size/object_key。current 只指向源文件、元数据及可下载 ZIP 均已持久化的 ready 快照；不在下载请求中重建 ZIP。
+- [x] 使用部署级单行 `design_current` 保存 publisher_id、snapshot_id 和单调递增 revision；该行由迁移预建（无快照时 publisher_id/snapshot_id 为 null、revision=0），外键关联快照，事务保证仅激活完整 ready 快照。提供 `Find(ctx, publisherID, releaseID, kind, id)` 与带 expectedRevision 的激活能力；快照查询不依赖 current 发布者。未配置预期 publisher 时首次激活绑定发布者，后续其他 publisher 返回 409；配置预期 publisher 时导入/激活均须一致。首期不实现跨发布者切换。
+- [x] 将已校验且反向恢复的逻辑源路径关联至不可变内容对象，分别保存导出元数据与源文件清单；不使用 archive 避让路径替代 catalog files.path，不从 respub 在线补文件。旧快照继续引用原不可变对象，新导入不能覆盖其路径或摘要。
+- [x] 内容地址对象采用条件创建或等价的并发安全写入，已有对象必须核对 SHA/size；不得覆盖同 key 的不同字节。失败只清理本次临时文件，不沿用 Agent prepareObjects 的立即删除对象补偿：并发任务或历史快照可能已经引用相同 key。首期保留未引用对象，回收作为独立任务实施，必须具备宽限期及引用复核；补充共享对象下失败不删、并发写入不损坏的测试。
+- [x] 执行 `make sqlc-check` 与针对性测试；预期无生成差异、R1/R2 对象互不覆盖、预生成 ZIP 可进行随机区间读取。
 
 ## M3. 导入预览、分区隔离和原子激活
 
 **文件：** 新增 `backend/internal/resourceimport/{design,design_test}.go`；修改 `resourceimport/{service,preview,artifact,package,load,upload}.go`、`query.sql` 及导入/上传状态迁移；新增 `backend/internal/designcatalog/{import,import_test}.go`；集成时修改 `backend/internal/app/app.go`。
 
-- [ ] 写设计包导入不误退役 Agent 的回归：已有 skill A，导入只含设计分区的包，A 不变；新设计损坏不切 current。运行 `go test ./internal/resourceimport ./internal/designcatalog -run 'TestDesignImport|TestDesignOnly' -v`，先确认失败。
-- [ ] 新增显式导入分区选项，不把缺省 agent_resources 的空数组当作“退役全部 Agent”：
+- [x] 写设计包导入不误退役 Agent 的回归：已有 skill A，导入只含设计分区的包，A 不变；新设计损坏不切 current。运行 `go test ./internal/resourceimport ./internal/designcatalog -run 'TestDesignImport|TestDesignOnly' -v`，先确认失败。
+- [x] 新增显式导入分区选项，不把缺省 agent_resources 的空数组当作“退役全部 Agent”：
 
 ```go
 type ImportSections struct {
@@ -114,11 +125,11 @@ type ImportSections struct {
 // 设计单独导入仅计划设计变化，Agent-only 不清空当前设计快照。
 ```
 
-- [ ] 在现有 Evaluate/Apply 中注入设计消费者接口，签名在调用方定义；设计 preview 返回 publisher_id/release_id/schema、各类型计数及新增/变化/消失项。按 A.10 将 sections、整包 SHA、设计快照指纹和 current revision 纳入计划，各分区返回独立 plan_digest；修改 sections 必须重新预览。
-- [ ] 所选分区分别预写对象、分别提交事务，采用固定 agent → design 顺序执行，返回 A.10 的逐分区结果。一个分区失败不回滚另一个成功分区；允许部分成功，已成功分区重试不得重复应用。失败原因在业务回滚后的独立事务中持久化；若数据库故障无法记录，显式保留结果未知状态并按成功回执恢复，不能将未持久化记录算作成功。
-- [ ] 同 publisher/release 的设计快照指纹相同则复用快照，不同返回409。指纹覆盖所有资源内容摘要、artifact 引用、provenance、catalog_rank 及完整 taxonomy，按 A.7 编码规则计算；设计不重写源 release_id，也不套用 Agent 版本递增逻辑。快照已存储不代表当前上传/分区已成功；首次将已存在历史快照激活仍须通过本次 preview，已成功请求重放不得偷偷重新激活旧快照。
-- [ ] 删除整包 AlreadyImported 提前返回对新分区的影响，以 upload/分区结果及设计快照身份分别判定幂等；同一上传在有效期内可先导入 Agent 再导入设计，第一分区成功不将整包标成不可再处理。旧 Agent-only 的行为保持兼容。
-- [ ] 设计事务内 `SELECT ... FOR UPDATE` 锁住单行 current，重新读取 revision 并复核本分区计划，再写快照/条目/文件/taxonomy、切指针并递增 revision。先验证后加锁不算并发保护；并发首次激活、A→B→A 及预览后其他导入成功均须使旧计划409。Agent 继续使用既有 publisher 锁，两种分区不同时持有对方锁。故障时旧快照可读，针对性测试全部 PASS。
+- [x] 在现有 Evaluate/Apply 中注入设计消费者接口，签名在调用方定义；设计 preview 返回 publisher_id/release_id/schema、各类型计数及新增/变化/消失项。按 A.10 将 sections、整包 SHA、设计快照指纹和 current revision 纳入计划，各分区返回独立 plan_digest；修改 sections 必须重新预览。
+- [x] 所选分区分别预写对象、分别提交事务，采用固定 agent → design 顺序执行，返回 A.10 的逐分区结果。一个分区失败不回滚另一个成功分区；允许部分成功，已成功分区重试不得重复应用。失败原因在业务回滚后的独立事务中持久化；若数据库故障无法记录，显式保留结果未知状态并按成功回执恢复，不能将未持久化记录算作成功。
+- [x] 同 publisher/release 的设计快照指纹相同则复用快照，不同返回409。指纹覆盖所有资源内容摘要、artifact 引用、provenance、catalog_rank 及完整 taxonomy，按 A.7 编码规则计算；设计不重写源 release_id，也不套用 Agent 版本递增逻辑。快照已存储不代表当前上传/分区已成功；首次将已存在历史快照激活仍须通过本次 preview，已成功请求重放不得偷偷重新激活旧快照。
+- [x] 删除整包 AlreadyImported 提前返回对新分区的影响，以 upload/分区结果及设计快照身份分别判定幂等；同一上传在有效期内可先导入 Agent 再导入设计，第一分区成功不将整包标成不可再处理。旧 Agent-only 的行为保持兼容。
+- [x] 设计事务内 `SELECT ... FOR UPDATE` 锁住单行 current，重新读取 revision 并复核本分区计划，再写快照/条目/文件/taxonomy、切指针并递增 revision。先验证后加锁不算并发保护；并发首次激活、A→B→A 及预览后其他导入成功均须使旧计划409。Agent 继续使用既有 publisher 锁，两种分区不同时持有对方锁。故障时旧快照可读，针对性测试全部 PASS。
 
 ## M4. JWT 签发、设备归属与资源源配置
 
@@ -126,8 +137,8 @@ type ImportSections struct {
 
 > **2026-10-21 新决策：** 控制面固定为 `GET /api/v1/design-resources/config` 与 `POST /api/v1/design-resources/token`。旧计划的 `/api/v1/design/resources` 和 `/api/v1/design/resources/token` 不再使用。控制面前缀属于 MonkeyAI，不属于 respub；respub hub 公开前缀仍为 `/api/design`。
 
-- [ ] 写测试：当前用户设备可签发；其他用户、已移除设备、缺实例身份不可签发；respub 未配置仍返回本地源；密钥不进入 JSON。运行 `go test ./internal/designcatalog ./internal/app ./internal/endpoint -run 'TestDesignToken|TestDesignConfig|TestOwnedDevice' -v`，先确认失败。
-- [ ] 配置项固定为：
+- [x] 写测试：当前用户设备可签发；其他用户、已移除设备、缺实例身份不可签发；respub 未配置仍返回本地源；密钥不进入 JSON。运行 `go test ./internal/designcatalog ./internal/app ./internal/endpoint -run 'TestDesignToken|TestDesignConfig|TestOwnedDevice' -v`，先确认失败。
+- [x] 配置项固定为：
 
 ```text
 MONKEYAI_INSTANCE_ID                  部署级稳定实例ID，重启不变
@@ -140,8 +151,8 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 
 `MONKEYAI_DESIGN_RESPUB_URL` 名称保留，语义改为完整 base，避免与现有配置计划冲突。值必须是绝对 URL，带完整 path，无 userinfo、query、fragment；尾斜杠可归一化但不改变已有路径段。配置存在但非法时启动报错，不把非法值降级成“未配置”。`MONKEYAI_DESIGN_PUBLISHER_ID` 未配置时输出 null。
 
-- [ ] 增加 endpoint 归属查询适配器，校验 `(当前用户ID,machine_id)` 为有效登记设备；不把客户端传入 ID 当已认证事实。JWT client_id 取验证后的 MachineID，不能用 OAuth 的公共 client_id=monkeyai-desktop。
-- [ ] 固定控制面响应（由现有 OAuth Bearer 保护）：
+- [x] 增加 endpoint 归属查询适配器，校验 `(当前用户ID,machine_id)` 为有效登记设备；不把客户端传入 ID 当已认证事实。JWT client_id 取验证后的 MachineID，不能用 OAuth 的公共 client_id=monkeyai-desktop。
+- [x] 固定控制面响应（由现有 OAuth Bearer 保护）：
 
 ```json
 {
@@ -154,9 +165,9 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 }
 ```
 
-- [ ] 明确 `config` 语义：`respub` 未配置时为 `null`，不是 `{"base_url":""}`；配置时 `base_url` 是可直接拼接 `/catalog/...` 或 `/design-systems/...` 的完整 base。`monkeyai` 始终为对象，`base_url` 固定以 `/api/v1/design-resources` 结尾；未导入本地快照时 `available=false`、`snapshot=null`，但 `base_url` 仍可供认证和错误诊断使用。publisher_id 未配置为 null，不使用 omitempty；响应不含任何 secret。
-- [ ] 实现 `GET /api/v1/design-resources/config` 和 `POST /api/v1/design-resources/token`。Token 请求为 `{machine_id,target}`，target=`respub` 或 `monkeyai-media`，响应 `{token,expires_at}`；不使用旧的 `/api/v1/design/resources/token`。Token 端点与 catalog 同前缀但是控制面兄弟路径，不属于 catalog 契约，也不从 respub base 派生。
-- [ ] respub Token 固定 HS256/iss=monkeyai/aud=respub-design；本地媒体固定 aud=monkeyai-design-media、sub=用户ID，签名不同。两者均含 instance_id/client_id/iat/exp，10分钟有效。JWT claims 与既有 respub 验证实现保持一致，不因控制面改名而改 claim。缺签发配置 503，不使其他功能启动失败。给 Desktop 签发 hub token 复用此控制面；`monkeyai-media` 是独立本地 token，不与 hub token 混用。
+- [x] 明确 `config` 语义：`respub` 未配置时为 `null`，不是 `{"base_url":""}`；配置时 `base_url` 是可直接拼接 `/catalog/...` 或 `/design-systems/...` 的完整 base。`monkeyai` 始终为对象，`base_url` 固定以 `/api/v1/design-resources` 结尾；未导入本地快照时 `available=false`、`snapshot=null`，但 `base_url` 仍可供认证和错误诊断使用。publisher_id 未配置为 null，不使用 omitempty；响应不含任何 secret。
+- [x] 实现 `GET /api/v1/design-resources/config` 和 `POST /api/v1/design-resources/token`。Token 请求为 `{machine_id,target}`，target=`respub` 或 `monkeyai-media`，响应 `{token,expires_at}`；不使用旧的 `/api/v1/design/resources/token`。Token 端点与 catalog 同前缀但是控制面兄弟路径，不属于 catalog 契约，也不从 respub base 派生。
+- [x] respub Token 固定 HS256/iss=monkeyai/aud=respub-design；本地媒体固定 aud=monkeyai-design-media、sub=用户ID，签名不同。两者均含 instance_id/client_id/iat/exp，10分钟有效。JWT claims 与既有 respub 验证实现保持一致，不因控制面改名而改 claim。缺签发配置 503，不使其他功能启动失败。给 Desktop 签发 hub token 复用此控制面；`monkeyai-media` 是独立本地 token，不与 hub token 混用。
 - [ ] 运行针对性测试；与 respub JWT 验证测试互验，且无真实凭据进入夹具。
 
 ## M5. 兼容 API 查询和路由集成
@@ -166,7 +177,7 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 > **2026-10-21 新决策：** MonkeyAI 面向 Desktop 的全部资源 API 使用完整 base `https://当前服务端/api/v1/design-resources`，资源后缀与 respub hub base `/api/design` 相同。Desktop 新路由不挂 `/openapi/`，本期不提供 `/openapi` 兼容别名：当前 Desktop 尚未实现，不存在需要兼容的旧消费者。respub hub 仍使用 `/api/design/...`，两端只是 base 不同。控制面 `config`/`token` 与资源 base 同前缀，但不是 catalog 路径。路径选择：snapshot、list、detail、模板下载、media、taxonomy 全部位于 `/api/v1/design-resources/catalog/...`；系统下载保持 hub 的兄弟路径 `/api/v1/design-resources/design-systems/{id}/download`，不塞进 `/catalog`，以便两端只替换 base。
 
 - [ ] 用本地已导入夹具写 API 对照测试，覆盖模板、系统、风格、方向、taxonomy、snapshot、资源 ZIP；运行 `go test ./internal/designcatalog ./internal/app -run 'TestCatalogContract|TestDesignRoute' -v`，先确认新路由失败。
-- [ ] 固定路径映射；Desktop 只根据配置的完整 base 拼接相对后缀，不从 domain 猜 `/api/design`：
+- [x] 固定路径映射；Desktop 只根据配置的完整 base 拼接相对后缀，不从 domain 猜 `/api/design`：
 
 | 用途 | respub hub 路径 | MonkeyAI 本地路径（Desktop 新契约） |
 | --- | --- | --- |
@@ -180,9 +191,9 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 | 控制面 token | 无（由 MonkeyAI 签发 hub token） | `POST /api/v1/design-resources/token` |
 | 控制面 config | 无 | `GET /api/v1/design-resources/config` |
 
-- [ ] 新模块暴露显式 RegisterCatalog 注册函数，挂载上述 `/api/v1/design-resources/...` 路径到顶层 router；现有 httpapi.New 仅挂 admin/agent/auth，因此由集成任务接入新 handler，并更新其调用点测试。不要把所有路径机械改成同一前缀而漏掉 `/design-systems/{id}/download`。
-- [ ] JSON/ZIP 使用现有 RequireAgent；媒体仅在专用 GET/HEAD 路由验证本地媒体 token，校验 audience、instance、sub 和有效期，不接受 respub JWT 替代 OAuth。
-- [ ] RequireAgent 的既有错误是控制面 error 信封；仅在 catalog/下载资源认证边界转换为兼容 `{code,message,data:null}`，并将 invalid_token、permission_denied、service_unavailable 映射为 unauthorized、forbidden、unavailable，状态码不变。config/token 保留现有控制面错误信封，成功返回裸对象。媒体路由不经过强制 Agent Bearer 中间件，只接受专用本地媒体 JWT；无 current 返回404 snapshot_not_found，存储故障返回503。
+- [x] 新模块暴露显式 RegisterCatalog 注册函数，挂载上述 `/api/v1/design-resources/...` 路径到顶层 router；现有 httpapi.New 仅挂 admin/agent/auth，因此由集成任务接入新 handler，并更新其调用点测试。不要把所有路径机械改成同一前缀而漏掉 `/design-systems/{id}/download`。
+- [x] JSON/ZIP 使用现有 RequireAgent；媒体仅在专用 GET/HEAD 路由验证本地媒体 token，校验 audience、instance、sub 和有效期，不接受 respub JWT 替代 OAuth。
+- [x] RequireAgent 的既有错误是控制面 error 信封；仅在 catalog/下载资源认证边界转换为兼容 `{code,message,data:null}`，并将 invalid_token、permission_denied、service_unavailable 映射为 unauthorized、forbidden、unavailable，状态码不变。config/token 保留现有控制面错误信封，成功返回裸对象。媒体路由不经过强制 Agent Bearer 中间件，只接受专用本地媒体 JWT；无 current 返回404 snapshot_not_found，存储故障返回503。
 - [ ] 对齐 respub 契约的 code/message/data、query 参数、分页、id、asset_snapshot_id 与内容摘要；snapshot 指向已导入源 Release，未知 404，不回落 current。生成当前服务端 URL，文件直出并支持 Range/ETag。
 - [ ] 离线 native ZIP 在导入阶段从本地不可变源文件按恢复后的原逻辑路径确定性生成并持久化；下载只流式读取该冻结对象，使用实际 ZIP 字节 SHA 作为强 ETag，以对象长度处理 HEAD/Range/If-Range。包含上游 template.json/design-system.json/DESIGN.md 原字节，不加入发布元数据、提示词导出引用或避让副本。ZIP 容器 SHA 可因重建不同，业务 content_digest 与源文件 SHA 必须和 respub 一致；模板原包装目录/原 ZIP 容器字节未记录时不能恢复。测试关闭 respub 网络后仍能读取历史 snapshot、源文件与 native ZIP，两个渠道逐文件比较路径/字节并核对业务摘要；跨请求/进程验证 ETag 稳定。
 - [ ] 补充 OpenAPI 源文件的新增控制面路径和 `/api/v1/design-resources/...` 资源路径，保留两种响应信封各自适用范围；不新增 `/openapi` Desktop 路由。运行 API 金样测试，输出除 base/域名外与 respub 一致。
@@ -191,8 +202,8 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 
 **文件：** 修改 `admin/src/pages/resource-imports-page.tsx`、`admin/src/components/resource-import-dialog.tsx`；新增 `admin/src/lib/design-import.ts`、`admin/test/design-import.test.mjs`；更新已有 i18n 文件时沿用项目语言结构，不插入中文硬编码到多语 key。
 
-- [ ] 写纯函数测试：设计包统计展示四类数量；Agent-only 不显示设计已清空；设计未支持或失败不能展示成功。运行 admin 的 `npm test`，先确认新测试失败。
-- [ ] 从页面提取设计预览解析和分区选择函数，保留 Agent 现有 UI，新增 Agent/设计分区选择及设计激活说明。
+- [x] 写纯函数测试：设计包统计展示四类数量；Agent-only 不显示设计已清空；设计未支持或失败不能展示成功。运行 admin 的 `npm test`，先确认新测试失败。
+- [x] 从页面提取设计预览解析和分区选择函数，保留 Agent 现有 UI，新增 Agent/设计分区选择及设计激活说明。
 
 ```ts
 export type DesignImportSummary = {
@@ -200,22 +211,23 @@ export type DesignImportSummary = {
   release_id: string
   schema_version: number
   counts: Record<'template' | 'design-system' | 'style' | 'direction', number>
-  status: 'ready' | 'unsupported' | 'failed'
+  changes: { kind: string; id: string; name: string; action: string }[]
 }
+// unsupported 由发现接口 sections.design.supported 表示；failed 由逐分区结果表示。
 ```
 
-- [ ] 对话框先发现可用分区，再带 sections 请求正式 preview；确认请求带 sections、package_sha256、总计划与逐分区 plan_digest，严格按 A.10 处理。移除“本包总是最终 Agent 集合”的单一文案假设，按选择分区解释替换语义；选择变化使旧预览失效。
-- [ ] 表单展示逐分区导入结果、部分成功及激活的源 Release ID，不把内部批次版本号当目录快照身份。一个分区成功不自动关闭对话框；失败/未选择分区可在上传有效期内重新预览处理，已成功项不得随重试重复应用。历史同时展示分区状态和失败原因。
-- [ ] 在 admin 执行 `npm test`、`npm run typecheck`、`npm run build`，预期通过。
+- [x] 对话框先发现可用分区，再带 sections 请求正式 preview；确认请求带 sections、package_sha256、总计划与逐分区 plan_digest，严格按 A.10 处理。移除“本包总是最终 Agent 集合”的单一文案假设，按选择分区解释替换语义；选择变化使旧预览失效。
+- [x] 表单展示逐分区导入结果、部分成功及激活的源 Release ID，不把内部批次版本号当目录快照身份。一个分区成功不自动关闭对话框；失败/未选择分区可在上传有效期内重新预览处理，已成功项不得随重试重复应用。历史同时展示分区状态和失败原因。
+- [x] 在 admin 执行 `npm test`、`npm run typecheck`、`npm run build`，预期通过。
 
 ## M7. 配置、编译期注入、文档和后端完整检查
 
 **文件：** 新增 `design/design-resource-import.md`，修改项目 `README.md`、`.env.example`、`docker-compose.yml` 和 backend API 文档。
 
-- [ ] 写管理员操作说明：复制部署稳定 instance_id；配置预期 publisher_id；分别配置 respub 签发密钥与本地媒体密钥；离线部署可不配置 respub URL；配置 respub 时填写完整 base（示例 `https://hub.monkeycode-ai.com/api/design`），不要填裸域名后期待运行时补路径。
-- [ ] 在 README 和 `design/design-resource-import.md` 写清配置优先级：运行环境变量 > 编译期 `-X` 默认值 > 未配置。必须使用 LookupEnv 一类的存在性判断，显式空值也覆盖默认值，测试空值关闭编译期 respub 配置。`MONKEYAI_DESIGN_RESPUB_URL`、`MONKEYAI_DESIGN_PUBLISHER_ID`、`MONKEYAI_DESIGN_RESPUB_JWT_SECRET`、`MONKEYAI_DESIGN_MEDIA_JWT_SECRET`，以及部署级 `MONKEYAI_INSTANCE_ID`，都允许在构建时通过 `-X` 设置默认字符串；运行环境变量始终覆盖编译期默认值。具体变量符号路径由实现任务按 module path 决定，本节不声称已实现。
-- [ ] Go `-X` 只能设置 string 包变量。实现时在 `internal/config`（或该包内明确命名的配置默认值文件）定义空字符串默认变量，并由 config 统一读取；不得在业务包散落 `os.Getenv`，不得把 secret 写进源码、镜像构建参数、日志、错误响应或 API JSON。编译期注入只是构建产物内的默认值，用 `strings`/二进制分析仍可能提取，不等同于安全保管，也不表示可把凭据放进公开客户端。
-- [ ] 示例构建命令仅说明形式，占位符由实现任务替换；不得在文档写入真实 secret：
+- [x] 写管理员操作说明：复制部署稳定 instance_id；配置预期 publisher_id；分别配置 respub 签发密钥与本地媒体密钥；离线部署可不配置 respub URL；配置 respub 时填写完整 base（示例 `https://hub.monkeycode-ai.com/api/design`），不要填裸域名后期待运行时补路径。
+- [x] 在 README 和 `design/design-resource-import.md` 写清配置优先级：运行环境变量 > 编译期 `-X` 默认值 > 未配置。必须使用 LookupEnv 一类的存在性判断，显式空值也覆盖默认值，测试空值关闭编译期 respub 配置。`MONKEYAI_DESIGN_RESPUB_URL`、`MONKEYAI_DESIGN_PUBLISHER_ID`、`MONKEYAI_DESIGN_RESPUB_JWT_SECRET`、`MONKEYAI_DESIGN_MEDIA_JWT_SECRET`，以及部署级 `MONKEYAI_INSTANCE_ID`，都允许在构建时通过 `-X` 设置默认字符串；运行环境变量始终覆盖编译期默认值。具体变量符号路径由实现任务按 module path 决定，本节不声称已实现。
+- [x] Go `-X` 只能设置 string 包变量。实现时在 `internal/config`（或该包内明确命名的配置默认值文件）定义空字符串默认变量，并由 config 统一读取；不得在业务包散落 `os.Getenv`，不得把 secret 写进源码、镜像构建参数、日志、错误响应或 API JSON。编译期注入只是构建产物内的默认值，用 `strings`/二进制分析仍可能提取，不等同于安全保管，也不表示可把凭据放进公开客户端。
+- [x] 示例构建命令仅说明形式，占位符由实现任务替换；不得在文档写入真实 secret：
 
 ```bash
 go build -trimpath -o monkeyai-server \
@@ -225,8 +237,8 @@ go build -trimpath -o monkeyai-server \
   ./cmd/server
 ```
 
-- [ ] 在专用测试库验证迁移、make generate 与 make sqlc-check；不对开发者已有数据执行 down 迁移。
-- [ ] 后端运行 `go test ./...`、`go vet ./...`、`make sqlc-check`；记录通过或环境依赖阻塞，不将跳过测试算通过。
+- [x] 在专用测试库验证迁移、make generate 与 make sqlc-check；不对开发者已有数据执行 down 迁移。
+- [x] 后端运行 `go test ./...`、`go vet ./...`、`make sqlc-check`；记录通过或环境依赖阻塞，不将跳过测试算通过。
 - [ ] 用服务端本地测试注册设备调用 `POST /api/v1/design-resources/token`；外来 machine_id 应拒绝，合法 Token 经 respub 验证成功。另验证未配置 respub 时 `config.respub=null`、本地 `monkeyai-media` 仍可签发，以及 `/api/v1/design-resources/catalog/...` 资源可读。
 
 ## M8. 与 respub / Desktop 联合验收
@@ -1221,18 +1233,24 @@ sections 是 agent/design 的非空去重集合，服务端按固定顺序规范
   "section_plans":{
     "design":{
       "plan_digest":"sha256:...",
-      "current_revision":0,
-      "snapshot_digest":"sha256:...",
-      "publisher_id":"...",
-      "release_id":"...",
-      "schema_version":1,
-      "counts":{"template":1,"design-system":1,"style":1,"direction":1}
+      "already_imported":false,
+      "design":{
+        "plan_digest":"sha256:...",
+        "current_revision":0,
+        "snapshot_digest":"sha256:...",
+        "publisher_id":"...",
+        "release_id":"...",
+        "schema_version":1,
+        "digest_schema":"design-content-v1",
+        "counts":{"template":1,"design-system":1,"style":1,"direction":1},
+        "changes":[]
+      }
     }
   }
 }
 ```
 
-总计划绑定上传、actor、package SHA、规范化 sections、options 及每个分区的 plan_digest。Agent 分区计划覆盖其绑定/资源修订，设计分区计划覆盖设计快照指纹及单行 current revision；两个分区不使用对方的可变状态作为自身计划输入。Apply 开始时校验总计划，每个分区在自身事务锁内再次校验本分区计划。
+总计划绑定上传、actor、package SHA、规范化 sections、影响执行的 authorization_modes 及每个分区的计划。confirm_final/accept_normalization 是确认开关，不进入计划摘要。Agent 分区计划覆盖其绑定/资源修订，设计分区计划覆盖设计快照指纹及单行 current revision；两个分区不使用对方的可变状态作为自身计划输入。Apply 开始时校验总计划，每个分区在自身事务锁内再次校验本分区计划。
 
 #### A.10.2 确认与逐分区结果
 

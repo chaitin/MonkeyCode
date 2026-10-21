@@ -100,7 +100,7 @@ paths:
   /api/admin/v1/resource-imports/preview:
     post:
       summary: 解析资源发布包并预览变更
-      description: 使用已封存的 upload_id，或直接上传不超过 2 GiB 的 ZIP，磁盘暂存并解析完整 Agent 清单，不写入资源。JSON 元数据仅检查语法，不校验发布端摘要、字段格式或元数据一致性；缺省字段使用默认值，CHECKSUMS.sha256 和 release.json 可省略。返回新增/更新/跳过/退役/恢复与 plan_digest。缺失资源若仍被其他启用的 Expert 引用，将返回包含 Expert 名称和 ID 的 409 冲突。
+      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，变更选项后须重新预览。
       requestBody:
         required: true
         content:
@@ -114,13 +114,13 @@ paths:
                 package: {type: string, format: binary}
                 options: {type: string, description: JSON 编码的认证归属选项}
       responses:
-        '200': {description: 预览结果与包摘要}
+        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '409': {description: 资源身份或现有数据关联冲突}
   /api/admin/v1/resource-imports:
     post:
-      summary: 按预览确认原子导入完整 Agent 清单
-      description: 使用预览时相同的 upload_id，无需再次上传；兼容重新上传同一 ZIP（最大 2 GiB）。校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。全部分卷只产生一个导入批次，保留发布者锁与整包事务。
+      summary: 按预览确认所选资源分区
+      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。
       requestBody:
         required: true
         content:
@@ -138,17 +138,31 @@ paths:
                 package_sha256: {type: string}
                 plan_digest: {type: string}
                 options: {type: string}
+                sections: {type: string, description: JSON编码的分区数组；跨分区分次处理使用封存upload_id}
+                section_plan_digests: {type: string, description: JSON编码的逐分区计划}
       responses:
-        '200': {description: 导入批次结果}
+        '200':
+          description: 分区结果，status为succeeded或partial；不要仅凭HTTP200显示全部成功。旧Agent-only仍返回原Preview。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [succeeded, partial]}
+                  warning: {type: string, description: 业务已提交但上传状态同步失败的提示}
+                  sections:
+                    type: object
+                    additionalProperties: {$ref: '#/components/schemas/ResourceSectionResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
-        '409': {description: 并发变更冲突，需重新预览}
+        '409': {description: 并发变更冲突，需重新预览；无成功分区时error.references包含分区结果}
+        '503': {description: 存储/数据库暂不可用；无成功分区时返回错误，不假报成功}
     get:
       summary: 分页查询资源包导入批次
       parameters:
         - {name: cursor, in: query, schema: {type: string}, description: 上一页返回的 next_cursor}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 20}}
       responses:
-        '200': {description: 返回 items 与 next_cursor，支持每页最多 500 条}
+        '200': {description: 返回items与next_cursor，支持每页最多500条；新分区批次含section_results，status支持succeeded/partial/failed，设计源release不改写为Agent内部版本。}
   /api/admin/v1/resource-imports/{id}:
     get:
       summary: 读取资源包导入批次详情
@@ -5036,6 +5050,19 @@ components:
               sha256: {type: string}
         created_at: {type: string, format: date-time}
         expires_at: {type: string, format: date-time}
+    ResourceSectionResult:
+      type: object
+      required: [status, replayed]
+      properties:
+        status: {type: string, enum: [succeeded, failed]}
+        replayed: {type: boolean}
+        http_status: {type: integer}
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
+        result: {type: object, description: Agent Preview或设计Plan，包含源release_id及资源计数}
     ResourceImportInput:
       type: object
       required: [upload_id]
@@ -5043,6 +5070,15 @@ components:
         upload_id: {type: string, format: uuid}
         package_sha256: {type: string}
         plan_digest: {type: string}
+        discover_only: {type: boolean, description: 只发现分区，不生成计划，不能用于Apply}
+        sections:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, enum: [agent, design]}
+        section_plan_digests:
+          type: object
+          additionalProperties: {type: string}
         options:
           type: object
           properties:

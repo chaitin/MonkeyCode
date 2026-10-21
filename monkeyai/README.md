@@ -25,6 +25,12 @@ docker compose up --build
 
 如果 Admin 前面还有反向代理，在 `.env` 中设置 `MONKEYAI_TRUSTED_PROXY_CIDRS` 为**直接连接 Admin 的可信代理** IP/CIDR，多个地址用英文逗号分隔，例如 `192.0.2.10/32,2001:db8::/32`。仅当连接来自这些网段时，Admin Nginx 才按 X-Forwarded-For 从右向左解析来源，并将结果作为 `X-Real-IP` 转发给后端；未设置时仍记录连接方地址。前置代理应追加实际连接来源到 XFF 或覆盖客户端提交的 XFF，不要把客户端可控的整段 XFF 原样透传，也不要将所有网段或整个容器网段设为可信代理。修改后重建 Admin 镜像并运行 `docker compose up -d admin`。
 
+## 设计资源导入与离线分发
+
+管理台“资源管理 → 导入资源包”可选择 Agent/设计分区，预览后分别提交并展示结果。设计资源保存不可变快照，提供本地目录、媒体与 ZIP 下载，旧快照保留；设计-only 不退役 Agent。部署配置、部分成功重试、双源 Token 与 API 说明见 [设计资源操作指南](design/design-resource-import.md)。
+
+设计配置支持运行环境变量 > 编译期 `-X` 默认值 > 未配置；显式空环境变量也覆盖编译默认值。离线部署不配置 `MONKEYAI_DESIGN_RESPUB_URL`，在线时填写完整 base。`MONKEYAI_INSTANCE_ID` 为部署稳定身份，hub 与本地媒体使用独立服务端密钥。新增 `source_skill_path` 字段及 respub/Desktop 跨项目联调仍待联合验收，不应将本地测试视为线上已验收。
+
 ## 客户端下载
 
 首页的客户端下载地址配置在 [`admin/public/downloads.json`](admin/public/downloads.json)。按平台填入 HTTPS 下载地址或同站点的绝对路径；Linux 分别配置 `linux_arm64` 和 `linux_x64`，Mac 分别配置 `macos_arm64` 和 `macos_x64`。空地址在页面上显示“敬请期待”，不会跳转。首次部署可修改该文件后重建 Admin 镜像；如需不重建镜像就更新链接，可将配置文件只读挂载到 Admin 容器的 `/usr/share/nginx/html/downloads.json`。

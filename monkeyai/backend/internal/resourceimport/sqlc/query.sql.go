@@ -9,6 +9,16 @@ import (
 	"context"
 )
 
+const bindSectionBatch = `-- name: BindSectionBatch :exec
+UPDATE resource_imports SET upload_id=($1::jsonb->>'upload_id')::uuid
+WHERE publisher=$1::jsonb->>'publisher' AND release_id=($1::jsonb->>'release_id')::uuid
+`
+
+func (q *Queries) BindSectionBatch(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, bindSectionBatch, data)
+	return err
+}
+
 const cancelImportUpload = `-- name: CancelImportUpload :exec
 UPDATE resource_import_uploads SET status='cancelled',package_sha256='',expires_at=now() WHERE id=$1::uuid
 `
@@ -136,7 +146,14 @@ func (q *Queries) CreateImportUpload(ctx context.Context, data []byte) ([]byte, 
 }
 
 const deleteImportUpload = `-- name: DeleteImportUpload :exec
-DELETE FROM resource_import_uploads WHERE id=$1::uuid
+WITH archived AS (
+    UPDATE resource_import_uploads u SET cleaned_at=now()
+    WHERE u.id=$1::uuid AND (EXISTS (SELECT 1 FROM resource_import_sections s WHERE s.upload_id=u.id)
+       OR EXISTS (SELECT 1 FROM resource_imports i WHERE i.upload_id=u.id)) RETURNING u.id
+), chunks AS (
+    DELETE FROM resource_import_chunks WHERE upload_id IN (SELECT id FROM archived)
+)
+DELETE FROM resource_import_uploads WHERE id=$1::uuid AND NOT EXISTS (SELECT 1 FROM archived)
 `
 
 func (q *Queries) DeleteImportUpload(ctx context.Context, dollar_1 string) error {
@@ -154,14 +171,14 @@ func (q *Queries) FinishImportUpload(ctx context.Context, dollar_1 string) error
 }
 
 const getImportHistory = `-- name: GetImportHistory :one
-SELECT to_jsonb(i) FROM resource_imports i WHERE id = $1::uuid
+SELECT i.data FROM resource_import_history i WHERE id = $1::uuid
 `
 
 func (q *Queries) GetImportHistory(ctx context.Context, dollar_1 string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, getImportHistory, dollar_1)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
+	var data []byte
+	err := row.Scan(&data)
+	return data, err
 }
 
 const getImportSkillSHA = `-- name: GetImportSkillSHA :one
@@ -235,6 +252,28 @@ func (q *Queries) GetLatestImport(ctx context.Context, publisher string) (GetLat
 	return i, err
 }
 
+const importSection = `-- name: ImportSection :one
+SELECT status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid AND section=$2
+`
+
+type ImportSectionParams struct {
+	Column1 string
+	Section string
+}
+
+type ImportSectionRow struct {
+	Status     string
+	PlanDigest string
+	Result     []byte
+}
+
+func (q *Queries) ImportSection(ctx context.Context, arg ImportSectionParams) (ImportSectionRow, error) {
+	row := q.db.QueryRow(ctx, importSection, arg.Column1, arg.Section)
+	var i ImportSectionRow
+	err := row.Scan(&i.Status, &i.PlanDigest, &i.Result)
+	return i, err
+}
+
 const invalidateImportTools = `-- name: InvalidateImportTools :exec
 UPDATE mcp_tools SET deleted_at=now() WHERE connector_id=$1::uuid AND deleted_at IS NULL
 `
@@ -287,7 +326,7 @@ func (q *Queries) LinkImportExpertSkill(ctx context.Context, arg LinkImportExper
 }
 
 const listExpiredImportUploads = `-- name: ListExpiredImportUploads :many
-SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now()
+SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now() AND cleaned_at IS NULL
 ORDER BY expires_at LIMIT 10 FOR UPDATE SKIP LOCKED
 `
 
@@ -360,7 +399,7 @@ func (q *Queries) ListImportChunks(ctx context.Context, dollar_1 string) ([][]by
 }
 
 const listImportHistory = `-- name: ListImportHistory :many
-SELECT to_jsonb(i) FROM resource_imports i
+SELECT i.data FROM resource_import_history i
 WHERE $1::jsonb = '{}'::jsonb
    OR (i.created_at, i.id) < (($1::jsonb->>'created_at')::timestamptz, ($1::jsonb->>'id')::uuid)
 ORDER BY i.created_at DESC, i.id DESC
@@ -380,11 +419,11 @@ func (q *Queries) ListImportHistory(ctx context.Context, arg ListImportHistoryPa
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, data)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -425,6 +464,42 @@ func (q *Queries) ListImportReferences(ctx context.Context, arg ListImportRefere
 	for rows.Next() {
 		var i ListImportReferencesRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportSections = `-- name: ListImportSections :many
+SELECT section,status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid ORDER BY section
+`
+
+type ListImportSectionsRow struct {
+	Section    string
+	Status     string
+	PlanDigest string
+	Result     []byte
+}
+
+func (q *Queries) ListImportSections(ctx context.Context, dollar_1 string) ([]ListImportSectionsRow, error) {
+	rows, err := q.db.Query(ctx, listImportSections, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListImportSectionsRow{}
+	for rows.Next() {
+		var i ListImportSectionsRow
+		if err := rows.Scan(
+			&i.Section,
+			&i.Status,
+			&i.PlanDigest,
+			&i.Result,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -519,7 +594,7 @@ func (q *Queries) LockImportSkill(ctx context.Context, dollar_1 string) (string,
 const lockImportUpload = `-- name: LockImportUpload :one
 SELECT to_jsonb(u) FROM resource_import_uploads u
 WHERE id=$1::uuid AND actor_user_id=$2::uuid AND status<>'cancelled' AND expires_at>now()
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
 type LockImportUploadParams struct {
@@ -608,6 +683,19 @@ WHERE connector_id=$1::uuid AND revoked_at IS NULL
 
 func (q *Queries) RevokeImportCredentials(ctx context.Context, dollar_1 string) error {
 	_, err := q.db.Exec(ctx, revokeImportCredentials, dollar_1)
+	return err
+}
+
+const saveImportSection = `-- name: SaveImportSection :exec
+INSERT INTO resource_import_sections(upload_id,section,status,plan_digest,result)
+SELECT (d->>'upload_id')::uuid,d->>'section',d->>'status',d->>'plan_digest',d->'result'
+FROM (SELECT $1::jsonb AS d) input
+ON CONFLICT(upload_id,section) DO UPDATE SET status=EXCLUDED.status,plan_digest=EXCLUDED.plan_digest,result=EXCLUDED.result,updated_at=now()
+WHERE resource_import_sections.status<>'succeeded'
+`
+
+func (q *Queries) SaveImportSection(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, saveImportSection, data)
 	return err
 }
 

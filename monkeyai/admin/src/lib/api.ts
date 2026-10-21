@@ -1,9 +1,11 @@
 export class ApiError extends Error {
   status: number
+  details: unknown
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, details?: unknown) {
     super(message)
     this.status = status
+    this.details = details
   }
 }
 
@@ -23,7 +25,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const payload = await response.json().catch(() => null)
     const message =
       payload?.error?.message ?? payload?.error_description ?? "请求失败"
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, message, payload?.error?.references)
   }
   if (response.status === 204) {
     return undefined as T

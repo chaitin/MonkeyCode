@@ -26,6 +26,7 @@ type Database struct {
 type Config struct {
 	HTTP
 	Database
+	Design
 	RuntimeDesktopOrigins        []string
 	RuntimeRelay                 bool
 	RuntimeStateDir              string
@@ -75,6 +76,7 @@ func Load(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
 	}
 	cfg := Config{
+		Design:                       loadDesign(),
 		RuntimeDesktopOrigins:        strings.FieldsFunc(os.Getenv("MONKEYAI_RUNTIME_DESKTOP_ORIGINS"), func(r rune) bool { return r == ',' || r == ' ' }),
 		RuntimeRelay:                 runtimeRelay,
 		RuntimeStateDir:              envOr("MONKEYAI_RUNTIME_STATE_DIR", "data/runtime"),
@@ -98,6 +100,9 @@ func Load(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}
 
+	if err := validateDesign(&cfg.Design); err != nil {
+		return Config{}, err
+	}
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
 		return Config{}, errors.New("HTTP 监听地址不能为空")
@@ -115,8 +120,8 @@ func Load(args []string) (Config, error) {
 		return Config{}, errors.New("服务端公网地址不能为空")
 	}
 	parsed, err := url.Parse(cfg.PublicURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return Config{}, errors.New("public-url 必须是绝对 HTTP(S) 地址")
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return Config{}, errors.New("public-url 必须是无凭据、查询或片段的绝对 HTTP(S) 地址")
 	}
 	if (cfg.InitialAdminEmail == "") != (cfg.InitialAdminPassword == "") {
 		return Config{}, errors.New("首次管理员邮箱和密码必须同时配置")

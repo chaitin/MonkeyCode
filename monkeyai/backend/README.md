@@ -2,6 +2,10 @@
 
 MonkeyAI 的统一 Go 后端，同时承接管理后台和 AI Work Agent 的请求。首期使用一个服务进程，两类调用方复用同一套业务逻辑和数据模型。
 
+## 设计资源
+
+`internal/designcatalog` 负责版本化发布包校验、逻辑源文件恢复、不可变快照及离线目录；`resourceimport` 负责分区发现、计划确认、回执与重试。资源 base 为 `/api/v1/design-resources`，JSON/ZIP 使用现有 Agent 认证，媒体使用独立短期 JWT。配置和管理员操作见 [设计资源导入指南](../design/design-resource-import.md)，接口定义见 `api/agent.yaml`、`api/admin.yaml`。
+
 ## 技术选型
 
 | 领域 | 选型 |
@@ -36,6 +40,7 @@ backend/
 │   ├── identity/              # 登录、用户、角色和分组
 │   ├── apikey/                # Agent 调用密钥
 │   ├── agentconfig/           # Agent 资源目录与专家依赖解析
+│   ├── designcatalog/          # 设计快照、源文件、目录及媒体认证
 │   ├── resource/              # 文件、标签、资源所有权和访问授权
 │   ├── model/                 # 模型配置与调用入口
 │   ├── proxy/                 # 模型协议代理与调用计费
