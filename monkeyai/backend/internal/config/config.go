@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const defaultLogLevel = slog.LevelWarn
+
 type HTTP struct {
 	Addr            string
 	PprofAddr       string
@@ -61,7 +63,7 @@ func Load(args []string) (Config, error) {
 
 	logLevel := os.Getenv("MONKEYAI_LOG_LEVEL")
 	if logLevel == "" {
-		logLevel = slog.LevelInfo.String()
+		logLevel = defaultLogLevel.String()
 	}
 
 	endpointMax, err := strconv.Atoi(envOr("MONKEYAI_ENDPOINT_MAX_CONNECTIONS", "1000"))

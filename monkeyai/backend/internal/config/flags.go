@@ -42,7 +42,7 @@ func parseFlags(args []string, cfg *Config, level *string) error {
 // ParseLogLevel parses shared startup flags without loading business settings.
 func ParseLogLevel(args []string) (slog.Level, error) {
 	var cfg Config
-	text := envOr("MONKEYAI_LOG_LEVEL", slog.LevelInfo.String())
+	text := envOr("MONKEYAI_LOG_LEVEL", defaultLogLevel.String())
 	if err := parseFlags(args, &cfg, &text); err != nil {
 		return 0, err
 	}
@@ -85,7 +85,7 @@ func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
 func PrintUsage(output io.Writer) {
 	cfg := Config{HTTP: HTTP{Addr: ":8080", PprofAddr: "127.0.0.1:6060", ShutdownTimeout: 10 * time.Second},
 		EndpointMaxConnections: 1000, PublicURL: "http://localhost:8080"}
-	level := slog.LevelInfo.String()
+	level := defaultLogLevel.String()
 	flags := startupFlags(&cfg, &level)
 	flags.SetOutput(output)
 	_, _ = io.WriteString(output, "用法: monkeyai-server [启动参数]\n")

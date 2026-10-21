@@ -9,6 +9,35 @@ import (
 	"testing"
 )
 
+func TestLogLevelDefaultsAndOverrides(t *testing.T) {
+	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://test")
+	for _, test := range []struct {
+		name string
+		env  string
+		args []string
+		want slog.Level
+	}{
+		{name: "默认 WARN", want: slog.LevelWarn},
+		{name: "环境 INFO", env: "info", want: slog.LevelInfo},
+		{name: "环境 DEBUG", env: "debug", want: slog.LevelDebug},
+		{name: "参数覆盖环境", env: "error", args: []string{"--log-level=info"}, want: slog.LevelInfo},
+		{name: "参数覆盖非法环境", env: "invalid", args: []string{"--log-level=debug"}, want: slog.LevelDebug},
+		{name: "显式 WARN", env: "info", args: []string{"--log-level=warn"}, want: slog.LevelWarn},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("MONKEYAI_LOG_LEVEL", test.env)
+			level, err := ParseLogLevel(test.args)
+			if err != nil || level != test.want {
+				t.Fatalf("日志构造级别 = %s，期望 %s: %v", level, test.want, err)
+			}
+			cfg, err := Load(test.args)
+			if err != nil || cfg.LogLevel != test.want {
+				t.Fatalf("业务配置级别 = %s，期望 %s: %v", cfg.LogLevel, test.want, err)
+			}
+		})
+	}
+}
+
 func TestParseLogLevelWithoutBusinessConfiguration(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "")
 	t.Setenv("MONKEYAI_SHUTDOWN_TIMEOUT", "invalid")
@@ -40,9 +69,10 @@ func TestParseLogLevelWithoutBusinessConfiguration(t *testing.T) {
 
 func TestHelpDoesNotIncludeEnvironmentSecrets(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "postgres://private-secret")
+	t.Setenv("MONKEYAI_LOG_LEVEL", "error")
 	var output bytes.Buffer
 	PrintUsage(&output)
-	if strings.Contains(output.String(), "private-secret") || !strings.Contains(output.String(), "-log-level") {
+	if strings.Contains(output.String(), "private-secret") || !strings.Contains(output.String(), "-log-level") || !strings.Contains(output.String(), `(default "WARN")`) {
 		t.Fatal(output.String())
 	}
 }
