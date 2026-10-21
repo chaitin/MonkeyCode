@@ -11,7 +11,6 @@ import (
 
 func TestTerminalSocketSurvivesOriginalTicketAndHandshakeDeadline(t *testing.T) {
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	runtime := f.runtime(t)
 	scopes := []string{"session:control"}
 	connection := f.connection(t, runtime.hello.MachineID, ConnectionRequest{Scopes: &scopes, SupportedProtocols: runtime.hello.Protocols}, f.token)
@@ -45,7 +44,6 @@ func TestTerminalRevocationAndTunnelLossReleaseStreams(t *testing.T) {
 	for _, event := range []string{"grant", "device", "control", "events", "data", "shutdown"} {
 		t.Run(event, func(t *testing.T) {
 			f := newFixture(t)
-			f.s.config.TerminalWS = true
 			runtime := f.runtime(t)
 			token, grant := f.mint(t, f.user, []string{"device:connect", "session:control"})
 			scopes := []string{"session:control"}

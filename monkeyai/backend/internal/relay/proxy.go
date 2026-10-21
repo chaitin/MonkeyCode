@@ -108,10 +108,6 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	terminal := p == "/terminal"
 	var terminalTicket string
 	if terminal {
-		if !s.config.TerminalWS {
-			failure(r.Context(), w, 404, "not_found")
-			return
-		}
 		var valid bool
 		terminalTicket, _, valid = terminalHandshake(r)
 		if !valid {

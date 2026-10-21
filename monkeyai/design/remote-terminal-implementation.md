@@ -1,14 +1,14 @@
 # 远程终端服务端实现与验收记录
 
-日期：2026-10-20。实施依据：[服务端契约原文](remote-terminal-backend.md)，客户端契约基线 `160e8f98`。实现基于 MonkeyCode `5b5c3d91`，分支 `feat-remote-terminal`；本文件所在提交即实现提交，可用 `git log -1 -- monkeyai/design/remote-terminal-implementation.md` 获取。当前未部署，真实客户端验收未完成，默认不声明终端可用。
+日期：2026-10-21。实施依据：[服务端契约原文](remote-terminal-backend.md)，客户端契约基线 `160e8f98`。当前基于 MonkeyCode `67c0e9a5`，分支 `feat-remote-terminal`；本文件所在提交即实现提交，可用 `git log -1 -- monkeyai/design/remote-terminal-implementation.md` 获取。本次改动未部署，真实客户端验收未完成；终端随远程执行中转默认提供。
 
-原文按交付时内容保存，其中 `REMOTE-*`、`BUILDING.md` 和 `apps/*` 等链接及路径属于客户端仓库。本仓基础协议见 [remote-runtime-protocol.md](remote-runtime-protocol.md)。
+原文按交付时内容保存，其中 `REMOTE-*`、`BUILDING.md` 和 `apps/*` 等链接及路径属于客户端仓库。终端启用策略按用户最新要求调整：移除独立环境变量，随远程执行中转默认声明 `terminal_ws: true` 并提供终端代理。本仓基础协议见 [remote-runtime-protocol.md](remote-runtime-protocol.md)。
 
 ## 实现对应
 
 | 契约 | 实现 |
 | --- | --- |
-| 发现布尔能力、分阶段开启 | `MONKEYAI_RUNTIME_TERMINAL_WS` 默认 false；与 `/proxy/terminal` 同一开关；保留既有发现字段；发现响应 no-store |
+| 发现布尔能力、默认开启 | 中转启用时直接发布布尔 `terminal_ws: true` 并提供 `/proxy/terminal`，无需独立终端配置；保留既有发现字段；发现响应 no-store |
 | GET、Upgrade、子协议、query | 独立终端握手校验；业务子协议必须恰好一个 `monkeyai.terminal.v1`；Bearer 与 token 子协议可同时提供但必须一致；重复凭据、额外协议、未知/重复/非法查询、歧义路径均拒绝 |
 | 来源与身份 | 沿用安装版 `app://monkeyai`、公开 origin 和显式 Desktop 来源白名单；无 Origin 仍校验 ticket、账号、设备、授权族及 `session:control`；不接受 OAuth 替代 ticket |
 | 数据通道路由 | `/terminal` 及规范化的 `?reattach=1` 独占数据 yamux 流；数据离线不回退 control；Host 固定 `device.internal` |
@@ -30,14 +30,13 @@
 
 ```dotenv
 MONKEYAI_RUNTIME_RELAY=true
-MONKEYAI_RUNTIME_TERMINAL_WS=false
 # 仅列实际开发来源，精确包含端口；安装版和公开 origin 已默认允许。
 MONKEYAI_RUNTIME_DESKTOP_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-`MONKEYAI_PUBLIC_URL`、签名身份目录和文件 origin 沿用既有配置。Compose 已透传终端开关。HTTP 使用 WS，HTTPS 使用 WSS，不跨协议重试。
+`MONKEYAI_PUBLIC_URL`、签名身份目录和文件 origin 沿用既有配置。HTTP 使用 WS，HTTPS 使用 WSS，不跨协议重试。
 
-先部署关闭终端能力的实现；在隔离环境开启后，用真实客户端完成契约第 11 节及 11.1、11.2。全部可能承接数据通道的节点支持且验收通过后，统一设置 `MONKEYAI_RUNTIME_TERMINAL_WS=true` 并重启服务。发现中的增量应为：
+部署新版 backend 后，启用远程执行中转的服务直接声明终端能力，不需要额外设置环境变量。发现中的增量为：
 
 ```json
 {"terminal_ws":true}
@@ -65,8 +64,9 @@ MONKEYAI_RUNTIME_DESKTOP_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 | 全仓库竞态回归（含数据库/RustFS/Nginx） | 通过 | `go test -race ./... -count=1 -timeout=300s`，全部包通过；relay 168 秒，覆盖原有 95 秒控制空闲回归；Nginx 真容器验证终端业务子协议及双向字节流 |
 | go vet、sqlc、OpenAPI/Compose 检查 | 通过 | `make check`（普通全量测试、go vet、schema/sqlc diff）；两个 OpenAPI 的 YAML 无重复键、内部引用完整；Compose YAML 可解析；迁移序号不冲突且 up/down 成对 |
 | 应用接入与最后修改回归 | 通过 | 实际 App 发现接口保留 issuer/runtime_relay 并发布布尔 terminal_ws，响应 no-store；诊断指标只挂诊断监听器；签名 8 KiB 边界；针对性竞态回归及 go vet 再次通过 |
+| 默认开启回归 | 通过 | 移除配置解析、Compose 变量和夹具手动启用；默认发现返回 true，缺票据终端入口返回 401；隔离 PostgreSQL/RustFS/Nginx 下终端和 App 针对性 `-race` 回归、`make check` 及 YAML/引用检查通过 |
 
-本次变基至 `origin/main` 的 `641efbe5a`，合并主干日志改造：保留服务端生成的 `X-Request-ID`、错误诊断和取消分类；终端流收尾事件沿用 DEBUG 级别，配额及指标使用日志组通过安全过滤。变基后 `make check` 和隔离 PostgreSQL 下的终端竞态回归通过，另验证终端响应不采用客户端或 runtime 伪造的请求关联 ID，以及日志过滤后仍保留终端路由和配额。此前全仓库真实依赖回归保留为上表的原始记录，本次未重复 RustFS/Nginx 全量集成。
+日志兼容性验证：变基至 `origin/main` 的 `641efbe5a` 时合并主干日志改造：保留服务端生成的 `X-Request-ID`、错误诊断和取消分类；终端流收尾事件沿用 DEBUG 级别，配额及指标使用日志组通过安全过滤。变基后 `make check` 和隔离 PostgreSQL 下的终端竞态回归通过，另验证终端响应不采用客户端或 runtime 伪造的请求关联 ID，以及日志过滤后仍保留终端路由和配额。此前全仓库真实依赖回归保留为上表的原始记录，该轮变基未重复 RustFS/Nginx 全量集成。
 
 首次配置数据库的全量测试因缺少 `MONKEYAI_S3_ENDPOINT`，四个 App 集成用例失败；随后补齐隔离 RustFS 环境并运行完整回归。该环境准备失败与最终验证结果分别记录，不计作通过。
 
@@ -89,7 +89,7 @@ make check
 
 | 原文场景 | 需要补充的真实验证 |
 | --- | --- |
-| 能力开关与发现恢复 | 缺失/false/true、撤回/恢复、files_origin 改变后 initialize 和可信文件来源刷新；已有 shell 保留 |
+| 能力发现与恢复 | 默认声明 true；版本回滚后的缺失/false 兼容；files_origin 改变后 initialize 和可信文件来源刷新；已有 shell 保留 |
 | 正常使用与多端 | initialize/get/open/attach/input/resize/close；命令与文件落在目标原工作目录；claim 后旧端写入被拒 |
 | 普通重连、只读、身份与来源 | 窗口隐藏/关闭/断网、不同账号/grant、observe 只读拒绝、安装与开发 GUI 实际 Origin |
 | 通道隔离、续票、权限收窄与撤销 | 目标 shell 保留，原 runtimeInstanceId/terminalId 恢复；控制/data 独立故障，正常换票不重建；撤销不发送 close |
@@ -105,4 +105,4 @@ make check
 
 ## 回滚
 
-先在所有中转节点设置 `MONKEYAI_RUNTIME_TERMINAL_WS=false` 并重启；发现同步撤回能力，拒绝新终端，已有观察流随本节点结束关闭，不向目标发送终端 close 或设备撤销事件。之后可回退应用镜像；本次无数据库迁移。原 shell 的保留由仍在运行的目标 runtime 生命周期保证。
+回退到不提供终端能力的 backend 镜像并重启服务。发现随该版本撤回终端能力，已有观察流随本节点结束关闭，不向目标发送终端 close 或设备撤销事件。本次无数据库迁移。原 shell 的保留由仍在运行的目标 runtime 生命周期保证。

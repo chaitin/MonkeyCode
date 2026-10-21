@@ -301,7 +301,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
 	var runtimeRelay *relay.Service
 	if cfg.RuntimeRelay {
-		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{TerminalWS: cfg.RuntimeTerminalWS, DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
+		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
 		}

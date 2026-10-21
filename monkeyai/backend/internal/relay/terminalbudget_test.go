@@ -32,7 +32,6 @@ func waitMetrics(t *testing.T, s *Service, regular, terminal, candidate int64) {
 
 func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	runtime := f.runtimeHandler(t, func(w http.ResponseWriter, r *http.Request) bool {
 		if r.URL.Path != "/cap/held/mcp" {
 			return false
@@ -133,7 +132,6 @@ func TestTerminalFullDataTunnelRepeatedReplacement(t *testing.T) {
 
 func TestTerminalPreUpgradeSecurityAndFreshStateFailure(t *testing.T) {
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	runtime := f.runtime(t)
 	scopes := []string{"session:read", "session:control"}
 	connection := f.connection(t, runtime.hello.MachineID, ConnectionRequest{Scopes: &scopes, SupportedProtocols: runtime.hello.Protocols}, f.token)

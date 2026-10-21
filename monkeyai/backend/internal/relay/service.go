@@ -39,7 +39,6 @@ type Config struct {
 	VerificationKeysFile  string
 	SigningKeyFile        string
 	MaxDevices            int
-	TerminalWS            bool
 }
 
 type Service struct {
@@ -210,7 +209,7 @@ func (s *Service) DeviceAuthorizationKey() []byte {
 func (s *Service) Metadata() map[string]any {
 	metadata := map[string]any{"server_id": s.config.ServerID, "bridge_url": strings.Replace(s.config.PublicURL, "http", "ws", 1) + "/api/v1/endpoint-bridge",
 		"files_origin": s.config.FilesOrigin, "access_signing_keys": s.verificationKeys,
-		"runtime_api": []int{1}, "tunnel_versions": []int{Version}, "features": map[string]bool{"device_binding": true, "desktop_managed": true, "runtime_relay": true, "terminal_ws": s.config.TerminalWS}}
+		"runtime_api": []int{1}, "tunnel_versions": []int{Version}, "features": map[string]bool{"device_binding": true, "desktop_managed": true, "runtime_relay": true, "terminal_ws": true}}
 	metadata["time_policy"] = map[string]int64{"access_lease_ttl_ms": 60000, "access_lease_renew_ms": 20000, "max_auth_staleness_ms": 180000, "max_time_reference_age_ms": 120000, "max_time_uncertainty_ms": 5000, "max_grant_clock_skew_ms": 5000, "max_file_grant_ttl_ms": 300000}
 	if s.config.PreviewOriginTemplate != "" {
 		metadata["preview_origin_template"] = s.config.PreviewOriginTemplate

@@ -1,6 +1,6 @@
 # 远程执行协议 v1 联调契约
 
-状态：2026-10-20 增加终端数据通道代理和有界重连候选，终端默认关闭；实现及待补真实客户端验收见[终端交付记录](remote-terminal-implementation.md)。基础协议的数据库和 HTTP/yamux 集成验证记录见[互通验证记录](remote-runtime-interop-validation.md)。实际客户端提交 `4eb858b1` 与 Mac/Windows UI 联合验收仍需对应客户端环境。支持 Desktop 托管和独立 runtime，服务端默认开启，可通过 `MONKEYAI_RUNTIME_RELAY=false` 关闭；设备侧发布仍须本机显式启用。设计与实施状态见[后端实现方案](remote-runtime-backend-plan.md)。
+状态：2026-10-20 增加终端数据通道代理和有界重连候选，随远程执行中转默认开启；实现及待补真实客户端验收见[终端交付记录](remote-terminal-implementation.md)。基础协议的数据库和 HTTP/yamux 集成验证记录见[互通验证记录](remote-runtime-interop-validation.md)。实际客户端提交 `4eb858b1` 与 Mac/Windows UI 联合验收仍需对应客户端环境。支持 Desktop 托管和独立 runtime，服务端默认开启，可通过 `MONKEYAI_RUNTIME_RELAY=false` 关闭；设备侧发布仍须本机显式启用。设计与实施状态见[后端实现方案](remote-runtime-backend-plan.md)。
 
 ## 1. 发现与认证
 
@@ -73,7 +73,7 @@ ready 包含 server_id、machine_id、registration_version、grant_version、bou
 
 创建和续期均实时核验；续期加 connection_id，可省略 scopes 和 supported_protocols。显式权限只能收窄，续期不能改变协议。默认 15 分钟、每设备 8 份有效授权，ticket 为 32 字节随机值，服务端只存摘要。
 
-普通代理使用 `Authorization: Bearer <ticket>`。ACP WebSocket 使用 `monkeyai.v1` 和 `monkeyai.token.<ticket>`；中转消费票据子协议，只转发并回选 `monkeyai.v1`。终端 WebSocket 使用 `monkeyai.terminal.v1`，要求 `session:control`，仅路由到数据通道 `/terminal`，不回退控制通道；`MONKEYAI_RUNTIME_TERMINAL_WS` 默认 false，验收后显式启用才发布布尔 `features.terminal_ws=true`。终端只允许无 query 或恰好一个 `reattach=1`，严格拒绝重复/额外协议及凭据；Bearer 与 token 子协议同时提供时必须一致。允许安装版 `app://monkeyai` 和部署 origin；开发地址及端口通过 `MONKEYAI_RUNTIME_DESKTOP_ORIGINS` 显式配置，未知来源拒绝。
+普通代理使用 `Authorization: Bearer <ticket>`。ACP WebSocket 使用 `monkeyai.v1` 和 `monkeyai.token.<ticket>`；中转消费票据子协议，只转发并回选 `monkeyai.v1`。终端 WebSocket 使用 `monkeyai.terminal.v1`，要求 `session:control`，仅路由到数据通道 `/terminal`，不回退控制通道；随远程执行中转默认提供，并发布布尔 `features.terminal_ws=true`，无需终端专用环境变量。终端只允许无 query 或恰好一个 `reattach=1`，严格拒绝重复/额外协议及凭据；Bearer 与 token 子协议同时提供时必须一致。允许安装版 `app://monkeyai` 和部署 origin；开发地址及端口通过 `MONKEYAI_RUNTIME_DESKTOP_ORIGINS` 显式配置，未知来源拒绝。
 
 代理白名单：ACP GET 使用 session:read；POST `/read/session` 使用 session:read，`/read/config` 使用 resources:manage，`/read/interaction` 使用 session:control，`/write/resource` 同时要求 resources:manage/session:read；MCP POST/GET/DELETE 使用 files:read；上传 PUT/HEAD 使用 files:write；文件 GET/HEAD 使用 files:read 和精确文件授权。正文读取等待响应头 150 秒，资源写入 225 秒，其余 30 秒；取消、授权和流预算仍生效。CORS 允许 Upload-Session-ID 等上传头并暴露上传、MCP、Range/ETag 响应头。禁止本机宿主管理和能力注册，清除外部凭据与自报身份头。
 

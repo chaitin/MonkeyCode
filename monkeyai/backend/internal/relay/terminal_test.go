@@ -107,8 +107,8 @@ func TestTerminalUpgradeValidation(t *testing.T) {
 	}
 }
 
-func TestTerminalPathAndDisabledCapability(t *testing.T) {
-	s := &Service{logger: slog.New(slog.NewTextHandler(io.Discard, nil)), config: Config{TerminalWS: true}}
+func TestTerminalPathAndDefaultCapability(t *testing.T) {
+	s := &Service{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	router := chi.NewRouter()
 	router.HandleFunc("/api/v1/endpoints/{machine}/proxy/*", s.proxy)
 	base := "http://relay.test/api/v1/endpoints/10000000-0000-4000-8000-000000000003/proxy"
@@ -120,19 +120,15 @@ func TestTerminalPathAndDisabledCapability(t *testing.T) {
 			t.Fatalf("路径 %s status=%d", path, w.Code)
 		}
 	}
-	s.config.TerminalWS = false
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, terminalRequest(base+"/terminal"))
-	if w.Code != 404 || !strings.Contains(w.Body.String(), `"not_found"`) {
-		t.Fatal("能力关闭仍提供终端")
+	r := terminalRequest(base + "/terminal")
+	r.Header.Set("Sec-WebSocket-Protocol", terminalProtocol)
+	router.ServeHTTP(w, r)
+	if w.Code != 401 || !strings.Contains(w.Body.String(), `"connection_expired"`) {
+		t.Fatal("默认终端入口应要求票据")
 	}
-	features := s.Metadata()["features"].(map[string]bool)
-	if features["terminal_ws"] {
-		t.Fatal("默认开启能力")
-	}
-	s.config.TerminalWS = true
 	if !s.Metadata()["features"].(map[string]bool)["terminal_ws"] {
-		t.Fatal("能力开关未发布")
+		t.Fatal("默认未声明终端能力")
 	}
 }
 
@@ -146,7 +142,6 @@ func dialTerminal(ctx context.Context, f *fixture, runtime *runtimeFixture, tick
 
 func TestTerminalProxyFreshLeaseHeadersRotationAndNarrowing(t *testing.T) {
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	proxy := httptest.NewServer(logging.HTTP(f.s.logger)(f.server.Config.Handler))
 	t.Cleanup(proxy.Close)
 	f.server = proxy
@@ -218,7 +213,6 @@ func TestTerminalProxyFreshLeaseHeadersRotationAndNarrowing(t *testing.T) {
 
 func TestTerminalUpstreamFailurePassthroughAndOffline(t *testing.T) {
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	runtime := f.runtimeHandler(t, func(w http.ResponseWriter, r *http.Request) bool {
 		if r.URL.Path != "/terminal" {
 			return false

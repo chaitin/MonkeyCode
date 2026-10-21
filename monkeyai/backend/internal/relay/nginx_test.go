@@ -23,7 +23,6 @@ func TestNginxRelay(t *testing.T) {
 		t.Skip("设置 MONKEYAI_TEST_NGINX_IMAGE 运行 Nginx 集成验证")
 	}
 	f := newFixture(t)
-	f.s.config.TerminalWS = true
 	upstream, _ := url.Parse(f.server.URL)
 	config := fmt.Sprintf("events {}\nhttp { upstream monkeyai_backend { server host.docker.internal:%s; } server { listen 8080; include /etc/nginx/relay-app.conf; } }\n", upstream.Port())
 	configPath := filepath.Join(t.TempDir(), "nginx.conf")
