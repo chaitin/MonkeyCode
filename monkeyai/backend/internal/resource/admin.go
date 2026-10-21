@@ -15,12 +15,12 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 	r.Get("/resources/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
 		groups, err := DecodeObjects(sqlc.New(s.Pool).ListGroups(r.Context()))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		name, err := rootgroup.Name(r.Context(), s.Pool)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		for _, group := range groups {
@@ -31,42 +31,42 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 		groups = append([]Object{{"id": rootgroup.ID, "parent_id": nil, "name": name}}, groups...)
 		users, err := DecodeObjects(sqlc.New(s.Pool).ListUsers(r.Context()))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		memberships, err := rootgroup.UserGroups(r.Context(), s.Pool)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		for _, user := range users {
 			user["group_id"] = memberships[user.String("id")]
 		}
-		JSON(w, 200, Object{"groups": groups, "users": users})
+		JSON(r.Context(), w, 200, Object{"groups": groups, "users": users})
 	})
 	r.Get("/tags", func(w http.ResponseWriter, r *http.Request) {
 		items, err := DecodeObjects(sqlc.New(s.Pool).ListTags(r.Context()))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
-		JSON(w, 200, Object{"items": items})
+		JSON(r.Context(), w, 200, Object{"items": items})
 	})
 	save := func(w http.ResponseWriter, r *http.Request) {
 		var in Object
 		if err := Decode(w, r, &in); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		name := strings.TrimSpace(in.String("name"))
 		if name == "" || len(name) > 100 {
-			Fail(w, Invalid("标签名称无效"))
+			Fail(r.Context(), w, Invalid("标签名称无效"))
 			return
 		}
 		u, _ := identity.UserFromContext(r.Context())
 		tx, err := s.Pool.Begin(r.Context())
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		defer func() { rollback(r.Context(), tx, "tag_save", chi.URLParam(r, "id")) }()
@@ -85,18 +85,18 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			err = tx.Commit(r.Context())
 		}
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 
-		JSON(w, 200, out)
+		JSON(r.Context(), w, 200, out)
 	}
 	r.Post("/tags", save)
 	r.Put("/tags/{id}", save)
 	r.Delete("/tags/{id}", func(w http.ResponseWriter, r *http.Request) {
 		tx, err := s.Pool.Begin(r.Context())
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		defer func() { rollback(r.Context(), tx, "tag_delete", chi.URLParam(r, "id")) }()
@@ -111,7 +111,7 @@ func (s *Store) RegisterAdmin(r chi.Router) {
 			err = tx.Commit(r.Context())
 		}
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 

@@ -41,7 +41,7 @@ func TestDiscoverOAuth(t *testing.T) {
 					if scenario == "bad-resource" {
 						res += "/other"
 					}
-					resource.JSON(w, 200, resource.Object{"resource": res, "authorization_servers": []string{origin + "/tenant"}, "scopes_supported": []string{"read", "offline_access"}})
+					resource.JSON(r.Context(), w, 200, resource.Object{"resource": res, "authorization_servers": []string{origin + "/tenant"}, "scopes_supported": []string{"read", "offline_access"}})
 					return
 				}
 				metadataPath, issuer := "/.well-known/oauth-authorization-server/tenant", origin+"/tenant"
@@ -80,7 +80,7 @@ func TestDiscoverOAuth(t *testing.T) {
 					http.Redirect(w, r, origin+"/redirected", http.StatusFound)
 					return
 				}
-				resource.JSON(w, 200, metadata)
+				resource.JSON(r.Context(), w, 200, metadata)
 			}))
 			defer remote.Close()
 			origin = remote.URL
@@ -152,21 +152,21 @@ func TestDynamicOAuthLifecycle(t *testing.T) {
 			w.WriteHeader(401)
 		case "/.well-known/oauth-protected-resource/mcp":
 			discoveries.Add(1)
-			resource.JSON(w, 200, resource.Object{"resource": origin + "/mcp", "authorization_servers": []string{origin}, "scopes_supported": []string{"read"}})
+			resource.JSON(r.Context(), w, 200, resource.Object{"resource": origin + "/mcp", "authorization_servers": []string{origin}, "scopes_supported": []string{"read"}})
 		case "/.well-known/oauth-authorization-server":
-			resource.JSON(w, 200, resource.Object{"issuer": origin, "authorization_endpoint": origin + "/authorize", "token_endpoint": origin + "/token", "registration_endpoint": origin + "/register"})
+			resource.JSON(r.Context(), w, 200, resource.Object{"issuer": origin, "authorization_endpoint": origin + "/authorize", "token_endpoint": origin + "/token", "registration_endpoint": origin + "/register"})
 		case "/register":
 			registrations.Add(1)
 			var body resource.Object
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			resource.JSON(w, 201, resource.Object{"client_id": "dynamic", "client_secret": "registered-secret", "redirect_uris": body["redirect_uris"]})
+			resource.JSON(r.Context(), w, 201, resource.Object{"client_id": "dynamic", "client_secret": "registered-secret", "redirect_uris": body["redirect_uris"]})
 		case "/token":
 			_ = r.ParseForm()
 			user, secret, ok := r.BasicAuth()
 			if r.Form.Get("resource") != origin+"/mcp" || r.Form.Get("code_verifier") == "" || !ok || user != "dynamic" || secret != "registered-secret" {
 				t.Error("Token 请求缺少资源标识、PKCE 或注册后的客户端凭证")
 			}
-			resource.JSON(w, 200, resource.Object{"access_token": "access"})
+			resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "access"})
 		default:
 			http.NotFound(w, r)
 		}

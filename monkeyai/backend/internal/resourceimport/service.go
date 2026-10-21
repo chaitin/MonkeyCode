@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"hash/fnv"
 	"log/slog"
 	"net/http"
@@ -54,56 +55,63 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Post("/resource-imports/preview", func(w http.ResponseWriter, r *http.Request) {
 		loaded, err := s.loadImport(w, r)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		defer loaded.cleanup()
 		out, err := s.Evaluate(r.Context(), s.Pool, loaded.pkg, loaded.items, loaded.input.Options, loaded.sha)
 		if err != nil {
-			resource.Fail(w, &resource.Error{Status: 409, Code: "import_conflict", Message: err.Error()})
+			resource.Fail(r.Context(), w, &resource.Error{Status: 409, Code: "import_conflict", Message: err.Error()})
 			return
 		}
-		resource.JSON(w, http.StatusOK, out)
+		resource.JSON(r.Context(), w, http.StatusOK, out)
 	})
 	router.Post("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
 		loaded, err := s.loadImport(w, r)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		defer loaded.cleanup()
 		if loaded.input.PackageSHA256 != loaded.sha || loaded.input.PlanDigest == "" || !loaded.input.Options.ConfirmFinal {
-			resource.Fail(w, resource.Invalid("必须先预览并确认本包是最终 Agent 资源集合"))
+			resource.Fail(r.Context(), w, resource.Invalid("必须先预览并确认本包是最终 Agent 资源集合"))
 			return
 		}
 		out, err := s.Apply(r.Context(), loaded.pkg, loaded.items, loaded.input.Options, loaded.sha, loaded.input.PlanDigest)
 		if err == nil {
+			logging.Bind(r.Context(), slog.String("phase", "finish_upload"))
 			err = loaded.finish(r.Context())
+			if err != nil {
+				logging.Diagnostic(r.Context(), slog.Default(), slog.LevelError, "resource.import.finish.failed", err)
+			}
+			if err == nil && !out.AlreadyImported {
+				logging.Event(r.Context(), slog.Default(), slog.LevelInfo, "resource.import.completed", "资源包导入已完成")
+			}
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(w, http.StatusOK, out)
+		resource.JSON(r.Context(), w, http.StatusOK, out)
 	})
 	router.Get("/resource-imports", func(w http.ResponseWriter, r *http.Request) {
 		limit := 20
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
 			if err != nil || n < 1 || n > 500 {
-				resource.Fail(w, resource.Invalid("limit 必须为 1 至 500"))
+				resource.Fail(r.Context(), w, resource.Invalid("limit 必须为 1 至 500"))
 				return
 			}
 			limit = n
 		}
 		cursor, err := decodeHistoryCursor(r.URL.Query().Get("cursor"))
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		rows, err := sqlc.New(s.Pool).ListImportHistory(r.Context(), sqlc.ListImportHistoryParams{Cursor: cursor, PageLimit: int32(limit + 1)})
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		hasMore := len(rows) > limit
@@ -114,7 +122,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		for _, data := range rows {
 			var item resource.Object
 			if err = json.Unmarshal(data, &item); err != nil {
-				resource.Fail(w, err)
+				resource.Fail(r.Context(), w, err)
 				return
 			}
 			list = append(list, item)
@@ -124,39 +132,39 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			last := list[len(list)-1]
 			createdAt, parseErr := time.Parse(time.RFC3339Nano, last.String("created_at"))
 			if parseErr != nil {
-				resource.Fail(w, parseErr)
+				resource.Fail(r.Context(), w, parseErr)
 				return
 			}
 			data, marshalErr := json.Marshal(historyCursor{CreatedAt: createdAt, ID: last.String("id")})
 			if marshalErr != nil {
-				resource.Fail(w, marshalErr)
+				resource.Fail(r.Context(), w, marshalErr)
 				return
 			}
 			nextCursor = base64.RawURLEncoding.EncodeToString(data)
 		}
-		resource.JSON(w, http.StatusOK, resource.Object{"items": list, "next_cursor": nextCursor})
+		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": list, "next_cursor": nextCursor})
 	})
 	router.Get("/resource-imports/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		if _, err := uuid.Parse(id); err != nil {
-			resource.Fail(w, resource.NotFound)
+			resource.Fail(r.Context(), w, resource.NotFound)
 			return
 		}
 		data, err := sqlc.New(s.Pool).GetImportHistory(r.Context(), id)
 		if errors.Is(err, pgx.ErrNoRows) {
-			resource.Fail(w, resource.NotFound)
+			resource.Fail(r.Context(), w, resource.NotFound)
 			return
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		var result resource.Object
 		if err = json.Unmarshal(data, &result); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(w, http.StatusOK, result)
+		resource.JSON(r.Context(), w, http.StatusOK, result)
 	})
 }
 
@@ -211,7 +219,7 @@ func (s *Service) prepareObjects(ctx context.Context, pkg Package, p Preview, r 
 	cleanup := func() {
 		for _, key := range written {
 			if err := s.Storage.Delete(context.WithoutCancel(ctx), key); err != nil {
-				slog.WarnContext(ctx, "导入对象存储补偿失败", "key", key, "error", err)
+				logging.Event(ctx, slog.Default(), slog.LevelWarn, "resource.import.compensation.failed", "导入对象存储补偿失败", "module", "resourceimport", "operation", "prepareObjects", "phase", "compensation", "error", err)
 			}
 		}
 	}
@@ -290,6 +298,7 @@ func connectorAvatarObject(item Connector) (string, string) {
 }
 
 func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Options, packageSHA, expectedDigest string) (Preview, error) {
+	logging.Bind(ctx, slog.String("phase", "apply"))
 	pre, err := s.Evaluate(ctx, s.Pool, p, r, opts, packageSHA)
 	if err != nil {
 		return pre, conflict(err.Error())
@@ -337,6 +346,7 @@ func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Option
 		return pre, resource.NotFound
 	}
 	importID := resource.ID()
+	logging.Bind(ctx, slog.String("import_id", importID))
 	counts := map[string]int{"create": 0, "update": 0, "skip": 0, "retire": 0, "restore": 0, "ignored_static": len(pre.IgnoredStatic)}
 	for _, c := range locked.Changes {
 		counts[c.Action]++
@@ -397,6 +407,7 @@ func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Option
 		return pre, err
 	}
 	committed = true
+	logging.Event(ctx, slog.Default(), slog.LevelInfo, "resource.import.applied", "资源包事务已提交", "import_id", importID)
 	return locked, nil
 }
 

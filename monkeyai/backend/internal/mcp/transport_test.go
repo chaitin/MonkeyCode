@@ -90,7 +90,7 @@ func TestToolCallIgnoresEnvironmentProxy(t *testing.T) {
 		if call.Method == "initialize" {
 			result = resource.Object{"protocolVersion": "2025-03-26"}
 		}
-		resource.JSON(w, http.StatusOK, resource.Object{"jsonrpc": "2.0", "id": call.ID, "result": result})
+		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"jsonrpc": "2.0", "id": call.ID, "result": result})
 	}))
 	defer server.Close()
 	rpc, err := openRemote(t.Context(), server.URL, nil)

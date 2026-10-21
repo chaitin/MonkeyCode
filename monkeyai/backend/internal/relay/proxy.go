@@ -3,7 +3,9 @@ package relay
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -83,22 +85,22 @@ func responseTimeout(p string) time.Duration {
 
 func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
-		failure(w, 503, "device_draining")
+		failure(r.Context(), w, 503, "device_draining")
 		return
 	}
 	if origin := r.Header.Get("Origin"); !s.proxyOrigin(origin) {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	machine := chi.URLParam(r, "machine")
 	p, pathErr := requestPath(r, "/"+chi.URLParam(r, "*"))
 	if pathErr != nil || !validUUID(machine) || !safePath(p) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	if strings.HasPrefix(p, "/uploads/") {
 		if r.ContentLength > 64<<20 {
-			failure(w, 413, "invalid_request")
+			failure(r.Context(), w, 413, "invalid_request")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
@@ -106,12 +108,12 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
-		w.Header().Set("Access-Control-Expose-Headers", "Upload-Session-ID,Upload-Offset,Upload-Length,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,ETag,Last-Modified,Content-Length,Content-Range,Accept-Ranges")
+		w.Header().Set("Access-Control-Expose-Headers", "Upload-Session-ID,Upload-Offset,Upload-Length,Mcp-Session-Id,MCP-Protocol-Version,Last-Event-ID,ETag,Last-Modified,Content-Length,Content-Range,Accept-Ranges,X-Request-ID")
 	}
 	if r.Method == http.MethodOptions {
 		_, _, allowed := routeScope(r.Header.Get("Access-Control-Request-Method"), p)
 		if !allowed {
-			failure(w, 403, "permission_denied")
+			failure(r.Context(), w, 403, "permission_denied")
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,POST,PUT,PATCH,DELETE")
@@ -121,7 +123,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	}
 	scope, data, allowed := routeScope(r.Method, p)
 	if !allowed {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 
@@ -132,7 +134,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 		protocol = strings.TrimSpace(protocol)
 		if strings.HasPrefix(protocol, "monkeyai.token.") {
 			if raw != "" {
-				failure(w, 400, "invalid_request")
+				failure(r.Context(), w, 400, "invalid_request")
 				return
 			}
 			raw = strings.TrimPrefix(protocol, "monkeyai.token.")
@@ -141,7 +143,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if raw == "" || len(raw) > 128 {
-		failure(w, 401, "connection_expired")
+		failure(r.Context(), w, 401, "connection_expired")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -149,9 +151,9 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		cancel()
 		if isMissing(err) {
-			failure(w, 401, "connection_expired")
+			failure(r.Context(), w, 401, "connection_expired")
 		} else {
-			failure(w, 503, "authorization_state_unavailable")
+			failure(r.Context(), w, 503, "authorization_state_unavailable")
 		}
 		return
 	}
@@ -159,47 +161,47 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	cancel()
 	if err != nil {
 		if isMissing(err) {
-			failure(w, 401, "connection_expired")
+			failure(r.Context(), w, 401, "connection_expired")
 		} else {
-			failure(w, 503, "authorization_state_unavailable")
+			failure(r.Context(), w, 503, "authorization_state_unavailable")
 		}
 		return
 	}
 	if !slices.Contains(row.Scopes, scope) || p == "/write/resource" && !slices.Contains(row.Scopes, "session:read") {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	current := s.current(target{found.UserID, machine})
 	if current == nil {
-		failure(w, 503, "device_offline")
+		failure(r.Context(), w, 503, "device_offline")
 		return
 	}
 	fileExpiry := time.Time{}
 	if strings.HasPrefix(p, "/files/") {
 		parts := strings.SplitN(strings.TrimPrefix(p, "/files/"), "/", 2)
 		if len(parts) != 2 {
-			failure(w, 403, "permission_denied")
+			failure(r.Context(), w, 403, "permission_denied")
 			return
 		}
 		fileCtx, fileCancel := context.WithTimeout(r.Context(), 5*time.Second)
 		grant, _, fileErr := s.verifyFile(fileCtx, machine, parts[0], "/"+parts[1])
 		fileCancel()
 		if fileErr != nil {
-			fail(w, fileErr)
+			fail(r.Context(), w, fileErr)
 			return
 		}
 		if grant.OwnerUserID != row.UserID || grant.ConnectionID != "" && (grant.ConnectionID != row.ID || grant.ClientGrantID != row.ClientGrantID || grant.AccessVersion != row.AccessVersion || grant.LeaseEpoch != current.state.LeaseEpoch || !slices.Equal(grant.Scopes, row.Scopes)) {
-			failure(w, 403, "permission_denied")
+			failure(r.Context(), w, 403, "permission_denied")
 			return
 		}
 		fileExpiry = grant.ExpiresAt
 	}
 	if p == "/acp" && !slices.Equal(remaining, []string{"monkeyai.v1"}) && len(remaining) != 0 {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	if p == "/acp" && !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	r = r.Clone(r.Context())
@@ -218,7 +220,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 		"authorization": map[string]any{"server_id": s.config.ServerID, "owner_user_id": row.UserID, "machine_id": machine, "connection_id": row.ID, "client_grant_id": row.ClientGrantID,
 			"grant_version": row.GrantVersion, "access_version": row.AccessVersion, "lease_epoch": current.state.LeaseEpoch, "scopes": row.Scopes}, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano)})
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	s.forward(w, r, current, a, data, p, assertion, !fileExpiry.IsZero())
@@ -226,7 +228,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, a *access, data bool, p, assertion string, download bool) {
 	if s.draining.Load() {
-		failure(w, 503, "device_draining")
+		failure(r.Context(), w, 503, "device_draining")
 		return
 	}
 	headerBytes := 0
@@ -237,7 +239,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 		}
 	}
 	if headerBytes > 64<<10 {
-		failure(w, 431, "invalid_request")
+		failure(r.Context(), w, 431, "invalid_request")
 		return
 	}
 	started := time.Now()
@@ -248,15 +250,36 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 			break
 		}
 	}
+	operation := "acp"
+	for prefix, name := range map[string]string{"/read/session": "read_session", "/read/config": "read_config", "/read/interaction": "read_interaction", "/write/resource": "write_resource", "/files/": "read_file", "/uploads/": "upload_file", "/cap/": "mcp_capability"} {
+		if strings.HasPrefix(p, prefix) {
+			operation = name
+			break
+		}
+	}
+	logging.Bind(r.Context(), slog.String("server_id", s.config.ServerID), slog.String("user_id", route.target.user),
+		slog.String("machine_id", route.target.machine), slog.String("boot_id", route.hello.BootID), slog.String("connection_id", a.id),
+		slog.String("operation", operation), slog.String("phase", "proxy_response"))
 	defer func() {
-		s.logger.Debug("远程代理流结束", "server_id", s.config.ServerID, "user_id", route.target.user, "machine_id", route.target.machine, "boot_id", route.hello.BootID, "lease_epoch", route.state.LeaseEpoch, "connection_id", a.id, "method", r.Method, "route", label, "duration_ms", time.Since(started).Milliseconds())
+		fault := recover()
+		result := "completed"
+		if fault != nil {
+			result = "aborted"
+		}
+		if r.Context().Err() != nil {
+			result = "canceled"
+		}
+		logging.Event(r.Context(), s.logger, slog.LevelDebug, "relay.stream.completed", "远程代理流结束", "module", "relay", "operation", "forward", "server_id", s.config.ServerID, "user_id", route.target.user, "machine_id", route.target.machine, "boot_id", route.hello.BootID, "lease_epoch", route.state.LeaseEpoch, "connection_id", a.id, "method", r.Method, "route", label, "duration_ms", time.Since(started).Milliseconds(), "transport_result", result, "result", "unknown")
+		if fault != nil {
+			panic(fault)
+		}
 	}()
 	s.mu.Lock()
 	mux, slots := streamSession(route, data)
 	active := s.routes[route.target] == route && route.ready && route.runtimeStatus == "online"
 	s.mu.Unlock()
 	if !active || mux == nil || mux.IsClosed() {
-		failure(w, 503, "device_offline")
+		failure(r.Context(), w, 503, "device_offline")
 		return
 	}
 	select {
@@ -264,7 +287,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 		defer func() { <-slots }()
 	default:
 		w.Header().Set("Retry-After", "1")
-		failure(w, 429, "relay_overloaded")
+		failure(r.Context(), w, 429, "relay_overloaded")
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())
@@ -274,7 +297,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 	s.mu.Lock()
 	if s.routes[route.target] != route || !route.ready || a.id != "" && (route.connectionVersions[a.id].version > a.ticketVersion && a.ticketVersion != 0 || route.connectionVersions[a.id].accessVersion > a.accessVersion) {
 		s.mu.Unlock()
-		failure(w, 401, "connection_expired")
+		failure(r.Context(), w, 401, "connection_expired")
 		return
 	}
 	route.streams[a] = struct{}{}
@@ -299,7 +322,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 		}}
 	defer transport.CloseIdleConnections()
 	destination := &url.URL{Scheme: "http", Host: "device.internal", Path: p}
-	proxy := &httputil.ReverseProxy{Transport: transport, FlushInterval: -1, BufferPool: relayBuffers{},
+	proxy := &httputil.ReverseProxy{ErrorLog: logging.ErrorLog(s.logger), Transport: transport, FlushInterval: -1, BufferPool: relayBuffers{},
 		Rewrite: func(request *httputil.ProxyRequest) {
 			request.SetURL(destination)
 			request.Out.URL.Path = p
@@ -317,7 +340,10 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 			request.Out.Header.Set("X-MonkeyAI-Access", assertion)
 		},
 		ModifyResponse: func(response *http.Response) error {
-			s.logger.Debug("远程代理响应", "machine_id", route.target.machine, "connection_id", a.id, "route", label, "status", response.StatusCode, "content_length", response.ContentLength)
+			if id := logging.RequestID(r.Context()); id != "" {
+				response.Header.Set("X-Request-ID", id)
+			}
+			logging.Event(r.Context(), s.logger, slog.LevelDebug, "relay.operation.debug", "远程代理响应", "module", "relay", "operation", "forward", "machine_id", route.target.machine, "connection_id", a.id, "route", label, "status", response.StatusCode, "content_length", response.ContentLength)
 			if response.StatusCode >= 300 && response.StatusCode < 400 && (download || strings.HasPrefix(r.URL.Path, "/preview/")) {
 				return errors.New("文件或预览禁止重定向")
 			}
@@ -340,7 +366,15 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 			}
 			return nil
 		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) { failure(w, 503, "device_offline") },
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if r.Context().Err() == nil && !errors.Is(err, context.Canceled) {
+				logging.Diagnostic(r.Context(), s.logger, slog.LevelError, "relay.stream.failed", err,
+					slog.String("operation", operation), slog.String("phase", "proxy_response"))
+			} else {
+				logging.Expected(r.Context())
+			}
+			failure(r.Context(), w, 503, "device_offline")
+		},
 	}
 	proxy.ServeHTTP(w, r.WithContext(ctx))
 }

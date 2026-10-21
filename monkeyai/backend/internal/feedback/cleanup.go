@@ -3,6 +3,7 @@ package feedback
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
@@ -27,14 +28,14 @@ func (s *Service) Cleanup(ctx context.Context) error {
 			if firstErr == nil {
 				firstErr = storageFailure()
 			}
-			slog.WarnContext(ctx, "清理过期反馈附件对象失败", "feedback_id", row.FeedbackID, "attachment_id", row.ID, "error_type", errorType(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "清理过期反馈附件对象失败", "module", "feedback", "operation", "Cleanup", "feedback_id", row.FeedbackID, "attachment_id", row.ID, "error_type", errorType(err))
 			continue
 		}
 		if _, err := sqlc.New(s.pool).DeleteAttachment(ctx, row.ID); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
-			slog.WarnContext(ctx, "清理过期反馈附件记录失败", "feedback_id", row.FeedbackID, "attachment_id", row.ID, "error_type", errorType(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "清理过期反馈附件记录失败", "module", "feedback", "operation", "Cleanup", "feedback_id", row.FeedbackID, "attachment_id", row.ID, "error_type", errorType(err))
 		}
 	}
 	return firstErr
@@ -46,7 +47,7 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) error {
 		interval = time.Hour
 	}
 	if err := s.Cleanup(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		slog.WarnContext(ctx, "反馈附件初次清理失败", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "反馈附件初次清理失败", "module", "feedback", "operation", "Run", "error", err)
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -56,7 +57,7 @@ func (s *Service) Run(ctx context.Context, interval time.Duration) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.Cleanup(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				slog.WarnContext(ctx, "反馈附件周期清理失败", "error", err)
+				logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "反馈附件周期清理失败", "module", "feedback", "operation", "Run", "error", err)
 			}
 		}
 	}

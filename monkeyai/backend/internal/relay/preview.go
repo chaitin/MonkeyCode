@@ -82,7 +82,7 @@ func PreviewGuard(template string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if previewDomain(template, r.Host) && !strings.HasPrefix(r.URL.Path, "/preview/") {
-				failure(w, 404, "device_not_found")
+				failure(r.Context(), w, 404, "device_not_found")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -92,11 +92,11 @@ func PreviewGuard(template string) func(http.Handler) http.Handler {
 
 func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	if s.config.PreviewOriginTemplate == "" {
-		failure(w, 404, "device_not_found")
+		failure(r.Context(), w, 404, "device_not_found")
 		return
 	}
 	if r.Method != "GET" && r.Method != "HEAD" || !previewHost(s.config.PreviewOriginTemplate, r.Host) {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	machine, raw := chi.URLParam(r, "machine"), chi.URLParam(r, "grant")
@@ -104,7 +104,7 @@ func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawPath != "" {
 		decoded, err := url.PathUnescape(requested)
 		if err != nil {
-			failure(w, 400, "invalid_request")
+			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
 		requested = decoded
@@ -113,13 +113,13 @@ func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	grant, current, err := s.verifyFile(ctx, machine, raw, requested)
 	cancel()
 	if err != nil {
-		fail(w, err)
+		fail(r.Context(), w, err)
 		return
 	}
 	expected := PreviewOrigin(s.config.PreviewOriginTemplate, grant.ServerID, grant.OwnerUserID, grant.MachineID, grant.SessionID, grant.ArtifactID)
 	u, err := url.Parse(expected)
 	if err != nil || !validUUID(grant.ArtifactID) || grant.PreviewOrigin != expected || r.Host != u.Host || grant.Scope != "directory" {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	// opaque-origin 沙箱明确禁止持久存储、服务工作线程、表单和嵌套应用。

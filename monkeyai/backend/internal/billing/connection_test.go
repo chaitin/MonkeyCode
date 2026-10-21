@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -133,6 +134,7 @@ func walletAdmin(t *testing.T, s *Service, user string) func(string, string, any
 	settings := setting.NewService(setting.NewPostgres(s.pool))
 	identities := identity.NewService(s.pool, settings, "http://localhost")
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	router.Use(identities.RequireAdmin)
 	router.Use(auditlog.NewService(s.pool, slog.New(slog.NewTextHandler(io.Discard, nil))).Middleware(func(r *http.Request) auditlog.Actor {
 		u, _ := identity.UserFromContext(r.Context())

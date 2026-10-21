@@ -83,21 +83,21 @@ func (s *Service) conversations(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	f, err := parseConversationFilter(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackStats(ctx, tx, "conversations")
 	q := sqlc.New(tx)
 	total, err := q.CountConversations(ctx, f.params)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	pages := max(1, (total+int64(f.size)-1)/int64(f.size))
@@ -109,10 +109,10 @@ func (s *Service) conversations(w http.ResponseWriter, r *http.Request) {
 		Limit: int32(f.size), Offset: int32((page - 1) * f.size),
 	}))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusOK, resource.Object{
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{
 		"items": items, "total": total, "page": page, "page_size": f.size,
 	})
 }

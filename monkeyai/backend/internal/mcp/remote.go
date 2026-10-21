@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"mime"
@@ -56,11 +57,11 @@ func (c *remoteClient) close() {
 	defer cancel()
 	response, err := c.request(ctx, http.MethodDelete, nil)
 	if err != nil {
-		slog.WarnContext(ctx, "关闭 MCP 会话失败", "operation", "delete_session", "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 MCP 会话失败", "module", "mcp", "operation", "close", "operation", "delete_session", "failure", err)
 		return
 	}
 	if err := response.Body.Close(); err != nil {
-		slog.WarnContext(ctx, "关闭 MCP 会话响应失败", "operation", "delete_session", "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 MCP 会话响应失败", "module", "mcp", "operation", "close", "operation", "delete_session", "failure", err)
 	}
 }
 
@@ -75,7 +76,7 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	}
 	defer func() {
 		if err := response.Body.Close(); err != nil {
-			slog.WarnContext(ctx, "关闭 MCP 调用响应失败", "operation", "call", "failure", safeMCPFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 MCP 调用响应失败", "module", "mcp", "operation", "call", "operation", "call", "failure", err)
 		}
 	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -182,7 +183,7 @@ func openRemoteWithClient(ctx context.Context, target string, headers map[string
 		return nil, err
 	}
 	if err := response.Body.Close(); err != nil {
-		slog.WarnContext(ctx, "关闭 MCP 握手响应失败", "operation", "initialize", "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 MCP 握手响应失败", "module", "mcp", "operation", "openRemoteWithClient", "operation", "initialize", "failure", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, remoteStatus(response.StatusCode)

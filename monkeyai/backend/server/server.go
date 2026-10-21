@@ -3,11 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
-	"os"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,15 +19,28 @@ type AdminRegistrar interface {
 	RegisterAdmin(chi.Router)
 }
 
-func Run(ctx context.Context, args []string, factory MemberWriters, registrars ...AdminRegistrar) error {
+// ParseLogLevel reads only shared startup flags, before business initialization.
+func ParseLogLevel(args []string) (slog.Level, error) { return config.ParseLogLevel(args) }
+
+func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
+	return config.ParseLogging(args)
+}
+
+// PrintUsage writes startup help without reading environment secrets.
+func PrintUsage(output io.Writer) { config.PrintUsage(output) }
+
+func Run(ctx context.Context, args []string, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) error {
+	if logger == nil {
+		return errors.New("日志实例不可为空")
+	}
+	slog.SetDefault(logger)
 	if factory == nil {
-		return errors.New("私有版成员实现不可为空")
+		return errors.New("成员写入工厂不可为空")
 	}
 	cfg, err := config.Load(args)
 	if err != nil {
 		return err
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	appRegistrars := make([]app.AdminRegistrar, 0, len(registrars))
 	for _, registrar := range registrars {
 		appRegistrars = append(appRegistrars, registrar)

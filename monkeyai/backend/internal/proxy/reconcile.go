@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -77,7 +78,7 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil && ctx.Err() == nil && !errors.Is(closeErr, context.Canceled) && !errors.Is(closeErr, io.ErrClosedPipe) {
 			// 自定义 Transport 的关闭错误可能包含凭据或响应内容。
-			slog.WarnContext(ctx, "关闭上游对账响应失败", "model_id", target.ModelID, "operation", "close_reconciliation_response", "error_type", fmt.Sprintf("%T", closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "proxy.operation.warn", "关闭上游对账响应失败", "module", "proxy", "operation", "Reconcile", "model_id", target.ModelID, "operation", "close_reconciliation_response", "error_type", fmt.Sprintf("%T", closeErr))
 		}
 	}()
 

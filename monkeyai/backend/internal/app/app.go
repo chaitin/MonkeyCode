@@ -42,6 +42,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videoproxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
 	"github.com/go-chi/chi/v5"
@@ -79,7 +80,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 
 func NewWithMembers(ctx context.Context, cfg config.Config, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) (*App, error) {
 	if factory == nil {
-		return nil, errors.New("私有版成员实现不可为空")
+		return nil, errors.New("成员写入实现不可为空")
 	}
 	return newApp(ctx, cfg, logger, factory, registrars)
 }
@@ -99,7 +100,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		}
 		if users == nil || groups == nil {
 			pool.Close()
-			return nil, errors.New("私有版成员实现不可为空")
+			return nil, errors.New("成员写入实现不可为空")
 		}
 	}
 	handler, err := newApplicationHandlerWithMembers(ctx, logger, pool, cfg, users, groups, registrars)
@@ -116,7 +117,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
-				ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+				ErrorLog:          logging.ErrorLog(logger),
 			},
 			{
 				Addr:              cfg.PprofAddr,
@@ -124,7 +125,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 				ReadHeaderTimeout: 5 * time.Second,
 				IdleTimeout:       2 * time.Minute,
 				MaxHeaderBytes:    1 << 20,
-				ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+				ErrorLog:          logging.ErrorLog(logger),
 			},
 		},
 		billing:         handler.(*applicationHandler).billing,
@@ -148,6 +149,7 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 	agent := chi.NewRouter()
 	auth := chi.NewRouter()
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(logger))
 	proxy.NewProxy(nil, logger).Register(router)
 	imageproxy.NewProxy(nil, nil, nil, nil, nil).Register(router)
 	videoproxy.New(nil, nil, nil, nil).Register(router)
@@ -270,6 +272,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(logger))
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
@@ -302,7 +305,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := keys.RevokeRuntimeKeys(ctx, id); err != nil {
-				logger.Warn("撤销独立执行密钥标记失败", "grant_id", id, "reason", "storage_unavailable")
+				logging.Event(ctx, logger, slog.LevelWarn, "app.operation.warn", "撤销独立执行密钥标记失败", "module", "app", "operation", "newApplicationHandlerWithMembers", "grant_id", id, "reason", "storage_unavailable")
 			}
 		})
 	}
@@ -374,7 +377,7 @@ func (a *App) Run(ctx context.Context) error {
 				case <-cleanupKeys.C:
 					ctx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
 					if err := a.runtimeKeys.CleanupRuntimeKeys(ctx); err != nil && workerCtx.Err() == nil {
-						slog.Warn("回收独立执行密钥失败", "reason", "storage_unavailable")
+						logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥失败", "module", "app", "operation", "Run", "dependency", "storage", "reason", "storage_unavailable")
 					}
 					cancel()
 				}
@@ -482,12 +485,12 @@ type readiness struct {
 
 func (r readiness) Ping(ctx context.Context) error {
 	if r.endpoints != nil && !r.endpoints.Ready() {
-		return errors.New("端点桥接正在停止")
+		return logging.Dependency("endpoint", errors.New("端点桥接正在停止"))
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := r.pool.Ping(ctx); err != nil {
-		return err
+		return logging.Dependency("database", err)
 	}
-	return r.storage.Ping(ctx)
+	return logging.Dependency("object_storage", r.storage.Ping(ctx))
 }

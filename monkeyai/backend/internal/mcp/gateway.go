@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -47,7 +48,7 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 			provided, err := url.Parse(origin)
 			public, publicErr := url.Parse(s.PublicURL)
 			if publicErr != nil {
-				slog.ErrorContext(r.Context(), "MCP 公共地址配置无效", "operation", "origin_check", "failure_reason", "invalid_public_url")
+				logging.Event(r.Context(), slog.Default(), slog.LevelError, "mcp.operation.error", "MCP 公共地址配置无效", "module", "mcp", "operation", "RegisterGateway", "operation", "origin_check", "failure_reason", "invalid_public_url")
 			}
 			if err != nil || publicErr != nil || public == nil || provided.User != nil || provided.Path != "" || provided.RawQuery != "" || provided.Fragment != "" || !strings.EqualFold(provided.Scheme, public.Scheme) || !strings.EqualFold(provided.Host, public.Host) {
 				rpcFail(r.Context(), w, nil, &resource.Error{Status: 403, Code: "invalid_origin", Message: "请求来源不被允许"})
@@ -105,7 +106,7 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		}
 		if strings.HasPrefix(in.Method, "notifications/") {
 			if len(in.ID) != 0 {
-				rpcReply(w, 400, in.ID, nil, &rpcError{Code: -32600, Message: "通知不能包含请求 ID"})
+				rpcReply(r.Context(), w, 400, in.ID, nil, &rpcError{Code: -32600, Message: "通知不能包含请求 ID"})
 				return
 			}
 			w.WriteHeader(http.StatusAccepted)
@@ -122,19 +123,19 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 				Version string `json:"protocolVersion"`
 			}
 			if json.Unmarshal(in.Params, &params) != nil || params.Version == "" {
-				rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "缺少 MCP 协议版本"})
+				rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "缺少 MCP 协议版本"})
 				return
 			}
 			if !supportedVersion(params.Version) {
 				params.Version = protocolVersion
 			}
-			rpcReply(w, 200, in.ID, resource.Object{"protocolVersion": params.Version, "capabilities": resource.Object{"tools": resource.Object{}}, "serverInfo": resource.Object{"name": "MonkeyAI", "version": "1"}}, nil)
+			rpcReply(r.Context(), w, 200, in.ID, resource.Object{"protocolVersion": params.Version, "capabilities": resource.Object{"tools": resource.Object{}}, "serverInfo": resource.Object{"name": "MonkeyAI", "version": "1"}}, nil)
 		case "ping":
-			rpcReply(w, 200, in.ID, resource.Object{}, nil)
+			rpcReply(r.Context(), w, 200, in.ID, resource.Object{}, nil)
 		case "tools/list", "tools/call":
 			s.invoke(w, r, in, connector, credential, user, billing)
 		default:
-			rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32601, Message: "不支持此方法"})
+			rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32601, Message: "不支持此方法"})
 		}
 	}
 	router.HandleFunc("/mcp/connectors/{id}", handler)
@@ -154,7 +155,7 @@ func (s *Service) setCallDuration(ctx context.Context, id string, duration int64
 		return
 	}
 	if err := sqlc.New(s.Store.Pool).UpdateToolCallDuration(ctx, sqlc.UpdateToolCallDurationParams{DurationMs: int32(duration), ID: id}); err != nil {
-		slog.WarnContext(ctx, "记录 MCP 工具调用耗时失败", "transaction_id", id, "error", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "记录 MCP 工具调用耗时失败", "module", "mcp", "operation", "setCallDuration", "transaction_id", id, "error", err)
 	}
 }
 
@@ -174,14 +175,14 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			Cursor string `json:"cursor"`
 		}
 		if len(in.Params) > 0 && (json.Unmarshal(in.Params, &params) != nil || params.Cursor != "") {
-			rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具目录游标无效"})
+			rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具目录游标无效"})
 			return
 		}
 		out := []resource.Object{}
 		for _, tool := range tools {
 			out = append(out, resource.Object{"name": tool["name"], "description": tool["description"], "inputSchema": tool["input_schema"]})
 		}
-		rpcReply(w, 200, in.ID, resource.Object{"tools": out}, nil)
+		rpcReply(r.Context(), w, 200, in.ID, resource.Object{"tools": out}, nil)
 		return
 	}
 	var params map[string]any
@@ -192,7 +193,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	arguments, hasArguments := params["arguments"]
 	_, objectArguments := arguments.(map[string]any)
 	if err != nil || name == "" || (hasArguments && !objectArguments) {
-		rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具参数无效"})
+		rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具参数无效"})
 		return
 	}
 	var tool resource.Object
@@ -203,7 +204,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		}
 	}
 	if tool == nil {
-		rpcReply(w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具不存在或未启用"})
+		rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具不存在或未启用"})
 		return
 	}
 	sessionID, parentID := requestSession(r)
@@ -227,7 +228,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	setConnectorTimeout(h, connector.Int("timeout_ms"))
 	remote, err := openRemoteWithClient(r.Context(), connector.String("url"), headers, h)
 	if err != nil {
-		slog.WarnContext(r.Context(), "连接 MCP 上游失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "connect", "failure", safeMCPFailure(err))
+		logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "连接 MCP 上游失败", "module", "mcp", "operation", "invoke", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "connect", "failure", err)
 		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "工具上游连接失败"})
 		return
 	}
@@ -242,7 +243,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 		defer cancel()
 		if finishErr := billing.Finish(ctx, id, InvocationResult{Known: true, Result: "failed", ErrorCode: "mcp_not_started"}); finishErr != nil {
-			slog.ErrorContext(ctx, "MCP 调用开始失败后结算失败", "connector_id", connector.String("id"), "operation", "finish", "failure", safeMCPFailure(finishErr))
+			logging.Event(ctx, slog.Default(), slog.LevelError, "mcp.operation.error", "MCP 调用开始失败后结算失败", "module", "mcp", "operation", "invoke", "connector_id", connector.String("id"), "operation", "finish", "failure", finishErr)
 			w.Header().Set("X-Billing-Status", "pending")
 		}
 		rpcFail(r.Context(), w, in.ID, err)
@@ -278,20 +279,20 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 	defer cancel()
 	if err = billing.Finish(ctx, id, outcome); err != nil {
-		slog.ErrorContext(ctx, "MCP 调用结算失败", "connector_id", connector.String("id"), "operation", "finish", "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelError, "mcp.operation.error", "MCP 调用结算失败", "module", "mcp", "operation", "invoke", "connector_id", connector.String("id"), "operation", "finish", "failure", err)
 		w.Header().Set("X-Billing-Status", "pending")
 	}
 	s.setCallDuration(ctx, id, outcome.DurationMS)
 	if callErr != nil {
 		if rpc == nil {
-			slog.WarnContext(r.Context(), "MCP 工具调用失败", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "tools/call", "failure", safeMCPFailure(callErr))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "MCP 工具调用失败", "module", "mcp", "operation", "invoke", "connector_id", connector.String("id"), "credential_id", credential.String("id"), "operation", "tools/call", "failure", callErr)
 		}
 		code := -32603
 		if rpc != nil {
 			code = rpc.Code
 		}
-		rpcReply(w, 200, in.ID, nil, &rpcError{Code: code, Message: "工具调用失败，可凭交易 ID 查询状态"})
+		rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: code, Message: "工具调用失败，可凭交易 ID 查询状态"})
 		return
 	}
-	rpcReply(w, 200, in.ID, result, nil)
+	rpcReply(r.Context(), w, 200, in.ID, result, nil)
 }

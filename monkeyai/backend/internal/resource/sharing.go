@@ -74,12 +74,12 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 	share := func(w http.ResponseWriter, r *http.Request) {
 		var input ShareInput
 		if err := Decode(w, r, &input); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
 		if err := s.Share(r.Context(), user.ID, input, r.Method == http.MethodDelete, kinds); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

@@ -138,7 +138,7 @@ func TestExchangeClientAuthentication(t *testing.T) {
 				} else if r.Header.Get("Authorization") != "" || (method == "none" && r.Form.Get("client_secret") != "") || (method != "none" && r.Form.Get("client_secret") != "secret: +") {
 					t.Error("Token 认证方式错误")
 				}
-				resource.JSON(w, 200, resource.Object{"access_token": "access"})
+				resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "access"})
 			}))
 			defer remote.Close()
 			_, err := exchange(t.Context(), resource.Object{"oauth_config": oauthConfig{ClientID: "client:id +", TokenURL: remote.URL, TokenAuthMethod: method}, "oauth_client_secret": "secret: +"}, url.Values{"grant_type": {"refresh_token"}})
@@ -162,14 +162,14 @@ func TestDynamicRegistrationFailure(t *testing.T) {
 	denied.Store(true)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if denied.Load() {
-			resource.JSON(w, 400, resource.Object{"error": "invalid_client_metadata", "error_description": "private-registration-secret"})
+			resource.JSON(r.Context(), w, 400, resource.Object{"error": "invalid_client_metadata", "error_description": "private-registration-secret"})
 			return
 		}
 		var body struct {
 			Redirects []string `json:"redirect_uris"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		resource.JSON(w, 201, resource.Object{"client_id": "retry-client", "token_endpoint_auth_method": "none", "redirect_uris": body.Redirects})
+		resource.JSON(r.Context(), w, 201, resource.Object{"client_id": "retry-client", "token_endpoint_auth_method": "none", "redirect_uris": body.Redirects})
 	}))
 	defer remote.Close()
 	c := f.call("POST", "/agent/connectors", resource.Object{"name": "注册重试", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": remote.URL, "token_url": remote.URL, "registration_url": remote.URL}}, "owner", "", 201)
@@ -238,7 +238,7 @@ func TestRegistrationCancelledAuthorization(t *testing.T) {
 			Redirects []string `json:"redirect_uris"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&input)
-		resource.JSON(w, 201, resource.Object{"client_id": "dynamic", "token_endpoint_auth_method": "none", "redirect_uris": input.Redirects})
+		resource.JSON(r.Context(), w, 201, resource.Object{"client_id": "dynamic", "token_endpoint_auth_method": "none", "redirect_uris": input.Redirects})
 	}))
 	defer remote.Close()
 	c := f.call("POST", "/admin/connectors", resource.Object{"name": "取消授权", "url": remote.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"authorization_url": remote.URL, "token_url": remote.URL, "registration_url": remote.URL}}, "owner", "", 200)
@@ -265,7 +265,7 @@ func TestDynamicRegistrationRenewal(t *testing.T) {
 			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/register" {
 					if denied.Load() {
-						resource.JSON(w, 400, resource.Object{"error": "invalid_client_metadata"})
+						resource.JSON(r.Context(), w, 400, resource.Object{"error": "invalid_client_metadata"})
 						return
 					}
 					n := registrations.Add(1)
@@ -273,7 +273,7 @@ func TestDynamicRegistrationRenewal(t *testing.T) {
 						Redirects []string `json:"redirect_uris"`
 					}
 					_ = json.NewDecoder(r.Body).Decode(&input)
-					resource.JSON(w, 201, resource.Object{"client_id": fmt.Sprintf("dynamic-%d", n), "client_secret": fmt.Sprintf("registered-%d", n), "client_secret_expires_at": expiry, "token_endpoint_auth_method": "client_secret_basic", "redirect_uris": input.Redirects})
+					resource.JSON(r.Context(), w, 201, resource.Object{"client_id": fmt.Sprintf("dynamic-%d", n), "client_secret": fmt.Sprintf("registered-%d", n), "client_secret_expires_at": expiry, "token_endpoint_auth_method": "client_secret_basic", "redirect_uris": input.Redirects})
 					return
 				}
 				exchanges.Add(1)
@@ -281,7 +281,7 @@ func TestDynamicRegistrationRenewal(t *testing.T) {
 				if !ok || user != fmt.Sprintf("dynamic-%d", registrations.Load()) || secret != fmt.Sprintf("registered-%d", registrations.Load()) {
 					t.Error("交换令牌未使用新客户端")
 				}
-				resource.JSON(w, 200, resource.Object{"access_token": "access", "refresh_token": "refresh", "expires_in": 3600})
+				resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "access", "refresh_token": "refresh", "expires_in": 3600})
 			}))
 			defer oauth.Close()
 			base, createStatus := "/agent", 201
@@ -373,14 +373,14 @@ func TestDynamicRegistrationAuthorization(t *testing.T) {
 			oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/register" {
 					registrations.Add(1)
-					resource.JSON(w, 201, resource.Object{"client_id": "dynamic", "client_secret": "registered-secret", "redirect_uris": []string{callback}, "token_endpoint_auth_method": "client_secret_basic"})
+					resource.JSON(r.Context(), w, 201, resource.Object{"client_id": "dynamic", "client_secret": "registered-secret", "redirect_uris": []string{callback}, "token_endpoint_auth_method": "client_secret_basic"})
 					return
 				}
 				user, secret, ok := r.BasicAuth()
 				if !ok || user != "dynamic" || secret != "registered-secret" {
 					t.Error("未复用注册客户端交换令牌")
 				}
-				resource.JSON(w, 200, resource.Object{"access_token": "access", "refresh_token": "refresh", "expires_in": 3600})
+				resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "access", "refresh_token": "refresh", "expires_in": 3600})
 			}))
 			defer oauth.Close()
 			base, status := "/agent", 201

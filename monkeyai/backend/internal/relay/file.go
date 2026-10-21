@@ -191,20 +191,20 @@ func (s *Service) verifyFile(ctx context.Context, machine, raw, requested string
 func (s *Service) file(w http.ResponseWriter, r *http.Request) {
 	origin, _ := url.Parse(s.config.FilesOrigin)
 	if !strings.EqualFold(r.Host, origin.Host) || r.Method != "GET" && r.Method != "HEAD" {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	machine, raw := chi.URLParam(r, "machine"), chi.URLParam(r, "grant")
 	requested, pathErr := requestPath(r, "/"+chi.URLParam(r, "*"))
 	if pathErr != nil || !safePath(requested) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	grant, current, err := s.verifyFile(ctx, machine, raw, requested)
 	cancel()
 	if err != nil {
-		fail(w, err)
+		fail(r.Context(), w, err)
 		return
 	}
 	a := &access{id: grant.ConnectionID, clientGrant: grant.ClientGrantID, accessVersion: grant.AccessVersion, verifiedAt: time.Now(), expiresAt: grant.ExpiresAt, fileExpiresAt: grant.ExpiresAt, scopes: slices.Clone(grant.Scopes), grantVersion: grant.GrantVersion}
@@ -214,7 +214,7 @@ func (s *Service) file(w http.ResponseWriter, r *http.Request) {
 			"authorization": map[string]any{"server_id": s.config.ServerID, "owner_user_id": grant.OwnerUserID, "machine_id": machine, "connection_id": grant.ConnectionID, "client_grant_id": grant.ClientGrantID,
 				"grant_version": grant.GrantVersion, "access_version": grant.AccessVersion, "lease_epoch": grant.LeaseEpoch, "scopes": grant.Scopes}, "expires_at": grant.ExpiresAt.UTC().Format(time.RFC3339Nano)})
 		if err != nil {
-			failure(w, 503, "authorization_state_unavailable")
+			failure(r.Context(), w, 503, "authorization_state_unavailable")
 			return
 		}
 	}

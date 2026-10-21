@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
@@ -52,7 +53,7 @@ func (s *Service) storeAuthorizationCode(ctx context.Context, request Authorizat
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚授权请求事务失败", "request_id", request.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚授权请求事务失败", "module", "identity", "operation", "storeAuthorizationCode", "request_id", request.ID, "error", err)
 		}
 	}()
 
@@ -182,7 +183,7 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚更新用户事务失败", "user_id", id, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚更新用户事务失败", "module", "identity", "operation", "updateUser", "user_id", id, "error", err)
 		}
 	}()
 	if s.accounts != nil {

@@ -99,9 +99,9 @@ func TestOAuthSeatErrorRedirects(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
-			writeJSON(w, http.StatusOK, map[string]string{"access_token": "upstream-token"})
+			writeJSON(r.Context(), w, http.StatusOK, map[string]string{"access_token": "upstream-token"})
 		case "/userinfo":
-			writeJSON(w, http.StatusOK, map[string]string{"sub": "new-user", "email": "new@example.com", "name": "测试成员"})
+			writeJSON(r.Context(), w, http.StatusOK, map[string]string{"sub": "new-user", "email": "new@example.com", "name": "测试成员"})
 		default:
 			http.NotFound(w, r)
 		}

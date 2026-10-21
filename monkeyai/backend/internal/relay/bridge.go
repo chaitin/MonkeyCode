@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
+	"log/slog"
 	"net/http"
 	"time"
 	"uuid"
@@ -20,26 +22,26 @@ import (
 
 func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
-		failure(w, 503, "device_draining")
+		failure(r.Context(), w, 503, "device_draining")
 		return
 	}
 	channel := r.URL.Query().Get("channel_kind")
 	if (channel != "control" && channel != "data") || r.URL.Query().Get("tunnel_version") != "1" {
-		failure(w, 409, "upgrade_required")
+		failure(r.Context(), w, 409, "upgrade_required")
 		return
 	}
 	if origin := r.Header.Get("Origin"); origin != "" && origin != s.config.PublicURL {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	p, _ := identity.PrincipalFromContext(r.Context())
 	if !s.allow(p.GrantID) {
 		w.Header().Set("Retry-After", "1")
-		failure(w, 429, "relay_overloaded")
+		failure(r.Context(), w, 429, "relay_overloaded")
 		return
 	}
 	if !p.Has("device:bind") {
-		failure(w, 403, "permission_denied")
+		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
 	s.mu.Lock()
@@ -50,7 +52,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	if full {
-		failure(w, 429, "relay_overloaded")
+		failure(r.Context(), w, 429, "relay_overloaded")
 		return
 	}
 	defer s.workers.Done()
@@ -67,7 +69,13 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	s.active[ws] = struct{}{}
 	s.mu.Unlock()
-	defer func() { ws.CloseNow(); s.mu.Lock(); delete(s.active, ws); s.mu.Unlock() }()
+	defer func() {
+		ws.CloseNow()
+		s.mu.Lock()
+		delete(s.active, ws)
+		s.mu.Unlock()
+		logging.Event(r.Context(), s.logger, slog.LevelDebug, "relay.bridge.closed", "设备通道已关闭", "channel_kind", channel)
+	}()
 	ws.SetReadLimit(maxControlMessage)
 	initial, initialCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer initialCancel()
@@ -82,6 +90,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := target{p.UserID, hello.MachineID}
+	logging.Bind(r.Context(), slog.String("server_id", s.config.ServerID), slog.String("user_id", p.UserID), slog.String("machine_id", hello.MachineID), slog.String("boot_id", hello.BootID), slog.String("channel_kind", channel))
 	state, err := s.devices.State(initial, p.UserID, hello.MachineID)
 	var fault *resource.Error
 	if err != nil && !(errors.As(err, &fault) && fault.Status == 404 && channel == "control") {
@@ -154,7 +163,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if channel == "control" {
-		s.logger.Info("设备证明已提交", "server_id", s.config.ServerID, "user_id", p.UserID, "machine_id", hello.MachineID, "boot_id", hello.BootID, "intent", hello.Intent, "registration_version", state.RegistrationVersion, "grant_version", state.GrantVersion, "lease_epoch", state.LeaseEpoch)
+		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.proved", "设备证明已提交", "module", "relay", "operation", "bridge", "server_id", s.config.ServerID, "user_id", p.UserID, "machine_id", hello.MachineID, "boot_id", hello.BootID, "intent", hello.Intent, "registration_version", state.RegistrationVersion, "grant_version", state.GrantVersion, "lease_epoch", state.LeaseEpoch)
 	}
 	var current *route
 	if channel == "control" && hello.Intent == "publish" {
@@ -205,6 +214,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		old.data = mux
 		s.mu.Unlock()
 		gate.Unlock()
+		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")
 		if previous != nil {
 			previous.Close()
 		}
@@ -247,13 +257,22 @@ func writeWS(ctx context.Context, ws *websocket.Conn, value any) error {
 }
 
 func (s *Service) wsError(ctx context.Context, ws *websocket.Conn, err error) {
-	code, message := "authorization_state_unavailable", "授权核验暂不可用"
+	code := "authorization_state_unavailable"
 	var fault *resource.Error
 	if errors.As(err, &fault) {
-		code, message = fault.Code, fault.Message
+		code = fault.Code
 	} else if errors.Is(err, errProtocol) {
-		code, message = "invalid_tunnel_message", "隧道消息无效"
+		code = "invalid_tunnel_message"
 	}
 	_ = writeWS(ctx, ws, map[string]any{"type": "error", "code": code})
-	s.logger.Warn("设备握手失败", "code", code, "reason", message)
+	logCode := "internal_error"
+	switch code {
+	case "authorization_state_unavailable", "invalid_tunnel_message", "permission_denied", "invalid_device_proof", "device_process_conflict", "device_registration_changed", "device_revoked", "device_not_found":
+		logCode = code
+	}
+	level := slog.LevelWarn
+	if fault != nil && fault.Status < 500 || ctx.Err() != nil {
+		level = slog.LevelDebug
+	}
+	logging.Event(ctx, s.logger, level, "relay.bridge.rejected", "设备握手失败", "module", "relay", "operation", "handshake", "error_code", logCode, "error", err)
 }

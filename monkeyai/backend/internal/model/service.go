@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -208,7 +209,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			if s.imageCapabilities != nil {
 				cap, err = s.imageCapabilities(item.Provider, item.ModelID)
 				if err != nil {
-					slog.ErrorContext(ctx, "读取模型生图能力失败", "model_id", item.ID, "error", err)
+					logging.Event(ctx, slog.Default(), slog.LevelError, "model.operation.error", "读取模型生图能力失败", "module", "model", "operation", "AgentModels", "model_id", item.ID, "error", err)
 					continue
 				}
 				if validateImageCapabilities(item, cap) != nil {

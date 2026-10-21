@@ -45,16 +45,16 @@ func (p *Proxy) Register(router chi.Router) {
 func (p *Proxy) authorize(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		resource.Fail(w, &resource.Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "缺少 API Key"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "缺少 API Key"})
 		return "", "", false
 	}
 	if p.keys == nil || p.videos == nil {
-		resource.Fail(w, &resource.Error{Status: http.StatusServiceUnavailable, Code: "video_unavailable", Message: "视频接口未就绪"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusServiceUnavailable, Code: "video_unavailable", Message: "视频接口未就绪"})
 		return "", "", false
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
-		resource.Fail(w, &resource.Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "API Key 无效"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "API Key 无效"})
 		return "", "", false
 	}
 	return userID, credential, true
@@ -68,29 +68,29 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 11<<20)
 	parts, err := r.MultipartReader()
 	if err != nil {
-		resource.Fail(w, resource.Invalid("参考图上传格式无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("参考图上传格式无效"))
 		return
 	}
 	part, err := parts.NextPart()
 	if err != nil || part.FormName() != "file" {
-		resource.Fail(w, resource.Invalid("缺少参考图 file 字段"))
+		resource.Fail(r.Context(), w, resource.Invalid("缺少参考图 file 字段"))
 		return
 	}
 	data, err := io.ReadAll(io.LimitReader(part, (10<<20)+1))
 	if err != nil || len(data) == 0 || len(data) > 10<<20 {
-		resource.Fail(w, &resource.Error{Status: http.StatusRequestEntityTooLarge, Code: "video_input_too_large", Message: "视频参考图超过大小限制"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusRequestEntityTooLarge, Code: "video_input_too_large", Message: "视频参考图超过大小限制"})
 		return
 	}
 	if _, err := parts.NextPart(); !errors.Is(err, io.EOF) {
-		resource.Fail(w, resource.Invalid("每次只能上传一张参考图"))
+		resource.Fail(r.Context(), w, resource.Invalid("每次只能上传一张参考图"))
 		return
 	}
 	result, err := p.videos.Upload(r.Context(), userID, data)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusCreated, result)
+	resource.JSON(r.Context(), w, http.StatusCreated, result)
 }
 
 func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
@@ -99,18 +99,18 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.resolver == nil {
-		resource.Fail(w, &resource.Error{Status: http.StatusServiceUnavailable, Code: "video_unavailable", Message: "视频模型未就绪"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusServiceUnavailable, Code: "video_unavailable", Message: "视频模型未就绪"})
 		return
 	}
 	var input videogen.GenerateInput
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil || input.Model == "" || input.Mode == "" {
-		resource.Fail(w, resource.Invalid("视频生成请求格式无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("视频生成请求格式无效"))
 		return
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		resource.Fail(w, resource.Invalid("请求只能包含一个 JSON 对象"))
+		resource.Fail(r.Context(), w, resource.Invalid("请求只能包含一个 JSON 对象"))
 		return
 	}
 	if input.Params == nil {
@@ -118,11 +118,11 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	target, err := p.resolver.Resolve(r.Context(), credential, input.Model)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if target.UserID != userID || target.Protocol != "video_generation" {
-		resource.Fail(w, resource.Invalid("当前模型不是可调用的视频模型"))
+		resource.Fail(r.Context(), w, resource.Invalid("当前模型不是可调用的视频模型"))
 		return
 	}
 	sessionID := r.Header.Get("X-MAI-Session-ID")
@@ -131,22 +131,22 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 	}
 	if sessionID != "" {
 		if p.sessions == nil {
-			resource.Fail(w, resource.Invalid("会话服务不可用"))
+			resource.Fail(r.Context(), w, resource.Invalid("会话服务不可用"))
 			return
 		}
 		if err := p.sessions.EnsureSession(r.Context(), userID, sessionID, r.Header.Get("X-MAI-Parent-Session-ID"), ""); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		target.SessionID = sessionID
 	}
 	result, err := p.videos.Submit(r.Context(), target, input, r.Header.Get("Idempotency-Key"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Location", "/v1/videos/tasks/"+result.ID)
-	resource.JSON(w, http.StatusAccepted, result)
+	resource.JSON(r.Context(), w, http.StatusAccepted, result)
 }
 
 func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
@@ -156,10 +156,10 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := p.videos.GetTask(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusOK, result)
+	resource.JSON(r.Context(), w, http.StatusOK, result)
 }
 
 func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 	}
 	body, size, mime, err := p.videos.OpenOutput(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer body.Close()

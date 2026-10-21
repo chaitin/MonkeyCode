@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -198,6 +199,8 @@ func (s *Service) Submit(ctx context.Context, target proxy.Target, input Generat
 			return Task{}, err
 		}
 	}
+	logging.Bind(ctx, slog.String("job_id", jobID), slog.String("transaction_id", reservation.ID), slog.String("model_id", item.ID))
+	logging.Event(ctx, slog.Default(), slog.LevelInfo, "video.job.accepted", "视频任务已受理", "job_id", jobID, "transaction_id", reservation.ID)
 	s.jobs.Add(1)
 	go func() {
 		defer s.jobs.Done()
@@ -315,7 +318,7 @@ func (s *Service) fail(ctx context.Context, id, transactionID, reason string) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if err := s.billing.Release(ctx, transactionID, reason); err != nil {
-		slog.ErrorContext(ctx, "释放视频计费预留失败", "job_id", id, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "videogen.operation.error", "释放视频计费预留失败", "module", "videogen", "operation", "fail", "job_id", id, "error", err)
 		code := "billing_unknown"
 		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &code})
 		return
@@ -337,14 +340,14 @@ func (s *Service) dispatch(ctx context.Context, target proxy.Target, jobID, rese
 			s.fail(ctx, jobID, reservationID, "provider_rejected")
 			return
 		}
-		slog.WarnContext(ctx, "视频上游受理结果未知", "job_id", jobID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "videogen.operation.warn", "视频上游受理结果未知", "module", "videogen", "operation", "dispatch", "job_id", jobID, "error", err)
 		code := "provider_submit_unknown"
 		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code})
 		return
 	}
 	if affected, e := sqlc.New(s.pool).MarkVideoJobSubmitted(ctx, sqlc.MarkVideoJobSubmittedParams{ID: jobID, ProviderJobID: &providerID}); e != nil || affected != 1 {
 		err = e
-		slog.ErrorContext(ctx, "登记视频上游任务失败", "job_id", jobID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "videogen.operation.error", "登记视频上游任务失败", "module", "videogen", "operation", "dispatch", "job_id", jobID, "error", err)
 		code := "provider_job_unknown"
 		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code})
 	}
@@ -365,16 +368,14 @@ func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	lastCleanup := time.Time{}
+	cleanup := logging.NewWorker(slog.Default(), "videogen", "cleanup_files", "object_storage")
+	polling := logging.NewWorker(slog.Default(), "videogen", "poll_jobs", "database")
 	for {
 		if time.Since(lastCleanup) > time.Hour {
-			if err := s.Cleanup(ctx); err != nil && ctx.Err() == nil {
-				slog.ErrorContext(ctx, "清理过期视频文件失败", "error", err)
-			}
+			cleanup.Report(ctx, s.Cleanup(ctx))
 			lastCleanup = time.Now()
 		}
-		if err := s.poll(ctx); err != nil && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "轮询视频任务失败", "error", err)
-		}
+		polling.Report(ctx, s.poll(ctx))
 		select {
 		case <-ctx.Done():
 			return
@@ -443,14 +444,13 @@ func (s *Service) poll(ctx context.Context) error {
 			reason = "provider_poll_exhausted"
 		}
 		if reason != "" {
-			slog.WarnContext(ctx, "视频任务轮询达到限制", "job_id", id, "failures", failures, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "video.job.stopped", "视频任务轮询达到限制", "module", "videogen", "operation", "poll", "job_id", id, "failures", failures, "error", err)
 			if err := s.stopPoll(ctx, id, *claim.BillingTransactionID, reason); err != nil {
 				return err
 			}
 			continue
 		}
-		slog.WarnContext(ctx, "处理视频任务失败，等待重试", "job_id", id, "failures", failures,
-			"max_failures", maxPollFailures, "retry_at", retryAt, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "video.job.retry", "处理视频任务失败，等待重试", "module", "videogen", "operation", "poll", "job_id", id, "failures", failures, "max_failures", maxPollFailures, "retry_at", retryAt, "error", err)
 	}
 	return nil
 }
@@ -464,7 +464,7 @@ func (s *Service) stopPoll(ctx context.Context, id, transactionID, reason string
 	if err := sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &reason}); err != nil {
 		return err
 	}
-	slog.WarnContext(ctx, "停止视频任务自动轮询，等待核查", "job_id", id, "reason", reason)
+	logging.Event(ctx, slog.Default(), slog.LevelWarn, "video.job.stopped", "停止视频任务自动轮询，等待核查", "module", "videogen", "operation", "stopPoll", "job_id", id, "reason", reason)
 	return nil
 }
 

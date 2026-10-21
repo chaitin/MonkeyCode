@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"hash/fnv"
 	"io"
 	"log/slog"
@@ -173,6 +174,7 @@ func (s *Service) allow(grant string) bool {
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
+	worker := logging.NewWorker(s.logger, "relay", "cleanup_connections", "database")
 	for {
 		select {
 		case <-ctx.Done():
@@ -184,9 +186,7 @@ func (s *Service) Run(ctx context.Context) {
 				err = s.identity.CleanupDeviceRequests(cleanup)
 			}
 			cancel()
-			if err != nil && ctx.Err() == nil {
-				s.logger.Warn("清理过期远程连接失败", "reason", "storage_unavailable")
-			}
+			worker.Report(ctx, err)
 			s.mu.Lock()
 			for id, bucket := range s.limiter {
 				if time.Since(bucket.start) > time.Minute {
@@ -217,19 +217,26 @@ func (s *Service) Metadata() map[string]any {
 	return metadata
 }
 
-func fail(w http.ResponseWriter, err error) {
+func fail(ctx context.Context, w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	var fault *resource.Error
 	if errors.As(err, &fault) {
-		resource.Fail(w, fault)
+		if fault.Code == "device_offline" || fault.Code == "device_draining" {
+			logging.Expected(ctx)
+		}
+		resource.Fail(ctx, w, fault)
 		return
 	}
-	failure(w, http.StatusServiceUnavailable, "authorization_state_unavailable")
+	logging.Diagnostic(ctx, slog.Default(), slog.LevelError, "relay.authorization.failed", err)
+	failure(ctx, w, http.StatusServiceUnavailable, "authorization_state_unavailable")
 }
 
-func failure(w http.ResponseWriter, status int, code string) {
+func failure(ctx context.Context, w http.ResponseWriter, status int, code string) {
+	if code == "device_offline" || code == "device_draining" {
+		logging.Expected(ctx)
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	resource.Fail(w, &resource.Error{Status: status, Code: code, Message: map[string]string{
+	resource.Fail(ctx, w, &resource.Error{Status: status, Code: code, Message: map[string]string{
 		"invalid_request": "请求参数无效", "invalid_scope": "申请权限无效", "permission_denied": "没有所需权限", "device_not_found": "设备不存在", "device_offline": "目标执行端离线",
 		"device_draining": "执行服务正在停止", "device_process_conflict": "此设备已有活动执行进程", "device_registration_changed": "设备登记已变化",
 		"device_revoked": "远程访问已撤销", "upgrade_required": "需要升级协议版本", "connection_expired": "连接授权已过期或撤销",
@@ -369,13 +376,13 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	p, _ := identity.PrincipalFromContext(r.Context())
 	machine := chi.URLParam(r, "machine")
 	if !validUUID(machine) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	versionText := strings.Trim(r.Header.Get("If-Match"), "\"")
 	version, err := strconv.ParseInt(versionText, 10, 64)
 	if err != nil || version < 0 {
-		failure(w, http.StatusPreconditionRequired, "device_registration_changed")
+		failure(r.Context(), w, http.StatusPreconditionRequired, "device_registration_changed")
 		return
 	}
 	key := target{p.UserID, machine}
@@ -387,7 +394,7 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	gate.Unlock()
 	if err != nil {
-		fail(w, err)
+		fail(r.Context(), w, err)
 		return
 	}
 	s.pushDeviceRevoked(old)

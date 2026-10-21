@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -163,7 +164,7 @@ func (s *Service) broadcast(userID string, u *userState) {
 		Endpoints []View `json:"endpoints"`
 	}{"directory.snapshot", rows})
 	if err != nil {
-		s.logger.Error("序列化端点目录失败", "user_id", userID, "operation", "broadcast", "error", err)
+		logging.Event(context.Background(), s.logger, slog.LevelError, "endpoint.operation.error", "序列化端点目录失败", "module", "endpoint", "operation", "broadcast", "user_id", userID, "operation", "broadcast", "error", err)
 		return
 	}
 	for _, c := range u.connections {
@@ -176,7 +177,7 @@ func (s *Service) route(c *connection, m Message, size int) {
 	defer cancel()
 	if err := u.enter(ctx); err != nil {
 		if !c.dead.Load() && !c.expected(err) {
-			s.logger.Warn("端点路由获取锁失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "route", "error", err)
+			logging.Event(context.Background(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点路由获取锁失败", "module", "endpoint", "operation", "route", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "route", "error", err)
 		}
 		c.stop(1013)
 		return
@@ -219,7 +220,7 @@ func (s *Service) route(c *connection, m Message, size int) {
 	m.RoutedAt = now.UnixMilli()
 	data, err := json.Marshal(m)
 	if err != nil {
-		s.logger.Error("序列化端点转发消息失败", "user_id", c.credential.UserID, "machine_id", c.machine, "message_id", m.ID, "operation", "route", "error", err)
+		logging.Event(context.Background(), s.logger, slog.LevelError, "endpoint.operation.error", "序列化端点转发消息失败", "module", "endpoint", "operation", "route", "user_id", c.credential.UserID, "machine_id", c.machine, "message_id", m.ID, "operation", "route", "error", err)
 		c.reject("invalid_message", m.ID)
 		return
 	}
@@ -260,7 +261,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	s.logger.Info("端点桥接已停止", "messages", s.stats.messages.Load(), "bytes", s.stats.bytes.Load(), "rejected", s.stats.rejected.Load(), "handshake_failures", s.stats.handshakes.Load())
+	logging.Event(ctx, s.logger, slog.LevelInfo, "endpoint.operation.info", "端点桥接已停止", "module", "endpoint", "operation", "Shutdown", "messages", s.stats.messages.Load(), "bytes", s.stats.bytes.Load(), "rejected", s.stats.rejected.Load(), "handshake_failures", s.stats.handshakes.Load())
 	return nil
 }
 

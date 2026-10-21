@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net"
@@ -32,36 +33,36 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		r.Post("/{machine}/restore", func(w http.ResponseWriter, r *http.Request) { s.update(w, r, "restore") })
 	})
 }
-func respond(w http.ResponseWriter, code int, data any) {
+func respond(ctx context.Context, w http.ResponseWriter, code int, data any) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	body, err := json.Marshal(data)
 	if err != nil {
-		slog.Error("序列化端点响应失败", "operation", "respond", "status", code, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "endpoint.operation.error", "序列化端点响应失败", "module", "endpoint", "operation", "respond", "operation", "respond", "status", code, "error", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(code)
 	if _, err := w.Write(append(body, '\n')); err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
-			slog.Debug("端点响应连接已断开", "operation", "respond", "status", code, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelDebug, "endpoint.operation.debug", "端点响应连接已断开", "module", "endpoint", "operation", "respond", "operation", "respond", "status", code, "error", err)
 		} else {
-			slog.Warn("端点响应写入失败", "operation", "respond", "status", code, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "endpoint.operation.warn", "端点响应写入失败", "module", "endpoint", "operation", "respond", "operation", "respond", "status", code, "error", err)
 		}
 	}
 }
-func failure(w http.ResponseWriter, code int, name string) {
-	respond(w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁", "permission_denied": "没有所需权限"}[name]}})
+func failure(ctx context.Context, w http.ResponseWriter, code int, name string) {
+	respond(ctx, w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁", "permission_denied": "没有所需权限"}[name]}})
 }
 func (s *Service) credential(w http.ResponseWriter, r *http.Request) (Credential, bool) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	c, ok := s.auth.Credential(r)
 	if !ok || !time.Now().Before(c.ExpiresAt) {
-		failure(w, 401, "invalid_token")
+		failure(r.Context(), w, 401, "invalid_token")
 		return c, false
 	}
 	if s.draining.Load() {
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return c, false
 	}
 	return c, true
@@ -84,21 +85,21 @@ func (s *Service) manage(w http.ResponseWriter, r *http.Request, fn func(context
 	defer s.release(credential.UserID, u)
 	if err := u.enter(ctx); err != nil {
 		if r.Context().Err() == nil {
-			s.logger.Warn("端点管理获取锁失败", "user_id", credential.UserID, "operation", r.Method, "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点管理获取锁失败", "module", "endpoint", "operation", "manage", "user_id", credential.UserID, "operation", r.Method, "error", err)
 		}
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
 	defer u.leave()
 	if s.draining.Load() {
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
 	if err := s.load(ctx, credential.UserID, u); err != nil {
 		if r.Context().Err() == nil {
-			s.logger.Warn("加载端点目录失败", "user_id", credential.UserID, "operation", r.Method, "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "加载端点目录失败", "module", "endpoint", "operation", "manage", "user_id", credential.UserID, "operation", r.Method, "error", err)
 		}
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
 	result, err := fn(ctx, credential.UserID, u)
@@ -109,12 +110,12 @@ func (s *Service) manage(w http.ResponseWriter, r *http.Request, fn func(context
 			w.Header().Set("Retry-After", strconv.Itoa(seconds))
 		}
 		if name == "service_unavailable" && r.Context().Err() == nil {
-			s.logger.Warn("端点管理操作失败", "user_id", credential.UserID, "operation", r.Method, "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点管理操作失败", "module", "endpoint", "operation", "manage", "user_id", credential.UserID, "operation", r.Method, "error", err)
 		}
-		failure(w, code, name)
+		failure(r.Context(), w, code, name)
 		return
 	}
-	respond(w, 200, result)
+	respond(r.Context(), w, 200, result)
 }
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	modern := r.Header.Get("X-MAI-Runtime-API") == "1"
@@ -130,7 +131,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	page, ok := pageParam(r, "page", 1, 1000000)
 	size, okSize := pageParam(r, "page_size", 20, 100)
 	if !ok || !okSize {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	s.manage(w, r, func(ctx context.Context, user string, u *userState) (any, error) {
@@ -144,7 +145,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 func (s *Service) get(w http.ResponseWriter, r *http.Request) {
 	machine := chi.URLParam(r, "machine")
 	if !validID(machine) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	s.manage(w, r, func(ctx context.Context, user string, u *userState) (any, error) {
@@ -155,12 +156,12 @@ func (s *Service) get(w http.ResponseWriter, r *http.Request) {
 func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) {
 	machine := chi.URLParam(r, "machine")
 	if !validID(machine) {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1024))
 	if err != nil {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	var alias *string
@@ -168,11 +169,11 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) 
 		fields, err := object(data)
 		raw, ok := fields["alias"]
 		if err != nil || !ok || len(fields) != 1 || json.Unmarshal(raw, &alias) != nil || (alias != nil && !text(*alias, 128)) {
-			failure(w, 400, "invalid_request")
+			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
 	} else if strings.TrimSpace(string(data)) != "" {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	s.manage(w, r, func(ctx context.Context, user string, u *userState) (any, error) {
@@ -217,7 +218,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		o := values[0]
 		parsed, err := url.Parse(o)
 		if len(values) != 1 || err != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || origin(o) == "" || origin(o) != origin(s.origin) {
-			failure(w, 403, "forbidden")
+			failure(r.Context(), w, 403, "forbidden")
 			return
 		}
 	}
@@ -227,21 +228,21 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	err := u.enter(ctx)
 	cancel()
 	if err != nil {
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
 	allowed := u.upgrades.allow(time.Now(), 1, 10, 20)
 	u.leave()
 	if !allowed {
 		w.Header().Set("Retry-After", "1")
-		failure(w, 429, "rate_limited")
+		failure(r.Context(), w, 429, "rate_limited")
 		return
 	}
 	s.mu.Lock()
 	if s.draining.Load() || s.slots >= s.maxConnections {
 		s.mu.Unlock()
 		w.Header().Set("Retry-After", "1")
-		failure(w, 503, "service_unavailable")
+		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
 	s.slots++
@@ -250,7 +251,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		if r.Context().Err() == nil {
-			s.logger.Warn("端点 WebSocket 握手失败", "user_id", credential.UserID, "operation", "ws_accept", "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点 WebSocket 握手失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "operation", "ws_accept", "error", err)
 		}
 		s.stats.handshakes.Add(1)
 		return
@@ -277,7 +278,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		// 清理必须完成，不能因管理操作持锁而遗留一个永久离线连接。
 		if err := u.enter(context.Background()); err != nil {
-			s.logger.Error("清理端点连接获取锁失败", "user_id", credential.UserID, "machine_id", c.machine, "operation", "disconnect", "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelError, "endpoint.operation.error", "清理端点连接获取锁失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "machine_id", c.machine, "operation", "disconnect", "error", err)
 		} else {
 			if u.connections[c.machine] == c {
 				delete(u.connections, c.machine)
@@ -292,13 +293,13 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		}
 		if c.machine != "" {
 			if err := s.store.Touch(cleanup, credential.UserID, c.machine, time.UnixMilli(c.seen.Load())); err != nil {
-				s.logger.Warn("端点断开时刷新在线时间失败", "user_id", credential.UserID, "machine_id", c.machine, "operation", "disconnect_touch", "error", err)
+				logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点断开时刷新在线时间失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "machine_id", c.machine, "operation", "disconnect_touch", "error", err)
 			}
 		}
 		s.mu.Lock()
 		delete(s.connections, c)
 		s.mu.Unlock()
-		s.logger.Info("端点连接关闭", "user_id", credential.UserID, "machine_id", c.machine, "close_code", c.code.Load())
+		logging.Event(r.Context(), s.logger, slog.LevelInfo, "endpoint.operation.info", "端点连接关闭", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "machine_id", c.machine, "close_code", c.code.Load())
 		close(c.finished)
 	}()
 	ws.SetReadLimit(4096)
@@ -307,7 +308,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	helloTimer.Stop()
 	if err != nil {
 		if !c.dead.Load() && !c.expected(err) {
-			s.logger.Warn("端点初始消息读取失败", "user_id", credential.UserID, "operation", "handshake_read", "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点初始消息读取失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "operation", "handshake_read", "error", err)
 		}
 		s.stats.handshakes.Add(1)
 		c.stop(1002)
@@ -336,14 +337,14 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	defer checkCancel()
 	if err = u.enter(checkCtx); err != nil {
 		if !c.dead.Load() && !c.expected(err) {
-			s.logger.Warn("端点握手获取锁失败", "user_id", credential.UserID, "operation", "handshake_lock", "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点握手获取锁失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "operation", "handshake_lock", "error", err)
 		}
 		c.stop(1013)
 		return
 	}
 	code, checkErr := s.check(checkCtx, credential)
 	if checkErr != nil && !c.dead.Load() && !c.expected(checkErr) {
-		s.logger.Warn("端点握手鉴权失败", "user_id", credential.UserID, "operation", "handshake_verify", "error", checkErr)
+		logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点握手鉴权失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "operation", "handshake_verify", "error", checkErr)
 	}
 	if code != 0 || s.draining.Load() || c.dead.Load() {
 		u.leave()
@@ -376,7 +377,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	u.leave()
 	if err != nil {
 		if _, name := status(err); name == "service_unavailable" && !c.dead.Load() && !c.expected(err) {
-			s.logger.Warn("端点注册失败", "user_id", credential.UserID, "machine_id", h.MachineID, "operation", "register", "error", err)
+			logging.Event(r.Context(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点注册失败", "module", "endpoint", "operation", "connect", "user_id", credential.UserID, "machine_id", h.MachineID, "operation", "register", "error", err)
 		}
 		_, name := status(err)
 		if name == "endpoint_not_found" {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,20 +37,23 @@ type Call struct {
 }
 
 type usageResult struct {
-	inputKnown, outputKnown  bool
-	InputSource              string
-	OutputSource             string
-	InputTokens              uint64
-	OutputTokens             uint64
-	CacheReadInputTokens     uint64
-	CachedTokens             uint64
-	ResponseID               string
-	CacheCreationInputTokens uint64
-	Known                    bool
-	Result                   string
-	ErrorCode                string
-	TerminalEvent            string
-	FirstTokenDurationMs     *int32
+	inputKnown, outputKnown     bool
+	InputSource                 string
+	OutputSource                string
+	InputTokens                 uint64
+	OutputTokens                uint64
+	CacheReadInputTokens        uint64
+	CachedTokens                uint64
+	ResponseID                  string
+	CacheCreationInputTokens    uint64
+	Known                       bool
+	Result                      string
+	ErrorCode                   string
+	TerminalEvent               string
+	FirstTokenDurationMs        *int32
+	ObservedResult, FailureCode string
+	ParseErrorCount             uint64
+	FailureAttrs                []slog.Attr
 }
 
 func (r usageResult) totalTokens() uint64 {
@@ -70,12 +74,13 @@ type usageCaptureContext struct {
 }
 
 type usageCapture struct {
-	logger     *slog.Logger
-	src        io.ReadCloser
-	ctx        usageCaptureContext
-	reader     io.ReadCloser
-	writer     *io.PipeWriter
-	copyFailed bool
+	logger      *slog.Logger
+	src         io.ReadCloser
+	ctx         usageCaptureContext
+	reader      io.ReadCloser
+	writer      *io.PipeWriter
+	copyFailed  bool
+	parseErrors uint64
 }
 
 var _ io.ReadCloser = (*usageCapture)(nil)
@@ -94,12 +99,23 @@ func newUsageCapture(logger *slog.Logger, src io.ReadCloser, ctx usageCaptureCon
 }
 
 func (p *Proxy) modifyResponse(response *http.Response) error {
-	if response == nil || response.Body == nil || (p.recorder == nil && p.billing == nil) {
+	if response == nil || response.Body == nil {
 		return nil
+	}
+	pc, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext)
+	if !ok || pc == nil {
+		return nil
+	}
+	pc.upstreamStatus = response.StatusCode
+	pc.upstreamRequestID = response.Header.Get("X-Request-ID")
+	if id := logging.RequestID(response.Request.Context()); id != "" {
+		response.Header.Set("X-Request-ID", id)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		if pc, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext); ok {
-			p.finish(response.Request.Context(), pc, Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Stream: pc.stream, Result: "failed", ErrorCode: "upstream_http_error"})
+			call := Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Stream: pc.stream, Result: "failed", ErrorCode: "upstream_http_error"}
+			p.logCall(response.Request.Context(), pc, call, nil)
+			p.finish(response.Request.Context(), pc, call)
 		}
 		return nil
 	}
@@ -160,27 +176,24 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 	if !call.Known && call.ErrorCode == "" {
 		call.ErrorCode = "usage_unknown"
 	}
-	if !call.Known {
-		p.logger.WarnContext(ctx, "模型用量无法确定",
-			"transaction_id", proxyCtx.reservation.ID,
-			"model_id", target.ModelID,
-			"stream", proxyCtx.stream,
-			"response_id", result.ResponseID,
-			"terminal_event", result.TerminalEvent,
-			"reason", call.ErrorCode,
-		)
+	logCall := call
+	if result.ObservedResult != "" {
+		logCall.Result = result.ObservedResult
+	}
+	logCall.ErrorCode = result.FailureCode
+	p.logCall(ctx, proxyCtx, logCall, nil, result.FailureAttrs...)
+	if !call.Known || result.ParseErrorCount > 0 {
+		logging.Event(ctx, p.logger, slog.LevelWarn, "model.usage.failed", "模型用量无法确定", "parse_error_count", result.ParseErrorCount, "module", "proxy", "operation", "recordUsage", "event", "model.usage.failed", "transaction_id", proxyCtx.reservation.ID, "model_id", target.ModelID, "stream", proxyCtx.stream, "response_id", result.ResponseID, "terminal_event", result.TerminalEvent, "reason", call.ErrorCode)
 	}
 	if call.InputSource != "" || call.OutputSource != "" {
-		p.logger.InfoContext(ctx, "模型用量已本地估算", "model_id", target.ModelID,
-			"transaction_id", proxyCtx.reservation.ID, "input_source", call.InputSource,
-			"output_source", call.OutputSource, "known", call.Known)
+		logging.Event(ctx, p.logger, slog.LevelInfo, "proxy.operation.info", "模型用量已本地估算", "module", "proxy", "operation", "recordUsage", "model_id", target.ModelID, "transaction_id", proxyCtx.reservation.ID, "input_source", call.InputSource, "output_source", call.OutputSource, "known", call.Known)
 	}
 	p.finish(ctx, proxyCtx, call)
 	if target.OwnershipType == "user" || p.billing != nil || p.recorder == nil || !result.hasTokens() {
 		return
 	}
 	if err := p.recorder.Record(context.WithoutCancel(ctx), call); err != nil {
-		p.logger.WarnContext(ctx, "记录模型调用用量失败", "model_id", target.ModelID, "error", err)
+		logging.Event(ctx, p.logger, slog.LevelWarn, "model.usage.persist.failed", "记录模型调用用量失败", "module", "proxy", "operation", "recordUsage", "model_id", target.ModelID, "error", err)
 	}
 }
 
@@ -194,6 +207,7 @@ func (c *usageCapture) handleShadow() {
 	var result usageResult
 	defer func() {
 		if c.ctx.proxy != nil {
+			result.ParseErrorCount = c.parseErrors
 			c.ctx.proxy.recordUsage(c.ctx.ctx, c.ctx.proxyCtx, result)
 		}
 	}()
@@ -248,11 +262,12 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			if event.Type != "response.completed" {
 				if isTerminal {
 					result.Result = "failed"
+					result.ObservedResult, result.FailureCode = "failed", "upstream_failed"
 				}
 			}
 			response, err := parseOpenAIResponseEvent(event.Data)
 			if err != nil {
-				logger.WarnContext(c.ctx.ctx, "解析 Responses 流式事件失败", "event", event.Type, "error", err)
+				c.parseFailure(logger, "解析 Responses 流式事件失败", err)
 				if isTerminal {
 					result.ErrorCode = "usage_parse_failed"
 				}
@@ -280,7 +295,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			}
 			response, err := parseChatCompletion(event.Data)
 			if err != nil {
-				logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 流式用量失败", "error", err)
+				c.parseFailure(logger, "解析 Chat Completions 流式用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
@@ -306,7 +321,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 		case "message_start":
 			response, err := parseAnthropicResponse(event.Data)
 			if err != nil {
-				logger.WarnContext(c.ctx.ctx, "解析 Anthropic message_start 用量失败", "error", err)
+				c.parseFailure(logger, "解析 Anthropic message_start 用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
@@ -322,7 +337,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 		case "message_delta":
 			response, err := parseAnthropicResponse(event.Data)
 			if err != nil {
-				logger.WarnContext(c.ctx.ctx, "解析 Anthropic message_delta 用量失败", "error", err)
+				c.parseFailure(logger, "解析 Anthropic message_delta 用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
 				continue
 			}
@@ -350,13 +365,19 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			result.Result = "failed"
 			result.Known = false
 			result.ErrorCode = "upstream_error_event"
+			result.ObservedResult, result.FailureCode = "failed", "upstream_error_event"
 			result.TerminalEvent = event.Type
 		}
 	}
 	if err := decoder.Err(); err != nil {
 		result.Result = "failed"
 		result.ErrorCode = "stream_interrupted"
-		logger.WarnContext(c.ctx.ctx, "读取模型流式响应失败", "error", err)
+		result.ObservedResult, result.FailureCode = "failed", "stream_interrupted"
+		result.FailureAttrs = logging.ErrorAttrs(err)
+		c.parseFailure(logger, "读取模型流式响应失败", err)
+	}
+	if !terminal && result.ObservedResult == "" {
+		result.ObservedResult, result.FailureCode = "failed", "stream_terminal_missing"
 	}
 	if result.Known {
 		result.ErrorCode = ""
@@ -383,9 +404,11 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	data, err := io.ReadAll(io.LimitReader(c.reader, maxEstimateBytes+1))
 	if err != nil || len(data) > maxEstimateBytes {
-		logger.WarnContext(c.ctx.ctx, "读取模型响应副本失败", "error", err)
+		c.parseFailure(logger, "读取模型响应副本失败", err)
 		result.Result = "failed"
 		result.ErrorCode = "usage_read_failed"
+		result.ObservedResult, result.FailureCode = "failed", "upstream_read_failed"
+		result.FailureAttrs = logging.ErrorAttrs(err)
 		return result
 	}
 	estimate.response(c.ctx.path, data)
@@ -393,7 +416,7 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	case "/v1/responses":
 		response, err := parseOpenAIResponse(data)
 		if err != nil {
-			logger.WarnContext(c.ctx.ctx, "解析 Responses 用量失败", "error", err)
+			c.parseFailure(logger, "解析 Responses 用量失败", err)
 			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
@@ -417,7 +440,7 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	case "/v1/chat/completions":
 		response, err := parseChatCompletion(data)
 		if err != nil {
-			logger.WarnContext(c.ctx.ctx, "解析 Chat Completions 用量失败", "error", err)
+			c.parseFailure(logger, "解析 Chat Completions 用量失败", err)
 			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
@@ -434,7 +457,7 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	case "/v1/messages":
 		response, err := parseAnthropicResponse(data)
 		if err != nil {
-			logger.WarnContext(c.ctx.ctx, "解析 Anthropic 用量失败", "error", err)
+			c.parseFailure(logger, "解析 Anthropic 用量失败", err)
 			result.ErrorCode = "usage_parse_failed"
 			return result
 		}
@@ -458,6 +481,11 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	return result
 }
 
+func (c *usageCapture) parseFailure(logger *slog.Logger, message string, err error) {
+	c.parseErrors++
+	logging.Event(c.ctx.ctx, logger, slog.LevelDebug, "model.usage.parse.failed", message, "error", err)
+}
+
 func (c *usageCapture) logPipeError(operation string, err error) {
 	if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, context.Canceled) || (c.ctx.ctx != nil && c.ctx.ctx.Err() != nil) {
 		return
@@ -467,7 +495,7 @@ func (c *usageCapture) logPipeError(operation string, err error) {
 		transactionID = c.ctx.proxyCtx.reservation.ID
 		modelID = c.ctx.proxyCtx.target.ModelID
 	}
-	c.logger.WarnContext(c.ctx.ctx, "转发模型用量副本失败", "transaction_id", transactionID, "model_id", modelID, "operation", operation, "path", c.ctx.path, "error", err)
+	logging.Event(c.ctx.ctx, c.logger, slog.LevelWarn, "proxy.operation.warn", "转发模型用量副本失败", "module", "proxy", "operation", "logPipeError", "transaction_id", transactionID, "model_id", modelID, "operation", operation, "path", c.ctx.path, "error", err)
 }
 
 func (c *usageCapture) Close() error {

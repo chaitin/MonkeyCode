@@ -1,8 +1,10 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 
@@ -16,7 +18,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/models/authorization-subjects", func(w http.ResponseWriter, r *http.Request) {
 		subjects, err := s.Subjects(r.Context())
 		if err != nil {
-			slog.ErrorContext(r.Context(), "读取模型授权对象失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "读取模型授权对象失败", "module", "model", "operation", "RegisterAdmin", "error", err)
 			modelError(w, http.StatusInternalServerError, "读取授权对象失败")
 			return
 		}
@@ -77,7 +79,7 @@ func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
 		} else {
-			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "updateModel", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -99,7 +101,7 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
 		} else {
-			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "setModelEnabled", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -113,7 +115,7 @@ func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
 		} else {
-			slog.ErrorContext(r.Context(), "操作模型失败", "model_id", chi.URLParam(r, "modelID"), "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "deleteModel", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
 		modelError(w, status, err.Error())
 		return
@@ -138,7 +140,7 @@ func modelJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
-		slog.Error("写入模型 HTTP 响应失败", "status", status, "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "model.operation.error", "写入模型 HTTP 响应失败", "module", "model", "operation", "modelJSON", "status", status, "error", err)
 	}
 }
 

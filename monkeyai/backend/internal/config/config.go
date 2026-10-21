@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -93,19 +92,8 @@ func Load(args []string) (Config, error) {
 		InitialAdminPassword:         os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
 	}
 
-	flags := flag.NewFlagSet("monkeyai-server", flag.ContinueOnError)
-	flags.IntVar(&cfg.EndpointMaxConnections, "endpoint-max-connections", cfg.EndpointMaxConnections, "端点连接总上限（含等待握手）")
-	flags.StringVar(&cfg.Addr, "http-addr", cfg.Addr, "HTTP 监听地址")
-	flags.StringVar(&cfg.PprofAddr, "pprof-addr", cfg.PprofAddr, "pprof 监听地址")
-	flags.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "优雅退出超时时间")
-	flags.StringVar(&cfg.URL, "database-url", cfg.URL, "PostgreSQL 连接地址")
-	flags.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "统一对外访问地址")
-	flags.StringVar(&logLevel, "log-level", logLevel, "日志级别")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(args, &cfg, &logLevel); err != nil {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
-	}
-	if flags.NArg() != 0 {
-		return Config{}, fmt.Errorf("无法识别的启动参数: %s", strings.Join(flags.Args(), " "))
 	}
 
 	cfg.Addr = strings.TrimSpace(cfg.Addr)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,7 @@ func (s *Service) read(ctx context.Context, object resource.Object) (Package, er
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			slog.ErrorContext(ctx, "关闭技能包读取流失败", "skill_id", object.String("id"), "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "skill.operation.error", "关闭技能包读取流失败", "module", "skill", "operation", "read", "skill_id", object.String("id"), "error", err)
 		}
 	}()
 	b, err := io.ReadAll(io.LimitReader(r, MaxPackage+1))
@@ -136,59 +137,59 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 func (s *Service) manifest(w http.ResponseWriter, r *http.Request, personal bool) {
 	o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), chi.URLParam(r, "id")))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if personal {
 		user, _ := identity.UserFromContext(r.Context())
 		if o.String("ownership_type") != "user" || o.String("owner_user_id") != user.ID {
-			resource.Fail(w, resource.NotFound)
+			resource.Fail(r.Context(), w, resource.NotFound)
 			return
 		}
 	}
 	p, err := s.read(r.Context(), o)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	resource.ETag(w, o)
-	resource.JSON(w, 200, resource.Object{"name": p.Name, "description": p.Description, "content": p.Content, "revision": o["revision"]})
+	resource.JSON(r.Context(), w, 200, resource.Object{"name": p.Name, "description": p.Description, "content": p.Content, "revision": o["revision"]})
 }
 func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(1<<20))
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		resource.Fail(w, resource.Invalid("技能包上传无效或超限"))
+		resource.Fail(r.Context(), w, resource.Invalid("技能包上传无效或超限"))
 		return
 	}
 	defer func() {
 		if err := r.MultipartForm.RemoveAll(); err != nil {
-			slog.ErrorContext(r.Context(), "清理技能包上传临时文件失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "skill.operation.error", "清理技能包上传临时文件失败", "module", "skill", "operation", "upload", "error", err)
 		}
 	}()
 	f, _, err := r.FormFile("package")
 	if err != nil {
-		resource.Fail(w, resource.Invalid("缺少 package"))
+		resource.Fail(r.Context(), w, resource.Invalid("缺少 package"))
 		return
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			slog.ErrorContext(r.Context(), "关闭技能包上传文件失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "skill.operation.error", "关闭技能包上传文件失败", "module", "skill", "operation", "upload", "error", err)
 		}
 	}()
 	b, err := io.ReadAll(io.LimitReader(f, MaxPackage+1))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	p, err := Parse(b)
 	if err != nil {
-		resource.Fail(w, resource.Invalid(err.Error()))
+		resource.Fail(r.Context(), w, resource.Invalid(err.Error()))
 		return
 	}
 	in := resource.Object{}
 	if meta := r.FormValue("metadata"); meta != "" {
 		if err = json.Unmarshal([]byte(meta), &in); err != nil || in == nil {
-			resource.Fail(w, resource.Invalid("元数据格式无效"))
+			resource.Fail(r.Context(), w, resource.Invalid("元数据格式无效"))
 			return
 		}
 	}
@@ -205,16 +206,16 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	}
 	o, err := save(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), in)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	resource.ETag(w, o)
-	resource.JSON(w, status, o)
+	resource.JSON(r.Context(), w, status, o)
 }
 func (s *Service) Download(w http.ResponseWriter, r *http.Request, id string) {
 	o, err := resource.DecodeObject(sqlc.New(s.store.Pool).GetSkill(r.Context(), id))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	s.ServePackage(w, r, o)
@@ -222,12 +223,12 @@ func (s *Service) Download(w http.ResponseWriter, r *http.Request, id string) {
 
 func (s *Service) ServePackage(w http.ResponseWriter, r *http.Request, o resource.Object) {
 	if hash := r.URL.Query().Get("sha256"); hash != "" && hash != o.String("package_sha256") {
-		resource.Fail(w, resource.Conflict)
+		resource.Fail(r.Context(), w, resource.Conflict)
 		return
 	}
 	p, err := s.read(r.Context(), o)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
@@ -237,6 +238,6 @@ func (s *Service) ServePackage(w http.ResponseWriter, r *http.Request, o resourc
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-SHA256", o.String("package_sha256"))
 	if _, err := w.Write(p.Bytes); err != nil {
-		slog.ErrorContext(r.Context(), "技能包下载写入失败", "skill_id", o.String("id"), "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "skill.operation.error", "技能包下载写入失败", "module", "skill", "operation", "ServePackage", "skill_id", o.String("id"), "error", err)
 	}
 }

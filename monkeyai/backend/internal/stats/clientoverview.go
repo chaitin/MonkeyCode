@@ -14,7 +14,7 @@ func (s *Service) reportingClientsOverview(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Cache-Control", "private, no-store")
 	for _, name := range []string{"cursor", "limit", "page", "page_size"} {
 		if r.URL.Query().Has(name) {
-			resource.Fail(w, resource.Invalid("客户端分布概览不支持分页参数"))
+			resource.Fail(r.Context(), w, resource.Invalid("客户端分布概览不支持分页参数"))
 			return
 		}
 	}

@@ -54,25 +54,25 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	if value := r.URL.Query().Get("page"); value != "" {
 		page, err = strconv.Atoi(value)
 		if err != nil {
-			failure(w, 400, "invalid_request")
+			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
 	}
 	if value := r.URL.Query().Get("page_size"); value != "" {
 		size, err = strconv.Atoi(value)
 		if err != nil {
-			failure(w, 400, "invalid_request")
+			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
 	}
 	capability := r.URL.Query().Get("capability")
 	if page < 1 || page > 1000000 || size < 1 || size > 100 || capability != "" && capability != "execute" {
-		failure(w, 400, "invalid_request")
+		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
 	rows, err := s.devices.Snapshot(ctx, p.UserID, capability == "execute")
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	routes := s.directoryRoutes(p.UserID)
@@ -87,7 +87,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 		} else if online {
 			valid, err := s.identity.VerifyGrant(ctx, current.principal)
 			if err != nil {
-				failure(w, 503, "authorization_state_unavailable")
+				failure(r.Context(), w, 503, "authorization_state_unavailable")
 				return
 			}
 			if valid {
@@ -115,12 +115,12 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	}
 	encoded, err := json.Marshal(out)
 	if err != nil {
-		failure(w, 503, "authorization_state_unavailable")
+		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	digest := sha256.Sum256(encoded)
 	start := min((page-1)*size, len(out))
 	end := min(start+size, len(out))
 	w.Header().Set("Cache-Control", "no-store")
-	resource.JSON(w, 200, map[string]any{"items": out[start:end], "total": len(out), "page": page, "page_size": size, "version": hex.EncodeToString(digest[:])})
+	resource.JSON(r.Context(), w, 200, map[string]any{"items": out[start:end], "total": len(out), "page": page, "page_size": size, "version": hex.EncodeToString(digest[:])})
 }
