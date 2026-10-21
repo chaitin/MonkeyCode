@@ -251,6 +251,7 @@ export function AccountDialog({
                 </Button>
                 {feeSearch && (
                   <Button
+                    nativeButton={false}
                     variant="secondary"
                     render={
                       <Link

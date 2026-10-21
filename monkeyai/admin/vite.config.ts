@@ -11,6 +11,7 @@ const apiBackend =
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    allowedHosts: [".trycloudflare.com"],
     watch: {
       awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
     },

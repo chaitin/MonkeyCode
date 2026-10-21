@@ -223,6 +223,7 @@ export function ClientLoginPage() {
             )}
           {launchURL && (
             <Button
+              nativeButton={false}
               render={<a href={launchURL} />}
               size="lg"
               className="w-full cursor-pointer"

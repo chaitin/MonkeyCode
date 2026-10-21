@@ -135,6 +135,7 @@ export function PaidLicenseCard({ className }: { className?: string }) {
         <CardDescription>{t("pages.license.description")}</CardDescription>
         <CardAction className="flex items-center gap-2">
           <Button
+            nativeButton={false}
             render={
               <a
                 href="https://baizhi.cloud/consult"

@@ -521,6 +521,7 @@ export function BillingSettingsPage() {
               </CardTitle>
               <CardAction>
                 <Button
+                  nativeButton={false}
                   variant="secondary"
                   size="sm"
                   render={<Link to={CONSOLE_ROUTES.membersAndGroups} />}
@@ -772,6 +773,7 @@ export function BillingSettingsPage() {
                   ))}
                 </ItemGroup>
                 <Button
+                  nativeButton={false}
                   variant="secondary"
                   render={<Link to="/console/resources/models" />}
                 >
@@ -796,6 +798,7 @@ export function BillingSettingsPage() {
                 <Button
                   variant="secondary"
                   render={<Link to="/console/resources/tools" />}
+                  nativeButton={false}
                 >
                   {t("pages.billingSettings.toolPricing.manage")}
                   <HugeiconsIcon

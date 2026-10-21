@@ -103,7 +103,7 @@ export function LandingPage() {
               <LanguageToggle variant="ghost" />
               <ThemeToggle variant="ghost" />
             </div>
-            <Button render={<Link to={LOGIN_PATH} />}>
+            <Button nativeButton={false} render={<Link to={LOGIN_PATH} />}>
               {t("app.adminConsole")}
               <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden="true" />
             </Button>
@@ -122,13 +122,18 @@ export function LandingPage() {
               {t("landing.promise")}
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button size="lg" render={<a href="#downloads" />}>
+              <Button
+                nativeButton={false}
+                size="lg"
+                render={<a href="#downloads" />}
+              >
                 <HugeiconsIcon icon={Download01Icon} aria-hidden="true" />
                 {t("landing.downloads.title")}
               </Button>
               <Button
                 size="lg"
                 variant="outline"
+                nativeButton={false}
                 render={<Link to={LOGIN_PATH} />}
               >
                 {t("app.adminConsole")}
