@@ -273,6 +273,17 @@ func (q *Queries) CompleteSettlement(ctx context.Context, id string) (pgconn.Com
 	return q.db.Exec(ctx, completeSettlement, id)
 }
 
+const copyLedgerBatch = `-- name: CopyLedgerBatch :one
+SELECT billing_copy_ledger_batch($1::integer)::integer
+`
+
+func (q *Queries) CopyLedgerBatch(ctx context.Context, batchSize int32) (int32, error) {
+	row := q.db.QueryRow(ctx, copyLedgerBatch, batchSize)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countEntries = `-- name: CountEntries :one
 SELECT
     count(*)
@@ -291,10 +302,8 @@ AND ($4::text = ''
     OR e.mode = $4::text)
 AND ($5::text = ''
     OR e.entry_type = $5::text)
-AND ($6::timestamptz IS NULL
-    OR e.occurred_at >= $6)
-AND ($7::timestamptz IS NULL
-    OR e.occurred_at < $7)
+AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
 AND ($8::text = ''
     OR e.group_id = NULLIF ($8::text::text, '')::uuid)
 `
@@ -351,8 +360,8 @@ WHERE e.user_id = $1
     AND ($3::text = '' OR e.category = $3::text)
     AND ($4::text = '' OR e.mode = $4::text)
     AND ($5::text = '' OR e.entry_type = $5::text)
-    AND ($6::timestamptz IS NULL OR e.occurred_at >= $6)
-    AND ($7::timestamptz IS NULL OR e.occurred_at < $7)
+    AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
+    AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
 `
 
 type CountUserEntriesParams struct {
@@ -518,6 +527,17 @@ func (q *Queries) CreateWalletRecord(ctx context.Context, arg CreateWalletRecord
 	)
 }
 
+const cutoverLedger = `-- name: CutoverLedger :one
+SELECT billing_cutover_ledger()::boolean
+`
+
+func (q *Queries) CutoverLedger(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, cutoverLedger)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteQuota = `-- name: DeleteQuota :execresult
 UPDATE
     billing_quotas
@@ -606,15 +626,26 @@ func (q *Queries) EffectiveQuota(ctx context.Context, arg EffectiveQuotaParams) 
 	return i, err
 }
 
+const ensureLedgerWeeks = `-- name: EnsureLedgerWeeks :one
+SELECT billing_ensure_ledger_weeks($1::timestamptz)::boolean
+`
+
+func (q *Queries) EnsureLedgerWeeks(ctx context.Context, at time.Time) (bool, error) {
+	row := q.db.QueryRow(ctx, ensureLedgerWeeks, at)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const eventExists = `-- name: EventExists :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            credit_ledger_entries
-        WHERE
-            event_key = $1)
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT EXISTS(SELECT 1 FROM locations)
 `
 
 func (q *Queries) EventExists(ctx context.Context, eventKey *string) (bool, error) {
@@ -625,12 +656,14 @@ func (q *Queries) EventExists(ctx context.Context, eventKey *string) (bool, erro
 }
 
 const eventID = `-- name: EventID :one
-SELECT
-    id
-FROM
-    credit_ledger_entries
-WHERE
-    event_key = $1
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT id FROM locations
 `
 
 func (q *Queries) EventID(ctx context.Context, eventKey *string) (string, error) {
@@ -641,13 +674,15 @@ func (q *Queries) EventID(ctx context.Context, eventKey *string) (string, error)
 }
 
 const getAdjustment = `-- name: GetAdjustment :one
-SELECT
-    credit_delta::text,
-    item_name
-FROM
-    credit_ledger_entries
-WHERE
-    event_key = $1
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT e.credit_delta::text AS credit_delta, e.item_name FROM locations l
+CROSS JOIN LATERAL (SELECT id, account_id, user_id, session_id, entry_type, category, source_type, source_id, resource_type, resource_id, item_name, quantity, usage_unit, unit_credits, credit_delta, balance_after, external_reference, metadata, occurred_at, created_at, transaction_id, event_key, sequence, user_name, user_email, group_id, mode, reverses_id FROM credit_ledger_entries e WHERE e.id=l.id AND e.occurred_at=l.occurred_at OFFSET 0) e
 `
 
 type GetAdjustmentRow struct {
@@ -971,6 +1006,28 @@ func (q *Queries) InitializePolicy(ctx context.Context, value []byte) (pgconn.Co
 	return q.db.Exec(ctx, initializePolicy, value)
 }
 
+const ledgerDefaultCount = `-- name: LedgerDefaultCount :one
+SELECT count(*) FROM (SELECT 1 FROM credit_ledger_entries_default LIMIT 10001) pending
+`
+
+func (q *Queries) LedgerDefaultCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, ledgerDefaultCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const ledgerPartitioned = `-- name: LedgerPartitioned :one
+SELECT phase='partitioned' FROM billing_ledger_partition_state
+`
+
+func (q *Queries) LedgerPartitioned(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, ledgerPartitioned)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listEntries = `-- name: ListEntries :many
 SELECT
     (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
@@ -991,10 +1048,8 @@ AND ($4::text = ''
     OR e.mode = $4::text)
 AND ($5::text = ''
     OR e.entry_type = $5::text)
-AND ($6::timestamptz IS NULL
-    OR e.occurred_at >= $6)
-AND ($7::timestamptz IS NULL
-    OR e.occurred_at < $7)
+AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
 AND ($8::text = ''
     OR e.group_id = NULLIF ($8::text::text, '')::uuid)
 ORDER BY
@@ -1095,8 +1150,8 @@ WHERE e.user_id = $1
     AND ($3::text = '' OR e.category = $3::text)
     AND ($4::text = '' OR e.mode = $4::text)
     AND ($5::text = '' OR e.entry_type = $5::text)
-    AND ($6::timestamptz IS NULL OR e.occurred_at >= $6)
-    AND ($7::timestamptz IS NULL OR e.occurred_at < $7)
+    AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
+    AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
 ORDER BY e.occurred_at DESC, e.id DESC
 LIMIT $9 OFFSET $8
 `
@@ -1663,6 +1718,36 @@ func (q *Queries) ModelPricing(ctx context.Context, id string) (ModelPricingRow,
 	return i, err
 }
 
+const partitionedTransactionEntries = `-- name: PartitionedTransactionEntries :many
+SELECT (to_jsonb(e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text))::jsonb
+FROM credit_ledger_entry_keys k
+CROSS JOIN LATERAL (
+    SELECT id, account_id, user_id, session_id, entry_type, category, source_type, source_id, resource_type, resource_id, item_name, quantity, usage_unit, unit_credits, credit_delta, balance_after, external_reference, metadata, occurred_at, created_at, transaction_id, event_key, sequence, user_name, user_email, group_id, mode, reverses_id FROM credit_ledger_entries e WHERE e.id=k.id AND e.occurred_at=k.occurred_at OFFSET 0
+) e
+WHERE k.transaction_id=$1
+ORDER BY e.sequence
+`
+
+func (q *Queries) PartitionedTransactionEntries(ctx context.Context, transactionID *string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, partitionedTransactionEntries, transactionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var column_1 []byte
+		if err := rows.Scan(&column_1); err != nil {
+			return nil, err
+		}
+		items = append(items, column_1)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pendingTransactions = `-- name: PendingTransactions :many
 SELECT
     jsonb_build_object('id', t.id, 'user_id', t.user_id, 'user_name', t.user_name, 'user_email',
@@ -2164,10 +2249,8 @@ AND ($4::text = ''
     OR e.mode = $4::text)
 AND ($5::text = ''
     OR e.entry_type = $5::text)
-AND ($6::timestamptz IS NULL
-    OR e.occurred_at >= $6)
-AND ($7::timestamptz IS NULL
-    OR e.occurred_at < $7)
+AND e.occurred_at >= coalesce($6::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($7::timestamptz, 'infinity'::timestamptz)
 AND ($8::text = ''
     OR e.group_id = NULLIF ($8::text::text, '')::uuid)
 `

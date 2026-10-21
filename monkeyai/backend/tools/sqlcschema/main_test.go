@@ -14,6 +14,7 @@ DO $migration$ BEGIN PERFORM '忽略;数据搬迁'; END $migration$;
 INSERT INTO examples(name) VALUES ('数据');
 CREATE UNLOGGED TABLE temporary_results (name text DEFAULT E'a\';b');
 DROP TABLE temporary_results;
+CREATE VIEW example_names AS SELECT name FROM examples;
 `
 	statements, err := split(input)
 	if err != nil {
@@ -25,7 +26,7 @@ DROP TABLE temporary_results;
 			schema = append(schema, statement)
 		}
 	}
-	if len(statements) != 7 || len(schema) != 4 || !strings.Contains(schema[0], "'a;''b'") {
+	if len(statements) != 8 || len(schema) != 5 || !strings.Contains(schema[0], "'a;''b'") {
 		t.Fatalf("结构提取错误: %#v", statements)
 	}
 }

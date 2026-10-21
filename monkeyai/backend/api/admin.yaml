@@ -1693,6 +1693,7 @@ paths:
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
+      description: 读取按周分区的不可变账本。时间范围为左闭右开；不传时间时查询全部记录。管理页面初次打开默认最近 28 个自然日，支持清空或调整范围。
       responses:
         '200':
           description: 请求成功

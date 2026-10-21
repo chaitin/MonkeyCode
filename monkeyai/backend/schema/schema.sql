@@ -1464,3 +1464,48 @@ CREATE TABLE stats_model_credit_hourly (
     credits numeric NOT NULL DEFAULT 0,
     CHECK (hour_start = date_trunc('hour', hour_start, 'UTC'))
 );
+
+CREATE VIEW billing_ledger_original_entries AS SELECT * FROM credit_ledger_entries;
+
+CREATE TABLE credit_ledger_entry_keys (
+    id uuid PRIMARY KEY,
+    account_id uuid NOT NULL,
+    event_key text,
+    sequence bigint,
+    transaction_id uuid,
+    occurred_at timestamptz NOT NULL CHECK (isfinite(occurred_at)),
+    user_id uuid NOT NULL,
+    session_id uuid,
+    group_id uuid
+);
+
+CREATE TABLE credit_ledger_entries_partitioned (
+    LIKE credit_ledger_entries INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id, occurred_at),
+    FOREIGN KEY (id) REFERENCES credit_ledger_entry_keys(id),
+    FOREIGN KEY (reverses_id) REFERENCES credit_ledger_entry_keys(id),
+    CHECK (isfinite(occurred_at))
+) PARTITION BY RANGE (occurred_at);
+
+CREATE TABLE credit_ledger_entries_default PARTITION OF credit_ledger_entries_partitioned DEFAULT;
+
+CREATE TABLE billing_ledger_partition_state (
+    id boolean PRIMARY KEY DEFAULT true CHECK (id),
+    phase text NOT NULL DEFAULT 'backfill' CHECK (phase IN ('backfill', 'partitioned')),
+    source_relation regclass NOT NULL,
+    target_relation regclass NOT NULL,
+    source_end_at timestamptz,
+    source_end_id uuid,
+    cursor_at timestamptz,
+    cursor_id uuid,
+    checked_rows bigint NOT NULL DEFAULT 0,
+    switched_at timestamptz,
+    mirror_legacy boolean NOT NULL DEFAULT true
+);
+
+ALTER TABLE credit_ledger_entry_keys
+    ADD FOREIGN KEY (account_id) REFERENCES credit_accounts(id),
+    ADD FOREIGN KEY (user_id) REFERENCES users(id),
+    ADD FOREIGN KEY (session_id) REFERENCES sessions(id),
+    ADD FOREIGN KEY (transaction_id) REFERENCES billing_transactions(id),
+    ADD FOREIGN KEY (group_id) REFERENCES groups(id);

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var ddl = regexp.MustCompile(`(?is)^\s*(CREATE\s+(UNLOGGED\s+)?|ALTER\s+|DROP\s+)(TABLE|TYPE|DOMAIN|SEQUENCE)\s`)
+var ddl = regexp.MustCompile(`(?is)^\s*(CREATE\s+(UNLOGGED\s+)?|ALTER\s+|DROP\s+)(TABLE|VIEW|TYPE|DOMAIN|SEQUENCE)\s`)
 var dollar = regexp.MustCompile(`^\$[a-zA-Z_0-9]*\$`)
 
 func main() {

@@ -103,7 +103,18 @@ func (s *Service) transaction(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	entries, err := resource.DecodeObjects(sqlc.New(s.pool).TransactionEntries(r.Context(), new(id)))
+	queries := sqlc.New(s.pool)
+	partitioned, err := queries.LedgerPartitioned(r.Context())
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	var entries []resource.Object
+	if partitioned {
+		entries, err = resource.DecodeObjects(queries.PartitionedTransactionEntries(r.Context(), new(id)))
+	} else {
+		entries, err = resource.DecodeObjects(queries.TransactionEntries(r.Context(), new(id)))
+	}
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

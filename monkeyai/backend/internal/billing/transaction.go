@@ -538,6 +538,13 @@ func (s *Service) recover(ctx context.Context) error {
 	return s.reconcileUnknown(ctx)
 }
 func (s *Service) Run(ctx context.Context) {
+	partitionCtx, cancelPartitions := context.WithCancel(ctx)
+	partitionDone := make(chan struct{})
+	go func() {
+		defer close(partitionDone)
+		s.runLedgerPartitions(partitionCtx)
+	}()
+	defer func() { cancelPartitions(); <-partitionDone }()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	recoveries := logging.NewWorker(slog.Default(), "billing", "recover_transactions", "database")

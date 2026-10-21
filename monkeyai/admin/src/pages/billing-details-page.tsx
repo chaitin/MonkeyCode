@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import {
   FilterHorizontalIcon,
@@ -9,6 +9,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
+import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { UserAvatar } from "@/components/user-avatar"
@@ -119,13 +120,21 @@ const categoryNames: Record<string, string> = {
 export function BillingDetailsPage() {
   const { t, i18n } = useTranslation()
   const { showToast } = useAppToast()
-  const [params, setParams] = useSearchParams()
-  const [draft, setDraft] = useState<Record<string, string>>(() => {
-    const values = Object.fromEntries(params)
-    delete values.page
-    delete values.page_size
-    return values
-  })
+  const [rawParams, setParams] = useSearchParams()
+  const rawQuery = rawParams.toString()
+  const params = useMemo(() => billingPageParams(rawQuery), [rawQuery])
+  const initializingRange = params.toString() !== rawQuery
+  useEffect(() => {
+    if (initializingRange) setParams(params, { replace: true })
+  }, [initializingRange, params, setParams])
+  const filterParams = new URLSearchParams(params)
+  for (const key of ["page", "page_size", "view", "range"])
+    filterParams.delete(key)
+  const filterQuery = filterParams.toString()
+  const [draftQuery, setDraftQuery] = useState(filterQuery)
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(filterParams)
+  )
   const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(() => {
     const initial: SearchField[] = ["user", "dateRange"]
     if (params.get("content")) initial.push("content")
@@ -145,9 +154,15 @@ export function BillingDetailsPage() {
   const view = params.get("view") ?? "entries"
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
+  if (draftQuery !== filterQuery) {
+    setDraftQuery(filterQuery)
+    setDraft(Object.fromEntries(filterParams))
+    setPage(1)
+  }
   const requestParams = new URLSearchParams(params)
   requestParams.delete("page")
   requestParams.delete("page_size")
+  requestParams.delete("range")
   requestParams.set("page", String(page))
   requestParams.set("page_size", String(pageSize))
   const query = requestParams.toString()
@@ -175,7 +190,7 @@ export function BillingDetailsPage() {
           key,
           (key === "from"
             ? startOfLocalDay(value)
-            : endOfLocalDay(value)
+            : billingExclusiveUntil(value)
           ).toISOString()
         )
       }
@@ -247,10 +262,14 @@ export function BillingDetailsPage() {
     setPage(1)
     const next = new URLSearchParams({ view: "entries" })
     for (const [key, value] of Object.entries(draft)) {
-      if (value && !["mode", "page", "page_size", "view"].includes(key)) {
+      if (
+        value &&
+        !["mode", "page", "page_size", "view", "range"].includes(key)
+      ) {
         next.set(key, value)
       }
     }
+    if (!next.has("from") && !next.has("until")) next.set("range", "all")
     const nextRefresh = refresh + 1
     searchRefreshRef.current = nextRefresh
     setSearching(true)
