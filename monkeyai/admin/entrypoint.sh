@@ -6,7 +6,7 @@ if [ "${1:-}" != nginx ]; then
 fi
 
 fail() {
-    printf 'MonkeyAI: %s\n' "$1" >&2
+    printf '百智办公: %s\n' "$1" >&2
     exit 1
 }
 
@@ -34,6 +34,14 @@ origin() {
     '
 }
 
+tls_origin() {
+    value=${1%/}
+    printf '%s\n' "$value" | LC_ALL=C awk '
+        NR != 1 || !/^https:\/\/(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$/ { exit 1 }
+        { print }
+    '
+}
+
 umask 077
 mkdir -p /tmp/nginx
 
@@ -54,7 +62,17 @@ fi
 
 case "${MONKEYAI_AUTO_TLS_ENABLED:-false}" in
     false)
-        cp /etc/nginx/monkeyai/http.conf /tmp/nginx/site.conf
+        case "${MONKEYAI_TLS_ENABLED:-false}" in
+            false) cp /etc/nginx/monkeyai/http.conf /tmp/nginx/site.conf ;;
+            true)
+                MONKEYAI_ORIGIN=$(tls_origin "${MONKEYAI_PUBLIC_URL:-}") || fail '自签 TLS 需要有效的 HTTPS 访问地址'
+                [ -r /run/monkeyai/tls/server.crt ] && [ -r /run/monkeyai/tls/server.key ] ||
+                    fail '自签 TLS 证书不可读，请检查安装目录 data/tls/server 的权限'
+                export MONKEYAI_ORIGIN
+                envsubst '${MONKEYAI_ORIGIN}' < /etc/nginx/monkeyai/tls.conf.template > /tmp/nginx/site.conf
+                ;;
+            *) fail 'MONKEYAI_TLS_ENABLED 只能为 true 或 false' ;;
+        esac
         ;;
     true)
         MONKEYAI_ORIGIN=$(origin "${MONKEYAI_PUBLIC_URL:-}") ||
@@ -76,7 +94,7 @@ case "${MONKEYAI_AUTO_TLS_ENABLED:-false}" in
         export MONKEYAI_ORIGIN MONKEYAI_DOMAIN MONKEYAI_AUTO_TLS_EMAIL MONKEYAI_AUTO_TLS_CA MONKEYAI_ACME_STATE
         envsubst '${MONKEYAI_ORIGIN} ${MONKEYAI_DOMAIN} ${MONKEYAI_AUTO_TLS_EMAIL} ${MONKEYAI_AUTO_TLS_CA} ${MONKEYAI_ACME_STATE}' \
             < /etc/nginx/monkeyai/acme.conf.template > /tmp/nginx/site.conf
-        printf 'MonkeyAI: 已启用 %s 的自动证书，首次签发完成前 HTTPS 暂不可用\n' "$MONKEYAI_DOMAIN" >&2
+        printf '百智办公: 已启用 %s 的自动证书，首次签发完成前 HTTPS 暂不可用\n' "$MONKEYAI_DOMAIN" >&2
         ;;
     *) fail 'MONKEYAI_AUTO_TLS_ENABLED 只能为 true 或 false' ;;
 esac

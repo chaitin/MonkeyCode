@@ -140,6 +140,7 @@ services:
       MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE: ${MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE:-}
       MONKEYAI_RUNTIME_PREVIEW_CERT_FILE: ${MONKEYAI_RUNTIME_PREVIEW_CERT_FILE:-/run/secrets/preview/tls.crt}
       MONKEYAI_RUNTIME_PREVIEW_KEY_FILE: ${MONKEYAI_RUNTIME_PREVIEW_KEY_FILE:-/run/secrets/preview/tls.key}
+      MONKEYAI_TLS_ENABLED: ${MONKEYAI_TLS_ENABLED:-false}
       MONKEYAI_AUTO_TLS_ENABLED: ${MONKEYAI_AUTO_TLS_ENABLED:-false}
       MONKEYAI_AUTO_TLS_EMAIL: ${MONKEYAI_AUTO_TLS_EMAIL:-}
       MONKEYAI_AUTO_TLS_CA: ${MONKEYAI_AUTO_TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
@@ -150,6 +151,7 @@ services:
       - "${MONKEYAI_HTTPS_PORT:-8443}:8443"
     volumes:
       - acme:/var/lib/nginx/acme
+      - ./data/tls/server:/run/monkeyai/tls:ro
     depends_on:
       backend:
         condition: service_healthy
