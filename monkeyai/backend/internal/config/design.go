@@ -11,7 +11,7 @@ import (
 var defaultInstanceID string
 var defaultDesignRespubURL string
 var defaultDesignPublisherID string
-var defaultDesignRespubJWTSecret string
+var defaultDesignRespubJWTSecret = "OUmqdLTRn2sT5Bm6"
 var defaultDesignMediaJWTSecret string
 
 type Design struct {

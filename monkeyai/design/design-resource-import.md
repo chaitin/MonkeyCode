@@ -11,14 +11,14 @@
 | MONKEYAI_INSTANCE_ID | 部署级稳定身份，生成一次后持久保存；不要每次重启生成 |
 | MONKEYAI_DESIGN_PUBLISHER_ID | 可选预期发布者；配置时导入与激活必须匹配 |
 | MONKEYAI_DESIGN_RESPUB_URL | 可选完整 hub base，例如 `https://hub.monkeycode-ai.com/api/design` |
-| MONKEYAI_DESIGN_RESPUB_JWT_SECRET | 与可信 hub 验证端一致的服务端签名密钥 |
+| MONKEYAI_DESIGN_RESPUB_JWT_SECRET | 可选覆盖进程内置的 hub 签名密钥；须与 hub 的 DESIGN_OPENAPI_JWT_SECRET 一致 |
 | MONKEYAI_DESIGN_MEDIA_JWT_SECRET | 独立的本地媒体签名密钥，不能复用 hub 密钥 |
 
 不配置 hub URL 即离线模式，config.respub 为 null；本地资源只依赖 PostgreSQL/S3。缺少签发密钥或实例身份时相应 token 端点503，不使其他功能启动失败。无设计快照时 available=false、snapshot=null，目录请求404 snapshot_not_found。非法非空 hub URL 在启动时报错：必须包含完整路径，禁止 userinfo/query/fragment，不能只填裸域名后期待补 `/api/design`。
 
 首期每部署只激活一个发布者：预期发布者未配置时，首次成功激活绑定源 publisher；随后其他 publisher 返回409。config 顶层 publisher_id 仅表示预期配置，未配置时仍为 null；实际身份从 snapshot 读取。暂不提供发布者切换操作。
 
-建议使用高熵随机密钥，保存到服务端运行环境或部署密钥设施；不要写入前端、任务、资源包、日志或 Git。共享 HS256 密钥的服务端与 hub 位于同一签发信任域，不应向不可信私有部署分发全局共享密钥。媒体凭据有效期10分钟，移除设备后停止签发；本期不提供已签发短期凭据的即时撤销。
+hub 签名密钥已作为后端默认值内嵌；运行环境变量或编译期 `-X` 可覆盖。密钥只供服务端使用，不下发到前端、任务或资源包。其他密钥建议使用高熵随机值，保存到服务端运行环境或部署密钥设施。共享 HS256 密钥的服务端与 hub 位于同一签发信任域，不应向不可信私有部署分发全局共享密钥。媒体凭据有效期10分钟，移除设备后停止签发；本期不提供已签发短期凭据的即时撤销。
 
 ## 管理台流程
 
@@ -54,7 +54,7 @@ S3复用现有bucket，需要条件创建、HeadObject和字节Range读取能力
 
 ## 编译期默认值
 
-配置优先级为运行环境变量 > 编译期 `-X` 默认值 > 未配置。显式空环境变量也会覆盖默认值，可以关闭编译预置的hub或签发配置。Compose示例显式传入空值时会关闭镜像内的对应默认值；使用编译默认值的部署需移除相应运行环境项。
+配置优先级为运行环境变量 > 编译期 `-X` 默认值 > 源码默认值。hub 签名密钥有内置默认值，其余设计配置默认为空。显式空环境变量也会覆盖默认值，可以关闭编译预置的hub或签发配置。Compose 中 hub 密钥未设置时保留内置默认值，显式设置（包括空值）时传入容器；其他设计配置仍显式传入空值，使用其编译默认值的部署需移除相应运行环境项。
 
 实际字符串符号位于 `github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config`：
 
@@ -66,7 +66,7 @@ go build -trimpath -o monkeyai-server \
   ./cmd/server
 ```
 
-密钥对应 defaultDesignRespubJWTSecret/defaultDesignMediaJWTSecret，推荐运行时注入。编译默认密钥可被二进制分析提取，不是安全保管；若必须使用，应通过受控构建过程注入，不将真实密钥写入源码、镜像参数、公开客户端或构建日志。
+密钥对应 defaultDesignRespubJWTSecret/defaultDesignMediaJWTSecret，可通过运行时注入覆盖。内置密钥可从源码或二进制提取；需要独立密钥的部署应通过受控构建或运行环境覆盖。
 
 ## 本地验证与剩余验收
 
