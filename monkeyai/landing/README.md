@@ -31,6 +31,8 @@ SITE_URL=https://example.com PUBLIC_BASE_PATH=/ npm run build
 
 项目使用 Astro、React 集成和 Tailwind CSS v4。`BaseLayout.astro` 统一加载独立的 `SiteHeader.astro`、`SiteFooter.astro` 组件，所有内容页只提供正文。页头导航为帮助文档，快捷入口为 GitHub 和在线体验。
 
+页头和首页底部的“在线体验”共用 `OnlineExperienceButton.tsx`，使用 Radix Dialog 介绍两种方式：下载客户端并连接演示服务器，或在新标签页查看演示管理后台。客户端体验分为下载客户端、使用邮箱验证码登录演示服务器两步，两侧直接展示对应服务器地址，并展示管理后台的演示账号和密码。点击地址、账号或密码时，先完整选中该字段文本，再复制并使用 Radix Toast 提示结果，复制失败时保留选区供手动复制；支持 Escape、点击遮罩关闭、焦点约束和关闭后返回触发按钮，选择下载时则将焦点移到下载区。下载入口使用 `BASE_URL`，从协议页也能返回首页的下载区域。
+
 基础样式位于 `src/styles/global.css`；整站配色、点阵背景和页头页脚位于 `src/styles/site.css`；首页内容使用 `src/styles/homepage.css`，协议页面的阅读布局使用 `src/styles/legal.css`。
 
 全站文字按 [字号规范](TYPOGRAPHY.md) 使用六个语义角色，变量集中在 `src/styles/typography.css`：Hero 品牌大字 72px、分区标题 32px、小标题 20px、品牌文字 24px、正文 16px、辅助文字 14px。800px 及以下仅将 Hero 大字、分区标题改为 48px、24px；正文、按钮和导航保持 16px，Header 品牌文字复用小标题角色的 20px，Footer 品牌文字为 24px。组件只引用语义字号变量，不新增独立字号。产品预览作为界面插画，使用三个局部比例字号随容器缩放。
@@ -39,7 +41,7 @@ SITE_URL=https://example.com PUBLIC_BASE_PATH=/ npm run build
 
 shadcn/ui 配置位于 `components.json`，组件源码保存在 `src/components/ui/`，`@/` 指向 `src/`。`ui/button.tsx` 按源码接入 [beUI Button](https://beui.dev/components/motion/button)，保留官方胶囊尺寸、悬停缩放、弹簧按压及可选 ripple；本地适配补充主题选择器、图标尺寸、禁用保护和共享样式函数；悬停保留官方 `1.02` 倍缩放，不上浮，并通过 CSS 增加主题色边框光晕（不依赖 React hydration）。`Button` 用于实际操作，`ButtonLink` 保留原生链接语义；默认变体为 `primary`、尺寸为 `md`。源码版权声明随站点发布在 `public/licenses/beui.txt`。
 
-`HeaderActions.tsx`、`ActionButton.tsx`、`ClientPlatforms`、`CopyCommandButton.tsx` 和 `WorkspaceTabs` 使用 `client:load` 激活 React / Motion。复制按钮使用 `components/motion/action-swap-cascade.tsx` 中按需接入的 beUI Action Swap Cascade 文本/图标原语，在真实复制结果返回后逐字滚动切换状态；保留失败时手动选择命令和重试，减少动态效果时直接更新内容，并保持 SSR 首次渲染一致。复制状态和标签页键盘交互由 React 管理，下载清单在客户端列表完成 hydration 后只请求一次，避免旧 DOM 脚本与 hydration 冲突。系统开启减少动态效果时关闭缩放与 ripple，触屏不启用悬停缩放。`FaqQuestion.tsx` 的 `FaqAccordion` 通过 `client:visible` 接入 beUI Bouncy Accordion，使用图标行、单项展开、分组圆角及弹簧高度/位置过渡，问题文字不截断，仍不套用全站按钮边框或 hover 光晕。保留键盘 Enter/Space、方向键及 Home/End 导航；关闭内容设置 `aria-hidden` 和 `inert`，减少动态效果时立即切换。SSR 和 hydration 前保留可操作的原生 `details/summary`，避免无 JavaScript 时丢失答案；无 JavaScript 时 FAQ、链接和所有场景正文仍可使用。普通导航和正文链接继续使用语义化链接，产品示意图里的控件仅作展示。
+`HeaderActions.tsx`、`ActionButton.tsx`、`ClientPlatforms`、`CopyCommandButton.tsx` 和 `WorkspaceTabs` 使用 `client:load` 激活 React / Motion。部署命令文本使用 pointer 光标，点击或按 Enter/Space 会先完整选中命令，再自动复制；与原复制按钮、体验对话框字段共用 `ClipboardFeedback.tsx` 的复制逻辑和 Toast 结果通知。复制按钮使用 `components/motion/action-swap-cascade.tsx` 中按需接入的 beUI Action Swap Cascade 文本/图标原语，在真实复制结果返回后逐字滚动切换状态；保留失败时手动选择命令和重试，减少动态效果时直接更新内容，并保持 SSR 首次渲染一致。复制状态和标签页键盘交互由 React 管理，下载清单在客户端列表完成 hydration 后只请求一次，避免旧 DOM 脚本与 hydration 冲突。系统开启减少动态效果时关闭缩放与 ripple，触屏不启用悬停缩放。`FaqQuestion.tsx` 的 `FaqAccordion` 通过 `client:visible` 接入 beUI Bouncy Accordion，使用图标行、单项展开、分组圆角及弹簧高度/位置过渡，问题文字不截断，仍不套用全站按钮边框或 hover 光晕。保留键盘 Enter/Space、方向键及 Home/End 导航；关闭内容设置 `aria-hidden` 和 `inert`，减少动态效果时立即切换。SSR 和 hydration 前保留可操作的原生 `details/summary`，避免无 JavaScript 时丢失答案；无 JavaScript 时 FAQ、链接和所有场景正文仍可使用。普通导航和正文链接继续使用语义化链接，产品示意图里的控件仅作展示。
 
 Hero 标语通过 `components/motion/text-cascade.tsx` 使用 beUI Text Cascade（复用 Action Swap 的逐字滚动原语）。固定文案在 hydration 后播放，并以原始速度每 5 秒重播一次；SSR 保留完整可见文字，减少动态效果时静态显示，字号复用分区标题角色，保留主题配色。
 

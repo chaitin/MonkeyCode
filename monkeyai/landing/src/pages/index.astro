@@ -7,6 +7,7 @@ import DeploymentSection from '../components/DeploymentSection.astro';
 import ClientsSection from '../components/ClientsSection.astro';
 import PricingSection from '../components/PricingSection.astro';
 import { ActionButton } from '../components/ActionButton';
+import { OnlineExperienceButton } from '../components/OnlineExperienceButton';
 import { FaqAccordion } from '../components/FaqQuestion';
 import { TextCascade } from '../components/motion/text-cascade';
 import SectionTitle from '../components/SectionTitle.astro';
@@ -49,7 +50,7 @@ const faqs = [
   ['支持私有化部署吗？企业数据会发送到哪里？', '支持部署到企业自有服务器。私有化部署不等于所有数据都不出网：使用外部模型或工具时，相关内容可能发送到对应服务。企业应根据安全要求选择服务、配置访问权限，并核对数据流向。'],
   ['百智办公开源吗？可以做二次开发吗？', '百智办公代码开源，可以查看源码，并在遵循仓库许可证的前提下进行修改和二次开发。具体使用、修改及分发要求，请以 GitHub 仓库中的许可证为准。'],
   ['免费版和付费版应该怎么选？', '可以先体验产品，再根据团队的使用规模、管理和服务需求选择方案。具体版本权益、使用额度及价格以正式公布的信息为准；如需确认适合团队的方案，可以通过“咨询购买”联系咨询。'],
-  ['如何开始使用？需要先安装吗？', '可以先点击“在线体验”，通过浏览器了解产品，无需先安装客户端。如需连接自己的团队服务，可按帮助文档完成部署，并在客户端下载区域选择已提供的平台版本。'],
+  ['如何开始使用？需要先安装吗？', '点击“在线体验”可选择两种方式：下载客户端并连接演示服务器，或直接在浏览器中查看演示管理后台。如需连接自己的团队服务，可按帮助文档完成部署，并在客户端下载区域选择已提供的平台版本。'],
 ];
 ---
 
@@ -102,7 +103,7 @@ const faqs = [
 
     <section class="studio-start studio-container" id="get-started" aria-labelledby="start-title">
       <div><SectionTitle id="start-title">现在开始使用<span>百智办公</span></SectionTitle><p>在线体验百智办公，或在自己的环境中部署。</p></div>
-      <div class="studio-actions"><ActionButton client:load href="https://demo.monkeycode-ai.com/" label="在线体验" icon="monitor-play" size="lg" external /><ActionButton client:load href="https://work.docs.baizhi.cloud" label="私有化部署" icon="server" variant="outline" size="lg" external /></div>
+      <div class="studio-actions"><OnlineExperienceButton client:load size="lg" /><ActionButton client:load href="#deployment" label="独立部署" icon="server" variant="outline" size="lg" /></div>
     </section>
   </main>
 </BaseLayout>

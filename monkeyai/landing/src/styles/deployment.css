@@ -13,7 +13,8 @@ body.site-theme .studio-terminal-bar [data-copy-command]:not(:disabled):hover { 
 .studio-terminal-command > span { flex-shrink: 0; color: var(--green); }
 .studio-terminal-command pre { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .studio-terminal-command :is(pre, code) { font-family: inherit; font-size: inherit; line-height: inherit; }
-.studio-copy-status { margin-top: 10px; color: var(--green); font-size: var(--type-caption); line-height: var(--leading-body); }
+.studio-terminal-command [data-install-command] { cursor: pointer; user-select: text; }
+.studio-terminal-command [data-install-command]:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
 .studio-deploy-requirements { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; margin-top: 24px; font-size: var(--type-body); line-height: var(--leading-body); }
 .studio-deploy-requirements strong { color: var(--studio-text); font-weight: var(--weight-heading); }
 .studio-deploy-requirements > p { color: var(--footer-text); }

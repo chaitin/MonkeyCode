@@ -1,0 +1,14 @@
+.experience-toast-viewport { position: fixed; right: 24px; bottom: 24px; z-index: 120; display: flex; width: min(360px, calc(100vw - 32px)); flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.experience-toast { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border: 1px solid var(--studio-line); border-radius: 10px; color: var(--studio-text); background: var(--studio-surface); box-shadow: 0 8px 32px rgb(12 28 23 / 16%); font-size: var(--type-body); animation: copy-feedback-in 160ms ease-out; }
+.experience-toast svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--green); }
+.experience-toast[data-result='error'] svg { color: var(--destructive); }
+
+@keyframes copy-feedback-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 640px) {
+  .experience-toast-viewport { right: 16px; bottom: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experience-toast { animation: none; }
+}

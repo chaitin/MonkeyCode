@@ -1,5 +1,5 @@
-import { MonitorPlay } from "lucide-react"
 import { ButtonLink } from "@/components/ui/button"
+import { OnlineExperienceButton } from "@/components/OnlineExperienceButton"
 
 export function HeaderActions() {
   return (
@@ -15,10 +15,7 @@ export function HeaderActions() {
         </svg>
         <span className="header-github-label">GitHub</span>
       </ButtonLink>
-      <ButtonLink className="header-online" href="https://demo.monkeycode-ai.com/" target="_blank" rel="noopener noreferrer">
-        <MonitorPlay aria-hidden="true" />
-        <span>在线体验</span>
-      </ButtonLink>
+      <OnlineExperienceButton className="header-online" />
     </nav>
   )
 }

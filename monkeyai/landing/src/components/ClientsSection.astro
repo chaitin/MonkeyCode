@@ -6,7 +6,7 @@ import SectionTitle from './SectionTitle.astro';
 import '../styles/clients.css';
 
 const clients = [
-  { label: 'Web', icon: 'internet', description: '浏览器中打开', href: 'https://demo.monkeycode-ai.com/' },
+  { label: 'Web', icon: 'internet', description: '浏览器中打开', href: 'https://demo.work.baizhi.cloud/' },
   { label: 'Android', icon: 'android', description: '下载客户端', href: downloads.android },
   { label: 'iOS', icon: 'apple-01', description: '下载客户端', href: downloads.ios },
   { label: 'Windows', icon: 'windows-new', description: 'x64 下载', href: downloads.windows },
@@ -18,7 +18,7 @@ const clients = [
 ] as const;
 ---
 
-<section class="studio-section studio-clients" id="clients" aria-labelledby="clients-title">
+<section class="studio-section studio-clients" id="clients" aria-labelledby="clients-title" tabindex="-1">
   <div class="studio-container">
     <div class="studio-section-heading">
       <span class="studio-eyebrow"><i></i>全平台支持 <span>YOUR WORKSPACE, EVERYWHERE</span></span>
