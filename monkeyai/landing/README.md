@@ -61,7 +61,7 @@ npx shadcn@latest add dialog
 
 全站采用近黑背景、Tailwind v4 `teal-500` 强调色与细边框，设计变量集中在 `site.css` 开头；深色使用 `teal-600` / `teal-950`，半透明背景、边框和光晕通过 `color-mix` 从主色派生。页脚使用浅白栏目标题、冷灰链接及主题色品牌。`StudioHero.astro` 展示消息到任务确认的协作示意，`StudioWorkspace.astro` 提供支持键盘切换的四组场景标签页。FAQ 使用原生展开列表；禁用 JavaScript 时仍可阅读全部场景。移动端布局在 800px、520px 处调整，并遵循系统减少动态效果的设置。
 
-正文、标题和按钮使用小米官方 [MiSans](https://hyperos.mi.com/font/)，字体本地加载，不请求外部字体 CDN。仅使用官方 Normal、Regular、Semibold 三个静态字重：正文用 `--weight-body: 350`（Normal），标题、按钮和导航用 `--weight-heading: 400`（Regular），品牌文字默认用 `--weight-brand: 600`（Semibold），页脚及产品预览内的品牌文字使用 Regular / 400。字重变量集中在 `global.css`，页面和组件复用这些变量。字体与来源元信息位于 `src/assets/fonts/misans/`；字体使用声明与许可协议随站点发布在 `public/licenses/misans.txt`。
+正文、标题和按钮使用小米官方 [MiSans](https://hyperos.mi.com/font/)，字体本地加载，不请求外部字体 CDN。仅使用官方 Normal、Regular、Semibold 三个静态字重：正文用 `--weight-body: 350`（Normal），标题、按钮和导航用 `--weight-heading: 400`（Regular），品牌文字默认用 `--weight-brand: 600`（Semibold），页头、页脚及产品预览内的品牌文字使用 Regular / 400。字重变量集中在 `global.css`，页面和组件复用这些变量。字体与来源元信息位于 `src/assets/fonts/misans/`；字体使用声明与许可协议随站点发布在 `public/licenses/misans.txt`。
 
 命令和代码区域（`pre`、`code`、`kbd`、`samp`）使用本地 [JetBrains Mono v2.304](https://github.com/JetBrains/JetBrainsMono/tree/v2.304)，包含 400、500、600、700 四个字重，单个 WOFF2 约 90–92 KiB。`--font-mono` 定义等宽字体栈，`--studio-mono` 复用该变量，命令提示符和命令正文保持一致。中文缺字回退到 MiSans。原始字体与来源校验值位于 `src/assets/fonts/jetbrains-mono/`，SIL OFL-1.1 许可证位于 `public/licenses/jetbrains-mono.txt`。
 

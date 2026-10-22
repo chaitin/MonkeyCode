@@ -189,8 +189,8 @@ body.site-theme :is(.site-header .brand, .site-footer .brand, .studio-sidebar-br
   line-height: var(--leading-title);
 }
 
-/* The footer wordmark uses Regular for a lighter appearance. */
-body.site-theme .site-footer .brand { font-weight: var(--weight-heading); }
+/* Header and footer wordmarks use Regular for a lighter appearance. */
+body.site-theme :is(.site-header .brand, .site-footer .brand) { font-weight: var(--weight-heading); }
 
 @media (max-width: 800px) {
   body.site-theme {

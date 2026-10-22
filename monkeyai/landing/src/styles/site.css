@@ -39,7 +39,7 @@ body.site-theme .site-header { position: sticky; inset: 0 0 auto; z-index: 50; b
 body.site-theme .nav-shell { width: min(calc(100% - 64px), var(--container)); min-height: 72px; padding: 0; gap: 28px; }
 body.site-theme .brand { gap: 10px; color: var(--green); font-size: var(--type-brand); font-weight: var(--weight-brand); letter-spacing: .04em; }
 body.site-theme .brand img { width: 30px; height: 30px; border-radius: 50%; filter: none; }
-body.site-theme .site-header .brand { flex-shrink: 0; color: #000; white-space: nowrap; }
+body.site-theme .site-header .brand { flex-shrink: 0; color: #000; font-weight: var(--weight-heading); white-space: nowrap; }
 body.site-theme .header-brand-icon { width: 30px; height: 30px; flex-shrink: 0; padding: 0; border: 0; border-radius: 0; object-fit: contain; }
 .site-section-nav { display: flex; gap: 28px; margin-right: auto; margin-left: 24px; color: var(--studio-muted); font-size: var(--type-body); }
 .site-section-nav a { padding-block: 24px; transition: color 200ms; }
