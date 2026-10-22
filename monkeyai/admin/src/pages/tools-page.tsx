@@ -8,12 +8,13 @@ import {
   selection,
   match,
   saveResource,
-  useResources,
+  savePackageGrants,
   useSubjects,
   type ResourceRow,
   type Credential,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
+import { TableLoading } from "@/components/table-loading"
 import { useEffect, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -28,7 +29,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
-import { PackageGrants } from "@/components/package-grants"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -58,7 +59,6 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -95,7 +95,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResourceList } from "@/components/resource-list"
+import { useResourceList } from "@/hooks/use-resource-list"
 import { Textarea } from "@/components/ui/textarea"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
@@ -145,6 +147,7 @@ type McpServer = {
   publisher?: string
   retired?: boolean
   iconPath: string
+  grants: ResourceRow["grants"]
   revision: number
   credentials: Credential[]
   oauthConfig: Record<string, string>
@@ -176,6 +179,7 @@ function toServer(row: ResourceRow): McpServer {
     publisher: row.publisher,
     retired: row.retired,
     revision: row.revision,
+    grants: row.grants,
     iconPath: row.icon_path,
     credentials: row.credentials ?? [],
     name: row.name,
@@ -213,16 +217,20 @@ function getCreatorInitials(creator: string) {
 export function ToolsPage() {
   const { t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
-  const remote = useResources("/connectors", toServer)
-  const servers = remote.items
+  const remote = useResourceList("/connectors")
+  const servers = remote.items.map(toServer)
   const reload = remote.reload
   const subjects = useSubjects()
-  const [activeType, setActiveType] = useState<McpServerType>("system")
+  const activeType = remote.type
   const [proxies, setProxies] = useState<SystemProxy[]>([])
   const [proxyError, setProxyError] = useState("")
-  useEffect(() => { loadProxies().then(setProxies).catch((reason: Error) => setProxyError(reason.message)) }, [])
+  useEffect(() => {
+    loadProxies()
+      .then(setProxies)
+      .catch((reason: Error) => setProxyError(reason.message))
+  }, [])
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingServerId, setEditingServerId] = useState<string | null>(null)
+  const [editingServer, setEditingServer] = useState<McpServer | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
     useState<McpServer | null>(null)
   const [authorizationMode, setAuthorizationMode] =
@@ -239,15 +247,15 @@ export function ToolsPage() {
     memberIds: [],
   })
   const [testingServerId, setTestingServerId] = useState<string | null>(null)
-  const [viewingServerId, setViewingServerId] = useState<string | null>(null)
+  const [viewingServer, setViewingServer] = useState<McpServer | null>(null)
   const [contexts, setContexts] = useState<Credential[]>([])
   const [contextID, setContextID] = useState("")
   const [credentialServer, setCredentialServer] = useState<McpServer | null>(
     null
   )
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
-  const editingServer = servers.find((server) => server.id === editingServerId)
-  const viewingServer = servers.find((server) => server.id === viewingServerId)
+  const importedServer = editingServer?.origin === "package"
+  const readOnlyTools = viewingServer?.origin === "package"
   const manualOAuthConfig =
     editingServer?.oauthConfig.mode === "dynamic"
       ? {}
@@ -283,6 +291,7 @@ export function ToolsPage() {
   ]
 
   const setConnectionEnabled = async (server: McpServer) => {
+    if (server.origin === "package") return
     await remote.run(async () => {
       await api(base + `/connectors/${server.id}/enabled`, {
         method: "PATCH",
@@ -292,7 +301,7 @@ export function ToolsPage() {
     }, t("resources.operationCompleted"))
   }
   const resetDraft = () => {
-    setEditingServerId(null)
+    setEditingServer(null)
     setAuthorizationMode("independent")
     setAuthorizationMethod("oauth")
     setOAuthClientMode("dynamic")
@@ -310,7 +319,7 @@ export function ToolsPage() {
   const handleEditServer = (server: McpServer) => {
     if (server.type !== "system") return
 
-    setEditingServerId(server.id)
+    setEditingServer(server)
     setAuthorizationMode(server.authorizationMode)
     setAuthorizationMethod(server.authorizationMethod ?? "oauth")
     setOAuthClientMode(
@@ -325,6 +334,13 @@ export function ToolsPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (editingServer?.origin === "package") {
+      await remote.run(async () => {
+        await savePackageGrants("connector", editingServer, authorization)
+        handleDialogOpenChange(false)
+      }, t("resources.operationCompleted"))
+      return
+    }
     const form = event.currentTarget
     const formData = new FormData(form)
     const name = String(formData.get("name") ?? "").trim()
@@ -339,7 +355,10 @@ export function ToolsPage() {
           name,
           description,
           url,
-          proxy_id: String(formData.get("proxyId") ?? "").replace(/^__direct__$/, ""),
+          proxy_id: String(formData.get("proxyId") ?? "").replace(
+            /^__direct__$/,
+            ""
+          ),
           tag_ids: tagIds,
           grants: grants(authorization),
           authorization_mode: authorizationMode,
@@ -360,8 +379,7 @@ export function ToolsPage() {
         },
         editingServer?.revision
       )
-      setEditingServerId(saved.id)
-      await remote.reload()
+      setEditingServer(toServer(saved))
       const icon = formData.get("icon")
       if (icon instanceof File && icon.size > 0) {
         const data = new FormData()
@@ -384,12 +402,14 @@ export function ToolsPage() {
     }, t("resources.operationCompleted"))
   }
   const handleDeleteServer = async () => {
-    if (!serverPendingDeletion) return
+    if (!serverPendingDeletion || serverPendingDeletion.origin === "package")
+      return
     await remote.run(async () => {
       await api(base + `/connectors/${serverPendingDeletion.id}`, {
         method: "DELETE",
         headers: match(serverPendingDeletion.revision),
       })
+      if (servers.length === 1) remote.previousPage(serverPendingDeletion.type)
       setServerPendingDeletion(null)
     }, t("resources.operationCompleted"))
   }
@@ -426,7 +446,7 @@ export function ToolsPage() {
     setToolDrafts([])
     setContexts([])
     setContextID("")
-    setViewingServerId(server.id)
+    setViewingServer(server)
     await remote.run(async () => {
       if (server.authorizationMode === "independent") {
         const result = await api<{ items: Credential[] }>(
@@ -449,7 +469,7 @@ export function ToolsPage() {
   }
 
   const handleSaveTools = async () => {
-    if (!viewingServer) return
+    if (!viewingServer || viewingServer.origin === "package") return
     await remote.run(async () => {
       for (const tool of toolDrafts) {
         await api(base + `/connectors/${viewingServer.id}/tools/${tool.id}`, {
@@ -460,572 +480,617 @@ export function ToolsPage() {
           }),
         })
       }
-      setViewingServerId(null)
+      setViewingServer(null)
     }, t("resources.operationCompleted"))
   }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <ResourceNotice
-        error={remote.error || subjects.error}
-        loading={remote.loading}
-        pending={remote.pending}
-      />
-      <Tabs
-        className="gap-4"
-        value={activeType}
-        onValueChange={(value) => setActiveType(value as McpServerType)}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList aria-label={t("pages.tools.type")}>
-            <TabsTrigger value="system">
-              {t("pages.tools.systemTool")}
-            </TabsTrigger>
-            <TabsTrigger value="user">{t("pages.tools.userTool")}</TabsTrigger>
-          </TabsList>
-
-          {activeType === "system" && (
-            <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-              <DialogTrigger
-                render={
-                  <Button
-                    onClick={() => {
-                      resetDraft()
-                    }}
-                  />
-                }
-              >
-                <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-                {t("pages.tools.add")}
-              </DialogTrigger>
-              <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
-                closeLabel={t("common.close")}
-              >
-                <form
-                  className="flex flex-col gap-6"
-                  key={editingServer?.id ?? "new-mcp-server"}
-                  onSubmit={handleSubmit}
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
+      <ResourceList
+        page={remote}
+        error={subjects.error}
+        typeLabel={t("pages.tools.type")}
+        systemLabel={t("pages.tools.systemTool")}
+        userLabel={t("pages.tools.userTool")}
+        actions={
+          <>
+            {activeType === "system" && (
+              <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                <DialogTrigger
+                  render={
+                    <Button
+                      className="ms-auto shrink-0"
+                      onClick={() => {
+                        resetDraft()
+                      }}
+                    />
+                  }
                 >
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingServer
-                        ? t("pages.tools.editDialogTitle")
-                        : t("pages.tools.dialogTitle")}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {t("pages.tools.dialogDescription")}
-                    </DialogDescription>
-                  </DialogHeader>
+                  <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+                  {t("pages.tools.add")}
+                </DialogTrigger>
+                <DialogContent
+                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  closeLabel={t("common.close")}
+                  aria-describedby={
+                    importedServer ? "imported-connector-readonly" : undefined
+                  }
+                >
+                  <form
+                    className="flex flex-col gap-6"
+                    key={editingServer?.id ?? "new-mcp-server"}
+                    onSubmit={handleSubmit}
+                  >
+                    <DialogHeader>
+                      <DialogTitle>
+                        {editingServer
+                          ? t("pages.tools.editDialogTitle")
+                          : t("pages.tools.dialogTitle")}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {t("pages.tools.dialogDescription")}
+                      </DialogDescription>
+                    </DialogHeader>
 
-                  <FieldGroup className="gap-4">
-                    <Field>
-                      <FieldLabel htmlFor="mcp-name">
-                        {t("pages.tools.name")}
-                      </FieldLabel>
-                      <Input
-                        defaultValue={editingServer?.name}
-                        id="mcp-name"
-                        name="name"
-                        placeholder={t("pages.tools.namePlaceholder")}
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-icon">
-                        {t("resources.connectorIcon")}
-                      </FieldLabel>
-                      <Input
-                        id="mcp-icon"
-                        name="icon"
-                        type="file"
-                        accept="image/png,image/jpeg"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-description">
-                        {t("pages.tools.toolDescription")}
-                      </FieldLabel>
-                      <Textarea
-                        className="max-h-40 min-h-24 resize-y overflow-y-auto"
-                        defaultValue={editingServer?.description}
-                        id="mcp-description"
-                        name="description"
-                        placeholder={t("pages.tools.descriptionPlaceholder")}
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-tags">
-                        {t("pages.skills.tags")}
-                      </FieldLabel>
-                      <SkillTagSelect
-                        id="mcp-tags"
-                        open={tagsOpen}
-                        options={availableTags}
-                        placeholder={t("pages.skills.tagsPlaceholder")}
-                        value={tagIds}
-                        onOpenChange={setTagsOpen}
-                        onValueChange={setTagIds}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-url">
-                        {t("pages.tools.url")}
-                      </FieldLabel>
-                      <Input
-                        defaultValue={editingServer?.url}
-                        id="mcp-url"
-                        name="url"
-                        placeholder={t("pages.tools.urlPlaceholder")}
-                        required
-                        type="url"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-proxy">{t("pages.otherSettings.proxies.title", { defaultValue: "系统代理" })}</FieldLabel>
-                      <SystemProxySelect id="mcp-proxy" selected={editingServer?.proxyId ?? ""} proxies={proxies} />
-                      {proxyError && <p role="alert" className="text-destructive">{proxyError}</p>}
-                    </Field>
-                    <Field>
-                      <FieldLabel>{t("pages.tools.authorization")}</FieldLabel>
-                      <div className="flex flex-wrap gap-3">
-                        <Tabs
-                          value={authorizationMode}
-                          onValueChange={(value) => {
-                            setAuthorizationMode(value as McpAuthorizationMode)
-                          }}
-                        >
-                          <TabsList
-                            aria-label={t("pages.tools.authorizationMode")}
-                            className="w-full"
-                          >
-                            <TabsTrigger value="none">
-                              {t("pages.tools.authorizationModes.none")}
-                            </TabsTrigger>
-                            <TabsTrigger value="independent">
-                              {t("pages.tools.authorizationModes.independent")}
-                            </TabsTrigger>
-                            <TabsTrigger value="centralized">
-                              {t("pages.tools.authorizationModes.centralized")}
-                            </TabsTrigger>
-                          </TabsList>
-                        </Tabs>
-                        {authorizationMode !== "none" && (
-                          <Tabs
-                            value={authorizationMethod}
-                            onValueChange={(value) => {
-                              setAuthorizationMethod(
-                                value as McpAuthorizationMethod
-                              )
-                            }}
-                          >
-                            <TabsList
-                              aria-label={t("pages.tools.authorizationMethod")}
-                              className="w-full"
-                            >
-                              <TabsTrigger value="oauth">
-                                {t("pages.tools.authorizationMethods.oauth")}
-                              </TabsTrigger>
-                              <TabsTrigger value="httpHeader">
-                                {t(
-                                  "pages.tools.authorizationMethods.httpHeader"
-                                )}
-                              </TabsTrigger>
-                            </TabsList>
-                          </Tabs>
+                    <FieldGroup className="gap-4">
+                      <Field>
+                        <FieldLabel htmlFor="mcp-authorization">
+                          {t("resources.availableScope")}
+                        </FieldLabel>
+                        <AuthorizationSelect
+                          groups={subjects.groups}
+                          members={subjects.members}
+                          id="mcp-authorization"
+                          open={authorizationOpen}
+                          placeholder={t(
+                            "pages.tools.authorizationPlaceholder"
+                          )}
+                          title={t("resources.availableScope")}
+                          value={authorization}
+                          onOpenChange={setAuthorizationOpen}
+                          onValueChange={setAuthorization}
+                        />
+                        <FieldDescription>
+                          {t("pages.tools.availabilityScopeDescription")}
+                        </FieldDescription>
+                        {importedServer && editingServer.retired && (
+                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                            {t("resources.retiredGrantsOnly")}
+                          </p>
                         )}
-                      </div>
-                      <FieldDescription>
-                        {t(
-                          authorizationMode === "none"
-                            ? "pages.tools.noAuthorizationDescription"
-                            : authorizationMode === "independent"
-                              ? "pages.tools.independentAuthorizationDescription"
-                              : "pages.tools.centralizedAuthorizationDescription"
-                        )}
-                      </FieldDescription>
-                      {authorizationMode !== "none" &&
-                        authorizationMethod === "oauth" && (
-                          <>
+                      </Field>
+                      <fieldset disabled={importedServer} className="contents">
+                        <Field>
+                          <FieldLabel htmlFor="mcp-name">
+                            {t("pages.tools.name")}
+                          </FieldLabel>
+                          <Input
+                            defaultValue={editingServer?.name}
+                            id="mcp-name"
+                            name="name"
+                            placeholder={t("pages.tools.namePlaceholder")}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-icon">
+                            {t("resources.connectorIcon")}
+                          </FieldLabel>
+                          <Input
+                            id="mcp-icon"
+                            name="icon"
+                            type="file"
+                            accept="image/png,image/jpeg"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-description">
+                            {t("pages.tools.toolDescription")}
+                          </FieldLabel>
+                          <Textarea
+                            className="max-h-40 min-h-24 resize-y overflow-y-auto"
+                            defaultValue={editingServer?.description}
+                            id="mcp-description"
+                            name="description"
+                            placeholder={t(
+                              "pages.tools.descriptionPlaceholder"
+                            )}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-tags">
+                            {t("pages.skills.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="mcp-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t("pages.skills.tagsPlaceholder")}
+                            value={tagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setTagIds}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-url">
+                            {t("pages.tools.url")}
+                          </FieldLabel>
+                          <Input
+                            defaultValue={editingServer?.url}
+                            id="mcp-url"
+                            name="url"
+                            placeholder={t("pages.tools.urlPlaceholder")}
+                            required
+                            type="url"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-proxy">
+                            {t("pages.otherSettings.proxies.title", {
+                              defaultValue: "系统代理",
+                            })}
+                          </FieldLabel>
+                          <SystemProxySelect
+                            id="mcp-proxy"
+                            selected={editingServer?.proxyId ?? ""}
+                            proxies={proxies}
+                          />
+                          {proxyError && (
+                            <p role="alert" className="text-destructive">
+                              {proxyError}
+                            </p>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel>
+                            {t("pages.tools.authorization")}
+                          </FieldLabel>
+                          <div className="flex flex-wrap gap-3">
                             <Tabs
-                              value={oauthClientMode}
-                              onValueChange={(value) =>
-                                setOAuthClientMode(value as OAuthClientMode)
-                              }
+                              value={authorizationMode}
+                              onValueChange={(value) => {
+                                setAuthorizationMode(
+                                  value as McpAuthorizationMode
+                                )
+                              }}
                             >
                               <TabsList
-                                aria-label={t("resources.oauthClientMode")}
+                                aria-label={t("pages.tools.authorizationMode")}
+                                className="w-full"
                               >
-                                <TabsTrigger value="dynamic">
-                                  {t("resources.oauthClientDynamic")}
+                                <TabsTrigger value="none">
+                                  {t("pages.tools.authorizationModes.none")}
                                 </TabsTrigger>
-                                <TabsTrigger value="manual">
-                                  {t("resources.oauthClientManual")}
+                                <TabsTrigger value="independent">
+                                  {t(
+                                    "pages.tools.authorizationModes.independent"
+                                  )}
+                                </TabsTrigger>
+                                <TabsTrigger value="centralized">
+                                  {t(
+                                    "pages.tools.authorizationModes.centralized"
+                                  )}
                                 </TabsTrigger>
                               </TabsList>
                             </Tabs>
-                            {oauthClientMode === "dynamic" ? (
-                              <FieldDescription>
-                                {t("resources.oauthDiscoveryHint")}
-                              </FieldDescription>
-                            ) : (
-                              <>
-                                {editingServer?.callbackURL ? (
-                                  <Field>
-                                    <FieldLabel htmlFor="mcp-callback-url">
-                                      {t("resources.callbackURL")}
-                                    </FieldLabel>
-                                    <Input
-                                      id="mcp-callback-url"
-                                      readOnly
-                                      value={editingServer.callbackURL}
-                                      onFocus={(event) =>
-                                        event.currentTarget.select()
-                                      }
-                                    />
-                                    <FieldDescription>
-                                      {t("resources.callbackURLDescription")}
-                                    </FieldDescription>
-                                  </Field>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground">
-                                    {t("resources.saveBeforeAuthorize")}
-                                  </p>
-                                )}
-                                {(
-                                  [
-                                    [
-                                      "oauthAuthorizationURL",
-                                      "authorization_url",
-                                      "OAuth Authorization URL",
-                                    ],
-                                    [
-                                      "oauthTokenURL",
-                                      "token_url",
-                                      "OAuth Token URL",
-                                    ],
-                                    [
-                                      "oauthClientID",
-                                      "client_id",
-                                      "OAuth Client ID",
-                                    ],
-                                    [
-                                      "oauthRegistrationURL",
-                                      "registration_url",
-                                      "OAuth Registration URL",
-                                    ],
-                                    ["oauthScopes", "scopes", "OAuth Scopes"],
-                                    [
-                                      "oauthClientSecret",
-                                      "secret",
-                                      "OAuth Client Secret",
-                                    ],
-                                  ] as const
-                                )
-                                  .filter(
-                                    ([, key]) =>
-                                      key !== "registration_url" ||
-                                      manualOAuthConfig.registration_url
+                            {authorizationMode !== "none" && (
+                              <Tabs
+                                value={authorizationMethod}
+                                onValueChange={(value) => {
+                                  setAuthorizationMethod(
+                                    value as McpAuthorizationMethod
                                   )
-                                  .map(([name, key, label]) => (
-                                    <Field key={name}>
-                                      <FieldLabel htmlFor={name}>
-                                        {label}
-                                      </FieldLabel>
-                                      <Input
-                                        id={name}
-                                        name={name}
-                                        type={
-                                          key === "secret" ? "password" : "text"
-                                        }
-                                        defaultValue={
-                                          manualOAuthConfig[key] ?? ""
-                                        }
-                                        required={[
-                                          "authorization_url",
-                                          "token_url",
-                                          ...(!manualOAuthConfig.registration_url
-                                            ? ["client_id"]
-                                            : []),
-                                        ].includes(key)}
-                                      />
-                                    </Field>
-                                  ))}
-                                <Field>
-                                  <FieldLabel htmlFor="oauthTokenAuthMethod">
-                                    {t("resources.oauthTokenAuthMethod")}
-                                  </FieldLabel>
-                                  <Select
-                                    name="oauthTokenAuthMethod"
-                                    items={oauthTokenAuthItems}
-                                    defaultValue={
-                                      manualOAuthConfig.token_endpoint_auth_method ||
-                                      DEFAULT_TOKEN_AUTH_METHOD
-                                    }
+                                }}
+                              >
+                                <TabsList
+                                  aria-label={t(
+                                    "pages.tools.authorizationMethod"
+                                  )}
+                                  className="w-full"
+                                >
+                                  <TabsTrigger value="oauth">
+                                    {t(
+                                      "pages.tools.authorizationMethods.oauth"
+                                    )}
+                                  </TabsTrigger>
+                                  <TabsTrigger value="httpHeader">
+                                    {t(
+                                      "pages.tools.authorizationMethods.httpHeader"
+                                    )}
+                                  </TabsTrigger>
+                                </TabsList>
+                              </Tabs>
+                            )}
+                          </div>
+                          <FieldDescription>
+                            {t(
+                              authorizationMode === "none"
+                                ? "pages.tools.noAuthorizationDescription"
+                                : authorizationMode === "independent"
+                                  ? "pages.tools.independentAuthorizationDescription"
+                                  : "pages.tools.centralizedAuthorizationDescription"
+                            )}
+                          </FieldDescription>
+                          {authorizationMode !== "none" &&
+                            authorizationMethod === "oauth" && (
+                              <>
+                                <Tabs
+                                  value={oauthClientMode}
+                                  onValueChange={(value) =>
+                                    setOAuthClientMode(value as OAuthClientMode)
+                                  }
+                                >
+                                  <TabsList
+                                    aria-label={t("resources.oauthClientMode")}
                                   >
-                                    <SelectTrigger
-                                      id="oauthTokenAuthMethod"
-                                      className="w-full"
-                                    >
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                      align="start"
-                                    >
-                                      <SelectGroup>
-                                        {oauthTokenAuthItems.map((item) => (
-                                          <SelectItem
-                                            key={item.value}
-                                            value={item.value}
-                                          >
-                                            {item.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectGroup>
-                                    </SelectContent>
-                                  </Select>
-                                </Field>
+                                    <TabsTrigger value="dynamic">
+                                      {t("resources.oauthClientDynamic")}
+                                    </TabsTrigger>
+                                    <TabsTrigger value="manual">
+                                      {t("resources.oauthClientManual")}
+                                    </TabsTrigger>
+                                  </TabsList>
+                                </Tabs>
+                                {oauthClientMode === "dynamic" ? (
+                                  <FieldDescription>
+                                    {t("resources.oauthDiscoveryHint")}
+                                  </FieldDescription>
+                                ) : (
+                                  <>
+                                    {editingServer?.callbackURL ? (
+                                      <Field>
+                                        <FieldLabel htmlFor="mcp-callback-url">
+                                          {t("resources.callbackURL")}
+                                        </FieldLabel>
+                                        <Input
+                                          id="mcp-callback-url"
+                                          readOnly
+                                          value={editingServer.callbackURL}
+                                          onFocus={(event) =>
+                                            event.currentTarget.select()
+                                          }
+                                        />
+                                        <FieldDescription>
+                                          {t(
+                                            "resources.callbackURLDescription"
+                                          )}
+                                        </FieldDescription>
+                                      </Field>
+                                    ) : (
+                                      <p className="text-sm text-muted-foreground">
+                                        {t("resources.saveBeforeAuthorize")}
+                                      </p>
+                                    )}
+                                    {(
+                                      [
+                                        [
+                                          "oauthAuthorizationURL",
+                                          "authorization_url",
+                                          "OAuth Authorization URL",
+                                        ],
+                                        [
+                                          "oauthTokenURL",
+                                          "token_url",
+                                          "OAuth Token URL",
+                                        ],
+                                        [
+                                          "oauthClientID",
+                                          "client_id",
+                                          "OAuth Client ID",
+                                        ],
+                                        [
+                                          "oauthRegistrationURL",
+                                          "registration_url",
+                                          "OAuth Registration URL",
+                                        ],
+                                        [
+                                          "oauthScopes",
+                                          "scopes",
+                                          "OAuth Scopes",
+                                        ],
+                                        [
+                                          "oauthClientSecret",
+                                          "secret",
+                                          "OAuth Client Secret",
+                                        ],
+                                      ] as const
+                                    )
+                                      .filter(
+                                        ([, key]) =>
+                                          key !== "registration_url" ||
+                                          manualOAuthConfig.registration_url
+                                      )
+                                      .map(([name, key, label]) => (
+                                        <Field key={name}>
+                                          <FieldLabel htmlFor={name}>
+                                            {label}
+                                          </FieldLabel>
+                                          <Input
+                                            id={name}
+                                            name={name}
+                                            type={
+                                              key === "secret"
+                                                ? "password"
+                                                : "text"
+                                            }
+                                            defaultValue={
+                                              manualOAuthConfig[key] ?? ""
+                                            }
+                                            required={[
+                                              "authorization_url",
+                                              "token_url",
+                                              ...(!manualOAuthConfig.registration_url
+                                                ? ["client_id"]
+                                                : []),
+                                            ].includes(key)}
+                                          />
+                                        </Field>
+                                      ))}
+                                    <Field>
+                                      <FieldLabel htmlFor="oauthTokenAuthMethod">
+                                        {t("resources.oauthTokenAuthMethod")}
+                                      </FieldLabel>
+                                      <Select
+                                        name="oauthTokenAuthMethod"
+                                        items={oauthTokenAuthItems}
+                                        defaultValue={
+                                          manualOAuthConfig.token_endpoint_auth_method ||
+                                          DEFAULT_TOKEN_AUTH_METHOD
+                                        }
+                                      >
+                                        <SelectTrigger
+                                          id="oauthTokenAuthMethod"
+                                          className="w-full"
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent
+                                          alignItemWithTrigger={false}
+                                          align="start"
+                                        >
+                                          <SelectGroup>
+                                            {oauthTokenAuthItems.map((item) => (
+                                              <SelectItem
+                                                key={item.value}
+                                                value={item.value}
+                                              >
+                                                {item.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                    </Field>
+                                  </>
+                                )}
                               </>
                             )}
-                          </>
-                        )}
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="mcp-authorization">
-                        {t("pages.tools.availabilityScope")}
-                      </FieldLabel>
-                      <AuthorizationSelect
-                        groups={subjects.groups}
-                        members={subjects.members}
-                        id="mcp-authorization"
-                        open={authorizationOpen}
-                        placeholder={t("pages.tools.authorizationPlaceholder")}
-                        title={t("pages.tools.availabilityScope")}
-                        value={authorization}
-                        onOpenChange={setAuthorizationOpen}
-                        onValueChange={setAuthorization}
-                      />
-                      <FieldDescription>
-                        {t("pages.tools.availabilityScopeDescription")}
-                      </FieldDescription>
-                    </Field>
-                  </FieldGroup>
+                        </Field>
+                      </fieldset>
+                    </FieldGroup>
 
-                  <ResourceNotice
-                    error={remote.error || subjects.error}
-                    loading={false}
-                    pending={remote.pending}
-                  />
-                  <DialogFooter>
-                    <DialogClose
-                      render={<Button type="button" variant="outline" />}
+                    <ResourceNotice
+                      error={remote.error || subjects.error}
+                      loading={false}
+                      pending={remote.pending}
+                    />
+                    <ResourceEditorFooter
+                      id="imported-connector-readonly"
+                      reason={
+                        importedServer
+                          ? t("resources.importedConnectorReadOnly")
+                          : undefined
+                      }
                     >
-                      {t("pages.tools.cancel")}
-                    </DialogClose>
-                    <Button type="submit" disabled={remote.pending}>
-                      {editingServer
-                        ? t("pages.tools.save")
-                        : t("pages.tools.create")}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
-        </div>
+                      <DialogClose
+                        render={<Button type="button" variant="outline" />}
+                      >
+                        {t("pages.tools.cancel")}
+                      </DialogClose>
+                      <Button type="submit" disabled={remote.pending}>
+                        {editingServer
+                          ? t("pages.tools.save")
+                          : t("pages.tools.create")}
+                      </Button>
+                    </ResourceEditorFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {servers.map((server) => {
+            const connectionLabel = t(
+              `pages.tools.statuses.${server.connectionStatus}`
+            )
+            const connectionVariant =
+              server.connectionStatus === "connected"
+                ? "successOutline"
+                : server.connectionStatus === "error"
+                  ? "destructiveOutline"
+                  : "warningOutline"
 
-        {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {servers
-                .filter((server) => server.type === tabType)
-                .map((server) => {
-                  const connectionLabel = t(
-                    `pages.tools.statuses.${server.connectionStatus}`
-                  )
-                  const connectionVariant =
-                    server.connectionStatus === "connected"
-                      ? "successOutline"
-                      : server.connectionStatus === "error"
-                        ? "destructiveOutline"
-                        : "warningOutline"
-
-                  return (
-                    <Card className="h-full" key={server.id}>
-                      <CardHeader>
-                        <div className="flex min-w-0 items-start gap-3">
-                          <Avatar size="lg">
-                            {server.iconPath && (
-                              <AvatarImage src={server.iconPath} alt="" />
-                            )}
-                            <AvatarFallback>
-                              {server.type === "system" ? (
-                                <HugeiconsIcon
-                                  icon={McpServerIcon}
-                                  strokeWidth={2}
-                                />
-                              ) : (
-                                getCreatorInitials(server.creator)
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <CardTitle className="truncate" title={server.name}>
-                              {server.name} {server.origin === "package" && <span title={server.publisher}>· 资源包导入</span>}
-                            </CardTitle>
-                            <CardDescription
-                              className="truncate"
-                              title={server.creator}
-                            >
-                              {server.creator}
-                            </CardDescription>
-                          </div>
-                          {
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    aria-label={t("common.more")}
-                                    size="icon-sm"
-                                    type="button"
-                                    variant="ghost"
-                                  />
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={MoreHorizontalIcon}
-                                  strokeWidth={2}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup
-                                  hidden={server.type !== "system"}
-                                >
-                                  {server.origin !== "package" && <DropdownMenuItem
-                                    onClick={() => setConnectionEnabled(server)}
-                                  >
-                                    {t(
-                                      server.enabled
-                                        ? "resources.disable"
-                                        : "resources.enable"
-                                    )}
-                                  </DropdownMenuItem>}
-                                  <DropdownMenuItem
-                                    onClick={() => handleViewTools(server)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={ToolboxIcon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.tools.viewTools")}
-                                  </DropdownMenuItem>
-                                  {server.authorizationMode ===
-                                    "centralized" && (
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        setCredentialServer(server)
-                                      }
-                                    >
-                                      {t("resources.credentials", {
-                                        defaultValue: "管理凭证",
-                                      })}
-                                    </DropdownMenuItem>
-                                  )}
-                                  {server.origin !== "package" && <DropdownMenuItem
-                                    onClick={() => handleEditServer(server)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Edit02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.tools.edit")}
-                                  </DropdownMenuItem>}
-                                  <DropdownMenuItem
-                                    disabled={
-                                      testingServerId === server.id ||
-                                      server.authorizationMode ===
-                                        "independent" ||
-                                      !server.enabled
-                                    }
-                                    onClick={() =>
-                                      handleTestConnection(server.id)
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={TestTube01Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {testingServerId === server.id
-                                      ? t("pages.tools.testing")
-                                      : t("pages.tools.testConnection")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                                <DropdownMenuSeparator
-                                  hidden={server.type !== "system"}
-                                />
-                                <DropdownMenuGroup hidden={server.origin === "package"}>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() =>
-                                      setServerPendingDeletion(server)
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Delete02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.tools.delete")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+            return (
+              <Card className="h-full" key={server.id}>
+                <CardHeader>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Avatar size="lg">
+                      {server.iconPath && (
+                        <AvatarImage src={server.iconPath} alt="" />
+                      )}
+                      <AvatarFallback>
+                        {server.type === "system" ? (
+                          <HugeiconsIcon icon={McpServerIcon} strokeWidth={2} />
+                        ) : (
+                          getCreatorInitials(server.creator)
+                        )}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="truncate" title={server.name}>
+                        {server.name}{" "}
+                        {server.origin === "package" && (
+                          <span title={server.publisher}>· 资源包导入</span>
+                        )}
+                      </CardTitle>
+                      <CardDescription
+                        className="truncate"
+                        title={server.creator}
+                      >
+                        {server.creator}
+                      </CardDescription>
+                    </div>
+                    {
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              aria-label={t("common.more")}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            />
                           }
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex flex-1 flex-col gap-4">
-                        <p className="line-clamp-2 min-h-10 text-muted-foreground">
-                          {server.description}
-                        </p>
-                        {server.origin === "package" && <><PackageGrants kind="connector" id={server.id} name={server.name} retired={server.retired} subjects={subjects} onSaved={() => { void reload() }} /><p className="text-xs text-muted-foreground">{server.authHeaderName ? `凭证 Header：${server.authHeaderName} · ` : ""}超时：{server.timeoutMs ?? 25000} ms</p></>}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {server.authorizationMode === "centralized" &&
-                            server.authorizationMethod === "oauth" && (
-                              <Badge
-                                variant={
-                                  server.centralizedAuthorized
-                                    ? "successOutline"
-                                    : "warningOutline"
-                                }
+                        >
+                          <HugeiconsIcon
+                            icon={MoreHorizontalIcon}
+                            strokeWidth={2}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuGroup hidden={server.type !== "system"}>
+                            {server.origin !== "package" && (
+                              <DropdownMenuItem
+                                onClick={() => setConnectionEnabled(server)}
                               >
-                                {server.centralizedAuthorized
-                                  ? t("pages.tools.authorized")
-                                  : t("pages.tools.notAuthorized")}
-                              </Badge>
+                                {t(
+                                  server.enabled
+                                    ? "resources.disable"
+                                    : "resources.enable"
+                                )}
+                              </DropdownMenuItem>
                             )}
-                          <Badge variant={connectionVariant}>
-                            {server.authorizationMode === "independent"
-                              ? t("pages.tools.authorizationModes.independent")
-                              : connectionLabel}
-                          </Badge>
-                          <Badge variant="outline">
-                            {t("pages.tools.toolCount", {
-                              count: server.toolCount,
-                            })}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                      <CardFooter className="min-w-0 border-t">
-                        <ResourceTagSummary tagIds={server.tagIds} />
-                      </CardFooter>
-                    </Card>
-                  )
-                })}
-            </div>
-          </TabsContent>
-        ))}
-      </Tabs>
+                            <DropdownMenuItem
+                              onClick={() => handleViewTools(server)}
+                            >
+                              <HugeiconsIcon
+                                icon={ToolboxIcon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.tools.viewTools")}
+                            </DropdownMenuItem>
+                            {server.authorizationMode === "centralized" && (
+                              <DropdownMenuItem
+                                onClick={() => setCredentialServer(server)}
+                              >
+                                {t("resources.credentials", {
+                                  defaultValue: "管理凭证",
+                                })}
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => handleEditServer(server)}
+                            >
+                              <HugeiconsIcon
+                                icon={Edit02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.tools.edit")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={
+                                testingServerId === server.id ||
+                                server.authorizationMode === "independent" ||
+                                !server.enabled
+                              }
+                              onClick={() => handleTestConnection(server.id)}
+                            >
+                              <HugeiconsIcon
+                                icon={TestTube01Icon}
+                                strokeWidth={2}
+                              />
+                              {testingServerId === server.id
+                                ? t("pages.tools.testing")
+                                : t("pages.tools.testConnection")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator
+                            hidden={
+                              server.type !== "system" ||
+                              server.origin === "package"
+                            }
+                          />
+                          <DropdownMenuGroup
+                            hidden={server.origin === "package"}
+                          >
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setServerPendingDeletion(server)}
+                            >
+                              <HugeiconsIcon
+                                icon={Delete02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.tools.delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-4">
+                  <p className="line-clamp-2 min-h-10 text-muted-foreground">
+                    {server.description}
+                  </p>
+                  {server.origin === "package" && (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {server.authHeaderName
+                          ? `凭证 Header：${server.authHeaderName} · `
+                          : ""}
+                        超时：{server.timeoutMs ?? 25000} ms
+                      </p>
+                    </>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {server.authorizationMode === "centralized" &&
+                      server.authorizationMethod === "oauth" && (
+                        <Badge
+                          variant={
+                            server.centralizedAuthorized
+                              ? "successOutline"
+                              : "warningOutline"
+                          }
+                        >
+                          {server.centralizedAuthorized
+                            ? t("pages.tools.authorized")
+                            : t("pages.tools.notAuthorized")}
+                        </Badge>
+                      )}
+                    <Badge variant={connectionVariant}>
+                      {server.authorizationMode === "independent"
+                        ? t("pages.tools.authorizationModes.independent")
+                        : connectionLabel}
+                    </Badge>
+                    <Badge variant="outline">
+                      {t("pages.tools.toolCount", {
+                        count: server.toolCount,
+                      })}
+                    </Badge>
+                  </div>
+                </CardContent>
+                <CardFooter className="min-w-0 border-t">
+                  <ResourceTagSummary tagIds={server.tagIds} />
+                </CardFooter>
+              </Card>
+            )
+          })}
+        </div>
+      </ResourceList>
 
       {credentialServer && (
         <ConnectorCredentials
@@ -1035,17 +1100,20 @@ export function ToolsPage() {
         />
       )}
       <Dialog
-        open={viewingServer !== undefined}
+        open={viewingServer !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setViewingServerId(null)
+            setViewingServer(null)
             setToolDrafts([])
           }
         }}
       >
         <DialogContent
-          className="max-h-[calc(100dvh-2rem)] sm:max-w-4xl"
+          className="max-h-[calc(100vh-2rem)] sm:max-w-4xl"
           closeLabel={t("common.close")}
+          aria-describedby={
+            readOnlyTools ? "imported-connector-tools-readonly" : undefined
+          }
         >
           <DialogHeader>
             <DialogTitle>
@@ -1088,11 +1156,11 @@ export function ToolsPage() {
           )}
           <ResourceNotice
             error={remote.error}
-            pending={remote.pending}
+            pending={remote.pending && toolDrafts.length > 0}
             loading={false}
           />
-          <div className="max-h-[min(60dvh,36rem)] overflow-y-auto rounded-md border">
-            <Table>
+          <div className="max-h-[min(60vh,36rem)] overflow-y-auto rounded-md border">
+            <Table aria-busy={remote.pending}>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("pages.tools.toolName")}</TableHead>
@@ -1107,10 +1175,20 @@ export function ToolsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {remote.pending && !toolDrafts.length && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={viewingServer?.authorizationMode === "centralized" ? 3 : 2}
+                      className="h-28 text-center"
+                    >
+                      <TableLoading />
+                    </TableCell>
+                  </TableRow>
+                )}
                 {toolDrafts.map((tool) => (
                   <TableRow key={tool.id}>
                     <TableCell className="max-w-72">
-                      <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex min-w-0 flex-col gap-0.5">
                         <span
                           className="truncate font-medium"
                           title={tool.name}
@@ -1130,6 +1208,7 @@ export function ToolsPage() {
                         aria-label={t("pages.tools.toggleTool", {
                           tool: tool.name,
                         })}
+                        disabled={readOnlyTools}
                         checked={tool.enabled}
                         onCheckedChange={(enabled) =>
                           updateToolDraft(tool.id, { enabled })
@@ -1143,7 +1222,7 @@ export function ToolsPage() {
                             tool: tool.name,
                           })}
                           className="h-8"
-                          disabled={!tool.enabled}
+                          disabled={readOnlyTools || !tool.enabled}
                           min="0"
                           step="1"
                           type="number"
@@ -1167,13 +1246,21 @@ export function ToolsPage() {
             loading={false}
             pending={remote.pending}
           />
-          <DialogFooter>
+          <ResourceEditorFooter
+            id="imported-connector-tools-readonly"
+            reason={
+              readOnlyTools
+                ? t("resources.importedConnectorReadOnly")
+                : undefined
+            }
+          >
             <DialogClose render={<Button type="button" variant="outline" />}>
               {t("pages.tools.cancel")}
             </DialogClose>
             <Button
               disabled={
                 remote.pending ||
+                readOnlyTools ||
                 toolDrafts.some(
                   (tool) =>
                     !Number.isFinite(tool.pointsPerCall) ||
@@ -1185,7 +1272,7 @@ export function ToolsPage() {
             >
               {t("pages.tools.saveToolSettings")}
             </Button>
-          </DialogFooter>
+          </ResourceEditorFooter>
         </DialogContent>
       </Dialog>
 

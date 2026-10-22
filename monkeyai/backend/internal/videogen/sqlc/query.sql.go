@@ -13,7 +13,7 @@ import (
 const claimVideoJobPoll = `-- name: ClaimVideoJobPoll :one
 UPDATE video_jobs SET poll_after=now()+interval '5 minutes'
 WHERE id=$1 AND poll_after<=now() AND status IN ('submitted','running')
-RETURNING model_id,provider_job_id,billing_transaction_id,user_id
+RETURNING model_id,provider_job_id,billing_transaction_id,user_id,created_at,poll_failures
 `
 
 type ClaimVideoJobPollRow struct {
@@ -21,6 +21,8 @@ type ClaimVideoJobPollRow struct {
 	ProviderJobID        *string
 	BillingTransactionID *string
 	UserID               string
+	CreatedAt            time.Time
+	PollFailures         int32
 }
 
 func (q *Queries) ClaimVideoJobPoll(ctx context.Context, id string) (ClaimVideoJobPollRow, error) {
@@ -31,6 +33,8 @@ func (q *Queries) ClaimVideoJobPoll(ctx context.Context, id string) (ClaimVideoJ
 		&i.ProviderJobID,
 		&i.BillingTransactionID,
 		&i.UserID,
+		&i.CreatedAt,
+		&i.PollFailures,
 	)
 	return i, err
 }
@@ -266,7 +270,7 @@ func (q *Queries) MarkVideoJobFailed(ctx context.Context, arg MarkVideoJobFailed
 }
 
 const markVideoJobRunning = `-- name: MarkVideoJobRunning :exec
-UPDATE video_jobs SET status='running',updated_at=now(),poll_after=now()+interval '10 seconds' WHERE id=$1
+UPDATE video_jobs SET status='running',poll_failures=0,updated_at=now(),poll_after=now()+interval '10 seconds' WHERE id=$1
 `
 
 func (q *Queries) MarkVideoJobRunning(ctx context.Context, id string) error {
@@ -364,13 +368,22 @@ func (q *Queries) RemoveExpiredVideoInput(ctx context.Context, id string) error 
 	return err
 }
 
-const retryVideoJobPoll = `-- name: RetryVideoJobPoll :exec
-UPDATE video_jobs SET poll_after=now()+interval '30 seconds' WHERE id=$1 AND status IN ('submitted','running')
+const retryVideoJobPoll = `-- name: RetryVideoJobPoll :one
+UPDATE video_jobs SET poll_failures=poll_failures+1,poll_after=$1,updated_at=now()
+WHERE id=$2 AND status IN ('submitted','running')
+RETURNING poll_failures
 `
 
-func (q *Queries) RetryVideoJobPoll(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, retryVideoJobPoll, id)
-	return err
+type RetryVideoJobPollParams struct {
+	PollAfter time.Time
+	ID        string
+}
+
+func (q *Queries) RetryVideoJobPoll(ctx context.Context, arg RetryVideoJobPollParams) (int32, error) {
+	row := q.db.QueryRow(ctx, retryVideoJobPoll, arg.PollAfter, arg.ID)
+	var poll_failures int32
+	err := row.Scan(&poll_failures)
+	return poll_failures, err
 }
 
 const unlinkExpiredVideoInput = `-- name: UnlinkExpiredVideoInput :exec

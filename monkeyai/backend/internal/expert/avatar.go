@@ -15,39 +15,39 @@ func (s *Service) serveAvatar(w http.ResponseWriter, req *http.Request, admin bo
 	id := chi.URLParam(req, "id")
 	expert, err := resource.DecodeObject(sqlc.New(s.Store.Pool).GetResource(ctx, id))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	if !admin {
 		user, ok := identity.UserFromContext(ctx)
 		if !ok {
-			resource.Fail(w, resource.NotFound)
+			resource.Fail(req.Context(), w, resource.NotFound)
 			return
 		}
 		allowed, err := resource.Accessible(ctx, s.Store.Pool, "expert", expert, user.ID)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(req.Context(), w, err)
 			return
 		}
 		if !allowed {
-			resource.Fail(w, resource.NotFound)
+			resource.Fail(req.Context(), w, resource.NotFound)
 			return
 		}
 	}
 	key := expert.String("avatar_s3_key")
 	if key == "" {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(req.Context(), w, resource.NotFound)
 		return
 	}
 	body, err := s.storage.Get(ctx, key)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	defer body.Close()
 	data, err := io.ReadAll(io.LimitReader(body, 2<<20))
 	if err != nil || len(data) >= 2<<20 {
-		resource.Fail(w, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "专家头像读取失败"})
+		resource.Fail(req.Context(), w, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "专家头像读取失败"})
 		return
 	}
 	w.Header().Set("Content-Type", "image/webp")

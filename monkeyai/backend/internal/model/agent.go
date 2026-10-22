@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 
@@ -92,18 +93,18 @@ func (s *Service) RegisterAgent(router chi.Router) {
 	router.Get("/models", func(w http.ResponseWriter, r *http.Request) {
 		page, size, err := resource.PageParams(r)
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		filter, err := resource.ParseCatalogFilter(r)
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
 		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		items = filterModelTags(items, resource.QueryTagIDs(r))
@@ -113,14 +114,14 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			"total_count": len(items), "page": page, "page_size": size,
 			"model_gateway": map[string]string{"base_url": s.gatewayURL, "authentication": "api_key"},
 		}); err != nil {
-			slog.ErrorContext(r.Context(), "写入模型目录缓存响应失败", "user_id", user.ID, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "写入模型目录缓存响应失败", "module", "model", "operation", "RegisterAgent", "user_id", user.ID, "error", err)
 		}
 	})
 	router.Get("/models/tags", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
 		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		rows := make([]resource.Object, 0, len(items))
@@ -128,14 +129,14 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			rows = append(rows, resource.Object{"tags": item.Tags})
 		}
 		if err := httpapi.CachedJSON(w, r, map[string]any{"tags": resource.CollectTags(rows)}); err != nil {
-			slog.ErrorContext(r.Context(), "写入模型标签缓存响应失败", "user_id", user.ID, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "写入模型标签缓存响应失败", "module", "model", "operation", "RegisterAgent", "user_id", user.ID, "error", err)
 		}
 	})
 	router.Get("/models/{modelID}", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
 		item, err := s.GetUser(r.Context(), chi.URLParam(r, "modelID"), user.ID)
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		modelJSON(w, http.StatusOK, item)
@@ -143,7 +144,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 	save := func(w http.ResponseWriter, r *http.Request) {
 		var input UserInput
 		if err := resource.Decode(w, r, &input); err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
@@ -157,7 +158,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			item, err = s.UpdateUser(r.Context(), chi.URLParam(r, "modelID"), user.ID, input)
 		}
 		if err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		modelJSON(w, status, item)
@@ -167,7 +168,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 	router.Delete("/models/{modelID}", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
 		if err := s.repository.DeleteUser(r.Context(), chi.URLParam(r, "modelID"), user.ID); err != nil {
-			userModelError(w, err)
+			userModelError(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -204,9 +205,9 @@ func filterModelTags(items []AgentModel, ids []string) []AgentModel {
 	return filtered
 }
 
-func userModelError(w http.ResponseWriter, err error) {
+func userModelError(ctx context.Context, w http.ResponseWriter, err error) {
 	if errors.Is(err, ErrNotFound) {
 		err = resource.NotFound
 	}
-	resource.Fail(w, err)
+	resource.Fail(ctx, w, err)
 }

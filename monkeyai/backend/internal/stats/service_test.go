@@ -150,15 +150,19 @@ func TestModelsOverview(t *testing.T) {
 		exec(t, s, `INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,resource_type,resource_id,item_name,credit_delta,balance_after,occurred_at) VALUES($1,$2,$3,$4,'model',$5,'测试',$6,0,$7)`, account, user, entry.kind, entry.category, model, entry.amount, entry.at)
 	}
 	out := request(t, s, "/statistics/models/overview", 200)
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	last24 := out["last_24h"].(map[string]any)
 	for key, want := range map[string]float64{"model_calls": 4, "input_tokens": 390, "output_tokens": 115} {
 		number(t, last24, key, want)
 	}
+	previous24 := out["previous_24h"].(map[string]any)
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 800, "output_tokens": 80} {
+		number(t, previous24, key, want)
+	}
 	last30 := out["last_30m"].(map[string]any)
-	for key, want := range map[string]float64{"tpm": 225.0 / 30, "rpm": 3.0 / 30, "cache_hit_rate": 100.0 / 3, "model_success_rate": 200.0 / 3, "p95_response_time": 4800, "p95_first_token_time": 400} {
+	for key, want := range map[string]float64{"tpm": 225.0 / 30, "rpm": 3.0 / 30, "cache_hit_rate": 100.0 / 3, "model_success_rate": 200.0 / 3, "avg_response_time": 3000, "avg_first_token_time": 400} {
 		number(t, last30, key, want)
 	}
 	days, ok := out["days"].([]any)
@@ -189,18 +193,50 @@ func TestModelsOverview(t *testing.T) {
 	}
 }
 
+func TestModelsOverviewComparisonBoundaries(t *testing.T) {
+	s, user, model := fixture(t)
+	now := s.now()
+	for _, sample := range []struct {
+		offset time.Duration
+		input  int64
+	}{
+		{-48*time.Hour - time.Second, 1000},
+		{-48 * time.Hour, 10},
+		{-24*time.Hour - time.Second, 20},
+		{-24 * time.Hour, 30},
+		{-time.Second, 40},
+		{0, 2000},
+	} {
+		end := now.Add(sample.offset)
+		call(t, s, user, model, "succeeded", end.Add(-time.Minute), end, sample.input, 0, sample.input/10, 1000)
+	}
+	// Running calls must not contribute to either comparison window.
+	for _, offset := range []time.Duration{-36 * time.Hour, -12 * time.Hour} {
+		end := now.Add(offset)
+		call(t, s, user, model, "running", end.Add(-time.Minute), end, 3000, 0, 300, nil)
+	}
+	out := request(t, s, "/statistics/models/overview", 200)
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 70, "output_tokens": 7} {
+		number(t, out["last_24h"].(map[string]any), key, want)
+	}
+	for key, want := range map[string]float64{"model_calls": 2, "input_tokens": 30, "output_tokens": 3} {
+		number(t, out["previous_24h"].(map[string]any), key, want)
+	}
+}
+
 func TestModelsOverviewEmpty(t *testing.T) {
 	s, _, _ := fixture(t)
 	out := request(t, s, "/statistics/models/overview", 200)
 	last24 := out["last_24h"].(map[string]any)
 	for _, key := range []string{"model_calls", "input_tokens", "output_tokens"} {
 		number(t, last24, key, 0)
+		number(t, out["previous_24h"].(map[string]any), key, 0)
 	}
 	last30 := out["last_30m"].(map[string]any)
 	for _, key := range []string{"tpm", "rpm"} {
 		number(t, last30, key, 0)
 	}
-	for _, key := range []string{"cache_hit_rate", "model_success_rate", "p95_response_time", "p95_first_token_time"} {
+	for _, key := range []string{"cache_hit_rate", "model_success_rate", "avg_response_time", "avg_first_token_time"} {
 		if last30[key] != nil {
 			t.Fatalf("无样本时 %s 应为 null: %v", key, last30[key])
 		}
@@ -232,16 +268,16 @@ func TestRealtimeRanges(t *testing.T) {
 		"1d":  24 * time.Hour,
 		"7d":  7 * 24 * time.Hour,
 	} {
-		w, err := period(httptest.NewRequest("GET", "/statistics/realtime?range="+value, nil), now, true)
+		w, err := period(httptest.NewRequest("GET", "/statistics/realtime?range="+value, nil), now)
 		if err != nil || !w.from.Equal(now.Add(-duration)) || !w.until.Equal(now) {
 			t.Fatalf("range=%s: window=%+v error=%v", value, w, err)
 		}
 	}
-	w, err := period(httptest.NewRequest("GET", "/statistics/realtime", nil), now, true)
+	w, err := period(httptest.NewRequest("GET", "/statistics/realtime", nil), now)
 	if err != nil || !w.from.Equal(now.Add(-24*time.Hour)) {
 		t.Fatalf("默认应为 1 天: window=%+v error=%v", w, err)
 	}
-	if _, err := period(httptest.NewRequest("GET", "/statistics/realtime?range=8d", nil), now, true); err == nil {
+	if _, err := period(httptest.NewRequest("GET", "/statistics/realtime?range=8d", nil), now); err == nil {
 		t.Fatal("无效窗口应被拒绝")
 	}
 }
@@ -302,14 +338,14 @@ func TestUsersOverview(t *testing.T) {
 			if row.owner == deletedUser {
 				kind = "command"
 			}
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2,1,'hash',$2,$3,$4,'complete','snapshot',$5)`, sessionID, index+1, at, at.Add(time.Second), kind)
+			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot',$5)`, sessionID, index+1, at, at.Add(time.Second), kind)
 		}
 	}
 	out := request(t, s, "/statistics/users", 200)
 	for key, want := range map[string]float64{"total_users": 3, "new_users_24h": 2, "active_users_24h": 2} {
 		number(t, out, key, want)
 	}
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	days, ok := out["days"].([]any)
@@ -370,7 +406,7 @@ func TestTasksOverview(t *testing.T) {
 		exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, sessionID)
 		for index := range count {
 			started := at.Add(time.Duration(index) * time.Minute)
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2,1,'hash',$2,$3,$4,'complete','snapshot','text')`, sessionID, index+1, started, started.Add(time.Second))
+			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot','text')`, sessionID, index+1, started, started.Add(time.Second))
 		}
 	}
 	old := makeSession("", now.AddDate(0, 0, -100), true, false, false)
@@ -391,7 +427,7 @@ func TestTasksOverview(t *testing.T) {
 	for key, want := range map[string]float64{"total_tasks": 3, "new_tasks_24h": 1, "active_tasks_24h": 2} {
 		number(t, out, key, want)
 	}
-	if out["timezone"] != "UTC" {
+	if out["timezone"] != "Asia/Shanghai" {
 		t.Fatalf("时区错误: %v", out["timezone"])
 	}
 	days, ok := out["days"].([]any)
@@ -430,7 +466,7 @@ func TestRealtimeGroupsSubsessionsWithoutEndedAt(t *testing.T) {
 	number(t, out, "new_tasks", 0)
 }
 
-func TestTasksAndHistory(t *testing.T) {
+func TestHistory(t *testing.T) {
 	s, user, _ := fixture(t)
 	now := s.now()
 	from := now.Add(-7 * 24 * time.Hour)
@@ -467,16 +503,7 @@ func TestTasksAndHistory(t *testing.T) {
 			}
 		}
 	}
-	out := request(t, s, "/statistics/tasks?range=7d", 200)
-	summary := out["summary"].(map[string]any)
-	for key, want := range map[string]float64{"total": 6, "completed": 2, "failed": 3, "interrupted": 1, "average_duration_seconds": 100, "completion_rate": 200.0 / 6, "anomaly_rate": 50} {
-		number(t, summary, key, want)
-	}
-	if len(out["trend"].([]any)) != 7 || len(out["types"].([]any)) != 1 {
-		t.Fatalf("分桶或类型错误: %v", out)
-	}
-	number(t, out["previous"].(map[string]any), "total", 1)
-	out = request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
+	out := request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
 	number(t, out, "total", 1)
 	number(t, out, "page", 1)
 	if item := out["items"].([]any)[0].(map[string]any); item["title"] != "报告 100%" || item["user_id"] != user {
@@ -487,17 +514,33 @@ func TestTasksAndHistory(t *testing.T) {
 	number(t, out, "page", 2)
 	number(t, out["items"].([]any)[0].(map[string]any), "turn_count", 3)
 }
+func TestRemovedStatisticsEndpoints(t *testing.T) {
+	router := chi.NewRouter()
+	(&Service{}).RegisterAdmin(router)
+	for _, path := range []string{
+		"/statistics/session-reporting/sessions", "/statistics/session-reporting/sessions?limit=1",
+		"/statistics/session-reporting/overview", "/statistics/session-reporting/overview?from=2026-09-08T00:00:00Z",
+		"/statistics/tasks", "/statistics/tasks?range=7d",
+	} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("已移除的统计接口应返回 404: %s: %d", path, w.Code)
+		}
+	}
+}
+
 func TestReportingFiltersAndCursor(t *testing.T) {
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	for _, path := range []string{
-		"/statistics/session-reporting/sessions?limit=101",
-		"/statistics/session-reporting/sessions?cursor=invalid",
-		"/statistics/session-reporting/sessions?page=1",
-		"/statistics/session-reporting/sessions?outcome=failed",
-		"/statistics/session-reporting/sessions?from=bad",
-		"/statistics/session-reporting/sessions?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
+		"/statistics/session-reporting/clients?limit=501",
+		"/statistics/session-reporting/clients?cursor=invalid",
+		"/statistics/session-reporting/clients?page=1",
+		"/statistics/session-reporting/clients?outcome=failed",
+		"/statistics/session-reporting/clients?from=bad",
+		"/statistics/session-reporting/clients?from=2026-09-09T00:00:00Z&until=2026-09-08T00:00:00Z",
 	} {
-		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now)
+		f, err := parseReportingFilter(httptest.NewRequest("GET", path, nil), now, 500)
 		if err == nil && f.cursor != "" {
 			_, err = f.decodeCursor()
 		}
@@ -505,19 +548,20 @@ func TestReportingFiltersAndCursor(t *testing.T) {
 			t.Fatalf("未拒绝无效参数: %s", path)
 		}
 	}
-	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=1", nil), now)
+	f, err := parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=1", nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cursor := f.encodeCursor(reportCursor{At: now.Format(time.RFC3339Nano), ID: resource.ID()})
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?limit=100&cursor="+cursor, nil), now)
+	cursor := f.encodeCursor(reportCursor{Key: "desktop"})
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?limit=500&cursor="+cursor, nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.decodeCursor(); err != nil {
-		t.Fatal(err)
+	decoded, err := f.decodeCursor()
+	if err != nil || decoded.Key != "desktop" {
+		t.Fatalf("客户端游标丢失: %+v %v", decoded, err)
 	}
-	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/sessions?outcome=error&cursor="+cursor, nil), now)
+	f, err = parseReportingFilter(httptest.NewRequest("GET", "/statistics/session-reporting/clients?outcome=error&cursor="+cursor, nil), now, 500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,13 +601,9 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 	if out["title"] != "隐私标题" {
 		t.Fatalf("会话标题未返回: %v", out)
 	}
-	list := request(t, s, "/statistics/session-reporting/sessions?limit=1", 200)
-	if list["items"].([]any)[0].(map[string]any)["id"] != id {
-		t.Fatalf("会话列表缺失: %v", list)
-	}
 	exec(t, s, `UPDATE sessions SET purged_at=$2,deleted_at=$2 WHERE id=$1`, id, s.now())
 	request(t, s, path, 410)
-	request(t, s, "/statistics/session-reporting/sessions?include_purged=true", 403)
+	request(t, s, path+"?include_purged=true", 403)
 	s.SetSessionReportingAuditAuthorizer(func(*http.Request) bool { return true })
 	tombstone := request(t, s, path+"?include_purged=true", 200)
 	if tombstone["tombstone"] != true || tombstone["turns"] != nil {
@@ -573,7 +613,7 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 
 func TestEmptyAndInvalid(t *testing.T) {
 	s, _, _ := fixture(t)
-	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks", "/statistics/realtime", "/statistics/history", "/statistics/session-reporting/overview", "/statistics/session-reporting/sessions", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients"} {
+	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks/overview", "/statistics/realtime", "/statistics/history", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients", "/statistics/session-reporting/clients/overview"} {
 		request(t, s, path, 200)
 	}
 	out := request(t, s, "/statistics/realtime", 200)

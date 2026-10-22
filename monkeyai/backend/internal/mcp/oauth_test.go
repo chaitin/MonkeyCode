@@ -58,7 +58,7 @@ func TestExchangeNoProxyKeepsDirectPolicy(t *testing.T) {
 			http.Redirect(w, r, "/token", http.StatusFound)
 			return
 		}
-		resource.JSON(w, http.StatusOK, resource.Object{"access_token": "direct"})
+		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"access_token": "direct"})
 	}))
 	defer server.Close()
 	noProxy := func(*http.Request) (*url.URL, error) { return nil, nil }
@@ -107,7 +107,7 @@ func TestAutomaticRefreshContinuesAfterFailure(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		resource.JSON(w, http.StatusOK, resource.Object{"access_token": "renewed", "expires_in": 3600})
+		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"access_token": "renewed", "expires_in": 3600})
 	}))
 	defer remote.Close()
 	c := f.call("POST", "/agent/connectors", resource.Object{"name": "刷新任务隔离", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"client_id": "client", "token_url": remote.URL, "authorization_url": remote.URL}}, "owner", "", 201)
@@ -129,7 +129,7 @@ func TestAutomaticRefresh(t *testing.T) {
 		if err := r.ParseForm(); err != nil || r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("client_id") != "client" || r.Form.Get("client_secret") != "client-secret" {
 			t.Error("自动刷新未携带正确的授权参数")
 		}
-		resource.JSON(w, 200, resource.Object{"access_token": "renewed", "refresh_token": "rotated", "expires_in": 3600})
+		resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "renewed", "refresh_token": "rotated", "expires_in": 3600})
 	}))
 	defer remote.Close()
 	c := f.call("POST", "/agent/connectors", resource.Object{"name": "自动刷新", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"client_id": "client", "token_url": remote.URL, "authorization_url": remote.URL}, "oauth_client_secret": "client-secret"}, "owner", "", 201)
@@ -187,7 +187,7 @@ func TestConcurrentAutomaticRefresh(t *testing.T) {
 			close(started)
 		}
 		<-release
-		resource.JSON(w, 200, resource.Object{"access_token": "renewed", "expires_in": 3600})
+		resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "renewed", "expires_in": 3600})
 	}))
 	defer remote.Close()
 	c := f.call("POST", "/admin/connectors", resource.Object{"name": "集中自动刷新", "url": remote.URL, "authorization_mode": "centralized", "authorization_method": "oauth", "oauth_config": resource.Object{"client_id": "client", "token_url": remote.URL, "authorization_url": remote.URL}}, "owner", "", 200)
@@ -225,7 +225,7 @@ func TestOAuthDiscoveryStatus(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	remote := mcpRemote(t, func() { close(started); <-release })
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resource.JSON(w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+		resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
 	}))
 	defer oauth.Close()
 	c := f.call("POST", "/agent/connectors", resource.Object{"name": "授权自动发现", "url": remote.URL, "authorization_mode": "independent", "authorization_method": "oauth", "oauth_config": resource.Object{"client_id": "client", "token_url": oauth.URL, "authorization_url": oauth.URL}}, "owner", "", 201)
@@ -256,7 +256,7 @@ func TestAutomaticDiscoveryFailure(t *testing.T) {
 			f := setup(t)
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/token" {
-					resource.JSON(w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+					resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
 					return
 				}
 				w.WriteHeader(http.StatusServiceUnavailable)

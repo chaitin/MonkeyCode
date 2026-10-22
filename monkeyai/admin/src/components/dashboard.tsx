@@ -6,6 +6,7 @@ import { useAppToast } from "@/components/animated-toast-provider"
 import { AppSidebar } from "@/components/app-sidebar"
 import { LanguageToggle } from "@/components/language-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { VersionProvider } from "@/components/version-provider"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -30,6 +31,14 @@ import {
 } from "@/lib/routes"
 
 export function Dashboard() {
+  return (
+    <VersionProvider>
+      <DashboardContent />
+    </VersionProvider>
+  )
+}
+
+function DashboardContent() {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
   const { logout } = useAuth()

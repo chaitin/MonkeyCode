@@ -82,8 +82,6 @@ export const frFR = {
     deleted: "Supprimé",
     modelScope:
       "Appels par heure de début ; crédits par heure de débit et de remboursement. Le taux de cache est la part des appels avec un cache utilisé.",
-    taskScope:
-      "Sessions démarrées sur la période. Taux de réussite : réussies / total ; durée moyenne des sessions terminées uniquement. Nécessite les rapports du client.",
   },
   common: {
     breadcrumb: "Fil d’Ariane",
@@ -172,7 +170,20 @@ export const frFR = {
       timeRange: "Période des statistiques en temps réel",
       pendingMetric: "Données en attente de connexion",
       period24h: "24 heures",
+      comparison: {
+        new: "Nouveau",
+        unavailable: "Les données de la période précédente sont indisponibles",
+        increased:
+          "Hausse de {{percent}} par rapport aux 24 heures précédentes",
+        decreased:
+          "Baisse de {{percent}} par rapport aux 24 heures précédentes",
+        unchanged: "Stable par rapport aux 24 heures précédentes",
+        newActivity:
+          "Nouvelle activité ; la valeur des 24 heures précédentes était nulle",
+        previousValue: "24 heures précédentes : {{value}}",
+      },
       period30m: "30 minutes",
+      average: "Moyenne",
       callsTrend: "Nombre d’appels",
       newUsersTrend: "Nouveaux utilisateurs",
       activeUsersTrend: "Utilisateurs actifs",
@@ -191,8 +202,8 @@ export const frFR = {
       },
       metrics: {
         modelConsumption: "Consommation de crédits",
-        p95ResponseTime: "Temps de réponse des modèles",
-        p95FirstTokenTime: "Temps avant le premier token",
+        avgResponseTime: "Temps de réponse des modèles",
+        avgFirstTokenTime: "Temps avant le premier token",
         modelSuccessRate: "Taux de réussite des modèles",
         cacheHitRate: "Taux de cache atteint",
         modelCalls: "Appels de modèles",
@@ -238,48 +249,6 @@ export const frFR = {
         conversationCount: "Conversations",
       },
       empty: "Aucune tâche ne correspond aux filtres actuels",
-    },
-    taskStatistics: {
-      title: "Statistiques des tâches",
-      description:
-        "Consultez les tendances, l’état d’exécution et le taux d’achèvement des tâches.",
-      timeRange: "Période statistique",
-      ranges: {
-        "7d": "7 derniers jours",
-        "30d": "30 derniers jours",
-        "90d": "90 derniers jours",
-      },
-      comparedToPrevious: "par rapport à la période précédente",
-      metrics: {
-        totalTasks: "Nombre total de tâches",
-        completionRate: "Taux d’achèvement",
-        averageDuration: "Durée moyenne",
-        runningTasks: "Tâches ouvertes",
-      },
-      taskTrend: "Évolution des tâches",
-      statusDistribution: "Répartition par statut",
-      statuses: {
-        completed: "Terminées",
-        running: "Ouvertes",
-        failed: "Échouées",
-      },
-      taskTypeDetails: "Détail par type de tâche",
-      columns: {
-        taskType: "Type de tâche",
-        total: "Tâches",
-        completed: "Terminées",
-        completionRate: "Taux d’achèvement",
-        averageDuration: "Durée moyenne",
-      },
-      taskTypes: {
-        conversation: "Conversation Agent",
-        workflow: "Workflow",
-        retrieval: "Recherche de connaissances",
-        tool: "Appel d’outil",
-        scheduled: "Tâche planifiée",
-      },
-      durationSeconds: "{{count}} s",
-      durationMinutes: "{{minutes}} min {{seconds}} s",
     },
     models: {
       noTags: "Aucune étiquette",
@@ -472,18 +441,18 @@ export const frFR = {
       contentPlaceholder: "Saisissez les instructions de la compétence",
       skillPackage: "Paquet de compétence",
       packageHint:
-        "Chargez le dossier de compétence au format ZIP, jusqu’à 20 Mo.",
+        "Chargez le dossier de compétence au format ZIP, jusqu’à 500 MiB.",
       packageOptionalHint:
         "Chargez un nouveau paquet ZIP uniquement pour remplacer son contenu.",
       packageParsing: "Analyse du paquet de compétence…",
       packageSummary: "{{count}} fichiers · {{size}} décompressés",
       packageErrors: {
-        fileTooLarge: "Le paquet de compétence ne doit pas dépasser 20 Mo.",
+        fileTooLarge: "Le paquet de compétence ne doit pas dépasser 500 MiB.",
         invalidZip: "Ce fichier est illisible. Chargez un paquet ZIP valide.",
         unsafePath: "Le paquet contient un chemin de fichier non sécurisé.",
         symlink: "Le paquet ne doit pas contenir de liens symboliques.",
-        tooManyFiles: "Le paquet peut contenir au maximum 500 fichiers.",
-        unpackedTooLarge: "Le paquet décompressé ne doit pas dépasser 50 Mo.",
+        tooManyFiles: "Le paquet peut contenir au maximum 5000 fichiers.",
+        unpackedTooLarge: "Le paquet décompressé ne doit pas dépasser 1 GiB.",
         missingManifest:
           "Aucun SKILL.md trouvé. Ce paquet de compétence n’est pas valide.",
         multipleManifests:
@@ -852,6 +821,9 @@ export const frFR = {
       groupQuota: {
         title: "Quotas des groupes",
         memberTitle: "Quotas des membres",
+        memberSort: "Trier les membres",
+        nameAscending: "Nom",
+        creditsAscending: "Crédits",
         manageGroups: "Gérer les groupes",
         description:
           "Le groupe racine doit avoir un quota. Les sous-groupes et utilisateurs vides héritent du groupe parent le plus proche.",

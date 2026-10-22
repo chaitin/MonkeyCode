@@ -1,0 +1,74 @@
+/* Use the site's existing reset; keep utilities unlayered so they can override it. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body.site-theme {
+  --radius: 0.5rem;
+  --background: var(--studio-bg);
+  --foreground: var(--studio-text);
+  --card: var(--studio-surface);
+  --card-foreground: var(--studio-text);
+  --popover: var(--studio-surface);
+  --popover-foreground: var(--studio-text);
+  --primary: var(--green);
+  --primary-foreground: #ffffff;
+  --secondary: var(--studio-raised);
+  --secondary-foreground: var(--studio-text);
+  --muted: var(--studio-raised);
+  --muted-foreground: var(--footer-text);
+  --accent: var(--studio-raised);
+  --accent-foreground: var(--green);
+  --destructive: #ef4444;
+  --border: var(--studio-line);
+  --input: var(--studio-line-hover);
+  --ring: var(--green);
+  --button-hover-shadow: 0 0 18px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+/* beUI owns transform animation through Motion; do not add a CSS transform transition. */
+body.site-theme [data-slot='button'] {
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+body.site-theme a[data-slot='button'] { text-decoration: none; }
+body.site-theme [data-slot='button'][data-variant='primary'] { color: var(--primary-foreground); border-color: var(--primary); }
+body.site-theme [data-slot='button'][data-variant='outline'] { color: var(--foreground); }
+body.site-theme [data-slot='button']:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+body.site-theme [data-slot='button']:not(:disabled):is(:hover, :focus-visible) {
+  box-shadow: var(--button-hover-shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.site-theme [data-slot='button'] { transition: none; }
+}

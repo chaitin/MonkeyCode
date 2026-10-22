@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -40,6 +41,8 @@ type Service struct {
 	now             func() time.Time
 	purgeAuthorizer func(context.Context) bool
 	settings        ReportingSettings
+	runtime         RuntimeStatus
+	hosts           HostAuthorizer
 }
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool, now: time.Now} }
@@ -85,7 +88,7 @@ func (s *Service) checkRequestLimit(w http.ResponseWriter, ctx context.Context, 
 		UserID: userID, Kind: kind, BucketStart: bucket,
 	})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(ctx, w, err)
 		return false
 	}
 	if count <= limit {
@@ -93,7 +96,7 @@ func (s *Service) checkRequestLimit(w http.ResponseWriter, ctx context.Context, 
 	}
 	retry := int(bucket.Add(time.Minute).Sub(now).Seconds()) + 1
 	w.Header().Set("Retry-After", strconv.Itoa(retry))
-	resource.Fail(w, sessionFailure(http.StatusTooManyRequests, "rate_limited", "请求过于频繁"))
+	resource.Fail(ctx, w, sessionFailure(http.StatusTooManyRequests, "rate_limited", "请求过于频繁"))
 	return false
 }
 
@@ -137,6 +140,7 @@ type sessionRow struct {
 	LastStopReason  *string    `json:"last_stop_reason"`
 	ActiveSeconds   int64      `json:"active_seconds"`
 	ClientDeletedAt *time.Time `json:"client_deleted_at"`
+	HostVerified    bool       `json:"host_verified"`
 }
 
 func sessionFailure(status int, code, message string) error {
@@ -170,7 +174,7 @@ func readSession(ctx context.Context, db sqlc.DBTX, id string, lock bool) (sessi
 
 func rollback(ctx context.Context, tx pgx.Tx) {
 	if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.ErrorContext(ctx, "回滚会话事务失败", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "session.operation.error", "回滚会话事务失败", "module", "session", "operation", "rollback", "error", err)
 	}
 }
 
@@ -185,15 +189,6 @@ func (s *Service) ensureLocked(ctx context.Context, tx pgx.Tx, userID, sessionID
 	if parentID != "" {
 		if err := validateParent(ctx, tx, userID, sessionID, parentID); err != nil {
 			return sessionRow{}, err
-		}
-	}
-	if groupID == "" {
-		group, err := sqlc.New(tx).CurrentSessionGroup(ctx, sqlc.CurrentSessionGroupParams{ParentID: parentID, UserID: userID})
-		if err != nil {
-			return sessionRow{}, err
-		}
-		if group != "" {
-			groupID = group
 		}
 	}
 	err := sqlc.New(tx).InsertPlaceholder(ctx, sqlc.InsertPlaceholderParams{
@@ -221,6 +216,16 @@ func (s *Service) ensureLocked(ctx context.Context, tx pgx.Tx, userID, sessionID
 	if parentID != "" {
 		if row.ParentSessionID != nil && *row.ParentSessionID != parentID {
 			return sessionRow{}, invalidSession("父会话不可更换")
+		}
+	}
+	if groupID == "" && row.GroupID == nil {
+		groupParentID := parentID
+		if groupParentID == "" && row.ParentSessionID != nil {
+			groupParentID = *row.ParentSessionID
+		}
+		groupID, err = sqlc.New(tx).CurrentSessionGroup(ctx, sqlc.CurrentSessionGroupParams{ParentID: groupParentID, UserID: userID})
+		if err != nil {
+			return sessionRow{}, err
 		}
 	}
 	if groupID != "" && row.GroupID != nil && *row.GroupID != groupID {

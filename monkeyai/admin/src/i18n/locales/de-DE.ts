@@ -81,8 +81,6 @@ export const deDE = {
     deleted: "Gelöscht",
     modelScope:
       "Aufrufe nach Startzeit, Credits nach Buchungs- und Erstattungszeit. Cache-Trefferquote: Anteil der Aufrufe mit Cache-Treffern.",
-    taskScope:
-      "Im Zeitraum gestartete Sitzungen. Abschlussquote: erfolgreich / gesamt. Durchschnittsdauer nur für beendete Sitzungen. Erfordert Client-Meldungen.",
   },
   common: {
     breadcrumb: "Brotkrümelnavigation",
@@ -172,7 +170,18 @@ export const deDE = {
       timeRange: "Zeitraum der Live-Statistik",
       pendingMetric: "Datenanbindung ausstehend",
       period24h: "24 Stunden",
+      comparison: {
+        new: "Neu",
+        unavailable: "Keine Daten für den vorherigen Zeitraum verfügbar",
+        increased: "{{percent}} mehr als in den vorherigen 24 Stunden",
+        decreased: "{{percent}} weniger als in den vorherigen 24 Stunden",
+        unchanged: "Unverändert gegenüber den vorherigen 24 Stunden",
+        newActivity:
+          "Neue Aktivität; in den vorherigen 24 Stunden war der Wert null",
+        previousValue: "Vorherige 24 Stunden: {{value}}",
+      },
       period30m: "30 Minuten",
+      average: "Durchschnitt",
       callsTrend: "Aufrufe",
       newUsersTrend: "Neue Benutzer",
       activeUsersTrend: "Aktive Benutzer",
@@ -191,8 +200,8 @@ export const deDE = {
       },
       metrics: {
         modelConsumption: "Guthabenverbrauch",
-        p95ResponseTime: "Antwortzeit der Modelle",
-        p95FirstTokenTime: "Zeit bis zum ersten Token",
+        avgResponseTime: "Antwortzeit der Modelle",
+        avgFirstTokenTime: "Zeit bis zum ersten Token",
         modelSuccessRate: "Erfolgsquote der Modelle",
         cacheHitRate: "Cache-Trefferquote",
         modelCalls: "Modellaufrufe",
@@ -238,48 +247,6 @@ export const deDE = {
         conversationCount: "Unterhaltungen",
       },
       empty: "Keine Aufgaben entsprechen den aktuellen Filtern",
-    },
-    taskStatistics: {
-      title: "Aufgabenstatistiken",
-      description:
-        "Prüfen Sie Aufgabentrends, Ausführungsstatus und Abschlussquoten.",
-      timeRange: "Statistikzeitraum",
-      ranges: {
-        "7d": "Letzte 7 Tage",
-        "30d": "Letzte 30 Tage",
-        "90d": "Letzte 90 Tage",
-      },
-      comparedToPrevious: "gegenüber dem vorherigen Zeitraum",
-      metrics: {
-        totalTasks: "Aufgaben insgesamt",
-        completionRate: "Abschlussquote",
-        averageDuration: "Durchschnittliche Dauer",
-        runningTasks: "Offene Aufgaben",
-      },
-      taskTrend: "Aufgabentrend",
-      statusDistribution: "Statusverteilung",
-      statuses: {
-        completed: "Abgeschlossen",
-        running: "Offen",
-        failed: "Fehlgeschlagen",
-      },
-      taskTypeDetails: "Details nach Aufgabentyp",
-      columns: {
-        taskType: "Aufgabentyp",
-        total: "Aufgaben",
-        completed: "Abgeschlossen",
-        completionRate: "Abschlussquote",
-        averageDuration: "Durchschnittliche Dauer",
-      },
-      taskTypes: {
-        conversation: "Agent-Unterhaltung",
-        workflow: "Workflow",
-        retrieval: "Wissenssuche",
-        tool: "Werkzeugaufruf",
-        scheduled: "Geplante Aufgabe",
-      },
-      durationSeconds: "{{count}} Sek.",
-      durationMinutes: "{{minutes}} Min. {{seconds}} Sek.",
     },
     models: {
       noTags: "Keine Tags",
@@ -475,21 +442,21 @@ export const deDE = {
       content: "Fähigkeitsinhalt (SKILL.md)",
       contentPlaceholder: "Anweisungen für die Fähigkeit eingeben",
       skillPackage: "Fähigkeitspaket",
-      packageHint: "Fähigkeitsordner als ZIP-Datei hochladen, maximal 20 MB.",
+      packageHint: "Fähigkeitsordner als ZIP-Datei hochladen, maximal 500 MiB.",
       packageOptionalHint:
         "Laden Sie nur zum Ersetzen des Inhalts ein neues ZIP-Paket hoch.",
       packageParsing: "Fähigkeitspaket wird geprüft…",
       packageSummary: "{{count}} Dateien · entpackt {{size}}",
       packageErrors: {
-        fileTooLarge: "Das Fähigkeitspaket darf höchstens 20 MB groß sein.",
+        fileTooLarge: "Das Fähigkeitspaket darf höchstens 500 MiB groß sein.",
         invalidZip:
           "Die Datei kann nicht gelesen werden. Laden Sie ein gültiges ZIP-Paket hoch.",
         unsafePath: "Das Fähigkeitspaket enthält einen unsicheren Dateipfad.",
         symlink: "Das Fähigkeitspaket darf keine symbolischen Links enthalten.",
         tooManyFiles:
-          "Das Fähigkeitspaket darf höchstens 500 Dateien enthalten.",
+          "Das Fähigkeitspaket darf höchstens 5000 Dateien enthalten.",
         unpackedTooLarge:
-          "Das entpackte Fähigkeitspaket darf höchstens 50 MB groß sein.",
+          "Das entpackte Fähigkeitspaket darf höchstens 1 GiB groß sein.",
         missingManifest:
           "SKILL.md wurde nicht gefunden. Dies ist kein gültiges Fähigkeitspaket.",
         multipleManifests:
@@ -862,6 +829,9 @@ export const deDE = {
       groupQuota: {
         title: "Gruppenkontingente",
         memberTitle: "Mitgliederkontingente",
+        memberSort: "Mitglieder sortieren",
+        nameAscending: "Name",
+        creditsAscending: "Credits",
         manageGroups: "Gruppen verwalten",
         description:
           "Für die Stammgruppe ist ein Kontingent erforderlich. Leere Untergruppen und Benutzer erben von der nächsten übergeordneten Gruppe.",

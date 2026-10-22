@@ -81,8 +81,6 @@ export const ruRU = {
     deleted: "Удалено",
     modelScope:
       "Вызовы учитываются по времени начала, кредиты — списания и возврата. Попадания в кэш — доля вызовов с использованием кэша.",
-    taskScope:
-      "Сессии, начатые за период. Доля завершения: успешные / все; средняя длительность только завершённых сессий. Требуются отчёты клиента.",
   },
   common: {
     breadcrumb: "Навигационная цепочка",
@@ -170,7 +168,19 @@ export const ruRU = {
       timeRange: "Период статистики в реальном времени",
       pendingMetric: "Ожидается подключение данных",
       period24h: "24 часа",
+      comparison: {
+        new: "Новое",
+        unavailable: "Данные за предыдущий период недоступны",
+        increased: "Рост на {{percent}} по сравнению с предыдущими 24 часами",
+        decreased:
+          "Снижение на {{percent}} по сравнению с предыдущими 24 часами",
+        unchanged: "Без изменений по сравнению с предыдущими 24 часами",
+        newActivity:
+          "Новая активность; за предыдущие 24 часа значение было нулевым",
+        previousValue: "Предыдущие 24 часа: {{value}}",
+      },
       period30m: "30 минут",
+      average: "Среднее",
       callsTrend: "Количество вызовов",
       newUsersTrend: "Новые пользователи",
       activeUsersTrend: "Активные пользователи",
@@ -189,8 +199,8 @@ export const ruRU = {
       },
       metrics: {
         modelConsumption: "Расход кредитов",
-        p95ResponseTime: "Время ответа моделей",
-        p95FirstTokenTime: "Время до первого токена модели",
+        avgResponseTime: "Время ответа моделей",
+        avgFirstTokenTime: "Время до первого токена модели",
         modelSuccessRate: "Успешность моделей",
         cacheHitRate: "Доля попаданий в кэш",
         modelCalls: "Вызовы моделей",
@@ -236,48 +246,6 @@ export const ruRU = {
         conversationCount: "Диалоги",
       },
       empty: "Нет задач, соответствующих текущим фильтрам",
-    },
-    taskStatistics: {
-      title: "Статистика задач",
-      description:
-        "Просматривайте динамику задач, состояние выполнения и процент завершения.",
-      timeRange: "Период статистики",
-      ranges: {
-        "7d": "Последние 7 дней",
-        "30d": "Последние 30 дней",
-        "90d": "Последние 90 дней",
-      },
-      comparedToPrevious: "по сравнению с предыдущим периодом",
-      metrics: {
-        totalTasks: "Всего задач",
-        completionRate: "Процент завершения",
-        averageDuration: "Средняя длительность",
-        runningTasks: "Открытые задачи",
-      },
-      taskTrend: "Динамика задач",
-      statusDistribution: "Распределение по статусам",
-      statuses: {
-        completed: "Завершено",
-        running: "Открытые",
-        failed: "Ошибка",
-      },
-      taskTypeDetails: "Статистика по типам задач",
-      columns: {
-        taskType: "Тип задачи",
-        total: "Задачи",
-        completed: "Завершено",
-        completionRate: "Процент завершения",
-        averageDuration: "Средняя длительность",
-      },
-      taskTypes: {
-        conversation: "Диалог с Agent",
-        workflow: "Рабочий процесс",
-        retrieval: "Поиск знаний",
-        tool: "Вызов инструмента",
-        scheduled: "Задача по расписанию",
-      },
-      durationSeconds: "{{count}} сек.",
-      durationMinutes: "{{minutes}} мин. {{seconds}} сек.",
     },
     models: {
       noTags: "Без тегов",
@@ -471,20 +439,20 @@ export const ruRU = {
       content: "Содержимое навыка (SKILL.md)",
       contentPlaceholder: "Введите инструкции навыка",
       skillPackage: "Пакет навыка",
-      packageHint: "Загрузите каталог навыка в ZIP-файле размером до 20 МБ.",
+      packageHint: "Загрузите каталог навыка в ZIP-файле размером до 500 MiB.",
       packageOptionalHint:
         "Загрузите новый ZIP-пакет только для замены содержимого навыка.",
       packageParsing: "Проверка пакета навыка…",
       packageSummary: "Файлов: {{count}} · после распаковки {{size}}",
       packageErrors: {
-        fileTooLarge: "Размер пакета навыка не должен превышать 20 МБ.",
+        fileTooLarge: "Размер пакета навыка не должен превышать 500 MiB.",
         invalidZip:
           "Не удалось прочитать файл. Загрузите корректный ZIP-пакет навыка.",
         unsafePath: "Пакет навыка содержит небезопасный путь к файлу.",
         symlink: "Пакет навыка не должен содержать символические ссылки.",
-        tooManyFiles: "Пакет навыка может содержать не более 500 файлов.",
+        tooManyFiles: "Пакет навыка может содержать не более 5000 файлов.",
         unpackedTooLarge:
-          "Размер распакованного пакета не должен превышать 50 МБ.",
+          "Размер распакованного пакета не должен превышать 1 GiB.",
         missingManifest: "SKILL.md не найден. Это некорректный пакет навыка.",
         multipleManifests:
           "Найдено несколько файлов SKILL.md, точка входа не определена.",
@@ -847,6 +815,9 @@ export const ruRU = {
       groupQuota: {
         title: "Квоты групп",
         memberTitle: "Квоты участников",
+        memberSort: "Сортировка участников",
+        nameAscending: "Имя",
+        creditsAscending: "Кредиты",
         manageGroups: "Управление группами",
         description:
           "Для корневой группы квота обязательна. Пустые подгруппы и пользователи наследуют квоту ближайшей родительской группы.",

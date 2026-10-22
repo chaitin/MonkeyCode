@@ -74,7 +74,7 @@ export function LandingPage() {
   }, [productName, t])
 
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link
@@ -103,7 +103,7 @@ export function LandingPage() {
               <LanguageToggle variant="ghost" />
               <ThemeToggle variant="ghost" />
             </div>
-            <Button render={<Link to={LOGIN_PATH} />}>
+            <Button nativeButton={false} render={<Link to={LOGIN_PATH} />}>
               {t("app.adminConsole")}
               <HugeiconsIcon icon={ArrowUpRight01Icon} aria-hidden="true" />
             </Button>
@@ -122,13 +122,18 @@ export function LandingPage() {
               {t("landing.promise")}
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button size="lg" render={<a href="#downloads" />}>
+              <Button
+                nativeButton={false}
+                size="lg"
+                render={<a href="#downloads" />}
+              >
                 <HugeiconsIcon icon={Download01Icon} aria-hidden="true" />
                 {t("landing.downloads.title")}
               </Button>
               <Button
                 size="lg"
                 variant="outline"
+                nativeButton={false}
                 render={<Link to={LOGIN_PATH} />}
               >
                 {t("app.adminConsole")}
@@ -191,7 +196,7 @@ export function LandingPage() {
                 components={{
                   repo: (
                     <a
-                      href="https://github.com/chaitin/monkeycode"
+                      href="https://work.baizhi.cloud/"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-medium text-foreground underline-offset-4 hover:underline"

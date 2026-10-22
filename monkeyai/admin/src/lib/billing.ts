@@ -35,6 +35,7 @@ export type QuotaUser = {
   id: string
   name: string
   email: string
+  avatar_url?: string | null
   status: string
   group_ids: string[]
   effective_credits: string
@@ -49,6 +50,38 @@ export type Quotas = {
   revision: number
   effective_at: string
 }
+export type QuotaMemberSort = "name-asc" | "credits-asc"
+
+export function sortQuotaUsers(
+  users: QuotaUser[],
+  sort: QuotaMemberSort,
+  locale: string
+) {
+  const collator = new Intl.Collator(locale, {
+    numeric: true,
+    sensitivity: "base",
+  })
+  const balance = (value: string | undefined) => {
+    if (!value || !/^-?\d+(?:\.\d{1,6})?$/.test(value)) return null
+    const [whole, fraction = ""] = value.replace(/^-/, "").split(".")
+    const units = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"))
+    return value.startsWith("-") ? -units : units
+  }
+  return [...users].sort((a, b) => {
+    const nameOrder =
+      collator.compare(a.name || a.email || a.id, b.name || b.email || b.id) ||
+      collator.compare(a.email, b.email) ||
+      a.id.localeCompare(b.id)
+    if (sort === "name-asc") return nameOrder
+    const left = balance(a.balance_credits)
+    const right = balance(b.balance_credits)
+    if (left === null) return right === null ? nameOrder : 1
+    if (right === null) return -1
+    const order = left < right ? -1 : left > right ? 1 : 0
+    return order || nameOrder
+  })
+}
+
 export function userQuota(
   user: QuotaUser,
   groups: QuotaGroup[],
@@ -108,6 +141,7 @@ export type Entry = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   category: string
   entry_type: string
   item_name: string
@@ -122,6 +156,7 @@ export type Transaction = {
   user_id: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   category: string
   item_name: string
   mode: string
@@ -221,11 +256,12 @@ export function credits(
 }
 export const validCredits = (value: string, signed = false) =>
   (signed ? /^-?\d{1,12}(\.\d{1,6})?$/ : /^\d{1,12}(\.\d{1,6})?$/).test(value)
-export function dateTime(value?: string) {
+export function dateTime(value?: string, options?: Intl.DateTimeFormatOptions) {
   return value
     ? new Date(value).toLocaleString("zh-CN", {
         timeZone: "Asia/Shanghai",
         hour12: false,
+        ...options,
       })
     : "—"
 }

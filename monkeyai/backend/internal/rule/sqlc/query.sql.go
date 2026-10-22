@@ -152,7 +152,8 @@ WHERE
     deleted_at IS NULL
     AND ($1::jsonb ->> 'ownership' = ''
         OR t.ownership_type = $1::jsonb ->> 'ownership')
-    AND name ILIKE '%' || ($1::jsonb ->> 'search') || '%'
+    AND (strpos(lower(name), lower($1::jsonb ->> 'search')) > 0
+        OR strpos(lower(content), lower($1::jsonb ->> 'search')) > 0)
     AND id::text > $1::jsonb ->> 'cursor'
 ORDER BY
     id

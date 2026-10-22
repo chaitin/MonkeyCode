@@ -20,7 +20,7 @@ test("billing settings use equal left and right columns on desktop", async () =>
 
   assert.match(
     page,
-    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-\[calc\(100svh-5rem\)\] lg:flex-none lg:overflow-hidden">/
+    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-\[calc\(100vh-5rem\)\] lg:flex-none lg:overflow-hidden">/
   )
   assert.match(
     page,
@@ -38,11 +38,11 @@ test("billing settings use equal left and right columns on desktop", async () =>
   )
   assert.match(
     page,
-    /<CardContent className="min-h-0 flex-1">[\s\S]*?<ScrollArea className="-ms-1 -me-\(--card-spacing\) min-h-0 lg:flex-1">[\s\S]*?<div className="flex flex-col gap-1 ps-1 pe-\(--card-spacing\)">/
+    /<CardContent className="min-h-0 flex-1">[\s\S]*?<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 lg:flex-1">[\s\S]*?<div className="flex flex-col gap-1 ps-1 pe-\[var\(--card-spacing\)\]">/
   )
   assert.match(
     page,
-    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">[\s\S]*?<ItemGroup className="gap-2">/
+    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">[\s\S]*?<ItemGroup className="gap-2">/
   )
   assert.match(
     page,
@@ -199,7 +199,7 @@ test("billing settings separate the group tree and member item list", async () =
     .split("const renderGroup =")[0]
   const groupRows = page
     .split("const renderGroup =")[1]
-    .split("if (!settings")[0]
+    .split("const loadState =")[0]
 
   assert.match(page, /FolderIcon/)
   assert.match(page, /Folder02Icon/)
@@ -238,15 +238,16 @@ test("billing settings separate the group tree and member item list", async () =
   assert.match(userItem, /<Item\s+size="sm"\s+variant="outline"\s+render=/)
   assert.match(
     userItem,
-    /<Button\s+type="button"\s+variant="ghost"\s+className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
+    /<Button\s+type="button"\s+variant="ghost"\s+className="[^"]*"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
   )
   assert.match(userItem, /<ItemMedia>/)
   assert.match(userItem, /<ItemContent className="min-w-0">/)
   assert.match(userItem, /<ItemTitle/)
   assert.doesNotMatch(userItem, /<ItemDescription|\{user\.email\}/)
   assert.match(userItem, /<ItemActions>/)
-  assert.match(userItem, /icon=\{User02Icon\}/)
-  assert.match(userItem, /text-blue-600 dark:text-blue-400/)
+  assert.match(userItem, /<UserAvatar src=\{user\.avatar_url\}/)
+  assert.match(userItem, /cn\("gap-2", disabled && "text-muted-foreground"\)/)
+  assert.doesNotMatch(userItem, /User02Icon/)
   assert.match(userItem, /groupQuota\.remaining/)
   assert.match(
     userItem,
@@ -354,8 +355,8 @@ test("immediate quota reset submits selected groups and members", async () => {
   assert.match(dialog, /quotaRefresh\.resetDialogTitle/)
   assert.match(dialog, /quotaRefresh\.resetDialogDescription/)
   assert.match(dialog, /<GroupSelect/)
-  assert.match(dialog, /options=\{quotas\.groups\.map/)
-  assert.match(dialog, /users=\{quotas\.users\.map/)
+  assert.match(dialog, /options=\{\(quotas\?\.groups \?\? \[\]\)\.map/)
+  assert.match(dialog, /users=\{\(quotas\?\.users \?\? \[\]\)\.map/)
   assert.match(dialog, /value=\{resetSelection\}/)
   assert.match(
     dialog,

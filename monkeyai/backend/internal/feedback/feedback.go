@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 	"strings"
@@ -63,6 +64,7 @@ type Feedback struct {
 	UserID        string       `json:"user_id"`
 	UserName      string       `json:"user_name,omitempty"`
 	UserEmail     string       `json:"user_email,omitempty"`
+	UserAvatarURL *string      `json:"user_avatar_url,omitempty"`
 	Category      string       `json:"category"`
 	Content       string       `json:"content"`
 	Rating        *int32       `json:"rating,omitempty"`
@@ -198,17 +200,17 @@ func publicAttachment(row sqlc.FeedbackAttachment, feedbackState string) Attachm
 func (s *Service) fail(ctx context.Context, feedbackID string, attachmentIDs []string, objectKeys []string, cause error) error {
 	for _, attachmentID := range attachmentIDs {
 		if _, err := sqlc.New(s.pool).SetAttachmentFailed(ctx, sqlc.SetAttachmentFailedParams{ID: attachmentID, FeedbackID: feedbackID}); err != nil {
-			slog.ErrorContext(ctx, "标记反馈附件失败", "feedback_id", feedbackID, "attachment_id", attachmentID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "feedback.operation.error", "标记反馈附件失败", "module", "feedback", "operation", "fail", "feedback_id", feedbackID, "attachment_id", attachmentID, "error", err)
 		}
 	}
 	if _, err := sqlc.New(s.pool).SetFeedbackState(ctx, sqlc.SetFeedbackStateParams{ID: feedbackID, State: "failed"}); err != nil {
-		slog.ErrorContext(ctx, "标记反馈失败", "feedback_id", feedbackID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "feedback.operation.error", "标记反馈失败", "module", "feedback", "operation", "fail", "feedback_id", feedbackID, "error", err)
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	for _, key := range objectKeys {
 		if err := s.storage.Delete(cleanupCtx, key); err != nil {
-			slog.WarnContext(ctx, "补偿删除反馈附件失败", "feedback_id", feedbackID, "error_type", fmt.Sprintf("%T", err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "补偿删除反馈附件失败", "module", "feedback", "operation", "fail", "feedback_id", feedbackID, "error_type", fmt.Sprintf("%T", err))
 		}
 	}
 	return cause

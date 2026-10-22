@@ -7,13 +7,105 @@ servers:
 security:
   - AdminSession: []
 paths:
-  /api/admin/v1/resource-imports/preview:
+  /api/admin/v1/resource-import-uploads:
     post:
-      summary: 校验资源发布包并预览变更
-      description: ZIP 包体最大 2 GiB；磁盘暂存并校验整包、静态资源和 Agent 闭包，不写入资源，返回新增/更新/跳过/退役/恢复、声明的 tags 和 plan_digest。资源 tags 参与变更判断。
+      summary: 创建资源包上传会话
+      description: 仅管理员可用，会话与创建者绑定，有效期 24 小时，每人最多 5 个未完成任务。普通 ZIP 或按字节拆分的 .zip.001 等分卷按顺序组成一个 ZIP，总大小不超过 2 GiB，最多 256 卷；不支持 .z01 或 7z 分卷。网络上传统一使用 64 MiB 传输块。
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 256
+                  items: {$ref: '#/components/schemas/ResourceImportUploadFile'}
+      responses:
+        '201':
+          description: 返回上传会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '409': {description: 未完成任务数已达上限}
+    get:
+      summary: 查询当前管理员未完成的资源包上传任务
+      responses:
+        '200':
+          description: 返回尚未过期的 uploading 和 ready 任务
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ResourceImportUpload'}
+  /api/admin/v1/resource-import-uploads/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询上传进度及已保存的传输块
+      responses:
+        '200':
+          description: 刷新页面或重启服务后可据此续传；本地文件须重新选择并核对已上传块摘要
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    delete:
+      summary: 放弃未完成上传任务
+      description: 使任务立即失效，后台定期清理暂存对象；已导入任务不能取消。
+      responses:
+        '204': {description: 任务已取消}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {description: 任务已导入}
+  /api/admin/v1/resource-import-uploads/{id}/chunks/{index}:
+    put:
+      summary: 上传一个资源包传输块
+      description: index 从 0 开始，对应逻辑 ZIP 的 index × chunk_size 偏移；除末块外必须恰好 64 MiB。服务端核对实际大小和 SHA-256，同内容重复上传幂等，不同内容或已封存返回 409。分块可乱序上传。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: index, in: path, required: true, schema: {type: integer, minimum: 0, maximum: 31}}
+        - {name: X-Content-SHA256, in: header, required: true, schema: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '204': {description: 传输块已保存或同内容已存在}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {description: 块内容冲突或上传已封存}
+  /api/admin/v1/resource-import-uploads/{id}/complete:
+    post:
+      summary: 检查完整 ZIP 并封存上传内容
+      description: 收齐所有传输块后检查 ZIP 路径、展开限制及外层文件 CRC，计算完整 ZIP 的 package_sha256。成功后 ready 状态不可修改，重复完成幂等。本接口不导入资源，也不校验包内声明的发布协议摘要。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 完整上传会话
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResourceImportUpload'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/resource-imports/preview:
+    post:
+      summary: 解析资源发布包并预览变更
+      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResourceImportInput'}
           multipart/form-data:
             schema:
               type: object
@@ -22,16 +114,21 @@ paths:
                 package: {type: string, format: binary}
                 options: {type: string, description: JSON 编码的认证归属选项}
       responses:
-        '200': {description: 预览结果与包摘要}
+        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
         '400': {$ref: '#/components/responses/ResourceError400'}
-        '409': {description: 发布版本、资源身份或依赖冲突}
+        '409': {description: 资源身份或现有数据关联冲突}
   /api/admin/v1/resource-imports:
     post:
-      summary: 按预览确认原子导入完整 Agent 清单
-      description: 重新上传同一 ZIP（最大 2 GiB），校验 package_sha256 和 plan_digest；需在 options 中确认最终资源集合。manifest 条目的 tags 按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
+      summary: 按预览确认所选资源分区
+      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/ResourceImportInput'}
+                - {required: [options, package_sha256, plan_digest]}
           multipart/form-data:
             schema:
               type: object
@@ -41,16 +138,31 @@ paths:
                 package_sha256: {type: string}
                 plan_digest: {type: string}
                 options: {type: string}
+                sections: {type: string, description: JSON编码的分区数组；跨分区分次处理使用封存upload_id}
+                section_plan_digests: {type: string, description: JSON编码的逐分区计划}
       responses:
-        '200': {description: 导入批次结果}
+        '200':
+          description: 分区结果，status为succeeded或partial；不要仅凭HTTP200显示全部成功。旧Agent-only仍返回原Preview。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [succeeded, partial]}
+                  warning: {type: string, description: 业务已提交但上传状态同步失败的提示}
+                  sections:
+                    type: object
+                    additionalProperties: {$ref: '#/components/schemas/ResourceSectionResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
-        '409': {description: 发布版本或并发变更冲突，需重新预览}
+        '409': {description: 并发变更冲突，需重新预览；无成功分区时error.references包含分区结果}
+        '503': {description: 存储/数据库暂不可用；无成功分区时返回错误，不假报成功}
     get:
       summary: 分页查询资源包导入批次
       parameters:
         - {name: cursor, in: query, schema: {type: string}, description: 上一页返回的 next_cursor}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 20}}
       responses:
-        '200': {description: 每页最多 20 条，返回 items 与 next_cursor}
+        '200': {description: 返回items与next_cursor，支持每页最多500条；新分区批次含section_results，status支持succeeded/partial/failed，设计源release不改写为Agent内部版本。}
   /api/admin/v1/resource-imports/{id}:
     get:
       summary: 读取资源包导入批次详情
@@ -62,19 +174,6 @@ paths:
       responses:
         '200': {description: 批次详情}
         '404': {description: 批次不存在}
-  /api/admin/v1/sessions:
-    get:
-      summary: 查询正式顶层会话
-      description: 排除占位、已清除和功能启用前旧会话。分页使用 page/page_size；统计模块另提供游标分页视图。
-      parameters:
-        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
-        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-      responses:
-        '200': {description: 会话分页及总数，包含标题及来源，不含对话正文}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/sessions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -96,40 +195,6 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '403': {$ref: '#/components/responses/ResourceError403'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/admin/v1/statistics/session-reporting/overview:
-    get:
-      summary: 一期会话统计总览
-      description: 半开时间区间，返回会话/轮次/结局/耗时/费用/实时活跃及上报质量指标；不含正文。
-      parameters:
-        - {name: from, in: query, schema: {type: string, format: date-time}}
-        - {name: until, in: query, schema: {type: string, format: date-time}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-      responses:
-        '200': {description: 统计总览及数据新鲜度}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-  /api/admin/v1/statistics/session-reporting/sessions:
-    get:
-      summary: 游标分页查询一期会话
-      parameters:
-        - {name: from, in: query, schema: {type: string, format: date-time}}
-        - {name: until, in: query, schema: {type: string, format: date-time}}
-        - {name: cursor, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-        - {name: include_placeholders, in: query, schema: {type: boolean, default: false}}
-        - {name: include_purged, in: query, schema: {type: boolean, default: false}}
-        - {name: user_id, in: query, schema: {type: string, format: uuid}}
-        - {name: group_id, in: query, schema: {type: string, format: uuid}}
-        - {name: model_id, in: query, schema: {type: string, format: uuid}}
-        - {name: expert_id, in: query, schema: {type: string, format: uuid}}
-        - {name: client_type, in: query, schema: {type: string}}
-        - {name: platform, in: query, schema: {type: string}}
-        - {name: outcome, in: query, schema: {type: string}}
-      responses:
-        '200': {description: items、next_cursor 及数据新鲜度}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/admin/v1/statistics/session-reporting/sessions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -142,26 +207,76 @@ paths:
         '410': {description: 会话统计数据已清除}
   /api/admin/v1/statistics/session-reporting/resources:
     get:
-      summary: 查询资源开启、使用、调用和失败指标
+      summary: 按用户查询资源开启、使用、调用和失败指标
+      description: |
+        每行按用户、资源类别、资源 ID 和版本分别聚合；用户为会话所属用户，姓名和邮箱使用当前账户信息。
+        包含符合条件的子会话，时间范围为 [from, until)，默认最近 24 小时。
+        user 按用户名、邮箱或用户 ID 做不区分大小写的字面子串匹配；可与 user_id、kind 及资源筛选组合。
+        kind 按原始类别精确筛选，包含快照、工具、技能事件和网关连接器指标；空值表示全部类别。
+        资源 ID 和版本按精确值筛选，包含仅有工具调用、没有资源快照条目的资源。
+        resource_name 优先采用未删除的后台资源名称，其次采用筛选范围内该用户、资源及版本的最新非空上报名称，最后回退到原始 ID。
+        内置工具始终以原始 ID 作为 resource_name；名称不参与分组、排序或 ID 筛选。
+        游标与全部筛选条件绑定，旧的跨用户资源聚合游标不再适用。
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: user, in: query, description: 用户名、邮箱或用户 ID，首尾空白会被移除，最多 200 个 Unicode 字符。, schema: {type: string, maxLength: 200}}
+        - {name: user_id, in: query, description: 精确匹配会话所属用户 ID。, schema: {type: string, format: uuid}}
+        - {name: kind, in: query, description: 原始资源类别，首尾空白会被移除，最多 128 字节；兼容客户端自定义类别。, schema: {type: string, maxLength: 128}}
         - {name: resource_id, in: query, schema: {type: string}}
         - {name: resource_version, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
         - {name: cursor, in: query, schema: {type: string}}
       responses:
-        '200': {description: 资源维度指标及 next_cursor}
+        '200':
+          description: 用户资源维度指标及 next_cursor
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatisticsResourceUsage'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
   /api/admin/v1/statistics/session-reporting/clients:
     get:
       summary: 查询客户端平台、版本和结局指标
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: until, in: query, schema: {type: string, format: date-time}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
         - {name: cursor, in: query, schema: {type: string}}
       responses:
         '200': {description: 客户端维度指标及 next_cursor}
+  /api/admin/v1/statistics/session-reporting/clients/overview:
+    get:
+      summary: 查询客户端类型、平台和客户端版本的会话分布
+      description: |
+        使用与客户端列表一致的轮次筛选和可见范围，包含符合条件的子会话。
+        每个 session_id 只计一次，客户端版本取所有筛选条件匹配后的最后一轮，按 started_at、turn_index 降序确定。
+        平台为当前设备属性，不是历史快照。空白或缺失客户端版本归入 null；分类不截断。
+        三组分类数量之和均等于 total；同数量分类按值稳定排序，null 排最后。
+        默认最近 24 小时，时间区间为 [from, until)。不支持 cursor、limit、page、page_size。
+      parameters:
+        - {name: from, in: query, description: 窗口起点，包含；默认当前时间前 24 小时。, schema: {type: string, format: date-time}}
+        - {name: until, in: query, description: 窗口终点，不包含；默认当前时间。, schema: {type: string, format: date-time}}
+        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}}
+        - {name: platform, in: query, description: 当前设备平台，按客户端上报原值精确匹配，最多 64 个 UTF-8 字节。, schema: {type: string, maxLength: 64}}
+        - {name: outcome, in: query, description: 轮次结束原因；先筛选再确定会话的最后匹配轮次。, schema: {type: string, enum: [complete, interrupted, error, max_turns, output_limit, unknown]}}
+        - {name: user_id, in: query, description: 会话所属用户 ID。, schema: {type: string, format: uuid}}
+        - {name: group_id, in: query, description: 会话所属分组 ID。, schema: {type: string, format: uuid}}
+        - {name: model_id, in: query, description: 匹配轮次使用的模型 ID。, schema: {type: string, format: uuid}}
+        - {name: expert_id, in: query, description: 会话的专家 ID。, schema: {type: string, format: uuid}}
+        - {name: resource_id, in: query, description: 匹配轮次资源快照中的资源 ID，最多 256 字节。, schema: {type: string, maxLength: 256}}
+        - {name: resource_version, in: query, description: 匹配资源的版本，最多 256 字节。, schema: {type: string, maxLength: 256}}
+        - {name: include_placeholders, in: query, description: 是否包含已上报且有匹配轮次的占位会话。, schema: {type: boolean, default: false}}
+      responses:
+        '200':
+          description: 全量筛选结果的三个分布；空数据 total 为 0，分类均为空数组。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatisticsClientOverview'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
   /oauth/connectors/{id}/callback:
     get:
       summary: 处理指定 MCP 的 OAuth 回调
@@ -807,7 +922,7 @@ paths:
   /api/admin/v1/statistics/models/overview:
     get:
       summary: 模型调用的固定窗口汇总与近 90 天每日趋势
-      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为 UTC 自然日，今天仅统计到 generated_at。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
+      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为北京时间（Asia/Shanghai）自然日，今天仅统计到 generated_at。Token 和 TPM 仅累计用量明确的调用：优先采用 billing_transactions.usage.known，缺失时以 model_calls.error_code 为空判断；输入包含缓存输入。调用次数、成功率和耗时仍统计全部已完成调用。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
       responses:
         "200":
           description: 同一数据库快照下的模型总览。
@@ -828,47 +943,10 @@ paths:
           $ref: "#/components/responses/ResourceError403"
         "500":
           $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/statistics/tasks:
-    get:
-      summary: 会话统计与真实环比
-      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
-      parameters:
-        - name: range
-          in: query
-          required: false
-          description: 以服务端当前时间为终点的滚动窗口。
-          schema:
-            type: string
-            enum:
-              - 24h
-              - 7d
-              - 30d
-              - 90d
-            default: 30d
-      responses:
-        "200":
-          description: 统计结果。
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                const: private, no-store
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatisticsTasks"
-        "400":
-          $ref: "#/components/responses/ResourceError400"
-        "401":
-          $ref: "#/components/responses/ResourceError401"
-        "403":
-          $ref: "#/components/responses/ResourceError403"
-        "500":
-          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/tasks/overview:
     get:
       summary: 任务总量、近 24 小时新增和活跃任务及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按 UTC 自然日，包含当天部分数据。
+      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
       responses:
         "200":
           description: 任务统计及完整的 90 天日序列。
@@ -933,7 +1011,7 @@ paths:
   /api/admin/v1/statistics/users:
     get:
       summary: 用户总量、近 24 小时新增和活跃用户及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按 UTC 自然日，包含当天部分数据。
+      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
       responses:
         "200":
           description: 用户统计及完整的 90 天日序列。
@@ -946,6 +1024,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatisticsUsersOverview"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/conversations:
+    get:
+      summary: 分页查询对话轮次历史
+      description: 仅管理员可访问。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。总数与列表在同一只读快照中查询。
+      parameters:
+        - name: task
+          in: query
+          description: 按当前任务标题包含匹配，忽略大小写；百分号和下划线作为普通字符。
+          schema: {type: string, maxLength: 200}
+        - name: task_id
+          in: query
+          description: 精确匹配根会话 UUID，用于从任务历史进入对话历史。
+          schema: {type: string, format: uuid}
+        - name: user
+          in: query
+          description: 按用户当前姓名或邮箱包含匹配，忽略大小写。
+          schema: {type: string, maxLength: 200}
+        - name: content
+          in: query
+          description: 按已上报的对话正文包含匹配，忽略大小写；百分号和下划线作为普通字符。
+          schema: {type: string, maxLength: 200}
+        - name: from
+          in: query
+          description: 轮次开始时间下界，包含；须携带时区。
+          schema: {type: string, format: date-time}
+        - name: until
+          in: query
+          description: 轮次开始时间上界，不包含；须携带时区且晚于 from。日期筛选应传结束日期次日的本地零点。
+          schema: {type: string, format: date-time}
+        - name: page
+          in: query
+          description: 页码；超过最后一页时回退到最后一页。
+          schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
+        - name: page_size
+          in: query
+          description: 每页条数。
+          schema: {type: integer, minimum: 1, maximum: 500, default: 20}
+      responses:
+        "200":
+          description: 按轮次开始时间、会话 ID、轮次编号降序排列的真实对话记录。
+          headers:
+            Cache-Control:
+              schema: {type: string, const: 'private, no-store'}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsConversations"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -1221,6 +1354,9 @@ paths:
                           type: string
                         email:
                           type: string
+                        avatar_url:
+                          type: [string, 'null']
+                          description: 成员当前头像地址；为空时使用默认头像。
                         status:
                           type: string
                         group_ids:
@@ -1301,6 +1437,9 @@ paths:
                           type: string
                         email:
                           type: string
+                        avatar_url:
+                          type: [string, 'null']
+                          description: 成员当前头像地址；为空时使用默认头像。
                         status:
                           type: string
                         group_ids:
@@ -1569,6 +1708,7 @@ paths:
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
+      description: 读取按周分区的不可变账本。时间范围为左闭右开；不传时间时查询全部记录。管理页面初次打开默认最近 28 个自然日，支持清空或调整范围。
       responses:
         '200':
           description: 请求成功
@@ -1640,7 +1780,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 100
+          maximum: 500
   /api/admin/v1/billing/summary:
     get:
       summary: 按同一筛选口径汇总扣费和退款
@@ -1773,7 +1913,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 100
+          maximum: 500
   /api/admin/v1/billing/transactions/{id}:
     parameters:
     - in: path
@@ -2177,10 +2317,26 @@ paths:
   /api/admin/v1/models:
     get:
       summary: 查询模型
+      description: |
+        按 ownership_type 分别查询系统或用户模型。q 按名称、模型 ID 或上游地址进行不区分大小写的字面子串搜索。
+        提供 limit、cursor 或 q 时启用按 ID 稳定排序的游标分页；筛选在分页前执行，切换类型或关键词时应清空 cursor。
+        未提供上述三个参数时保留完整列表及创建时间倒序；next_cursor 为空表示无后续页。
       parameters:
         - in: query
+          name: q
+          description: 按名称、模型 ID 或上游地址搜索；空值不筛选。
+          schema: {type: string}
+        - in: query
+          name: cursor
+          description: 上一页返回的 next_cursor。
+          schema: {type: string}
+        - in: query
+          name: limit
+          description: 单页数量；提供分页参数时默认 200。
+          schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+        - in: query
           name: ownership_type
-          description: 按模型所有权类型筛选；不传时返回全部模型。
+          description: 按模型所有权类型筛选；不传时不过滤所有权类型。
           schema:
             type: string
             enum: [system, user]
@@ -2375,7 +2531,7 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}
         - name: page_size
           in: query
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+          schema: {type: integer, minimum: 1, maximum: 500, default: 20}
         - name: category
           in: query
           schema: {type: string, enum: [bug, feature, experience, other]}
@@ -2464,6 +2620,11 @@ paths:
   /api/admin/v1/rules:
     get:
       summary: 查询Rule
+      description: |
+        按 ownership_type 筛选系统或用户规则；省略时返回两类规则。
+        q 对名称和完整规则内容进行不区分大小写的字面子串搜索；空值不筛选。
+        筛选在游标分页前执行；切换类型或搜索关键词时应清空 cursor。
+        limit 控制单页数量，后续页使用 next_cursor 请求，不返回已删除的规则。
       responses:
         '200':
           description: 查询Rule
@@ -2520,7 +2681,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Rule
@@ -2675,6 +2836,9 @@ paths:
   /api/admin/v1/skills:
     get:
       summary: 查询Skill
+      description: |
+        按 ownership_type 筛选系统或用户技能；q 对名称和描述进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Skill
@@ -2731,7 +2895,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Skill
@@ -2770,7 +2934,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
                 metadata:
                   type: string
                   description: JSON 字符串，包含 tag_ids 和 grants。
@@ -2948,6 +3112,9 @@ paths:
   /api/admin/v1/experts:
     get:
       summary: 查询Expert
+      description: |
+        按 ownership_type 筛选系统或用户专家；q 对名称、描述和提示词进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Expert
@@ -3004,7 +3171,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Expert
@@ -3211,6 +3378,9 @@ paths:
   /api/admin/v1/connectors:
     get:
       summary: 查询Connector
+      description: |
+        按 ownership_type 筛选系统或用户连接器；q 对名称和描述进行不区分大小写的字面子串搜索。
+        筛选在游标分页前执行；切换类型或关键词时应清空 cursor。limit 控制单页数量，next_cursor 为空表示无后续页。
       responses:
         '200':
           description: 查询Connector
@@ -3267,7 +3437,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 500
           default: 200
     post:
       summary: 创建Connector
@@ -3529,7 +3699,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
                 metadata:
                   type: string
                   description: JSON 字符串，包含 tag_ids 和 grants。
@@ -4852,6 +5022,72 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    ResourceImportUploadFile:
+      type: object
+      required: [name, size]
+      properties:
+        name: {type: string, description: ZIP 文件名或从 001 连续递增的分卷文件名}
+        size: {type: integer, format: int64, minimum: 1, maximum: 2147483648}
+    ResourceImportUpload:
+      type: object
+      required: [id, files, total_size, status, package_sha256, chunk_size, chunks, created_at, expires_at]
+      properties:
+        id: {type: string, format: uuid}
+        files:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceImportUploadFile'}
+        total_size: {type: integer, format: int64}
+        status: {type: string, enum: [uploading, ready, imported]}
+        package_sha256: {type: string, description: 封存后由服务端计算的完整 ZIP 摘要，上传期间为空}
+        chunk_size: {type: integer, const: 67108864}
+        chunks:
+          type: array
+          items:
+            type: object
+            required: [index, size, sha256]
+            properties:
+              index: {type: integer, minimum: 0, maximum: 31}
+              size: {type: integer, format: int64}
+              sha256: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ResourceSectionResult:
+      type: object
+      required: [status, replayed]
+      properties:
+        status: {type: string, enum: [succeeded, failed]}
+        replayed: {type: boolean}
+        http_status: {type: integer}
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
+        result: {type: object, description: Agent Preview或设计Plan，包含源release_id及资源计数}
+    ResourceImportInput:
+      type: object
+      required: [upload_id]
+      properties:
+        upload_id: {type: string, format: uuid}
+        package_sha256: {type: string}
+        plan_digest: {type: string}
+        discover_only: {type: boolean, description: 只发现分区，不生成计划，不能用于Apply}
+        sections:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, enum: [agent, design]}
+        section_plan_digests:
+          type: object
+          additionalProperties: {type: string}
+        options:
+          type: object
+          properties:
+            confirm_final: {type: boolean, description: 确认导入时必须为 true}
+            accept_normalization: {type: boolean}
+            authorization_modes:
+              type: object
+              additionalProperties: {type: string, enum: [independent, centralized]}
     FeedbackPage:
       type: object
       additionalProperties: false
@@ -4873,6 +5109,7 @@ components:
         user_id: {type: string, format: uuid}
         user_name: {type: string, description: 提交反馈的用户名，仅管理员列表返回。}
         user_email: {type: string, format: email, description: 提交反馈的邮箱，仅管理员列表返回。}
+        user_avatar_url: {type: [string, 'null'], description: 提交反馈用户的当前头像，仅管理员列表返回；为空或省略时使用默认头像。}
         category: {type: string, enum: [bug, feature, experience, other]}
         content: {type: string, maxLength: 5000}
         rating: {type: [integer, 'null'], minimum: 1, maximum: 5}
@@ -5030,7 +5267,7 @@ components:
           description: 每页条数。
     AuditRecord:
       type: object
-      required: [id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, request_id]
+      required: [id, actor_type, actor_user_id, actor_name, actor_email, actor_avatar_url, action, category, target_type, target_id, request_params, source_ip, user_agent, result, error_message, occurred_at, request_id]
       properties:
         id:
           type: string
@@ -5050,6 +5287,9 @@ components:
         actor_email:
           type: [string, "null"]
           description: "操作者邮箱快照。"
+        actor_avatar_url:
+          type: [string, "null"]
+          description: "操作者当前的头像地址；无关联用户或头像为空时为 null，客户端使用默认头像。"
         action:
           type: string
           description: "操作标识；客户端应为未知标识保留原文回退。"
@@ -5099,109 +5339,24 @@ components:
       type: string
       format: date-time
       description: 查询窗口终点，不包含；由服务端统一确定。
-    StatisticsTaskSummary:
-      type: object
-      required:
-        - total
-        - completed
-        - failed
-        - running
-        - completion_rate
-        - average_duration_seconds
-      properties:
-        total:
-          type: integer
-          minimum: 0
-          description: 窗口内新建且未软删除的会话总数。
-        completed:
-          type: integer
-          minimum: 0
-          description: 已结束且失败代码、失败描述均为空的会话数。
-        failed:
-          type: integer
-          minimum: 0
-          description: 已结束且失败代码或失败描述非空的会话数，包含异常取消。
-        running:
-          type: integer
-          minimum: 0
-          description: 尚未结束的会话数，可能处于空闲状态。
-        completion_rate:
-          type:
-            - number
-            - "null"
-          description: 成功结束数 / 会话总数 × 100；无会话时为 null。
-        average_duration_seconds:
-          type:
-            - number
-            - "null"
-          description: 已结束会话的平均耗时，单位秒；没有已结束会话时为 null。
-    StatisticsTasks:
-      type: object
-      required:
-        - from
-        - until
-        - summary
-        - previous
-        - trend
-        - types
-      properties:
-        from: *statisticsFrom
-        until: *statisticsUntil
-        summary:
-          $ref: "#/components/schemas/StatisticsTaskSummary"
-        previous:
-          $ref: "#/components/schemas/StatisticsTaskSummary"
-          description: 紧邻当前窗口之前的等长周期，按会话当前结果汇总。
-        trend:
-          type: array
-          items:
-            type: object
-            required:
-              - at
-              - completed
-              - failed
-              - running
-            properties:
-              at:
-                type: string
-                format: date-time
-                description: 分桶起点，从窗口起点每 1 小时（24h）或 24 小时递增；按会话开始时间归桶，空桶补零。
-              completed:
-                type: integer
-                minimum: 0
-                description: 本桶成功结束数。
-              failed:
-                type: integer
-                minimum: 0
-                description: 本桶失败数。
-              running:
-                type: integer
-                minimum: 0
-                description: 本桶未结束数。
-        types:
-          type: array
-          items:
-            allOf:
-              - $ref: "#/components/schemas/StatisticsTaskSummary"
-              - type: object
-                required:
-                  - key
-                properties:
-                  key:
-                    type: string
-                    enum:
-                      - conversation
-                      - workflow
-                      - tool
-                      - scheduled
     StatisticsModelsOverview:
       type: object
-      required: [timezone, generated_at, last_24h, last_30m, days]
+      description: 模型调用与积分通过事务内维护的小时汇总统计；完整小时读取汇总，滚动窗口边界和最近 30 分钟耗时读取明细。北京时间日界、用量明确判定与截尾平均规则保持一致。
+      required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]
       properties:
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         last_24h:
           type: object
+          description: 按完成时间统计 [generated_at - 24 小时, generated_at) 内的非运行中调用。
+          required: [model_calls, input_tokens, output_tokens]
+          properties:
+            model_calls: {type: integer, minimum: 0}
+            input_tokens: {type: integer, minimum: 0}
+            output_tokens: {type: integer, minimum: 0}
+        previous_24h:
+          type: object
+          description: 按完成时间统计 [generated_at - 48 小时, generated_at - 24 小时) 内的非运行中调用，用于与 last_24h 比较。
           required: [model_calls, input_tokens, output_tokens]
           properties:
             model_calls: {type: integer, minimum: 0}
@@ -5209,19 +5364,19 @@ components:
             output_tokens: {type: integer, minimum: 0}
         last_30m:
           type: object
-          required: [tpm, rpm, cache_hit_rate, model_success_rate, p95_response_time, p95_first_token_time]
+          required: [tpm, rpm, cache_hit_rate, model_success_rate, avg_response_time, avg_first_token_time]
           properties:
-            tpm: {type: number, minimum: 0, description: 近 30 分钟完成调用的输入和输出 Token 总量除以 30。}
+            tpm: {type: number, minimum: 0, description: 近 30 分钟完成且用量明确的调用的输入和输出 Token 总量除以 30。}
             rpm: {type: number, minimum: 0, description: 近 30 分钟完成调用数除以 30。}
             cache_hit_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
             model_success_rate: {type: [number, 'null'], minimum: 0, maximum: 100, description: 无完成调用时为 null。}
-            p95_response_time: {type: [number, 'null'], minimum: 0, description: 成功调用总响应耗时的 P95，毫秒；无样本时为 null。}
-            p95_first_token_time: {type: [number, 'null'], minimum: 0, description: 成功的流式调用中已采集首字耗时的 P95，毫秒；历史和非流式调用不计入，无样本时为 null。}
+            avg_response_time: {type: [number, 'null'], minimum: 0, description: 最近 30 分钟完成的成功调用响应耗时，独立剔除最慢 5% 样本后的算术平均值，单位毫秒。剔除条数向下取整，不足 20 条时保留全部样本；相同耗时按条数截尾。优先使用记录的响应耗时，否则使用完成时间减开始时间；无样本时为 null。}
+            avg_first_token_time: {type: [number, 'null'], minimum: 0, description: 最近 30 分钟完成的成功流式调用中，已采集首字耗时的样本独立剔除最慢 5% 后的算术平均值，单位毫秒。剔除条数向下取整，不足 20 条时保留全部样本；相同耗时按条数截尾。历史和非流式调用不计入；无样本时为 null。}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天，按日期升序；空白日期补零。
+          description: 从 89 天前到今天的北京时间自然日，按日期升序；空白日期补零。Token 仅累计用量明确的调用，输入包含缓存输入。
           items:
             type: object
             required: [date, model_calls, input_tokens, output_tokens, credits]
@@ -5238,13 +5393,13 @@ components:
         total_tasks: {type: integer, minimum: 0, description: 当前上报启用且未删除的根任务总量。}
         new_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内开始的根任务数。}
         active_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内有上报轮次的去重根任务数。}
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
           items:
             type: object
             required: [date, new_tasks, active_tasks]
@@ -5259,13 +5414,13 @@ components:
         total_users: {type: integer, minimum: 0, description: users 表的全部用户行数，包含软删除和停用用户。}
         new_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内创建的用户数，包含此后软删除的用户。}
         active_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内存在 session_turns 记录的去重任务所属用户数。}
-        timezone: {type: string, const: UTC}
+        timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天的 UTC 自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
           items:
             type: object
             required: [date, new_users, active_users]
@@ -5310,18 +5465,18 @@ components:
           description: 窗口内完成的模型调用总数。
         tpm:
           type: number
-          description: 窗口内完成调用的输入加输出 Token 总量 / 窗口分钟数。
+          description: 窗口内完成且用量明确的调用的输入加输出 Token 总量 / 窗口分钟数。
         rpm:
           type: number
           description: 窗口内完成调用总数 / 窗口分钟数。
         input_tokens:
           type: integer
           minimum: 0
-          description: 窗口内完成调用的输入 Token，包含缓存输入。
+          description: 窗口内完成且用量明确的调用的输入 Token，包含缓存输入。
         output_tokens:
           type: integer
           minimum: 0
-          description: 窗口内完成调用的输出 Token。
+          description: 窗口内完成且用量明确的调用的输出 Token。
         total_users:
           type: integer
           minimum: 0
@@ -5338,6 +5493,114 @@ components:
           type: integer
           minimum: 0
           description: 窗口内开始的未删除、非占位、已上报顶层任务数。
+    StatisticsResourceUsage:
+      type: object
+      required: [items, next_cursor, pagination, from, until, generated_at, data_freshness_seconds]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/StatisticsResourceUsageRow'}
+        next_cursor: {type: string, nullable: true}
+        pagination: {type: string, enum: [cursor]}
+        from: {type: string, format: date-time}
+        until: {type: string, format: date-time}
+        generated_at: {type: string, format: date-time}
+        data_freshness_seconds: {type: number, minimum: 0, nullable: true}
+    StatisticsResourceUsageRow:
+      type: object
+      required: [user_id, user_name, user_email, user_avatar_url, kind, resource_id, resource_name, version, enabled_sessions, available_sessions, used_sessions, calls, failed, failure_rate, sort_key]
+      properties:
+        user_id: {type: string, format: uuid, description: 会话所属用户 ID。}
+        user_name: {type: string, description: 用户当前名称。}
+        user_email: {type: string, description: 用户当前邮箱。}
+        user_avatar_url: {type: [string, 'null'], description: 用户当前头像地址；为空时使用默认头像。}
+        kind: {type: string}
+        resource_id: {type: string}
+        resource_name: {type: string, description: 后台配置名称、最新非空上报名称或原始 ID；内置工具保留原始 ID。}
+        version: {type: string, nullable: true}
+        enabled_sessions: {type: integer, minimum: 0}
+        available_sessions: {type: integer, minimum: 0}
+        used_sessions: {type: integer, minimum: 0}
+        calls: {type: integer, minimum: 0}
+        failed: {type: integer, minimum: 0}
+        failure_rate: {type: number, minimum: 0, maximum: 100, nullable: true}
+        sort_key: {type: string, description: 资源类别、ID、版本及用户 ID 组成的稳定分页键。}
+    StatisticsClientDistribution:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+          nullable: true
+          description: 原始分类值，客户端版本不附加前缀；null 表示未知。
+        count:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 归入此分类的去重会话数。
+    StatisticsClientOverview:
+      type: object
+      required: [metric, total, distributions, from, until, generated_at, data_freshness_seconds]
+      properties:
+        metric: {type: string, enum: [sessions], description: 计数口径固定为筛选后的去重会话数。}
+        total: {type: integer, format: int64, minimum: 0, description: 匹配的会话总数，包含未知分类。}
+        distributions:
+          type: object
+          required: [client_type, platform, client_version]
+          properties:
+            client_type:
+              type: array
+              description: 按会话数降序排列的全部客户端类型。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+            platform:
+              type: array
+              description: 按会话数降序排列的全部平台，包含未知平台。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+            client_version:
+              type: array
+              description: 按会话数降序排列的全部客户端版本，每个会话采用匹配的最后一轮版本。
+              items: {$ref: '#/components/schemas/StatisticsClientDistribution'}
+        from: {type: string, format: date-time, description: 实际统计窗口起点，包含。}
+        until: {type: string, format: date-time, description: 实际统计窗口终点，不包含。}
+        generated_at: {type: string, format: date-time, description: 响应生成时间。}
+        data_freshness_seconds: {type: number, minimum: 0, nullable: true, description: 距最新匹配轮次接收时间的秒数；没有匹配数据时为 null。}
+    StatisticsConversations:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          description: 当前页的对话轮次；没有数据时返回空数组。
+          items:
+            $ref: "#/components/schemas/StatisticsConversation"
+        total: {type: integer, minimum: 0, description: 符合筛选条件的轮次总数，包含空正文。}
+        page: {type: integer, minimum: 1, description: 实际页码；超过最后一页时回退到最后一页，空数据时为 1。}
+        page_size: {type: integer, minimum: 1, maximum: 500, description: 每页条数。}
+    StatisticsConversation:
+      type: object
+      required: [session_id, turn_index, task_title, user_id, user_name, user_email, user_avatar_url, started_at, ended_at, duration_seconds, input_text, input_text_truncated, input_kind, input_tokens, output_tokens, outcome, error_code, is_completed]
+      properties:
+        session_id: {type: string, format: uuid, description: 所属根会话 ID，即任务历史的任务 ID；与 turn_index 联合标识一个轮次。}
+        turn_index: {type: integer, minimum: 1, description: 客户端上报的轮次编号。}
+        task_title: {type: string, description: 所属任务当前标题，与任务历史一致。}
+        user_id: {type: string, format: uuid, description: 所属用户 ID。}
+        user_name: {type: string, description: 所属用户当前姓名。}
+        user_email: {type: string, description: 所属用户当前邮箱。}
+        user_avatar_url: {type: [string, 'null'], description: 所属用户当前头像地址；为空时使用默认头像。}
+        started_at: {type: string, format: date-time, description: 轮次开始时间，筛选和排序使用此时间。}
+        ended_at: {type: string, format: date-time, description: 轮次结束时间；此接口仅展示已结束且完成上报的轮次。}
+        duration_seconds: {type: number, minimum: 0, description: ended_at 减 started_at 的秒数，保留原始精度，前端按整秒显示。}
+        input_text: {type: [string, 'null'], description: 已上报的用户正文；未采集或无文本输入时为 null，不生成示例正文。}
+        input_text_truncated: {type: boolean, description: 正文是否已经被客户端截断。}
+        input_kind: {type: string, description: 客户端上报的输入类型。}
+        input_tokens: {type: [integer, 'null'], minimum: 0, description: 本轮客户端上报的输入 Token 数；未采集时为 null，不合并模型网关或子代理用量。}
+        output_tokens: {type: [integer, 'null'], minimum: 0, description: 本轮客户端上报的输出 Token 数；未采集时为 null，K/M/B 由前端格式化。}
+        outcome:
+          type: string
+          enum: [complete, interrupted, error, max_turns, output_limit, unknown]
+          description: 本轮原始结束原因；不表示整个任务是否结束。
+        error_code: {type: [string, 'null'], description: 已上报的错误码，无错误码时为 null。}
+        is_completed: {type: [boolean, 'null'], description: complete 为 true；unknown 为 null；其他结束原因为 false。只表示本轮是否正常完成。}
     StatisticsHistory:
       type: object
       required:
@@ -5356,6 +5619,7 @@ components:
               - user_id
               - user_name
               - user_email
+              - user_avatar_url
               - started_at
               - last_active_at
               - turn_count
@@ -5376,6 +5640,9 @@ components:
               user_email:
                 type: string
                 description: 所属用户当前邮箱。
+              user_avatar_url:
+                type: [string, 'null']
+                description: 所属用户当前头像地址；为空时使用默认头像。
               started_at:
                 type: string
                 format: date-time
@@ -5673,6 +5940,9 @@ components:
     CreditEntry:
       type: object
       properties:
+        user_avatar_url:
+          type: [string, 'null']
+          description: 管理员流水列表返回用户当前头像；为空时使用默认头像。
         id:
           type: string
           format: uuid
@@ -5760,6 +6030,9 @@ components:
     BillingTransaction:
       type: object
       properties:
+        user_avatar_url:
+          type: [string, 'null']
+          description: 管理员待处理列表返回用户当前头像；为空时使用默认头像。
         id:
           type: string
           format: uuid
@@ -5875,9 +6148,12 @@ components:
       type: object
       required: [models]
       properties:
+        next_cursor:
+          type: string
+          description: 后续页游标；无后续页或未启用分页时为空字符串。
         models:
           type: array
-          description: 按创建时间倒序排列的模型。
+          description: 分页时按 ID 升序；未启用分页时按创建时间倒序。
           items:
             $ref: "#/components/schemas/Model"
     SystemProxy:
@@ -5981,15 +6257,15 @@ components:
           description: 模型最后更新时间。
     ModelProtocol:
       type: string
-      enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
+      enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
       description: MonkeyAI 与上游服务通信时使用的协议。
     ModelKind:
       type: string
-      enum: [text, image]
+      enum: [text, image, video]
       description: 模型对外提供的能力；省略时兼容为 text。
     ModelProvider:
       type: string
-      enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+      enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
       description: 上游调用路径；text 模型只允许 passthrough。
     ImageQuality:
       type: string
@@ -6467,6 +6743,14 @@ components:
           type: string
         name:
           type: string
+        description:
+          type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         authorization_mode:
           type: string
           enum:
@@ -6935,6 +7219,12 @@ components:
           format: uuid
         name:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         revision:
           type: integer
           minimum: 1

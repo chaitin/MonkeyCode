@@ -28,6 +28,7 @@ const (
 	ProviderVolcengine      Provider = "volcengine"
 	ProviderXAI             Provider = "xai"
 	ProviderMiniMax         Provider = "minimax"
+	ProviderAgnes           Provider = "agnes"
 )
 
 type Protocol string

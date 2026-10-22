@@ -7,15 +7,502 @@ servers:
 security:
   - OAuthAccessToken: []
 paths:
+  /api/v1/design-resources/config:
+    get:
+      summary: 查询设计资源双源配置
+      description: 成功返回裸对象，错误沿用现有控制面 error 信封；Cache-Control 为 no-store。base_url 是完整 base，不追加固定路径；publisher_id 未配置为 null。
+      responses:
+        '200':
+          description: 配置不含密钥；未配置 hub 时 respub=null，未导入时 available=false、snapshot=null。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DesignConfig'}
+        '401': {description: 未登录，控制面错误信封}
+        '503': {description: 配置或存储不可用，控制面错误信封}
+  /api/v1/design-resources/token:
+    post:
+      summary: 为当前用户已登记设备签发设计凭据
+      description: hub JWT 使用 aud=respub-design；本地媒体 JWT 使用 aud=monkeyai-design-media 及 sub=用户ID，密钥独立，有效期10分钟。响应 no-store，禁止记录凭据。设备移除后不得签发，已签发短期凭据按过期时间失效。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machine_id, target]
+              properties:
+                machine_id: {type: string}
+                target: {type: string, enum: [respub, monkeyai-media]}
+      responses:
+        '200':
+          description: 裸对象，不使用 catalog 信封
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expires_at]
+                properties:
+                  token: {type: string}
+                  expires_at: {type: string, format: date-time}
+        '400': {description: 请求格式或 target 无效，控制面错误信封}
+        '401': {description: 未登录，控制面错误信封}
+        '403': {description: 设备不属于当前用户或已移除}
+        '503': {description: 对应密钥、实例ID或 hub base 未配置}
+  /api/v1/design-resources/catalog/snapshot:
+    get:
+      summary: 读取当前或指定的冻结设计快照
+      parameters: &designSnapshotParameters
+        - {name: snapshot, in: query, schema: {type: string}, description: 本地为 release:<source_release_id>；省略使用 current，显式非法或未知返回404，不回落。}
+        - {name: publisher_id, in: query, schema: {type: string}, description: 提供时必须与发布者匹配，否则403。}
+      responses:
+        '200':
+          description: catalog 成功信封
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/DesignEnvelope'}
+                  - {properties: {data: {$ref: '#/components/schemas/DesignSnapshot'}}}
+        '401': &design401 {description: unauthorized，catalog 信封，data=null}
+        '403': &design403 {description: forbidden，catalog 信封，data=null}
+        '404': &design404 {description: snapshot_not_found 或 resource_not_found，catalog 信封，data=null}
+        '503': &design503 {description: unavailable，catalog 信封，data=null}
+  /api/v1/design-resources/catalog/taxonomy:
+    get:
+      summary: 读取冻结词表、计数与模板关联
+      parameters: *designSnapshotParameters
+      responses:
+        '200':
+          description: 保留发布集的限定ID、count、provenance；四个数组均不为null，不重新累计计数。
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/DesignEnvelope'}
+                  - properties:
+                      data:
+                        type: object
+                        required: [modes, categories, mode_categories, resource_categories]
+                        properties:
+                          modes: {type: array, items: {type: object}}
+                          categories: {type: array, items: {type: object}}
+                          mode_categories: {type: array, items: {type: object}}
+                          resource_categories: {type: array, items: {type: object}}
+        '401': *design401
+        '403': *design403
+        '404': *design404
+        '503': *design503
+  /api/v1/design-resources/catalog/{kind}:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [templates, design-systems, styles, directions]}}
+    get:
+      summary: 分页查询冻结设计资源
+      description: 按 catalog_rank 和稳定ID排序。模板列表不返回提示词、skillPath、source_skill_path、files；系统列表不返回正文、metadata、files。所有成功结果使用 code=0、message为空、data承载数据；错误code为字符串。
+      parameters:
+        - {name: snapshot, in: query, schema: {type: string}}
+        - {name: publisher_id, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, default: 20}, description: 超过100按100处理}
+        - {name: q, in: query, schema: {type: string}, description: ID或metadata JSON文本的确定性、不区分大小写搜索}
+        - {name: mode, in: query, schema: {type: string}, description: 模板词表限定ID或原始ID}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: template_kind, in: query, schema: {type: string, enum: [bundle, prompt]}}
+        - {name: context, in: query, schema: {type: string}}
+        - {name: variant, in: query, schema: {type: string}}
+        - {name: recommended, in: query, schema: {type: boolean}}
+      responses:
+        '200':
+          description: 分页数据；空目录total_pages=0，越界items为空数组
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/DesignEnvelope'}
+                  - {properties: {data: {$ref: '#/components/schemas/DesignPage'}}}
+        '400': &design400 {description: invalid_argument，catalog信封；参数非法或重复}
+        '401': *design401
+        '403': *design403
+        '404': *design404
+        '503': *design503
+  /api/v1/design-resources/catalog/{kind}/{id}:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [templates, design-systems, styles, directions]}}
+      - {name: id, in: path, required: true, schema: {type: string}, description: catalog_id，按单个路径段编码}
+    get:
+      summary: 读取冻结资源详情
+      description: 模板保留原 skillPath，source_skill_path 为解析后的逻辑源路径或null，不参与业务摘要。详情、媒体和下载URL绑定同一 snapshot/publisher_id/content_digest。
+      parameters: &designResourceParameters
+        - {name: snapshot, in: query, schema: {type: string}}
+        - {name: publisher_id, in: query, schema: {type: string}}
+        - {name: content_digest, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: 资源详情，翻译无值时为对象、无预览为null
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/DesignEnvelope'}
+                  - {properties: {data: {$ref: '#/components/schemas/DesignEntry'}}}
+        '400': *design400
+        '401': *design401
+        '403': *design403
+        '404': *design404
+        '409': &design409 {description: resource_version_mismatch，内容摘要不匹配}
+        '503': *design503
+  /api/v1/design-resources/catalog/templates/{id}/download:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get: &designDownload
+      summary: 下载冻结源文件ZIP
+      description: 直接返回持久化ZIP，不302；支持单/多区间Range（最多32段）、If-None-Match、If-Range。强ETag是实际ZIP字节SHA，鉴权先于304/206；错误no-store。源文件按原逻辑路径，容器字节不承诺与hub相同。
+      parameters: *designResourceParameters
+      responses:
+        '200': {description: ZIP全量字节，含Content-Length和强ETag, content: {application/zip: {schema: {type: string, format: binary}}}}
+        '206': {description: 单区间或multipart/byteranges字节}
+        '304': {description: 已认证且ETag匹配，无正文}
+        '400': *design400
+        '401': *design401
+        '403': *design403
+        '404': *design404
+        '409': *design409
+        '416': {description: invalid_argument，Content-Range为bytes */size}
+        '503': *design503
+    head:
+      <<: *designDownload
+      summary: 查询冻结ZIP长度与ETag，不返回正文
+  /api/v1/design-resources/design-systems/{id}/download:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get: *designDownload
+    head:
+      <<: *designDownload
+      summary: 查询系统ZIP长度与ETag，不返回正文
+  /api/v1/design-resources/catalog/previews/{id}/{path}:
+    parameters: &designMediaPathParameters
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: path, in: path, required: true, schema: {type: string}, description: catalog.files中的逻辑路径，逐段编码，路由支持多级路径}
+    get: &designMedia
+      summary: 读取设计媒体
+      description: 仅允许image/video/audio MIME。仅接受本地媒体JWT的Bearer或query token，有Authorization时优先且失败不降级。支持HEAD/Range/ETag/If-Range，认证先于304/206，private缓存和nosniff，SVG加sandbox CSP。token不得保存到业务URL或日志。
+      security:
+        - DesignMediaBearer: []
+        - DesignMediaQuery: []
+      parameters:
+        - {name: snapshot, in: query, schema: {type: string}}
+        - {name: publisher_id, in: query, schema: {type: string}}
+        - {name: content_digest, in: query, schema: {type: string}}
+      responses:
+        '200': {description: 原始媒体字节、Content-Length、强ETag、Accept-Ranges}
+        '206': {description: 单区间或最多32段的multipart/byteranges}
+        '304': {description: 已认证且ETag匹配}
+        '400': *design400
+        '401': *design401
+        '403': *design403
+        '404': *design404
+        '409': *design409
+        '416': {description: invalid_argument，所有区间不可满足}
+        '503': *design503
+    head:
+      <<: *designMedia
+      summary: 读取媒体响应头；错误无正文且no-store
+  /api/v1/design-resources/catalog/style-assets/{id}/{path}:
+    parameters: *designMediaPathParameters
+    get: *designMedia
+    head:
+      <<: *designMedia
+      summary: 读取风格媒体响应头
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: 查询 OAuth 能力
+      security: []
+      responses:
+        '200':
+          description: issuer、授权、兑换、撤销地址和 scopes_supported；未实现的远程能力不声明。
+          content:
+            application/json:
+              schema: {type: object}
+  /oauth/authorize:
+    get:
+      summary: 创建安装登录授权请求
+      description: 旧 token 不会自动扩权；启用远程中转时，新的 Desktop 请求省略 scope 将申请远程执行权限并要求浏览器确认，权限不能在兑换或刷新时扩大。
+      security: []
+      parameters:
+        - {name: response_type, in: query, required: true, schema: {type: string, const: code}}
+        - {name: client_id, in: query, required: true, schema: {type: string, enum: [monkeyai-desktop, monkeyai-mobile]}}
+        - {name: redirect_uri, in: query, required: true, schema: {type: string}}
+        - {name: state, in: query, required: true, schema: {type: string}}
+        - {name: code_challenge, in: query, required: true, schema: {type: string}}
+        - {name: code_challenge_method, in: query, required: true, schema: {type: string, const: S256}}
+        - {name: scope, in: query, schema: {type: string, maxLength: 1024}, description: 空格分隔；Mobile 不允许 device:bind、device:publish、session:report。}
+        - {name: audience, in: query, schema: {type: string, const: monkeyai-api, default: monkeyai-api}}
+      responses:
+        '302': {description: 跳转浏览器登录和授权确认页面}
+        '400': {description: OAuth invalid_request、invalid_scope 或 invalid_target}
+        '503': {description: OAuth server_error；保留本地登录状态并退避}
+  /oauth/token:
+    post:
+      summary: 兑换授权码或轮换安装凭据
+      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id]
+              properties:
+                grant_type: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code']}
+                client_id: {type: string, enum: [monkeyai-desktop, monkeyai-mobile, monkeyai-runtime]}
+                device_code: {type: string}
+                code: {type: string}
+                redirect_uri: {type: string}
+                code_verifier: {type: string}
+                refresh_token: {type: string}
+      responses:
+        '200':
+          description: 新凭据；Cache-Control 为 no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, refresh_token, token_type, expires_in, grant_id, scope]
+                properties:
+                  access_token: {type: string}
+                  refresh_token: {type: string}
+                  token_type: {type: string, const: Bearer}
+                  expires_in: {type: integer}
+                  grant_id: {type: string, format: uuid}
+                  machine_id: {type: string, format: uuid, description: 独立授权冻结的目标机器}
+                  server_id: {type: string, format: uuid, description: 独立授权的控制面标识}
+                  scope: {type: string, description: 用户批准的规范化权限；兼容授权为空字符串}
+        '400': {description: OAuth invalid_grant、invalid_client、invalid_request、authorization_pending、slow_down、access_denied、expired_token 或 unsupported_grant_type}
+        '503': {description: OAuth server_error，不能按 invalid_grant 清理登录}
+  /oauth/revoke:
+    post:
+      summary: 撤销当前安装授权族
+      description: 可提交族内旧或新 access/refresh token；同用户其他安装不受影响；未知凭据幂等返回 200。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id, token]
+              properties:
+                client_id: {type: string}
+                token: {type: string}
+      responses:
+        '200': {description: 撤销已持久化或凭据未知}
+        '400': {description: OAuth invalid_request}
+        '503': {description: OAuth server_error；撤销尚未确认成功}
+  /api/auth/v1/client-requests/{requestID}:
+    get:
+      summary: 查询冻结的安装授权请求
+      security: []
+      parameters:
+        - {name: requestID, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 登录状态、客户端、权限和确认数据，不包含 OAuth token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_id: {type: string, format: uuid}
+                  authenticated: {type: boolean}
+                  client: {type: object}
+                  user: {type: [object, 'null']}
+                  providers: {type: array, items: {type: object}}
+                  scopes: {type: array, items: {type: string}}
+                  scope_descriptions: {type: object, additionalProperties: {type: string}}
+                  audience: {type: string, const: monkeyai-api}
+                  consent_required: {type: boolean}
+                  csrf_token: {type: string, description: 绑定当前浏览器登录和申请，提交时通过 X-CSRF-Token 回传}
+        '404': {description: 申请不存在、已完成或过期}
+        '503': {description: 登录方式暂不可用}
+  /api/auth/v1/client-requests/{requestID}/complete:
+    post:
+      summary: 确认授权并生成一次性回调
+      description: 新增权限不能自动完成，必须通过 CSRF 校验并明确提供批准列表；只能收窄。无新增 scope 的旧登录保持原调用方式。
+      security:
+        - BrowserSession: []
+      parameters:
+        - {name: requestID, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: X-CSRF-Token, in: header, schema: {type: string}, description: 带 scope 的申请必填}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [approved_scopes]
+              properties:
+                approved_scopes: {type: array, items: {type: string}}
+      responses:
+        '200':
+          description: 含一次性授权码的回调地址；不缓存
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [launch_url]
+                properties:
+                  launch_url: {type: string}
+        '401': {description: 浏览器未登录}
+        '403': {description: 缺少明确确认或 CSRF/来源校验失败}
+        '404': {description: 申请不存在}
+        '409': {description: 申请已完成、过期或批准范围无效}
+  /oauth/device/authorization:
+    post:
+      summary: 申请独立 runtime 设备授权
+      description: RFC8628；冻结机器、公钥与权限。device_code 只保存摘要，短码保存服务端 HMAC 索引；默认十分钟、轮询五秒。不得将返回凭据写入日志。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id, machine_id, execution_public_key, display_name, platform, arch]
+              properties:
+                client_id: {type: string, const: monkeyai-runtime}
+                scope: {type: string, default: 'device:bind device:publish session:report'}
+                machine_id: {type: string, format: uuid}
+                execution_public_key: {type: string, description: Ed25519 原始公钥的无填充 base64url}
+                display_name: {type: string, maxLength: 128}
+                platform: {type: string, enum: [macos, windows, linux]}
+                arch: {type: string, maxLength: 32}
+      responses:
+        '200':
+          description: 不缓存的设备申请凭据
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [device_code, user_code, verification_uri, expires_in, interval]
+                properties:
+                  device_code: {type: string}
+                  user_code: {type: string}
+                  verification_uri: {type: string, format: uri}
+                  verification_uri_complete: {type: string, format: uri}
+                  expires_in: {type: integer, const: 600}
+                  interval: {type: integer, const: 5}
+        '400': {description: OAuth invalid_request、invalid_client 或 invalid_scope}
+        '429': {description: OAuth temporarily_unavailable，遵守 Retry-After}
+        '503': {description: OAuth server_error}
+  /api/auth/v1/device/decision:
+    post:
+      summary: 浏览器明确批准或拒绝独立执行授权
+      description: 申请只处理一次；权限只能收窄。已撤销设备恢复需要 restore_revoked=true，公钥冲突拒绝覆盖。
+      security:
+        - BrowserSession: []
+      parameters:
+        - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [request_id, decision]
+              properties:
+                request_id: {type: string, format: uuid}
+                decision: {type: string, enum: [approve, deny]}
+                approved_scopes: {type: array, items: {type: string, enum: ['device:bind', 'device:publish', 'session:report']}}
+                restore_revoked: {type: boolean, default: false}
+      responses:
+        '200': {description: approved 或 denied 已持久化}
+        '400': {description: invalid_request 或 invalid_scope}
+        '401': {description: 浏览器未登录}
+        '403': {description: CSRF、来源或账号状态校验失败}
+        '404': {description: request_not_found}
+        '409': {description: device_request_resolved、device_revoked 或 device_registration_conflict}
+        '503': {description: authorization_state_unavailable}
+  /api/auth/v1/client-requests/device:
+    get:
+      summary: 通过短码查询冻结的设备申请
+      description: /device 验证页使用；只展示设备、账号、指纹和权限，不返回 token 或 device_code。可用已有 client-requests/{requestID}?purpose=device 查询同一申请。
+      security: []
+      parameters:
+        - {name: purpose, in: query, required: true, schema: {type: string, const: device}}
+        - {name: user_code, in: query, required: true, schema: {type: string}}
+      responses:
+        '200': {description: 申请、登录方式、状态、requires_restore、registration_conflict 和绑定当前浏览器的 csrf_token}
+        '404': {description: 短码无效或过期}
+        '429': {description: rate_limited}
+        '503': {description: 策略或设备状态暂不可用}
+  /api/v1/sessions:
+    get:
+      summary: 查询本人的跨设备会话摘要
+      description: 要求 session:read 和启用会话元数据上报；只返回认证宿主记录，不含正文。stats 级策略不返回标题。设备离线、摘要过期或 boot/epoch 不匹配时 stale=true。
+      parameters:
+        - {name: machine_id, in: query, schema: {type: string, format: uuid}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: 本人摘要分页
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/SessionSummary'}}
+                  pagination: {type: object, properties: {page: {type: integer}, page_size: {type: integer}, total: {type: integer}}}
+                  server_time: {type: string, format: date-time}
+        '400': {description: 非法筛选或请求指定其他用户}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: permission_denied 或 reporting_disabled}
+        '503': {description: authorization_state_unavailable}
+  /preview/{machine_id}/{grant}/{path}:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+      - {name: grant, in: path, required: true, schema: {type: string}, description: 额外绑定 artifact_id 和 preview_origin 的目录授权}
+      - {name: path, in: path, required: true, schema: {type: string}}
+    get:
+      summary: 在产物专属 origin 中执行隔离预览
+      description: 需配置独立 HTTPS 泛域名模板。验证产物派生 Host、签名、授权族、范围和期限；使用 opaque sandbox 禁止持久存储、Cookie、ServiceWorker、表单和嵌套应用。原有 Desktop 自定义产物 origin 语义不变。
+      security: []
+      responses:
+        '200': {description: HTML 或相对资源；no-store、sandbox allow-scripts，禁止 allow-same-origin}
+        '206': {description: 资源 Range 响应}
+        '403': {description: 产物、Host 或文件授权无效}
+        '404': {description: 未配置预览服务}
+        '503': {description: 目标或授权不可用}
+    head:
+      summary: 查询隔离产物资源响应头
+      security: []
+      responses:
+        '200': {description: 资源响应头}
+        '403': {description: 产物授权无效}
+        '503': {description: 目标或授权不可用}
   /api/v1/sessions/{id}:
     parameters:
       - name: id
         in: path
         required: true
         schema: {type: string, format: uuid}
+    get:
+      summary: 查询本人指定会话摘要
+      description: 要求 session:read；跨用户与不存在统一返回 404，遵循上报及标题策略。
+      responses:
+        '200':
+          description: 本人会话摘要
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionSummary'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: permission_denied 或 reporting_disabled}
+        '404': {description: 会话不存在或不属于当前用户}
+        '503': {description: authorization_state_unavailable}
     put:
       summary: 创建或更新一期会话元数据快照
-      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致；机器 ID 只用于认领宿主，不是认证凭证。省略标题字段时保留已有值，未知字段会被忽略。
+      description: 接收统计元数据及可选会话标题；state_seq 单调递增，同序号内容必须一致。已验证宿主从 OAuth 授权族取得，机器头只做一致性检查；旧无 scope 客户端仅能写入尚未验证的兼容宿主。省略标题字段时保留已有值，未知字段会被忽略。
       parameters:
         - name: X-MAI-Machine-ID
           in: header
@@ -30,13 +517,21 @@ paths:
               additionalProperties: true
               required: [state_seq, client, session_type, started_at]
               properties:
+                runtime:
+                  type: object
+                  additionalProperties: false
+                  required: [boot_id, lease_epoch]
+                  properties:
+                    boot_id: {type: string, format: uuid}
+                    lease_epoch: {type: integer, format: int64, minimum: 1}
+                  description: 可选实时摘要；必须匹配当前活动宿主，不改变 state_seq 业务快照摘要。历史补传省略。
                 state_seq: {type: integer, format: int64, minimum: 0}
                 client:
                   type: object
                   additionalProperties: true
                   required: [type, machine_id, version]
                   properties:
-                    type: {type: string, enum: [desktop, web, extension, mobile, unknown]}
+                    type: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}
                     machine_id: {type: string, format: uuid}
                     version: {type: string}
                     engine_version: {type: [string, 'null']}
@@ -184,32 +679,192 @@ paths:
   /api/v1/endpoints:
     get:
       summary: 分页读取当前用户端点
-      description: 包含已停用端点；online 仅代表当前单进程连接。响应不缓存。
+      description: 默认保持旧目录；添加 X-MAI-Runtime-API=1，或使用已获 device:connect 的新 Desktop 授权，返回远程目录。新目录需要 device:connect，包含平铺的 items、total、page、page_size 和真实 version，不以资料上报判断在线。
       parameters:
+        - {name: X-MAI-Runtime-API, in: header, schema: {type: string, const: '1'}}
+        - {name: capability, in: query, schema: {type: string, enum: [execute]}}
         - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 1000000, default: 1}}
         - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
       responses:
         '200':
-          description: 端点分页
+          description: 旧端点分页或显式协商的远程目录
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [items, total, page, page_size]
+                    properties:
+                      items: {type: array, items: {$ref: '#/components/schemas/Endpoint'}}
+                      total: {type: integer}
+                      page: {type: integer}
+                      page_size: {type: integer}
+                  - {$ref: '#/components/schemas/RuntimeDirectory'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+  /api/v1/endpoint-bridge:
+    get:
+      summary: 证明设备身份并建立控制或数据隧道
+      description: 功能启用后可用；OAuth 要求 device:bind，publish 另要求 device:publish。hello/challenge/proof/ready/ready_ack 后进入二进制 yamux，bind_identity 确认后关闭。详见 design/remote-runtime-protocol.md。
+      parameters:
+        - {name: channel_kind, in: query, required: true, schema: {type: string, enum: [control, data]}}
+        - {name: tunnel_version, in: query, required: true, schema: {type: integer, const: 1}}
+      responses:
+        '101': {description: WebSocket 升级成功，HTTP 对应 WS、HTTPS 对应 WSS；后续错误通过握手错误消息或关闭返回}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '409': {description: upgrade_required}
+        '429': {description: relay_overloaded，遵守 Retry-After}
+        '503': {description: device_draining 或授权暂不可用}
+  /api/v1/endpoints/{machine_id}/connections:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    post:
+      summary: 创建或续期目标设备连接
+      description: 要求 device:connect 及申请的业务权限；同一 connection 串行续期，只能收窄权限，协议不能改变。ticket 15 分钟，只存 hash，原票据最多宽限 30 秒。撤销、过期和收窄不享受宽限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                connection_id: {type: string, format: uuid}
+                scopes: {type: array, items: {type: string, enum: ['session:read', 'session:control', 'files:read', 'files:write', 'resources:manage']}}
+                supported_protocols:
+                  type: object
+                  properties:
+                    acp: {type: array, items: {type: integer}}
+                    runtime_api: {type: array, items: {type: integer}}
+      responses:
+        '200':
+          description: 不缓存的目标连接凭据
           content:
             application/json:
               schema:
                 type: object
-                required: [items, total, page, page_size]
+                required: [connection_id, machine_id, http_base, ticket, ticket_version, expires_at, expires_in, server_time, scopes, protocol]
                 properties:
-                  items: {type: array, items: {$ref: '#/components/schemas/Endpoint'}}
-                  total: {type: integer}
-                  page: {type: integer}
-                  page_size: {type: integer}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '503': {$ref: '#/components/responses/EndpointUnavailable'}
+                  connection_id: {type: string, format: uuid}
+                  machine_id: {type: string, format: uuid}
+                  http_base: {type: string, format: uri}
+                  ticket: {type: string}
+                  ticket_version: {type: integer, format: int64}
+                  expires_at: {type: string, format: date-time}
+                  expires_in: {type: integer}
+                  server_time: {type: string, format: date-time}
+                  scopes: {type: array, items: {type: string}}
+                  protocol: {type: object, properties: {acp: {type: integer}, runtime_api: {type: integer}}}
+        '400': {description: invalid_request 或 invalid_scope}
+        '401': {description: connection_expired 或 OAuth 失效}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {description: device_not_found}
+        '409': {description: upgrade_required}
+        '429': {description: device_connection_limit 或 relay_overloaded}
+        '503': {description: device_offline 或 authorization_state_unavailable}
+  /api/v1/endpoints/{machine_id}/proxy/terminal:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    get:
+      summary: 通过设备数据通道附着远程终端
+      description: '远程执行中转启用时默认提供终端入口，并发布布尔 features.terminal_ws=true，无需终端专用环境变量。必须提供 monkeyai.terminal.v1 业务子协议，票据通过 monkeyai.token.<ticket> 或 Bearer 传递；双来源必须一致，拒绝重复凭据、额外业务子协议和未知查询参数。要求 session:control，observe 亦然。复用签名访问断言及实时租约，固定上游 Host device.internal、路径 /terminal。安装版允许 app://monkeyai，开发来源沿精确白名单。每数据隧道共享 15 条常规数据流（终端最多 8 条），另留 1 条候选；候选累计 5 秒内须转入常规，否则关闭。101 后透明转发，不启动或关闭 shell。详见 design/remote-terminal-backend.md。'
+      security:
+        - RuntimeTicket: []
+      parameters:
+        - name: reattach
+          in: query
+          required: false
+          description: 仅接受恰好一个值为 1 的参数；申请候选预算，不证明替换合法性。
+          schema: {type: string, const: '1'}
+      responses:
+        '101':
+          description: 执行端成功升级，回选 monkeyai.terminal.v1；不返回 token 子协议、Cookie 或压缩扩展。
+          headers:
+            Sec-WebSocket-Protocol: {schema: {type: string, const: monkeyai.terminal.v1}}
+            Cache-Control: {schema: {type: string, const: no-store}}
+        '400': {description: invalid_request；执行端非 101 错误按实际状态及内容类型透传}
+        '401': {description: connection_expired}
+        '403': {description: permission_denied 或 device_revoked}
+        '404': {description: not_found，远程执行中转未启用或路径未知}
+        '429': {description: terminal_limit_reached；执行端亦可返回 access_limit_reached}
+        '503': {description: device_offline、authorization_state_unavailable 或执行端 terminal_unavailable}
+  /api/v1/endpoints/{machine_id}/proxy/{path}:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+      - {name: path, in: path, required: true, schema: {type: string}, description: 'ACP、cap/{server}/mcp、uploads/* 或 files/{grant}/* 白名单目标'}
+    get:
+      summary: 转发 WebSocket、MCP SSE 或获准文件
+      description: ticket Bearer 或 monkeyai.v1 与 monkeyai.token.<ticket> WebSocket 子协议；中转消费票据，只转发 monkeyai.v1。安装版允许 app://monkeyai，开发 Origin 通过 MONKEYAI_RUNTIME_DESKTOP_ORIGINS 显式配置；业务 Host 为 device.internal。文件另外要求限定 grant。不接受 OAuth token 替代 ticket，已转发 JSON-RPC 错误保留原格式。
+      security:
+        - RuntimeTicket: []
+      responses:
+        '101': {description: ACP WebSocket 升级}
+        '200': {description: 目标原始响应，流式转发}
+        '206': {description: 文件 Range 响应}
+        '401': {description: connection_expired}
+        '403': {description: permission_denied}
+        '503': {description: device_offline 或 authorization_state_unavailable}
+    post:
+      summary: 转发会话、配置、交互、资源写入或 MCP 请求
+      description: /read/session 要求 session:read；/read/config 要求 resources:manage；/read/interaction 要求 session:control；/write/resource 同时要求 resources:manage 和 session:read。/cap/{server}/mcp 要求 files:read。正文等待响应头 150 秒，资源写入 225 秒。
+      security:
+        - RuntimeTicket: []
+      responses:
+        '200': {description: 目标原始响应，不自动重放写入}
+        '401': {description: connection_expired}
+        '403': {description: permission_denied}
+        '503': {description: device_offline 或 authorization_state_unavailable}
+    put:
+      summary: 流式写入目标上传槽位
+      security:
+        - RuntimeTicket: []
+      responses:
+        '200': {description: 目标原始响应，最大 64 MiB}
+        '413': {description: 上传超出限额}
+        '503': {description: 目标或授权不可用}
+    head:
+      summary: 探测文件或上传 offset
+      security:
+        - RuntimeTicket: []
+      responses:
+        '200': {description: 目标响应头}
+        '503': {description: 目标或授权不可用}
+    delete:
+      summary: 关闭 MCP 会话
+      security:
+        - RuntimeTicket: []
+      responses:
+        '200': {description: 目标原始响应}
+        '503': {description: 目标或授权不可用}
+  /endpoints/{machine_id}/files/{grant}/{path}:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+      - {name: grant, in: path, required: true, schema: {type: string}, description: 设备 Ed25519 签名的限定文件授权，不写入入口日志}
+      - {name: path, in: path, required: true, schema: {type: string}}
+    get:
+      summary: 在独立文件 origin 下载获准文件
+      description: 验证配置的 Host、完整设备归属、签名、路径、版本和期限；共享域强制下载，不执行 HTML。
+      security: []
+      responses:
+        '200': {description: 流式文件，attachment、sandbox、nosniff、no-referrer}
+        '206': {description: Range 响应}
+        '403': {description: 文件授权无效}
+        '503': {description: 目标或授权不可用}
+    head:
+      summary: 查询获准文件响应头
+      security: []
+      responses:
+        '200': {description: 文件响应头}
+        '403': {description: 文件授权无效}
+        '503': {description: 目标或授权不可用}
   /api/v1/endpoints/connect:
     get:
       summary: 建立原生客户端端点桥接 WebSocket
       description: >-
         仅接受 OAuth Bearer access token，不接受 Cookie 或 URL token。
-        非空 Origin 必须匹配 MONKEYAI_PUBLIC_URL；生产使用 WSS。
+        非空 Origin 必须匹配 MONKEYAI_PUBLIC_URL；HTTP 使用 WS，HTTPS 使用 WSS。
         Upgrade 后 5 秒内发送 hello，服务端依次发送 welcome、directory.snapshot。
         使用协议主版本 1，UTF-8 JSON 文本消息最大 256 KiB（含分片累计），禁用压缩。
         request/response/event 信封及关闭码详见 design/endpoint-bridge-design.md。
@@ -230,6 +885,19 @@ paths:
   /api/v1/endpoints/{machine_id}:
     parameters:
       - {$ref: '#/components/parameters/EndpointMachine'}
+    delete:
+      summary: 移除远程执行登记
+      description: 要求 device:manage；先持久撤销再关闭流。托管保留登录、公钥、网关密钥和已受理任务；同一记录重复删除幂等，其他用户统一 404。
+      parameters:
+        - {name: If-Match, in: header, required: true, schema: {type: string}, description: 当前登记 registration_version；同事务校验，恢复后推进版本}
+      responses:
+        '204': {description: 远程授权已撤销}
+        '412': {description: device_registration_changed}
+        '428': {description: 缺少有效 If-Match}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {description: device_not_found}
+        '503': {description: authorization_state_unavailable}
     put:
       summary: 登记或更新当前用户的设备元数据
       description: 不依赖会话上报开关；不会恢复已撤销端点；active 端点最多 20 个。
@@ -243,7 +911,7 @@ paths:
               required: [device_name, platform, os_version, arch, client_version]
               properties:
                 device_name: {type: string, maxLength: 128}
-                platform: {type: string, enum: [macos, windows, linux, ios, android, web]}
+                platform: {type: string, minLength: 1, maxLength: 64, description: 客户端上报的平台名称，最多 64 个 UTF-8 字节，不限制固定枚举。}
                 os_version: {type: string, maxLength: 64}
                 arch: {type: string, maxLength: 32}
                 client_version: {type: string, maxLength: 64}
@@ -262,7 +930,7 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: endpoint_limit_exceeded 或 endpoint_revoked}
-        '429': {description: 设备登记每用户每小时最多十次，遵守 Retry-After}
+        '429': {description: 设备登记每用户每小时最多一百次，遵守 Retry-After}
         '503': {$ref: '#/components/responses/EndpointUnavailable'}
     get:
       summary: 读取当前用户的单个端点
@@ -297,7 +965,7 @@ paths:
       - {$ref: '#/components/parameters/EndpointMachine'}
     post:
       summary: 停用端点并断开连接
-      description: 幂等，不接受请求体。不等于撤销设备登录授权，持有有效账号凭据仍可显式恢复。
+      description: 幂等，不接受请求体。已验证执行设备要求 device:manage，并同步撤销新远程访问；保留托管安装登录，恢复远程访问需新证明。
       responses:
         '200': {$ref: '#/components/responses/EndpointResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
@@ -309,7 +977,7 @@ paths:
       - {$ref: '#/components/parameters/EndpointMachine'}
     post:
       summary: 恢复已停用端点
-      description: 幂等，不接受请求体。不主动建立连接；active 端点最多 20 个，离线也计入。
+      description: 幂等，不接受请求体。不主动建立连接；active 端点最多 20 个，离线也计入。该入口不恢复新远程执行开关。
       responses:
         '200': {$ref: '#/components/responses/EndpointResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
@@ -1156,20 +1824,20 @@ paths:
           description: 请求来源不允许
   /api/v1/groups:
     get:
-      summary: 搜索可分享的真实分组
-      description: 按名称不区分大小写进行字面子串匹配，仅返回未删除分组；不包含虚拟根组及成员信息。分享给父组可覆盖后代组成员。
+      summary: 列出或搜索可分享的分组
+      description: 未提供 q 时返回全部未删除分组及虚拟根组；提供非空 q 时按名称不区分大小写进行字面子串匹配，返回未删除分组及名称匹配的虚拟根组，不包含成员信息。根组名称来自 branding.workspace_name，搜索时优先返回且计入 limit。分享给父组可覆盖后代组成员；分享给根组覆盖系统全体用户，包括后续新增用户。
       parameters:
       - in: query
         name: q
-        required: true
-        schema: {type: string, minLength: 1, maxLength: 200}
-        description: 去除首尾空白后长度为 1—200 字节。
+        schema: {type: string}
+        description: 可选的分组名称搜索关键词；省略或去除首尾空白后为空时返回全部分组。
       - in: query
         name: limit
         schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        description: 搜索时返回的最多分组数。
       responses:
         '200':
-          description: 匹配的分组。
+          description: 分组列表。
           content:
             application/json:
               schema: {$ref: '#/components/schemas/SearchGroupsResponse'}
@@ -1340,7 +2008,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己或虚拟根组，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效。
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
       requestBody:
         required: true
         content:
@@ -1513,7 +2181,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
                 metadata:
                   type: string
                   description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。
@@ -1541,7 +2209,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 技能包最多 20 MiB，解包最多 50 MiB、500 个文件。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
+      description: 技能包最多 500 MiB，解包最多 1 GiB、5000 个文件。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
   /api/v1/experts/tags:
     get:
       summary: 列出当前用户可用专家配置的标签
@@ -2183,7 +2851,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 20 MiB ZIP，解包最多 50 MiB、500 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
                 metadata:
                   type: string
                   description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。
@@ -3058,6 +3726,25 @@ paths:
         '500': {$ref: '#/components/responses/ResourceError500'}
 components:
   securitySchemes:
+    DesignMediaBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 仅aud=monkeyai-design-media，不能使用Agent access token或hub JWT
+    DesignMediaQuery:
+      type: apiKey
+      in: query
+      name: token
+      description: 短期本地媒体JWT；存在Authorization时优先使用它且失败不降级
+    RuntimeTicket:
+      type: http
+      scheme: bearer
+      description: 只允许指定目标设备和批准业务权限的短期票据；WebSocket 使用 monkeyai.v1 与 monkeyai.token.<ticket> 子协议。
+    BrowserSession:
+      type: apiKey
+      in: cookie
+      name: monkeyai_session
+      description: 浏览器登录会话；新增 scope 确认同时要求绑定申请的 CSRF token。
     ModelInvocationKey:
       type: http
       scheme: bearer
@@ -3256,6 +3943,74 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    DesignSnapshot:
+      type: object
+      required: [publisher_id, release_id, schema_version, digest_schema]
+      properties:
+        publisher_id: {type: string}
+        release_id: {type: string}
+        schema_version: {type: integer, const: 1}
+        digest_schema: {type: string, const: design-content-v1}
+    DesignConfig:
+      type: object
+      required: [schema_version, publisher_id, respub, monkeyai]
+      properties:
+        schema_version: {type: integer, const: 1}
+        publisher_id: {type: [string, 'null']}
+        respub:
+          type: [object, 'null']
+          properties: {base_url: {type: string, format: uri}}
+        monkeyai:
+          type: object
+          required: [base_url, available, snapshot]
+          properties:
+            base_url: {type: string, format: uri}
+            available: {type: boolean}
+            snapshot:
+              oneOf:
+                - {$ref: '#/components/schemas/DesignSnapshot'}
+                - {type: 'null'}
+    DesignEnvelope:
+      type: object
+      required: [code, message, data]
+      properties:
+        code: {type: [integer, string], description: 成功0，失败字符串错误码}
+        message: {type: string}
+        data: {}
+    DesignPage:
+      type: object
+      required: [items, total, page, page_size, total_pages, asset_snapshot_id]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/DesignEntry'}}
+        total: {type: integer}
+        page: {type: integer}
+        page_size: {type: integer}
+        total_pages: {type: integer}
+        asset_snapshot_id: {type: string}
+    DesignEntry:
+      type: object
+      required: [id, content_digest, asset_snapshot_id]
+      properties:
+        id: {type: string}
+        content_digest: {type: string}
+        asset_snapshot_id: {type: string}
+        skillPath: {type: string, description: 原始业务字段，保留摘要输入}
+        source_skill_path: {type: [string, 'null'], description: 仅模板详情；解析后的逻辑路径，跨项目互验待验收}
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, sha256, size, mime]
+            properties:
+              path: {type: string}
+              sha256: {type: string}
+              size: {type: integer, minimum: 0}
+              mime: {type: string}
+              role: {type: string}
+        download:
+          type: [object, 'null']
+          properties: {url: {type: string, format: uri}}
+        download_url: {type: string, format: uri}
     FeedbackMultipartInput:
       type: object
       additionalProperties: false
@@ -3309,6 +4064,52 @@ components:
         width: {type: integer, minimum: 1}
         height: {type: integer, minimum: 1}
         downloadable: {type: boolean}
+    SessionSummary:
+      type: object
+      required: [id, machine_id, session_type, state_seq, host_revision, device_status, stale]
+      properties:
+        id: {type: string, format: uuid}
+        machine_id: {type: string, format: uuid}
+        session_type: {type: string}
+        parent_session_id: {type: [string, 'null'], format: uuid}
+        title: {type: string, description: 仅 full 策略返回}
+        title_source: {type: [string, 'null']}
+        state_seq: {type: integer, format: int64}
+        host_revision: {type: integer, format: int64}
+        started_at: {type: string, format: date-time}
+        last_active_at: {type: [string, 'null'], format: date-time}
+        reported_at: {type: [string, 'null'], format: date-time}
+        device_status: {type: string}
+        stale: {type: boolean}
+    RuntimeDirectory:
+      type: object
+      required: [items, total, page, page_size, version]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [machine_id, display_name, execution_supported, remote_access_state, status, protocols]
+            properties:
+              machine_id: {type: string, format: uuid}
+              display_name: {type: string}
+              platform: {type: string}
+              arch: {type: string}
+              execution_supported: {type: boolean}
+              remote_access_state: {type: string, enum: [disabled, enabled, revoked]}
+              deployment_mode: {type: string, enum: ['', desktop_managed, standalone]}
+              status: {type: string, enum: [online, offline, auth_required, draining, updating, incompatible, revoked]}
+              last_seen_at: {type: [string, 'null'], format: date-time}
+              runtime_version: {type: [string, 'null']}
+              engine_version: {type: [string, 'null']}
+              protocols: {type: object, additionalProperties: {type: array, items: {type: integer}}}
+              capability_summary: {type: object}
+              engine_health: {type: string}
+              boot_id: {type: string, format: uuid}
+        total: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1}
+        version: {type: string, minLength: 1}
     Endpoint:
       type: object
       required: [machine_id, device_name, alias, display_name, platform, os_version, arch, client_version, protocol_version, status, online, created_at, updated_at, last_seen_at, revoked_at]
@@ -3317,7 +4118,7 @@ components:
         device_name: {type: string}
         alias: {type: [string, 'null']}
         display_name: {type: string}
-        platform: {type: string, enum: [macos, windows, linux, ios, android]}
+        platform: {type: string, minLength: 1, maxLength: 64, description: 客户端上报的平台名称，最多 64 个 UTF-8 字节。}
         os_version: {type: string}
         arch: {type: string}
         client_version: {type: string}
@@ -3624,9 +4425,9 @@ components:
         id: {type: string, format: uuid}
         name: {type: string}
         parent_id:
-          type: string
+          type: [string, 'null']
           format: uuid
-          description: 顶层分组的父 ID 为虚拟根组 ID；虚拟根组自身不可分享。
+          description: 顶层分组的父 ID 为全零 UUID 的虚拟根组 ID；根组自身为 null，可作为全员分享对象。
     SearchGroupsResponse:
       type: object
       required: [groups]
@@ -3697,13 +4498,14 @@ components:
           - openai_responses
           - anthropic
           - image_generation
+          - video_generation
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
           default: text
         provider:
           type: string
-          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         base_url: &id004
@@ -3772,10 +4574,10 @@ components:
         protocol: *id003
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
         provider:
           type: string
-          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai]
+          enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:
@@ -3826,7 +4628,7 @@ components:
           format: date-time
     ShareResourcesInput:
       type: object
-      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。虚拟根组不可作为分享对象。
+      description: user_ids 与 group_ids 至少填写一项，原始数组合计最多 100 项；重复项去重。group_ids 中的全零 UUID 根组表示系统全员授权，包括后续新增用户；撤销根组分享只移除全员授权，保留独立的用户及其他分组授权。
       required:
       - resources
       properties:
@@ -3859,7 +4661,7 @@ components:
           type: array
           maxItems: 100
           items: *id006
-          description: 接收真实分组 ID，重复项自动去重；不展开成员。
+          description: 接收分组 ID，重复项自动去重；全零 UUID 表示系统全员授权，不展开成员。
     ErrorResponse:
       type: object
       required: [error]
@@ -4289,11 +5091,11 @@ components:
           description: Agent 向用户展示的模型名称。
         protocol:
           type: string
-          enum: [openai_chat_completions, openai_responses, anthropic, image_generation]
+          enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
           description: MonkeyAI 与上游服务通信时使用的协议。
         kind:
           type: string
-          enum: [text, image]
+          enum: [text, image, video]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:
@@ -5246,6 +6048,12 @@ components:
           format: uuid
         name:
           type: string
+        name_i18n:
+          type: object
+          additionalProperties: {type: string}
+        description_i18n:
+          type: object
+          additionalProperties: {type: string}
         revision:
           type: integer
           minimum: 1

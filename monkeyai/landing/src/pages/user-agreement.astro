@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LegalNav from '../components/LegalNav.astro';
+import { ActionButton } from '../components/ActionButton';
+
+const title = '用户协议｜百智办公';
+const description = '百智办公用户协议，说明使用百智办公官网、官方在线体验、相关客户端或自建部署版本时应遵守的规则。';
+const updatedAt = '2026 年 9 月 4 日';
+const sections = [
+  ['acceptance', '协议的接受与适用'],
+  ['service', '服务内容'],
+  ['account', '账号与工作空间'],
+  ['rules', '使用规则'],
+  ['content-safety', '内容安全、举报与拉黑'],
+  ['ai', 'AI 功能的使用'],
+  ['intellectual-property', '内容与知识产权'],
+  ['disclaimer', '免责声明与责任限制'],
+  ['changes', '协议变更、终止与争议解决'],
+  ['contact', '联系我们'],
+];
+---
+
+<BaseLayout title={title} description={description} pathname="/user-agreement/" type="article" bodyClass="page-legal">
+  <main id="main-content" class="legal-page">
+    <article class="container legal-content legal-document">
+      <div class="legal-body">
+        <LegalNav label="用户协议导航" sections={sections} />
+
+        <div class="legal-main">
+          <header class="legal-header">
+            <span class="eyebrow">TERMS OF SERVICE</span>
+            <div class="legal-title-row">
+              <h1>百智办公用户协议</h1>
+              <ActionButton client:load href={`${import.meta.env.BASE_URL}user-service/`} label="返回" icon="arrow-left" variant="outline" />
+            </div>
+            <p class="legal-lead">欢迎使用百智办公。百智办公由北京长亭科技有限公司开发并开源，是面向团队协作的即时通讯工具，连接消息、知识与任务，让 Agent 融入团队工作流。你可以使用官方在线体验、相关客户端，或在自有基础设施中部署百智办公。使用前请仔细阅读本协议。</p>
+            <p class="legal-updated">生效及更新日期：{updatedAt}</p>
+          </header>
+
+          <div class="legal-sections">
+      <section id="acceptance">
+        <h2>1. 协议的接受与适用</h2>
+        <p>当你访问百智办公官网、使用官方在线体验、注册账号、加入工作空间、下载客户端、部署或使用百智办公软件时，即表示你已阅读、理解并同意本协议及<a href={`${import.meta.env.BASE_URL}privacy-policy/`}>《百智办公隐私政策》</a>。如你不同意本协议，请停止使用相关功能。</p>
+        <p>若你代表组织使用百智办公，你确认已获得组织的合法授权，并有权代表该组织接受本协议。组织管理员可根据组织管理需要配置成员、权限、应用与数据访问规则。</p>
+      </section>
+
+      <section id="service">
+        <h2>2. 服务内容</h2>
+        <p>百智办公软件及官方在线体验提供私聊、群组聊天、通讯录、项目、任务、实时协作文档、文件及 AI 助理等协作能力，也支持应用接入和扩展。具体功能以实际版本、部署配置和页面说明为准。对于官方在线体验，我们可能基于运营、安全、法律法规或产品演进调整、更新、暂停或终止部分功能，并在合理范围内向你提示。</p>
+      </section>
+
+      <section id="account">
+        <h2>3. 账号与工作空间</h2>
+        <p>你应提供真实、准确、完整的信息并及时更新。你应妥善保管账号、密码、登录凭证和设备；因你保管不善、违规共享或授权他人使用账号造成的损失，由你或你的组织依法承担相应责任。</p>
+        <p>你所在组织的管理员可根据组织规则邀请、移除成员、调整权限、停用账号及处理工作空间数据。你应遵守所在组织适用的内部管理规则。</p>
+      </section>
+
+      <section id="rules">
+        <h2>4. 使用规则</h2>
+        <p>你不得利用百智办公从事或协助他人从事违法违规活动，不得上传、发布、传播、存储或处理违法、有害、侵权、欺诈、骚扰、歧视、仇恨、色情、暴力、恶意攻击或侵犯他人隐私、商业秘密、知识产权的内容。</p>
+        <p>你不得骚扰、威胁、霸凌或冒充其他用户，不得干扰服务正常运行，不得尝试绕过权限控制、攻击系统、爬取非公开数据、传播恶意代码、出售或转让账号，或以其他方式损害百智办公、其他用户及第三方的合法权益。</p>
+      </section>
+
+      <section id="content-safety">
+        <h2>5. 内容安全、举报与拉黑</h2>
+        <p><strong>我们对令人反感的内容和滥用用户实行零容忍。</strong>官方在线体验会通过内容规则、技术过滤和人工审核等措施识别及处理违法、有害、骚扰、仇恨、色情、暴力、欺诈或其他令人反感的内容，但相关措施不能保证识别全部违规内容。</p>
+        <p>你可以在客户端中举报涉嫌违规的消息，并可以拉黑发布该内容的用户。拉黑后，该用户的相关内容会立即从你的消息流中移除，拉黑及关联内容也会作为安全举报提交给我们。为调查举报，我们可能在必要范围内查看被举报内容、关联账号、举报原因和相关操作记录。</p>
+        <p>对于官方在线体验，我们会在收到举报后 24 小时内进行审查，并根据情况删除违规内容、限制相关功能、暂停或终止违规用户账号，同时保留依法向有关机关报告的权利。恶意或虚假举报也可能受到限制。自建部署版本的举报、拉黑和处置由相应部署方或组织管理员负责。</p>
+      </section>
+
+      <section id="ai">
+        <h2>6. AI 功能的使用</h2>
+        <p>AI 助理提供的是辅助性能力，其输出可能不完整、不准确或不适用于你的具体场景。你应结合实际情况独立判断，并对基于输出作出的决策、行动及其后果负责。涉及人身安全、医疗、法律、金融、重要商业决策或其他高风险事项时，请取得适格专业人士意见。</p>
+        <p>你应仅在拥有合法权利和必要授权的范围内向 AI 功能提交内容。不得通过提示词、工具调用或其他方式要求 AI 绕过权限、获取无权访问的信息，或执行违法违规、高风险或未经确认的操作。</p>
+      </section>
+
+      <section id="intellectual-property">
+        <h2>7. 内容与知识产权</h2>
+        <p>你或你的组织对依法享有权利的自有内容保留相应权利。对于官方在线体验，为完成消息传递、团队协作、在线文档和 AI 助理等功能，你授予我们在必要范围内处理、存储、传输、展示和备份该等内容的授权。使用自建部署版本时，内容由部署方按照其适用规则管理。你应确保所提供内容不侵犯他人的合法权益。</p>
+        <p>百智办公软件、官网与官方在线体验的标识、界面、技术文档及其他受保护内容的知识产权归北京长亭科技有限公司或相关权利人所有。开源部分以其随附的开源许可证为准；本协议不授予你超出该等许可证或法律规定范围的权利。</p>
+      </section>
+
+      <section id="disclaimer">
+        <h2>8. 免责声明与责任限制</h2>
+        <p>在法律法规允许的最大范围内，官方在线体验按“现状”和“可用”基础提供。我们会尽合理努力保障其连续性和安全性，但不保证官方在线体验始终无中断、无错误、无病毒，或完全符合你的特定目的。开源软件及自建部署版本的运行情况还取决于你的部署环境、配置和第三方组件。</p>
+        <p>因不可抗力、网络或设备故障、第三方服务、用户或组织管理员的操作、你未遵守本协议，或其他非因我们故意或重大过失造成的原因导致的损失，我们在法律允许范围内不承担责任。法律法规另有强制性规定的，从其规定。</p>
+      </section>
+
+      <section id="changes">
+        <h2>9. 协议变更、终止与争议解决</h2>
+        <p>我们可根据法律法规、产品发展和运营需要更新本协议，并通过官网、官方在线体验内通知或其他合理方式公布。更新后继续使用相关功能，视为你接受更新后的协议。</p>
+        <p>如你使用官方在线体验时违反本协议、法律法规或侵害他人合法权益，我们有权视情况采取限制功能、暂停或终止使用、删除违法内容等措施；自建部署版本由部署方依据其管理规则处理。因本协议引起的争议，双方应先友好协商；协商不成的，依法向有管辖权的人民法院提起诉讼。</p>
+      </section>
+
+      <section id="contact">
+        <h2>10. 联系我们</h2>
+        <p>如对本协议、内容安全或举报处理有任何疑问或建议，可发送邮件至 <a href="mailto:changzhi.li@chaitin.com">changzhi.li@chaitin.com</a>，或通过以下官方渠道联系我们：<a href="https://www.chaitin.cn/" target="_blank" rel="noopener noreferrer">长亭科技官网</a> 或 <a href="https://www.baizhi.cloud/" target="_blank" rel="noopener noreferrer">长亭百智云官网</a>。</p>
+      </section>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+</BaseLayout>

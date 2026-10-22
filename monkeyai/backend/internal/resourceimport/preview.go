@@ -16,12 +16,14 @@ import (
 )
 
 type Service struct {
-	Pool    *pgxpool.Pool
-	Storage resource.Storage
+	Pool        *pgxpool.Pool
+	Storage     resource.Storage
+	design      DesignCatalog
+	importSlots chan struct{}
 }
 
 func NewService(pool *pgxpool.Pool, storage resource.Storage) *Service {
-	return &Service{Pool: pool, Storage: storage}
+	return &Service{Pool: pool, Storage: storage, importSlots: make(chan struct{}, 2)}
 }
 
 type Options struct {
@@ -45,15 +47,17 @@ type Change struct {
 }
 
 type Preview struct {
-	Publisher       string   `json:"publisher"`
-	ReleaseID       string   `json:"release_id"`
-	Version         int64    `json:"version"`
-	PackageSHA256   string   `json:"package_sha256"`
-	PlanDigest      string   `json:"plan_digest"`
-	Changes         []Change `json:"changes"`
-	IgnoredStatic   []string `json:"ignored_static"`
-	RequiresConfirm bool     `json:"requires_confirmation"`
-	AlreadyImported bool     `json:"already_imported"`
+	Publisher       string                 `json:"publisher"`
+	ReleaseID       string                 `json:"release_id"`
+	Version         int64                  `json:"version"`
+	PackageSHA256   string                 `json:"package_sha256"`
+	PlanDigest      string                 `json:"plan_digest"`
+	Changes         []Change               `json:"changes"`
+	IgnoredStatic   []string               `json:"ignored_static"`
+	RequiresConfirm bool                   `json:"requires_confirmation"`
+	AlreadyImported bool                   `json:"already_imported"`
+	Sections        []string               `json:"sections,omitempty"`
+	SectionPlans    map[string]SectionPlan `json:"section_plans,omitempty"`
 }
 
 type binding struct {
@@ -141,17 +145,17 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 			mode = current.String("authorization_mode")
 		}
 		out = append(out, desired{Kind: "connector", Slug: c.Entry.Slug, Name: c.Entry.Name, Source: c.Entry.SHA256, Tags: c.Entry.Tags,
-			Fields: resource.Object{"name": c.Entry.Name, "url": c.Config.URL, "timeout_ms": c.Config.TimeoutMs,
+			Fields: resource.Object{"name": c.Entry.Name, "description": c.Entry.Description, "url": c.Config.URL, "timeout_ms": c.Config.TimeoutMs,
 				"auth_header_name": c.Auth.Header, "authorization_mode": mode, "authorization_method": method,
 				"oauth_mode": map[bool]string{true: "dynamic", false: ""}[method == "oauth"], "oauth_scopes": strings.Join(strings.Fields(c.OAuth.Scope), " "),
-				"name_i18n": c.Entry.NameI18n, "description_i18n": c.Entry.DescriptionI18n}})
+				"avatar_sha256": c.AvatarSHA, "name_i18n": c.Entry.NameI18n, "description_i18n": c.Entry.DescriptionI18n}})
 	}
 	for _, e := range r.Experts {
 		skills, rules, connectors := slices.Clone(e.Skills), slices.Clone(e.Rules), slices.Clone(e.Connectors)
 		slices.Sort(skills)
 		slices.Sort(rules)
 		slices.Sort(connectors)
-		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256, Tags: e.Entry.Tags,
+		out = append(out, desired{Kind: "expert", Slug: e.Entry.Slug, Name: e.Entry.Name, Source: e.Entry.SHA256, Tags: e.Entry.Tags, Warnings: e.Warnings,
 			Fields: resource.Object{"name": e.Entry.Name, "prompt": e.Prompt, "avatar_sha256": e.AvatarSHA,
 				"skills": skills, "rules": rules, "connectors": connectors,
 				"name_i18n": e.Entry.NameI18n, "description_i18n": e.Entry.DescriptionI18n}})
@@ -170,15 +174,17 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 	return out, nil
 }
 
-func checkReferences(ctx context.Context, q resource.Queryer, b binding, present map[string]bool, r Resources, bindings map[string]binding) error {
+func checkReferences(ctx context.Context, q resource.Queryer, b binding, present map[string]bool, r Resources, bindings map[string]binding) ([]string, error) {
 	if b.Type != "rule" && b.Type != "skill" && b.Type != "connector" {
-		return nil
+		return nil, nil
 	}
 	ids, err := sqlc.New(q).ListImportReferences(ctx, sqlc.ListImportReferencesParams{Column1: b.Type, Column2: b.ID})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, id := range ids {
+	var warnings []string
+	for _, reference := range ids {
+		id := reference.ID
 		needed := false
 		for slug, expert := range r.Experts {
 			bound, ok := bindings[slug]
@@ -199,31 +205,32 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 			break
 		}
 		if needed {
-			return fmt.Errorf("资源 %s 仍被保留的 Expert %s 引用", b.Slug, id)
+			return nil, fmt.Errorf("资源 %s（%s）仍被本次保留的 Expert「%s」（%s）引用，请在完整资源包中保留此资源或解除引用", b.Slug, b.Type, reference.Name, id)
 		}
-		local := true
+		external := true
 		for _, old := range bindings {
 			if old.ID == id && old.Type == "expert" {
-				local = false
+				external = false
 				break
 			}
 		}
-		if local {
-			return fmt.Errorf("资源 %s 仍被其他 Expert %s 引用", b.Slug, id)
+		if external {
+			warnings = append(warnings, fmt.Sprintf("资源 %s（%s）仍被其他发布者或自建 Expert「%s」（%s）引用，已自动保留现有资源", b.Slug, b.Type, reference.Name, id))
 		}
 	}
-	return nil
+	slices.Sort(warnings)
+	return warnings, nil
 }
 
 func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r Resources, opts Options, packageSHA string) (Preview, error) {
+	if opts.AuthorizationModes == nil {
+		opts.AuthorizationModes = map[string]string{}
+	}
 	result := Preview{Publisher: p.Release.Publisher.Name, ReleaseID: p.Release.ReleaseID, Version: p.Release.Version,
 		PackageSHA256: packageSHA, Changes: []Change{}, IgnoredStatic: []string{}}
-	for _, a := range p.Manifest.StaticAssets {
-		prefix := "static/" + a.Slug + "/"
-		for _, name := range p.Names() {
-			if strings.HasPrefix(name, prefix) {
-				result.IgnoredStatic = append(result.IgnoredStatic, name)
-			}
+	for _, name := range p.Names() {
+		if strings.HasPrefix(name, "static/") {
+			result.IgnoredStatic = append(result.IgnoredStatic, name)
 		}
 	}
 	slices.Sort(result.IgnoredStatic)
@@ -232,10 +239,12 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		return result, err
 	}
 	if err == nil {
-		if result.Version == last.Version && result.ReleaseID == last.ReleaseID && p.Manifest.ManifestSHA256 == last.ManifestSha256 {
+		if p.Manifest.ManifestSHA256 == last.ManifestSha256 {
 			result.AlreadyImported = true
-		} else if result.Version <= last.Version || result.ReleaseID == last.ReleaseID {
-			return result, fmt.Errorf("publisher %s 的 release 版本或标识冲突", result.Publisher)
+			result.Version, result.ReleaseID = last.Version, last.ReleaseID
+		} else if result.Version <= last.Version {
+			result.Version = last.Version + 1
+			result.ReleaseID = manifestID([]byte(fmt.Sprintf("%s:%d", result.ReleaseID, result.Version)))
 		}
 	}
 	current, err := bindings(ctx, q, result.Publisher)
@@ -290,12 +299,18 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		if v, ok := obj["enabled"].(bool); !ok || !v {
 			return result, fmt.Errorf("将退役资源 %s 启停状态异常", slug)
 		}
-		if err := checkReferences(ctx, q, b, present, r, current); err != nil {
+		warnings, err := checkReferences(ctx, q, b, present, r, current)
+		if err != nil {
 			return result, err
 		}
-		result.Changes = append(result.Changes, Change{Type: b.Type, Slug: slug, Name: obj.String("name"), Action: "retire",
-			ResourceID: b.ID, Revision: obj.Int("revision"), SourceSHA: b.SourceSHA, AppliedSHA: b.AppliedSHA})
-		result.RequiresConfirm = true
+		action := "retire"
+		if len(warnings) > 0 {
+			action = "retain"
+		} else {
+			result.RequiresConfirm = true
+		}
+		result.Changes = append(result.Changes, Change{Type: b.Type, Slug: slug, Name: obj.String("name"), Action: action,
+			ResourceID: b.ID, Revision: obj.Int("revision"), SourceSHA: b.SourceSHA, AppliedSHA: b.AppliedSHA, Warnings: warnings})
 	}
 	slices.SortFunc(result.Changes, func(a, b Change) int { return strings.Compare(a.Slug, b.Slug) })
 	result.PlanDigest = resource.Hash(resource.Object{"publisher": result.Publisher, "release_id": result.ReleaseID,

@@ -16,8 +16,11 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceList } from "@/components/resource-list"
+import { RESOURCE_PAGE_SIZE } from "@/hooks/use-resource-list"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -298,6 +301,66 @@ export function KnowledgeBasesPage() {
   const { tags: availableTags } = useSkillTags()
   const [knowledgeBases, setKnowledgeBases] = useState(INITIAL_KNOWLEDGE_BASES)
   const [activeType, setActiveType] = useState<KnowledgeBaseType>("system")
+  const [searchDraft, setSearchDraft] = useState("")
+  const [search, setSearch] = useState("")
+  const [pageSize, setPageSize] = useState(RESOURCE_PAGE_SIZE)
+  const [pages, setPages] = useState<Record<KnowledgeBaseType, number>>({
+    system: 1,
+    user: 1,
+  })
+  const filteredKnowledgeBases = knowledgeBases.filter(
+    (item) =>
+      item.type === activeType &&
+      [item.name, item.description].some((value) =>
+        value
+          .toLocaleLowerCase(i18n.language)
+          .includes(search.toLocaleLowerCase(i18n.language))
+      )
+  )
+  const pageCount = Math.max(
+    1,
+    Math.ceil(filteredKnowledgeBases.length / pageSize)
+  )
+  const page = Math.min(pages[activeType], pageCount)
+  const visibleKnowledgeBases = filteredKnowledgeBases.slice(
+    (page - 1) * pageSize,
+    page * pageSize
+  )
+  const previousPage = (type: KnowledgeBaseType = activeType) =>
+    setPages((current) => ({
+      ...current,
+      [type]: Math.max(1, current[type] - 1),
+    }))
+  const list = {
+    type: activeType,
+    setType: setActiveType,
+    searchDraft,
+    setSearchDraft,
+    search,
+    page,
+    pageSize,
+    setPageSize: (size: number) => {
+      setPageSize(size)
+      setPages({ system: 1, user: 1 })
+    },
+    items: visibleKnowledgeBases,
+    nextCursor: page < pageCount ? String(page + 1) : "",
+    previousPage,
+    nextPage: () =>
+      setPages((current) => ({
+        ...current,
+        [activeType]: Math.min(page + 1, pageCount),
+      })),
+    handleSearch: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      setSearch(searchDraft.trim())
+      setPages({ system: 1, user: 1 })
+    },
+    loading: false,
+    pending: false,
+    error: "",
+    reload: () => Promise.resolve(),
+  }
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<
     string | null
   >(null)
@@ -328,16 +391,7 @@ export function KnowledgeBasesPage() {
     (content) => content.id === editingContentId
   )
   const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(i18n.language, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+    () => new Intl.DateTimeFormat(i18n.language, TABLE_DATE_TIME_OPTIONS),
     [i18n.language]
   )
 
@@ -417,6 +471,8 @@ export function KnowledgeBasesPage() {
     if (selectedKnowledgeBaseId === knowledgeBasePendingDeletion.id) {
       setSelectedKnowledgeBaseId(null)
     }
+    if (visibleKnowledgeBases.length === 1)
+      previousPage(knowledgeBasePendingDeletion.type)
     setKnowledgeBasePendingDeletion(null)
   }
 
@@ -646,7 +702,7 @@ export function KnowledgeBasesPage() {
           }}
         >
           <DialogContent
-            className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl"
+            className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl"
             closeLabel={t("common.close")}
           >
             <div className="flex min-w-0 items-start gap-3 pe-8">
@@ -889,7 +945,7 @@ export function KnowledgeBasesPage() {
             onOpenChange={handleContentDialogOpenChange}
           >
             <DialogContent
-              className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+              className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
               closeLabel={t("common.close")}
             >
               <form
@@ -1031,7 +1087,7 @@ export function KnowledgeBasesPage() {
                 {previewContent?.name}
               </DialogTitle>
             </DialogHeader>
-            <pre className="max-h-[60dvh] overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap">
+            <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap">
               {previewContent?.body}
             </pre>
           </DialogContent>
@@ -1073,364 +1129,336 @@ export function KnowledgeBasesPage() {
 
   function renderKnowledgeBaseList() {
     return (
-      <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <Tabs
-          className="gap-4"
-          value={activeType}
-          onValueChange={(value) => setActiveType(value as KnowledgeBaseType)}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <TabsList aria-label={t("pages.knowledgeBases.type")}>
-              <TabsTrigger value="system">
-                {t("pages.knowledgeBases.systemKnowledgeBase")}
-              </TabsTrigger>
-              <TabsTrigger value="user">
-                {t("pages.knowledgeBases.userKnowledgeBase")}
-              </TabsTrigger>
-            </TabsList>
-
-            {activeType === "system" && (
-              <Dialog
-                open={knowledgeBaseDialogOpen}
-                onOpenChange={handleKnowledgeBaseDialogOpenChange}
-              >
-                <DialogTrigger
-                  render={
-                    <Button
-                      onClick={() => {
-                        setEditingKnowledgeBaseId(null)
-                        resetKnowledgeBaseOptions()
-                      }}
-                    />
-                  }
+      <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
+        <ResourceList
+          page={list}
+          typeLabel={t("pages.knowledgeBases.type")}
+          systemLabel={t("pages.knowledgeBases.systemKnowledgeBase")}
+          userLabel={t("pages.knowledgeBases.userKnowledgeBase")}
+          actions={
+            <>
+              {activeType === "system" && (
+                <Dialog
+                  open={knowledgeBaseDialogOpen}
+                  onOpenChange={handleKnowledgeBaseDialogOpenChange}
                 >
-                  <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-                  {t("pages.knowledgeBases.add")}
-                </DialogTrigger>
-                <DialogContent
-                  className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
-                  closeLabel={t("common.close")}
-                >
-                  <form
-                    key={editingKnowledgeBase?.id ?? "new-knowledge-base"}
-                    className="flex flex-col gap-6"
-                    onSubmit={handleSubmitKnowledgeBase}
+                  <DialogTrigger
+                    render={
+                      <Button
+                        className="ms-auto shrink-0"
+                        onClick={() => {
+                          setEditingKnowledgeBaseId(null)
+                          resetKnowledgeBaseOptions()
+                        }}
+                      />
+                    }
                   >
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingKnowledgeBase
-                          ? t("pages.knowledgeBases.editDialogTitle")
-                          : t("pages.knowledgeBases.dialogTitle")}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {t("pages.knowledgeBases.dialogDescription")}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <FieldGroup className="gap-4">
-                      <Field>
-                        <FieldLabel htmlFor="knowledge-base-name">
-                          {t("pages.knowledgeBases.name")}
-                        </FieldLabel>
-                        <Input
-                          id="knowledge-base-name"
-                          name="name"
-                          defaultValue={editingKnowledgeBase?.name}
-                          placeholder={t(
-                            "pages.knowledgeBases.namePlaceholder"
-                          )}
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="knowledge-base-description">
-                          {t("pages.knowledgeBases.knowledgeDescription")}
-                        </FieldLabel>
-                        <Textarea
-                          className="max-h-48 min-h-28 resize-y overflow-y-auto"
-                          id="knowledge-base-description"
-                          name="description"
-                          defaultValue={editingKnowledgeBase?.description}
-                          placeholder={t(
-                            "pages.knowledgeBases.descriptionPlaceholder"
-                          )}
-                          required
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="knowledge-base-tags">
-                          {t("pages.knowledgeBases.tags")}
-                        </FieldLabel>
-                        <SkillTagSelect
-                          id="knowledge-base-tags"
-                          open={tagsOpen}
-                          options={availableTags}
-                          placeholder={t(
-                            "pages.knowledgeBases.tagsPlaceholder"
-                          )}
-                          value={selectedTagIds}
-                          onOpenChange={setTagsOpen}
-                          onValueChange={setSelectedTagIds}
-                        />
-                      </Field>
-                    </FieldGroup>
-                    <DialogFooter>
-                      <DialogClose
-                        render={<Button type="button" variant="outline" />}
-                      >
-                        {t("pages.knowledgeBases.cancel")}
-                      </DialogClose>
-                      <Button type="submit">
-                        {editingKnowledgeBase
-                          ? t("pages.knowledgeBases.save")
-                          : t("pages.knowledgeBases.create")}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
+                    <HugeiconsIcon
+                      icon={PlusSignIcon}
+                      data-icon="inline-start"
+                    />
+                    {t("pages.knowledgeBases.add")}
+                  </DialogTrigger>
+                  <DialogContent
+                    className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                    closeLabel={t("common.close")}
+                  >
+                    <form
+                      key={editingKnowledgeBase?.id ?? "new-knowledge-base"}
+                      className="flex flex-col gap-6"
+                      onSubmit={handleSubmitKnowledgeBase}
+                    >
+                      <DialogHeader>
+                        <DialogTitle>
+                          {editingKnowledgeBase
+                            ? t("pages.knowledgeBases.editDialogTitle")
+                            : t("pages.knowledgeBases.dialogTitle")}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {t("pages.knowledgeBases.dialogDescription")}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <FieldGroup className="gap-4">
+                        <Field>
+                          <FieldLabel htmlFor="knowledge-base-name">
+                            {t("pages.knowledgeBases.name")}
+                          </FieldLabel>
+                          <Input
+                            id="knowledge-base-name"
+                            name="name"
+                            defaultValue={editingKnowledgeBase?.name}
+                            placeholder={t(
+                              "pages.knowledgeBases.namePlaceholder"
+                            )}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="knowledge-base-description">
+                            {t("pages.knowledgeBases.knowledgeDescription")}
+                          </FieldLabel>
+                          <Textarea
+                            className="max-h-48 min-h-28 resize-y overflow-y-auto"
+                            id="knowledge-base-description"
+                            name="description"
+                            defaultValue={editingKnowledgeBase?.description}
+                            placeholder={t(
+                              "pages.knowledgeBases.descriptionPlaceholder"
+                            )}
+                            required
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="knowledge-base-tags">
+                            {t("pages.knowledgeBases.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="knowledge-base-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t(
+                              "pages.knowledgeBases.tagsPlaceholder"
+                            )}
+                            value={selectedTagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setSelectedTagIds}
+                          />
+                        </Field>
+                      </FieldGroup>
+                      <DialogFooter>
+                        <DialogClose
+                          render={<Button type="button" variant="outline" />}
+                        >
+                          {t("pages.knowledgeBases.cancel")}
+                        </DialogClose>
+                        <Button type="submit">
+                          {editingKnowledgeBase
+                            ? t("pages.knowledgeBases.save")
+                            : t("pages.knowledgeBases.create")}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleKnowledgeBases.map((knowledgeBase) => {
+              const readAuthorizationNames =
+                knowledgeBase.type === "user"
+                  ? getAuthorizationNames(knowledgeBase.readAuthorization, t)
+                  : ""
+              const writeAuthorizationNames =
+                knowledgeBase.type === "user"
+                  ? getAuthorizationNames(knowledgeBase.writeAuthorization, t)
+                  : ""
+              const learnedCount = knowledgeBase.contents.filter(
+                (content) => content.status === "learned"
+              ).length
+              const tagNames = availableTags
+                .filter((tag) => knowledgeBase.tagIds.includes(tag.id))
+                .map((tag) => tag.name)
+                .join(", ")
 
-          {(["system", "user"] as const).map((tabType) => (
-            <TabsContent key={tabType} value={tabType}>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {knowledgeBases
-                  .filter((knowledgeBase) => knowledgeBase.type === tabType)
-                  .map((knowledgeBase) => {
-                    const readAuthorizationNames =
-                      knowledgeBase.type === "user"
-                        ? getAuthorizationNames(
-                            knowledgeBase.readAuthorization,
-                            t
-                          )
-                        : ""
-                    const writeAuthorizationNames =
-                      knowledgeBase.type === "user"
-                        ? getAuthorizationNames(
-                            knowledgeBase.writeAuthorization,
-                            t
-                          )
-                        : ""
-                    const learnedCount = knowledgeBase.contents.filter(
-                      (content) => content.status === "learned"
-                    ).length
-                    const tagNames = availableTags
-                      .filter((tag) => knowledgeBase.tagIds.includes(tag.id))
-                      .map((tag) => tag.name)
-                      .join(", ")
-
-                    return (
-                      <Card
-                        className={cn(
-                          "h-full",
-                          !knowledgeBase.enabled && "bg-muted"
-                        )}
-                        key={knowledgeBase.id}
-                      >
-                        <CardHeader>
-                          <div className="flex min-w-0 items-start gap-3">
-                            <Avatar size="lg">
-                              <AvatarFallback>
-                                {knowledgeBase.creator === ADMIN_CREATOR ? (
-                                  <HugeiconsIcon
-                                    icon={BookOpenTextIcon}
-                                    strokeWidth={2}
-                                  />
-                                ) : (
-                                  getCreatorInitials(knowledgeBase.creator)
-                                )}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0 flex-1">
-                              <CardTitle className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="truncate"
-                                  title={knowledgeBase.name}
-                                >
-                                  {knowledgeBase.name}
-                                </span>
-                                {!knowledgeBase.enabled && (
-                                  <Badge variant="outline">
-                                    {t("pages.knowledgeBases.disable")}
-                                  </Badge>
-                                )}
-                              </CardTitle>
-                              <CardDescription
-                                className="truncate"
-                                title={knowledgeBase.creator}
-                              >
-                                {knowledgeBase.creator}
-                              </CardDescription>
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    aria-label={t("common.more")}
-                                    size="icon-sm"
-                                    type="button"
-                                    variant="ghost"
-                                  />
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={MoreHorizontalIcon}
-                                  strokeWidth={2}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      setSelectedKnowledgeBaseId(
-                                        knowledgeBase.id
-                                      )
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={ViewIcon}
-                                      strokeWidth={2}
-                                    />
-                                    {knowledgeBase.type === "system"
-                                      ? t("pages.knowledgeBases.manageContents")
-                                      : t("pages.knowledgeBases.viewContents")}
-                                  </DropdownMenuItem>
-                                  {knowledgeBase.type === "system" && (
-                                    <>
-                                      <DropdownMenuItem
-                                        disabled={knowledgeBase.enabled}
-                                        onClick={() =>
-                                          setKnowledgeBaseEnabled(
-                                            knowledgeBase.id,
-                                            true
-                                          )
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={PlayIcon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.knowledgeBases.enable")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        disabled={!knowledgeBase.enabled}
-                                        onClick={() =>
-                                          setKnowledgeBaseEnabled(
-                                            knowledgeBase.id,
-                                            false
-                                          )
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={PauseIcon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.knowledgeBases.disable")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          handleEditKnowledgeBase(knowledgeBase)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={Edit02Icon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.knowledgeBases.editInfo")}
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                </DropdownMenuGroup>
-                                {knowledgeBase.type === "system" && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuGroup>
-                                      <DropdownMenuItem
-                                        variant="destructive"
-                                        onClick={() =>
-                                          setKnowledgeBasePendingDeletion(
-                                            knowledgeBase
-                                          )
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={Delete02Icon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.knowledgeBases.delete")}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuGroup>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="flex-1">
-                          <p
-                            className="truncate text-muted-foreground"
-                            title={knowledgeBase.description}
-                          >
-                            {knowledgeBase.description}
-                          </p>
-                          <div className="mt-4 flex min-w-0 items-center gap-4">
-                            <span className="w-2/5 truncate text-muted-foreground">
-                              {t("pages.knowledgeBases.tags")}
-                            </span>
-                            <span
-                              className="w-3/5 truncate text-end font-medium"
-                              title={
-                                tagNames || t("pages.knowledgeBases.noTags")
+              return (
+                <Card
+                  className={cn("h-full", !knowledgeBase.enabled && "bg-muted")}
+                  key={knowledgeBase.id}
+                >
+                  <CardHeader>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Avatar size="lg">
+                        <AvatarFallback>
+                          {knowledgeBase.creator === ADMIN_CREATOR ? (
+                            <HugeiconsIcon
+                              icon={BookOpenTextIcon}
+                              strokeWidth={2}
+                            />
+                          ) : (
+                            getCreatorInitials(knowledgeBase.creator)
+                          )}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="flex min-w-0 items-center gap-2">
+                          <span className="truncate" title={knowledgeBase.name}>
+                            {knowledgeBase.name}
+                          </span>
+                          {!knowledgeBase.enabled && (
+                            <Badge variant="outline">
+                              {t("pages.knowledgeBases.disable")}
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription
+                          className="truncate"
+                          title={knowledgeBase.creator}
+                        >
+                          {knowledgeBase.creator}
+                        </CardDescription>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              aria-label={t("common.more")}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            />
+                          }
+                        >
+                          <HugeiconsIcon
+                            icon={MoreHorizontalIcon}
+                            strokeWidth={2}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setSelectedKnowledgeBaseId(knowledgeBase.id)
                               }
                             >
-                              {tagNames || t("pages.knowledgeBases.noTags")}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex min-w-0 items-center justify-between gap-3 text-sm">
-                            <span className="truncate text-muted-foreground">
-                              {t("pages.knowledgeBases.contentCount", {
-                                count: knowledgeBase.contents.length,
-                              })}
-                            </span>
-                            <LearningSummaryBadge
-                              learned={learnedCount}
-                              total={knowledgeBase.contents.length}
-                            />
-                          </div>
-                        </CardContent>
-                        {knowledgeBase.type === "user" && (
-                          <CardFooter className="flex-col items-stretch gap-3 border-t">
-                            <div className="flex min-w-0 items-center gap-4">
-                              <span className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.knowledgeBases.readableUsers")}
-                              </span>
-                              <span
-                                className="w-3/5 truncate text-end font-medium"
-                                title={readAuthorizationNames}
-                              >
-                                {readAuthorizationNames}
-                              </span>
-                            </div>
-                            <div className="flex min-w-0 items-center gap-4">
-                              <span className="w-2/5 truncate text-muted-foreground">
-                                {t("pages.knowledgeBases.writableUsers")}
-                              </span>
-                              <span
-                                className="w-3/5 truncate text-end font-medium"
-                                title={writeAuthorizationNames}
-                              >
-                                {writeAuthorizationNames}
-                              </span>
-                            </div>
-                          </CardFooter>
-                        )}
-                      </Card>
-                    )
-                  })}
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+                              <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
+                              {knowledgeBase.type === "system"
+                                ? t("pages.knowledgeBases.manageContents")
+                                : t("pages.knowledgeBases.viewContents")}
+                            </DropdownMenuItem>
+                            {knowledgeBase.type === "system" && (
+                              <>
+                                <DropdownMenuItem
+                                  disabled={knowledgeBase.enabled}
+                                  onClick={() =>
+                                    setKnowledgeBaseEnabled(
+                                      knowledgeBase.id,
+                                      true
+                                    )
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={PlayIcon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.knowledgeBases.enable")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={!knowledgeBase.enabled}
+                                  onClick={() =>
+                                    setKnowledgeBaseEnabled(
+                                      knowledgeBase.id,
+                                      false
+                                    )
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={PauseIcon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.knowledgeBases.disable")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleEditKnowledgeBase(knowledgeBase)
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={Edit02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.knowledgeBases.editInfo")}
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuGroup>
+                          {knowledgeBase.type === "system" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuGroup>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() =>
+                                    setKnowledgeBasePendingDeletion(
+                                      knowledgeBase
+                                    )
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={Delete02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.knowledgeBases.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    <p
+                      className="line-clamp-2 text-muted-foreground"
+                      title={knowledgeBase.description}
+                    >
+                      {knowledgeBase.description}
+                    </p>
+                    <div className="mt-4 flex min-w-0 items-center gap-4">
+                      <span className="w-2/5 truncate text-muted-foreground">
+                        {t("pages.knowledgeBases.tags")}
+                      </span>
+                      <span
+                        className="w-3/5 truncate text-end font-medium"
+                        title={tagNames || t("pages.knowledgeBases.noTags")}
+                      >
+                        {tagNames || t("pages.knowledgeBases.noTags")}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex min-w-0 items-center justify-between gap-3 text-sm">
+                      <span className="truncate text-muted-foreground">
+                        {t("pages.knowledgeBases.contentCount", {
+                          count: knowledgeBase.contents.length,
+                        })}
+                      </span>
+                      <LearningSummaryBadge
+                        learned={learnedCount}
+                        total={knowledgeBase.contents.length}
+                      />
+                    </div>
+                  </CardContent>
+                  {knowledgeBase.type === "user" && (
+                    <CardFooter className="flex-col items-stretch gap-3 border-t">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <span className="w-2/5 truncate text-muted-foreground">
+                          {t("pages.knowledgeBases.readableUsers")}
+                        </span>
+                        <span
+                          className="w-3/5 truncate text-end font-medium"
+                          title={readAuthorizationNames}
+                        >
+                          {readAuthorizationNames}
+                        </span>
+                      </div>
+                      <div className="flex min-w-0 items-center gap-4">
+                        <span className="w-2/5 truncate text-muted-foreground">
+                          {t("pages.knowledgeBases.writableUsers")}
+                        </span>
+                        <span
+                          className="w-3/5 truncate text-end font-medium"
+                          title={writeAuthorizationNames}
+                        >
+                          {writeAuthorizationNames}
+                        </span>
+                      </div>
+                    </CardFooter>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        </ResourceList>
 
         <AlertDialog
           open={knowledgeBasePendingDeletion !== null}

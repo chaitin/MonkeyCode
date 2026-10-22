@@ -8,7 +8,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid;
 
 -- name: LockSession :one
@@ -21,7 +21,7 @@ SELECT jsonb_build_object(
  'state_seq',state_seq,'state_hash',encode(state_hash,'base64'),'state_received_at',state_received_at,
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
- 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at
+ 'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
 ) AS data FROM sessions WHERE id = $1::uuid FOR UPDATE;
 
 -- name: GetParent :one
@@ -181,59 +181,6 @@ SELECT jsonb_build_object(
  'image_calls',(SELECT count(*) FROM image_calls WHERE session_id=$1::uuid)
 ) AS data;
 
--- name: ListSessions :many
-SELECT jsonb_build_object(
- 'id',id,'owner_user_id',owner_user_id,'group_id',group_id,'parent_session_id',parent_session_id,
- 'title',title,'title_source',title_source,'session_type',session_type,'client_type',client_type,'client_name',client_name,
- 'started_at',started_at,'last_active_at',last_active_at,'ended_at',ended_at,
- 'turn_count',turn_count,'acked_turn',acked_turn,'active_seconds',active_seconds,
- 'facts_version',facts_version,'last_stop_reason',last_stop_reason,
- 'created_at',created_at,'updated_at',updated_at
-) AS data FROM sessions
-WHERE
- (sqlc.arg(status)::text <> '' OR
-  ((sqlc.arg(include_deleted)::boolean OR deleted_at IS NULL)
-   AND (sqlc.arg(include_purged)::boolean OR purged_at IS NULL)
-   AND (sqlc.arg(include_placeholder)::boolean OR placeholder=false)
-   AND (sqlc.arg(include_legacy)::boolean OR reporting_enabled_at IS NOT NULL)))
- AND (sqlc.arg(status)::text = '' OR sqlc.arg(status)::text = 'all'
-      OR (sqlc.arg(status)::text = 'deleted' AND deleted_at IS NOT NULL)
-      OR (sqlc.arg(status)::text = 'purged' AND purged_at IS NOT NULL)
-      OR (sqlc.arg(status)::text = 'placeholder' AND placeholder AND purged_at IS NULL)
-      OR (sqlc.arg(status)::text IN ('legacy','old_reporting') AND reporting_enabled_at IS NULL AND purged_at IS NULL)
-      OR (sqlc.arg(status)::text = 'reporting' AND reporting_enabled_at IS NOT NULL AND purged_at IS NULL))
- AND (sqlc.arg(owner_id)::text = '' OR owner_user_id=NULLIF(sqlc.arg(owner_id)::text,'')::uuid)
- AND (sqlc.arg(group_id)::text = '' OR group_id=NULLIF(sqlc.arg(group_id)::text,'')::uuid)
- AND (sqlc.arg(parent_id)::text = '' OR parent_session_id=NULLIF(sqlc.arg(parent_id)::text,'')::uuid)
- AND (sqlc.arg(session_type)::text = '' OR session_type=sqlc.arg(session_type)::text)
- AND (sqlc.arg(client_type)::text = '' OR client_type=sqlc.arg(client_type)::text)
- AND (sqlc.arg(from_time)::text = '' OR started_at>=NULLIF(sqlc.arg(from_time)::text,'')::timestamptz)
- AND (sqlc.arg(until_time)::text = '' OR started_at<NULLIF(sqlc.arg(until_time)::text,'')::timestamptz)
-ORDER BY COALESCE(last_active_at,started_at) DESC,id DESC
-LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
-
--- name: CountSessions :one
-SELECT count(*) FROM sessions
-WHERE
- (sqlc.arg(status)::text <> '' OR
-  ((sqlc.arg(include_deleted)::boolean OR deleted_at IS NULL)
-   AND (sqlc.arg(include_purged)::boolean OR purged_at IS NULL)
-   AND (sqlc.arg(include_placeholder)::boolean OR placeholder=false)
-   AND (sqlc.arg(include_legacy)::boolean OR reporting_enabled_at IS NOT NULL)))
- AND (sqlc.arg(status)::text = '' OR sqlc.arg(status)::text = 'all'
-      OR (sqlc.arg(status)::text = 'deleted' AND deleted_at IS NOT NULL)
-      OR (sqlc.arg(status)::text = 'purged' AND purged_at IS NOT NULL)
-      OR (sqlc.arg(status)::text = 'placeholder' AND placeholder AND purged_at IS NULL)
-      OR (sqlc.arg(status)::text IN ('legacy','old_reporting') AND reporting_enabled_at IS NULL AND purged_at IS NULL)
-      OR (sqlc.arg(status)::text = 'reporting' AND reporting_enabled_at IS NOT NULL AND purged_at IS NULL))
- AND (sqlc.arg(owner_id)::text = '' OR owner_user_id=NULLIF(sqlc.arg(owner_id)::text,'')::uuid)
- AND (sqlc.arg(group_id)::text = '' OR group_id=NULLIF(sqlc.arg(group_id)::text,'')::uuid)
- AND (sqlc.arg(parent_id)::text = '' OR parent_session_id=NULLIF(sqlc.arg(parent_id)::text,'')::uuid)
- AND (sqlc.arg(session_type)::text = '' OR session_type=sqlc.arg(session_type)::text)
- AND (sqlc.arg(client_type)::text = '' OR client_type=sqlc.arg(client_type)::text)
- AND (sqlc.arg(from_time)::text = '' OR started_at>=NULLIF(sqlc.arg(from_time)::text,'')::timestamptz)
- AND (sqlc.arg(until_time)::text = '' OR started_at<NULLIF(sqlc.arg(until_time)::text,'')::timestamptz);
-
 -- name: LockFamily :many
 SELECT id::text FROM sessions WHERE id=$1::uuid OR parent_session_id=$1::uuid ORDER BY id FOR UPDATE;
 
@@ -256,3 +203,25 @@ DELETE FROM session_resource_snapshots WHERE session_id=ANY($1::uuid[]);
 -- name: PurgeSessions :exec
 UPDATE sessions SET deleted_at=COALESCE(deleted_at,now()),client_deleted_at=COALESCE(client_deleted_at,now()),
  title='',title_source=NULL,purged_at=COALESCE(purged_at,now()),updated_at=now() WHERE id=ANY($1::uuid[]);
+
+-- name: VerifySessionHost :exec
+UPDATE sessions SET host_verified = true, host_revision = host_revision + 1
+WHERE id = $1::uuid AND host_verified = false;
+
+-- name: SetLiveSummary :exec
+UPDATE sessions SET last_live_report_at=$2,live_boot_id=$3,live_lease_epoch=$4 WHERE id=$1;
+
+-- name: SessionIndex :many
+SELECT id,device_id,title,title_source,session_type,parent_session_id,state_seq,host_revision,
+    started_at,last_active_at,state_received_at,last_live_report_at,live_boot_id,live_lease_epoch
+FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND (sqlc.arg(machine_id)::text='' OR device_id=sqlc.arg(machine_id)::text)
+    AND (sqlc.arg(session_id)::text='' OR id=NULLIF(sqlc.arg(session_id)::text,'')::uuid)
+ORDER BY started_at DESC,id DESC LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
+
+-- name: CountSessionIndex :one
+SELECT count(*) FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL AND host_verified AND NOT placeholder
+    AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
+    AND (sqlc.arg(machine_id)::text='' OR device_id=sqlc.arg(machine_id)::text)
+    AND (sqlc.arg(session_id)::text='' OR id=NULLIF(sqlc.arg(session_id)::text,'')::uuid);

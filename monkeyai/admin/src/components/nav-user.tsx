@@ -2,7 +2,7 @@
 
 import { useTranslation } from "react-i18next"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,6 @@ import {
   CheckmarkBadgeIcon,
   LogoutIcon,
   UnfoldMoreIcon,
-  UserCircleIcon,
 } from "@hugeicons/core-free-icons"
 
 export function NavUser({
@@ -33,6 +32,7 @@ export function NavUser({
   user: {
     name: string
     email: string
+    avatar_url?: string | null
   }
   onLogout: () => void
 }) {
@@ -50,16 +50,7 @@ export function NavUser({
               />
             }
           >
-            <Avatar>
-              <AvatarFallback>
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={UserCircleIcon}
-                  className="size-6"
-                  strokeWidth={2}
-                />
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar src={user.avatar_url} size="default" />
             <div className="grid flex-1 text-start text-sm leading-tight">
               <span className="truncate font-medium">{user.name}</span>
               <span className="truncate text-xs">{user.email}</span>
@@ -79,18 +70,11 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-                  <Avatar>
-                    <AvatarFallback>
-                      <HugeiconsIcon
-                        aria-hidden="true"
-                        icon={UserCircleIcon}
-                        className="size-6"
-                        strokeWidth={2}
-                      />
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar src={user.avatar_url} size="default" />
                   <div className="grid flex-1 text-start text-sm leading-tight">
-                    <span className="truncate font-medium">{user.name}</span>
+                    <span className="truncate text-foreground">
+                      {user.name}
+                    </span>
                     <span className="truncate text-xs">{user.email}</span>
                   </div>
                 </div>

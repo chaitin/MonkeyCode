@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { User02Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +51,7 @@ type Feedback = {
   user_id: string
   user_name?: string
   user_email?: string
+  user_avatar_url?: string | null
   category: Category
   content: string
   rating?: number | null
@@ -70,7 +73,6 @@ type FeedbackPageData = {
 const categories: Category[] = ["bug", "feature", "experience", "other"]
 const states: State[] = ["uploading", "new", "resolved", "ignored", "failed"]
 const editableStates: EditableState[] = ["new", "resolved", "ignored"]
-const pageSize = 20
 
 function isEditable(state: State): state is EditableState {
   return state === "new" || state === "resolved" || state === "ignored"
@@ -308,6 +310,7 @@ export function FeedbackPage() {
   const [category, setCategory] = useState<Category | "all">("all")
   const [state, setState] = useState<State | "all">("all")
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
@@ -318,16 +321,7 @@ export function FeedbackPage() {
   }>()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const formatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+    () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
   )
   const query = new URLSearchParams({
@@ -365,10 +359,10 @@ export function FeedbackPage() {
   const pages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-3 px-(--card-spacing)">
+          <div className="flex flex-wrap items-center gap-3 px-[var(--card-spacing)]">
             <Select
               items={[
                 { value: "all", label: t("pages.feedback.allCategories") },
@@ -440,11 +434,15 @@ export function FeedbackPage() {
               {t("statistics.refresh")}
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Table aria-label={t("pages.feedback.title")} aria-busy={loading}>
-              <TableHeader className="sticky top-0 z-10 bg-card">
+          <div className="min-h-0 flex-1 overflow-auto [&_[data-slot=table-container]]:h-full">
+            <Table
+              aria-label={t("pages.feedback.title")}
+              aria-busy={loading}
+              className={!rows.length ? "h-full" : undefined}
+            >
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="ps-[var(--card-spacing)]">
                     {t("pages.feedback.columns.time")}
                   </TableHead>
                   <TableHead>{t("pages.feedback.columns.user")}</TableHead>
@@ -452,31 +450,26 @@ export function FeedbackPage() {
                   <TableHead>{t("pages.feedback.columns.content")}</TableHead>
                   <TableHead>{t("pages.feedback.columns.rating")}</TableHead>
                   <TableHead>{t("pages.feedback.columns.state")}</TableHead>
-                  <TableHead className="pe-(--card-spacing)">
+                  <TableHead className="pe-[var(--card-spacing)]">
                     {t("pages.feedback.columns.actions")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className={!rows.length ? "h-full" : undefined}>
                 {rows.length ? (
                   rows.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
                         {formatter.format(new Date(item.created_at))}
                       </TableCell>
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="flex max-w-52 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                           title={item.user_email || item.user_id}
                           onClick={() => setAccountUserID(item.user_id)}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <UserAvatar src={item.user_avatar_url} />
                           <span className="truncate">
                             {item.user_name || item.user_id}
                           </span>
@@ -495,7 +488,7 @@ export function FeedbackPage() {
                       <TableCell>
                         <StateBadge state={item.state} />
                       </TableCell>
-                      <TableCell className="pe-(--card-spacing)">
+                      <TableCell className="pe-[var(--card-spacing)]">
                         <Button
                           size="xs"
                           variant="outline"
@@ -507,13 +500,13 @@ export function FeedbackPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow>
+                  <TableRow className="h-full">
                     <TableCell
                       colSpan={7}
-                      className="py-12 text-center text-muted-foreground"
+                      className="h-full py-12 text-center text-muted-foreground"
                     >
                       {loading ? (
-                        t("resources.loading")
+                        <TableLoading />
                       ) : error ? (
                         <div role="alert" className="space-y-2">
                           <p>
@@ -535,36 +528,20 @@ export function FeedbackPage() {
               </TableBody>
             </Table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing) text-sm text-muted-foreground">
-            <span>
-              {t("pages.feedback.pagination.summary", {
-                from: rows.length ? (page - 1) * pageSize + 1 : 0,
-                to: rows.length ? (page - 1) * pageSize + rows.length : 0,
-                total,
-              })}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>
-                {t("pages.feedback.pagination.page", { page, pages })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loading || page <= 1}
-                onClick={() => setPage((value) => value - 1)}
-              >
-                {t("pages.feedback.pagination.previous")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loading || Boolean(error) || page >= pages}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                {t("pages.feedback.pagination.next")}
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            itemCount={rows.length}
+            total={total}
+            loading={loading}
+            error={Boolean(error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pages, value + 1))}
+          />
         </CardContent>
       </Card>
       <Dialog

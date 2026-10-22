@@ -5,7 +5,7 @@ import {
   selection,
   match,
   saveResource,
-  useResources,
+  savePackageGrants,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillImportWizard } from "@/components/skill-import-wizard"
-import { PackageGrants } from "@/components/package-grants"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
   AlertDialog,
@@ -52,7 +52,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -80,7 +79,8 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResourceList } from "@/components/resource-list"
+import { useResourceList } from "@/hooks/use-resource-list"
 import { Textarea } from "@/components/ui/textarea"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
@@ -96,6 +96,8 @@ type SkillType = "system" | "user"
 type AgentSkill = {
   origin?: ResourceRow["origin"]
   publisher?: string
+  retired?: boolean
+  grants: ResourceRow["grants"]
   revision: number
   id: string
   name: string
@@ -122,6 +124,8 @@ function toSkill(row: ResourceRow): AgentSkill {
     id: row.id,
     origin: row.origin,
     publisher: row.publisher,
+    retired: row.retired,
+    grants: row.grants,
     revision: row.revision,
     name: row.name,
     description: row.description,
@@ -161,12 +165,12 @@ function formatBytes(bytes: number) {
 export function SkillsPage() {
   const { t } = useTranslation()
   const { tags: availableTags } = useSkillTags()
-  const remote = useResources("/skills", toSkill)
-  const skills = remote.items
+  const remote = useResourceList("/skills")
+  const skills = remote.items.map(toSkill)
   const subjects = useSubjects()
-  const [activeSkillType, setActiveSkillType] = useState<SkillType>("system")
+  const activeSkillType = remote.type
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
+  const [editingSkill, setEditingSkill] = useState<AgentSkill | null>(null)
   const [skillPendingDeletion, setSkillPendingDeletion] =
     useState<AgentSkill | null>(null)
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
@@ -183,7 +187,7 @@ export function SkillsPage() {
   const [packageParsing, setPackageParsing] = useState(false)
   const [fileInputKey, setFileInputKey] = useState(0)
   const packageRequestId = useRef(0)
-  const editingSkill = skills.find((skill) => skill.id === editingSkillId)
+  const importedSkill = editingSkill?.origin === "package"
 
   const resetSkillOptions = () => {
     packageRequestId.current += 1
@@ -201,12 +205,13 @@ export function SkillsPage() {
   const handleDialogOpenChange = (open: boolean) => {
     setDialogOpen(open)
     if (!open) {
-      setEditingSkillId(null)
+      setEditingSkill(null)
       resetSkillOptions()
     }
   }
 
   const handleEditSkill = async (skill: AgentSkill) => {
+    if (skill.type !== "system") return
     const ok = await remote.run(async () => {
       const manifest = await api<{ content: string }>(
         base + `/skills/${skill.id}/manifest`
@@ -218,7 +223,7 @@ export function SkillsPage() {
       return
     }
 
-    setEditingSkillId(skill.id)
+    setEditingSkill(skill)
     setAuthorization(skill.authorization)
     setDraft({
       name: skill.name,
@@ -235,6 +240,7 @@ export function SkillsPage() {
   }
 
   const handlePackageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (importedSkill) return
     const file = event.currentTarget.files?.[0]
     const requestId = packageRequestId.current + 1
     packageRequestId.current = requestId
@@ -293,7 +299,7 @@ export function SkillsPage() {
 
   const setSkillEnabled = async (id: string, enabled: boolean) => {
     const item = skills.find((s) => s.id === id)
-    if (!item) return
+    if (!item || item.origin === "package") return
     await remote.run(async () => {
       await api(base + `/skills/${id}/enabled`, {
         method: "PATCH",
@@ -306,6 +312,11 @@ export function SkillsPage() {
     event.preventDefault()
     if (!editingSkill) return
     await remote.run(async () => {
+      if (editingSkill.origin === "package") {
+        await savePackageGrants("skill", editingSkill, authorization)
+        handleDialogOpenChange(false)
+        return
+      }
       let item = editingSkill
       if (packageFile) {
         const form = new FormData()
@@ -325,423 +336,419 @@ export function SkillsPage() {
     }, t("resources.operationCompleted"))
   }
   const handleDeleteSkill = async () => {
-    if (!skillPendingDeletion) return
+    if (!skillPendingDeletion || skillPendingDeletion.origin === "package")
+      return
     await remote.run(async () => {
       await api(base + `/skills/${skillPendingDeletion.id}`, {
         method: "DELETE",
         headers: match(skillPendingDeletion.revision),
       })
+      if (skills.length === 1) remote.previousPage(skillPendingDeletion.type)
       setSkillPendingDeletion(null)
     }, t("resources.operationCompleted"))
   }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <ResourceNotice
-        error={remote.error || subjects.error}
-        loading={remote.loading}
-        pending={remote.pending}
-      />
-      <Tabs
-        className="gap-4"
-        value={activeSkillType}
-        onValueChange={(value) => {
-          setActiveSkillType(value as SkillType)
-        }}
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
+      <ResourceList
+        page={remote}
+        error={subjects.error}
+        typeLabel={t("pages.skills.type")}
+        systemLabel={t("pages.skills.systemSkill")}
+        userLabel={t("pages.skills.userSkill")}
+        actions={
+          <>
+            {activeSkillType === "system" && (
+              <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                <DialogTrigger
+                  render={
+                    <Button
+                      className="ms-auto shrink-0"
+                      onClick={() => {
+                        setEditingSkill(null)
+                        resetSkillOptions()
+                      }}
+                    />
+                  }
+                >
+                  <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+                  {t("pages.skills.add")}
+                </DialogTrigger>
+                <DialogContent
+                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  closeLabel={t("common.close")}
+                  aria-describedby={
+                    importedSkill ? "imported-skill-readonly" : undefined
+                  }
+                >
+                  {editingSkill ? (
+                    <form
+                      key={editingSkill.id}
+                      className="flex flex-col gap-6"
+                      onSubmit={handleSubmitSkill}
+                    >
+                      <DialogHeader>
+                        <DialogTitle>
+                          {editingSkill
+                            ? t("pages.skills.editDialogTitle")
+                            : t("pages.skills.dialogTitle")}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <FieldGroup className="gap-4">
+                        <Field>
+                          <FieldLabel htmlFor="skill-authorized-users">
+                            {t("resources.availableScope")}
+                          </FieldLabel>
+                          <AuthorizationSelect
+                            groups={subjects.groups}
+                            members={subjects.members}
+                            id="skill-authorized-users"
+                            open={authorizationOpen}
+                            placeholder={t(
+                              "pages.skills.authorizationPlaceholder"
+                            )}
+                            title={t("resources.availableScope")}
+                            value={authorization}
+                            onOpenChange={setAuthorizationOpen}
+                            onValueChange={setAuthorization}
+                          />
+                          {importedSkill && editingSkill.retired && (
+                            <p className="text-sm text-amber-700 dark:text-amber-400">
+                              {t("resources.retiredGrantsOnly")}
+                            </p>
+                          )}
+                        </Field>
+                        <fieldset disabled={importedSkill} className="contents">
+                          <Field data-invalid={Boolean(packageError)}>
+                            <FieldLabel htmlFor="skill-package">
+                              {t("pages.skills.skillPackage")}
+                            </FieldLabel>
+                            <Input
+                              accept=".zip,application/zip"
+                              aria-invalid={Boolean(packageError)}
+                              disabled={packageParsing}
+                              id="skill-package"
+                              key={fileInputKey}
+                              name="package"
+                              type="file"
+                              onChange={handlePackageChange}
+                            />
+                            <FieldDescription>
+                              {packageParsing
+                                ? t("pages.skills.packageParsing")
+                                : editingSkill
+                                  ? t("pages.skills.packageOptionalHint")
+                                  : t("pages.skills.packageHint")}
+                            </FieldDescription>
+                            <FieldError>{packageError}</FieldError>
+                            {packageAnalysis && packageFile && (
+                              <Item size="sm" variant="outline">
+                                <ItemMedia variant="icon">
+                                  <HugeiconsIcon
+                                    icon={DocumentValidationIcon}
+                                    strokeWidth={2}
+                                  />
+                                </ItemMedia>
+                                <ItemContent className="min-w-0">
+                                  <ItemTitle>{packageAnalysis.name}</ItemTitle>
+                                  <ItemDescription
+                                    title={packageAnalysis.entryPath}
+                                  >
+                                    {packageFile.name} ·{" "}
+                                    {packageAnalysis.entryPath}
+                                  </ItemDescription>
+                                  <ItemDescription>
+                                    {t("pages.skills.packageSummary", {
+                                      count: packageAnalysis.fileCount,
+                                      size: formatBytes(
+                                        packageAnalysis.unpackedSize
+                                      ),
+                                    })}
+                                  </ItemDescription>
+                                </ItemContent>
+                              </Item>
+                            )}
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="skill-name">
+                              {t("pages.skills.name")}
+                            </FieldLabel>
+                            <Input
+                              aria-readonly="true"
+                              id="skill-name"
+                              placeholder={t("pages.skills.namePlaceholder")}
+                              readOnly
+                              required
+                              value={draft.name}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="skill-description">
+                              {t("pages.skills.skillDescription")}
+                            </FieldLabel>
+                            <Textarea
+                              aria-readonly="true"
+                              className="max-h-32 min-h-20 resize-none overflow-y-auto"
+                              id="skill-description"
+                              placeholder={t(
+                                "pages.skills.skillDescriptionPlaceholder"
+                              )}
+                              readOnly
+                              required
+                              value={draft.description}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="skill-content">
+                              {t("resources.skillContent")}
+                            </FieldLabel>
+                            <Textarea
+                              id="skill-content"
+                              className="min-h-48 resize-y font-mono"
+                              value={draft.content}
+                              onChange={(e) =>
+                                setDraft((current) => ({
+                                  ...current,
+                                  content: e.target.value,
+                                }))
+                              }
+                            />
+                            <a
+                              className="text-sm text-primary underline"
+                              href={base + `/skills/${editingSkill.id}/package`}
+                            >
+                              {t("resources.downloadPackage")}
+                            </a>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor="skill-tags">
+                              {t("pages.skills.tags")}
+                            </FieldLabel>
+                            <SkillTagSelect
+                              id="skill-tags"
+                              open={tagsOpen}
+                              options={availableTags}
+                              placeholder={t("pages.skills.tagsPlaceholder")}
+                              value={draft.tagIds}
+                              onOpenChange={setTagsOpen}
+                              onValueChange={(tagIds) => {
+                                setDraft((currentDraft) => ({
+                                  ...currentDraft,
+                                  tagIds,
+                                }))
+                              }}
+                            />
+                          </Field>
+                        </fieldset>
+                      </FieldGroup>
+                      <ResourceNotice
+                        error={remote.error || subjects.error}
+                        loading={false}
+                        pending={remote.pending}
+                      />
+                      <ResourceEditorFooter
+                        id="imported-skill-readonly"
+                        reason={
+                          importedSkill
+                            ? t("resources.importedSkillReadOnly")
+                            : undefined
+                        }
+                      >
+                        <DialogClose
+                          render={<Button type="button" variant="outline" />}
+                        >
+                          {t("pages.skills.cancel")}
+                        </DialogClose>
+                        <Button
+                          disabled={
+                            remote.pending ||
+                            packageParsing ||
+                            Boolean(packageError) ||
+                            (!editingSkill && packageAnalysis === null)
+                          }
+                          type="submit"
+                        >
+                          {editingSkill
+                            ? t("pages.skills.save")
+                            : t("pages.skills.create")}
+                        </Button>
+                      </ResourceEditorFooter>
+                    </form>
+                  ) : (
+                    <SkillImportWizard
+                      onComplete={() => handleDialogOpenChange(false)}
+                      availableTags={availableTags}
+                      onImport={async (values) => {
+                        for (const value of values) {
+                          const form = new FormData()
+                          form.set("package", value.packageFile)
+                          form.set(
+                            "metadata",
+                            JSON.stringify({
+                              tag_ids: value.tagIds,
+                              grants: grants(value.authorization),
+                            })
+                          )
+                          await api(base + "/skills", {
+                            method: "POST",
+                            body: form,
+                          })
+                        }
+                        await remote.reload()
+                      }}
+                    />
+                  )}
+                </DialogContent>
+              </Dialog>
+            )}
+          </>
+        }
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList aria-label={t("pages.skills.type")}>
-            <TabsTrigger value="system">
-              {t("pages.skills.systemSkill")}
-            </TabsTrigger>
-            <TabsTrigger value="user">
-              {t("pages.skills.userSkill")}
-            </TabsTrigger>
-          </TabsList>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {skills.map((skill) => {
+            const selectedTags = availableTags.filter((tag) =>
+              skill.tagIds.includes(tag.id)
+            )
 
-          {activeSkillType === "system" && (
-            <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-              <DialogTrigger
-                render={
-                  <Button
-                    onClick={() => {
-                      setEditingSkillId(null)
-                      resetSkillOptions()
-                    }}
-                  />
-                }
-              >
-                <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-                {t("pages.skills.add")}
-              </DialogTrigger>
-              <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
-                closeLabel={t("common.close")}
-              >
-                {editingSkill ? (
-                  <form
-                    key={editingSkill.id}
-                    className="flex flex-col gap-6"
-                    onSubmit={handleSubmitSkill}
-                  >
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingSkill
-                          ? t("pages.skills.editDialogTitle")
-                          : t("pages.skills.dialogTitle")}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <FieldGroup className="gap-4">
-                      <Field data-invalid={Boolean(packageError)}>
-                        <FieldLabel htmlFor="skill-package">
-                          {t("pages.skills.skillPackage")}
-                        </FieldLabel>
-                        <Input
-                          accept=".zip,application/zip"
-                          aria-invalid={Boolean(packageError)}
-                          disabled={packageParsing}
-                          id="skill-package"
-                          key={fileInputKey}
-                          name="package"
-                          type="file"
-                          onChange={handlePackageChange}
-                        />
-                        <FieldDescription>
-                          {packageParsing
-                            ? t("pages.skills.packageParsing")
-                            : editingSkill
-                              ? t("pages.skills.packageOptionalHint")
-                              : t("pages.skills.packageHint")}
-                        </FieldDescription>
-                        <FieldError>{packageError}</FieldError>
-                        {packageAnalysis && packageFile && (
-                          <Item size="sm" variant="outline">
-                            <ItemMedia variant="icon">
+            return (
+              <Card className={cn(!skill.enabled && "bg-muted")} key={skill.id}>
+                <CardHeader>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Avatar size="lg">
+                      <AvatarFallback>
+                        {skill.type === "system" ? (
+                          <HugeiconsIcon
+                            icon={DocumentValidationIcon}
+                            strokeWidth={2}
+                          />
+                        ) : (
+                          getCreatorInitials(skill.creator)
+                        )}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="flex min-w-0 items-center gap-2">
+                        <span className="truncate" title={skill.name}>
+                          {skill.name}
+                        </span>
+                        {skill.origin === "package" && (
+                          <Badge variant="outline" title={skill.publisher}>
+                            资源包导入
+                          </Badge>
+                        )}
+                        {!skill.enabled && (
+                          <Badge variant="outline">
+                            {t("pages.skills.disable")}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription
+                        className="truncate"
+                        title={skill.creator}
+                      >
+                        {skill.creator}
+                      </CardDescription>
+                    </div>
+                    {skill.type === "system" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              aria-label={t("common.more")}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            />
+                          }
+                        >
+                          <HugeiconsIcon
+                            icon={MoreHorizontalIcon}
+                            strokeWidth={2}
+                          />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              hidden={skill.origin === "package"}
+                              disabled={skill.enabled}
+                              onClick={() => setSkillEnabled(skill.id, true)}
+                            >
+                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
+                              {t("pages.skills.enable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              hidden={skill.origin === "package"}
+                              disabled={!skill.enabled}
+                              onClick={() => setSkillEnabled(skill.id, false)}
+                            >
+                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
+                              {t("pages.skills.disable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleEditSkill(skill)}
+                            >
                               <HugeiconsIcon
-                                icon={DocumentValidationIcon}
+                                icon={Edit02Icon}
                                 strokeWidth={2}
                               />
-                            </ItemMedia>
-                            <ItemContent className="min-w-0">
-                              <ItemTitle>{packageAnalysis.name}</ItemTitle>
-                              <ItemDescription
-                                title={packageAnalysis.entryPath}
-                              >
-                                {packageFile.name} · {packageAnalysis.entryPath}
-                              </ItemDescription>
-                              <ItemDescription>
-                                {t("pages.skills.packageSummary", {
-                                  count: packageAnalysis.fileCount,
-                                  size: formatBytes(
-                                    packageAnalysis.unpackedSize
-                                  ),
-                                })}
-                              </ItemDescription>
-                            </ItemContent>
-                          </Item>
-                        )}
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="skill-name">
-                          {t("pages.skills.name")}
-                        </FieldLabel>
-                        <Input
-                          aria-readonly="true"
-                          id="skill-name"
-                          placeholder={t("pages.skills.namePlaceholder")}
-                          readOnly
-                          required
-                          value={draft.name}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="skill-description">
-                          {t("pages.skills.skillDescription")}
-                        </FieldLabel>
-                        <Textarea
-                          aria-readonly="true"
-                          className="max-h-32 min-h-20 resize-none overflow-y-auto"
-                          id="skill-description"
-                          placeholder={t(
-                            "pages.skills.skillDescriptionPlaceholder"
-                          )}
-                          readOnly
-                          required
-                          value={draft.description}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="skill-content">
-                          {t("resources.skillContent")}
-                        </FieldLabel>
-                        <Textarea
-                          id="skill-content"
-                          className="min-h-48 resize-y font-mono"
-                          value={draft.content}
-                          onChange={(e) =>
-                            setDraft((current) => ({
-                              ...current,
-                              content: e.target.value,
-                            }))
-                          }
-                        />
-                        <a
-                          className="text-sm text-primary underline"
-                          href={base + `/skills/${editingSkill.id}/package`}
-                        >
-                          {t("resources.downloadPackage")}
-                        </a>
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="skill-tags">
-                          {t("pages.skills.tags")}
-                        </FieldLabel>
-                        <SkillTagSelect
-                          id="skill-tags"
-                          open={tagsOpen}
-                          options={availableTags}
-                          placeholder={t("pages.skills.tagsPlaceholder")}
-                          value={draft.tagIds}
-                          onOpenChange={setTagsOpen}
-                          onValueChange={(tagIds) => {
-                            setDraft((currentDraft) => ({
-                              ...currentDraft,
-                              tagIds,
-                            }))
-                          }}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="skill-authorized-users">
-                          {t("pages.skills.authorizedUsers")}
-                        </FieldLabel>
-                        <AuthorizationSelect
-                          groups={subjects.groups}
-                          members={subjects.members}
-                          id="skill-authorized-users"
-                          open={authorizationOpen}
-                          placeholder={t(
-                            "pages.skills.authorizationPlaceholder"
-                          )}
-                          title={t("pages.skills.authorizedUsers")}
-                          value={authorization}
-                          onOpenChange={setAuthorizationOpen}
-                          onValueChange={setAuthorization}
-                        />
-                      </Field>
-                    </FieldGroup>
-                    <ResourceNotice
-                      error={remote.error || subjects.error}
-                      loading={false}
-                      pending={remote.pending}
-                    />
-                    <DialogFooter>
-                      <DialogClose
-                        render={<Button type="button" variant="outline" />}
-                      >
-                        {t("pages.skills.cancel")}
-                      </DialogClose>
-                      <Button
-                        disabled={
-                          remote.pending ||
-                          packageParsing ||
-                          Boolean(packageError) ||
-                          (!editingSkill && packageAnalysis === null)
-                        }
-                        type="submit"
-                      >
-                        {editingSkill
-                          ? t("pages.skills.save")
-                          : t("pages.skills.create")}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                ) : (
-                  <SkillImportWizard
-                    onComplete={() => handleDialogOpenChange(false)}
-                    availableTags={availableTags}
-                    onImport={async (values) => {
-                      for (const value of values) {
-                        const form = new FormData()
-                        form.set("package", value.packageFile)
-                        form.set(
-                          "metadata",
-                          JSON.stringify({
-                            tag_ids: value.tagIds,
-                            grants: grants(value.authorization),
-                          })
-                        )
-                        await api(base + "/skills", {
-                          method: "POST",
-                          body: form,
-                        })
-                      }
-                      await remote.reload()
-                    }}
-                  />
-                )}
-              </DialogContent>
-            </Dialog>
-          )}
-        </div>
-
-        {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {skills
-                .filter((skill) => skill.type === tabType)
-                .map((skill) => {
-                  const selectedTags = availableTags.filter((tag) =>
-                    skill.tagIds.includes(tag.id)
-                  )
-
-                  return (
-                    <Card
-                      className={cn(!skill.enabled && "bg-muted")}
-                      key={skill.id}
-                    >
-                      <CardHeader>
-                        <div className="flex min-w-0 items-start gap-3">
-                          <Avatar size="lg">
-                            <AvatarFallback>
-                              {skill.type === "system" ? (
-                                <HugeiconsIcon
-                                  icon={DocumentValidationIcon}
-                                  strokeWidth={2}
-                                />
-                              ) : (
-                                getCreatorInitials(skill.creator)
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <CardTitle className="flex min-w-0 items-center gap-2">
-                              <span className="truncate" title={skill.name}>
-                                {skill.name}
-                              </span>
-                              {skill.origin === "package" && <Badge variant="outline" title={skill.publisher}>资源包导入</Badge>}
-                              {!skill.enabled && (
-                                <Badge variant="outline">
-                                  {t("pages.skills.disable")}
-                                </Badge>
-                              )}
-                            </CardTitle>
-                            <CardDescription
-                              className="truncate"
-                              title={skill.creator}
+                              {t("pages.skills.edit")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                          <DropdownMenuSeparator
+                            hidden={skill.origin === "package"}
+                          />
+                          <DropdownMenuGroup
+                            hidden={skill.origin === "package"}
+                          >
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setSkillPendingDeletion(skill)}
                             >
-                              {skill.creator}
-                            </CardDescription>
-                          </div>
-                          {skill.type === "system" && skill.origin !== "package" && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    aria-label={t("common.more")}
-                                    size="icon-sm"
-                                    type="button"
-                                    variant="ghost"
-                                  />
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={MoreHorizontalIcon}
-                                  strokeWidth={2}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    disabled={skill.enabled}
-                                    onClick={() =>
-                                      setSkillEnabled(skill.id, true)
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={PlayIcon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.skills.enable")}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    disabled={!skill.enabled}
-                                    onClick={() =>
-                                      setSkillEnabled(skill.id, false)
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={PauseIcon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.skills.disable")}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleEditSkill(skill)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Edit02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.skills.edit")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() =>
-                                      setSkillPendingDeletion(skill)
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Delete02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.skills.delete")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        {skill.origin === "package" && <PackageGrants kind="skill" id={skill.id} name={skill.name} retired={!skill.enabled} subjects={subjects} onSaved={() => { void remote.reload() }} />}
-                        <p
-                          className="truncate text-muted-foreground"
-                          title={skill.description}
+                              <HugeiconsIcon
+                                icon={Delete02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.skills.delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p
+                    className="line-clamp-2 text-muted-foreground"
+                    title={skill.description}
+                  >
+                    {skill.description}
+                  </p>
+                </CardContent>
+                <CardFooter className="min-w-0 border-t">
+                  {selectedTags.length ? (
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      {selectedTags.map((tag) => (
+                        <Badge
+                          key={tag.id}
+                          variant="outline"
+                          className="max-w-full truncate"
+                          title={tag.name}
                         >
-                          {skill.description}
-                        </p>
-                      </CardContent>
-                      <CardFooter className="min-w-0 border-t">
-                        {selectedTags.length ? (
-                          <div className="flex min-w-0 flex-wrap gap-2">
-                            {selectedTags.map((tag) => (
-                              <Badge
-                                key={tag.id}
-                                variant="outline"
-                                className="max-w-full truncate"
-                                title={tag.name}
-                              >
-                                {tag.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            {t("pages.skills.noTags")}
-                          </span>
-                        )}
-                      </CardFooter>
-                    </Card>
-                  )
-                })}
-            </div>
-          </TabsContent>
-        ))}
-      </Tabs>
+                          {tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {t("pages.skills.noTags")}
+                    </span>
+                  )}
+                </CardFooter>
+              </Card>
+            )
+          })}
+        </div>
+      </ResourceList>
 
       <AlertDialog
         open={skillPendingDeletion !== null}

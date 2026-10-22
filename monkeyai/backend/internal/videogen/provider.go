@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
@@ -73,14 +75,60 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 			request["reference_images"] = images
 		}
 		body = request
-	case "MiniMax-H3":
+	case "MiniMax-H3", "doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628":
 		endpoint = "/v2/video_generation"
-		content := []map[string]any{{"type": "text", "text": input.Prompt}}
+		content := make([]map[string]any, 0, len(input.References)+1)
+		if input.Prompt != "" {
+			content = append(content, map[string]any{"type": "text", "text": input.Prompt})
+		}
 		for _, ref := range input.References {
 			uri := "data:" + ref.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(ref.Data)
 			content = append(content, map[string]any{"type": "image_url", "role": ref.Role, "image_url": map[string]string{"url": uri}})
 		}
-		body = map[string]any{"model": target.UpstreamModel, "content": content, "duration": seconds, "resolution": resolution, "ratio": ratio}
+		request := map[string]any{"model": target.UpstreamModel, "content": content, "duration": seconds, "resolution": resolution, "ratio": ratio}
+		if target.UpstreamModel != "MiniMax-H3" {
+			endpoint = "/contents/generations/tasks"
+			var audio bool
+			if err := json.Unmarshal(input.Params["generate_audio"], &audio); err != nil {
+				return "", errors.New("视频音频开关无效")
+			}
+			request["generate_audio"] = audio
+			request["output_format"] = "mp4"
+			if target.UpstreamModel == "doubao-seedance-2-5-260628" && input.Mode == model.VideoReferenceImageToVideo {
+				request["omni_reference_task_type"] = "reference"
+			}
+		}
+		body = request
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
+		mode := "text"
+		if input.Mode == model.VideoImageToVideo || input.Mode == model.VideoFirstLastToVideo {
+			mode = "keyframe"
+		} else if input.Mode == model.VideoReferenceImageToVideo {
+			mode = "reference"
+		}
+		request := map[string]any{
+			"model": target.UpstreamModel, "prompt": input.Prompt, "seconds": strconv.FormatInt(seconds, 10),
+			"mode": mode, "size": resolution, "aspect_ratio": ratio,
+		}
+		if mode == "keyframe" {
+			for _, ref := range input.References {
+				uri := "data:" + ref.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(ref.Data)
+				if ref.Role == "first_frame" {
+					request["first_frame"] = uri
+				} else if ref.Role == "last_frame" {
+					request["last_frame"] = uri
+				}
+			}
+		} else if mode == "reference" {
+			images := make([]string, 0, len(input.References))
+			for _, ref := range input.References {
+				uri := "data:" + ref.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(ref.Data)
+				images = append(images, uri)
+			}
+			request["images"] = images
+		}
+		endpoint = "/videos"
+		body = request
 	default:
 		return "", errors.New("视频供应商型号不受支持")
 	}
@@ -95,6 +143,8 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 		return "", fmt.Errorf("视频供应商受理结果未知: HTTP %d", status)
 	}
 	var response struct {
+		ID        string `json:"id"`
+		VideoID   string `json:"video_id"`
 		RequestID string `json:"request_id"`
 		TaskID    string `json:"task_id"`
 		BaseResp  struct {
@@ -104,9 +154,18 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 	if json.Unmarshal(content, &response) != nil || response.BaseResp.StatusCode != 0 {
 		return "", errors.New("视频供应商受理响应无效")
 	}
-	id := response.RequestID
-	if target.UpstreamModel == "MiniMax-H3" {
+	id := response.ID
+	switch target.UpstreamModel {
+	case "grok-imagine-video-1.5":
+		id = response.RequestID
+	case "MiniMax-H3":
 		id = response.TaskID
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
+		if response.VideoID != "" {
+			id = response.VideoID
+		} else if response.TaskID != "" {
+			id = response.TaskID
+		}
 	}
 	if _, err := providerTaskPath(id); err != nil {
 		return "", err
@@ -120,15 +179,27 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 		return providerResult{}, err
 	}
 	var endpoint string
+	var provider model.Provider
 	switch target.UpstreamModel {
 	case "grok-imagine-video-1.5":
-		endpoint = "/v1/videos/" + path
+		provider, endpoint = model.ProviderXAI, "/v1/videos/"+path
 	case "MiniMax-H3":
-		endpoint = "/v2/query/video_generation/" + path
+		provider, endpoint = model.ProviderMiniMax, "/v2/query/video_generation/"+path
+	case "doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628":
+		provider, endpoint = model.ProviderVolcengine, "/contents/generations/tasks/"+path
+	case "agnes-video-2.5", "agnes-video-2.5-flash":
+		provider, endpoint = model.ProviderAgnes, "/agnesapi?video_id="+url.QueryEscape(id)+"&model_name="+url.QueryEscape(target.UpstreamModel)
 	default:
 		return providerResult{}, errors.New("视频供应商型号不受支持")
 	}
-	content, code, err := providerJSON(ctx, client, http.MethodGet, target.BaseURL, endpoint, target.APIKey, nil)
+	queryTarget := target
+	if target.UpstreamModel == "agnes-video-2.5" || target.UpstreamModel == "agnes-video-2.5-flash" {
+		base := strings.TrimRight(target.BaseURL, "/")
+		if strings.HasSuffix(base, "/v1") {
+			queryTarget.BaseURL = strings.TrimSuffix(base, "/v1")
+		}
+	}
+	content, code, err := providerJSON(ctx, client, http.MethodGet, queryTarget.BaseURL, endpoint, target.APIKey, nil)
 	if err != nil {
 		return providerResult{}, err
 	}
@@ -136,8 +207,12 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 		return providerResult{}, fmt.Errorf("视频供应商查询失败: HTTP %d", code)
 	}
 	var response struct {
-		Status string `json:"status"`
-		Video  struct {
+		Status   string      `json:"status"`
+		Duration json.Number `json:"duration"`
+		Content  struct {
+			URL string `json:"video_url"`
+		} `json:"content"`
+		Video struct {
 			URL      string      `json:"url"`
 			Duration json.Number `json:"duration"`
 		} `json:"video"`
@@ -148,6 +223,8 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 			} `json:"content"`
 			Duration json.Number `json:"duration"`
 		} `json:"task"`
+		URL      string      `json:"url"`
+		Seconds  json.Number `json:"seconds"`
 		BaseResp struct {
 			StatusCode int `json:"status_code"`
 		} `json:"base_resp"`
@@ -159,17 +236,29 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 	value := response.Video.Duration
 	if target.UpstreamModel == "MiniMax-H3" {
 		result.Status, result.URL, value = strings.ToLower(response.Task.Status), response.Task.Content.URL, response.Task.Duration
+	} else if target.UpstreamModel == "agnes-video-2.5" || target.UpstreamModel == "agnes-video-2.5-flash" {
+		result.Status, result.URL, value = strings.ToLower(response.Status), response.URL, response.Seconds
+	} else if provider == model.ProviderVolcengine {
+		result.URL, value = response.Content.URL, response.Duration
 	}
 	switch result.Status {
-	case "done", "succeeded":
+	case "done", "succeeded", "completed":
+		cap, err := model.VideoCapabilitiesFor(provider, target.UpstreamModel)
+		if err != nil {
+			return providerResult{}, err
+		}
+		maxSeconds, err := model.VideoMaxDuration(cap)
+		if err != nil {
+			return providerResult{}, err
+		}
 		result.Status = "succeeded"
-		result.DurationMs, err = durationMillis(value)
+		result.DurationMs, err = durationMillis(value, maxSeconds)
 		if err != nil || result.URL == "" {
 			return providerResult{}, errors.New("视频供应商未提供可验证的结果")
 		}
-	case "failed", "expired":
+	case "failed", "expired", "cancelled":
 		result.Status = "failed"
-	case "pending", "queued", "processing", "running", "created":
+	case "pending", "queued", "processing", "in_progress", "running", "created":
 		result.Status = "running"
 	default:
 		return providerResult{}, errors.New("视频供应商状态未知")

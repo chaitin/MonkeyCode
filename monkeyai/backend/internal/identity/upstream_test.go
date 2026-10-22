@@ -20,12 +20,12 @@ func TestBaizhiyunOIDC(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			writeJSON(w, 200, providerMetadata{issuer + "/authorize", issuer + "/token", issuer + "/userinfo"})
+			writeJSON(r.Context(), w, 200, providerMetadata{issuer + "/authorize", issuer + "/token", issuer + "/userinfo"})
 		case "/token":
 			if r.Method != "POST" || r.FormValue("client_id") != "client" || r.FormValue("client_secret") != "secret" || r.FormValue("code") != "code" {
 				t.Error("交换令牌参数无效")
 			}
-			writeJSON(w, 200, map[string]string{"access_token": "upstream-token"})
+			writeJSON(r.Context(), w, 200, map[string]string{"access_token": "upstream-token"})
 		case "/userinfo":
 			if r.Header.Get("Authorization") != "Bearer upstream-token" {
 				t.Error("缺少上游令牌")
@@ -174,7 +174,7 @@ func TestBaizhiyunIdentityRegistration(t *testing.T) {
 	for _, email := range []string{"", "user@example.com"} {
 		t.Run(email, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, nil, "")
+			s := newTestService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: email}
 			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
@@ -214,7 +214,7 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pool := emailDatabase(t)
-			s := NewService(pool, nil, "")
+			s := newTestService(pool, nil, "")
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: "1001", Name: "百智云用户", Email: tc.initialEmail}
 			first, err := s.upsertIdentity(t.Context(), profile, false, true)
 			if err != nil {
@@ -253,7 +253,7 @@ func TestBaizhiyunIdentityEmail(t *testing.T) {
 
 func TestBaizhiyunEmailBinding(t *testing.T) {
 	pool := emailDatabase(t)
-	s := NewService(pool, nil, "")
+	s := newTestService(pool, nil, "")
 	for _, role := range []string{"user", "admin"} {
 		t.Run(role, func(t *testing.T) {
 			profile := upstreamProfile{Provider: "baizhiyun", Issuer: "https://identity.example", Subject: role, Name: "百智云用户", Email: role + "@example.com"}
@@ -384,7 +384,7 @@ func TestUpstreamResponseCloseLogsOnlySafeContext(t *testing.T) {
 	if _, err := s.exchangeUpstream(t.Context(), connection, "code"); err != nil {
 		t.Fatal(err)
 	}
-	for _, operation := range []string{"读取 OIDC 元数据", "交换上游令牌", "读取上游用户"} {
+	for _, operation := range []string{"read_oidc_metadata", "exchange_token", "read_userinfo"} {
 		if !strings.Contains(output.String(), operation) {
 			t.Errorf("缺少 %s 的关闭失败日志: %s", operation, output.String())
 		}

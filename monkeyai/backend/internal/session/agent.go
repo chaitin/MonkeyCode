@@ -15,6 +15,8 @@ import (
 )
 
 func (s *Service) RegisterAgent(router chi.Router) {
+	router.With(identity.RequireScope("session:read")).Get("/sessions", s.sessionIndex)
+	router.With(identity.RequireScope("session:read")).Get("/sessions/{id}", s.sessionIndex)
 	router.Put("/sessions/{id}", s.putSession)
 	router.Post("/sessions/{id}/turns", s.postTurns)
 }
@@ -30,73 +32,98 @@ func agentUser(r *http.Request) (identity.User, error) {
 func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 	user, err := agentUser(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := s.checkReporting(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if !s.checkRequestLimit(w, r.Context(), user.ID, "sessions", 60) {
 		return
 	}
-	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
-	if !validUUID(machineID) {
-		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必须为 UUID"))
+	machineID, err := reportingMachine(r)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		resource.Fail(w, invalidSession("会话 ID 无效"))
+		resource.Fail(r.Context(), w, invalidSession("会话 ID 无效"))
 		return
 	}
 	var in sessionInput
 	if err := decodeBody(w, r, maxSessionBodyBytes, &in); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := validateSessionInput(in); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if strings.TrimSpace(in.Client.MachineID) != machineID {
-		resource.Fail(w, conflict("not_host", "client.machine_id 与请求宿主不一致"))
+		resource.Fail(r.Context(), w, conflict("not_host", "client.machine_id 与请求宿主不一致"))
 		return
 	}
 
 	tx, err := s.begin(r.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollback(r.Context(), tx)
+	verified, err := s.authenticateHost(r.Context(), tx, machineID)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	if err := s.liveSummary(r.Context(), user.ID, machineID, in.Runtime, verified); err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
 	row, err := s.ensureLocked(r.Context(), tx, user.ID, id, inputString(in.ParentSessionID), "", machineID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	if err := checkHostVerification(row, verified); err != nil {
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := validateSessionTimes(in, row); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	stateChanged, stateHash, err := validateState(in, row)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	q := sqlc.New(tx)
+	if verified {
+		if err := q.VerifySessionHost(r.Context(), id); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+	}
 	now := s.now().UTC()
+	if in.Runtime != nil {
+		if err := q.SetLiveSummary(r.Context(), sqlc.SetLiveSummaryParams{ID: id, LastLiveReportAt: new(now), LiveBootID: new(in.Runtime.BootID), LiveLeaseEpoch: new(in.Runtime.LeaseEpoch)}); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+	}
 	if stateChanged {
 		payload, err := json.Marshal(resource.Object{
 			"id": id, "state_seq": *in.StateSeq,
 			"state_hash": hex.EncodeToString(stateHash), "received_at": now,
 		})
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		if err := q.SetState(r.Context(), payload); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 	}
@@ -110,23 +137,23 @@ func (s *Service) putSession(w http.ResponseWriter, r *http.Request) {
 		"client_deleted_at": optionalTime(in.ClientDeletedAt), "received_at": now,
 	})
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := q.SaveSession(r.Context(), payload); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	row, err = readSession(r.Context(), tx, id, true)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(w, http.StatusOK, resource.Object{
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{
 		"state_seq":   row.StateSeq,
 		"acked_turn":  row.AckedTurn,
 		"server_time": s.now().UTC(),
@@ -146,7 +173,7 @@ func validateSessionInput(in sessionInput) error {
 	if in.Client == nil || !requiredString(in.Client.MachineID, 256) || !validText(in.Client.Version, 128, false) || !validText(in.Client.EngineVersion, 128, false) || !validText(in.Client.RuntimeVersion, 128, false) {
 		return invalidState("client 字段无效")
 	}
-	if !contains([]string{"desktop", "web", "extension", "mobile", "unknown"}, in.Client.Type) {
+	if !contains([]string{"desktop", "web", "extension", "mobile", "runtime", "unknown"}, in.Client.Type) {
 		return invalidState("client.type 无效")
 	}
 	if in.SessionType == nil || !contains([]string{"conversation", "workflow", "tool", "scheduled"}, *in.SessionType) {
@@ -189,6 +216,7 @@ func validateSessionTimes(in sessionInput, row sessionRow) error {
 }
 
 func validateState(in sessionInput, row sessionRow) (bool, []byte, error) {
+	in.Runtime = nil
 	data, err := json.Marshal(in)
 	if err != nil {
 		return false, nil, invalidState("会话快照无法规范化")

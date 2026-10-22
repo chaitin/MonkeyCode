@@ -40,7 +40,7 @@ func userImagePricing(kind Kind) *ImagePricing {
 }
 
 func validateImageModel(item *Model) error {
-	if !slices.Contains([]Provider{ProviderOpenAIImages, ProviderOpenAIResponses, ProviderVolcengine, ProviderXAI}, item.Provider) {
+	if !slices.Contains([]Provider{ProviderOpenAIImages, ProviderOpenAIResponses, ProviderVolcengine, ProviderXAI, ProviderAgnes}, item.Provider) {
 		return errors.New("生图模型 provider 无效")
 	}
 	if item.AdvancedConfig != (AdvancedConfig{}) {

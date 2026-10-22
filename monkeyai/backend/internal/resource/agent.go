@@ -69,22 +69,22 @@ func (c *CRUD) RegisterAgent(router chi.Router) {
 		user, _ := identity.UserFromContext(r.Context())
 		item, err := c.GetUser(r.Context(), c.Store.Pool, chi.URLParam(r, "id"), user.ID)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ETag(w, item)
-		JSON(w, http.StatusOK, item)
+		JSON(r.Context(), w, http.StatusOK, item)
 	})
 	save := func(w http.ResponseWriter, r *http.Request) {
 		var input Object
 		if err := Decode(w, r, &input); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
 		item, err := c.SaveUser(r.Context(), user.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), input)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		status := http.StatusOK
@@ -92,14 +92,14 @@ func (c *CRUD) RegisterAgent(router chi.Router) {
 			status = http.StatusCreated
 		}
 		ETag(w, item)
-		JSON(w, status, item)
+		JSON(r.Context(), w, status, item)
 	}
 	router.Post(path, save)
 	router.Put(path+"/{id}", save)
 	router.Delete(path+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
 		if err := c.DeleteUser(r.Context(), user.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match")); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

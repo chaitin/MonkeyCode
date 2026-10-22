@@ -31,8 +31,8 @@ test("members page keeps the original split cards and compact member list", asyn
     "utf8"
   )
 
-  assert.match(source, /md:h-\[calc\(100svh-5rem\)\]/)
-  assert.doesNotMatch(source, /md:h-\[calc\(100svh-4rem\)\]/)
+  assert.match(source, /md:h-\[calc\(100vh-5rem\)\]/)
+  assert.doesNotMatch(source, /md:h-\[calc\(100vh-4rem\)\]/)
   assert.match(
     source,
     /md:grid-cols-\[minmax\(14rem,1fr\)_minmax\(0,1\.5fr\)\]/
@@ -53,13 +53,10 @@ test("members page keeps the original split cards and compact member list", asyn
   assert.match(source, /groupsByMember\.get\(user\.id\)/)
   assert.doesNotMatch(source, /pages\.membersAndGroups\.ungroupedMembers/)
   assert.match(source, /<MemberActions/)
-  assert.match(
-    source,
-    /<MemberAvatar\s+role=\{user\.role\}\s+status=\{user\.status\}\s+size="lg"/
-  )
+  assert.match(source, /<UserAvatar src=\{user\.avatar_url\} size="lg"/)
   assert.doesNotMatch(source, /groupMemberIDs\(/)
   assert.match(source, /\.sort\(compareMembers\)/)
-  assert.doesNotMatch(source, /<Table/)
+  assert.doesNotMatch(source, /<Table(?:\s|>)/)
 })
 
 test("group card selection actions use secondary buttons", async () => {
@@ -95,11 +92,11 @@ test("both members panels scroll inside shadcn Scroll Areas", async () => {
   assert.equal((panels.match(/<ScrollArea className=/g) ?? []).length, 2)
   assert.match(
     panels,
-    /<ScrollArea className="-ms-1 -me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
+    /<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
   )
   assert.match(
     panels,
-    /<ScrollArea className="-me-\(--card-spacing\) min-h-0 min-w-0 flex-1 pe-\(--card-spacing\)">/
+    /<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">/
   )
   assert.equal((panels.match(/<\/ScrollArea>/g) ?? []).length, 2)
   assert.match(panels, /<ul\s+className="flex flex-col gap-1"/)
@@ -404,20 +401,11 @@ test("tree and list share the same member action menu", async () => {
     2
   )
   assert.match(tree, /<MemberActions/)
-  const avatar = await readFile(
-    new URL("../src/components/members/member-avatar.tsx", import.meta.url),
-    "utf8"
-  )
-  assert.match(tree, /icon=\{User02Icon\}/)
-  assert.match(tree, /memberIconColor\(member\)/)
-  assert.doesNotMatch(tree, /<MemberAvatar/)
-  assert.match(avatar, /<Avatar size=\{size\}>/)
-  assert.match(avatar, /<AvatarFallback>/)
-  assert.match(avatar, /status === "disabled"\s*\?\s*UserRoundXIcon/)
   assert.match(
-    avatar,
-    /role === "admin"\s*\?\s*UserRoundCogIcon\s*:\s*UserRoundCheckIcon/
+    tree,
+    /<UserAvatar src=\{member\.avatar_url\} className="!size-4"/
   )
-  assert.match(avatar, /memberIconColor\(\{ role, status \}\)/)
+  assert.doesNotMatch(tree, /User02Icon|MemberAvatar/)
+  assert.match(tree, /member\.status === "disabled" && "text-muted-foreground"/)
   assert.match(actions, /<DropdownMenu/)
 })

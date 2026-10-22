@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -33,6 +32,7 @@ type Client struct {
 }
 
 var Clients = map[string]Client{
+	"monkeyai-runtime": {ID: RuntimeClientID, Name: "MonkeyAI Runtime"},
 	"monkeyai-desktop": {
 		ID:          "monkeyai-desktop",
 		Name:        "MonkeyAI Desktop",
@@ -72,6 +72,8 @@ type AuthorizationRequest struct {
 	CodeChallengeMethod string
 	ExpiresAt           time.Time
 	CompletedAt         *time.Time
+	Scopes              []string
+	Audience            string
 }
 
 type AuthorizationCode struct {
@@ -82,16 +84,20 @@ type AuthorizationCode struct {
 	CodeChallenge string
 	ExpiresAt     time.Time
 	RedeemedAt    *time.Time
+	Scopes        []string
+	Audience      string
 }
 
 type LoginState struct {
 	ConnectionID           string
 	AuthorizationRequestID string
+	DeviceRequestID        string
 	Purpose                string
 }
 
 const (
 	loginPurposeClient = "client"
+	loginPurposeDevice = "device"
 	loginPurposeAdmin  = "admin"
 )
 
@@ -101,6 +107,10 @@ type Token struct {
 	TokenType    string    `json:"token_type"`
 	ExpiresIn    int64     `json:"expires_in"`
 	ExpiresAt    time.Time `json:"-"`
+	GrantID      string    `json:"grant_id"`
+	ServerID     string    `json:"server_id,omitempty"`
+	MachineID    string    `json:"machine_id,omitempty"`
+	Scope        string    `json:"scope"`
 }
 
 type SettingReader interface {
@@ -122,20 +132,24 @@ func (s *Service) WithUserWriter(writer member.UserWriter) *Service {
 }
 
 type Service struct {
-	email        EmailSender
-	accounts     AccountPreserver
-	writer       member.UserWriter
-	db           *pgxpool.Pool
-	settings     SettingReader
-	client       *http.Client
-	publicURL    string
-	secureCookie bool
-	now          func() time.Time
-	sessionTTL   time.Duration
-	requestTTL   time.Duration
-	codeTTL      time.Duration
-	accessTTL    time.Duration
-	refreshTTL   time.Duration
+	device          *deviceAuthorization
+	email           EmailSender
+	accounts        AccountPreserver
+	writer          member.UserWriter
+	db              *pgxpool.Pool
+	settings        SettingReader
+	client          *http.Client
+	publicURL       string
+	secureCookie    bool
+	now             func() time.Time
+	sessionTTL      time.Duration
+	requestTTL      time.Duration
+	codeTTL         time.Duration
+	accessTTL       time.Duration
+	grantRevoker    func(string)
+	runtimeFeatures func(context.Context) (map[string]bool, error)
+	runtimeMetadata map[string]any
+	refreshTTL      time.Duration
 }
 
 func NewService(db *pgxpool.Pool, settings SettingReader, publicURL string) *Service {
@@ -155,6 +169,21 @@ func NewService(db *pgxpool.Pool, settings SettingReader, publicURL string) *Ser
 	}
 }
 
+func (s *Service) WithGrantRevoker(revoke func(string)) *Service {
+	s.grantRevoker = revoke
+	return s
+}
+
+func (s *Service) WithRuntimeFeatures(features func(context.Context) (map[string]bool, error)) *Service {
+	s.runtimeFeatures = features
+	return s
+}
+
+func (s *Service) WithRuntimeMetadata(metadata map[string]any) *Service {
+	s.runtimeMetadata = metadata
+	return s
+}
+
 func (s *Service) BeginAuthorization(ctx context.Context, values url.Values) (AuthorizationRequest, error) {
 	request, err := s.newAuthorizationRequest(values)
 	if err != nil {
@@ -171,7 +200,7 @@ func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationReque
 		return AuthorizationRequest{}, oauthError("unsupported_response_type", "仅支持 authorization code")
 	}
 	client, ok := Clients[values.Get("client_id")]
-	if !ok {
+	if !ok || client.ID == RuntimeClientID {
 		return AuthorizationRequest{}, oauthError("invalid_request", "client_id 无效")
 	}
 	redirectURI := values.Get("redirect_uri")
@@ -187,8 +216,25 @@ func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationReque
 		return AuthorizationRequest{}, oauthError("invalid_request", "必须使用有效的 PKCE S256")
 	}
 
+	scopeValue := values.Get("scope")
+	if client.ID == "monkeyai-desktop" && scopeValue == "" && s.deviceEnabled() {
+		scopeValue = strings.Join([]string{"device:bind", "device:publish", "device:connect", "session:report"}, " ")
+	}
+	scopes, err := parseScopes(client.ID, scopeValue)
+	if err != nil {
+		return AuthorizationRequest{}, err
+	}
+	audience := values.Get("audience")
+	if audience == "" {
+		audience = Audience
+	}
+	if audience != Audience {
+		return AuthorizationRequest{}, oauthError("invalid_target", "不支持请求的受众")
+	}
 	return AuthorizationRequest{
 		ClientID:            client.ID,
+		Scopes:              scopes,
+		Audience:            audience,
 		RedirectURI:         redirectURI,
 		State:               state,
 		CodeChallenge:       challenge,
@@ -198,12 +244,25 @@ func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationReque
 }
 
 func (s *Service) CompleteAuthorization(ctx context.Context, requestID, userID string) (string, error) {
+	return s.completeAuthorization(ctx, requestID, userID, nil)
+}
+
+func (s *Service) completeAuthorization(ctx context.Context, requestID, userID string, approval *[]string) (string, error) {
 	request, err := s.authorizationRequest(ctx, requestID)
 	if err != nil {
 		return "", err
 	}
 	if request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		return "", errors.New("授权请求已完成或已过期")
+	}
+	if len(request.Scopes) > 0 && approval == nil {
+		return "", oauthError("consent_required", "新增权限需要用户明确批准")
+	}
+	if approval != nil {
+		request.Scopes, err = approvedScopes(request.Scopes, *approval)
+		if err != nil {
+			return "", err
+		}
 	}
 	code, err := randomToken(32)
 	if err != nil {
@@ -232,7 +291,7 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 	}
 	stored, err := s.authorizationCode(ctx, tokenHash(code))
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		slog.ErrorContext(ctx, "查询授权码失败", "client_id", clientID, "error", err)
+		return Token{}, err
 	}
 	if err != nil || stored.ClientID != clientID || stored.RedirectURI != redirectURI || stored.RedeemedAt != nil || !s.now().Before(stored.ExpiresAt) {
 		return Token{}, oauthError("invalid_grant", "授权码无效或已过期")
@@ -255,12 +314,14 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 		AccessToken: access, RefreshToken: refresh, TokenType: "Bearer",
 		ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: s.now().Add(s.accessTTL),
 	}
-	if err := s.redeemCodeAndStoreToken(ctx, stored.ID, stored.UserID, clientID, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL)); err != nil {
-		if !errors.Is(err, errAuthorizationCodeUsed) {
-			slog.ErrorContext(ctx, "兑换授权码失败", "code_id", stored.ID, "error", err)
+	grant, err := s.redeemCodeAndStoreToken(ctx, stored, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL))
+	if err != nil {
+		if errors.Is(err, errAuthorizationCodeUsed) {
+			return Token{}, oauthError("invalid_grant", "授权码已被使用")
 		}
-		return Token{}, oauthError("invalid_grant", "授权码已被使用")
+		return Token{}, err
 	}
+	token.GrantID, token.Scope = grant.ID, strings.Join(grant.Scopes, " ")
 	return token, nil
 }
 
@@ -277,11 +338,19 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 		return Token{}, err
 	}
 	token := Token{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer", ExpiresIn: int64(s.accessTTL.Seconds()), ExpiresAt: s.now().Add(s.accessTTL)}
-	if err := s.rotateToken(ctx, tokenHash(refreshToken), clientID, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL)); err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.ErrorContext(ctx, "刷新 OAuth 令牌失败", "client_id", clientID, "error", err)
+	grant, err := s.rotateToken(ctx, tokenHash(refreshToken), clientID, tokenHash(access), tokenHash(refresh), token.ExpiresAt, s.now().Add(s.refreshTTL))
+	if err != nil {
+		if errors.Is(err, errInvalidGrant) {
+			return Token{}, oauthError("invalid_grant", "refresh_token 无效或已过期")
 		}
-		return Token{}, oauthError("invalid_grant", "refresh_token 无效或已过期")
+		return Token{}, err
+	}
+	token.GrantID, token.Scope = grant.ID, strings.Join(grant.Scopes, " ")
+	if grant.Purpose == "runtime" && s.deviceEnabled() {
+		token.ServerID = s.device.serverID
+		if grant.RequestedMachineID != nil {
+			token.MachineID = *grant.RequestedMachineID
+		}
 	}
 	return token, nil
 }

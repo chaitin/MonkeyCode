@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -312,6 +313,6 @@ func stringValue(values map[string]any, keys ...string) string {
 
 func closeUpstreamBody(ctx context.Context, body io.ReadCloser, operation string) {
 	if err := body.Close(); err != nil && ctx.Err() == nil {
-		slog.ErrorContext(ctx, "关闭上游响应失败", "operation", operation, "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.upstream.close.failed", "关闭上游响应失败", "module", "identity", "operation", map[string]string{"读取 OIDC 元数据": "read_oidc_metadata", "交换上游令牌": "exchange_token", "读取上游用户": "read_userinfo"}[operation], "error_type", fmt.Sprintf("%T", err))
 	}
 }

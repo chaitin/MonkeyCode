@@ -1,422 +1,128 @@
-import { useEffect, useRef, useState, type InputHTMLAttributes } from "react"
-import { ArrowDown01Icon, FileArchiveIcon, FolderOpenIcon, Upload04Icon } from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-
 import { api } from "@/lib/api"
-import { stageDirectoryZip } from "@/lib/stream-zip"
+import type { ImportResult } from "@/lib/design-import"
+import { uploadBase, type ResourceUpload } from "@/lib/resource-upload"
+import { ResourceImportDialog } from "@/components/resource-import-dialog"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const base = "/api/admin/v1/resource-imports"
-const maxPackage = 2 * 1024 * 1024 * 1024
+const counts = [["create", "新增"], ["update", "更新"], ["skip", "跳过"], ["retain", "保留"], ["retire", "停用"], ["restore", "恢复"], ["ignored_static", "忽略静态资源"]] as const
 
-const counts = [
-  ["create", "新增"],
-  ["update", "更新"],
-  ["skip", "跳过"],
-  ["retire", "退役"],
-  ["restore", "恢复"],
-  ["ignored_static", "忽略静态资源"],
-] as const
-
-const actionLabels = {
-  create: "新增",
-  update: "更新",
-  skip: "跳过",
-  retire: "停用",
-  restore: "恢复",
-} as const
-
-type Change = {
-  type: string
-  slug: string
-  name: string
-  action: "create" | "update" | "skip" | "retire" | "restore"
-  warnings?: string[]
-  source_sha256?: string
-  storage_sha256?: string
-}
-
-type Preview = {
-  publisher: string
-  release_id: string
-  version: number
-  package_sha256: string
-  plan_digest: string
-  changes: Change[]
-  ignored_static: string[]
-  requires_confirmation: boolean
-  already_imported: boolean
-}
-
-type Batch = {
-  id: string
-  publisher: string
-  release_id: string
-  version: number
-  status: string
-  result_counts: Record<string, number>
-  created_at: string
-}
-
-type HistoryPage = {
-  items: Batch[]
-  next_cursor: string | null
-}
-
-type HistoryRequest = {
-  key: string
-  page?: HistoryPage
-  error?: string
-}
-
-type StagedArchive = { file: File; cleanup?: () => Promise<void> }
-
-async function archiveDirectory(list: FileList): Promise<StagedArchive> {
-  if (list.length === 0) throw new Error("目录没有文件")
-  const byPath = new Map<string, File>()
-  for (const file of Array.from(list)) {
-    const parts = file.webkitRelativePath.split("/")
-    const relativePath = parts.slice(1).join("/")
-    if (!relativePath || relativePath.split("/").some((part) => part === ".." || !part)) {
-      throw new Error("目录内存在无效路径")
-    }
-    byPath.set(relativePath, file)
-  }
-  const checksum = byPath.get("CHECKSUMS.sha256")
-  if (!checksum || checksum.size > 8 * 1024 * 1024) throw new Error("目录缺少有效的 CHECKSUMS.sha256")
-  const declared = (await checksum.text()).trim().split("\n").map((line) => line.trimEnd().slice(66))
-  const paths = new Set(["release.json", "manifest.json", "CHECKSUMS.sha256", ...declared])
-  if (paths.size > 5000) throw new Error("目录文件数量超限")
-  const selected = new Map<string, File>()
-  let size = 0
-  for (const path of paths) {
-    const file = byPath.get(path)
-    if (!file || path.split("/").some((part) => part === ".." || !part)) {
-      throw new Error(`目录缺少发布包声明的文件：${path}`)
-    }
-    size += file.size
-    if (size > maxPackage) throw new Error("目录文件总大小超过 2 GiB，请选择现成 ZIP")
-    selected.set(path, file)
-  }
-  if (!navigator.storage?.getDirectory) {
-    if (size > 200 * 1024 * 1024) throw new Error("当前浏览器不支持大目录磁盘暂存，请选择现成 ZIP")
-    const { default: JSZip } = await import("jszip")
-    const zip = new JSZip()
-    for (const [path, file] of selected) zip.file(path, file)
-    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" })
-    if (blob.size > maxPackage) throw new Error("资源包超过 2 GiB")
-    return { file: new File([blob], "release.zip", { type: "application/zip" }) }
-  }
-  return stageDirectoryZip(selected, maxPackage)
-}
+type Batch = { id: string; publisher: string; release_id: string; version: number; status: string; result_counts: Record<string, number>; section_results?: ImportResult["sections"]; created_at: string }
+type HistoryPage = { items: Batch[]; next_cursor: string | null }
+type HistoryRequest = { key: string; page?: HistoryPage; error?: string }
 
 export function ResourceImportsPage() {
   const { i18n } = useTranslation()
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
-  const [sourceName, setSourceName] = useState("")
-  const archiveInputRef = useRef<HTMLInputElement | null>(null)
-  const directoryInputRef = useRef<HTMLInputElement | null>(null)
-  const stagedCleanupRef = useRef<StagedArchive["cleanup"]>(undefined)
-  const [preview, setPreview] = useState<Preview | null>(null)
+  const [dialog, setDialog] = useState<{ upload: ResourceUpload | null } | null>(null)
   const [request, setRequest] = useState<HistoryRequest | null>(null)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
   const [active, setActive] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
   const [refresh, setRefresh] = useState(0)
-  const [modes, setModes] = useState<Record<string, string>>({})
-  const [confirmed, setConfirmed] = useState(false)
-  const [normalization, setNormalization] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-
+  const [pending, setPending] = useState<ResourceUpload[]>([])
+  const [pendingError, setPendingError] = useState("")
+  const [discarding, setDiscarding] = useState("")
   const cursor = cursors[active]
-  const historyKey = `${refresh}:${cursor ?? ""}`
+  const historyKey = `${refresh}:${pageSize}:${cursor ?? ""}`
   const current = request?.key === historyKey ? request : null
   const history = current?.page ?? null
   const historyError = current?.error ?? ""
   const historyLoading = current === null
+  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: "short", timeStyle: "short" })
 
   useEffect(() => {
     let activeRequest = true
-    const key = `${refresh}:${cursor ?? ""}`
-    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""
-    void api<HistoryPage>(`${base}${query}`)
+    const controller = new AbortController()
+    const key = `${refresh}:${pageSize}:${cursor ?? ""}`
+    const query = new URLSearchParams({ limit: String(pageSize) })
+    if (cursor) query.set("cursor", cursor)
+    void api<HistoryPage>(`${base}?${query}`, { signal: controller.signal })
       .then((page) => { if (activeRequest) setRequest({ key, page }) })
-      .catch((reason: unknown) => {
-        if (activeRequest) setRequest({ key, error: reason instanceof Error ? reason.message : "读取记录失败" })
-      })
-    return () => { activeRequest = false }
-  }, [cursor, refresh])
+      .catch((reason: unknown) => { if (activeRequest) setRequest({ key, error: reason instanceof Error ? reason.message : "读取记录失败" }) })
+    return () => { activeRequest = false; controller.abort() }
+  }, [cursor, refresh, pageSize])
 
-  useEffect(() => () => {
-    if (stagedCleanupRef.current) void stagedCleanupRef.current().catch(() => {})
-  }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    void api<{ items: ResourceUpload[] }>(uploadBase, { signal: controller.signal })
+      .then(({ items }) => { if (!controller.signal.aborted) { setPending(items); setPendingError("") } })
+      .catch((reason: unknown) => { if (!controller.signal.aborted) setPendingError(reason instanceof Error ? reason.message : "读取未完成任务失败") })
+    return () => controller.abort()
+  }, [refresh])
 
-  const cleanupStaged = () => {
-    const cleanup = stagedCleanupRef.current
-    stagedCleanupRef.current = undefined
-    if (cleanup) void cleanup().catch(() => {})
-  }
-
-  const closeDialog = (open: boolean) => {
-    if (busy && !open) return
-    setDialogOpen(open)
-    if (!open) {
-      cleanupStaged()
-      setFile(null)
-      setSourceName("")
-      setPreview(null)
-      setModes({})
-      setConfirmed(false)
-      setNormalization(false)
-      setError("")
-    }
-  }
-
-  const options = (confirmFinal: boolean) => ({
-    authorization_modes: modes,
-    accept_normalization: normalization,
-    confirm_final: confirmFinal,
-  })
-
-  const upload = async (apply: boolean) => {
-    if (!file || busy) return
-    setBusy(true)
-    setError("")
+  const discard = async (upload: ResourceUpload) => {
+    setDiscarding(upload.id)
+    setPendingError("")
     try {
-      const form = new FormData()
-      form.set("package", file)
-      form.set("options", JSON.stringify(options(apply)))
-      if (apply && preview) {
-        form.set("package_sha256", preview.package_sha256)
-        form.set("plan_digest", preview.plan_digest)
-      }
-      const result = await api<Preview>(apply ? base : `${base}/preview`, { method: "POST", body: form })
-      if (apply) {
-        cleanupStaged()
-        setDialogOpen(false)
-        setFile(null)
-        setPreview(null)
-        setModes({})
-        setConfirmed(false)
-        setNormalization(false)
+      await api(`${uploadBase}/${upload.id}`, { method: "DELETE" })
+      setRefresh((value) => value + 1)
+    } catch (reason) { setPendingError(reason instanceof Error ? reason.message : "放弃任务失败") }
+    finally { setDiscarding("") }
+  }
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold">资源包导入记录</h1>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
+          <Button type="button" onClick={() => setDialog({ upload: null })}>导入资源包</Button>
+        </div>
+      </div>
+      {pendingError && <p role="alert" className="text-sm text-destructive">未完成任务：{pendingError}</p>}
+      {pending.length > 0 && <div className="max-h-56 shrink-0 space-y-2 overflow-y-auto rounded-lg border p-3">
+        <h2 className="text-sm font-medium">未完成任务 <span className="font-normal text-muted-foreground">· 上传后保留 24 小时</span></h2>
+        {pending.map((upload) => {
+          const uploaded = upload.chunks.reduce((sum, chunk) => sum + chunk.size, 0)
+          return <div key={upload.id} className="flex flex-wrap items-center gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm">
+            <div className="min-w-0 flex-1"><p className="truncate" title={upload.files[0]?.name}>{upload.files[0]?.name}{upload.files.length > 1 ? ` 等 ${upload.files.length} 卷` : ""}</p><p className="text-xs text-muted-foreground">{upload.status === "ready" ? "待确认导入" : `已上传 ${Math.floor(uploaded / upload.total_size * 100)}%`} · 有效期至 {dateFormat.format(new Date(upload.expires_at))}</p></div>
+            <Button size="sm" variant="outline" disabled={Boolean(discarding)} onClick={() => setDialog({ upload })}>{upload.status === "ready" ? "继续确认" : "继续上传"}</Button>
+            <Button size="sm" variant="ghost" disabled={Boolean(discarding)} onClick={() => { void discard(upload) }}>{discarding === upload.id ? "处理中…" : "放弃"}</Button>
+          </div>
+        })}
+      </div>}
+      <Card className="min-h-0 flex-1">
+        <CardContent className="min-h-0 flex-1 gap-4 px-0">
+          {historyError && <div role="alert" className="mx-[var(--card-spacing)] flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive"><span>{historyError}</span><Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button></div>}
+          <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
+            <Table aria-busy={historyLoading} className={`${!history?.items.length ? "h-full " : ""}[&_th:first-child]:ps-[var(--card-spacing)] [&_td:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)]`}>
+              <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "发布者", "版本", "发布 ID", "状态", "资源变更"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
+              <TableBody className={!history?.items.length ? "h-full" : undefined}>{history?.items.map((batch) => <TableRow key={batch.id}>
+                <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>
+                <TableCell className="font-medium">{batch.publisher}</TableCell>
+                <TableCell>{batch.version > 0 ? `v${batch.version}` : "设计快照"}</TableCell>
+                <TableCell className="font-mono" title={batch.release_id}>{batch.release_id.slice(0, 8)}…</TableCell>
+                <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : batch.status === "partial" ? "部分成功" : "失败"}</Badge></TableCell>
+                <TableCell className="text-muted-foreground">{batch.section_results ? <div className="space-y-1">{Object.entries(batch.section_results).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "design" ? "设计资源" : "Agent 资源"}：{item.status === "succeeded" ? "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all font-mono text-xs">{item.result.release_id}</p>}{item.error && <p className="text-destructive">{item.error.message}</p>}</div>)}</div> : counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}</TableCell>
+              </TableRow>)}
+                {!history?.items.length && !historyError && <TableRow className="h-full">
+                  <TableCell colSpan={6} className="h-full text-center text-muted-foreground">
+                    {historyLoading ? <TableLoading /> : "暂无导入记录"}
+                  </TableCell>
+                </TableRow>}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+          <TablePagination page={active + 1} pageSize={pageSize} itemCount={history?.items.length ?? 0} loading={historyLoading} error={Boolean(historyError)} hasNext={Boolean(history?.next_cursor)}
+            onPageSizeChange={(size) => { setPageSize(size); setCursors([undefined]); setActive(0) }}
+            onPrevious={() => setActive((value) => Math.max(0, value - 1))}
+            onNext={() => { if (history?.next_cursor) { setCursors((current) => [...current.slice(0, active + 1), history.next_cursor!]); setActive((value) => value + 1) } }} />
+        </CardContent>
+      </Card>
+      {dialog && <ResourceImportDialog key={dialog.upload?.id ?? "new"} initialUpload={dialog.upload} onClose={() => setDialog(null)} onChanged={() => setRefresh((value) => value + 1)} onImported={() => {
+        setDialog(null)
         setCursors([undefined])
         setActive(0)
         setRefresh((value) => value + 1)
-      } else {
-        setPreview(result)
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "导入失败")
-      if (apply) setPreview(null)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const needsNormalization = preview?.changes.some((item) => item.type === "skill" && (item.warnings?.length ?? 0) > 0)
-  const changed = preview?.changes.filter((item) => item.action !== "skip") ?? []
-  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: "short", timeStyle: "short" })
-
-  return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">资源包导入记录</h1>
-        <Button type="button" onClick={() => setDialogOpen(true)}>导入资源包</Button>
-      </div>
-      <Card className="min-h-0 flex-1">
-        <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          {historyError && (
-            <div role="alert" className="mx-(--card-spacing) flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive">
-              <span>{historyError}</span>
-              <Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button>
-            </div>
-          )}
-          {historyLoading && !history && <p role="status" className="px-(--card-spacing) text-sm text-muted-foreground">加载中…</p>}
-          {history && history.items.length === 0 && !historyLoading && <p className="px-(--card-spacing) text-sm text-muted-foreground">暂无导入记录</p>}
-          {history && history.items.length > 0 && (
-            <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
-              <Table className="[&_th:first-child]:ps-(--card-spacing) [&_td:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing) [&_td:last-child]:pe-(--card-spacing)">
-                <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
-                  <TableRow>
-                    {["导入时间", "发布者", "版本", "发布 ID", "状态", "资源变更"].map((column) => <TableHead key={column}>{column}</TableHead>)}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {history.items.map((batch) => (
-                    <TableRow key={batch.id}>
-                      <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>
-                      <TableCell className="font-medium">{batch.publisher}</TableCell>
-                      <TableCell>v{batch.version}</TableCell>
-                      <TableCell className="font-mono" title={batch.release_id}>{batch.release_id.slice(0, 8)}…</TableCell>
-                      <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : "失败"}</Badge></TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          )}
-          {history && (
-            <div className="flex justify-end gap-2 px-(--card-spacing)">
-              <Button size="sm" variant="outline" disabled={active === 0 || historyLoading} onClick={() => setActive(active - 1)}>上一页</Button>
-              <Button size="sm" variant="outline" disabled={!history.next_cursor || historyLoading || !!historyError} onClick={() => {
-                const next = history.next_cursor
-                if (next) {
-                  setCursors((current) => [...current.slice(0, active + 1), next])
-                  setActive(active + 1)
-                }
-              }}>下一页</Button>
-              <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Dialog open={dialogOpen} onOpenChange={closeDialog}>
-        <DialogContent className={`max-h-[90svh] overflow-y-auto ${preview ? "sm:max-w-3xl" : "sm:max-w-xl"}`} closeLabel="关闭">
-          <DialogHeader>
-            <DialogTitle>导入资源包</DialogTitle>
-            <p className="text-sm text-muted-foreground">选择发布包 ZIP，或选择包含 release.json 的解压目录。</p>
-          </DialogHeader>
-          <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm leading-6">
-            <span className="font-medium">全量同步：</span>本次资源包是该发布者最终的 Agent 资源集合，缺失资源将在确认后停用。独立静态资源只校验、不导入。
-          </div>
-          <Input accept=".zip,application/zip" className="hidden" disabled={busy} ref={archiveInputRef} type="file" onChange={(event) => {
-            const selected = event.currentTarget.files?.[0]
-            if (!selected) return
-            cleanupStaged()
-            if (selected.size > maxPackage) {
-              setFile(null)
-              setError("资源包超过 2 GiB")
-              event.currentTarget.value = ""
-              return
-            }
-            setFile(selected)
-            setSourceName(selected.name)
-            setPreview(null)
-            setConfirmed(false)
-            setModes({})
-            setNormalization(false)
-            setError("")
-            event.currentTarget.value = ""
-            if (directoryInputRef.current) directoryInputRef.current.value = ""
-          }} />
-          <Input className="hidden" disabled={busy} ref={directoryInputRef} type="file" {...({ webkitdirectory: "" } as InputHTMLAttributes<HTMLInputElement>)} onChange={async (event) => {
-            const input = event.currentTarget
-            const selected = input.files
-            if (!selected?.length) return
-            const directoryName = selected[0].webkitRelativePath.split("/")[0]
-            setBusy(true)
-            cleanupStaged()
-            setFile(null)
-            setPreview(null)
-            setError("")
-            try {
-              const archive = await archiveDirectory(selected)
-              stagedCleanupRef.current = archive.cleanup
-              setFile(archive.file)
-              setSourceName(directoryName)
-              setConfirmed(false)
-              setModes({})
-              setNormalization(false)
-              if (archiveInputRef.current) archiveInputRef.current.value = ""
-            } catch (reason) {
-              setSourceName("")
-              setError(reason instanceof Error ? reason.message : "目录打包失败")
-            } finally {
-              input.value = ""
-              setBusy(false)
-            }
-          }} />
-          <Item variant="outline" className="min-w-0">
-            <ItemMedia variant="icon" className="text-muted-foreground">
-              <HugeiconsIcon icon={file ? FileArchiveIcon : Upload04Icon} />
-            </ItemMedia>
-            <ItemContent className="min-w-0">
-              <ItemTitle className="max-w-full truncate" title={sourceName || undefined}>{sourceName || "尚未选择资源包"}</ItemTitle>
-              <ItemDescription>{file ? `${sourceName === file.name ? "ZIP 文件" : "解压目录"} · ${(file.size / 1024 / 1024).toFixed(2)} MiB` : "支持 ZIP 文件或解压目录，包体不超过 2 GiB"}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button disabled={busy} type="button" variant="outline" />}>
-                  <HugeiconsIcon data-icon="inline-start" icon={Upload04Icon} />
-                  选择来源
-                  <HugeiconsIcon data-icon="inline-end" icon={ArrowDown01Icon} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem closeOnClick onClick={() => archiveInputRef.current?.click()}><HugeiconsIcon icon={FileArchiveIcon} />选择 ZIP</DropdownMenuItem>
-                    <DropdownMenuItem closeOnClick onClick={() => directoryInputRef.current?.click()}><HugeiconsIcon icon={FolderOpenIcon} />选择解压目录</DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ItemActions>
-          </Item>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          {!preview && <DialogFooter>
-            <Button type="button" variant="outline" disabled={busy} onClick={() => closeDialog(false)}>取消</Button>
-            <Button type="button" disabled={!file || busy} onClick={() => { void upload(false) }}>{busy ? "校验中…" : "校验并预览"}</Button>
-          </DialogFooter>}
-          {preview && <div className="space-y-4 border-t pt-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-medium">预览 · {preview.publisher} / v{preview.version}</h2>
-              <span className="text-xs text-muted-foreground">共 {preview.changes.length} 项资源</span>
-            </div>
-            {preview.already_imported && <p>此发布版本已经导入。</p>}
-            {preview.ignored_static.length > 0 && <p className="text-sm">已校验但忽略 {preview.ignored_static.length} 个静态资源：{preview.ignored_static.join("、")}</p>}
-            <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border p-2">
-              {preview.changes.map((item) => <div key={`${item.type}:${item.slug}`} className="rounded-md bg-muted/50 p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 break-all font-medium">{item.name} <span className="font-normal text-muted-foreground">· {item.type} / {item.slug}</span></span>
-                  <Badge variant={item.action === "retire" ? "destructiveOutline" : item.action === "restore" ? "successOutline" : "outline"}>{actionLabels[item.action]}</Badge>
-                </div>
-                {item.warnings?.map((warning) => <p key={warning} className="text-amber-700">{warning}</p>)}
-                {(item.warnings?.length ?? 0) > 0 && item.storage_sha256 && <p className="break-all text-xs text-muted-foreground">原产物：{item.source_sha256} → 存储包：{item.storage_sha256}</p>}
-                {item.type === "connector" && item.action !== "retire" && <div className="mt-2 flex items-center gap-2">
-                  <span>认证归属：</span>
-                  <Select value={modes[item.slug] ?? "independent"} onValueChange={(value) => {
-                    if (!value) return
-                    setModes((old) => ({ ...old, [item.slug]: value }))
-                    setPreview(null); setConfirmed(false)
-                  }}>
-                    <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectGroup>
-                      <SelectItem value="independent">独立凭证</SelectItem>
-                      <SelectItem value="centralized">集中凭证</SelectItem>
-                    </SelectGroup></SelectContent>
-                  </Select>
-                </div>}
-              </div>)}
-            </div>
-            {changed.some((item) => item.action === "retire") && <p className="font-medium text-amber-700">此操作将停用上表中的移除项；恢复项的旧授权或凭证可能重新生效。</p>}
-            {needsNormalization && <div className="flex items-center gap-2 text-sm">
-              <Checkbox id="import-normalization" checked={normalization} onCheckedChange={setNormalization} />
-              <label htmlFor="import-normalization">我已确认上述技能 frontmatter 规范化（名称或描述引号）</label>
-            </div>}
-            <div className="flex items-center gap-2 text-sm">
-              <Checkbox id="import-final" checked={confirmed} onCheckedChange={setConfirmed} />
-              <label htmlFor="import-final">我确认此包是该 publisher 的最终 Agent 资源清单，缺失项将被停用</label>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => { void upload(false) }}>重新校验</Button>
-              <Button type="button" disabled={busy || !confirmed || (needsNormalization && !normalization)} onClick={() => { void upload(true) }}>{busy ? "导入中…" : "确认导入"}</Button>
-            </DialogFooter>
-          </div>}
-        </DialogContent>
-      </Dialog>
+      }} />}
     </section>
   )
 }

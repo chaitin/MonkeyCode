@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { MoveMembersDialog } from "@/components/members/move-members-dialog"
+import { TableLoading } from "@/components/table-loading"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,7 +86,7 @@ import {
 } from "@/lib/group-move"
 import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
-import { MemberAvatar } from "@/components/members/member-avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { MemberGroupSelect } from "@/components/members/member-group-select"
 import { GroupTreeItem } from "@/components/members/group-tree"
 import { ResetMemberPasswordDialog } from "@/components/members/reset-member-password-dialog"
@@ -428,7 +429,7 @@ export function MembersAndGroupsPage() {
         )
     : []
   return (
-    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
+    <section className="flex flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:min-h-0 md:flex-none md:overflow-hidden">
       {pendingMove && (
         <div
           role="status"
@@ -541,43 +542,49 @@ export function MembersAndGroupsPage() {
               )}
             </CardAction>
           </CardHeader>
-          <CardContent className="min-h-0 flex-1">
-            <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
-              <ul
-                className="flex flex-col gap-1"
-                aria-label={t("pages.membersAndGroups.groupsTitle")}
-              >
-                {groups
-                  .filter((group) => group.parent_id === null)
-                  .map((group) => (
-                    <GroupTreeItem
-                      key={group.id}
-                      group={group}
-                      groups={groups}
-                      users={users}
-                      nameCollator={nameCollator}
-                      savingID={savingID}
-                      currentUserID={currentUser?.id}
-                      onAction={setActiveGroupAction}
-                      onViewDetails={setAccountUserID}
-                      onToggleStatus={toggleUserStatus}
-                      onToggleRole={toggleUserRole}
-                      onResetPassword={setPasswordResetUser}
-                      multiSelect={multiSelect}
-                      selectionDisabled={moving || batchUpdatingStatus}
-                      selectedMemberKeys={selectedMemberKeys}
-                      onMemberSelect={selectMember}
-                      onGroupDragStart={dragGroup}
-                      onMemberDragStart={dragMember}
-                      onDragEnd={() => setDragging(null)}
-                      canDropOn={(target) =>
-                        !!dragging && canMoveTo(groups, dragging, target)
-                      }
-                      onDropOn={dropOn}
-                    />
-                  ))}
-              </ul>
-            </ScrollArea>
+          <CardContent className="min-h-0 flex-1" aria-busy={loading}>
+            {loading ? (
+              <div className="flex min-h-40 flex-1 items-center justify-center">
+                <TableLoading />
+              </div>
+            ) : (
+              <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
+                <ul
+                  className="flex flex-col gap-1"
+                  aria-label={t("pages.membersAndGroups.groupsTitle")}
+                >
+                  {groups
+                    .filter((group) => group.parent_id === null)
+                    .map((group) => (
+                      <GroupTreeItem
+                        key={group.id}
+                        group={group}
+                        groups={groups}
+                        users={users}
+                        nameCollator={nameCollator}
+                        savingID={savingID}
+                        currentUserID={currentUser?.id}
+                        onAction={setActiveGroupAction}
+                        onViewDetails={setAccountUserID}
+                        onToggleStatus={toggleUserStatus}
+                        onToggleRole={toggleUserRole}
+                        onResetPassword={setPasswordResetUser}
+                        multiSelect={multiSelect}
+                        selectionDisabled={moving || batchUpdatingStatus}
+                        selectedMemberKeys={selectedMemberKeys}
+                        onMemberSelect={selectMember}
+                        onGroupDragStart={dragGroup}
+                        onMemberDragStart={dragMember}
+                        onDragEnd={() => setDragging(null)}
+                        canDropOn={(target) =>
+                          !!dragging && canMoveTo(groups, dragging, target)
+                        }
+                        onDropOn={dropOn}
+                      />
+                    ))}
+                </ul>
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
 
@@ -612,122 +619,119 @@ export function MembersAndGroupsPage() {
               </Button>
             </CardAction>
           </CardHeader>
-          <CardContent className="min-h-0 flex-1">
-            <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
-              {loading && (
-                <p
-                  role="status"
-                  className="py-6 text-center text-sm text-muted-foreground"
-                >
-                  {t("common.loading")}
-                </p>
-              )}
-              <ItemGroup className="gap-2">
-                {visibleUsers.map((user) => {
-                  const isDisabled = user.status === "disabled"
-                  const joinedAt = new Date(user.joined_at)
+          <CardContent className="min-h-0 flex-1" aria-busy={loading}>
+            {loading ? (
+              <div className="flex min-h-40 flex-1 items-center justify-center">
+                <TableLoading />
+              </div>
+            ) : (
+              <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
+                <ItemGroup className="gap-2">
+                  {visibleUsers.map((user) => {
+                    const isDisabled = user.status === "disabled"
+                    const joinedAt = new Date(user.joined_at)
 
-                  return (
-                    <Item
-                      key={user.id}
-                      role="listitem"
-                      size="sm"
-                      variant="outline"
-                      aria-busy={savingID === user.id}
-                    >
-                      <ItemMedia
-                        className="cursor-grab active:cursor-grabbing"
-                        draggable
-                        onDragStart={(event) =>
-                          startDrag(
-                            { kind: "member", members: [{ id: user.id }] },
-                            event
-                          )
-                        }
-                        onDragEnd={() => setDragging(null)}
+                    return (
+                      <Item
+                        key={user.id}
+                        role="listitem"
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                        aria-busy={savingID === user.id}
                       >
-                        <MemberAvatar
-                          role={user.role}
-                          status={user.status}
-                          size="lg"
-                        />
-                      </ItemMedia>
-                      <ItemContent className="min-w-0">
-                        <ItemTitle className="max-w-full min-w-0">
-                          <span className="truncate font-medium">
-                            {user.name}
-                          </span>
-                          {user.role === "admin" && (
-                            <Badge
-                              variant="outline"
-                              className="border-green-500/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
-                            >
-                              {t(
-                                "pages.membersAndGroups.groupNames.administrators"
-                              )}
-                            </Badge>
-                          )}
-                          {isDisabled && (
-                            <Badge
-                              variant="outline"
-                              className="border-red-500/40 text-red-700 dark:border-red-400/40 dark:text-red-400"
-                            >
-                              {t("pages.membersAndGroups.memberDisabled")}
-                            </Badge>
-                          )}
-                        </ItemTitle>
-                        <ItemDescription className="line-clamp-1 text-xs">
-                          {user.email}
-                        </ItemDescription>
-                      </ItemContent>
-                      <ItemActions className="ms-auto shrink-0">
-                        <MemberActions
-                          user={user}
-                          savingID={savingID}
-                          currentUserID={currentUser?.id}
-                          onViewDetails={setAccountUserID}
-                          onToggleStatus={toggleUserStatus}
-                          onToggleRole={toggleUserRole}
-                          onResetPassword={setPasswordResetUser}
-                        />
-                      </ItemActions>
-                      <ItemSeparator className="my-0" />
-                      <ItemFooter className="min-w-0 flex-wrap text-xs text-muted-foreground">
-                        <span>
-                          {t("pages.membersAndGroups.joinedAt", {
-                            date: dateFormatter.format(joinedAt),
-                            day: joinedAt.getDate(),
-                            month: joinedAt.getMonth() + 1,
-                            year: joinedAt.getFullYear(),
-                          })}
-                        </span>
-                        <div className="ms-auto flex min-w-0 flex-wrap justify-end gap-1">
-                          {(groupsByMember.get(user.id) ?? []).map((group) => (
-                            <Badge
-                              key={group.id}
-                              variant="outline"
-                              className="max-w-full"
-                            >
-                              <span
-                                className="min-w-0 truncate"
-                                title={group.name}
+                        <ItemMedia
+                          className="cursor-grab active:cursor-grabbing"
+                          draggable
+                          onDragStart={(event) =>
+                            startDrag(
+                              { kind: "member", members: [{ id: user.id }] },
+                              event
+                            )
+                          }
+                          onDragEnd={() => setDragging(null)}
+                        >
+                          <UserAvatar src={user.avatar_url} size="lg" />
+                        </ItemMedia>
+                        <ItemContent className="min-w-0">
+                          <ItemTitle className="min-w-0 max-w-full">
+                            <span className="truncate font-medium">
+                              {user.name}
+                            </span>
+                            {user.role === "admin" && (
+                              <Badge
+                                variant="outline"
+                                className="border-green-500/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
                               >
-                                {group.name}
-                              </span>
-                            </Badge>
-                          ))}
-                        </div>
-                      </ItemFooter>
-                    </Item>
-                  )
-                })}
-                {!loading && visibleUsers.length === 0 && (
-                  <p className="py-12 text-center text-sm text-muted-foreground">
-                    {t("pages.membersAndGroups.noMembersFound")}
-                  </p>
-                )}
-              </ItemGroup>
-            </ScrollArea>
+                                {t(
+                                  "pages.membersAndGroups.groupNames.administrators"
+                                )}
+                              </Badge>
+                            )}
+                            {isDisabled && (
+                              <Badge
+                                variant="outline"
+                                className="border-red-500/40 text-red-700 dark:border-red-400/40 dark:text-red-400"
+                              >
+                                {t("pages.membersAndGroups.memberDisabled")}
+                              </Badge>
+                            )}
+                          </ItemTitle>
+                          <ItemDescription className="line-clamp-1 text-xs">
+                            {user.email}
+                          </ItemDescription>
+                        </ItemContent>
+                        <ItemActions className="ms-auto shrink-0">
+                          <MemberActions
+                            user={user}
+                            savingID={savingID}
+                            currentUserID={currentUser?.id}
+                            onViewDetails={setAccountUserID}
+                            onToggleStatus={toggleUserStatus}
+                            onToggleRole={toggleUserRole}
+                            onResetPassword={setPasswordResetUser}
+                          />
+                        </ItemActions>
+                        <ItemSeparator className="my-0" />
+                        <ItemFooter className="min-w-0 flex-wrap text-xs text-muted-foreground">
+                          <span>
+                            {t("pages.membersAndGroups.joinedAt", {
+                              date: dateFormatter.format(joinedAt),
+                              day: joinedAt.getDate(),
+                              month: joinedAt.getMonth() + 1,
+                              year: joinedAt.getFullYear(),
+                            })}
+                          </span>
+                          <div className="ms-auto flex min-w-0 flex-wrap justify-end gap-1">
+                            {(groupsByMember.get(user.id) ?? []).map(
+                              (group) => (
+                                <Badge
+                                  key={group.id}
+                                  variant="outline"
+                                  className="max-w-full"
+                                >
+                                  <span
+                                    className="min-w-0 truncate"
+                                    title={group.name}
+                                  >
+                                    {group.name}
+                                  </span>
+                                </Badge>
+                              )
+                            )}
+                          </div>
+                        </ItemFooter>
+                      </Item>
+                    )
+                  })}
+                  {!loading && visibleUsers.length === 0 && (
+                    <p className="py-12 text-center text-sm text-muted-foreground">
+                      {t("pages.membersAndGroups.noMembersFound")}
+                    </p>
+                  )}
+                </ItemGroup>
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -795,7 +799,7 @@ export function MembersAndGroupsPage() {
         }}
       >
         <DialogContent
-          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
           closeLabel={t("common.close")}
           showCloseButton={!creating && !batchSaving}
         >

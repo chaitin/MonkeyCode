@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net"
@@ -43,16 +44,16 @@ func oauthSettings(c resource.Object) oauthConfig {
 	b, err := json.Marshal(c["oauth_config"])
 	if err != nil {
 		if unsupported, ok := errors.AsType[*json.UnsupportedTypeError](err); ok {
-			slog.Error("编码 OAuth 配置失败", "connector_id", c.String("id"), "operation", "encode_config", "error", unsupported)
+			logging.Event(context.Background(), slog.Default(), slog.LevelError, "mcp.operation.error", "编码 OAuth 配置失败", "module", "mcp", "operation", "oauthSettings", "connector_id", c.String("id"), "operation", "encode_config", "error", unsupported)
 		} else {
 			// 自定义 JSON 错误可能回显配置中的客户端密钥。
-			slog.Error("编码 OAuth 配置失败", "connector_id", c.String("id"), "operation", "encode_config", "failure_reason", "invalid_config_encoding")
+			logging.Event(context.Background(), slog.Default(), slog.LevelError, "mcp.operation.error", "编码 OAuth 配置失败", "module", "mcp", "operation", "oauthSettings", "connector_id", c.String("id"), "operation", "encode_config", "failure_reason", "invalid_config_encoding")
 		}
 		return oauthConfig{}
 	}
 	var o oauthConfig
 	if err := json.Unmarshal(b, &o); err != nil {
-		slog.Error("解析 OAuth 配置失败", "connector_id", c.String("id"), "operation", "decode_config", "failure_reason", "invalid_config_format")
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "mcp.operation.error", "解析 OAuth 配置失败", "module", "mcp", "operation", "oauthSettings", "connector_id", c.String("id"), "operation", "decode_config", "failure_reason", "invalid_config_format")
 		return oauthConfig{}
 	}
 	return o
@@ -73,7 +74,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	u, _ := identity.UserFromContext(ctx)
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), chi.URLParam(r, "credentialID"), "authorize")
@@ -82,11 +83,11 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		err = manageCredential(c, admin)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if c.String("authorization_method") != "oauth" {
-		resource.Fail(w, resource.Invalid("此连接不支持 OAuth 授权"))
+		resource.Fail(r.Context(), w, resource.Invalid("此连接不支持 OAuth 授权"))
 		return
 	}
 	data := resource.Object{"id": resource.ID(), "connector_id": c.String("id"), "user_id": u.ID}
@@ -99,7 +100,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 			err = matchCredential(r, cred)
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		data["credential_id"], data["credential_revision"], data["name"] = id, cred.Int("revision"), cred.String("name")
@@ -108,46 +109,46 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 			Name string `json:"name"`
 		}
 		if err = resource.Decode(w, r, &in); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		data["name"], err = credentialName(in.Name)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		if admin {
 			_, err = sqlc.New(tx).GetCentralCredential(ctx, c.String("id"))
 			if err == nil {
-				resource.Fail(w, resource.Invalid("已存在集中凭证，请选择该凭证重新授权"))
+				resource.Fail(r.Context(), w, resource.Invalid("已存在集中凭证，请选择该凭证重新授权"))
 				return
 			}
 			if !errors.Is(err, pgx.ErrNoRows) {
-				resource.Fail(w, err)
+				resource.Fail(r.Context(), w, err)
 				return
 			}
 		}
 	}
 	state, err := token()
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	verifier, err := token()
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	redirect := s.callbackURL(c.String("id"))
 	if err = s.ensureOAuthClient(ctx, tx, c, redirect); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	data["config_revision"] = c.Int("config_revision")
 	data["state_hash"], data["verifier"], data["redirect_uri"] = hash(state), verifier, redirect
 	b, err := json.Marshal(data)
 	if err != nil {
-		resource.Fail(w, fmt.Errorf("编码 OAuth 授权请求: %w", err))
+		resource.Fail(r.Context(), w, fmt.Errorf("编码 OAuth 授权请求: %w", err))
 		return
 	}
 	request, err := resource.DecodeObject(sqlc.New(tx).CreateOAuthRequest(ctx, b))
@@ -155,13 +156,13 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	o := oauthSettings(c)
 	target, err := url.Parse(o.AuthorizationURL)
 	if err != nil || target == nil || target.Scheme == "" || target.Host == "" {
-		resource.Fail(w, resource.Invalid("OAuth 授权地址无效"))
+		resource.Fail(r.Context(), w, resource.Invalid("OAuth 授权地址无效"))
 		return
 	}
 	q := target.Query()
@@ -178,17 +179,17 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	q.Set("code_challenge_method", "S256")
 	target.RawQuery = q.Encode()
 	w.Header().Set("Cache-Control", "no-store")
-	resource.JSON(w, 200, resource.Object{"id": request["id"], "authorization_url": target.String(), "expires_at": request["expires_at"]})
+	resource.JSON(r.Context(), w, 200, resource.Object{"id": request["id"], "authorization_url": target.String(), "expires_at": request["expires_at"]})
 }
 func (s *Service) authorizationStatus(w http.ResponseWriter, r *http.Request) {
 	u, _ := identity.UserFromContext(r.Context())
 	out, err := resource.DecodeObject(sqlc.New(s.Store.Pool).GetOAuthStatus(r.Context(), sqlc.GetOAuthStatusParams{ID: chi.URLParam(r, "id"), UserID: u.ID}))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	resource.JSON(w, 200, out)
+	resource.JSON(r.Context(), w, 200, out)
 }
 func (s *Service) oauthContext(ctx context.Context, tx pgx.Tx, request resource.Object) (resource.Object, error) {
 	c, err := resource.DecodeObject(sqlc.New(tx).LockConnector(ctx, request.String("connector_id")))
@@ -226,15 +227,15 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, state := chi.URLParam(r, "id"), r.URL.Query().Get("state")
 	if id == "" || state == "" {
-		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
+		resource.Fail(r.Context(), w, resource.Invalid("授权事务无效或已使用"))
 		return
 	}
 	request, err := resource.DecodeObject(sqlc.New(s.Store.Pool).ConsumeOAuthRequest(ctx, sqlc.ConsumeOAuthRequestParams{StateHash: hash(state), ConnectorID: id}))
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.ErrorContext(ctx, "消费 OAuth 授权事务失败", "connector_id", id, "operation", "consume", "failure", safeMCPFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelError, "mcp.operation.error", "消费 OAuth 授权事务失败", "module", "mcp", "operation", "Callback", "connector_id", id, "operation", "consume", "failure", err)
 		}
-		resource.Fail(w, resource.Invalid("授权事务无效或已使用"))
+		resource.Fail(r.Context(), w, resource.Invalid("授权事务无效或已使用"))
 		return
 	}
 	success := false
@@ -245,16 +246,16 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if _, err := sqlc.New(s.Store.Pool).FinishOAuthRequest(cleanup, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "failed", CredentialID: ""}); err != nil {
-			slog.ErrorContext(cleanup, "标记 OAuth 授权失败事务失败", "connector_id", id, "operation", "finish_failed", "error", err)
+			logging.Event(cleanup, slog.Default(), slog.LevelError, "mcp.operation.error", "标记 OAuth 授权失败事务失败", "module", "mcp", "operation", "Callback", "connector_id", id, "operation", "finish_failed", "error", err)
 		}
 	}()
 	if r.URL.Query().Get("error") != "" || r.URL.Query().Get("code") == "" {
-		resource.Fail(w, resource.Invalid("授权已取消或缺少授权码"))
+		resource.Fail(r.Context(), w, resource.Invalid("授权已取消或缺少授权码"))
 		return
 	}
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	c, err := s.oauthContext(ctx, tx, request)
@@ -262,28 +263,28 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			err = rollbackErr
 		} else {
-			slog.WarnContext(ctx, "释放 OAuth 授权事务失败", "connector_id", id, "operation", "rollback", "error", rollbackErr)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "释放 OAuth 授权事务失败", "module", "mcp", "operation", "Callback", "connector_id", id, "operation", "rollback", "error", rollbackErr)
 		}
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	result, err := s.exchange(ctx, c, url.Values{"grant_type": {"authorization_code"}, "code": {r.URL.Query().Get("code")}, "redirect_uri": {request.String("redirect_uri")}, "code_verifier": {request.String("verifier")}})
 	if err != nil {
-		slog.WarnContext(ctx, "OAuth Token 交换失败", "connector_id", id, "operation", "exchange", "failure", safeMCPFailure(err))
-		resource.Fail(w, &resource.Error{Status: 502, Code: "oauth_exchange_failed", Message: "OAuth Token 交换失败，请重新发起授权"})
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth Token 交换失败", "module", "mcp", "operation", "Callback", "connector_id", id, "operation", "exchange", "failure", err)
+		resource.Fail(r.Context(), w, &resource.Error{Status: 502, Code: "oauth_exchange_failed", Message: "OAuth Token 交换失败，请重新发起授权"})
 		return
 	}
 	tx, err = s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackMCP(ctx, tx, id, request.String("credential_id"), "callback")
 	c, err = s.oauthContext(ctx, tx, request)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	user := request.String("user_id")
@@ -300,7 +301,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		"oauth_expires_at": result.Expires, "config_revision": c.Int("config_revision"), "auth_change": true}
 	b, err := json.Marshal(data)
 	if err != nil {
-		resource.Fail(w, fmt.Errorf("编码 OAuth 凭证: %w", err))
+		resource.Fail(r.Context(), w, fmt.Errorf("编码 OAuth 凭证: %w", err))
 		return
 	}
 	queries := sqlc.New(tx)
@@ -327,14 +328,14 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	check, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 	defer cancel()
 	_, testErr := s.testConnection(check, c, cred, request.String("user_id"), c.String("authorization_mode") == "centralized")
 	if testErr != nil {
-		slog.WarnContext(check, "OAuth 授权后连接测试失败", "connector_id", id, "credential_id", credential, "failure", safeMCPFailure(testErr))
+		logging.Event(check, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth 授权后连接测试失败", "module", "mcp", "operation", "Callback", "connector_id", id, "credential_id", credential, "failure", testErr)
 	}
 	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer stop()
@@ -343,7 +344,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		err = resource.Conflict
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	success = true
@@ -353,7 +354,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := fmt.Fprintf(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>%s</p></html>", message); err != nil {
-		slog.WarnContext(ctx, "写入 OAuth 授权结果失败", "connector_id", id, "credential_id", credential, "failure_reason", "response_write_failed", "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "写入 OAuth 授权结果失败", "module", "mcp", "operation", "Callback", "connector_id", id, "credential_id", credential, "failure_reason", "response_write_failed", "error_type", fmt.Sprintf("%T", err))
 	}
 }
 
@@ -467,7 +468,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			slog.WarnContext(ctx, "关闭 OAuth Token 响应失败", "operation", "exchange", "failure", safeMCPFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 OAuth Token 响应失败", "module", "mcp", "operation", "exchangeWithProxy", "operation", "exchange", "failure", err)
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
@@ -563,7 +564,7 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 		return nil, authorizationRequired
 	}
 	if err != nil {
-		slog.WarnContext(ctx, "刷新 OAuth 凭证失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "operation", "refresh", "failure", safeMCPFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "刷新 OAuth 凭证失败", "module", "mcp", "operation", "refresh", "connector_id", c.String("id"), "credential_id", cred.String("id"), "operation", "refresh", "failure", err)
 		return nil, &resource.Error{Status: 502, Code: "oauth_refresh_failed", Message: "OAuth 刷新暂时失败，请稍后重试"}
 	}
 	if result.Refresh == "" {
@@ -575,15 +576,12 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 	}
 	return out, tx.Commit(ctx)
 }
-func (s *Service) refreshCredentials(ctx context.Context) {
+func (s *Service) refreshCredentials(ctx context.Context) error {
 	query, cancel := context.WithTimeout(ctx, 10*time.Second)
 	pending, err := sqlc.New(s.Store.Pool).ListExpiringCredentials(query)
 	cancel()
 	if err != nil {
-		if ctx.Err() == nil {
-			slog.ErrorContext(ctx, "读取待刷新 Connector 凭证失败", "error", err)
-		}
-		return
+		return err
 	}
 	var workers sync.WaitGroup
 	slots := make(chan struct{}, 4)
@@ -592,7 +590,7 @@ func (s *Service) refreshCredentials(ctx context.Context) {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
 			workers.Wait()
-			return
+			return ctx.Err()
 		}
 		workers.Go(func() {
 			defer func() { <-slots }()
@@ -600,31 +598,32 @@ func (s *Service) refreshCredentials(ctx context.Context) {
 			defer stop()
 			c, err := resource.DecodeObject(item.Connector, nil)
 			if err != nil {
-				slog.ErrorContext(refresh, "解析待刷新 Connector 数据失败", "operation", "decode_connector", "error", err)
+				logging.Event(refresh, slog.Default(), slog.LevelError, "mcp.operation.error", "解析待刷新 Connector 数据失败", "module", "mcp", "operation", "refreshCredentials", "operation", "decode_connector", "error", err)
 				return
 			}
 			cred, err := resource.DecodeObject(item.Credential, nil)
 			if err != nil {
-				slog.ErrorContext(refresh, "解析待刷新凭证数据失败", "connector_id", c.String("id"), "operation", "decode_credential", "error", err)
+				logging.Event(refresh, slog.Default(), slog.LevelError, "mcp.operation.error", "解析待刷新凭证数据失败", "module", "mcp", "operation", "refreshCredentials", "connector_id", c.String("id"), "operation", "decode_credential", "error", err)
 				return
 			}
 			if _, err = s.refresh(refresh, c, cred); err != nil && ctx.Err() == nil && !errors.Is(err, authorizationRequired) && !isOAuthRefreshFailure(err) {
-				slog.WarnContext(ctx, "Connector OAuth 自动刷新失败", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
+				logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.credential.retry", "Connector OAuth 自动刷新失败", "module", "mcp", "operation", "refreshCredentials", "connector_id", c.String("id"), "credential_id", cred.String("id"), "error", err)
 			}
 		})
 	}
 	workers.Wait()
+	return nil
 }
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
+	cleanupWorker := logging.NewWorker(slog.Default(), "mcp", "cleanup_oauth", "database")
+	refreshWorker := logging.NewWorker(slog.Default(), "mcp", "scan_credentials", "database")
 	for {
 		cleanup, cancel := context.WithTimeout(ctx, 10*time.Second)
-		if err := sqlc.New(s.Store.Pool).CleanupOAuthRequests(cleanup); err != nil && ctx.Err() == nil {
-			slog.ErrorContext(cleanup, "清理过期 OAuth 授权请求失败", "operation", "cleanup", "error", err)
-		}
+		cleanupWorker.Report(ctx, sqlc.New(s.Store.Pool).CleanupOAuthRequests(cleanup))
 		cancel()
-		s.refreshCredentials(ctx)
+		refreshWorker.Report(ctx, s.refreshCredentials(ctx))
 		select {
 		case <-ctx.Done():
 			return

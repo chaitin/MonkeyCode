@@ -1,25 +1,45 @@
 import path from "path"
-import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 const backend = process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080"
-const apiBackend = process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-ai.com"
+const apiBackend =
+  process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-ai.com"
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
+  build: { target: "chrome86", cssTarget: "chrome86" },
   server: {
+    allowedHosts: [".trycloudflare.com"],
     watch: {
       awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
     },
     proxy: {
-      "^/api/v1/endpoints/connect$": { target: apiBackend, changeOrigin: true, ws: true },
+      "^/api/v1/endpoints/connect$": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "^/api/v1/endpoint-bridge": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "^/api/v1/endpoints/[^/]+/proxy/": {
+        target: apiBackend,
+        changeOrigin: true,
+        ws: true,
+      },
+      "/endpoints": { target: apiBackend, changeOrigin: true },
       "/api": { target: apiBackend, changeOrigin: true },
       "/oauth": backend,
       "/mcp": backend,
       "/v1": backend,
-      "/.well-known/oauth-authorization-server": backend,
+      "/.well-known/oauth-authorization-server": {
+        target: apiBackend,
+        changeOrigin: true,
+      },
     },
   },
   resolve: {

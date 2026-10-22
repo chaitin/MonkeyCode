@@ -73,6 +73,7 @@ memberships AS (
 )
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
+        'avatar_url', nullif(btrim(u.avatar_url), ''),
         'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
         'effective_credits', COALESCE(g.credits, sqlc.arg(root_credits)::numeric)::text,
         'balance_credits', COALESCE(a.balance,
@@ -209,13 +210,15 @@ SELECT EXISTS (
 )::boolean;
 
 -- name: GetAdjustment :one
-SELECT
-    credit_delta::text,
-    item_name
-FROM
-    credit_ledger_entries
-WHERE
-    event_key = $1;
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT e.credit_delta::text AS credit_delta, e.item_name FROM locations l
+CROSS JOIN LATERAL (SELECT * FROM credit_ledger_entries e WHERE e.id=l.id AND e.occurred_at=l.occurred_at OFFSET 0) e;
 
 -- name: AdjustBalance :execresult
 UPDATE
@@ -240,22 +243,24 @@ WHERE
 FOR UPDATE;
 
 -- name: EventExists :one
-SELECT
-    EXISTS (
-        SELECT
-            1
-        FROM
-            credit_ledger_entries
-        WHERE
-            event_key = $1);
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT EXISTS(SELECT 1 FROM locations);
 
 -- name: EventID :one
-SELECT
-    id
-FROM
-    credit_ledger_entries
-WHERE
-    event_key = $1;
+WITH locations AS MATERIALIZED (
+    SELECT k.id,k.occurred_at FROM credit_ledger_entry_keys k WHERE k.event_key=$1
+    UNION ALL
+    SELECT original.id,original.occurred_at FROM billing_ledger_original_entries original WHERE original.event_key=$1
+        AND (SELECT phase FROM billing_ledger_partition_state)='backfill'
+        AND NOT EXISTS(SELECT 1 FROM credit_ledger_entry_keys existing WHERE existing.event_key=$1)
+)
+SELECT id FROM locations;
 
 -- name: LockBalance :one
 SELECT
@@ -284,19 +289,18 @@ AND (sqlc.arg(MODE)::text = ''
     OR e.mode = sqlc.arg(MODE)::text)
 AND (sqlc.arg(entry_type)::text = ''
     OR e.entry_type = sqlc.arg(entry_type)::text)
-AND (sqlc.narg(from_time)::timestamptz IS NULL
-    OR e.occurred_at >= sqlc.narg(from_time))
-AND (sqlc.narg(until_time)::timestamptz IS NULL
-    OR e.occurred_at < sqlc.narg(until_time))
+AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
 AND (sqlc.arg(group_id)::text = ''
     OR e.group_id = NULLIF (sqlc.arg(group_id)::text::text, '')::uuid);
 
 -- name: ListEntries :many
 SELECT
     (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
-	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text))::jsonb
+	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
+    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
 FROM
-    credit_ledger_entries e
+    credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
 WHERE (sqlc.arg(user_query)::text = ''
     OR COALESCE(e.user_name, '')
     ILIKE '%' || sqlc.arg(user_query)::text || '%'
@@ -310,10 +314,8 @@ AND (sqlc.arg(MODE)::text = ''
     OR e.mode = sqlc.arg(MODE)::text)
 AND (sqlc.arg(entry_type)::text = ''
     OR e.entry_type = sqlc.arg(entry_type)::text)
-AND (sqlc.narg(from_time)::timestamptz IS NULL
-    OR e.occurred_at >= sqlc.narg(from_time))
-AND (sqlc.narg(until_time)::timestamptz IS NULL
-    OR e.occurred_at < sqlc.narg(until_time))
+AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
 AND (sqlc.arg(group_id)::text = ''
     OR e.group_id = NULLIF (sqlc.arg(group_id)::text::text, '')::uuid)
 ORDER BY
@@ -330,8 +332,8 @@ WHERE e.user_id = sqlc.arg(user_id)
     AND (sqlc.arg(category)::text = '' OR e.category = sqlc.arg(category)::text)
     AND (sqlc.arg(mode)::text = '' OR e.mode = sqlc.arg(mode)::text)
     AND (sqlc.arg(entry_type)::text = '' OR e.entry_type = sqlc.arg(entry_type)::text)
-    AND (sqlc.narg(from_time)::timestamptz IS NULL OR e.occurred_at >= sqlc.narg(from_time))
-    AND (sqlc.narg(until_time)::timestamptz IS NULL OR e.occurred_at < sqlc.narg(until_time));
+    AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+    AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz);
 
 -- name: ListUserEntries :many
 SELECT jsonb_build_object(
@@ -346,8 +348,8 @@ WHERE e.user_id = sqlc.arg(user_id)
     AND (sqlc.arg(category)::text = '' OR e.category = sqlc.arg(category)::text)
     AND (sqlc.arg(mode)::text = '' OR e.mode = sqlc.arg(mode)::text)
     AND (sqlc.arg(entry_type)::text = '' OR e.entry_type = sqlc.arg(entry_type)::text)
-    AND (sqlc.narg(from_time)::timestamptz IS NULL OR e.occurred_at >= sqlc.narg(from_time))
-    AND (sqlc.narg(until_time)::timestamptz IS NULL OR e.occurred_at < sqlc.narg(until_time))
+    AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+    AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
 ORDER BY e.occurred_at DESC, e.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
@@ -372,10 +374,8 @@ AND (sqlc.arg(MODE)::text = ''
     OR e.mode = sqlc.arg(MODE)::text)
 AND (sqlc.arg(entry_type)::text = ''
     OR e.entry_type = sqlc.arg(entry_type)::text)
-AND (sqlc.narg(from_time)::timestamptz IS NULL
-    OR e.occurred_at >= sqlc.narg(from_time))
-AND (sqlc.narg(until_time)::timestamptz IS NULL
-    OR e.occurred_at < sqlc.narg(until_time))
+AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
 AND (sqlc.arg(group_id)::text = ''
     OR e.group_id = NULLIF (sqlc.arg(group_id)::text::text, '')::uuid);
 
@@ -411,17 +411,18 @@ WHERE
 
 -- name: PendingTransactions :many
 SELECT
-    jsonb_build_object('id', id, 'user_id', user_id, 'user_name', user_name, 'user_email',
-	user_email, 'item_name', item_name, 'category', category, 'mode', MODE, 'status',
-	status, 'reserve', reserve::text, 'amount', amount::text, 'error_code', error_code,
-	'attempts', attempts, 'started_at', started_at)
+    jsonb_build_object('id', t.id, 'user_id', t.user_id, 'user_name', t.user_name, 'user_email',
+    t.user_email, 'user_avatar_url', nullif(btrim(u.avatar_url), ''),
+    'item_name', t.item_name, 'category', t.category, 'mode', t.mode, 'status',
+    t.status, 'reserve', t.reserve::text, 'amount', t.amount::text, 'error_code', t.error_code,
+    'attempts', t.attempts, 'started_at', t.started_at)
 FROM
-    billing_transactions
+    billing_transactions t LEFT JOIN users u ON u.id = t.user_id
 WHERE
-    status NOT IN ('settled', 'released', 'rejected')
+    t.status NOT IN ('settled', 'released', 'rejected')
 ORDER BY
-    started_at,
-    id
+    t.started_at,
+    t.id
 LIMIT $1 OFFSET $2;
 
 -- name: CountPendingTransactions :one
@@ -1266,3 +1267,27 @@ SELECT EXISTS (
     WHERE t.status NOT IN ('settled', 'released', 'rejected')
         AND (w.base_url <> $1 OR w.app_id <> $2)
 );
+
+-- name: EnsureLedgerWeeks :one
+SELECT billing_ensure_ledger_weeks(sqlc.arg(at)::timestamptz)::boolean;
+
+-- name: CopyLedgerBatch :one
+SELECT billing_copy_ledger_batch(sqlc.arg(batch_size)::integer)::integer;
+
+-- name: CutoverLedger :one
+SELECT billing_cutover_ledger()::boolean;
+
+-- name: LedgerDefaultCount :one
+SELECT count(*) FROM (SELECT 1 FROM credit_ledger_entries_default LIMIT 10001) pending;
+
+-- name: LedgerPartitioned :one
+SELECT phase='partitioned' FROM billing_ledger_partition_state;
+
+-- name: PartitionedTransactionEntries :many
+SELECT (to_jsonb(e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text))::jsonb
+FROM credit_ledger_entry_keys k
+CROSS JOIN LATERAL (
+    SELECT * FROM credit_ledger_entries e WHERE e.id=k.id AND e.occurred_at=k.occurred_at OFFSET 0
+) e
+WHERE k.transaction_id=$1
+ORDER BY e.sequence;

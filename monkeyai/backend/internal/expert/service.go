@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -114,12 +115,12 @@ func (s *Service) RegisterAgent(r chi.Router) {
 func connectorLinks(v any) []resource.Object {
 	b, err := json.Marshal(v)
 	if err != nil {
-		slog.Error("专家连接依赖编码失败", "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "expert.operation.error", "专家连接依赖编码失败", "module", "expert", "operation", "connectorLinks", "error", err)
 		return nil
 	}
 	out := []resource.Object{}
 	if err := json.Unmarshal(b, &out); err != nil {
-		slog.Error("专家连接依赖解码失败", "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "expert.operation.error", "专家连接依赖解码失败", "module", "expert", "operation", "connectorLinks", "error", err)
 		return nil
 	}
 	return out
@@ -195,16 +196,16 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Post("/experts/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
 		o, err := s.CRUD.Get(r.Context(), s.Store.Pool, chi.URLParam(r, "id"))
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		if o.String("ownership_type") == "user" {
-			resource.Fail(w, resource.Invalid("个人资源仅允许治理删除"))
+			resource.Fail(r.Context(), w, resource.Invalid("个人资源仅允许治理删除"))
 			return
 		}
 		var in resource.Object
 		if err = resource.Decode(w, r, &in); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		o["name"] = in.String("name")
@@ -213,9 +214,9 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		u, _ := identity.UserFromContext(r.Context())
 		out, err := s.CRUD.Save(r.Context(), u.ID, "", "", o)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(w, 200, out)
+		resource.JSON(r.Context(), w, 200, out)
 	})
 }

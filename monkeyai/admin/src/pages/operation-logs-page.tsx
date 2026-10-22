@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 
+import { UserAvatar } from "@/components/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -38,14 +39,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -64,6 +57,7 @@ type AuditLog = {
   actor_user_id: string | null
   actor_name: string
   actor_email: string | null
+  actor_avatar_url?: string | null
   action: string
   category: LogCategory
   target_type: string | null
@@ -85,7 +79,7 @@ type CategoryFilter = LogCategory | null
 type ResultFilter = LogResult | null
 type SearchField = "operator" | "ip" | "dateRange" | "category" | "result"
 const DEFAULT_PAGE_SIZE = 50
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const CATEGORY_FILTERS: LogCategory[] = [
   "model",
   "identity",
@@ -204,17 +198,14 @@ export function OperationLogsPage() {
   const visibleLogs = data?.items ?? []
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = page
-  const pageStart = (page - 1) * pageSize
-  const firstVisible = visibleLogs.length === 0 ? 0 : pageStart + 1
-  const lastVisible =
-    visibleLogs.length === 0 ? 0 : pageStart + visibleLogs.length
   const actionLabel = (log: AuditLog) =>
     `${t(`audit.targets.${log.target_type}`, { defaultValue: log.target_type ?? categoryLabel(log.category) })} - ${t(`audit.actions.${log.action}`, { defaultValue: log.action })}`
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const locale = i18n.resolvedLanguage ?? i18n.language
+  const tableDateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
+    [locale]
+  )
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -260,10 +251,10 @@ export function OperationLogsPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-2 px-(--card-spacing)">
+          <div className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
             {visibleFields.has("operator") && (
               <Input
                 className="w-32"
@@ -442,7 +433,7 @@ export function OperationLogsPage() {
             )}
           </div>
           {error && (
-            <div className="px-(--card-spacing)">
+            <div className="px-[var(--card-spacing)]">
               <Button
                 variant="outline"
                 onClick={() => setRevision((value) => value + 1)}
@@ -460,9 +451,9 @@ export function OperationLogsPage() {
               aria-label={t("pages.operationLogs.tableTitle")}
               aria-busy={loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="ps-(--card-spacing)">
+                  <TableHead className="ps-[var(--card-spacing)]">
                     {t("pages.operationLogs.columns.time")}
                   </TableHead>
                   <TableHead>
@@ -477,7 +468,7 @@ export function OperationLogsPage() {
                   <TableHead>
                     {t("pages.operationLogs.columns.ipAddress")}
                   </TableHead>
-                  <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                  <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                     {t("pages.operationLogs.columns.operations")}
                   </TableHead>
                 </TableRow>
@@ -486,13 +477,13 @@ export function OperationLogsPage() {
                 {visibleLogs.length > 0 ? (
                   visibleLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
-                        {dateFormatter.format(new Date(log.occurred_at))}
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
+                        {tableDateFormatter.format(new Date(log.occurred_at))}
                       </TableCell>
                       <TableCell>
                         <button
                           type="button"
-                          className="flex max-w-52 items-center gap-3 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer enabled:hover:underline"
+                          className="flex max-w-52 items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
                           title={log.actor_email ?? undefined}
                           disabled={!log.actor_user_id}
                           onClick={() => {
@@ -500,12 +491,7 @@ export function OperationLogsPage() {
                               setAccountUserID(log.actor_user_id)
                           }}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <UserAvatar src={log.actor_avatar_url} />
                           <span className="truncate">{log.actor_name}</span>
                         </button>
                       </TableCell>
@@ -524,7 +510,7 @@ export function OperationLogsPage() {
                       <TableCell className="font-mono">
                         {log.source_ip || "—"}
                       </TableCell>
-                      <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         <Dialog>
                           <DialogTrigger
                             render={
@@ -609,7 +595,7 @@ export function OperationLogsPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading ? (
-                        <span role="status">{t("resources.loading")}</span>
+                        <TableLoading />
                       ) : error ? (
                         "—"
                       ) : (
@@ -621,79 +607,20 @@ export function OperationLogsPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setPageSize(Number(value))
-                    setPage(1)
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.summary", {
-                  from: firstVisible,
-                  to: lastVisible,
-                  total,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.page", {
-                  page: currentPage,
-                  pages: pageCount,
-                })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || Boolean(error) || currentPage >= pageCount}
-                onClick={() =>
-                  setPage((value) => Math.min(pageCount, value + 1))
-                }
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            itemCount={visibleLogs.length}
+            total={total}
+            loading={loading || searching}
+            error={Boolean(error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+          />
         </CardContent>
       </Card>
       {accountUserID && (

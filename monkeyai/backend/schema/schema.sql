@@ -1264,3 +1264,326 @@ ALTER TABLE video_outputs
     DROP CONSTRAINT video_outputs_height_check,
     ADD CONSTRAINT video_outputs_width_check CHECK (width >= 0),
     ADD CONSTRAINT video_outputs_height_check CHECK (height >= 0);
+
+ALTER TABLE video_jobs
+    ADD COLUMN poll_failures integer NOT NULL DEFAULT 0 CHECK (poll_failures >= 0);
+
+ALTER TABLE models
+    DROP CONSTRAINT IF EXISTS models_kind_config_check,
+    ADD CONSTRAINT models_kind_config_check CHECK (
+        (kind = 'text' AND provider = 'passthrough'
+            AND protocol IN ('openai_chat_completions', 'openai_responses', 'anthropic')
+            AND image_config IS NULL AND image_pricing IS NULL
+            AND video_config IS NULL AND video_pricing IS NULL)
+        OR (kind = 'image' AND provider <> 'passthrough' AND protocol = 'image_generation'
+            AND image_config IS NOT NULL AND image_pricing IS NOT NULL
+            AND video_config IS NULL AND video_pricing IS NULL
+            AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
+        OR (kind = 'video' AND provider IN ('xai', 'minimax', 'volcengine', 'agnes') AND protocol = 'video_generation'
+            AND image_config IS NULL AND image_pricing IS NULL
+            AND video_config IS NOT NULL AND video_pricing IS NOT NULL
+            AND advanced_config = '{}'::jsonb AND credit_multiplier = 1)
+    );
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    client_id text NOT NULL,
+    scopes text[] NOT NULL DEFAULT '{}',
+    audience text NOT NULL DEFAULT 'monkeyai-api' CHECK (audience = 'monkeyai-api'),
+    purpose text NOT NULL DEFAULT 'user' CHECK (purpose IN ('user', 'runtime')),
+    machine_id uuid,
+    key_id text,
+    revocation_version bigint NOT NULL DEFAULT 1 CHECK (revocation_version > 0),
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz,
+    revoke_reason text,
+    UNIQUE (id, user_id, client_id),
+    CHECK ((machine_id IS NULL) = (key_id IS NULL)),
+    CHECK (scopes <@ ARRAY['device:bind','device:publish','device:connect','device:manage',
+        'session:report','session:read','session:control','files:read','files:write','resources:manage']::text[])
+);
+
+ALTER TABLE oauth_authorization_requests
+    ADD COLUMN IF NOT EXISTS scopes text[] NOT NULL DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS audience text NOT NULL DEFAULT 'monkeyai-api' CHECK (audience = 'monkeyai-api');
+
+ALTER TABLE oauth_authorization_codes
+    ADD COLUMN IF NOT EXISTS scopes text[] NOT NULL DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS audience text NOT NULL DEFAULT 'monkeyai-api' CHECK (audience = 'monkeyai-api');
+
+ALTER TABLE oauth_tokens
+    ADD COLUMN IF NOT EXISTS grant_id uuid,
+    ADD COLUMN IF NOT EXISTS parent_id uuid UNIQUE REFERENCES oauth_tokens(id),
+    ADD COLUMN IF NOT EXISTS rotated_at timestamptz;
+
+ALTER TABLE oauth_tokens
+    ALTER COLUMN grant_id SET NOT NULL,
+    DROP CONSTRAINT IF EXISTS oauth_tokens_grant_fkey,
+    ADD CONSTRAINT oauth_tokens_grant_fkey FOREIGN KEY (grant_id, user_id, client_id)
+        REFERENCES oauth_grants(id, user_id, client_id);
+
+ALTER TABLE endpoints
+    ADD COLUMN IF NOT EXISTS execution_protocols jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(execution_protocols)='object'),
+    ADD COLUMN IF NOT EXISTS execution_public_key bytea CHECK (execution_public_key IS NULL OR octet_length(execution_public_key) = 32),
+    ADD COLUMN IF NOT EXISTS key_id text,
+    ADD COLUMN IF NOT EXISTS deployment_mode text CHECK (deployment_mode IN ('desktop_managed', 'standalone')),
+    ADD COLUMN IF NOT EXISTS remote_access_state text NOT NULL DEFAULT 'disabled' CHECK (remote_access_state IN ('disabled', 'enabled', 'revoked')),
+    ADD COLUMN IF NOT EXISTS active_grant_id uuid REFERENCES oauth_grants(id),
+    ADD COLUMN IF NOT EXISTS registration_version bigint NOT NULL DEFAULT 0 CHECK (registration_version >= 0),
+    ADD COLUMN IF NOT EXISTS grant_version bigint NOT NULL DEFAULT 0 CHECK (grant_version >= 0),
+    ADD COLUMN IF NOT EXISTS lease_epoch bigint NOT NULL DEFAULT 0 CHECK (lease_epoch >= 0),
+    DROP CONSTRAINT IF EXISTS endpoints_execution_key_check,
+    DROP CONSTRAINT IF EXISTS endpoints_execution_access_check,
+    ADD CONSTRAINT endpoints_execution_key_check CHECK ((execution_public_key IS NULL) = (key_id IS NULL)),
+    ADD CONSTRAINT endpoints_execution_access_check CHECK (remote_access_state <> 'enabled' OR (execution_public_key IS NOT NULL AND active_grant_id IS NOT NULL AND deployment_mode IS NOT NULL));
+
+ALTER TABLE sessions
+    ADD COLUMN IF NOT EXISTS host_verified boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS host_revision bigint NOT NULL DEFAULT 0 CHECK (host_revision >= 0);
+
+CREATE TABLE IF NOT EXISTS device_client_connections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    machine_id uuid NOT NULL,
+    client_grant_id uuid NOT NULL REFERENCES oauth_grants(id),
+    grant_version bigint NOT NULL,
+    access_version bigint NOT NULL DEFAULT 1 CHECK (access_version > 0),
+    scopes text[] NOT NULL,
+    protocol jsonb NOT NULL CHECK (jsonb_typeof(protocol) = 'object'),
+    ticket_hash text NOT NULL UNIQUE,
+    ticket_version bigint NOT NULL DEFAULT 1 CHECK (ticket_version > 0),
+    expires_at timestamptz NOT NULL,
+    previous_ticket_hash text UNIQUE,
+    previous_expires_at timestamptz,
+    revoked_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (user_id,machine_id) REFERENCES endpoints(user_id,machine_id)
+);
+
+ALTER TABLE sessions
+    ADD COLUMN IF NOT EXISTS last_live_report_at timestamptz,
+    ADD COLUMN IF NOT EXISTS live_boot_id uuid,
+    ADD COLUMN IF NOT EXISTS live_lease_epoch bigint CHECK (live_lease_epoch > 0);
+
+CREATE TABLE IF NOT EXISTS oauth_device_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id text NOT NULL CHECK (client_id='monkeyai-runtime'),
+    device_code_hash text NOT NULL UNIQUE,
+    user_code_hash text NOT NULL UNIQUE,
+    machine_id uuid NOT NULL,
+    execution_public_key bytea NOT NULL CHECK (octet_length(execution_public_key)=32),
+    key_id text NOT NULL,
+    display_name text NOT NULL CHECK (octet_length(display_name) BETWEEN 1 AND 128),
+    platform text NOT NULL CHECK (platform IN ('macos','windows','linux')),
+    arch text NOT NULL CHECK (octet_length(arch) BETWEEN 1 AND 32),
+    requested_scopes text[] NOT NULL,
+    approved_scopes text[],
+    owner_user_id uuid REFERENCES users(id),
+    restore_revoked boolean NOT NULL DEFAULT false,
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied','expired','consumed')),
+    interval_ms bigint NOT NULL DEFAULT 5000 CHECK (interval_ms>=5000),
+    next_poll_at timestamptz NOT NULL DEFAULT now(),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    CHECK (expires_at>created_at),
+    CHECK ((status NOT IN ('approved','consumed')) OR (owner_user_id IS NOT NULL AND approved_scopes IS NOT NULL))
+);
+
+ALTER TABLE oauth_grants
+    ADD COLUMN IF NOT EXISTS requested_machine_id uuid,
+    ADD COLUMN IF NOT EXISTS requested_key_id text,
+    ADD COLUMN IF NOT EXISTS restore_approved boolean NOT NULL DEFAULT false,
+    DROP CONSTRAINT IF EXISTS oauth_grants_requested_device_check,
+    ADD CONSTRAINT oauth_grants_requested_device_check CHECK ((requested_machine_id IS NULL)=(requested_key_id IS NULL));
+
+ALTER TABLE oauth_login_states
+    DROP CONSTRAINT IF EXISTS oauth_login_states_purpose_check,
+    DROP CONSTRAINT IF EXISTS oauth_login_states_check,
+    DROP CONSTRAINT IF EXISTS oauth_login_states_request_check,
+    ADD COLUMN IF NOT EXISTS device_request_id uuid REFERENCES oauth_device_requests(id),
+    ADD CONSTRAINT oauth_login_states_purpose_check CHECK (purpose IN ('client','admin','device')),
+    ADD CONSTRAINT oauth_login_states_request_check CHECK (
+        (purpose='client' AND authorization_request_id IS NOT NULL AND device_request_id IS NULL) OR
+        (purpose='admin' AND authorization_request_id IS NULL AND device_request_id IS NULL) OR
+        (purpose='device' AND authorization_request_id IS NULL AND device_request_id IS NOT NULL));
+
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS machine_id uuid,
+    ADD COLUMN IF NOT EXISTS runtime_grant_id uuid REFERENCES oauth_grants(id),
+    DROP CONSTRAINT IF EXISTS api_keys_runtime_binding_check,
+    DROP CONSTRAINT IF EXISTS api_keys_device_fkey,
+    ADD CONSTRAINT api_keys_runtime_binding_check CHECK ((machine_id IS NULL)=(runtime_grant_id IS NULL)),
+    ADD CONSTRAINT api_keys_device_fkey FOREIGN KEY(user_id,machine_id) REFERENCES endpoints(user_id,machine_id);
+
+ALTER TABLE device_client_connections
+    ADD COLUMN IF NOT EXISTS access_version bigint NOT NULL DEFAULT 1 CHECK (access_version > 0);
+
+ALTER TABLE endpoints
+    DROP CONSTRAINT endpoints_platform_check,
+    ADD CONSTRAINT endpoints_platform_check CHECK (octet_length(platform) BETWEEN 1 AND 64);
+
+CREATE TABLE resource_import_uploads (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id uuid NOT NULL REFERENCES users(id),
+    files jsonb NOT NULL CHECK (jsonb_typeof(files) = 'array'),
+    total_size bigint NOT NULL CHECK (total_size BETWEEN 1 AND 2147483648),
+    status text NOT NULL DEFAULT 'uploading' CHECK (status IN ('uploading', 'ready', 'imported', 'cancelled')),
+    package_sha256 text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours',
+    CHECK ((status IN ('ready', 'imported')) = (package_sha256 ~ '^sha256:[0-9a-f]{64}$'))
+);
+
+CREATE TABLE resource_import_chunks (
+    upload_id uuid NOT NULL REFERENCES resource_import_uploads(id) ON DELETE CASCADE,
+    index integer NOT NULL CHECK (index BETWEEN 0 AND 31),
+    size bigint NOT NULL CHECK (size BETWEEN 1 AND 67108864),
+    sha256 text NOT NULL CHECK (sha256 ~ '^sha256:[0-9a-f]{64}$'),
+    PRIMARY KEY (upload_id, index)
+);
+
+ALTER TABLE model_calls ADD COLUMN usage_known boolean NOT NULL DEFAULT true;
+
+CREATE TABLE stats_model_hourly (
+    hour_start timestamptz NOT NULL,
+    model_id uuid NOT NULL,
+    calls bigint NOT NULL DEFAULT 0 CHECK (calls >= 0),
+    succeeded bigint NOT NULL DEFAULT 0 CHECK (succeeded >= 0),
+    cache_hits bigint NOT NULL DEFAULT 0 CHECK (cache_hits >= 0),
+    input_tokens numeric NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+    output_tokens numeric NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+    PRIMARY KEY (hour_start, model_id),
+    CHECK (hour_start = date_trunc('hour', hour_start, 'UTC')),
+    CHECK (succeeded <= calls AND cache_hits <= calls)
+);
+
+CREATE TABLE stats_model_credit_hourly (
+    hour_start timestamptz PRIMARY KEY,
+    credits numeric NOT NULL DEFAULT 0,
+    CHECK (hour_start = date_trunc('hour', hour_start, 'UTC'))
+);
+
+CREATE VIEW billing_ledger_original_entries AS SELECT * FROM credit_ledger_entries;
+
+CREATE TABLE credit_ledger_entry_keys (
+    id uuid PRIMARY KEY,
+    account_id uuid NOT NULL,
+    event_key text,
+    sequence bigint,
+    transaction_id uuid,
+    occurred_at timestamptz NOT NULL CHECK (isfinite(occurred_at)),
+    user_id uuid NOT NULL,
+    session_id uuid,
+    group_id uuid
+);
+
+CREATE TABLE credit_ledger_entries_partitioned (
+    LIKE credit_ledger_entries INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id, occurred_at),
+    FOREIGN KEY (id) REFERENCES credit_ledger_entry_keys(id),
+    FOREIGN KEY (reverses_id) REFERENCES credit_ledger_entry_keys(id),
+    CHECK (isfinite(occurred_at))
+) PARTITION BY RANGE (occurred_at);
+
+CREATE TABLE credit_ledger_entries_default PARTITION OF credit_ledger_entries_partitioned DEFAULT;
+
+CREATE TABLE billing_ledger_partition_state (
+    id boolean PRIMARY KEY DEFAULT true CHECK (id),
+    phase text NOT NULL DEFAULT 'backfill' CHECK (phase IN ('backfill', 'partitioned')),
+    source_relation regclass NOT NULL,
+    target_relation regclass NOT NULL,
+    source_end_at timestamptz,
+    source_end_id uuid,
+    cursor_at timestamptz,
+    cursor_id uuid,
+    checked_rows bigint NOT NULL DEFAULT 0,
+    switched_at timestamptz,
+    mirror_legacy boolean NOT NULL DEFAULT true
+);
+
+ALTER TABLE credit_ledger_entry_keys
+    ADD FOREIGN KEY (account_id) REFERENCES credit_accounts(id),
+    ADD FOREIGN KEY (user_id) REFERENCES users(id),
+    ADD FOREIGN KEY (session_id) REFERENCES sessions(id),
+    ADD FOREIGN KEY (transaction_id) REFERENCES billing_transactions(id),
+    ADD FOREIGN KEY (group_id) REFERENCES groups(id);
+
+CREATE TABLE design_snapshots (
+    id uuid PRIMARY KEY,
+    publisher_id text NOT NULL,
+    source_release_id text NOT NULL,
+    schema_version integer NOT NULL CHECK (schema_version = 1),
+    digest_schema text NOT NULL CHECK (digest_schema = 'design-content-v1'),
+    snapshot_digest text NOT NULL,
+    taxonomy jsonb NOT NULL,
+    actor_user_id uuid NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (publisher_id, source_release_id)
+);
+
+CREATE TABLE design_entries (
+    id uuid PRIMARY KEY,
+    snapshot_id uuid NOT NULL REFERENCES design_snapshots(id) ON DELETE CASCADE,
+    resource_type text NOT NULL CHECK (resource_type IN ('template','design-system','style','direction')),
+    catalog_id text NOT NULL,
+    content_digest text NOT NULL,
+    data jsonb NOT NULL,
+    UNIQUE (snapshot_id, resource_type, catalog_id)
+);
+
+CREATE TABLE design_files (
+    entry_id uuid NOT NULL REFERENCES design_entries(id) ON DELETE CASCADE,
+    path text NOT NULL,
+    sha256 text NOT NULL,
+    size bigint NOT NULL CHECK (size >= 0),
+    mime text NOT NULL,
+    role text,
+    object_key text NOT NULL,
+    PRIMARY KEY (entry_id,path)
+);
+
+CREATE TABLE design_current (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    publisher_id text,
+    snapshot_id uuid REFERENCES design_snapshots(id),
+    revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    CHECK ((snapshot_id IS NULL AND publisher_id IS NULL) OR (snapshot_id IS NOT NULL AND publisher_id IS NOT NULL))
+);
+
+ALTER TABLE resource_imports ADD COLUMN upload_id uuid REFERENCES resource_import_uploads(id);
+
+ALTER TABLE resource_import_uploads ADD COLUMN cleaned_at timestamptz;
+
+CREATE TABLE resource_import_sections (
+    upload_id uuid NOT NULL REFERENCES resource_import_uploads(id),
+    section text NOT NULL CHECK (section IN ('agent','design')),
+    status text NOT NULL CHECK (status IN ('succeeded','failed')),
+    plan_digest text NOT NULL,
+    result jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (upload_id, section)
+);
+
+CREATE VIEW resource_import_history AS
+SELECT i.id,i.created_at,to_jsonb(i) AS data FROM resource_imports i WHERE i.upload_id IS NULL
+UNION ALL
+SELECT u.id,max(s.updated_at) AS created_at,
+       jsonb_build_object(
+         'id',u.id,'actor_user_id',u.actor_user_id,
+         'publisher',coalesce(max(s.result->'result'->>'publisher'),max(s.result->'result'->>'publisher_id'),''),
+         'release_id',coalesce(max(s.result->'result'->>'release_id') FILTER (WHERE s.section='design'),max(s.result->'result'->>'release_id'),''),
+         'version',coalesce(max((s.result->'result'->>'version')::bigint),0),
+         'status',CASE WHEN bool_and(s.status='succeeded') THEN 'succeeded' WHEN bool_or(s.status='succeeded') THEN 'partial' ELSE 'failed' END,
+         'result_counts',coalesce((SELECT i.result_counts FROM resource_imports i WHERE i.upload_id=u.id ORDER BY i.created_at DESC LIMIT 1),'{}'::jsonb),
+         'section_results',jsonb_object_agg(s.section,s.result),
+         'created_at',max(s.updated_at)) AS data
+FROM resource_import_uploads u JOIN resource_import_sections s ON s.upload_id=u.id
+GROUP BY u.id,u.actor_user_id;
+
+ALTER TABLE sessions
+    DROP CONSTRAINT sessions_client_type_check,
+    ADD CONSTRAINT sessions_client_type_check CHECK (
+        client_type IN ('desktop', 'web', 'extension', 'mobile', 'runtime', 'unknown')
+    );

@@ -1,0 +1,64 @@
+---
+import SectionTitle from './SectionTitle.astro';
+
+const rows = [
+  ['团队席位', '最多 10 个席位', '席位方案请咨询'],
+  ['云电脑', '不提供', '支持'],
+  ['技术支持', '不提供', '提供'],
+  ['内置内容', '基础内容', '更丰富的内置内容'],
+];
+---
+
+<section class="studio-section studio-container" id="pricing" aria-labelledby="pricing-title">
+  <div class="studio-section-heading">
+    <span class="studio-eyebrow"><i></i>版本与价格 <span>PLANS & PRICING</span></span>
+    <SectionTitle id="pricing-title">选择适合团队的<span>协作方案</span></SectionTitle>
+    <p>从免费版开始了解，按需选择付费方案。</p>
+  </div>
+
+  <div class="pricing-table" role="region" aria-label="免费版与付费版价格权益对比，可横向滚动" tabindex="0">
+    <table>
+      <caption class="sr-only">百智办公免费版与付费版权益对比</caption>
+      <thead>
+        <tr>
+          <th scope="col">方案对比</th>
+          <th scope="col" class="free-plan">
+            <span class="plan-name">免费版</span>
+            <span class="plan-price">¥0</span>
+          </th>
+          <th scope="col">
+            <span class="plan-name">付费版</span>
+            <a class="consult-button" href="https://baizhi.cloud/consult" target="_blank" rel="noopener noreferrer">咨询购买<span class="sr-only">（在新窗口打开）</span></a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([label, free, paid]) => (
+          <tr><th scope="row">{label}</th><td class="free-plan">{free}</td><td>{paid}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .pricing-table { position: relative; overflow-x: auto; border: 1px solid var(--studio-line, #303036); border-radius: 12px; }
+  .pricing-table:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; }
+  th, td { width: 33.333%; padding: 22px 28px; border-bottom: 1px solid var(--studio-line, #303036); }
+  thead th { vertical-align: top; padding-top: 32px; padding-bottom: 32px; }
+  tbody th { font-weight: var(--weight-heading); }
+  td, .pricing-note { color: var(--studio-muted); line-height: var(--leading-body); }
+  td { font-size: var(--type-body); }
+  .pricing-note { font-size: var(--type-caption); }
+  .plan-name, .plan-price { display: block; }
+  .plan-name { font-size: var(--type-heading); font-weight: var(--weight-heading); }
+  .plan-price { margin: 18px 0 10px; font-size: var(--type-section); font-weight: var(--weight-heading); letter-spacing: -0.04em; }
+  .consult-button { display: inline-flex; margin-top: 24px; padding: 12px 24px; border-radius: 6px; background: var(--green); color: #ffffff; font-size: var(--type-body); font-weight: var(--weight-heading); text-decoration: none; }
+  .consult-button:hover { background: var(--green-dark); }
+  .consult-button:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  .free-plan { background: color-mix(in srgb, var(--green) 5%, transparent); }
+  tbody tr:last-child > * { border-bottom: 0; }
+  .pricing-note { margin-top: 18px; }
+  @media (max-width: 640px) { th, td { padding: 18px; } }
+</style>

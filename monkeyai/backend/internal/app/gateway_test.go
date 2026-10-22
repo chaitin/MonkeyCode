@@ -44,7 +44,7 @@ func testMCPAddresses(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 			}
 			result["content"] = []resource.Object{{"type": "text", "text": r.Header.Get("X-Account")}}
 		}
-		resource.JSON(w, 200, resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
+		resource.JSON(r.Context(), w, 200, resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
 	}))
 	defer remote.Close()
 	call := func(method, path, token string, body any, status int) resource.Object {

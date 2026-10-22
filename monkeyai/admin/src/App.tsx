@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
 
 import { Dashboard } from "@/components/dashboard"
+import { LicenseGuard } from "@/components/license-guard"
 import { useAuth } from "@/hooks/use-auth"
 import {
   CONSOLE_PAGES,
@@ -20,6 +21,7 @@ import { FeedbackPage } from "@/pages/feedback-page"
 import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
 import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
+import { DeviceAuthorizationPage } from "@/pages/device-authorization-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { ClientAnalysisPage } from "@/pages/client-analysis-page"
@@ -32,12 +34,7 @@ import { RulesPage } from "@/pages/rules-page"
 import { ResourceImportsPage } from "@/pages/resource-imports-page"
 import { SkillsPage } from "@/pages/skills-page"
 import { TaskHistoryPage } from "@/pages/task-history-page"
-import { TaskStatisticsPage } from "@/pages/task-statistics-page"
-import {
-  ResourceAnalysisPage,
-  SessionListPage,
-  SessionOverviewPage,
-} from "@/pages/session-reporting-page"
+import { ResourceAnalysisPage } from "@/pages/resource-analysis-page"
 import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
 
@@ -59,13 +56,17 @@ function RequireAuth() {
     )
   }
 
-  return <Outlet />
+  return (
+    <LicenseGuard>
+      <Outlet />
+    </LicenseGuard>
+  )
 }
 
 function PageLoading() {
   return (
     <main
-      className="flex min-h-svh items-center justify-center bg-background text-sm text-muted-foreground"
+      className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground"
       role="status"
     >
       正在检查登录状态…
@@ -88,6 +89,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path={LOGIN_PATH} element={<LoginPage />} />
+        <Route path="/device" element={<DeviceAuthorizationPage />} />
         <Route path="/client-login" element={<ClientLoginPage />} />
         <Route element={<RequireAuth />}>
           <Route path={CONSOLE_PATH} element={<Dashboard />}>
@@ -106,16 +108,10 @@ export function App() {
                 element={
                   page.path === CONSOLE_ROUTES.realtimeStatus ? (
                     <RealtimeStatusPage />
-                  ) : page.path === CONSOLE_ROUTES.taskStatistics ? (
-                    <TaskStatisticsPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.conversationHistory ? (
                     <ConversationHistoryPage />
-                  ) : page.path === CONSOLE_ROUTES.sessionOverview ? (
-                    <SessionOverviewPage />
-                  ) : page.path === CONSOLE_ROUTES.sessionList ? (
-                    <SessionListPage />
                   ) : page.path === CONSOLE_ROUTES.resourceAnalysis ? (
                     <ResourceAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.clientAnalysis ? (

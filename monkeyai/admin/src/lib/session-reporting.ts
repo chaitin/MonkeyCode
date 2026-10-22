@@ -6,6 +6,8 @@ export type ReportWindow = {
   until: string
   group_id?: string
   user_id?: string
+  user?: string
+  kind?: string
   model_id?: string
   expert_id?: string
   client_type?: string
@@ -27,30 +29,7 @@ export type ReportPage<T> = ReportMeta & {
   next_cursor: string | null
   pagination: "cursor"
 }
-export type ReportOverview = ReportMeta & {
-  sessions: number
-  placeholders: number
-  clock_suspect: number
-  turns: number
-  complete: number
-  anomalies: number
-  interrupted: number
-  unknown: number
-  completion_rate: number | null
-  anomaly_rate: number | null
-  average_duration_seconds: number | null
-  p50_duration_seconds: number | null
-  p95_duration_seconds: number | null
-  input_tokens: number
-  output_tokens: number
-  credits: string
-  recent_active_tasks: number
-  recovered: number
-  average_reporting_delay_seconds: number | null
-  trend: { at: string; turns: number; complete: number; anomalies: number }[]
-  outcomes: { outcome: string; turns: number }[]
-}
-export type ReportSession = {
+type ReportSessionInfo = {
   id: string
   owner_user_id: string
   group_id: string | null
@@ -130,7 +109,7 @@ export type ReportChild = {
   active_seconds: number
 }
 export type ReportDetail = ReportMeta &
-  Omit<ReportSession, "turns" | "subsessions" | "platform"> & {
+  Omit<ReportSessionInfo, "turns" | "subsessions" | "platform"> & {
     parent_session_id: string | null
     engine_version: string | null
     runtime_version: string | null
@@ -148,6 +127,11 @@ export type ReportResourceRow = Pick<
   ReportResource,
   "kind" | "resource_id" | "version"
 > & {
+  resource_name: string
+  user_id: string
+  user_name: string
+  user_email: string
+  user_avatar_url?: string | null
   enabled_sessions: number
   available_sessions: number
   used_sessions: number
@@ -175,13 +159,21 @@ export type ReportClient = {
   sort_key: string
 }
 
+export type ClientDistributionDimension =
+  "client_type" | "platform" | "client_version"
+export type ClientDistribution = { value: string | null; count: number }
+export type ClientOverview = ReportMeta & {
+  metric: "sessions"
+  total: number
+  distributions: Record<ClientDistributionDimension, ClientDistribution[]>
+}
+
 const root = "/api/admin/v1/statistics/session-reporting"
 export const reportPaths = {
-  overview: `${root}/overview`,
-  sessions: `${root}/sessions`,
   detail: (id: string) => `${root}/sessions/${encodeURIComponent(id)}`,
   resources: `${root}/resources`,
   clients: `${root}/clients`,
+  clientsOverview: `${root}/clients/overview`,
 }
 
 export function defaultWindow(): ReportWindow {

@@ -7,9 +7,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.111.0
+	github.com/aws/smithy-go v1.28.1
 	github.com/coder/websocket v1.8.14
+	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
 	github.com/go-chi/chi/v5 v5.3.2
+	github.com/hashicorp/yamux v0.1.2
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/tiktoken-go/tokenizer v0.8.1
 	golang.org/x/image v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -28,7 +32,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.37.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.42.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.49.0 // indirect
-	github.com/aws/smithy-go v1.28.1 // indirect
+	github.com/dlclark/regexp2/v2 v2.5.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

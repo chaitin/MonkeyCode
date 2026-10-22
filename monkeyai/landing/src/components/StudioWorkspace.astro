@@ -1,0 +1,78 @@
+---
+import { Image } from 'astro:assets';
+import officeIllustration from '../assets/scene-office.webp';
+import codingIllustration from '../assets/scene-coding.webp';
+import designIllustration from '../assets/scene-design.webp';
+
+const scenes = [
+  {
+    id: 'work', name: '办公', number: '01', english: 'WORK WITH AI',
+    title: '把日常琐事，交给 AI 完成。',
+    description: '制作 PPT、编写文档、处理表格、整理文件。从零散的资料出发，整理出一份清晰的工作成果。',
+    tags: ['制作 PPT', '编写文档', '处理表格', '整理文件'],
+    image: officeIllustration,
+    alt: '电脑中的 AI 对话软件连接两个放大窗口，展示表格处理与 PPT 编辑',
+  },
+  {
+    id: 'coding', name: '编程', number: '02', english: 'CODE WITH AI',
+    title: '把开发需求，变成可用的代码。',
+    description: '从架构设计到编写代码、修复问题，让 AI 参与开发任务，把精力留给更重要的技术判断。',
+    tags: ['架构设计', '代码编写', '问题修复'],
+    image: codingIllustration,
+    alt: '电脑中的 AI 对话软件连接 IDE 与终端窗口，展示代码编辑和命令执行',
+  },
+  {
+    id: 'design', name: '设计', number: '03', english: 'CREATE WITH AI',
+    title: '把脑海创意，变成眼前的作品。',
+    description: '从海报、平面设计到交互设计与短剧制作，围绕你的想法展开创作，让表达不止于文字。',
+    tags: ['海报制作', '平面设计', '交互设计', '短剧制作'],
+    image: designIllustration,
+    alt: '电脑中的 AI 对话软件连接图像设计与视频剪辑窗口，展示视觉创作过程',
+  },
+];
+---
+
+<div class="scene-list">
+  {scenes.map(scene => (
+    <article class:list={['workspace-scene', `scene-${scene.id}`]} aria-labelledby={`scene-${scene.id}-title`}>
+      <div class="scene-copy">
+        <p class="scene-kicker"><span>{scene.number} / {scene.name}</span>{scene.english}</p>
+        <h3 id={`scene-${scene.id}-title`}>{scene.title}</h3>
+        <p class="scene-description">{scene.description}</p>
+        <ul class="scene-tags" aria-label={`${scene.name}能力`}>{scene.tags.map(tag => <li>{tag}</li>)}</ul>
+      </div>
+      <figure class="scene-preview" aria-label={`AI ${scene.name}场景插画`}>
+        <Image
+          src={scene.image}
+          alt={scene.alt}
+          class="scene-illustration"
+          widths={[540, 1080]}
+          sizes="(max-width: 800px) calc(100vw - 80px), 540px"
+          format="webp"
+          loading="lazy"
+        />
+      </figure>
+    </article>
+  ))}
+</div>
+
+<style>
+  .scene-list { display: grid; gap: 24px; margin-top: 40px; }
+  .workspace-scene { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: center; gap: 48px; padding: 16px 28px; border: 1px solid var(--studio-line); border-radius: 18px; background: var(--scene-tint); --scene-accent: #2563a6; --scene-tint: #eff7ff; }
+  .scene-work { --scene-accent: #906318; --scene-tint: #fffbf5; }
+  .scene-design { --scene-accent: #a34d60; --scene-tint: #fef2f2; }
+  .scene-kicker { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--studio-subtle); font-size: var(--type-caption); letter-spacing: .08em; }
+  .scene-kicker > span { color: var(--scene-accent); font-size: var(--type-caption); font-weight: var(--weight-heading); letter-spacing: 0; }
+  .scene-copy h3 { color: var(--studio-text); margin: 14px 0; font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: 1.4; letter-spacing: -.04em; text-wrap: wrap; }
+  .scene-description { color: var(--studio-muted); font-size: var(--type-body); line-height: 1.7; }
+  .scene-tags { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; margin: 18px 0 0; padding: 0; }
+  .scene-tags li { padding: 6px 12px; border: 1px solid var(--scene-accent); border-radius: 6px; color: var(--scene-accent); font-size: var(--type-caption); }
+  .scene-copy { min-width: 0; }
+  .scene-preview { margin: 0; min-width: 0; }
+  .scene-illustration { display: block; width: auto; max-width: 100%; height: auto; max-height: 240px; margin-inline: auto; border-radius: 10px; }
+  @media (max-width: 1000px) { .workspace-scene { gap: 28px; padding: 16px 20px; } }
+  @media (max-width: 800px) {
+    .scene-list { gap: 20px; margin-top: 32px; }.workspace-scene { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .scene-description { max-width: 38em; }.scene-preview { width: 100%; max-width: 540px; justify-self: center; }
+  }
+</style>

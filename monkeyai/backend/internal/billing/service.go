@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"sync"
 	"time"
@@ -50,7 +51,7 @@ func defaultPolicy() Policy {
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	zone, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		slog.Error("加载计费时区失败，使用固定东八区", "operation", "load_billing_timezone", "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "billing.operation.error", "加载计费时区失败，使用固定东八区", "module", "billing", "operation", "period", "operation", "load_billing_timezone", "error", err)
 		zone = time.FixedZone("CST", 8*60*60)
 	}
 	n := now.In(zone)
@@ -266,7 +267,7 @@ func (s *Service) ensureAccount(ctx context.Context, tx pgx.Tx, user string, p P
 }
 func rollback(ctx context.Context, tx pgx.Tx, operation, transactionID string) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.ErrorContext(ctx, "回滚计费事务失败", "operation", operation, "transaction_id", transactionID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "billing.operation.error", "回滚计费事务失败", "module", "billing", "operation", "rollback", "operation", operation, "transaction_id", transactionID, "error", err)
 	}
 }
 

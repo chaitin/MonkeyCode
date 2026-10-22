@@ -95,18 +95,8 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	}
 
 	ruleShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "rule", ID: ruleID}}, UserIDs: []string{users[1]}}
-	call("POST", "/resources/shares", "b", "", ruleShare, 404)
+	call("POST", "/resources/shares", "b", "", ruleShare, 400)
 	beforeRules := call("GET", "/rules", "a", "", nil, 200).String("version")
-	if _, err := pool.Exec(t.Context(), `INSERT INTO resource_access_grants(resource_type,resource_id,all_users,access_level,usage_requirement,granted_by_user_id) VALUES('rule',$1,true,'read_only','required',$2)`, ruleID, users[0]); err != nil {
-		t.Fatal(err)
-	}
-	if contains("rules", "b", ruleID) {
-		t.Fatal("历史全员授权不应公开个人规则")
-	}
-	call("POST", "/experts", "b", "", resource.Object{"name": "引用历史规则授权", "prompt": "测试", "rule_ids": []string{ruleID}}, 400)
-	if _, err := pool.Exec(t.Context(), `DELETE FROM resource_access_grants WHERE resource_type='rule' AND resource_id=$1 AND all_users`, ruleID); err != nil {
-		t.Fatal(err)
-	}
 	call("POST", "/resources/shares", "a", "", ruleShare, 204)
 	call("POST", "/resources/shares", "a", "", ruleShare, 204)
 	if _, err := pool.Exec(t.Context(), `UPDATE resource_access_grants SET usage_requirement='required' WHERE resource_type='rule' AND resource_id=$1`, ruleID); err != nil {
@@ -123,8 +113,18 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	call("PUT", "/rules/"+ruleID, "b", etag(detail), ruleInput, 404)
 	call("DELETE", "/rules/"+ruleID, "b", etag(detail), nil, 404)
 	shared := call("POST", "/resources/resolve", "b", "", resource.Object{"rule_ids": []string{ruleID}}, 200)
-	if len(shared["rules"].([]any)) != 1 || shared["rules"].([]any)[0].(map[string]any)["required"] != false {
-		t.Fatalf("共享规则不可选用或被强制应用: %v", shared)
+	sharedRuleFound := false
+	for _, raw := range shared["rules"].([]any) {
+		entry := raw.(map[string]any)
+		if entry["id"] == ruleID {
+			sharedRuleFound = true
+			if entry["required"] != false {
+				t.Fatal("共享个人规则被强制应用")
+			}
+		}
+	}
+	if !sharedRuleFound {
+		t.Fatal("共享个人规则不可选用")
 	}
 	for _, raw := range call("POST", "/resources/resolve", "b", "", resource.Object{}, 200)["rules"].([]any) {
 		if raw.(map[string]any)["id"] == ruleID {

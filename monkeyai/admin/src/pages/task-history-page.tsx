@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  FilterHorizontalIcon,
-  Search02Icon,
-  User02Icon,
-} from "@hugeicons/core-free-icons"
+import { FilterHorizontalIcon, Search02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { Link } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { useStatistics } from "@/hooks/use-statistics"
 import { StatisticsFeedback } from "@/components/statistics-feedback"
@@ -30,14 +28,6 @@ import { Input } from "@/components/ui/input"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Table,
   TableBody,
   TableCell,
@@ -52,6 +42,7 @@ type TaskHistoryEntry = {
   user_id?: string
   user_name: string
   user_email: string
+  user_avatar_url?: string | null
   started_at: string
   last_active_at: string
   turn_count: number
@@ -74,7 +65,7 @@ type TaskHistoryFilters = {
 }
 
 const DEFAULT_PAGE_SIZE = 50
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const EMPTY_FILTERS: TaskHistoryFilters = {
   taskName: "",
   userName: "",
@@ -156,33 +147,17 @@ export function TaskHistoryPage() {
   const total = request.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = request.data?.page ?? page
-  const pageStart = (currentPage - 1) * pageSize
   const visibleTasks = request.data?.items ?? []
-  const firstVisible = visibleTasks.length === 0 ? 0 : pageStart + 1
-  const lastVisible =
-    visibleTasks.length === 0 ? 0 : pageStart + visibleTasks.length
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const relativeFormatter = useMemo(
     () => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }),
     [locale]
   )
   const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }),
+    () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
   )
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const fieldOptions: { key: SearchField; label: string }[] = [
     { key: "taskName", label: t("pages.taskHistory.filters.taskName") },
     { key: "userName", label: t("pages.taskHistory.filters.userName") },
@@ -216,11 +191,11 @@ export function TaskHistoryPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <StatisticsFeedback {...request} />
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <form onSubmit={applySearch} className="px-(--card-spacing)">
+          <form onSubmit={applySearch} className="px-[var(--card-spacing)]">
             <FieldGroup className="flex-row flex-wrap items-end gap-3">
               {visibleFields.has("taskName") && (
                 <Field className="sm:w-44">
@@ -359,9 +334,9 @@ export function TaskHistoryPage() {
               aria-label={t("pages.taskHistory.title")}
               aria-busy={request.loading}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="w-52 ps-(--card-spacing)">
+                  <TableHead className="w-52 ps-[var(--card-spacing)]">
                     {t("pages.taskHistory.columns.startedAt")}
                   </TableHead>
                   <TableHead className="w-44">
@@ -371,7 +346,7 @@ export function TaskHistoryPage() {
                   <TableHead className="w-28">
                     {t("pages.taskHistory.columns.conversationCount")}
                   </TableHead>
-                  <TableHead className="w-36 pe-(--card-spacing)">
+                  <TableHead className="w-36 pe-[var(--card-spacing)]">
                     {t("pages.taskHistory.columns.lastActiveAt")}
                   </TableHead>
                 </TableRow>
@@ -382,7 +357,7 @@ export function TaskHistoryPage() {
                 {visibleTasks.length > 0 ? (
                   visibleTasks.map((task) => (
                     <TableRow key={task.id}>
-                      <TableCell className="ps-(--card-spacing) text-muted-foreground">
+                      <TableCell className="ps-[var(--card-spacing)] text-muted-foreground">
                         <span
                           className="block truncate"
                           title={dateFormatter.format(
@@ -395,16 +370,11 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <button
                           type="button"
-                          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                           title={task.user_email}
                           onClick={() => openAccount(task)}
                         >
-                          <HugeiconsIcon
-                            icon={User02Icon}
-                            className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
+                          <UserAvatar src={task.user_avatar_url} />
                           <span className="min-w-0 truncate">
                             {task.user_name}
                           </span>
@@ -413,7 +383,7 @@ export function TaskHistoryPage() {
                       <TableCell>
                         <Link
                           to={`${CONSOLE_ROUTES.conversationHistory}?task_id=${encodeURIComponent(task.id)}`}
-                          className="block min-w-0 truncate rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="block min-w-0 cursor-pointer truncate rounded-sm underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover]:underline"
                           title={task.title}
                         >
                           {task.title}
@@ -423,7 +393,7 @@ export function TaskHistoryPage() {
                         {numberFormatter.format(task.turn_count)}
                       </TableCell>
                       <TableCell
-                        className="pe-(--card-spacing) whitespace-nowrap text-muted-foreground"
+                        className="pe-[var(--card-spacing)] whitespace-nowrap text-muted-foreground"
                         title={dateFormatter.format(
                           new Date(task.last_active_at)
                         )}
@@ -445,94 +415,33 @@ export function TaskHistoryPage() {
                       colSpan={5}
                       className="h-full text-center text-muted-foreground"
                     >
-                      {request.loading
-                        ? t("statistics.loading")
-                        : request.error
-                          ? "—"
-                          : t("pages.taskHistory.empty")}
+                      {request.loading ? (
+                        <TableLoading />
+                      ) : request.error ? (
+                        "—"
+                      ) : (
+                        t("pages.taskHistory.empty")
+                      )}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setPageSize(Number(value))
-                    resetPage()
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.summary", {
-                  from: firstVisible,
-                  to: lastVisible,
-                  total,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("pages.operationLogs.pagination.page", {
-                  page: currentPage,
-                  pages: pageCount,
-                })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={request.loading || currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={
-                  request.loading ||
-                  Boolean(request.error) ||
-                  currentPage >= pageCount
-                }
-                onClick={() =>
-                  setPage((value) => Math.min(pageCount, value + 1))
-                }
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={currentPage}
+            pageSize={pageSize}
+            itemCount={visibleTasks.length}
+            total={total}
+            loading={request.loading}
+            error={Boolean(request.error)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              resetPage()
+            }}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+          />
         </CardContent>
       </Card>
       {accountUserID && (

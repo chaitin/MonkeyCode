@@ -111,9 +111,24 @@ export const enUS = {
     allowTools: "Allowed tools, comma separated; empty allows all",
     denyTools: "Denied tools, comma separated",
     loading: "Loading…",
+    tableLoading: "Loading",
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
+    ruleSearchPlaceholder: "Search name or description",
+    modelSearchPlaceholder: "Search name, model ID or URL",
+    systemExpert: "System experts",
+    userExpert: "User experts",
+    importedRuleReadOnly:
+      "The content of built-in system rules cannot be modified.",
+    importedSkillReadOnly:
+      "The content of built-in system skills cannot be modified.",
+    importedExpertReadOnly:
+      "Built-in system expert settings cannot be modified.",
+    importedConnectorReadOnly:
+      "Built-in system connector settings cannot be modified.",
+    retiredGrantsOnly:
+      "This resource is retired. Existing access can only be revoked; new access cannot be granted.",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
     oauthClientDynamic: "Dynamic client (auto-discovery)",
@@ -194,8 +209,6 @@ export const enUS = {
     deleted: "Deleted",
     modelScope:
       "Calls use start time; credits use charge and refund time. Cache hit rate is the share of calls with cache hits.",
-    taskScope:
-      "Based on reported turns in the selected window. Completion and anomaly rates exclude unknown outcomes; interruptions are counted separately.",
   },
   common: {
     breadcrumb: "Breadcrumb",
@@ -293,7 +306,10 @@ export const enUS = {
     systemSettings: "System Settings",
   },
   pages: {
-    resourceImports: { title: "Import resource package", description: "Preview and apply a resource release" },
+    resourceImports: {
+      title: "Import resource package",
+      description: "Preview and apply a resource release",
+    },
     license: {
       title: "License",
       description: "View and manage paid licenses.",
@@ -313,6 +329,20 @@ export const enUS = {
       chooseFile: "Choose file",
       import: "Import",
       importSuccess: "License imported",
+      expiredTitle: "License expired",
+      expiredDescription:
+        "Your license has expired. Downgrade to the free edition or upload a new license to continue using the admin console.",
+      freeLimit:
+        "The free edition supports up to {{count}} enabled users, including administrators.",
+      downgrade: "Downgrade to free edition",
+      downgradeSuccess: "Switched to the free edition",
+      downgradeBlocked:
+        "There are {{count}} enabled users, exceeding the free edition limit of {{limit}}. You cannot downgrade. Please upload a new license.",
+      memberCountUnavailable:
+        "The user count is temporarily unavailable. Please retry or upload a new license.",
+      uploadNew: "Upload new license",
+      processing: "Processing…",
+      retry: "Retry",
     },
     realtimeStatus: {
       title: "Data Overview",
@@ -321,7 +351,17 @@ export const enUS = {
       timeRange: "Live statistics period",
       pendingMetric: "Data pending API support",
       period24h: "24 hours",
+      comparison: {
+        new: "New",
+        unavailable: "Previous period data is unavailable",
+        increased: "Up {{percent}} from the preceding 24 hours",
+        decreased: "Down {{percent}} from the preceding 24 hours",
+        unchanged: "Unchanged from the preceding 24 hours",
+        newActivity: "New activity; the preceding 24 hours had zero",
+        previousValue: "Preceding 24 hours: {{value}}",
+      },
       period30m: "30 minutes",
+      average: "Average",
       callsTrend: "Calls",
       newUsersTrend: "New users",
       activeUsersTrend: "Active users",
@@ -340,8 +380,8 @@ export const enUS = {
       },
       metrics: {
         modelConsumption: "Credits consumed",
-        p95ResponseTime: "Model response time",
-        p95FirstTokenTime: "Model first token time",
+        avgResponseTime: "Model response time",
+        avgFirstTokenTime: "Model first token time",
         modelSuccessRate: "Model success rate",
         cacheHitRate: "Cache hit rate",
         modelCalls: "Model calls",
@@ -389,27 +429,22 @@ export const enUS = {
       empty: "No tasks match the current filters",
     },
     sessionReporting: {
-      overview: {
-        title: "Session overview",
-        description: "Session and turn statistics.",
-      },
-      sessionOverview: {
-        title: "Session overview",
-        description: "Session and turn statistics.",
-      },
-      sessionList: {
-        title: "Sessions",
-        description: "Filter reported sessions.",
-      },
       resourceAnalysis: {
-        title: "Resources",
+        title: "AI behavior",
         description: "Resource availability and usage.",
       },
       clientAnalysis: { title: "Clients", description: "Client breakdown." },
-      sessions: { title: "Sessions" },
       resources: {
-        title: "Resources",
+        title: "Resource usage",
         note: "Team connectors use gateway MCP facts; local tools use reported turn facts.",
+        invalidRange:
+          "Select both dates. The end date cannot be earlier than the start date.",
+        kinds: {
+          builtin: "Built-in tool",
+          workflow: "Workflow",
+          agent: "Agent",
+          local_mcp: "Local MCP",
+        },
       },
       clients: {
         title: "Clients",
@@ -417,6 +452,22 @@ export const enUS = {
         selectColumns: "Select columns",
         cursorSummary: "Showing {{from}}–{{to}}",
         cursorPage: "Page {{page}}",
+        distribution: {
+          client_type: "Client type distribution",
+          platform: "Platform distribution",
+          client_version: "Client version distribution",
+          sessions: "Sessions",
+          empty: "No matching data",
+          unknown: "Unknown",
+          types: {
+            desktop: "Desktop",
+            web: "Web",
+            extension: "Extension",
+            mobile: "Mobile",
+            runtime: "Runtime",
+            unknown: "Unknown",
+          },
+        },
       },
       detail: {
         title: "Session details",
@@ -449,6 +500,7 @@ export const enUS = {
         from: "From",
         until: "Until (exclusive)",
         group_id: "Group ID",
+        user: "User",
         user_id: "User ID",
         owner_user_id: "User ID",
         model_id: "Model ID",
@@ -457,6 +509,7 @@ export const enUS = {
         platform: "Platform",
         outcome: "Outcome",
         resource_id: "Resource ID",
+        resource_name: "Resource name",
         resource_version: "Resource version",
         include_placeholders: "Include placeholders",
         session_id: "Session ID",
@@ -500,7 +553,7 @@ export const enUS = {
         used_sessions: "Used sessions",
         calls: "Calls",
         failed: "Failed",
-        failure_rate: "Failure rate",
+        success_rate: "Success rate",
         os_version: "OS version",
         locale: "Language",
         timezone: "Timezone",
@@ -546,7 +599,7 @@ export const enUS = {
       apply: "Apply",
       open: "View",
       copy: "Copy ID",
-      back: "Back to sessions",
+      back: "Back to task history",
       previous: "Previous",
       next: "Next",
       invalidFilter: "Check the time range and session ID.",
@@ -556,52 +609,6 @@ export const enUS = {
       freshness: "Data lag",
       pending: "Not synchronized",
       window: "Window",
-      trend: "Turn trend (hourly)",
-      distribution: "Outcome distribution",
-      recentNote:
-        "Recently active means gateway activity within the chosen window, not necessarily running now. Refreshes every 30 seconds.",
-    },
-    taskStatistics: {
-      title: "Task Statistics",
-      description:
-        "Review reported turn outcomes, duration, and anomaly rates.",
-      timeRange: "Statistics time range",
-      ranges: {
-        "7d": "Last 7 days",
-        "30d": "Last 30 days",
-        "90d": "Last 90 days",
-      },
-      comparedToPrevious: "vs. previous period",
-      metrics: {
-        totalTasks: "Reported turns",
-        completionRate: "Completion rate",
-        averageDuration: "Average duration",
-        runningTasks: "Open tasks",
-      },
-      taskTrend: "Turn trend",
-      statusDistribution: "Turn outcome distribution",
-      statuses: {
-        completed: "Completed",
-        running: "Open",
-        failed: "Failed",
-      },
-      taskTypeDetails: "Task type details",
-      columns: {
-        taskType: "Task type",
-        total: "Turns",
-        completed: "Completed",
-        completionRate: "Completion rate",
-        averageDuration: "Average duration",
-      },
-      taskTypes: {
-        conversation: "Agent conversation",
-        workflow: "Workflow",
-        retrieval: "Knowledge retrieval",
-        tool: "Tool call",
-        scheduled: "Scheduled task",
-      },
-      durationSeconds: "{{count}} sec",
-      durationMinutes: "{{minutes}} min {{seconds}} sec",
     },
     models: {
       noTags: "No tags",
@@ -796,19 +803,19 @@ export const enUS = {
       content: "Skill content (SKILL.md)",
       contentPlaceholder: "Enter the skill instructions",
       skillPackage: "Skill package",
-      packageHint: "Upload the skill directory as a ZIP file, up to 20 MB.",
+      packageHint: "Upload the skill directory as a ZIP file, up to 500 MiB.",
       packageOptionalHint:
         "Upload a new ZIP skill package only when replacing its contents.",
       packageParsing: "Inspecting skill package…",
       packageSummary: "{{count}} files · {{size}} unpacked",
       packageErrors: {
-        fileTooLarge: "The skill package must not exceed 20 MB.",
+        fileTooLarge: "The skill package must not exceed 500 MiB.",
         invalidZip:
           "This file cannot be read. Upload a valid ZIP skill package.",
         unsafePath: "The skill package contains an unsafe file path.",
         symlink: "The skill package must not contain symbolic links.",
-        tooManyFiles: "The skill package can contain at most 500 files.",
-        unpackedTooLarge: "The unpacked skill package must not exceed 50 MB.",
+        tooManyFiles: "The skill package can contain at most 5000 files.",
+        unpackedTooLarge: "The unpacked skill package must not exceed 1 GiB.",
         missingManifest:
           "No SKILL.md was found. This is not a valid skill package.",
         multipleManifests:
@@ -1285,6 +1292,9 @@ export const enUS = {
       groupQuota: {
         title: "Group quotas",
         memberTitle: "Member quotas",
+        memberSort: "Sort members",
+        nameAscending: "Name",
+        creditsAscending: "Credits",
         manageGroups: "Manage groups",
         description:
           "The root group requires a quota. Empty child groups and users inherit from their nearest parent group.",
@@ -1432,7 +1442,24 @@ export const enUS = {
     },
     otherSettings: {
       about: "About",
-      proxies: { title: "System proxies", description: "Configure outbound proxies for models and connectors. Proxies in use cannot be deleted.", name: "Name", url: "Proxy URL", username: "Username (optional)", password: "Password (leave blank to keep)", newPassword: "Password (optional)", add: "Add proxy", edit: "Edit proxy", editAction: "Edit", delete: "Delete", cancel: "Cancel", save: "Save", direct: "Direct connection", confirmDelete: "Delete this proxy?" },
+      proxies: {
+        title: "System proxies",
+        description:
+          "Configure outbound proxies for models and connectors. Proxies in use cannot be deleted.",
+        name: "Name",
+        url: "Proxy URL",
+        username: "Username (optional)",
+        password: "Password (leave blank to keep)",
+        newPassword: "Password (optional)",
+        add: "Add proxy",
+        edit: "Edit proxy",
+        editAction: "Edit",
+        delete: "Delete",
+        cancel: "Cancel",
+        save: "Save",
+        direct: "Direct connection",
+        confirmDelete: "Delete this proxy?",
+      },
       title: "Other Settings",
       description:
         "Configure branding, OAuth, and other platform capabilities.",

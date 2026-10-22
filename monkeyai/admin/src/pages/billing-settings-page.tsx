@@ -3,13 +3,14 @@ import {
   Folder02Icon,
   FolderIcon,
   LinkSquare02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { TableLoading } from "@/components/table-loading"
+import { UserAvatar } from "@/components/user-avatar"
 import {
   GroupSelect,
   type GroupSelectionValue,
@@ -69,6 +70,8 @@ import {
   cycleNames,
   dateTime,
   validCredits,
+  sortQuotaUsers,
+  type QuotaMemberSort,
   type BillingSettings,
   type Policy,
   type QuotaGroup,
@@ -109,9 +112,11 @@ export function BillingSettingsPage() {
   const [mode, setMode] = useState("local")
   const [enabled, setEnabled] = useState(true)
   const [busy, setBusy] = useState("")
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false)
+  const [quotasLoadFailed, setQuotasLoadFailed] = useState(false)
   const [walletVersion, setWalletVersion] = useState(0)
   const [query, setQuery] = useState("")
+  const [memberSort, setMemberSort] = useState<QuotaMemberSort>("name-asc")
   const [target, setTarget] = useState<Target | null>(null)
   const [quotaValue, setQuotaValue] = useState("")
   const [quotaMode, setQuotaMode] = useState<"inherit" | "custom">("custom")
@@ -119,44 +124,60 @@ export function BillingSettingsPage() {
   const [pricingValue, setPricingValue] = useState("")
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
 
-  const load = useCallback(
-    () =>
-      Promise.all([
-        api<BillingSettings>("/api/admin/v1/billing/settings"),
-        api<Quotas>("/api/admin/v1/billing/quotas"),
-      ]).then(([s, q]) => {
-        setSettings(s)
-        setQuotas(q)
-        setPricing({
-          input_credits_per_million_tokens:
-            s.policy.input_credits_per_million_tokens,
-          cached_input_credits_per_million_tokens:
-            s.policy.cached_input_credits_per_million_tokens,
-          output_credits_per_million_tokens:
-            s.policy.output_credits_per_million_tokens,
+  const loadSettings = useCallback(
+    (signal?: AbortSignal) =>
+      api<BillingSettings>("/api/admin/v1/billing/settings", { signal })
+        .then((result) => {
+          if (signal?.aborted) return
+          setSettings(result)
+          setSettingsLoadFailed(false)
+          setPricing({
+            input_credits_per_million_tokens:
+              result.policy.input_credits_per_million_tokens,
+            cached_input_credits_per_million_tokens:
+              result.policy.cached_input_credits_per_million_tokens,
+            output_credits_per_million_tokens:
+              result.policy.output_credits_per_million_tokens,
+          })
+          setCycle(
+            result.policy.pending_cycle ?? result.policy.quota_refresh_cycle
+          )
+          setMode(result.policy.charging_mode)
+          setEnabled(result.policy.enabled)
+          setWalletVersion((value) => value + 1)
         })
-        setCycle(s.policy.pending_cycle ?? s.policy.quota_refresh_cycle)
-        setMode(s.policy.charging_mode)
-        setEnabled(s.policy.enabled)
-        setLoadFailed(false)
-        setWalletVersion((value) => value + 1)
-      }),
-    []
-  )
-  const handleLoadFailure = useCallback(
-    (error: Error) => {
-      setLoadFailed(true)
-      showToast({ status: "error", title: error.message })
-    },
+        .catch((error: Error) => {
+          if (signal?.aborted) return
+          setSettingsLoadFailed(true)
+          showToast({ status: "error", title: error.message })
+        }),
     [showToast]
   )
-  const retryLoad = () => {
-    setLoadFailed(false)
-    void load().catch(handleLoadFailure)
-  }
+  const loadQuotas = useCallback(
+    (signal?: AbortSignal) =>
+      api<Quotas>("/api/admin/v1/billing/quotas", { signal })
+        .then((result) => {
+          if (signal?.aborted) return
+          setQuotas(result)
+          setQuotasLoadFailed(false)
+        })
+        .catch((error: Error) => {
+          if (signal?.aborted) return
+          setQuotasLoadFailed(true)
+          showToast({ status: "error", title: error.message })
+        }),
+    [showToast]
+  )
+  const load = useCallback(
+    (signal?: AbortSignal) =>
+      Promise.all([loadSettings(signal), loadQuotas(signal)]),
+    [loadSettings, loadQuotas]
+  )
   useEffect(() => {
-    void load().catch(handleLoadFailure)
-  }, [handleLoadFailure, load])
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
+  }, [load])
   const format = (value: string) => credits(value, i18n.language)
   const integerQuotaValue = (value: string) => value.split(".", 1)[0]
   const formatQuota = (value: string) =>
@@ -221,7 +242,7 @@ export function BillingSettingsPage() {
     pricingOverride?: PricingSettings,
     cycleOverride?: string
   ): Promise<boolean> => {
-    if (!settings || !quotas || !pricing) return false
+    if (!settings || !pricing) return false
     setBusy(section)
     try {
       const values =
@@ -243,7 +264,9 @@ export function BillingSettingsPage() {
         }
       )
       setSettings(result)
-      setQuotas({ ...quotas, revision: result.policy.revision })
+      setQuotas((current) =>
+        current ? { ...current, revision: result.policy.revision } : current
+      )
       showToast({
         status: "success",
         title:
@@ -293,7 +316,7 @@ export function BillingSettingsPage() {
           count: result.reset_count,
         }),
       })
-      void load().catch(handleLoadFailure)
+      void load()
     } catch (reason) {
       showToast({ status: "error", title: (reason as Error).message })
     } finally {
@@ -301,11 +324,7 @@ export function BillingSettingsPage() {
     }
   }
   const refreshQuotas = () => {
-    void api<Quotas>("/api/admin/v1/billing/quotas")
-      .then(setQuotas)
-      .catch((error: Error) =>
-        showToast({ status: "error", title: error.message })
-      )
+    void loadQuotas()
   }
   const dirtyMode =
     settings &&
@@ -336,32 +355,22 @@ export function BillingSettingsPage() {
             <Button
               type="button"
               variant="ghost"
-              className="h-auto cursor-pointer justify-start text-start whitespace-normal hover:bg-muted"
+              className="h-auto cursor-pointer justify-start whitespace-normal text-start underline-offset-2 hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
               onClick={() => setAccountUserID(user.id)}
             />
           }
-          className={cn(disabled && "text-muted-foreground")}
+          className={cn("gap-2", disabled && "text-muted-foreground")}
         >
           <ItemMedia>
-            <HugeiconsIcon
-              icon={User02Icon}
-              className={cn(
-                "size-4 shrink-0",
-                disabled
-                  ? "text-muted-foreground"
-                  : "text-blue-600 dark:text-blue-400"
-              )}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
+            <UserAvatar src={user.avatar_url} />
           </ItemMedia>
           <ItemContent className="min-w-0">
-            <ItemTitle className="max-w-full min-w-0">
+            <ItemTitle className="min-w-0 max-w-full">
               <span className="truncate">{user.name}</span>
             </ItemTitle>
           </ItemContent>
           <ItemActions>
-            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+            <span className="text-xs font-normal tabular-nums text-muted-foreground">
               {savedLocalBilling
                 ? t("pages.billingSettings.groupQuota.remaining", {
                     credits: balance === undefined ? "—" : formatQuota(balance),
@@ -398,7 +407,7 @@ export function BillingSettingsPage() {
             type="button"
             variant="ghost"
             size="sm"
-            className="w-full cursor-pointer justify-between gap-2 pe-2 text-start font-normal hover:bg-foreground/5!"
+            className="w-full cursor-pointer justify-between gap-2 pe-2 text-start font-normal hover:!bg-foreground/5"
             style={{
               paddingInlineStart: `${depth * 1.25 + 2.5}rem`,
             }}
@@ -417,7 +426,7 @@ export function BillingSettingsPage() {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="group absolute top-0 z-10 cursor-pointer hover:bg-transparent! active:translate-y-0! aria-expanded:bg-transparent!"
+                className="group absolute top-0 z-10 cursor-pointer hover:!bg-transparent active:!translate-y-0 aria-expanded:!bg-transparent"
                 style={{ insetInlineStart: `${depth * 1.25 + 0.25}rem` }}
                 aria-label={`展开或折叠 ${g.name}`}
               />
@@ -445,18 +454,28 @@ export function BillingSettingsPage() {
       </Collapsible>
     )
   }
-  if (!settings || !quotas || !pricing)
-    return (
-      <div className="p-4" role="status">
-        {loadFailed ? (
-          <Button variant="outline" onClick={retryLoad}>
-            重试
-          </Button>
-        ) : (
-          "正在读取计费设置…"
-        )}
-      </div>
-    )
+  const loadState = (failed: boolean, retry: () => void) => (
+    <div className="flex min-h-40 flex-1 items-center justify-center">
+      {failed ? (
+        <Button variant="outline" onClick={retry}>
+          {t("statistics.retry")}
+        </Button>
+      ) : (
+        <TableLoading />
+      )}
+    </div>
+  )
+  const retrySettings = () => {
+    setSettingsLoadFailed(false)
+    void loadSettings()
+  }
+  const retryQuotaCards = () => {
+    if (settingsLoadFailed) retrySettings()
+    if (quotasLoadFailed) {
+      setQuotasLoadFailed(false)
+      void loadQuotas()
+    }
+  }
   const pricingFields = [
     {
       key: "input_credits_per_million_tokens",
@@ -499,9 +518,26 @@ export function BillingSettingsPage() {
       label: t("pages.billingSettings.chargingMethod.modes.remote"),
     },
   ]
+  const memberSortItems = [
+    {
+      value: "name-asc",
+      label: t("pages.billingSettings.groupQuota.nameAscending"),
+    },
+    {
+      value: "credits-asc",
+      label: t("pages.billingSettings.groupQuota.creditsAscending"),
+    },
+  ] satisfies { value: QuotaMemberSort; label: string }[]
+  const visibleUsers = sortQuotaUsers(
+    (quotas?.users ?? []).filter((user) =>
+      `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase())
+    ),
+    memberSort,
+    i18n.resolvedLanguage ?? i18n.language
+  )
   const selectedMode = enabled ? mode : "disabled"
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100svh-5rem)] lg:flex-none lg:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100vh-5rem)] lg:flex-none lg:overflow-hidden">
       <div className="grid min-h-0 flex-1 items-start gap-4 lg:grid-cols-2 lg:items-stretch">
         <div className="grid min-h-0 gap-4 lg:h-full lg:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
           <Card className="min-h-80 lg:min-h-0">
@@ -511,6 +547,7 @@ export function BillingSettingsPage() {
               </CardTitle>
               <CardAction>
                 <Button
+                  nativeButton={false}
                   variant="secondary"
                   size="sm"
                   render={<Link to={CONSOLE_ROUTES.membersAndGroups} />}
@@ -520,21 +557,28 @@ export function BillingSettingsPage() {
               </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
-              <ScrollArea className="-ms-1 -me-(--card-spacing) min-h-0 lg:flex-1">
-                <div className="flex flex-col gap-1 ps-1 pe-(--card-spacing)">
-                  {quotas.groups
-                    .filter((g) => !g.parent_id)
-                    .map((g) => renderGroup(g, "10000"))}
-                </div>
-              </ScrollArea>
+              {quotas && settings ? (
+                <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 lg:flex-1">
+                  <div className="flex flex-col gap-1 ps-1 pe-[var(--card-spacing)]">
+                    {quotas.groups
+                      .filter((g) => !g.parent_id)
+                      .map((g) => renderGroup(g, "10000"))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                loadState(
+                  settingsLoadFailed || quotasLoadFailed,
+                  retryQuotaCards
+                )
+              )}
             </CardContent>
           </Card>
           <Card className="min-h-80 lg:min-h-0">
-            <CardHeader className="gap-3">
+            <CardHeader className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>
                 {t("pages.billingSettings.groupQuota.memberTitle")}
               </CardTitle>
-              <CardAction>
+              <CardAction className="flex min-w-0 items-center gap-2 self-auto">
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -542,32 +586,58 @@ export function BillingSettingsPage() {
                     "pages.membersAndGroups.searchMembersPlaceholder"
                   )}
                   aria-label={t("pages.membersAndGroups.searchMembers")}
-                  className="h-8 w-40 min-w-0 sm:w-52"
+                  className="h-8 w-28 min-w-0 sm:w-32"
                 />
+                <Select
+                  items={memberSortItems}
+                  value={memberSort}
+                  onValueChange={(value) => {
+                    if (value !== null) setMemberSort(value as QuotaMemberSort)
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-28 shrink-0"
+                    aria-label={t(
+                      "pages.billingSettings.groupQuota.memberSort"
+                    )}
+                    title={
+                      memberSortItems.find((item) => item.value === memberSort)
+                        ?.label
+                    }
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} align="end">
+                    <SelectGroup>
+                      {memberSortItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
-              <ScrollArea className="-me-(--card-spacing) min-h-0 min-w-0 flex-1 pe-(--card-spacing)">
-                <ItemGroup className="gap-2">
-                  {quotas.users
-                    .filter((user) =>
-                      `${user.name} ${user.email}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase())
-                    )
-                    .map(userItem)}
-                </ItemGroup>
-                {query &&
-                  !quotas.users.some((user) =>
-                    `${user.name} ${user.email}`
-                      .toLowerCase()
-                      .includes(query.toLowerCase())
-                  ) && (
+              {quotas && settings ? (
+                <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
+                  <ItemGroup className="gap-2">
+                    {visibleUsers.map(userItem)}
+                  </ItemGroup>
+                  {query && visibleUsers.length === 0 && (
                     <p className="py-6 text-center text-sm text-muted-foreground">
                       {t("pages.membersAndGroups.noMembersFound")}
                     </p>
                   )}
-              </ScrollArea>
+                </ScrollArea>
+              ) : (
+                loadState(
+                  settingsLoadFailed || quotasLoadFailed,
+                  retryQuotaCards
+                )
+              )}
             </CardContent>
           </Card>
         </div>
@@ -587,7 +657,7 @@ export function BillingSettingsPage() {
                       disabled={
                         (enabled &&
                           mode === "remote" &&
-                          !settings.wallet.configured) ||
+                          !settings?.wallet.configured) ||
                         !!busy
                       }
                       onClick={() => void save("mode")}
@@ -600,106 +670,118 @@ export function BillingSettingsPage() {
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
-                <Select
-                  items={modeItems}
-                  value={selectedMode}
-                  onValueChange={(value) => {
-                    if (value === null) return
-                    if (value === "disabled") {
-                      setEnabled(false)
-                      return
-                    }
-                    setMode(value)
-                    setEnabled(true)
-                  }}
-                >
-                  <SelectTrigger
-                    className="w-full"
-                    aria-label={t("pages.billingSettings.chargingMethod.mode")}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false} align="start">
-                    <SelectGroup>
-                      {modeItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {enabled && mode === "local" && (
-                  <ItemGroup className="gap-2">
-                    <Item variant="outline">
-                      <ItemContent>
-                        <ItemTitle>
-                          {t("pages.billingSettings.quotaRefresh.itemTitle")}
-                        </ItemTitle>
-                        <ItemDescription>
-                          {t(
-                            "pages.billingSettings.quotaRefresh.itemDescription",
-                            {
-                              cycle: t(
-                                `pages.billingSettings.quotaRefresh.cycleLabels.${cycle}`
-                              ),
-                            }
-                          )}
-                        </ItemDescription>
-                      </ItemContent>
-                      <ItemActions>
+                {settings ? (
+                  <>
+                    <Select
+                      items={modeItems}
+                      value={selectedMode}
+                      onValueChange={(value) => {
+                        if (value === null) return
+                        if (value === "disabled") {
+                          setEnabled(false)
+                          return
+                        }
+                        setMode(value)
+                        setEnabled(true)
+                      }}
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label={t(
+                          "pages.billingSettings.chargingMethod.mode"
+                        )}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false} align="start">
+                        <SelectGroup>
+                          {modeItems.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    {enabled && mode === "local" && (
+                      <ItemGroup className="gap-2">
+                        <Item variant="outline">
+                          <ItemContent>
+                            <ItemTitle>
+                              {t(
+                                "pages.billingSettings.quotaRefresh.itemTitle"
+                              )}
+                            </ItemTitle>
+                            <ItemDescription>
+                              {t(
+                                "pages.billingSettings.quotaRefresh.itemDescription",
+                                {
+                                  cycle: t(
+                                    `pages.billingSettings.quotaRefresh.cycleLabels.${cycle}`
+                                  ),
+                                }
+                              )}
+                            </ItemDescription>
+                          </ItemContent>
+                          <ItemActions>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                setCycleValue(cycle)
+                                setCycleDialogOpen(true)
+                              }}
+                            >
+                              {t(
+                                "pages.billingSettings.quotaRefresh.configure"
+                              )}
+                            </Button>
+                          </ItemActions>
+                        </Item>
+                        <Item variant="outline">
+                          <ItemContent>
+                            <ItemTitle>
+                              {t(
+                                "pages.billingSettings.quotaRefresh.nextResetTitle"
+                              )}
+                            </ItemTitle>
+                          </ItemContent>
+                          <ItemActions>
+                            <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                              {dateTime(settings.next_refresh_at)}
+                            </span>
+                          </ItemActions>
+                        </Item>
                         <Button
                           type="button"
                           variant="secondary"
                           size="sm"
+                          className="w-full"
+                          disabled={!!busy || !quotas}
                           onClick={() => {
-                            setCycleValue(cycle)
-                            setCycleDialogOpen(true)
+                            setResetSelection({ groupIds: [], userIds: [] })
+                            setResetRequestID(crypto.randomUUID())
+                            setResetDialogOpen(true)
                           }}
                         >
-                          {t("pages.billingSettings.quotaRefresh.configure")}
+                          {t("pages.billingSettings.quotaRefresh.resetNow")}
                         </Button>
-                      </ItemActions>
-                    </Item>
-                    <Item variant="outline">
-                      <ItemContent>
-                        <ItemTitle>
-                          {t(
-                            "pages.billingSettings.quotaRefresh.nextResetTitle"
-                          )}
-                        </ItemTitle>
-                      </ItemContent>
-                      <ItemActions>
-                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                          {dateTime(settings.next_refresh_at)}
-                        </span>
-                      </ItemActions>
-                    </Item>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      disabled={!!busy}
-                      onClick={() => {
-                        setResetSelection({ groupIds: [], userIds: [] })
-                        setResetRequestID(crypto.randomUUID())
-                        setResetDialogOpen(true)
-                      }}
-                    >
-                      {t("pages.billingSettings.quotaRefresh.resetNow")}
-                    </Button>
-                  </ItemGroup>
-                )}
-                {enabled && mode === "remote" && (
-                  <div className="space-y-3">
-                    <WalletSettings
-                      key={walletVersion}
-                      info={settings.wallet}
-                      busy={!!busy}
-                      onSave={(input) => save("wallet", input)}
-                    />
-                  </div>
+                      </ItemGroup>
+                    )}
+                    {enabled && mode === "remote" && (
+                      <div className="space-y-3">
+                        <WalletSettings
+                          key={walletVersion}
+                          info={settings.wallet}
+                          busy={!!busy}
+                          onSave={(input) => save("wallet", input)}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  loadState(settingsLoadFailed, retrySettings)
                 )}
               </CardContent>
             </Card>
@@ -713,45 +795,54 @@ export function BillingSettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <ItemGroup className="gap-2">
-                  {pricingFields.map((field) => (
-                    <Item key={field.key} variant="outline">
-                      <ItemContent>
-                        <ItemTitle>
-                          {t(
-                            `pages.billingSettings.modelPricing.${field.title}`
-                          )}
-                        </ItemTitle>
-                        <ItemDescription>
-                          {t(
-                            `pages.billingSettings.modelPricing.${field.description}`,
-                            { credits: format(pricing[field.key]) }
-                          )}
-                        </ItemDescription>
-                      </ItemContent>
-                      <ItemActions>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => openPricing(field.key)}
-                        >
-                          {t("pages.billingSettings.modelPricing.configure")}
-                        </Button>
-                      </ItemActions>
-                    </Item>
-                  ))}
-                </ItemGroup>
-                <Button
-                  variant="secondary"
-                  render={<Link to="/console/resources/models" />}
-                >
-                  {t("pages.billingSettings.modelPricing.manageMultiplier")}
-                  <HugeiconsIcon
-                    icon={LinkSquare02Icon}
-                    data-icon="inline-end"
-                  />
-                </Button>
+                {pricing ? (
+                  <>
+                    <ItemGroup className="gap-2">
+                      {pricingFields.map((field) => (
+                        <Item key={field.key} variant="outline">
+                          <ItemContent>
+                            <ItemTitle>
+                              {t(
+                                `pages.billingSettings.modelPricing.${field.title}`
+                              )}
+                            </ItemTitle>
+                            <ItemDescription>
+                              {t(
+                                `pages.billingSettings.modelPricing.${field.description}`,
+                                { credits: format(pricing[field.key]) }
+                              )}
+                            </ItemDescription>
+                          </ItemContent>
+                          <ItemActions>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openPricing(field.key)}
+                            >
+                              {t(
+                                "pages.billingSettings.modelPricing.configure"
+                              )}
+                            </Button>
+                          </ItemActions>
+                        </Item>
+                      ))}
+                    </ItemGroup>
+                    <Button
+                      nativeButton={false}
+                      variant="secondary"
+                      render={<Link to="/console/resources/models" />}
+                    >
+                      {t("pages.billingSettings.modelPricing.manageMultiplier")}
+                      <HugeiconsIcon
+                        icon={LinkSquare02Icon}
+                        data-icon="inline-end"
+                      />
+                    </Button>
+                  </>
+                ) : (
+                  loadState(settingsLoadFailed, retrySettings)
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -767,6 +858,7 @@ export function BillingSettingsPage() {
                 <Button
                   variant="secondary"
                   render={<Link to="/console/resources/tools" />}
+                  nativeButton={false}
                 >
                   {t("pages.billingSettings.toolPricing.manage")}
                   <HugeiconsIcon
@@ -801,12 +893,12 @@ export function BillingSettingsPage() {
               </FieldLabel>
               <GroupSelect
                 id="billing-reset-targets"
-                options={quotas.groups.map((group) => ({
+                options={(quotas?.groups ?? []).map((group) => ({
                   id: group.id,
                   parentId: group.parent_id,
                   name: group.name,
                 }))}
-                users={quotas.users.map((user) => ({
+                users={(quotas?.users ?? []).map((user) => ({
                   id: user.id,
                   name: user.name,
                   email: user.email,
@@ -949,6 +1041,7 @@ export function BillingSettingsPage() {
               event.preventDefault()
               if (
                 !pricingTarget ||
+                !pricing ||
                 !validCredits(pricingValue) ||
                 busy === "pricing"
               )
@@ -1052,7 +1145,7 @@ export function BillingSettingsPage() {
                     <ItemTitle className="font-normal">上级额度</ItemTitle>
                   </ItemContent>
                   <ItemActions>
-                    <span className="text-sm text-muted-foreground tabular-nums">
+                    <span className="text-sm tabular-nums text-muted-foreground">
                       {formatQuota(target?.inherited ?? "0")} 积分
                     </span>
                   </ItemActions>

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"time"
@@ -228,10 +229,10 @@ func (s *Service) confirmRemote(ctx context.Context, conn *pgxpool.Conn, id stri
 	if err != nil {
 		code, trace := walletFailure(err)
 		if _, markErr := sqlc.New(conn).SetWalletError(ctx, sqlc.SetWalletErrorParams{TransactionID: id, ErrorCode: code, TraceID: trace}); markErr != nil {
-			slog.ErrorContext(ctx, "记录钱包确认错误失败", "transaction_id", id, "operation", "set_wallet_error", "error", markErr)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "billing.operation.error", "记录钱包确认错误失败", "module", "billing", "operation", "confirmRemote", "transaction_id", id, "operation", "set_wallet_error", "error", markErr)
 		}
 		if _, markErr := sqlc.New(conn).SetTransactionError(ctx, sqlc.SetTransactionErrorParams{ID: id, ErrorCode: code}); markErr != nil {
-			slog.ErrorContext(ctx, "记录交易确认错误失败", "transaction_id", id, "operation", "set_transaction_error", "error", markErr)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "billing.operation.error", "记录交易确认错误失败", "module", "billing", "operation", "confirmRemote", "transaction_id", id, "operation", "set_transaction_error", "error", markErr)
 		}
 		return fail(503, code, "百智云确认待重试")
 	}

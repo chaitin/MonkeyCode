@@ -25,6 +25,7 @@ export type MemberActionUser = {
   id: string
   name: string
   email: string
+  avatar_url?: string | null
   role: "admin" | "user"
   status: "active" | "disabled"
 }

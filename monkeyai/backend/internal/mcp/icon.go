@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -30,7 +31,7 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 		id := chi.URLParam(r, "id")
 		if !admin {
 			if _, err := s.Connector(r.Context(), s.Store.Pool, id, u.ID, false); err != nil {
-				resource.Fail(w, err)
+				resource.Fail(r.Context(), w, err)
 				return
 			}
 		}
@@ -40,38 +41,38 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, (1<<20)+4096)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		resource.Fail(w, resource.Invalid("图标必须小于 1 MiB"))
+		resource.Fail(r.Context(), w, resource.Invalid("图标必须小于 1 MiB"))
 		return
 	}
 	defer func() {
 		if err := r.MultipartForm.RemoveAll(); err != nil {
-			slog.WarnContext(r.Context(), "清理图标上传临时文件失败", "connector_id", chi.URLParam(r, "id"), "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "清理图标上传临时文件失败", "module", "mcp", "operation", "uploadIcon", "connector_id", chi.URLParam(r, "id"), "error", err)
 		}
 	}()
 	f, _, err := r.FormFile("icon")
 	if err != nil {
-		resource.Fail(w, resource.Invalid("缺少 icon 文件"))
+		resource.Fail(r.Context(), w, resource.Invalid("缺少 icon 文件"))
 		return
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			slog.WarnContext(r.Context(), "关闭 Connector 图标上传文件失败", "connector_id", chi.URLParam(r, "id"), "operation", "close_upload", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 Connector 图标上传文件失败", "module", "mcp", "operation", "uploadIcon", "connector_id", chi.URLParam(r, "id"), "operation", "close_upload", "error", err)
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
-		resource.Fail(w, resource.Invalid("图标超限"))
+		resource.Fail(r.Context(), w, resource.Invalid("图标超限"))
 		return
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg") || config.Width > 4096 || config.Height > 4096 {
-		resource.Fail(w, resource.Invalid("图标仅支持不超过 4096 × 4096 的 PNG/JPEG"))
+		resource.Fail(r.Context(), w, resource.Invalid("图标仅支持不超过 4096 × 4096 的 PNG/JPEG"))
 		return
 	}
 	ctx := r.Context()
 	tx, err := s.Store.Pool.Begin(ctx)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollbackMCP(ctx, tx, chi.URLParam(r, "id"), "", "upload_icon")
@@ -83,19 +84,19 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	}
 	p, err := resource.DecodeObject(sqlc.New(tx).LockIconConnector(ctx, sqlc.LockIconConnectorParams{ID: id, UserID: user}))
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err = resource.RequireEditable(ctx, tx, "connector", id); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if r.Header.Get("If-Match") == "" {
-		resource.Fail(w, &resource.Error{Status: http.StatusPreconditionRequired, Code: "precondition_required", Message: "更新需要 If-Match"})
+		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusPreconditionRequired, Code: "precondition_required", Message: "更新需要 If-Match"})
 		return
 	}
 	if r.Header.Get("If-Match") != fmt.Sprintf(`"%v"`, p["revision"]) {
-		resource.Fail(w, resource.Conflict)
+		resource.Fail(r.Context(), w, resource.Conflict)
 		return
 	}
 	key := "connector-icons/" + id + "/" + resource.ID() + "/icon." + format
@@ -110,7 +111,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 
@@ -120,41 +121,46 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 		p, err = s.Connectors.GetUser(ctx, s.Store.Pool, id, u.ID)
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	resource.ETag(w, p)
-	resource.JSON(w, 200, p)
+	resource.JSON(r.Context(), w, 200, p)
 }
 func (s *Service) icon(w http.ResponseWriter, r *http.Request, connector string) {
 	key, err := sqlc.New(s.Store.Pool).GetConnectorIcon(r.Context(), connector)
 	if err != nil || key == "" {
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			slog.ErrorContext(r.Context(), "读取 Connector 图标失败", "connector_id", connector, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "mcp.operation.error", "读取 Connector 图标失败", "module", "mcp", "operation", "icon", "connector_id", connector, "error", err)
 		}
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
 
 	body, err := s.storage.Get(r.Context(), key)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer func() {
 		if err := body.Close(); err != nil {
-			slog.WarnContext(r.Context(), "关闭 Connector 图标读取流失败", "connector_id", connector, "operation", "close_icon", "failure", safeMCPFailure(err))
+			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "关闭 Connector 图标读取流失败", "module", "mcp", "operation", "icon", "connector_id", connector, "operation", "close_icon", "failure", err)
 		}
 	}()
-	mime := "image/png"
-	if strings.HasSuffix(key, ".jpeg") {
+	mime := "application/octet-stream"
+	switch {
+	case strings.HasSuffix(key, ".jpeg"), strings.HasSuffix(key, ".jpg"):
 		mime = "image/jpeg"
+	case strings.HasSuffix(key, ".png"):
+		mime = "image/png"
+	case strings.HasSuffix(key, ".webp"):
+		mime = "image/webp"
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("ETag", `"`+resource.Hash(key)+`"`)
 	if _, err := io.Copy(w, body); err != nil {
-		slog.WarnContext(r.Context(), "传输 Connector 图标失败", "connector_id", connector, "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "mcp.operation.warn", "传输 Connector 图标失败", "module", "mcp", "operation", "icon", "connector_id", connector, "error", err)
 	}
 }

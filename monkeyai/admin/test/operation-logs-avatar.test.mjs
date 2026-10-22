@@ -7,24 +7,35 @@ test("operation log card keeps its top ring inside the clipped viewport", async 
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /flex-col p-4 pt-px md:h-\[calc\(100svh-5rem\)\]/)
+  assert.match(source, /flex-col p-4 pt-px md:h-\[calc\(100vh-5rem\)\]/)
   assert.doesNotMatch(source, /flex-col p-4 pt-0/)
 })
 
-test("operation log time data is muted while its header uses the standard text color", async () => {
+test("operation logs inherit the shared table height, header and dividers", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /TableHead className="ps-\(--card-spacing\)"/)
+  const table = await readFile(
+    new URL("../src/components/ui/table.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(table, /h-\[48px\]/)
+  assert.match(table, /\[&_tr\]:bg-muted\/70/)
+  assert.match(table, /\[&_tr:hover\]:bg-muted\/70/)
+  assert.match(table, /whitespace-nowrap text-muted-foreground/)
+  assert.match(table, /border-b border-muted-foreground\/15/)
+  assert.match(table, /\[&_tr\]:border-b-0/)
+  assert.doesNotMatch(table, /last-child.*border-0/)
+  assert.match(source, /TableHead className="ps-\[var\(--card-spacing\)\]"/)
   assert.match(
     source,
-    /TableCell className="ps-\(--card-spacing\) text-muted-foreground"/
+    /TableCell className="ps-\[var\(--card-spacing\)\] text-muted-foreground"/
   )
   assert.equal(
     (
       source.match(
-        /className="w-20 pe-\(--card-spacing\) whitespace-nowrap"/g
+        /className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap"/g
       ) ?? []
     ).length,
     2
@@ -87,7 +98,7 @@ test("operation log filters use shared date pickers and local day boundaries", a
 
   const filterRow = source
     .split(
-      'className="flex flex-wrap items-center gap-2 px-(--card-spacing)"'
+      'className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"'
     )[1]
     .split("</div>")[0]
   assert.ok(
@@ -141,7 +152,7 @@ test("operation log search only loads inside its button and preserves current ro
 
 test("operation log pagination uses matching arrow icons", async () => {
   const source = await readFile(
-    new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
+    new URL("../src/components/table-pagination.tsx", import.meta.url),
     "utf8"
   )
   assert.match(source, /icon=\{ArrowLeft01Icon\}/)
@@ -149,17 +160,23 @@ test("operation log pagination uses matching arrow icons", async () => {
   assert.doesNotMatch(source, /ArrowLeft02Icon/)
 })
 
-test("operation log actors use the same blue user icon as tree members", async () => {
+test("operation log actors use their avatar with the bundled image as fallback", async () => {
   const source = await readFile(
     new URL("../src/pages/operation-logs-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /User02Icon/)
-  assert.match(
-    source,
-    /icon=\{User02Icon\}\s+className="size-4 shrink-0 text-blue-600 dark:text-blue-400"/
+  assert.match(source, /<UserAvatar src=\{log\.actor_avatar_url\}/)
+  const avatar = await readFile(
+    new URL("../src/components/user-avatar.tsx", import.meta.url),
+    "utf8"
   )
-  assert.doesNotMatch(source, /<Avatar|AvatarFallback|actor_name\.slice/)
+  assert.match(avatar, /@\/assets\/default-user-avatar\.webp/)
+  assert.match(avatar, /<AvatarImage src=\{src\?\.trim\(\) \|\| undefined\}/)
+  assert.match(
+    avatar,
+    /<AvatarFallback>[\s\S]*?<img\s+src=\{defaultUserAvatar\}/
+  )
+  assert.doesNotMatch(source, /User02Icon|actor_name\.slice/)
   assert.match(source, /title=\{log\.actor_email \?\? undefined\}/)
   assert.match(source, /<span className="truncate">\s*\{log\.actor_name\}/)
   assert.doesNotMatch(source, /<span className="truncate font-medium">/)
@@ -202,7 +219,7 @@ test("operation log operator appears before the result with regular text", async
   )
   assert.match(
     row,
-    /<TableCell className="ps-\(--card-spacing\) text-muted-foreground">\s*\{dateFormatter\.format/
+    /<TableCell className="ps-\[var\(--card-spacing\)\] text-muted-foreground">\s*\{tableDateFormatter\.format/
   )
   assert.doesNotMatch(row, /font-mono text-muted-foreground/)
 })
@@ -220,7 +237,7 @@ test("operation log details are opened from the last actions column", async () =
   )
   assert.match(
     header,
-    /<TableHead className="w-20 pe-\(--card-spacing\) whitespace-nowrap">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
+    /<TableHead className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap">\s*\{t\("pages\.operationLogs\.columns\.operations"\)\}/
   )
 
   const row = source
@@ -228,7 +245,7 @@ test("operation log details are opened from the last actions column", async () =
     .split("</TableRow>")[0]
   assert.match(
     row,
-    /<TableCell className="w-20 pe-\(--card-spacing\) whitespace-nowrap">\s*<Dialog>/
+    /<TableCell className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap">\s*<Dialog>/
   )
   assert.match(
     row,
@@ -262,7 +279,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   )
   assert.match(
     source,
-    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-\[calc\(100svh-5rem\)\] md:flex-none md:overflow-hidden">/
+    /<section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-\[calc\(100vh-5rem\)\] md:flex-none md:overflow-hidden">/
   )
   assert.match(source, /<Card className="min-h-0 flex-1">/)
   assert.match(source, /<CardContent className="min-h-0 flex-1 gap-4 px-0">/)
@@ -275,13 +292,9 @@ test("only the operation log table scrolls and its header stays visible", async 
     "utf8"
   )
   assert.match(dashboard, /<SidebarInset className="min-w-0">/)
-  assert.match(
-    source,
-    /<TableHeader className="sticky top-0 z-10 bg-card \[&_th\]:shadow-\[inset_0_-1px_0_var\(--border\)\] \[&_tr\]:border-b-0">/
-  )
+  assert.match(source, /<TableHeader className="sticky top-0 z-10">/)
   assert.ok(
-    source.indexOf("</ScrollArea>") <
-      source.indexOf('pagination.pageSizeLabel")')
+    source.indexOf("</ScrollArea>") < source.indexOf("<TablePagination")
   )
   assert.match(
     source,
@@ -289,6 +302,7 @@ test("only the operation log table scrolls and its header stays visible", async 
   )
   assert.doesNotMatch(source, /min-w-4xl/)
   assert.match(source, /<TableRow className="h-full">/)
+  assert.doesNotMatch(source, /shadow-\[inset_0_-1px/)
   assert.match(
     source,
     /colSpan=\{6\}\s+className="h-full text-center text-muted-foreground"/

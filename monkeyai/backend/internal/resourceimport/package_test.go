@@ -1,14 +1,15 @@
 package resourceimport
 
 import (
+	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 func packageFixture(t *testing.T, mutate func(*Manifest, map[string][]byte)) []byte {
@@ -22,7 +23,7 @@ func packageFixture(t *testing.T, mutate func(*Manifest, map[string][]byte)) []b
 		t.Fatal(err)
 	}
 	releaseID := "6321da1e-bf59-41a1-9ae9-da60997dd67e"
-	m := Manifest{ReleaseID: releaseID, Version: 16, GeneratedAt: time.Date(2026, 10, 9, 9, 55, 18, 541099000, time.UTC),
+	m := Manifest{ReleaseID: releaseID, Version: 16, ManifestSHA256: "unchecked-manifest-digest",
 		AgentResources: AgentResources{Skills: []Entry{{Type: "skill", Slug: "demo-skill", Name: "demo-skill", Path: "agent/skills/demo.zip", SHA256: digest(skillZIP), DescriptionI18n: map[string]string{"zh-CN": "演示技能"}}},
 			Rules: []Entry{}, Connectors: []Entry{}, Experts: []Entry{}},
 		DesignResources: DesignResources{Templates: []json.RawMessage{}, DesignSystems: []json.RawMessage{}, Styles: []json.RawMessage{}, Directions: []json.RawMessage{}}, StaticAssets: []Asset{}}
@@ -30,33 +31,225 @@ func packageFixture(t *testing.T, mutate func(*Manifest, map[string][]byte)) []b
 	if mutate != nil {
 		mutate(&m, files)
 	}
-	canonical, err := canonicalManifest(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m.ManifestSHA256 = digest(canonical)
-	release := Release{Publisher: Publisher{Name: "monkeyai-respub", Version: "16"}, ReleaseID: m.ReleaseID, Version: m.Version,
-		PublishedAt: m.GeneratedAt, ExportedAt: m.GeneratedAt, ManifestSHA256: m.ManifestSHA256,
-		Counts: map[string]int{"skill": len(m.AgentResources.Skills), "rule": len(m.AgentResources.Rules), "connector": len(m.AgentResources.Connectors), "expert": len(m.AgentResources.Experts)}}
+	release := Release{Publisher: Publisher{Name: "monkeyai-respub", Version: "16"}, ReleaseID: releaseID, Version: 16,
+		ManifestSHA256: "different-unchecked-digest",
+		Counts:         map[string]int{"skill": len(m.AgentResources.Skills), "rule": len(m.AgentResources.Rules), "connector": len(m.AgentResources.Connectors), "expert": len(m.AgentResources.Experts)}}
 	files["release.json"], _ = json.Marshal(release)
 	files["manifest.json"], _ = json.Marshal(m)
-	paths := make([]string, 0, len(files)-1)
-	for name := range files {
-		if name != "release.json" {
-			paths = append(paths, name)
-		}
-	}
-	slices.Sort(paths)
-	var checks strings.Builder
-	for _, name := range paths {
-		checks.WriteString(strings.TrimPrefix(digest(files[name]), "sha256:") + "  " + name + "\n")
-	}
-	files["CHECKSUMS.sha256"] = []byte(checks.String())
+	files["CHECKSUMS.sha256"] = []byte("unchecked file checksums\n")
 	archive, err := makeZIP(files)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return archive
+}
+
+func TestAcceptLoosePackageMetadata(t *testing.T) {
+	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
+		m.ReleaseID, m.Version, m.ManifestSHA256 = "not-a-uuid", -1, "wrong-digest"
+		m.GeneratedAt = json.RawMessage(`{"any":"value"}`)
+		m.AgentResources.Skills[0] = Entry{Path: "agent/skills/demo.zip", SHA256: "wrong-artifact-digest"}
+		m.DesignResources.Templates = []json.RawMessage{json.RawMessage(`{"ignored":true}`)}
+		m.StaticAssets = []Asset{{Size: -1}}
+		files["extra.txt"] = []byte("undeclared file")
+	})
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Skills["demo"]
+	if len(resources.Skills) != 1 || item.Package.Name != "demo-skill" || pkg.Release.Version < 1 {
+		t.Fatalf("缺省字段应正常回退并导入: %+v", resources)
+	}
+	if item.SourceSHA == "wrong-artifact-digest" {
+		t.Fatal("来源记录应使用实际产物，不依赖包内声明的摘要")
+	}
+}
+
+func TestAcceptMissingOptionalMetadata(t *testing.T) {
+	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(files, "release.json")
+	delete(files, "CHECKSUMS.sha256")
+	files["manifest.json"] = []byte(`{"agent_resources":{"skills":[{"path":"agent/skills/demo.zip","tags":42,"name_i18n":false}]}}`)
+	data, err := makeZIP(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil || len(resources.Skills) != 1 || pkg.Release.Publisher.Name != "resource-package" {
+		t.Fatalf("省略可选元数据仍应可导入: %v", err)
+	}
+}
+
+func TestPackageJSONSyntaxOnly(t *testing.T) {
+	for _, input := range []string{`{}`, `null`, `[]`, `{"version":"old","generated_at":false,"unknown":true}`} {
+		data, err := makeZIP(map[string][]byte{"manifest.json": []byte(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Parse(data); err != nil {
+			t.Fatalf("合法 JSON 不应被字段检查阻断: %s: %v", input, err)
+		}
+	}
+	for _, input := range []string{``, `{"version":`, `{} {}`} {
+		data, err := makeZIP(map[string][]byte{"manifest.json": []byte(input)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Parse(data); err == nil {
+			t.Fatalf("非法 JSON 应被拒绝: %s", input)
+		}
+	}
+}
+
+func TestResourceJSONWithoutFieldValidation(t *testing.T) {
+	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
+		skillZIP, err := makeZIP(map[string][]byte{
+			"SKILL.md":   []byte("---\nname: demo-skill\ndescription: Demo\n---\nBody\n"),
+			"skill.json": []byte(`{"slug":42,"name":false,"description_i18n":{"bad tag":""},"unknown":true}`),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["agent/skills/demo.zip"] = skillZIP
+		files["rule.json"] = []byte(`{"slug":"other","name":false,"content":null,"unknown":true}`)
+		files["connector.json"] = []byte(`{"config":{"transport":"other","timeout_ms":-1,"header_schema":{"unknown":true},"auth":{"mode":"future","extra":true},"oauth":{"config_source":"manual","extra":true}}}`)
+		expertZIP, err := makeZIP(map[string][]byte{
+			"expert.json": []byte(`{"slug":"other","name":false,"prompt_path":"custom.md","avatar":"picture.bin","depends_on":{"skills":["demo-skill","missing"],"rules":["test-rule","missing"],"connectors":["test-connector","missing"]},"unknown":true}`),
+			"custom.md":   []byte("Custom prompt"), "picture.bin": []byte("avatar"), "extra.txt": []byte("ignored"),
+			"skills/demo-skill/SKILL.md": []byte("different embedded skill"),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["expert.zip"] = expertZIP
+		m.AgentResources.Rules = []Entry{{Slug: "test-rule", Path: "rule.json"}}
+		m.AgentResources.Connectors = []Entry{{Slug: "test-connector", Path: "connector.json"}}
+		m.AgentResources.Experts = []Entry{{Slug: "test-expert", Path: "expert.zip"}}
+	})
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expert := resources.Experts["test-expert"]
+	if expert.Prompt != "Custom prompt" || len(expert.Skills) != 1 || len(expert.Rules) != 1 || len(expert.Connectors) != 1 || len(expert.Warnings) != 3 {
+		t.Fatalf("可用依赖应保留，缺失依赖应提示并跳过: %+v", expert)
+	}
+	items, err := desiredItems(resources, Options{}, nil, context.Background(), nil)
+	if err != nil || len(items) != 4 {
+		t.Fatalf("宽松解析结果应能进入导入计划: %v", err)
+	}
+	if _, err := pkg.AvatarBytes(expert); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRejectInvalidResourceJSON(t *testing.T) {
+	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
+		files["rule.json"] = []byte(`{"content":`)
+		m.AgentResources.Rules = []Entry{{Slug: "rule", Path: "rule.json"}}
+	})
+	pkg, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseResources(pkg); err == nil {
+		t.Fatal("资源 JSON 语法错误应被拒绝")
+	}
+}
+
+func TestConnectorManifestMetadataAndAvatar(t *testing.T) {
+	avatar := []byte("connector avatar")
+	manifest := Manifest{AgentResources: AgentResources{Connectors: []Entry{{
+		Slug: "demo-connector", Name: "演示连接", Description: "默认描述", Path: "agent/connectors/demo.json",
+		AvatarPath:      "agent/connectors/avatars/demo.webp",
+		NameI18n:        map[string]string{"zh-CN": "清单名称"},
+		DescriptionI18n: map[string]string{"zh-CN": "清单描述"},
+	}}}}
+	files := map[string][]byte{
+		"manifest.json":                      nil,
+		"agent/connectors/demo.json":         []byte(`{"config":{"url":"https://example.com/mcp","name_i18n":{"en-US":"Demo Connector"},"description_i18n":{"en-US":"Demo description"}}}`),
+		"agent/connectors/avatars/demo.webp": avatar,
+	}
+	files["manifest.json"], _ = json.Marshal(manifest)
+	archive, err := makeZIP(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Connectors["demo-connector"]
+	if !item.HasAvatar || item.AvatarSHA != digest(avatar) || len(item.Avatar) != 0 {
+		t.Fatalf("流式解析未正确记录 Connector 头像: %+v", item)
+	}
+	if item.Entry.Description != "默认描述" || item.Entry.NameI18n["zh-CN"] != "清单名称" || item.Entry.NameI18n["en-US"] != "Demo Connector" ||
+		item.Entry.DescriptionI18n["zh-CN"] != "清单描述" || item.Entry.DescriptionI18n["en-US"] != "Demo description" {
+		t.Fatalf("Connector i18n 合并异常: %+v", item.Entry)
+	}
+	stored, err := pkg.ConnectorAvatarBytes(item)
+	if err != nil || !bytes.Equal(stored, avatar) {
+		t.Fatalf("无法按需读取 Connector 头像: %v", err)
+	}
+	items, err := desiredItems(resources, Options{}, nil, context.Background(), nil)
+	if err != nil || len(items) != 1 || items[0].Fields.String("description") != "默认描述" || items[0].Fields.String("avatar_sha256") != digest(avatar) {
+		t.Fatalf("头像和 i18n 未进入导入计划: %v %+v", err, items)
+	}
+}
+
+func TestPublishedReleaseZIP(t *testing.T) {
+	name := os.Getenv("MONKEYAI_RELEASE_FIXTURE_ZIP")
+	if name == "" {
+		t.Skip("未指定本地发布 ZIP")
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(file, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("发布包 v%d 解析通过: %d Skill, %d Rule, %d Connector, %d Expert",
+		pkg.Manifest.Version, len(resources.Skills), len(resources.Rules), len(resources.Connectors), len(resources.Experts))
+	connector, ok := resources.Connectors["tavily"]
+	if !ok || !connector.HasAvatar || connector.Entry.NameI18n["en-US"] != "Tavily Search" ||
+		connector.Entry.DescriptionI18n["en-US"] != "Search with Tavily online" {
+		t.Fatalf("r0016 Connector 元数据未正确解析: %+v", connector)
+	}
+	avatar, err := pkg.ConnectorAvatarBytes(connector)
+	if err != nil || len(avatar) == 0 {
+		t.Fatalf("r0016 Connector 头像未正确读取: %v", err)
+	}
 }
 
 func TestPublishedReleaseFixture(t *testing.T) {
@@ -120,7 +313,7 @@ func TestParseReaderKeepsArtifactsOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pkg.Files) != 3 {
+	if len(pkg.Files) != 2 {
 		t.Fatalf("外层产物不应全部加载到内存: %d", len(pkg.Files))
 	}
 	resources, err := ParseResources(pkg)
@@ -156,6 +349,84 @@ func TestParsePackageAndResources(t *testing.T) {
 	}
 	if resources.Skills["demo-skill"].Package.Name != "demo-skill" || len(resources.Skills) != 1 {
 		t.Fatalf("技能解析异常: %+v", resources.Skills)
+	}
+}
+
+func TestImportSkillAboveOldSizeLimits(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	for name, content := range map[string][]byte{
+		"SKILL.md": []byte("---\nname: demo-skill\ndescription: Demo skill\n---\nHello\n"),
+		"data.bin": make([]byte, 51<<20),
+	} {
+		w, err := z.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := packageFixture(t, func(_ *Manifest, files map[string][]byte) {
+		files["agent/skills/demo.zip"] = b.Bytes()
+	})
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := resources.Skills["demo-skill"]
+	if item.StoredSize != b.Len() || item.FileCount != 2 {
+		t.Fatal("应完整导入超过原压缩和解压上限的技能包")
+	}
+}
+
+func TestImportSkillFileCountLimit(t *testing.T) {
+	for _, root := range []string{"", "root/"} {
+		for _, count := range []int{5000, 5001} {
+			t.Run(fmt.Sprintf("%s%d", root, count), func(t *testing.T) {
+				data := packageFixture(t, func(_ *Manifest, files map[string][]byte) {
+					entries := map[string][]byte{
+						root + "SKILL.md": []byte("---\nname: demo-skill\ndescription: Demo skill\n---\nHello\n"),
+					}
+					for i := 1; i < count; i++ {
+						entries[fmt.Sprintf("%sreference-%d.md", root, i)] = []byte("reference")
+					}
+					archive, err := makeZIP(entries)
+					if err != nil {
+						t.Fatal(err)
+					}
+					files["agent/skills/demo.zip"] = archive
+				})
+				pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				resources, err := ParseResources(pkg)
+				if count > 5000 {
+					if err == nil || !strings.Contains(err.Error(), "条目数超限") {
+						t.Fatalf("应拒绝超过 5000 个文件的技能包: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := resources.Skills["demo-skill"]
+				if item.FileCount != count {
+					t.Fatalf("文件数量不一致: got %d, want %d", item.FileCount, count)
+				}
+				if _, err := pkg.SkillBytes(item); err != nil {
+					t.Fatalf("应能按需重读技能包: %v", err)
+				}
+			})
+		}
 	}
 }
 
@@ -241,7 +512,7 @@ func TestNormalizeUnquotedDescription(t *testing.T) {
 	}
 }
 
-func TestStaticAssetsVerifiedButIgnored(t *testing.T) {
+func TestStaticAssetsIgnored(t *testing.T) {
 	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
 		files["static/logo/logo.png"] = []byte("test")
 		m.StaticAssets = []Asset{{Slug: "logo", Name: "logo.png", Kind: "image", MIME: "image/png", Size: 4, Download: "/downloads/logo", Hash: "business-hash"}}
@@ -255,13 +526,21 @@ func TestStaticAssetsVerifiedButIgnored(t *testing.T) {
 	}
 }
 
-func TestRejectDuplicateSlugAcrossTypes(t *testing.T) {
+func TestImportDuplicateSlugAcrossTypes(t *testing.T) {
 	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
 		rule := []byte(`{"slug":"demo-skill","name":"Rule","content":"example"}`)
 		files["agent/rules/rule.json"] = rule
 		m.AgentResources.Rules = []Entry{{Type: "rule", Slug: "demo-skill", Name: "Rule", Path: "agent/rules/rule.json", SHA256: digest(rule)}}
 	})
-	if _, err := Parse(data); err == nil {
-		t.Fatal("同 publisher 的跨类型重复 slug 未拒绝")
+	pkg, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil || len(resources.Skills) != 1 || len(resources.Rules) != 1 {
+		t.Fatalf("跨类型同名资源应能分别导入: %v", err)
+	}
+	if _, ok := resources.Rules["demo-skill-rule-2"]; !ok {
+		t.Fatal("跨类型同 slug 应自动补充唯一名称")
 	}
 }

@@ -77,8 +77,6 @@ export const es419 = {
     deleted: "Eliminado",
     modelScope:
       "Llamadas por hora de inicio; créditos por hora de cobro y reembolso. La tasa de caché es la proporción de llamadas con aciertos.",
-    taskScope:
-      "Sesiones iniciadas en el período. Tasa de finalización: exitosas / total; duración media solo de sesiones terminadas. Requiere informes del cliente.",
   },
   common: {
     breadcrumb: "Ruta de navegación",
@@ -167,7 +165,19 @@ export const es419 = {
       timeRange: "Periodo de estadísticas en tiempo real",
       pendingMetric: "Datos pendientes de conexión",
       period24h: "24 horas",
+      comparison: {
+        new: "Nuevo",
+        unavailable: "No hay datos del periodo anterior",
+        increased: "Aumento del {{percent}} respecto a las 24 horas anteriores",
+        decreased:
+          "Disminución del {{percent}} respecto a las 24 horas anteriores",
+        unchanged: "Sin cambios respecto a las 24 horas anteriores",
+        newActivity:
+          "Nueva actividad; el valor de las 24 horas anteriores era cero",
+        previousValue: "24 horas anteriores: {{value}}",
+      },
       period30m: "30 minutos",
+      average: "Promedio",
       callsTrend: "Llamadas",
       newUsersTrend: "Usuarios nuevos",
       activeUsersTrend: "Usuarios activos",
@@ -186,8 +196,8 @@ export const es419 = {
       },
       metrics: {
         modelConsumption: "Consumo de créditos",
-        p95ResponseTime: "Tiempo de respuesta del modelo",
-        p95FirstTokenTime: "Tiempo al primer token del modelo",
+        avgResponseTime: "Tiempo de respuesta del modelo",
+        avgFirstTokenTime: "Tiempo al primer token del modelo",
         modelSuccessRate: "Tasa de éxito del modelo",
         cacheHitRate: "Tasa de aciertos de caché",
         modelCalls: "Llamadas al modelo",
@@ -233,48 +243,6 @@ export const es419 = {
         conversationCount: "Conversaciones",
       },
       empty: "No hay tareas que coincidan con los filtros actuales",
-    },
-    taskStatistics: {
-      title: "Estadísticas de tareas",
-      description:
-        "Consulta las tendencias, el estado de ejecución y la finalización de las tareas.",
-      timeRange: "Periodo de estadísticas",
-      ranges: {
-        "7d": "Últimos 7 días",
-        "30d": "Últimos 30 días",
-        "90d": "Últimos 90 días",
-      },
-      comparedToPrevious: "frente al periodo anterior",
-      metrics: {
-        totalTasks: "Total de tareas",
-        completionRate: "Tasa de finalización",
-        averageDuration: "Duración promedio",
-        runningTasks: "Tareas abiertas",
-      },
-      taskTrend: "Tendencia de tareas",
-      statusDistribution: "Distribución por estado",
-      statuses: {
-        completed: "Completadas",
-        running: "Abiertas",
-        failed: "Fallidas",
-      },
-      taskTypeDetails: "Detalle por tipo de tarea",
-      columns: {
-        taskType: "Tipo de tarea",
-        total: "Tareas",
-        completed: "Completadas",
-        completionRate: "Tasa de finalización",
-        averageDuration: "Duración promedio",
-      },
-      taskTypes: {
-        conversation: "Conversación con Agent",
-        workflow: "Flujo de trabajo",
-        retrieval: "Búsqueda de conocimiento",
-        tool: "Llamada a herramienta",
-        scheduled: "Tarea programada",
-      },
-      durationSeconds: "{{count}} s",
-      durationMinutes: "{{minutes}} min {{seconds}} s",
     },
     models: {
       noTags: "Sin etiquetas",
@@ -470,19 +438,19 @@ export const es419 = {
       contentPlaceholder: "Ingresa las instrucciones de la habilidad",
       skillPackage: "Paquete de habilidad",
       packageHint:
-        "Sube el directorio de la habilidad como archivo ZIP, de hasta 20 MB.",
+        "Sube el directorio de la habilidad como archivo ZIP, de hasta 500 MiB.",
       packageOptionalHint:
         "Sube un nuevo paquete ZIP solo para reemplazar su contenido.",
       packageParsing: "Inspeccionando el paquete de habilidad…",
       packageSummary: "{{count}} archivos · {{size}} descomprimidos",
       packageErrors: {
-        fileTooLarge: "El paquete de habilidad no puede superar los 20 MB.",
+        fileTooLarge: "El paquete de habilidad no puede superar los 500 MiB.",
         invalidZip: "No se puede leer el archivo. Sube un paquete ZIP válido.",
         unsafePath: "El paquete contiene una ruta de archivo no segura.",
         symlink: "El paquete no puede contener enlaces simbólicos.",
-        tooManyFiles: "El paquete puede contener como máximo 500 archivos.",
+        tooManyFiles: "El paquete puede contener como máximo 5000 archivos.",
         unpackedTooLarge:
-          "El paquete descomprimido no puede superar los 50 MB.",
+          "El paquete descomprimido no puede superar 1 GiB.",
         missingManifest:
           "No se encontró SKILL.md. Este no es un paquete de habilidad válido.",
         multipleManifests:
@@ -847,6 +815,9 @@ export const es419 = {
       groupQuota: {
         title: "Cuotas de grupos",
         memberTitle: "Cuotas de miembros",
+        memberSort: "Ordenar miembros",
+        nameAscending: "Nombre",
+        creditsAscending: "Créditos",
         manageGroups: "Administrar grupos",
         description:
           "El grupo raíz requiere una cuota. Los grupos secundarios y usuarios vacíos heredan del grupo superior más cercano.",

@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 	"strings"
@@ -75,9 +77,16 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 		Scopes:    input.Scopes,
 		ExpiresAt: now.AddDate(0, 0, input.ExpiresInDays),
 	}
+	p, authenticated := identity.PrincipalFromContext(ctx)
+	if authenticated && p.Purpose == "runtime" {
+		if p.UserID != userID || p.MachineID == "" || !p.Has("device:publish") {
+			return CreatedKey{}, ErrInvalidKey
+		}
+		key.MachineID, key.RuntimeGrantID = new(p.MachineID), new(p.GrantID)
+	}
 	stored, err := s.store.Create(ctx, key, hash(raw))
 	if err != nil {
-		slog.ErrorContext(ctx, "保存调用密钥失败", "user_id", userID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "保存调用密钥失败", "module", "apikey", "operation", "Create", "user_id", userID, "error", err)
 		return CreatedKey{}, err
 	}
 	return CreatedKey{Key: stored, APIKey: raw}, nil
@@ -111,7 +120,7 @@ func (s *Service) Rotate(ctx context.Context, userID, id string) (CreatedKey, er
 	}
 	if err := s.store.Revoke(ctx, id, userID); err != nil {
 		if rollbackErr := s.store.Revoke(ctx, created.ID, userID); rollbackErr != nil {
-			slog.ErrorContext(ctx, "轮换调用密钥失败后撤销新密钥失败", "key_id", created.ID, "user_id", userID, "error", rollbackErr)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "轮换调用密钥失败后撤销新密钥失败", "module", "apikey", "operation", "Rotate", "key_id", created.ID, "user_id", userID, "error", rollbackErr)
 		}
 		return CreatedKey{}, err
 	}
@@ -134,6 +143,21 @@ func (s *Service) AdminRevoke(ctx context.Context, id string) error {
 	return s.store.Revoke(ctx, id, "")
 }
 
+func (s *Service) RevokeRuntimeKeys(ctx context.Context, id string) error {
+	if store, ok := s.store.(interface {
+		RevokeRuntimeKeys(context.Context, string) error
+	}); ok {
+		return store.RevokeRuntimeKeys(ctx, id)
+	}
+	return nil
+}
+func (s *Service) CleanupRuntimeKeys(ctx context.Context) error {
+	if store, ok := s.store.(interface{ CleanupRuntimeKeys(context.Context) error }); ok {
+		return store.CleanupRuntimeKeys(ctx)
+	}
+	return nil
+}
+
 func (s *Service) Authenticate(ctx context.Context, raw, scope string) (string, error) {
 	if !strings.HasPrefix(raw, "mk_") {
 		return "", ErrInvalidKey
@@ -141,7 +165,7 @@ func (s *Service) Authenticate(ctx context.Context, raw, scope string) (string, 
 	userID, err := s.store.Authenticate(ctx, hash(raw), scope)
 	if err != nil {
 		if !errors.Is(err, ErrInvalidKey) {
-			slog.ErrorContext(ctx, "验证调用密钥失败", "scope", scope, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "验证调用密钥失败", "module", "apikey", "operation", "Authenticate", "scope", scope, "error", err)
 		}
 		return "", ErrInvalidKey
 	}

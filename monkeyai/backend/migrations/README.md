@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=21, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=29, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -41,6 +41,15 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000019_session_turn_content_add` | 增加轮次正文、截断标记及标题字段 |
 | `000020_model_call_first_token_duration` | 为新产生的模型调用增加可空首字耗时；历史调用不回填 |
 | `000021_video_output_metadata_optional` | 视频结果宽高允许为 0，表示元数据无法解析；成功视频仍可保存和下载 |
+| `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数和总时长 |
+| `000022_video_poll_retry_limit` | 限制视频任务轮询失败次数和总时长 |
+| `000023_video_seedance_provider` | 视频模型供应商增加 `volcengine` 和 `agnes`；up/down 均可在约束存在或缺失时重复执行 |
+| `000024_remote_runtime` | 合并设备授权族、设备证明、中转连接、会话目录、独立设备码授权和独立密钥绑定 |
+| `000025_remote_runtime_access_version` | 为连接权限代次增加独立 access_version，区分票据轮换和权限收窄 |
+| `000026_endpoint_platform_text` | 设备平台改为非空、最多 64 字节的文本，不再限制固定枚举 |
+| `000027_resource_import_uploads` | 增加资源包分片上传与续传任务 |
+| `000028_stats_model_hourly` | 回填模型调用及模型账本的小时汇总，并安装事务内增量维护触发器 |
+| `000029_billing_ledger_weekly` | 准备账本周分区、全局幂等登记和镜像，由新后端分批回填、校验及切换 |
 
 从 `backend` 目录执行：
 
@@ -50,12 +59,20 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `21` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `29` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
-版本 `21` 回滚会恢复视频宽高必须大于 0 的约束；已有宽高为 0 的结果时，需先补齐真实宽高，回滚不会删除视频或伪造元数据。
+版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
+
+版本 `29` 的结构准备仍需维护窗口；启动新后端后，账本 worker 在后台按固定水位分批搬迁，数据库迁移版本为 29 不代表账本已经切换。通过 `billing_ledger_partition_state` 查看进度。启动及每 24 小时预建当前与未来 8 周，默认分区接受意外时间。观察期保留旧表事务内镜像，可用 `billing_finish_ledger_observation()` 显式结束，历史数据不自动删除。回滚前停止后端及业务读写；down 始终从权威分区表补齐旧副本缺失记录，不能只信任观察期标志，需预留维护时间与空间。默认分区总积压超过 10000 条时暂停自动 DDL 并告警，避免 ATTACH 扫描巨大默认分区。详见 [账本周分区运行方案](../../design/billing-weekly-partitions.md)。
+
+版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 
 升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
 
 ```sh
 MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 ```
+
+`000024_remote_runtime` 的 up/down SQL 将当前工作树新增的远程执行结构作为一个版本执行，支持重复执行。重复升级保留已有授权族、刷新链、设备版本、会话摘要和密钥绑定；旧 token 只在尚未绑定授权族时回填。重复回滚会保留既有撤销时间和原因，重新升级不会恢复已撤销凭据。
+
+`TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。

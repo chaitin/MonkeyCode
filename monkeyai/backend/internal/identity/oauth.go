@@ -3,10 +3,13 @@ package identity
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +18,7 @@ import (
 func (s *Service) OAuthRouter() http.Handler {
 	router := chi.NewRouter()
 	router.Get("/authorize", s.authorize)
+	router.Post("/device/authorization", s.deviceAuthorization)
 	router.Post("/token", s.token)
 	router.Post("/revoke", s.revoke)
 	return router
@@ -40,6 +44,7 @@ func (s *Service) AuthRouter() http.Handler {
 	router.Post("/email/reset-password", s.resetPassword)
 	router.Get("/session", s.session)
 	router.Post("/logout", s.logout)
+	router.With(s.RequireBrowser).Post("/device/decision", s.deviceDecision)
 	router.Get("/client-requests/{requestID}", s.clientRequest)
 	router.With(s.RequireBrowser).Post("/client-requests/{requestID}/complete", s.completeClientRequest)
 	router.Get("/oauth/{connectionID}/start", s.startUpstream)
@@ -48,8 +53,14 @@ func (s *Service) AuthRouter() http.Handler {
 	return router
 }
 
-func (s *Service) OAuthMetadata(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	scopes := make([]string, 0, len(scopeNames))
+	for scope := range scopeNames {
+		scopes = append(scopes, scope)
+	}
+	slices.Sort(scopes)
+	metadata := map[string]any{
 		"issuer":                                s.publicURL,
 		"authorization_endpoint":                s.publicURL + "/oauth/authorize",
 		"token_endpoint":                        s.publicURL + "/oauth/token",
@@ -58,18 +69,51 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, _ *http.Request) {
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
-	})
+		"scopes_supported":                      scopes,
+	}
+	if s.deviceEnabled() {
+		metadata["device_authorization_endpoint"] = s.publicURL + "/oauth/device/authorization"
+		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType}
+	}
+	if s.runtimeMetadata != nil {
+		runtime := make(map[string]any, len(s.runtimeMetadata))
+		for key, value := range s.runtimeMetadata {
+			runtime[key] = value
+		}
+		if s.runtimeFeatures != nil {
+			features := map[string]bool{}
+			if existing, ok := runtime["features"].(map[string]bool); ok {
+				for key, value := range existing {
+					features[key] = value
+				}
+			}
+			current, err := s.runtimeFeatures(r.Context())
+			if err != nil {
+				writeError(r.Context(), w, 503, "capabilities_unavailable", "功能策略暂不可用")
+				return
+			}
+			for key, value := range current {
+				features[key] = value
+			}
+			runtime["features"] = features
+		}
+		metadata["monkeyai_runtime"] = runtime
+	}
+	writeJSON(r.Context(), w, http.StatusOK, metadata)
 }
 
-func (s *Service) clients(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) clients(w http.ResponseWriter, r *http.Request) {
 	clients := []Client{Clients["monkeyai-desktop"], Clients["monkeyai-mobile"]}
-	writeJSON(w, http.StatusOK, map[string]any{"clients": clients})
+	if s.deviceEnabled() {
+		clients = append(clients, Clients[RuntimeClientID])
+	}
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"clients": clients})
 }
 
 func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 	request, err := s.BeginAuthorization(r.Context(), r.URL.Query())
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	http.Redirect(w, r, s.clientLoginURL(request.ID, ""), http.StatusFound)
@@ -78,52 +122,65 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
-		s.writeOAuthError(w, oauthError("invalid_request", "请求格式无效"))
+		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "请求格式无效"))
 		return
 	}
 	var token Token
 	var err error
-	switch r.Form.Get("grant_type") {
+	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
-		token, err = s.ExchangeCode(r.Context(), r.Form.Get("client_id"), r.Form.Get("redirect_uri"), r.Form.Get("code"), r.Form.Get("code_verifier"))
+		token, err = s.ExchangeCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("redirect_uri"), r.PostForm.Get("code"), r.PostForm.Get("code_verifier"))
+	case DeviceGrantType:
+		if !s.deviceLimit(r, "poll", 300) {
+			w.Header().Set("Retry-After", "60")
+			s.writeOAuthError(r.Context(), w, oauthError("slow_down", "设备轮询过于频繁"))
+			return
+		}
+		token, err = s.ExchangeDeviceCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("device_code"))
 	case "refresh_token":
-		token, err = s.Refresh(r.Context(), r.Form.Get("client_id"), r.Form.Get("refresh_token"))
+		token, err = s.Refresh(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("refresh_token"))
 	default:
 		err = oauthError("unsupported_grant_type", "不支持的 grant_type")
 	}
 	if err != nil {
-		s.writeOAuthError(w, err)
+		s.writeOAuthError(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, token)
+	writeJSON(r.Context(), w, http.StatusOK, token)
 }
 
 func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	if err := r.ParseForm(); err == nil {
-		if err := s.revokeToken(r.Context(), tokenHash(r.Form.Get("token")), r.Form.Get("client_id")); err != nil {
-			slog.ErrorContext(r.Context(), "撤销 OAuth 令牌失败", "client_id", r.Form.Get("client_id"), "error", err)
-		}
+	if err := r.ParseForm(); err != nil {
+		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "请求格式无效"))
+		return
 	}
+	if err := s.revokeToken(r.Context(), tokenHash(r.PostForm.Get("token")), r.PostForm.Get("client_id")); err != nil {
+		s.writeOAuthError(r.Context(), w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Service) writeOAuthError(w http.ResponseWriter, err error) {
+func (s *Service) writeOAuthError(ctx context.Context, w http.ResponseWriter, err error) {
 	var protocol protocolError
+	status := http.StatusBadRequest
 	if !errors.As(err, &protocol) {
-		slog.Error("OAuth 请求处理失败", "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "OAuth 请求处理失败", "module", "identity", "operation", "writeOAuthError", "error", err)
 		protocol = protocolError{Code: "server_error", Description: "服务暂时不可用"}
+		status = http.StatusServiceUnavailable
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusBadRequest, protocol)
+	writeJSON(ctx, w, status, protocol)
 }
 
 func (s *Service) providers(w http.ResponseWriter, r *http.Request) {
 	connections, err := s.connections(r.Context())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取登录方式失败", "error", err)
-		writeError(w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取登录方式失败", "module", "identity", "operation", "providers", "error", err)
+		writeError(r.Context(), w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
 		return
 	}
 	type provider struct {
@@ -135,12 +192,12 @@ func (s *Service) providers(w http.ResponseWriter, r *http.Request) {
 	for _, connection := range connections {
 		result = append(result, provider{ID: connection.ID, Provider: connection.Provider, Name: connection.Name})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"providers": result})
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"providers": result})
 }
 
 func (s *Service) session(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.BrowserUser(r)
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": ok, "user": nullableUser(user, ok)})
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"authenticated": ok, "user": nullableUser(user, ok)})
 }
 
 func nullableUser(user User, ok bool) any {
@@ -153,7 +210,7 @@ func nullableUser(user User, ok bool) any {
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookie); err == nil {
 		if err := s.revokeBrowserSession(r.Context(), tokenHash(cookie.Value)); err != nil {
-			slog.ErrorContext(r.Context(), "撤销浏览器会话失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "撤销浏览器会话失败", "module", "identity", "operation", "logout", "error", err)
 		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.secureCookie, SameSite: http.SameSiteLaxMode})
@@ -161,28 +218,37 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("purpose") == "device" || chi.URLParam(r, "requestID") == "device" {
+		s.deviceRequest(w, r)
+		return
+	}
 	request, err := s.authorizationRequest(r.Context(), chi.URLParam(r, "requestID"))
 	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
-			slog.ErrorContext(r.Context(), "查询客户端授权请求失败", "request_id", chi.URLParam(r, "requestID"), "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询客户端授权请求失败", "module", "identity", "operation", "clientRequest", "request_id", chi.URLParam(r, "requestID"), "error", err)
 		}
-		writeError(w, http.StatusNotFound, "request_not_found", "授权请求不存在、已完成或已过期")
+		writeError(r.Context(), w, http.StatusNotFound, "request_not_found", "授权请求不存在、已完成或已过期")
 		return
 	}
 	connections, err := s.connections(r.Context())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取客户端授权登录方式失败", "request_id", request.ID, "error", err)
-		writeError(w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取客户端授权登录方式失败", "module", "identity", "operation", "clientRequest", "request_id", request.ID, "error", err)
+		writeError(r.Context(), w, http.StatusServiceUnavailable, "settings_unavailable", "认证配置不可用")
 		return
 	}
 	user, authenticated := s.BrowserUser(r)
 	client := Clients[request.ClientID]
-	writeJSON(w, http.StatusOK, map[string]any{
-		"request_id":    request.ID,
-		"client":        client,
-		"authenticated": authenticated,
-		"user":          nullableUser(user, authenticated),
-		"providers":     publicConnections(connections),
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{
+		"request_id":         request.ID,
+		"client":             client,
+		"authenticated":      authenticated,
+		"user":               nullableUser(user, authenticated),
+		"providers":          publicConnections(connections),
+		"scopes":             request.Scopes,
+		"scope_descriptions": scopeNames,
+		"audience":           request.Audience,
+		"consent_required":   len(request.Scopes) > 0,
+		"csrf_token":         consentToken(r, request.ID),
 	})
 }
 
@@ -196,26 +262,50 @@ func publicConnections(connections []OAuthConnection) []map[string]string {
 
 func (s *Service) completeClientRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	launchURL, err := s.CompleteAuthorization(r.Context(), chi.URLParam(r, "requestID"), user.ID)
+	requestID := chi.URLParam(r, "requestID")
+	request, err := s.authorizationRequest(r.Context(), requestID)
 	if err != nil {
-		writeError(w, http.StatusConflict, "request_unavailable", err.Error())
+		writeError(r.Context(), w, http.StatusNotFound, "request_not_found", "授权请求不存在")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"launch_url": launchURL})
+	approval, err := readApproval(w, r, request, s.publicURL)
+	if err != nil {
+		writeError(r.Context(), w, http.StatusForbidden, "consent_required", err.Error())
+		return
+	}
+	launchURL, err := s.completeAuthorization(r.Context(), requestID, user.ID, approval)
+	if err != nil {
+		writeError(r.Context(), w, http.StatusConflict, "request_unavailable", err.Error())
+		return
+	}
+	writeJSON(r.Context(), w, http.StatusOK, map[string]string{"launch_url": launchURL})
 }
 
 func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 	requestID := r.URL.Query().Get("request_id")
 	if requestID == "" {
-		writeError(w, http.StatusBadRequest, "request_required", "缺少客户端授权请求")
+		writeError(r.Context(), w, http.StatusBadRequest, "request_required", "缺少客户端授权请求")
+		return
+	}
+	if r.URL.Query().Get("purpose") == "device" {
+		if !s.deviceEnabled() || !deviceUUID(requestID) {
+			writeError(r.Context(), w, 400, "request_unavailable", "设备申请无效")
+			return
+		}
+		request, err := sqlc.New(s.db).DeviceRequestByID(r.Context(), requestID)
+		if err != nil || request.Status != "pending" || !s.now().Before(request.ExpiresAt) {
+			writeError(r.Context(), w, 400, "request_unavailable", "设备申请已完成或过期")
+			return
+		}
+		s.beginUpstream(w, r, requestID, loginPurposeDevice)
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), requestID)
 	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
-			slog.ErrorContext(r.Context(), "查询上游登录授权请求失败", "request_id", requestID, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询上游登录授权请求失败", "module", "identity", "operation", "startUpstream", "request_id", requestID, "error", err)
 		}
-		writeError(w, http.StatusBadRequest, "request_unavailable", "授权请求无效")
+		writeError(r.Context(), w, http.StatusBadRequest, "request_unavailable", "授权请求无效")
 		return
 	}
 	s.beginUpstream(w, r, requestID, loginPurposeClient)
@@ -230,26 +320,26 @@ func (s *Service) beginUpstream(w http.ResponseWriter, r *http.Request, requestI
 	connection, err := s.connection(r.Context(), connectionID)
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {
-			slog.ErrorContext(r.Context(), "读取上游连接失败", "connection_id", connectionID, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取上游连接失败", "module", "identity", "operation", "beginUpstream", "connection_id", connectionID, "error", err)
 		}
-		writeError(w, http.StatusNotFound, "provider_not_found", "登录方式不存在")
+		writeError(r.Context(), w, http.StatusNotFound, "provider_not_found", "登录方式不存在")
 		return
 	}
 	state, err := randomToken(32)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "准备上游登录失败", "connection_id", connectionID, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "准备上游登录失败", "module", "identity", "operation", "beginUpstream", "connection_id", connectionID, "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
 	if err := s.createLoginState(r.Context(), tokenHash(state), connectionID, requestID, purpose, s.now().Add(s.requestTTL)); err != nil {
-		slog.ErrorContext(r.Context(), "创建上游登录状态失败", "connection_id", connectionID, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "无法发起登录")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "创建上游登录状态失败", "module", "identity", "operation", "beginUpstream", "connection_id", connectionID, "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "无法发起登录")
 		return
 	}
 	target, err := s.upstreamAuthorizeURL(r.Context(), connection, state)
 	if err != nil {
 		logUpstreamFailure(r.Context(), "构造上游授权地址", connectionID, err)
-		writeError(w, http.StatusBadGateway, "provider_unavailable", "登录方式暂不可用")
+		writeError(r.Context(), w, http.StatusBadGateway, "provider_unavailable", "登录方式暂不可用")
 		return
 	}
 	http.Redirect(w, r, target, http.StatusFound)
@@ -259,7 +349,7 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	state, err := s.consumeLoginState(r.Context(), tokenHash(r.URL.Query().Get("state")))
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.ErrorContext(r.Context(), "读取上游登录状态失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取上游登录状态失败", "module", "identity", "operation", "upstreamCallback", "error", err)
 		}
 		http.Redirect(w, r, s.clientLoginURL("", "oauth_callback"), http.StatusFound)
 		return
@@ -271,7 +361,7 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 	connection, err := s.connection(r.Context(), state.ConnectionID)
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {
-			slog.ErrorContext(r.Context(), "读取上游登录配置失败", "connection_id", state.ConnectionID, "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取上游登录配置失败", "module", "identity", "operation", "upstreamCallback", "connection_id", state.ConnectionID, "error", err)
 		}
 		http.Redirect(w, r, s.upstreamResultURL(state, "provider_unavailable"), http.StatusFound)
 		return
@@ -306,7 +396,7 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 		err = s.createBrowserSession(r.Context(), user.ID, tokenHash(token), "oauth", s.now().Add(s.sessionTTL))
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "创建上游登录会话失败", "user_id", user.ID, "error", err)
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "创建上游登录会话失败", "module", "identity", "operation", "upstreamCallback", "user_id", user.ID, "error", err)
 		http.Redirect(w, r, s.upstreamResultURL(state, "session_failed"), http.StatusFound)
 		return
 	}
@@ -315,6 +405,13 @@ func (s *Service) upstreamCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) upstreamResultURL(state LoginState, errorCode string) string {
+	if state.Purpose == loginPurposeDevice {
+		query := url.Values{"request_id": {state.DeviceRequestID}}
+		if errorCode != "" {
+			query.Set("error", errorCode)
+		}
+		return s.publicURL + "/device?" + query.Encode()
+	}
 	if state.Purpose == loginPurposeAdmin {
 		query := url.Values{}
 		if errorCode != "" {
@@ -342,7 +439,7 @@ func (s *Service) clientLoginURL(requestID, errorCode string) string {
 
 func logUpstreamFailure(ctx context.Context, operation, connectionID string, err error) {
 	if response, ok := errors.AsType[*upstreamHTTPError](err); ok {
-		slog.ErrorContext(ctx, "上游 OAuth 操作失败", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status)
 		return
 	}
 	reason := "invalid_upstream_response"
@@ -359,5 +456,5 @@ func logUpstreamFailure(ctx context.Context, operation, connectionID string, err
 			reason = "request_failed"
 		}
 	}
-	slog.ErrorContext(ctx, "上游 OAuth 操作失败", "operation", operation, "connection_id", connectionID, "reason", reason)
+	logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", reason)
 }

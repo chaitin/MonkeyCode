@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -58,12 +59,12 @@ func (s *Service) EnsureInitialAdmin(ctx context.Context, name, email, password 
 func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	methods, err := s.loginMethods(r.Context())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取密码认证设置失败", "error", err)
-		writeError(w, 503, "settings_unavailable", "认证配置不可用")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取密码认证设置失败", "module", "identity", "operation", "passwordLogin", "error", err)
+		writeError(r.Context(), w, 503, "settings_unavailable", "认证配置不可用")
 		return
 	}
 	if !methods.PasswordEnabled {
-		writeError(w, 403, "method_disabled", "密码登录未启用")
+		writeError(r.Context(), w, 403, "method_disabled", "密码登录未启用")
 		return
 	}
 	adminOnly := strings.HasSuffix(r.URL.Path, "/admin/login")
@@ -72,7 +73,7 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil || len(input.Password) > 1024 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "请求格式无效")
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "请求格式无效")
 		return
 	}
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
@@ -88,13 +89,13 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) && !errors.Is(err, errPasswordNotSet) {
-			slog.ErrorContext(r.Context(), "查询密码登录用户失败", "error", err)
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询密码登录用户失败", "module", "identity", "operation", "passwordLogin", "error", err)
 		}
 		passwordHash = dummyPasswordHash
 	}
 	valid := verifyPassword(input.Password, passwordHash)
 	if err != nil || !valid {
-		writeError(w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
+		writeError(r.Context(), w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
 		return
 	}
 	s.loginSession(w, r, user, "password")
@@ -103,19 +104,19 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method string) {
 	err := s.writer.TouchLogin(r.Context(), user.ID)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "更新登录时间失败", "user_id", user.ID, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "更新登录时间失败", "module", "identity", "operation", "loginSession", "user_id", user.ID, "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
 	token, err := randomToken(32)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "生成登录会话令牌失败", "user_id", user.ID, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "生成登录会话令牌失败", "module", "identity", "operation", "loginSession", "user_id", user.ID, "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
 	if err := s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL)); err != nil {
-		slog.ErrorContext(r.Context(), "创建登录会话失败", "user_id", user.ID, "method", method, "error", err)
-		writeError(w, http.StatusInternalServerError, "server_error", "登录失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "创建登录会话失败", "module", "identity", "operation", "loginSession", "user_id", user.ID, "method", method, "error", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
 	audit.Identify(r.Context(), audit.Actor{ID: user.ID, Name: user.Name, Email: user.Email})
@@ -124,7 +125,7 @@ func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User
 		Secure: s.secureCookie, SameSite: http.SameSiteLaxMode,
 		MaxAge: int(s.sessionTTL.Seconds()),
 	})
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(r.Context(), w, http.StatusOK, user)
 }
 
 func hashPassword(password string) (string, error) {

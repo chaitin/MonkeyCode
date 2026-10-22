@@ -6,12 +6,16 @@ import (
 )
 
 func PageParams(r *http.Request) (page, size int, err error) {
+	return PageParamsWithLimit(r, 100)
+}
+
+func PageParamsWithLimit(r *http.Request, maxSize int) (page, size int, err error) {
 	page, size = 1, 20
 	for _, field := range []struct {
 		name  string
 		value *int
 		max   int
-	}{{"page", &page, 1000000}, {"page_size", &size, 100}} {
+	}{{"page", &page, 1000000}, {"page_size", &size, maxSize}} {
 		if raw := r.URL.Query().Get(field.name); raw != "" {
 			n, parseErr := strconv.Atoi(raw)
 			if parseErr != nil || n < 1 || n > field.max {

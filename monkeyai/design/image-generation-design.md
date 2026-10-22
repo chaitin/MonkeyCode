@@ -818,6 +818,7 @@ image-outputs/<job-id>/<ordinal>-<sha256>.<ext>
 | OpenAI GPT Image API | `openai_images` | 对接专用图片生成/编辑接口，处理图片输入与结果编码；能力与画质/比例映射按具体 GPT Image 模型定义。 |
 | OpenAI Responses API | `openai_responses_image` | 对接支持 `image_generation` 工具的 Responses 模型，提取工具产生的图片而非普通文本；独立处理工具调用状态及用量。 |
 | 火山 Seedream | `volcengine` | 按具体 Seedream 版本映射画质、比例和参考图，处理上游结果 URL/Base64 及组图返回。 |
+| Agnes Image 2.5 Flash | `agnes` | 使用 `https://apihub.agnes-ai.com/v1/images/generations`，映射 1K/2K/4K 与标准比例，支持 Base64 生图、图生图和多图合成。 |
 | xAI Grok 生图 | `xai` | 首期支持 `grok-imagine-image-2.0` 生成，按 `resolution` 映射 1K/2K/4K；编辑接口无法保证统一画质/比例语义，暂不开放 Grok 编辑。 |
 
 以上四条路径分别实现各自支持的 `ImageGenerator`、`ImageEditor`、`ImageTaskQuerier`；第一期编辑接口只对具体模型原生支持的情况开放，不要求所有路径都支持编辑、Mask、参考图、批量或上游异步查询。服务端只公开代码中已验证的能力，不支持的操作在请求上游前拒绝。OpenAI Responses 生图工具与现有文本模型 `/v1/responses` 代理共享供应商但不共享计费/响应解析；仍通过独立生图代理提交，最终返回 MonkeyAI 的任务 ID。

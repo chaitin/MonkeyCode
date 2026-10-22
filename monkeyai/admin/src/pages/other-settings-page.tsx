@@ -1468,7 +1468,7 @@ export function OtherSettingsPage() {
                     )}
                   </DialogTrigger>
                   <DialogContent
-                    className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                    className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
                     closeLabel={t("common.close")}
                   >
                     <form
@@ -1652,7 +1652,7 @@ export function OtherSettingsPage() {
                 {t("pages.otherSettings.oauth.add")}
               </DialogTrigger>
               <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+                className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg"
                 closeLabel={t("common.close")}
               >
                 <form

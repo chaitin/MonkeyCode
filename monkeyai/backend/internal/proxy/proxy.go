@@ -18,6 +18,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -76,13 +77,17 @@ type UsageRecorder interface {
 type proxyContextKey struct{}
 
 type proxyContext struct {
-	target       Target
-	upstream     *url.URL
-	upstreamPath string
-	stream       bool
-	startedAt    time.Time
-	reservation  Reservation
-	settled      sync.Once
+	target            Target
+	upstream          *url.URL
+	upstreamPath      string
+	stream            bool
+	requestBody       []byte
+	startedAt         time.Time
+	reservation       Reservation
+	settled           sync.Once
+	logged            sync.Once
+	upstreamStatus    int
+	upstreamRequestID string
 }
 
 type Proxy struct {
@@ -110,6 +115,7 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		logger:   logger.With("module", "proxy"),
 	}
 	p.reverse = &httputil.ReverseProxy{
+		ErrorLog:       logging.ErrorLog(p.logger),
 		Transport:      outboundTransport{direct: DirectTransport()},
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
@@ -168,14 +174,22 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
+	encoding, ok := negotiateEncoding(r.Header.Values("Accept-Encoding"))
+	if !ok {
+		http.Error(w, "客户端不接受代理支持的响应编码", http.StatusNotAcceptable)
+		return
+	}
+	if encoding != "" {
+		r.Header.Set("Accept-Encoding", encoding)
+	}
 	if p.resolver == nil {
-		p.logger.ErrorContext(r.Context(), "模型代理未配置凭据解析器")
+		logging.Event(r.Context(), p.logger, slog.LevelError, "proxy.operation.error", "模型代理未配置凭据解析器", "module", "proxy", "operation", "ServeHTTP")
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 		return
 	}
 	target, err := p.resolver.Resolve(r.Context(), credential, meta.Model)
 	if err != nil {
-		p.logger.WarnContext(r.Context(), "解析模型失败", "error", err)
+		logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.operation.warn", "解析模型失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
@@ -183,9 +197,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "模型协议与请求端点不匹配", http.StatusBadRequest)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("model_id", target.ModelID), slog.String("user_id", target.UserID), slog.String("operation", "proxy_request"))
 	upstream, err := parseBaseURL(target.BaseURL)
 	if err != nil {
-		p.logger.ErrorContext(r.Context(), "模型配置无效", "model_id", target.ModelID, "operation", "parse_base_url", "error", fmt.Sprintf("%T", err))
+		logging.Diagnostic(r.Context(), p.logger, slog.LevelError, "model.configuration.failed", err, slog.String("model_id", target.ModelID), slog.String("operation", "parse_base_url"))
 		p.writeUpstreamFailure(w, r, target.ModelID, "")
 		return
 	}
@@ -203,7 +218,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if errors.Is(err, sessionreporting.ErrReportingDisabled) {
 					sessionID = ""
 				} else {
-					resource.Fail(w, err)
+					resource.Fail(r.Context(), w, err)
 					return
 				}
 			}
@@ -214,25 +229,25 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.billing != nil && target.OwnershipType != "user" {
 		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: sessionID})
 		if err != nil {
-			billingError(w, err)
+			billingError(r.Context(), w, err)
 			return
 		}
 		body, err = prepareRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
 		if err != nil {
 			pc := &proxyContext{reservation: reservation, stream: meta.Stream}
 			p.finish(r.Context(), pc, Call{Known: true, Stream: meta.Stream, Result: "failed", ErrorCode: "invalid_request"})
-			billingError(w, err)
+			billingError(r.Context(), w, err)
 			return
 		}
 		if err = p.billing.Start(r.Context(), reservation.ID); err != nil {
-			billingError(w, err)
+			billingError(r.Context(), w, err)
 			return
 		}
 		w.Header().Set("X-Billing-Transaction-ID", reservation.ID)
 	} else if target.OwnershipType == "user" && meta.Stream && r.URL.Path == "/v1/chat/completions" {
 		body, err = prepareRequest(body, r.URL.Path, 0, true)
 		if err != nil {
-			billingError(w, err)
+			billingError(r.Context(), w, err)
 			return
 		}
 	}
@@ -243,6 +258,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstream:     upstream,
 		upstreamPath: upstreamPath,
 		stream:       meta.Stream,
+		requestBody:  body,
 		startedAt:    time.Now(),
 		reservation:  reservation,
 	})
@@ -278,7 +294,7 @@ func rewriteModel(body []byte, upstreamModel string) ([]byte, error) {
 func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	ctx, ok := r.In.Context().Value(proxyContextKey{}).(*proxyContext)
 	if !ok || ctx == nil || ctx.upstream == nil {
-		p.logger.ErrorContext(r.In.Context(), "模型代理上下文缺失")
+		logging.Event(r.In.Context(), p.logger, slog.LevelError, "proxy.operation.error", "模型代理上下文缺失", "module", "proxy", "operation", "rewrite")
 		return
 	}
 	r.Out.URL.Scheme = ctx.upstream.Scheme
@@ -296,6 +312,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	r.Out.Header.Del("X-Api-Key")
 	r.Out.Header.Del("Idempotency-Key")
 	for _, header := range []string{maiSessionHeader, legacySessionHeader, parentSessionHeader, machineSessionHeader} {
+		r.Out.Header.Del("X-Request-ID")
 		r.Out.Header.Del(header)
 	}
 	if ctx.target.APIKey != "" {
@@ -311,10 +328,8 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 	modelID, transactionID := "", ""
 	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
 		modelID, transactionID = pc.target.ModelID, pc.reservation.ID
+		p.logCall(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"}, err)
 		p.finish(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"})
-	}
-	if r.Context().Err() == nil || !errors.Is(err, context.Canceled) {
-		p.logger.ErrorContext(r.Context(), "模型上游请求失败", "model_id", modelID, "transaction_id", transactionID, "operation", "proxy_request", "path", r.URL.Path, "error", fmt.Sprintf("%T", err))
 	}
 	p.writeUpstreamFailure(w, r, modelID, transactionID)
 }
@@ -323,7 +338,7 @@ func (p *Proxy) writeUpstreamFailure(w http.ResponseWriter, r *http.Request, mod
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
 	if _, writeErr := io.WriteString(w, upstreamFailureMessage); writeErr != nil && r.Context().Err() == nil && !errors.Is(writeErr, io.ErrClosedPipe) {
-		p.logger.WarnContext(r.Context(), "写入代理错误响应失败", "model_id", modelID, "transaction_id", transactionID, "operation", "write_error_response", "error", fmt.Sprintf("%T", writeErr))
+		logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.operation.warn", "写入代理错误响应失败", "module", "proxy", "operation", "writeUpstreamFailure", "model_id", modelID, "transaction_id", transactionID, "operation", "write_error_response", "error", writeErr)
 	}
 }
 

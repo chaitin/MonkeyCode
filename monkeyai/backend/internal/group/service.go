@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 	"strings"
@@ -307,6 +308,6 @@ func touchShared(ctx context.Context, tx pgx.Tx, groupID string) error {
 
 func rollbackGroup(ctx context.Context, tx pgx.Tx, operation, id string) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-		slog.ErrorContext(ctx, "回滚分组事务失败", "operation", operation, "group_id", id, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "group.operation.error", "回滚分组事务失败", "module", "group", "operation", "rollbackGroup", "operation", operation, "group_id", id, "error", err)
 	}
 }

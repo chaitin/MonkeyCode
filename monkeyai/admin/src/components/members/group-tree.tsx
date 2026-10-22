@@ -8,7 +8,6 @@ import {
   MoreHorizontalIcon,
   MoveIcon,
   UserMultiple02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -42,7 +41,7 @@ import {
   compareByName,
   type MemberGroup,
 } from "@/lib/member-groups"
-import { memberIconColor } from "@/lib/member-appearance"
+import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 
 const allGroupActions: GroupAction[] = [
@@ -141,7 +140,7 @@ export function GroupTreeItem({
       type="button"
       variant="ghost"
       size="sm"
-      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 text-start font-normal hover:bg-transparent! aria-expanded:bg-transparent!"
+      className="min-w-0 flex-1 cursor-pointer justify-start gap-2 border-0 text-start font-normal hover:!bg-transparent aria-expanded:!bg-transparent"
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
     />
   )
@@ -178,6 +177,7 @@ export function GroupTreeItem({
         <div
           className={cn(
             "group/group-row flex items-center rounded-md pe-1 transition-colors",
+            multiSelect && "gap-2",
             !multiSelect && "cursor-grab active:cursor-grabbing",
             (hovered || menuOpen) && "bg-foreground/5",
             dropHovered && "bg-foreground/5 text-foreground/60"
@@ -219,7 +219,7 @@ export function GroupTreeItem({
               checked={false}
               disabled
               aria-label={group.name}
-              className="ms-1 shrink-0 border-muted-foreground/30! bg-muted! text-muted-foreground! opacity-100!"
+              className="ms-1 shrink-0 !border-muted-foreground/30 !bg-muted !text-muted-foreground !opacity-100"
             />
           )}
           <CollapsibleTrigger render={triggerButton}>
@@ -442,12 +442,7 @@ function GroupTreeMemberRow({
             : undefined
         }
       >
-        <HugeiconsIcon
-          icon={User02Icon}
-          className={cn("size-4 shrink-0", memberIconColor(member))}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
+        <UserAvatar src={member.avatar_url} className="!size-4" />
         <span className="min-w-0 flex-1 truncate" title={member.email}>
           {member.name}
         </span>

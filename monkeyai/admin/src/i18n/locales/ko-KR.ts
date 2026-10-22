@@ -73,8 +73,6 @@ export const koKR = {
     deleted: "삭제됨",
     modelScope:
       "호출은 시작 시각, 크레딧은 청구 및 환불 시각 기준입니다. 캐시 적중률은 적중한 호출의 비율입니다.",
-    taskScope:
-      "기간 내 시작한 세션입니다. 완료율은 성공 수 / 전체 수이며 평균 시간은 종료된 세션만 포함합니다. 클라이언트 보고가 필요합니다.",
   },
   common: {
     breadcrumb: "이동 경로",
@@ -158,7 +156,17 @@ export const koKR = {
       timeRange: "실시간 통계 기간",
       pendingMetric: "데이터 연동 대기 중",
       period24h: "24시간",
+      comparison: {
+        new: "신규",
+        unavailable: "이전 기간의 데이터가 없습니다",
+        increased: "직전 24시간 대비 {{percent}} 증가",
+        decreased: "직전 24시간 대비 {{percent}} 감소",
+        unchanged: "직전 24시간 대비 변동 없음",
+        newActivity: "직전 24시간은 0이며 이번 기간에 새 활동이 있습니다",
+        previousValue: "직전 24시간: {{value}}",
+      },
       period30m: "30분",
+      average: "평균",
       callsTrend: "호출 횟수",
       newUsersTrend: "신규 사용자",
       activeUsersTrend: "활성 사용자",
@@ -177,8 +185,8 @@ export const koKR = {
       },
       metrics: {
         modelConsumption: "크레딧 소모량",
-        p95ResponseTime: "모델 응답 시간",
-        p95FirstTokenTime: "모델 첫 토큰 시간",
+        avgResponseTime: "모델 응답 시간",
+        avgFirstTokenTime: "모델 첫 토큰 시간",
         modelSuccessRate: "모델 성공률",
         cacheHitRate: "캐시 적중률",
         modelCalls: "모델 호출 횟수",
@@ -224,47 +232,6 @@ export const koKR = {
         conversationCount: "대화 수",
       },
       empty: "현재 필터와 일치하는 작업이 없습니다",
-    },
-    taskStatistics: {
-      title: "작업 통계",
-      description: "작업 실행 추세, 실행 상태 및 완료 현황을 확인합니다.",
-      timeRange: "통계 기간",
-      ranges: {
-        "7d": "최근 7일",
-        "30d": "최근 30일",
-        "90d": "최근 90일",
-      },
-      comparedToPrevious: "이전 기간 대비",
-      metrics: {
-        totalTasks: "전체 작업",
-        completionRate: "완료율",
-        averageDuration: "평균 소요 시간",
-        runningTasks: "미종료 작업",
-      },
-      taskTrend: "작업 추세",
-      statusDistribution: "상태 분포",
-      statuses: {
-        completed: "완료",
-        running: "미종료",
-        failed: "실패",
-      },
-      taskTypeDetails: "작업 유형 상세",
-      columns: {
-        taskType: "작업 유형",
-        total: "작업 수",
-        completed: "완료",
-        completionRate: "완료율",
-        averageDuration: "평균 소요 시간",
-      },
-      taskTypes: {
-        conversation: "Agent 대화",
-        workflow: "워크플로",
-        retrieval: "지식 검색",
-        tool: "도구 호출",
-        scheduled: "예약 작업",
-      },
-      durationSeconds: "{{count}}초",
-      durationMinutes: "{{minutes}}분 {{seconds}}초",
     },
     models: {
       noTags: "태그 없음",
@@ -453,20 +420,20 @@ export const koKR = {
       contentPlaceholder: "스킬 지침을 입력하세요",
       skillPackage: "스킬 패키지",
       packageHint:
-        "스킬 디렉터리를 ZIP 형식으로 업로드하세요. 최대 20 MB입니다.",
+        "스킬 디렉터리를 ZIP 형식으로 업로드하세요. 최대 500 MiB입니다.",
       packageOptionalHint:
         "스킬 내용을 교체할 때만 새 ZIP 스킬 패키지를 업로드하세요.",
       packageParsing: "스킬 패키지를 검사하는 중…",
       packageSummary: "파일 {{count}}개 · 압축 해제 후 {{size}}",
       packageErrors: {
-        fileTooLarge: "스킬 패키지는 20 MB를 초과할 수 없습니다.",
+        fileTooLarge: "스킬 패키지는 500 MiB를 초과할 수 없습니다.",
         invalidZip:
           "파일을 읽을 수 없습니다. 유효한 ZIP 스킬 패키지를 업로드하세요.",
         unsafePath: "스킬 패키지에 안전하지 않은 파일 경로가 있습니다.",
         symlink: "스킬 패키지에는 심볼릭 링크를 포함할 수 없습니다.",
-        tooManyFiles: "스킬 패키지는 최대 500개의 파일을 포함할 수 있습니다.",
+        tooManyFiles: "스킬 패키지는 최대 5000개의 파일을 포함할 수 있습니다.",
         unpackedTooLarge:
-          "압축 해제된 스킬 패키지는 50 MB를 초과할 수 없습니다.",
+          "압축 해제된 스킬 패키지는 1 GiB를 초과할 수 없습니다.",
         missingManifest:
           "SKILL.md를 찾을 수 없습니다. 유효한 스킬 패키지가 아닙니다.",
         multipleManifests:
@@ -814,6 +781,9 @@ export const koKR = {
       groupQuota: {
         title: "그룹 한도",
         memberTitle: "구성원 한도",
+        memberSort: "구성원 정렬",
+        nameAscending: "이름",
+        creditsAscending: "크레딧",
         manageGroups: "그룹 관리",
         description:
           "루트 그룹은 한도를 반드시 설정해야 합니다. 비어 있는 하위 그룹과 사용자는 가장 가까운 상위 그룹의 한도를 상속합니다.",

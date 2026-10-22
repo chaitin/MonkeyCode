@@ -9,6 +9,25 @@ import (
 	"context"
 )
 
+const bindSectionBatch = `-- name: BindSectionBatch :exec
+UPDATE resource_imports SET upload_id=($1::jsonb->>'upload_id')::uuid
+WHERE publisher=$1::jsonb->>'publisher' AND release_id=($1::jsonb->>'release_id')::uuid
+`
+
+func (q *Queries) BindSectionBatch(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, bindSectionBatch, data)
+	return err
+}
+
+const cancelImportUpload = `-- name: CancelImportUpload :exec
+UPDATE resource_import_uploads SET status='cancelled',package_sha256='',expires_at=now() WHERE id=$1::uuid
+`
+
+func (q *Queries) CancelImportUpload(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, cancelImportUpload, dollar_1)
+	return err
+}
+
 const clearImportExpertConnectors = `-- name: ClearImportExpertConnectors :exec
 DELETE FROM expert_connectors WHERE expert_id=$1::uuid
 `
@@ -49,11 +68,22 @@ func (q *Queries) CreateImportBatch(ctx context.Context, data []byte) error {
 	return err
 }
 
+const createImportChunk = `-- name: CreateImportChunk :exec
+INSERT INTO resource_import_chunks (upload_id,index,size,sha256)
+SELECT (d->>'upload_id')::uuid,(d->>'index')::integer,(d->>'size')::bigint,d->>'sha256'
+FROM (SELECT $1::jsonb AS d) input
+`
+
+func (q *Queries) CreateImportChunk(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, createImportChunk, data)
+	return err
+}
+
 const createImportConnector = `-- name: CreateImportConnector :exec
 INSERT INTO connectors (id,owner_user_id,ownership_type,origin,name,description,url,
-                        authorization_mode,authorization_method,oauth_config,timeout_ms,auth_header_name,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name','',d->>'url',d->>'authorization_mode',
-       NULLIF(d->>'authorization_method',''),d->'oauth_config',(d->>'timeout_ms')::int,d->>'auth_header_name',d->'name_i18n',d->'description_i18n'
+                        authorization_mode,authorization_method,oauth_config,timeout_ms,auth_header_name,icon_s3_key,name_i18n,description_i18n)
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->>'url',d->>'authorization_mode',
+       NULLIF(d->>'authorization_method',''),d->'oauth_config',(d->>'timeout_ms')::int,d->>'auth_header_name',d->>'icon_s3_key',d->'name_i18n',d->'description_i18n'
 FROM (SELECT $1::jsonb AS d) input
 `
 
@@ -99,15 +129,56 @@ func (q *Queries) CreateImportSkill(ctx context.Context, data []byte) error {
 	return err
 }
 
+const createImportUpload = `-- name: CreateImportUpload :one
+INSERT INTO resource_import_uploads (id, actor_user_id, files, total_size)
+SELECT (d->>'id')::uuid, (d->>'actor_user_id')::uuid, d->'files', (d->>'total_size')::bigint
+FROM (SELECT $1::jsonb AS d) input
+WHERE (SELECT count(*) FROM resource_import_uploads
+       WHERE actor_user_id=(d->>'actor_user_id')::uuid AND status IN ('uploading','ready') AND expires_at>now()) < 5
+RETURNING to_jsonb(resource_import_uploads)
+`
+
+func (q *Queries) CreateImportUpload(ctx context.Context, data []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, createImportUpload, data)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
+const deleteImportUpload = `-- name: DeleteImportUpload :exec
+WITH archived AS (
+    UPDATE resource_import_uploads u SET cleaned_at=now()
+    WHERE u.id=$1::uuid AND (EXISTS (SELECT 1 FROM resource_import_sections s WHERE s.upload_id=u.id)
+       OR EXISTS (SELECT 1 FROM resource_imports i WHERE i.upload_id=u.id)) RETURNING u.id
+), chunks AS (
+    DELETE FROM resource_import_chunks WHERE upload_id IN (SELECT id FROM archived)
+)
+DELETE FROM resource_import_uploads WHERE id=$1::uuid AND NOT EXISTS (SELECT 1 FROM archived)
+`
+
+func (q *Queries) DeleteImportUpload(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, deleteImportUpload, dollar_1)
+	return err
+}
+
+const finishImportUpload = `-- name: FinishImportUpload :exec
+UPDATE resource_import_uploads SET status='imported' WHERE id=$1::uuid
+`
+
+func (q *Queries) FinishImportUpload(ctx context.Context, dollar_1 string) error {
+	_, err := q.db.Exec(ctx, finishImportUpload, dollar_1)
+	return err
+}
+
 const getImportHistory = `-- name: GetImportHistory :one
-SELECT to_jsonb(i) FROM resource_imports i WHERE id = $1::uuid
+SELECT i.data FROM resource_import_history i WHERE id = $1::uuid
 `
 
 func (q *Queries) GetImportHistory(ctx context.Context, dollar_1 string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, getImportHistory, dollar_1)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
+	var data []byte
+	err := row.Scan(&data)
+	return data, err
 }
 
 const getImportSkillSHA = `-- name: GetImportSkillSHA :one
@@ -145,6 +216,23 @@ func (q *Queries) GetImportTarget(ctx context.Context, arg GetImportTargetParams
 	return data, err
 }
 
+const getImportUpload = `-- name: GetImportUpload :one
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE id=$1::uuid AND actor_user_id=$2::uuid AND status<>'cancelled' AND expires_at>now()
+`
+
+type GetImportUploadParams struct {
+	ID          string
+	ActorUserID string
+}
+
+func (q *Queries) GetImportUpload(ctx context.Context, arg GetImportUploadParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getImportUpload, arg.ID, arg.ActorUserID)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
 const getLatestImport = `-- name: GetLatestImport :one
 SELECT version, release_id::text AS release_id, manifest_sha256
 FROM resource_imports WHERE publisher = $1 AND status = 'succeeded'
@@ -161,6 +249,28 @@ func (q *Queries) GetLatestImport(ctx context.Context, publisher string) (GetLat
 	row := q.db.QueryRow(ctx, getLatestImport, publisher)
 	var i GetLatestImportRow
 	err := row.Scan(&i.Version, &i.ReleaseID, &i.ManifestSha256)
+	return i, err
+}
+
+const importSection = `-- name: ImportSection :one
+SELECT status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid AND section=$2
+`
+
+type ImportSectionParams struct {
+	Column1 string
+	Section string
+}
+
+type ImportSectionRow struct {
+	Status     string
+	PlanDigest string
+	Result     []byte
+}
+
+func (q *Queries) ImportSection(ctx context.Context, arg ImportSectionParams) (ImportSectionRow, error) {
+	row := q.db.QueryRow(ctx, importSection, arg.Column1, arg.Section)
+	var i ImportSectionRow
+	err := row.Scan(&i.Status, &i.PlanDigest, &i.Result)
 	return i, err
 }
 
@@ -215,6 +325,31 @@ func (q *Queries) LinkImportExpertSkill(ctx context.Context, arg LinkImportExper
 	return err
 }
 
+const listExpiredImportUploads = `-- name: ListExpiredImportUploads :many
+SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now() AND cleaned_at IS NULL
+ORDER BY expires_at LIMIT 10 FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) ListExpiredImportUploads(ctx context.Context) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listExpiredImportUploads)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listImportBindings = `-- name: ListImportBindings :many
 SELECT to_jsonb(b) FROM resource_import_bindings b WHERE publisher = $1 ORDER BY slug
 `
@@ -239,16 +374,12 @@ func (q *Queries) ListImportBindings(ctx context.Context, publisher string) ([][
 	return items, nil
 }
 
-const listImportHistory = `-- name: ListImportHistory :many
-SELECT to_jsonb(i) FROM resource_imports i
-WHERE $1::jsonb = '{}'::jsonb
-   OR (i.created_at, i.id) < (($1::jsonb->>'created_at')::timestamptz, ($1::jsonb->>'id')::uuid)
-ORDER BY i.created_at DESC, i.id DESC
-LIMIT 21
+const listImportChunks = `-- name: ListImportChunks :many
+SELECT to_jsonb(c) FROM resource_import_chunks c WHERE upload_id=$1::uuid ORDER BY index
 `
 
-func (q *Queries) ListImportHistory(ctx context.Context, cursor []byte) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listImportHistory, cursor)
+func (q *Queries) ListImportChunks(ctx context.Context, dollar_1 string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listImportChunks, dollar_1)
 	if err != nil {
 		return nil, err
 	}
@@ -267,15 +398,48 @@ func (q *Queries) ListImportHistory(ctx context.Context, cursor []byte) ([][]byt
 	return items, nil
 }
 
+const listImportHistory = `-- name: ListImportHistory :many
+SELECT i.data FROM resource_import_history i
+WHERE $1::jsonb = '{}'::jsonb
+   OR (i.created_at, i.id) < (($1::jsonb->>'created_at')::timestamptz, ($1::jsonb->>'id')::uuid)
+ORDER BY i.created_at DESC, i.id DESC
+LIMIT $2::integer
+`
+
+type ListImportHistoryParams struct {
+	Cursor    []byte
+	PageLimit int32
+}
+
+func (q *Queries) ListImportHistory(ctx context.Context, arg ListImportHistoryParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listImportHistory, arg.Cursor, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		items = append(items, data)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listImportReferences = `-- name: ListImportReferences :many
-SELECT id FROM (
-    SELECT e.id::text AS id FROM expert_skills l JOIN experts e ON e.id=l.expert_id
+SELECT id, name FROM (
+    SELECT e.id::text AS id, e.name FROM expert_skills l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='skill' AND l.skill_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
     UNION ALL
-    SELECT e.id::text AS id FROM expert_rules l JOIN experts e ON e.id=l.expert_id
+    SELECT e.id::text AS id, e.name FROM expert_rules l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='rule' AND l.rule_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
     UNION ALL
-    SELECT e.id::text AS id FROM expert_connectors l JOIN experts e ON e.id=l.expert_id
+    SELECT e.id::text AS id, e.name FROM expert_connectors l JOIN experts e ON e.id=l.expert_id
     WHERE $1::text='connector' AND l.connector_id=$2::uuid AND e.deleted_at IS NULL AND e.enabled
 ) refs
 `
@@ -285,19 +449,86 @@ type ListImportReferencesParams struct {
 	Column2 string
 }
 
-func (q *Queries) ListImportReferences(ctx context.Context, arg ListImportReferencesParams) ([]string, error) {
+type ListImportReferencesRow struct {
+	ID   string
+	Name string
+}
+
+func (q *Queries) ListImportReferences(ctx context.Context, arg ListImportReferencesParams) ([]ListImportReferencesRow, error) {
 	rows, err := q.db.Query(ctx, listImportReferences, arg.Column1, arg.Column2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListImportReferencesRow{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var i ListImportReferencesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportSections = `-- name: ListImportSections :many
+SELECT section,status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid ORDER BY section
+`
+
+type ListImportSectionsRow struct {
+	Section    string
+	Status     string
+	PlanDigest string
+	Result     []byte
+}
+
+func (q *Queries) ListImportSections(ctx context.Context, dollar_1 string) ([]ListImportSectionsRow, error) {
+	rows, err := q.db.Query(ctx, listImportSections, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListImportSectionsRow{}
+	for rows.Next() {
+		var i ListImportSectionsRow
+		if err := rows.Scan(
+			&i.Section,
+			&i.Status,
+			&i.PlanDigest,
+			&i.Result,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImportUploads = `-- name: ListImportUploads :many
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE actor_user_id=$1::uuid AND status IN ('uploading','ready') AND expires_at>now()
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListImportUploads(ctx context.Context, dollar_1 string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listImportUploads, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var to_jsonb []byte
+		if err := rows.Scan(&to_jsonb); err != nil {
+			return nil, err
+		}
+		items = append(items, to_jsonb)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -358,6 +589,38 @@ func (q *Queries) LockImportSkill(ctx context.Context, dollar_1 string) (string,
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const lockImportUpload = `-- name: LockImportUpload :one
+SELECT to_jsonb(u) FROM resource_import_uploads u
+WHERE id=$1::uuid AND actor_user_id=$2::uuid AND status<>'cancelled' AND expires_at>now()
+FOR NO KEY UPDATE
+`
+
+type LockImportUploadParams struct {
+	ID          string
+	ActorUserID string
+}
+
+func (q *Queries) LockImportUpload(ctx context.Context, arg LockImportUploadParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, lockImportUpload, arg.ID, arg.ActorUserID)
+	var to_jsonb []byte
+	err := row.Scan(&to_jsonb)
+	return to_jsonb, err
+}
+
+const readyImportUpload = `-- name: ReadyImportUpload :exec
+UPDATE resource_import_uploads SET status='ready',package_sha256=$1 WHERE id=$2::uuid
+`
+
+type ReadyImportUploadParams struct {
+	PackageSha256 string
+	ID            string
+}
+
+func (q *Queries) ReadyImportUpload(ctx context.Context, arg ReadyImportUploadParams) error {
+	_, err := q.db.Exec(ctx, readyImportUpload, arg.PackageSha256, arg.ID)
+	return err
 }
 
 const resolveImportTag = `-- name: ResolveImportTag :one
@@ -443,10 +706,23 @@ func (q *Queries) RevokeImportCredentials(ctx context.Context, dollar_1 string) 
 	return err
 }
 
+const saveImportSection = `-- name: SaveImportSection :exec
+INSERT INTO resource_import_sections(upload_id,section,status,plan_digest,result)
+SELECT (d->>'upload_id')::uuid,d->>'section',d->>'status',d->>'plan_digest',d->'result'
+FROM (SELECT $1::jsonb AS d) input
+ON CONFLICT(upload_id,section) DO UPDATE SET status=EXCLUDED.status,plan_digest=EXCLUDED.plan_digest,result=EXCLUDED.result,updated_at=now()
+WHERE resource_import_sections.status<>'succeeded'
+`
+
+func (q *Queries) SaveImportSection(ctx context.Context, data []byte) error {
+	_, err := q.db.Exec(ctx, saveImportSection, data)
+	return err
+}
+
 const updateImportConnector = `-- name: UpdateImportConnector :exec
-UPDATE connectors SET origin='package',name=d->>'name',description='',url=d->>'url',authorization_mode=d->>'authorization_mode',
+UPDATE connectors SET origin='package',name=d->>'name',description=d->>'description',url=d->>'url',authorization_mode=d->>'authorization_mode',
        authorization_method=NULLIF(d->>'authorization_method',''),oauth_config=d->'oauth_config',timeout_ms=(d->>'timeout_ms')::int,
-       auth_header_name=d->>'auth_header_name',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+       auth_header_name=d->>'auth_header_name',icon_s3_key=d->>'icon_s3_key',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        config_revision=(d->>'config_revision')::bigint,connection_status=d->>'connection_status',
        last_checked_at=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_checked_at END,
        last_error=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_error END,

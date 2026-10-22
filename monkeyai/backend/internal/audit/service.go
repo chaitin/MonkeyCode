@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit/sqlc"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -133,7 +133,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	data, err := sqlc.New(s.pool).Page(ctx, in)
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "读取操作审计失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+		logging.Event(r.Context(), s.logger, slog.LevelError, "audit.operation.error", "读取操作审计失败", "module", "audit", "operation", "list", "request_id", logging.RequestID(r.Context()), "error", err)
 		failure(r.Context(), w, 500, "server_error", "读取操作审计失败")
 		return
 	}
@@ -146,7 +146,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err = decoder.Decode(&out); err != nil {
-		s.logger.ErrorContext(r.Context(), "读取操作审计失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+		logging.Event(r.Context(), s.logger, slog.LevelError, "audit.operation.error", "读取操作审计失败", "module", "audit", "operation", "list", "request_id", logging.RequestID(r.Context()), "error", err)
 		failure(r.Context(), w, 500, "server_error", "读取操作审计失败")
 		return
 	}
@@ -156,7 +156,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	out.Page, out.PageSize = page, in.PageSize
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(out); err != nil {
-		s.logger.ErrorContext(r.Context(), "操作审计响应写入失败", "request_id", middleware.GetReqID(r.Context()), "error", err)
+		logging.Event(r.Context(), s.logger, slog.LevelError, "audit.operation.error", "操作审计响应写入失败", "module", "audit", "operation", "list", "request_id", logging.RequestID(r.Context()), "error", err)
 	}
 }
 
@@ -164,6 +164,6 @@ func failure(ctx context.Context, w http.ResponseWriter, status int, code, messa
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}}); err != nil {
-		slog.ErrorContext(ctx, "操作审计错误响应写入失败", "request_id", middleware.GetReqID(ctx), "status", status, "code", code, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "audit.operation.error", "操作审计错误响应写入失败", "module", "audit", "operation", "failure", "request_id", logging.RequestID(ctx), "status", status, "code", code, "error", err)
 	}
 }

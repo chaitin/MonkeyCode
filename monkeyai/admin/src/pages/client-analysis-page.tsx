@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
@@ -9,8 +7,11 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 
 import { useAppToast } from "@/components/animated-toast-provider"
+import { ClientDistributionCards } from "@/components/client-distribution-cards"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -28,7 +29,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -44,8 +44,10 @@ import {
 import { api } from "@/lib/api"
 import { startOfLocalDay } from "@/lib/date-range"
 import {
+  defaultWindow,
   reportPaths,
   reportQuery,
+  type ClientOverview,
   type ReportClient,
   type ReportPage,
   type ReportWindow,
@@ -101,8 +103,7 @@ const searchFields: ClientSearchField[] = [
   "expert_id",
 ]
 const selectValues = {
-  client_type: ["desktop", "web", "extension", "mobile", "unknown"],
-  platform: ["macos", "windows", "linux", "ios", "android", "web"],
+  client_type: ["desktop", "web", "extension", "mobile", "runtime", "unknown"],
   outcome: [
     "complete",
     "interrupted",
@@ -112,12 +113,11 @@ const selectValues = {
     "unknown",
   ],
 }
-const pageSizes = ["20", "50", "100"]
 
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
-  const [filters, setFilters] = useState<ReportWindow>({ from: "", until: "" })
+  const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
   const [draft, setDraft] = useState<ReportWindow>(filters)
   const [startDay, setStartDay] = useState<Date>()
   const [endDay, setEndDay] = useState<Date>()
@@ -132,6 +132,13 @@ export function ClientAnalysisPage() {
   const [active, setActive] = useState(0)
   const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
+  const [listRetry, setListRetry] = useState(0)
+  const [overviewRetry, setOverviewRetry] = useState(0)
+  const [overviewResponse, setOverviewResponse] = useState<{
+    key: string
+    data?: ClientOverview
+    error?: string
+  }>()
   const searchRevisionRef = useRef<number | null>(null)
   const [data, setData] = useState<ReportPage<ReportClient>>()
   const [loading, setLoading] = useState(true)
@@ -141,14 +148,36 @@ export function ClientAnalysisPage() {
     visibleColumns.has(column)
   )
   const items = data?.items ?? []
-  const pageStart = active * pageSize
-  const from = items.length ? pageStart + 1 : 0
-  const to = items.length ? pageStart + items.length : 0
-  const pageSizeItems = pageSizes.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const path = `${reportPaths.clients}${reportQuery(filters, cursors[active])}&limit=${pageSize}`
+  const overviewPath = `${reportPaths.clientsOverview}${reportQuery(filters)}`
+  const overviewKey = `${overviewPath}:${revision}:${overviewRetry}`
+  const overviewLoading = overviewResponse?.key !== overviewKey
+  const overview = overviewLoading ? undefined : overviewResponse.data
+  const overviewError = overviewLoading ? undefined : overviewResponse.error
+  const searchBusy = searching || (revision > 0 && overviewLoading)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api<ClientOverview>(overviewPath, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setOverviewResponse({ key: overviewKey, data: result })
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setOverviewResponse({
+            key: overviewKey,
+            error: reason instanceof Error ? reason.message : String(reason),
+          })
+        }
+      })
+    return () => controller.abort()
+  }, [overviewPath, overviewKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -183,7 +212,7 @@ export function ClientAnalysisPage() {
           ...(!isSearch && {
             action: {
               label: t("statistics.retry"),
-              onClick: () => setRevision((value) => value + 1),
+              onClick: () => setListRetry((value) => value + 1),
             },
           }),
         })
@@ -197,24 +226,31 @@ export function ClientAnalysisPage() {
         }
       })
     return () => controller.abort()
-  }, [path, revision, showToast, t])
+  }, [path, revision, listRetry, showToast, t])
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (loading || searching) return
+    if (loading || searchBusy || overviewLoading) return
     if (
       Boolean(startDay) !== Boolean(endDay) ||
-      (startDay && endDay && startOfLocalDay(startDay) > startOfLocalDay(endDay))
+      (startDay &&
+        endDay &&
+        startOfLocalDay(startDay) > startOfLocalDay(endDay))
     ) {
       setInvalidRange(true)
       return
     }
     setInvalidRange(false)
     setError(undefined)
+    const timeWindow = defaultWindow()
     setFilters({
       ...draft,
-      from: startDay ? startOfLocalDay(startDay).toISOString() : "",
-      until: endDay ? startOfLocalDay(addDays(endDay, 1)).toISOString() : "",
+      from: startDay
+        ? startOfLocalDay(startDay).toISOString()
+        : timeWindow.from,
+      until: endDay
+        ? startOfLocalDay(addDays(endDay, 1)).toISOString()
+        : timeWindow.until,
     })
     setCursors([undefined])
     setActive(0)
@@ -237,12 +273,18 @@ export function ClientAnalysisPage() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
-      <Card className="min-h-0 flex-1">
+    <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px lg:h-[calc(100vh-5rem)] lg:flex-none lg:overflow-hidden">
+      <ClientDistributionCards
+        data={overview}
+        loading={overviewLoading}
+        error={overviewError}
+        onRetry={() => setOverviewRetry((value) => value + 1)}
+      />
+      <Card className="h-[32rem] min-h-0 flex-none lg:h-auto lg:flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
             onSubmit={applySearch}
-            className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
+            className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
           >
             <DatePickerField
               id="client-analysis-from"
@@ -302,39 +344,48 @@ export function ClientAnalysisPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {(["platform", "outcome"] as const).map(
-              (field) =>
-                visibleFields.has(field) && (
-                  <Select
-                    key={field}
-                    value={draft[field] || "__all__"}
-                    onValueChange={(value) =>
-                      setDraft((current) => ({
-                        ...current,
-                        [field]: value === "__all__" ? "" : (value ?? ""),
-                      }))
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label={t(`${key}.fields.${field}`)}
-                      className="min-w-32"
-                    >
-                      <SelectValue placeholder={t(`${key}.fields.${field}`)} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">
-                        {t(`${key}.fields.${field}`)}
-                      </SelectItem>
-                      {selectValues[field].map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {field === "outcome"
-                            ? t(`${key}.outcomes.${option}`)
-                            : option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )
+            {visibleFields.has("platform") && (
+              <Input
+                className="w-40"
+                maxLength={64}
+                placeholder={t(`${key}.fields.platform`)}
+                aria-label={t(`${key}.fields.platform`)}
+                value={draft.platform ?? ""}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    platform: event.target.value,
+                  }))
+                }
+              />
+            )}
+            {visibleFields.has("outcome") && (
+              <Select
+                value={draft.outcome || "__all__"}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    outcome: value === "__all__" ? "" : (value ?? ""),
+                  }))
+                }
+              >
+                <SelectTrigger
+                  aria-label={t(`${key}.fields.outcome`)}
+                  className="min-w-32"
+                >
+                  <SelectValue placeholder={t(`${key}.fields.outcome`)} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">
+                    {t(`${key}.fields.outcome`)}
+                  </SelectItem>
+                  {selectValues.outcome.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {t(`${key}.outcomes.${option}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
             {(["user_id", "group_id", "model_id", "expert_id"] as const).map(
               (field) =>
@@ -386,12 +437,15 @@ export function ClientAnalysisPage() {
                 </DropdownMenuGroup>
               </DropdownMenuOptionsContent>
             </DropdownMenu>
-            <Button type="submit" disabled={loading || searching}>
+            <Button
+              type="submit"
+              disabled={loading || searchBusy || overviewLoading}
+            >
               <HugeiconsIcon
-                icon={searching ? Loading03Icon : Search02Icon}
+                icon={searchBusy ? Loading03Icon : Search02Icon}
                 data-icon="inline-start"
                 className={
-                  searching
+                  searchBusy
                     ? "animate-spin motion-reduce:animate-none"
                     : undefined
                 }
@@ -406,10 +460,7 @@ export function ClientAnalysisPage() {
               >
                 {t(`${key}.clients.selectColumns`)}
               </DropdownMenuTrigger>
-              <DropdownMenuOptionsContent
-                align="end"
-                className="max-h-80"
-              >
+              <DropdownMenuOptionsContent align="end" className="max-h-80">
                 <DropdownMenuGroup>
                   {columns.map((column) => (
                     <DropdownMenuCheckboxItem
@@ -438,10 +489,10 @@ export function ClientAnalysisPage() {
             )}
           </form>
           {error && (
-            <div className="px-(--card-spacing)">
+            <div className="px-[var(--card-spacing)]">
               <Button
                 variant="outline"
-                onClick={() => setRevision((value) => value + 1)}
+                onClick={() => setListRetry((value) => value + 1)}
               >
                 {t("statistics.retry")}
               </Button>
@@ -454,12 +505,12 @@ export function ClientAnalysisPage() {
             <Table
               className={cn(
                 !items.length && "h-full",
-                "[&_td:first-child]:ps-(--card-spacing) [&_td:last-child]:pe-(--card-spacing) [&_th:first-child]:ps-(--card-spacing) [&_th:last-child]:pe-(--card-spacing)"
+                "[&_td:first-child]:ps-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)] [&_th:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)]"
               )}
               aria-label={t(`${key}.clients.title`)}
               aria-busy={loading || searching}
             >
-              <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+              <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   {displayedColumns.map((column) => (
                     <TableHead key={column} className="whitespace-nowrap">
@@ -493,7 +544,7 @@ export function ClientAnalysisPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading ? (
-                        <span role="status">{t("statistics.loading")}</span>
+                        <TableLoading />
                       ) : error ? (
                         "—"
                       ) : (
@@ -505,80 +556,26 @@ export function ClientAnalysisPage() {
               </TableBody>
             </Table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select
-                items={pageSizeItems}
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  if (value !== null && Number(value) !== pageSize) {
-                    setPageSize(Number(value))
-                    setCursors([undefined])
-                    setActive(0)
-                  }
-                }}
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false} align="start">
-                  <SelectGroup>
-                    {pageSizeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                {t(`${key}.clients.cursorSummary`, { from, to })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t(`${key}.clients.cursorPage`, { page: active + 1 })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={loading || searching || active === 0}
-                onClick={() => setActive((value) => value - 1)}
-                aria-label={t("pages.operationLogs.pagination.previous")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                disabled={
-                  loading || searching || Boolean(error) || !data?.next_cursor
-                }
-                onClick={() => {
-                  if (!data?.next_cursor) return
-                  setCursors((current) => [
-                    ...current.slice(0, active + 1),
-                    data.next_cursor ?? undefined,
-                  ])
-                  setActive((value) => value + 1)
-                }}
-                aria-label={t("pages.operationLogs.pagination.next")}
-              >
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  className="rtl:rotate-180"
-                />
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={active + 1}
+            pageSize={pageSize}
+            itemCount={items.length}
+            loading={loading || searching}
+            error={Boolean(error)}
+            hasNext={Boolean(data?.next_cursor)}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCursors([undefined])
+              setActive(0)
+            }}
+            onPrevious={() => setActive((value) => Math.max(0, value - 1))}
+            onNext={() => {
+              const next = data?.next_cursor
+              if (!next) return
+              setCursors((current) => [...current.slice(0, active + 1), next])
+              setActive((value) => value + 1)
+            }}
+          />
         </CardContent>
       </Card>
     </section>

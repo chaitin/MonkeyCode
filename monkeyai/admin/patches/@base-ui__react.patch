@@ -1,0 +1,70 @@
+diff --git a/utils/dispatchClickWithModifiers.js b/utils/dispatchClickWithModifiers.js
+index 9a9cd2adea30c5d4a55b0b014c439075a99a0662..e79a90ee5e46b1ff281437a6af198cdc20f106e3 100644
+--- a/utils/dispatchClickWithModifiers.js
++++ b/utils/dispatchClickWithModifiers.js
+@@ -5,6 +5,21 @@ Object.defineProperty(exports, "__esModule", {
+ });
+ exports.dispatchClickWithModifiers = dispatchClickWithModifiers;
+ var _owner = require("@base-ui/utils/owner");
++
++// Chrome 86 exposes PointerEvent but does not run native checkbox activation
++// for a constructed PointerEvent('click'). Detect behavior once per window.
++const clickConstructors = new WeakMap();
++function getClickConstructor(win) {
++  if (!clickConstructors.has(win)) {
++    const input = win.document.createElement('input');
++    input.type = 'checkbox';
++    if (typeof win.PointerEvent === 'function') {
++      input.dispatchEvent(new win.PointerEvent('click', { bubbles: true, cancelable: true }));
++    }
++    clickConstructors.set(win, input.checked ? win.PointerEvent : win.MouseEvent);
++  }
++  return clickConstructors.get(win);
++}
+ /**
+  * Dispatches a constructed click on the target so it carries the source event's
+  * modifier state, which `click()` always reports as unpressed. Like `click()`,
+@@ -17,7 +32,8 @@ var _owner = require("@base-ui/utils/owner");
+ function dispatchClickWithModifiers(target, sourceEvent, {
+   detail = 0
+ } = {}) {
+-  target.dispatchEvent(new ((0, _owner.ownerWindow)(target).PointerEvent)('click', {
++  const ClickEvent = getClickConstructor((0, _owner.ownerWindow)(target));
++  target.dispatchEvent(new ClickEvent('click', {
+     bubbles: true,
+     cancelable: true,
+     composed: true,
+diff --git a/utils/dispatchClickWithModifiers.mjs b/utils/dispatchClickWithModifiers.mjs
+index 8ca246141f965183daffdc8d73ffa55ed28d7d4b..7de8b9bd530989a763ab2d13711d32921cfb922a 100644
+--- a/utils/dispatchClickWithModifiers.mjs
++++ b/utils/dispatchClickWithModifiers.mjs
+@@ -1,4 +1,19 @@
+ import { ownerWindow } from '@base-ui/utils/owner';
++
++// Chrome 86 exposes PointerEvent but does not run native checkbox activation
++// for a constructed PointerEvent('click'). Detect behavior once per window.
++const clickConstructors = new WeakMap();
++function getClickConstructor(win) {
++  if (!clickConstructors.has(win)) {
++    const input = win.document.createElement('input');
++    input.type = 'checkbox';
++    if (typeof win.PointerEvent === 'function') {
++      input.dispatchEvent(new win.PointerEvent('click', { bubbles: true, cancelable: true }));
++    }
++    clickConstructors.set(win, input.checked ? win.PointerEvent : win.MouseEvent);
++  }
++  return clickConstructors.get(win);
++}
+ /**
+  * Dispatches a constructed click on the target so it carries the source event's
+  * modifier state, which `click()` always reports as unpressed. Like `click()`,
+@@ -11,7 +26,8 @@ import { ownerWindow } from '@base-ui/utils/owner';
+ export function dispatchClickWithModifiers(target, sourceEvent, {
+   detail = 0
+ } = {}) {
+-  target.dispatchEvent(new (ownerWindow(target).PointerEvent)('click', {
++  const ClickEvent = getClickConstructor(ownerWindow(target));
++  target.dispatchEvent(new ClickEvent('click', {
+     bubbles: true,
+     cancelable: true,
+     composed: true,

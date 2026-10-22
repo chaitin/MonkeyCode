@@ -61,7 +61,11 @@ func SharedGroups(ctx context.Context, q Queryer, kind string, ids []string) (ma
 		return nil, err
 	}
 	for _, row := range rows {
-		groups[row.ResourceID] = append(groups[row.ResourceID], Object{"id": row.ID, "name": row.Name, "parent_id": row.ParentID})
+		group := Object{"id": row.ID, "name": row.Name, "parent_id": row.ParentID}
+		if row.ID == rootgroup.ID {
+			group["parent_id"] = nil
+		}
+		groups[row.ResourceID] = append(groups[row.ResourceID], group)
 	}
 	return groups, nil
 }
@@ -70,12 +74,12 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 	share := func(w http.ResponseWriter, r *http.Request) {
 		var input ShareInput
 		if err := Decode(w, r, &input); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
 		if err := s.Share(r.Context(), user.ID, input, r.Method == http.MethodDelete, kinds); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -108,8 +112,8 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 	}
 	for _, id := range input.GroupIDs {
-		if !validUUID(id) || strings.EqualFold(id, rootgroup.ID) {
-			return Invalid("分组 ID 必须是真实分组的 UUID")
+		if !validUUID(id) {
+			return Invalid("分组 ID 必须是 UUID")
 		}
 	}
 	for i := range input.Resources {
@@ -132,6 +136,8 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 	input.UserIDs = slices.Compact(input.UserIDs)
 	slices.Sort(input.GroupIDs)
 	input.GroupIDs = slices.Compact(input.GroupIDs)
+	allUsers := slices.Contains(input.GroupIDs, rootgroup.ID)
+	input.GroupIDs = slices.DeleteFunc(input.GroupIDs, func(id string) bool { return id == rootgroup.ID })
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -170,12 +176,18 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 			if err == nil && len(input.GroupIDs) > 0 {
 				_, err = sqlc.New(tx).RevokeGroupShares(ctx, sqlc.RevokeGroupSharesParams{ResourceType: item.Type, ResourceID: item.ID, GroupIds: input.GroupIDs})
 			}
+			if err == nil && allUsers {
+				_, err = sqlc.New(tx).RevokeAllShares(ctx, sqlc.RevokeAllSharesParams{ResourceType: item.Type, ResourceID: item.ID})
+			}
 		} else {
 			if len(input.UserIDs) > 0 {
 				_, err = sqlc.New(tx).CreateShares(ctx, sqlc.CreateSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, UserIds: input.UserIDs})
 			}
 			if err == nil && len(input.GroupIDs) > 0 {
 				_, err = sqlc.New(tx).CreateGroupShares(ctx, sqlc.CreateGroupSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor, GroupIds: input.GroupIDs})
+			}
+			if err == nil && allUsers {
+				_, err = sqlc.New(tx).CreateAllShares(ctx, sqlc.CreateAllSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor})
 			}
 		}
 		if err != nil {

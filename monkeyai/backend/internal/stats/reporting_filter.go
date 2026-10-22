@@ -23,10 +23,11 @@ type reportingFilter struct {
 	cursor                                                                                         string
 	fingerprint                                                                                    string
 	groupID, userID, modelID, expertID, clientType, platform, resourceID, resourceVersion, outcome string
+	userQuery, resourceKind                                                                        string
 	placeholders, purged                                                                           bool
 }
 
-func parseReportingFilter(r *http.Request, now time.Time) (reportingFilter, error) {
+func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reportingFilter, error) {
 	q := r.URL.Query()
 	f := reportingFilter{from: now.Add(-24 * time.Hour), until: now, limit: 50}
 	for _, key := range []string{"from", "until"} {
@@ -45,8 +46,8 @@ func parseReportingFilter(r *http.Request, now time.Time) (reportingFilter, erro
 	}
 	if q.Has("limit") {
 		n, err := strconv.Atoi(q.Get("limit"))
-		if err != nil || n < 1 || n > 100 {
-			return f, resource.Invalid("limit 必须为 1 至 100")
+		if err != nil || n < 1 || n > maxLimit {
+			return f, resource.Invalid("limit 必须为 1 至 " + strconv.Itoa(maxLimit))
 		}
 		f.limit = n
 	}
@@ -79,11 +80,11 @@ func parseReportingFilter(r *http.Request, now time.Time) (reportingFilter, erro
 			return f, resource.Invalid(item.name + " 过长")
 		}
 	}
-	if f.clientType != "" && !oneOf(f.clientType, "desktop", "web", "extension", "mobile", "unknown") {
+	if f.clientType != "" && !oneOf(f.clientType, "desktop", "web", "extension", "mobile", "runtime", "unknown") {
 		return f, resource.Invalid("client_type 无效")
 	}
-	if f.platform != "" && !oneOf(f.platform, "macos", "windows", "linux", "ios", "android", "web") {
-		return f, resource.Invalid("platform 无效")
+	if len(f.platform) > 64 {
+		return f, resource.Invalid("platform 过长")
 	}
 	if f.outcome != "" && !oneOf(f.outcome, "complete", "interrupted", "error", "max_turns", "output_limit", "unknown") {
 		return f, resource.Invalid("outcome 无效")
@@ -161,19 +162,18 @@ func optional(value string) any {
 func (f reportingFilter) sqlParams(c reportCursor, sessionID string) []byte {
 	values := map[string]any{
 		"from": f.from, "until": f.until, "limit": f.limit,
-		"group_id": optional(f.groupID), "user_id": optional(f.userID),
+		"group_id": optional(f.groupID), "user_id": optional(f.userID), "user": optional(f.userQuery), "kind": optional(f.resourceKind),
 		"model_id": optional(f.modelID), "expert_id": optional(f.expertID),
 		"client_type": optional(f.clientType), "platform": optional(f.platform),
 		"resource_id": optional(f.resourceID), "resource_version": optional(f.resourceVersion),
 		"outcome": optional(f.outcome), "include_placeholders": f.placeholders,
-		"include_purged": f.purged, "cursor_at": optional(c.At),
-		"cursor_id": optional(c.ID), "cursor_key": optional(c.Key), "session_id": optional(sessionID),
+		"include_purged": f.purged, "cursor_key": optional(c.Key), "session_id": optional(sessionID),
 	}
 	data, _ := json.Marshal(values)
 	return data
 }
 
-type reportCursor struct{ Fingerprint, From, Until, At, ID, Key string }
+type reportCursor struct{ Fingerprint, From, Until, Key string }
 
 func (f reportingFilter) decodeCursor() (reportCursor, error) {
 	if f.cursor == "" {
@@ -193,10 +193,10 @@ func (f reportingFilter) encodeCursor(c reportCursor) string {
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pgx.Tx, reportingFilter) (resource.Object, error)) http.HandlerFunc {
+func (s *Service) reportingRead(allowPurged bool, maxLimit int, query func(context.Context, pgx.Tx, reportingFilter) (resource.Object, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
-		f, err := parseReportingFilter(r, s.now().UTC())
+		f, err := parseReportingFilter(r, s.now().UTC(), maxLimit)
 		if err == nil && f.purged {
 			if !allowPurged {
 				err = resource.Invalid("此接口不支持 include_purged")
@@ -205,14 +205,14 @@ func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pg
 			}
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		defer rollbackStats(ctx, tx, "session-reporting")
@@ -221,7 +221,7 @@ func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pg
 			err = resource.NotFound
 		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
 		if out["tombstone"] != true {
@@ -230,12 +230,12 @@ func (s *Service) reportingRead(allowPurged bool, query func(context.Context, pg
 				out["data_freshness_seconds"] = nil
 			}
 		}
-		resource.JSON(w, http.StatusOK, out)
+		resource.JSON(r.Context(), w, http.StatusOK, out)
 	}
 }
 
 func unexpectedCursor() error {
-	return resource.Invalid("此接口不支持 cursor；仅会话列表支持游标分页")
+	return resource.Invalid("此接口不支持 cursor；仅资源和客户端列表支持游标分页")
 }
 func purgedSession() error {
 	return &resource.Error{Status: http.StatusGone, Code: "session_purged", Message: "会话统计数据已清除"}

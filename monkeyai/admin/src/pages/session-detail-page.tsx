@@ -35,6 +35,7 @@ import {
   type ReportWindow,
 } from "@/lib/session-reporting"
 import {
+  ReportKind,
   ReportNumber,
   ReportShell,
   ReportStatus,
@@ -95,7 +96,7 @@ export function SessionDetailPage() {
   const [clearOpen, setClearOpen] = useState(false)
   const [confirmID, setConfirmID] = useState("")
   const [clearing, setClearing] = useState(false)
-  const time = defaultWindow()
+  const [time] = useState(defaultWindow)
   const from = params.get("from")
   const until = params.get("until")
   const window: ReportWindow =
@@ -129,7 +130,7 @@ export function SessionDetailPage() {
       )
       showToast({ status: "success", title: t(`${key}.detail.clearSuccess`) })
       setClearOpen(false)
-      navigate(CONSOLE_ROUTES.sessionList)
+      navigate(CONSOLE_ROUTES.taskHistory)
     } catch (reason) {
       showToast({
         status: "error",
@@ -167,7 +168,7 @@ export function SessionDetailPage() {
     <ReportShell title={t(`${key}.detail.title`)}>
       <div>
         <Link
-          to={CONSOLE_ROUTES.sessionList}
+          to={CONSOLE_ROUTES.taskHistory}
           className="text-sm text-primary underline"
         >
           {t(`${key}.back`)}
@@ -416,7 +417,11 @@ export function SessionDetailPage() {
                           row.duration_ms,
                         ].map((v, i) => (
                           <TableCell key={i}>
-                            <ReportValue value={v} />
+                            {i === 0 ? (
+                              <ReportKind value={row.category} />
+                            ) : (
+                              <ReportValue value={v} />
+                            )}
                           </TableCell>
                         ))}
                       </TableRow>
@@ -476,7 +481,11 @@ export function SessionDetailPage() {
                       row.snapshots,
                     ].map((v, i) => (
                       <TableCell key={i}>
-                        <ReportValue value={v} />
+                        {i === 0 ? (
+                          <ReportKind value={row.kind} />
+                        ) : (
+                          <ReportValue value={v} />
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>

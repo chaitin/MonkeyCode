@@ -1,0 +1,36 @@
+/* JetBrains Mono v2.304, SIL OFL-1.1.
+ * Original WOFF2 files: https://github.com/JetBrains/JetBrainsMono/tree/v2.304/fonts/webfonts
+ * License: public/licenses/jetbrains-mono.txt
+ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./JetBrainsMono-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./JetBrainsMono-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./JetBrainsMono-Bold.woff2') format('woff2');
+}

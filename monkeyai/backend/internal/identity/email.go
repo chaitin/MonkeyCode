@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"net"
@@ -44,18 +45,18 @@ func (s *Service) loginMethods(ctx context.Context) (loginMethods, error) {
 func (s *Service) methods(w http.ResponseWriter, r *http.Request) {
 	methods, err := s.loginMethods(r.Context())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取邮件认证设置失败", "error", err)
-		writeError(w, 503, "settings_unavailable", "认证配置不可用")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取邮件认证设置失败", "module", "identity", "operation", "methods", "error", err)
+		writeError(r.Context(), w, 503, "settings_unavailable", "认证配置不可用")
 		return
 	}
-	writeJSON(w, 200, methods)
+	writeJSON(r.Context(), w, 200, methods)
 }
 
 func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose string) (loginMethods, bool) {
 	methods, err := s.loginMethods(r.Context())
 	if err != nil {
-		slog.ErrorContext(r.Context(), "读取邮件认证设置失败", "error", err)
-		writeError(w, 503, "settings_unavailable", "认证配置不可用")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "读取邮件认证设置失败", "module", "identity", "operation", "allowEmail", "error", err)
+		writeError(r.Context(), w, 503, "settings_unavailable", "认证配置不可用")
 		return methods, false
 	}
 	allowed := false
@@ -66,7 +67,7 @@ func (s *Service) allowEmail(w http.ResponseWriter, r *http.Request, purpose str
 		allowed = methods.PasswordEnabled
 	}
 	if !allowed {
-		writeError(w, 403, "method_disabled", "该认证方式未启用")
+		writeError(r.Context(), w, 403, "method_disabled", "该认证方式未启用")
 		return methods, false
 	}
 	return methods, true
@@ -84,7 +85,7 @@ func readEmailInput(w http.ResponseWriter, r *http.Request) (emailInput, bool) {
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	if err != nil || !validEmail(input.Email) || len(input.Email) > 254 || len(input.Password) > 1024 {
-		writeError(w, 400, "invalid_request", "请求格式或邮箱无效")
+		writeError(r.Context(), w, 400, "invalid_request", "请求格式或邮箱无效")
 		return input, false
 	}
 	return input, true
@@ -96,7 +97,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.Purpose != "login" && input.Purpose != "reset" {
-		writeError(w, 400, "invalid_request", "验证码用途无效")
+		writeError(r.Context(), w, 400, "invalid_request", "验证码用途无效")
 		return
 	}
 	methods, allowed := s.allowEmail(w, r, input.Purpose)
@@ -104,12 +105,12 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.email == nil {
-		writeError(w, 503, "email_unavailable", "邮件服务未配置")
+		writeError(r.Context(), w, 503, "email_unavailable", "邮件服务未配置")
 		return
 	}
 	number, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 	if err != nil {
-		writeError(w, 500, "server_error", "生成验证码失败")
+		writeError(r.Context(), w, 500, "server_error", "生成验证码失败")
 		return
 	}
 	code := fmt.Sprintf("%06d", number.Int64())
@@ -120,12 +121,12 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 	err = s.reserveCode(r.Context(), input, code, tokenHash(ip))
 	if errors.Is(err, errCodeLimited) {
 		w.Header().Set("Retry-After", "30")
-		writeError(w, 429, "rate_limited", "发送过于频繁，请稍后重试")
+		writeError(r.Context(), w, 429, "rate_limited", "发送过于频繁，请稍后重试")
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "保留验证码失败", "purpose", input.Purpose, "error", err)
-		writeError(w, 500, "server_error", "发送验证码失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "保留验证码失败", "module", "identity", "operation", "sendCode", "purpose", input.Purpose, "error", err)
+		writeError(r.Context(), w, 500, "server_error", "发送验证码失败")
 		return
 	}
 	// 对不符合用途的账号返回相同结果，避免泄露账号状态。
@@ -135,25 +136,25 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 		eligible = true
 	}
 	if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
-		slog.ErrorContext(r.Context(), "查询验证码接收用户失败", "purpose", input.Purpose, "error", lookupErr)
-		writeError(w, 500, "server_error", "发送验证码失败")
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询验证码接收用户失败", "module", "identity", "operation", "sendCode", "purpose", input.Purpose, "error", lookupErr)
+		writeError(r.Context(), w, 500, "server_error", "发送验证码失败")
 		return
 	}
 	if eligible {
 		labels := map[string]string{"login": "登录", "reset": "重置密码"}
 		err = s.email.Send(r.Context(), input.Email, "MonkeyAI "+labels[input.Purpose]+"验证码", fmt.Sprintf("你的%s验证码为：%s\n\n验证码 10 分钟内有效，仅可使用一次。如非本人操作，请忽略此邮件。", labels[input.Purpose], code))
 		if err != nil {
-			slog.ErrorContext(r.Context(), "发送验证码邮件失败", "purpose", input.Purpose, "error", err)
-			writeError(w, 502, "email_failed", "邮件发送失败，请稍后重试或联系管理员")
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "发送验证码邮件失败", "module", "identity", "operation", "sendCode", "purpose", input.Purpose, "error", err)
+			writeError(r.Context(), w, 502, "email_failed", "邮件发送失败，请稍后重试或联系管理员")
 			return
 		}
 		if err := sqlc.New(s.db).ReadyEmailCode(r.Context(), sqlc.ReadyEmailCodeParams{Email: input.Email, Purpose: input.Purpose, CodeHash: emailCodeHash(input, code)}); err != nil {
-			slog.ErrorContext(r.Context(), "激活验证码失败", "purpose", input.Purpose, "error", err)
-			writeError(w, 500, "server_error", "发送验证码失败")
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "激活验证码失败", "module", "identity", "operation", "sendCode", "purpose", input.Purpose, "error", err)
+			writeError(r.Context(), w, 500, "server_error", "发送验证码失败")
 			return
 		}
 	}
-	writeJSON(w, 200, map[string]any{"message": "如果该邮箱符合条件，验证码将发送至邮箱", "retry_after": 30})
+	writeJSON(r.Context(), w, 200, map[string]any{"message": "如果该邮箱符合条件，验证码将发送至邮箱", "retry_after": 30})
 }
 
 var errCodeLimited = errors.New("验证码发送过于频繁")
@@ -170,7 +171,7 @@ func (s *Service) reserveCode(ctx context.Context, input emailInput, code, ipHas
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚邮件验证码事务失败", "purpose", input.Purpose, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚邮件验证码事务失败", "module", "identity", "operation", "reserveCode", "purpose", input.Purpose, "error", err)
 		}
 	}()
 	q := sqlc.New(tx)
@@ -252,31 +253,31 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		return
 	}
 	if len(input.Code) != 6 || strings.Trim(input.Code, "0123456789") != "" {
-		writeError(w, 400, "invalid_request", "请输入六位数字验证码")
+		writeError(r.Context(), w, 400, "invalid_request", "请输入六位数字验证码")
 		return
 	}
 	if purpose == "reset" && len(input.Password) < 12 {
-		writeError(w, 400, "invalid_request", "密码至少需要 12 个字符")
+		writeError(r.Context(), w, 400, "invalid_request", "密码至少需要 12 个字符")
 		return
 	}
 	ctx := r.Context()
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "启动验证码校验事务失败", "purpose", purpose, "error", err)
-		writeError(w, 500, "server_error", "认证失败")
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "启动验证码校验事务失败", "module", "identity", "operation", "completeEmail", "purpose", purpose, "error", err)
+		writeError(r.Context(), w, 500, "server_error", "认证失败")
 		return
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚邮件验证码事务失败", "purpose", input.Purpose, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚邮件验证码事务失败", "module", "identity", "operation", "completeEmail", "purpose", input.Purpose, "error", err)
 		}
 	}()
 	if err := consumeEmailCode(ctx, tx, input); err != nil {
 		if errors.Is(err, errInvalidCode) {
-			writeError(w, 400, "invalid_code", errInvalidCode.Error())
+			writeError(r.Context(), w, 400, "invalid_code", errInvalidCode.Error())
 		} else {
-			slog.ErrorContext(ctx, "校验邮件验证码失败", "purpose", purpose, "error", err)
-			writeError(w, 500, "server_error", "认证失败")
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "校验邮件验证码失败", "module", "identity", "operation", "completeEmail", "purpose", purpose, "error", err)
+			writeError(r.Context(), w, 500, "server_error", "认证失败")
 		}
 		return
 	}
@@ -286,8 +287,8 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 	case "reset":
 		hash, hashErr := hashPassword(input.Password)
 		if hashErr != nil {
-			slog.ErrorContext(ctx, "生成重置密码哈希失败", "error", hashErr)
-			writeError(w, 500, "server_error", "密码重置失败")
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "生成重置密码哈希失败", "module", "identity", "operation", "completeEmail", "error", hashErr)
+			writeError(r.Context(), w, 500, "server_error", "密码重置失败")
 			return
 		}
 		var id string
@@ -298,12 +299,12 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		}
 		if resetErr != nil {
 			if errors.Is(resetErr, member.ErrWriterUnavailable) {
-				writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
+				writeError(r.Context(), w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 			} else {
 				if !errors.Is(resetErr, pgx.ErrNoRows) {
-					slog.ErrorContext(ctx, "重置密码并撤销旧凭据失败", "error", resetErr)
+					logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "重置密码并撤销旧凭据失败", "module", "identity", "operation", "completeEmail", "error", resetErr)
 				}
-				writeError(w, 400, "reset_failed", "密码重置失败，请重新获取验证码")
+				writeError(r.Context(), w, 400, "reset_failed", "密码重置失败，请重新获取验证码")
 			}
 			return
 		}
@@ -315,14 +316,14 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 			if createErr != nil {
 				switch {
 				case errors.Is(createErr, member.ErrSeatsExceeded):
-					writeError(w, http.StatusConflict, "seats_exceeded", member.ErrSeatsExceeded.Error())
+					writeError(r.Context(), w, http.StatusConflict, "seats_exceeded", member.ErrSeatsExceeded.Error())
 				case errors.Is(createErr, member.ErrSeatsUnavailable):
-					writeError(w, http.StatusServiceUnavailable, "seats_unavailable", member.ErrSeatsUnavailable.Error())
+					writeError(r.Context(), w, http.StatusServiceUnavailable, "seats_unavailable", member.ErrSeatsUnavailable.Error())
 				case errors.Is(createErr, member.ErrWriterUnavailable):
-					writeError(w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
+					writeError(r.Context(), w, http.StatusServiceUnavailable, "member_writer_unavailable", "成员写入能力不可用")
 				default:
-					slog.ErrorContext(ctx, "自动注册邮件登录用户失败", "error", createErr)
-					writeError(w, http.StatusInternalServerError, "server_error", "创建账号失败")
+					logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "自动注册邮件登录用户失败", "module", "identity", "operation", "completeEmail", "error", createErr)
+					writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "创建账号失败")
 				}
 				return
 			}
@@ -330,20 +331,20 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		}
 		if lookupErr != nil || row.Status != "active" || admin && row.Role != "admin" {
 			if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
-				slog.ErrorContext(ctx, "查询验证码登录用户失败", "error", lookupErr)
+				logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "查询验证码登录用户失败", "module", "identity", "operation", "completeEmail", "error", lookupErr)
 			}
-			writeError(w, 401, "invalid_credentials", "账号不可用于此登录入口")
+			writeError(r.Context(), w, 401, "invalid_credentials", "账号不可用于此登录入口")
 			return
 		}
 		user = User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		slog.ErrorContext(ctx, "提交邮件认证事务失败", "purpose", purpose, "error", err)
-		writeError(w, 500, "server_error", "认证失败")
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "提交邮件认证事务失败", "module", "identity", "operation", "completeEmail", "purpose", purpose, "error", err)
+		writeError(r.Context(), w, 500, "server_error", "认证失败")
 		return
 	}
 	if purpose == "reset" {
-		writeJSON(w, 200, map[string]bool{"reset": true})
+		writeJSON(r.Context(), w, 200, map[string]bool{"reset": true})
 		return
 	}
 	s.loginSession(w, r, user, "email_code")

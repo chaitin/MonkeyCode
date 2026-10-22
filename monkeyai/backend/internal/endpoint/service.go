@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -73,6 +75,7 @@ type Service struct {
 	maxConnections                                                       int
 	slots                                                                int
 	pingInterval, timePong, verifyInterval, timeDB, timeWrite, timeHello time.Duration
+	runtimeDirectory                                                     http.Handler
 	stats                                                                counters
 }
 type counters struct{ messages, bytes, rejected, handshakes, limited, verifications, verifyNanos atomic.Uint64 }
@@ -80,6 +83,11 @@ type counters struct{ messages, bytes, rejected, handshakes, limited, verificati
 func NewService(store Store, auth Authenticator, logger *slog.Logger, publicURL string) *Service {
 	return &Service{store: store, auth: auth, logger: logger, origin: publicURL, users: make(map[string]*userState), connections: make(map[*connection]struct{}), maxConnections: 1000, pingInterval: 30 * time.Second, timePong: 10 * time.Second, verifyInterval: 30 * time.Second, timeDB: 5 * time.Second, timeWrite: 10 * time.Second, timeHello: 5 * time.Second}
 }
+func (s *Service) WithRuntimeDirectory(handler http.Handler) *Service {
+	s.runtimeDirectory = handler
+	return s
+}
+
 func (s *Service) WithMaxConnections(n int) *Service {
 	if n > 0 {
 		s.maxConnections = n
@@ -156,7 +164,7 @@ func (s *Service) broadcast(userID string, u *userState) {
 		Endpoints []View `json:"endpoints"`
 	}{"directory.snapshot", rows})
 	if err != nil {
-		s.logger.Error("序列化端点目录失败", "user_id", userID, "operation", "broadcast", "error", err)
+		logging.Event(context.Background(), s.logger, slog.LevelError, "endpoint.operation.error", "序列化端点目录失败", "module", "endpoint", "operation", "broadcast", "user_id", userID, "operation", "broadcast", "error", err)
 		return
 	}
 	for _, c := range u.connections {
@@ -169,7 +177,7 @@ func (s *Service) route(c *connection, m Message, size int) {
 	defer cancel()
 	if err := u.enter(ctx); err != nil {
 		if !c.dead.Load() && !c.expected(err) {
-			s.logger.Warn("端点路由获取锁失败", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "route", "error", err)
+			logging.Event(context.Background(), s.logger, slog.LevelWarn, "endpoint.operation.warn", "端点路由获取锁失败", "module", "endpoint", "operation", "route", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "route", "error", err)
 		}
 		c.stop(1013)
 		return
@@ -212,7 +220,7 @@ func (s *Service) route(c *connection, m Message, size int) {
 	m.RoutedAt = now.UnixMilli()
 	data, err := json.Marshal(m)
 	if err != nil {
-		s.logger.Error("序列化端点转发消息失败", "user_id", c.credential.UserID, "machine_id", c.machine, "message_id", m.ID, "operation", "route", "error", err)
+		logging.Event(context.Background(), s.logger, slog.LevelError, "endpoint.operation.error", "序列化端点转发消息失败", "module", "endpoint", "operation", "route", "user_id", c.credential.UserID, "machine_id", c.machine, "message_id", m.ID, "operation", "route", "error", err)
 		c.reject("invalid_message", m.ID)
 		return
 	}
@@ -253,7 +261,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	s.logger.Info("端点桥接已停止", "messages", s.stats.messages.Load(), "bytes", s.stats.bytes.Load(), "rejected", s.stats.rejected.Load(), "handshake_failures", s.stats.handshakes.Load())
+	logging.Event(ctx, s.logger, slog.LevelInfo, "endpoint.operation.info", "端点桥接已停止", "module", "endpoint", "operation", "Shutdown", "messages", s.stats.messages.Load(), "bytes", s.stats.bytes.Load(), "rejected", s.stats.rejected.Load(), "handshake_failures", s.stats.handshakes.Load())
 	return nil
 }
 
@@ -275,6 +283,9 @@ func (s *Service) check(ctx context.Context, credential Credential) (int, error)
 	return 0, nil
 }
 func status(err error) (int, string) {
+	if e, ok := errors.AsType[*resource.Error](err); ok {
+		return e.Status, e.Code
+	}
 	if f, ok := errors.AsType[fault](err); ok {
 		switch f.code {
 		case "unauthorized":

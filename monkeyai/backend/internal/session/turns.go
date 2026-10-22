@@ -55,93 +55,108 @@ type preparedTurn struct {
 func (s *Service) postTurns(w http.ResponseWriter, r *http.Request) {
 	user, err := agentUser(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := s.checkReporting(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if !s.checkRequestLimit(w, r.Context(), user.ID, "turns", 30) {
 		return
 	}
-	machineID := strings.TrimSpace(r.Header.Get("X-MAI-Machine-ID"))
-	if !validUUID(machineID) {
-		resource.Fail(w, invalidSession("X-MAI-Machine-ID 必填且必须为 UUID"))
+	machineID, err := reportingMachine(r)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		resource.Fail(w, invalidSession("会话 ID 无效"))
+		resource.Fail(r.Context(), w, invalidSession("会话 ID 无效"))
 		return
 	}
 	afterTurn, err := parseAfterTurn(r)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	var in turnBatchInput
 	if err := decodeBody(w, r, maxTurnsBodyBytes, &in); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	preparedSnapshots, preparedTurns, err := validateBatch(in)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 
 	tx, err := s.begin(r.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	defer rollback(r.Context(), tx)
+	verified, err := s.authenticateHost(r.Context(), tx, machineID)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
 	row, err := readSession(r.Context(), tx, id, true)
 	if errors.Is(err, pgx.ErrNoRows) {
-		resource.Fail(w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未注册"))
+		resource.Fail(r.Context(), w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未注册"))
 		return
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if row.OwnerUserID != user.ID {
-		resource.Fail(w, conflict("session_owned_by_other", "会话属于其他用户"))
+		resource.Fail(r.Context(), w, conflict("session_owned_by_other", "会话属于其他用户"))
 		return
 	}
 	if row.PurgedAt != nil || row.DeletedAt != nil {
-		resource.Fail(w, sessionFailure(http.StatusGone, "session_not_registered", "会话已清除"))
+		resource.Fail(r.Context(), w, sessionFailure(http.StatusGone, "session_not_registered", "会话已清除"))
+		return
+	}
+	if err := checkHostVerification(row, verified); err != nil {
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if row.DeviceID == nil {
-		resource.Fail(w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未由宿主注册"))
+		resource.Fail(r.Context(), w, sessionFailure(http.StatusNotFound, "session_not_registered", "会话尚未由宿主注册"))
 		return
 	}
 	if *row.DeviceID != machineID {
-		resource.Fail(w, conflict("not_host", "会话由其他主机认领"))
+		resource.Fail(r.Context(), w, conflict("not_host", "会话由其他主机认领"))
 		return
 	}
 
+	if verified {
+		if err := sqlc.New(tx).VerifySessionHost(r.Context(), id); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+	}
 	accepted, duplicates, err := s.applyBatch(r.Context(), tx, id, row, afterTurn, preparedSnapshots, preparedTurns)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	row, err = readSession(r.Context(), tx, id, true)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(r.Context(), w, err)
 		return
 	}
 	ackedSnapshots := make([]string, 0, len(preparedSnapshots))
 	for _, snapshot := range preparedSnapshots {
 		ackedSnapshots = append(ackedSnapshots, snapshot.input.SnapshotID)
 	}
-	resource.JSON(w, http.StatusOK, resource.Object{
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{
 		"acked_turn": row.AckedTurn, "accepted": accepted, "duplicates": duplicates,
 		"snapshots_acked": ackedSnapshots,
 	})

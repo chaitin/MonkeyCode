@@ -15,7 +15,7 @@ function AspectRatioGlyph({ value }: { value: string }) {
       className="flex h-4 w-7 items-center justify-center"
     >
       <span
-        className="rounded-[3px] border-[1.5px] border-current/60 bg-current/5"
+        className="rounded-[3px] border-[1.5px] border-foreground/60 bg-foreground/5"
         style={{
           width: Math.max(5, Math.round(width * scale)),
           height: Math.max(5, Math.round(height * scale)),

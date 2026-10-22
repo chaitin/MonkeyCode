@@ -111,9 +111,12 @@ WITH filtered AS NOT MATERIALIZED (
     SELECT id, actor_type, actor_user_id, actor_name, actor_email, action, category, target_type, target_id,
         request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
     FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT $9 OFFSET $8
+), enriched AS (
+    SELECT page.id, page.actor_type, page.actor_user_id, page.actor_name, page.actor_email, page.action, page.category, page.target_type, page.target_id, page.request_params, page.source_ip, page.user_agent, page.result, page.error_message, page.occurred_at, page.request_id, nullif(btrim(u.avatar_url), '') AS actor_avatar_url
+    FROM page LEFT JOIN users u ON u.id = page.actor_user_id
 )
 SELECT jsonb_build_object('total', (SELECT count(*) FROM filtered), 'items',
-    coalesce((SELECT jsonb_agg(to_jsonb(page) ORDER BY occurred_at DESC, id DESC) FROM page), '[]'::jsonb))::jsonb AS data
+    coalesce((SELECT jsonb_agg(to_jsonb(enriched) ORDER BY occurred_at DESC, id DESC) FROM enriched), '[]'::jsonb))::jsonb AS data
 `
 
 type PageParams struct {

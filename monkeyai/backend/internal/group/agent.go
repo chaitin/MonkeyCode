@@ -26,27 +26,59 @@ func (s *Service) RegisterAgent(router chi.Router) {
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			limit, err = strconv.Atoi(raw)
 		}
-		if err != nil || limit < 1 || limit > 100 || query == "" || len(query) > 200 {
-			resource.Fail(w, resource.Invalid("q 必须为 1—200 字节，limit 必须为 1—100"))
+		if err != nil || limit < 1 || limit > 100 {
+			resource.Fail(r.Context(), w, resource.Invalid("limit 必须为 1—100"))
 			return
 		}
-		groups, err := s.Search(r.Context(), query, limit)
+		var groups []GroupSummary
+		if query == "" {
+			groups, err = s.ListSummaries(r.Context())
+		} else {
+			groups, err = s.Search(r.Context(), query, limit)
+		}
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(w, http.StatusOK, map[string]any{"groups": groups})
+		resource.JSON(r.Context(), w, http.StatusOK, map[string]any{"groups": groups})
 	})
 }
 
+func (s *Service) ListSummaries(ctx context.Context) ([]GroupSummary, error) {
+	name, err := rootgroup.Name(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	groups := []GroupSummary{{ID: rootgroup.ID, Name: name}}
+	rows, err := sqlc.New(s.pool).ListGroupSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		groups = append(groups, GroupSummary{ID: row.ID, Name: row.Name, ParentID: rootgroup.ParentID(row.ParentID)})
+	}
+	return groups, nil
+}
+
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]GroupSummary, error) {
+	name, err := rootgroup.Name(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	groups := []GroupSummary{}
+	if strings.Contains(strings.ToLower(name), strings.ToLower(query)) {
+		groups = append(groups, GroupSummary{ID: rootgroup.ID, Name: name})
+		limit--
+	}
+	if limit == 0 {
+		return groups, nil
+	}
 	rows, err := sqlc.New(s.pool).SearchGroups(ctx, sqlc.SearchGroupsParams{
 		RootID: rootgroup.ID, NameQuery: query, ResultLimit: int32(limit),
 	})
 	if err != nil {
 		return nil, err
 	}
-	groups := []GroupSummary{}
 	for _, row := range rows {
 		groups = append(groups, GroupSummary{ID: row.ID, Name: row.Name, ParentID: rootgroup.ParentID(row.ParentID)})
 	}

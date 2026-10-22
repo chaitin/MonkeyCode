@@ -116,7 +116,7 @@ export function GroupActionDialog({
       }}
     >
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg"
         closeLabel={t("common.close")}
         showCloseButton={!saving}
       >

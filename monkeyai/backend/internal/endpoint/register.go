@@ -52,7 +52,7 @@ func registration(data []byte) (Registration, error) {
 		return r, errInvalid
 	}
 	if !text(r.DeviceName, 128) || !text(r.OSVersion, 64) || !text(r.Arch, 32) || !text(r.ClientVersion, 64) ||
-		!slices.Contains([]string{"macos", "windows", "linux", "ios", "android", "web"}, r.Platform) ||
+		!text(r.Platform, 64) ||
 		(r.ProtocolVersion != nil && *r.ProtocolVersion <= 0) {
 		return r, errInvalid
 	}
@@ -74,17 +74,17 @@ func registration(data []byte) (Registration, error) {
 func (s *Service) register(w http.ResponseWriter, req *http.Request) {
 	machine := chi.URLParam(req, "machine")
 	if !validID(machine) {
-		failure(w, 400, "invalid_request")
+		failure(req.Context(), w, 400, "invalid_request")
 		return
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, req.Body, 4096))
 	if err != nil {
-		failure(w, 400, "invalid_request")
+		failure(req.Context(), w, 400, "invalid_request")
 		return
 	}
 	r, err := registration(data)
 	if err != nil {
-		failure(w, 400, "invalid_request")
+		failure(req.Context(), w, 400, "invalid_request")
 		return
 	}
 	s.manage(w, req, func(ctx context.Context, user string, u *userState) (any, error) {

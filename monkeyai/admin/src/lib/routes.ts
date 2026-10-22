@@ -3,11 +3,8 @@ export const CONSOLE_PATH = "/console"
 
 export const CONSOLE_ROUTES = {
   realtimeStatus: "/console/statistics/realtime",
-  taskStatistics: "/console/statistics/tasks",
   taskHistory: "/console/statistics/task-history",
   conversationHistory: "/console/statistics/conversation-history",
-  sessionOverview: "/console/statistics/session-reporting",
-  sessionList: "/console/statistics/session-reporting/sessions",
   sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
   resourceAnalysis: "/console/statistics/session-reporting/resources",
   clientAnalysis: "/console/statistics/session-reporting/clients",
@@ -37,13 +34,6 @@ export const CONSOLE_PAGES = [
     descriptionKey: "pages.realtimeStatus.description",
   },
   {
-    path: CONSOLE_ROUTES.taskStatistics,
-    sectionKey: "sections.statistics",
-    sectionPath: CONSOLE_ROUTES.realtimeStatus,
-    titleKey: "pages.taskStatistics.title",
-    descriptionKey: "pages.taskStatistics.description",
-  },
-  {
     path: CONSOLE_ROUTES.taskHistory,
     sectionKey: "sections.usageRecords",
     sectionPath: CONSOLE_ROUTES.taskHistory,
@@ -57,18 +47,10 @@ export const CONSOLE_PAGES = [
     titleKey: "pages.conversationHistory.title",
     descriptionKey: "pages.conversationHistory.description",
   },
-  {
-    path: CONSOLE_ROUTES.sessionList,
-    sectionKey: "sections.usageRecords",
-    sectionPath: CONSOLE_ROUTES.taskHistory,
-    titleKey: "pages.sessionReporting.sessionList.title",
-    descriptionKey: "pages.sessionReporting.sessionList.description",
-  },
   ...(
     [
-      ["sessionOverview", CONSOLE_ROUTES.sessionOverview],
-      ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
       ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
+      ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
     ] as const
   ).map(([name, path]) => ({
     path,
@@ -173,7 +155,7 @@ export const CONSOLE_PAGES = [
 export function getConsolePage(pathname: string) {
   return (
     CONSOLE_PAGES.find((page) => page.path === pathname) ??
-    (pathname.startsWith(`${CONSOLE_ROUTES.sessionList}/`)
+    (pathname.startsWith(CONSOLE_ROUTES.sessionDetail.replace(":sessionId", ""))
       ? {
           path: pathname,
           sectionKey: "sections.usageRecords",

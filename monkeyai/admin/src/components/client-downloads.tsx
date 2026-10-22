@@ -105,6 +105,7 @@ export function ClientDownloads() {
                   return url ? (
                     <Button
                       key={variant}
+                      nativeButton={false}
                       variant="outline"
                       size="sm"
                       className="rounded-full"

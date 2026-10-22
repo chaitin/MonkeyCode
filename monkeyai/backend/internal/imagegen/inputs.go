@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -78,7 +79,7 @@ func (s *Inputs) Upload(ctx context.Context, userID string, data []byte) (Input,
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
-			slog.Error("清理未登记参考图失败", "operation", "delete_input", "file_id", id, "error_type", providerErrorType(cleanupErr))
+			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "清理未登记参考图失败", "module", "imagegen", "operation", "Upload", "operation", "delete_input", "file_id", id, "error_type", providerErrorType(cleanupErr))
 		}
 		return Input{}, err
 	}
@@ -99,7 +100,7 @@ func (s *Inputs) Read(ctx context.Context, userID, fileID string) (Input, error)
 	}
 	defer func() {
 		if closeErr := body.Close(); closeErr != nil && ctx.Err() == nil {
-			slog.Warn("关闭参考图存储流失败", "operation", "close_reader", "file_id", fileID, "error_type", providerErrorType(closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭参考图存储流失败", "module", "imagegen", "operation", "Read", "operation", "close_reader", "file_id", fileID, "error_type", providerErrorType(closeErr))
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxInputBytes+1))

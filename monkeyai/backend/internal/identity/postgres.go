@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
@@ -21,6 +22,8 @@ func (s *Service) createAuthorizationRequest(ctx context.Context, request *Autho
 		CodeChallenge:       request.CodeChallenge,
 		CodeChallengeMethod: request.CodeChallengeMethod,
 		ExpiresAt:           request.ExpiresAt,
+		Scopes:              request.Scopes,
+		Audience:            request.Audience,
 	})
 	if queryErr != nil {
 		return queryErr
@@ -34,6 +37,7 @@ func (s *Service) authorizationRequest(ctx context.Context, id string) (Authoriz
 	record, err := sqlc.New(s.db).GetAuthorizationRequest(ctx, id)
 	if err == nil {
 		request.ID, request.ClientID, request.RedirectURI, request.State, request.CodeChallenge, request.CodeChallengeMethod, request.ExpiresAt, request.CompletedAt = record.ID, record.ClientID, record.RedirectUri, record.State, record.CodeChallenge, record.CodeChallengeMethod, record.ExpiresAt, record.CompletedAt
+		request.Scopes, request.Audience = record.Scopes, record.Audience
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -49,7 +53,7 @@ func (s *Service) storeAuthorizationCode(ctx context.Context, request Authorizat
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚授权请求事务失败", "request_id", request.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚授权请求事务失败", "module", "identity", "operation", "storeAuthorizationCode", "request_id", request.ID, "error", err)
 		}
 	}()
 
@@ -68,6 +72,8 @@ func (s *Service) storeAuthorizationCode(ctx context.Context, request Authorizat
 		RedirectUri:            request.RedirectURI,
 		CodeChallenge:          request.CodeChallenge,
 		ExpiresAt:              expiresAt,
+		Scopes:                 request.Scopes,
+		Audience:               request.Audience,
 	})
 	if err != nil {
 		return err
@@ -80,80 +86,22 @@ func (s *Service) authorizationCode(ctx context.Context, hash string) (Authoriza
 	record, err := sqlc.New(s.db).GetAuthorizationCode(ctx, hash)
 	if err == nil {
 		code.ID, code.UserID, code.ClientID, code.RedirectURI, code.CodeChallenge, code.ExpiresAt, code.RedeemedAt = record.ID, record.UserID, record.ClientID, record.RedirectUri, record.CodeChallenge, record.ExpiresAt, record.RedeemedAt
+		code.Scopes, code.Audience = record.Scopes, record.Audience
 	}
 
 	return code, err
 }
 
-var errAuthorizationCodeUsed = errors.New("授权码已被使用")
-
-func (s *Service) redeemCodeAndStoreToken(ctx context.Context, codeID, userID, clientID, accessHash, refreshHash string, accessExpiry, refreshExpiry time.Time) error {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚授权码事务失败", "code_id", codeID, "error", err)
-		}
-	}()
-
-	result, err := sqlc.New(tx).RedeemAuthorizationCode(ctx, codeID)
-	if err != nil {
-		return fmt.Errorf("兑换授权码 %s: %w", codeID, err)
-	}
-	if result.RowsAffected() != 1 {
-		return errAuthorizationCodeUsed
-	}
-	_, err = sqlc.New(tx).CreateToken(ctx, sqlc.CreateTokenParams{
-		UserID:           userID,
-		ClientID:         clientID,
-		AccessTokenHash:  accessHash,
-		RefreshTokenHash: refreshHash,
-		AccessExpiresAt:  accessExpiry,
-		RefreshExpiresAt: refreshExpiry,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func (s *Service) rotateToken(ctx context.Context, oldRefreshHash, clientID, accessHash, refreshHash string, accessExpiry, refreshExpiry time.Time) error {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚刷新令牌事务失败", "client_id", clientID, "error", err)
-		}
-	}()
-
-	var userID string
-	userID, err = sqlc.New(tx).RevokeRefreshToken(ctx, sqlc.RevokeRefreshTokenParams{RefreshTokenHash: oldRefreshHash, ClientID: clientID})
-
-	if err != nil {
-		return err
-	}
-	_, err = sqlc.New(tx).CreateToken(ctx, sqlc.CreateTokenParams{
-		UserID:           userID,
-		ClientID:         clientID,
-		AccessTokenHash:  accessHash,
-		RefreshTokenHash: refreshHash,
-		AccessExpiresAt:  accessExpiry,
-		RefreshExpiresAt: refreshExpiry,
-	})
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 func (s *Service) createLoginState(ctx context.Context, stateHash, connectionID, requestID, purpose string, expiresAt time.Time) error {
+	deviceRequestID := ""
+	if purpose == loginPurposeDevice {
+		deviceRequestID = requestID
+		requestID = ""
+	}
 	_, err := sqlc.New(s.db).CreateLoginState(ctx, sqlc.CreateLoginStateParams{
 		StateHash:              stateHash,
 		ConnectionID:           connectionID,
+		DeviceRequestID:        deviceRequestID,
 		AuthorizationRequestID: requestID,
 		Purpose:                purpose,
 		ExpiresAt:              expiresAt,
@@ -166,6 +114,7 @@ func (s *Service) consumeLoginState(ctx context.Context, stateHash string) (Logi
 	record, err := sqlc.New(s.db).ConsumeLoginState(ctx, stateHash)
 	if err == nil {
 		state.ConnectionID, state.AuthorizationRequestID, state.Purpose = record.ConnectionID, record.AuthorizationRequestID, record.Purpose
+		state.DeviceRequestID = record.DeviceRequestID
 	}
 
 	return state, err
@@ -198,8 +147,14 @@ func (s *Service) revokeBrowserSession(ctx context.Context, hash string) error {
 }
 
 func (s *Service) revokeToken(ctx context.Context, hash, clientID string) error {
-	_, err := sqlc.New(s.db).RevokeToken(ctx, sqlc.RevokeTokenParams{AccessTokenHash: hash, ClientID: clientID})
-	return err
+	id, err := sqlc.New(s.db).FindTokenGrant(ctx, sqlc.FindTokenGrantParams{AccessTokenHash: hash, ClientID: clientID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.RevokeGrant(ctx, id, "client_logout")
 }
 
 func (s *Service) listUsers(ctx context.Context) ([]User, error) {
@@ -228,7 +183,7 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚更新用户事务失败", "user_id", id, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "回滚更新用户事务失败", "module", "identity", "operation", "updateUser", "user_id", id, "error", err)
 		}
 	}()
 	if s.accounts != nil {

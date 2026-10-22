@@ -5,13 +5,21 @@ import {
   selection,
   match,
   saveResource,
-  useResources,
+  savePackageGrants,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceEditorFooter } from "@/components/resource-editor-footer"
+import {
+  RULE_PAGE_SIZE,
+  useRulePage,
+  type RuleType,
+} from "@/hooks/use-rule-page"
 import { useState, type FormEvent } from "react"
 import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   Delete02Icon,
   DocumentValidationIcon,
   Edit02Icon,
@@ -22,7 +30,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
-import { PackageGrants } from "@/components/package-grants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,7 +55,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -68,14 +74,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { PageSizeSelect } from "@/components/page-size-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
   getAuthorizationNames,
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
-
-type RuleType = "system" | "user"
 
 type AgentRule = {
   origin?: ResourceRow["origin"]
@@ -89,6 +95,7 @@ type AgentRule = {
   creator: string
   sharedUsers: string[]
   authorization: AuthorizationSelection
+  grants: ResourceRow["grants"]
   forced: boolean
 }
 
@@ -107,6 +114,7 @@ function toRule(row: ResourceRow): AgentRule {
       grant.user ? [grant.user.name || grant.user.email || grant.user.id] : []
     ),
     authorization: selection(row.grants),
+    grants: row.grants,
     forced: row.grants.some((grant) => grant.usage_requirement === "required"),
   }
 }
@@ -117,12 +125,25 @@ function getCreatorInitials(creator: string) {
 
 export function RulesPage() {
   const { t } = useTranslation()
-  const remote = useResources("/rules", toRule)
-  const rules = remote.items
-  const subjects = useSubjects()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
+  const [searchDraft, setSearchDraft] = useState("")
+  const [search, setSearch] = useState("")
+  const [cursors, setCursors] = useState<Record<RuleType, string[]>>({
+    system: [""],
+    user: [""],
+  })
+  const [pageSize, setPageSize] = useState(RULE_PAGE_SIZE)
+  const pageCursors = cursors[activeRuleType]
+  const remote = useRulePage(
+    activeRuleType,
+    pageCursors.at(-1) ?? "",
+    search,
+    pageSize
+  )
+  const rules = remote.items.map(toRule)
+  const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
   const [rulePendingDeletion, setRulePendingDeletion] =
     useState<AgentRule | null>(null)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
@@ -131,7 +152,23 @@ export function RulesPage() {
   })
   const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forced, setForced] = useState(false)
-  const editingRule = rules.find((rule) => rule.id === editingRuleId)
+  const importedRule = editingRule?.origin === "package"
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (remote.pending) return
+    setSearch(searchDraft.trim())
+    setCursors({ system: [""], user: [""] })
+    remote.reload()
+  }
+
+  const previousPage = (type: RuleType = activeRuleType) => {
+    setCursors((current) => ({
+      ...current,
+      [type]:
+        current[type].length > 1 ? current[type].slice(0, -1) : current[type],
+    }))
+  }
 
   const resetRuleOptions = () => {
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -141,7 +178,7 @@ export function RulesPage() {
   const handleDialogOpenChange = (open: boolean) => {
     setDialogOpen(open)
     if (!open) {
-      setEditingRuleId(null)
+      setEditingRule(null)
       resetRuleOptions()
     }
   }
@@ -152,7 +189,7 @@ export function RulesPage() {
     }
 
     setAuthorization(rule.authorization)
-    setEditingRuleId(rule.id)
+    setEditingRule(rule)
     setForced(rule.forced)
     setDialogOpen(true)
   }
@@ -161,57 +198,77 @@ export function RulesPage() {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     await remote.run(async () => {
-      await saveResource(
-        editingRule ? `/rules/${editingRule.id}` : "/rules",
-        {
-          name: String(data.get("name") ?? ""),
-          content: String(data.get("content") ?? ""),
-          grants: grants(authorization, forced),
-        },
-        editingRule?.revision
-      )
+      if (editingRule?.origin === "package") {
+        await savePackageGrants(
+          "rule",
+          editingRule,
+          authorization,
+          editingRule.forced
+        )
+      } else {
+        await saveResource(
+          editingRule ? `/rules/${editingRule.id}` : "/rules",
+          {
+            name: String(data.get("name") ?? ""),
+            content: String(data.get("content") ?? ""),
+            grants: grants(authorization, forced),
+          },
+          editingRule?.revision
+        )
+      }
       handleDialogOpenChange(false)
     }, t("resources.operationCompleted"))
   }
   const handleDeleteRule = async () => {
-    if (!rulePendingDeletion) return
+    if (!rulePendingDeletion || rulePendingDeletion.origin === "package") return
     await remote.run(async () => {
       await api(base + `/rules/${rulePendingDeletion.id}`, {
         method: "DELETE",
         headers: match(rulePendingDeletion.revision),
       })
+      if (rules.length === 1) previousPage(rulePendingDeletion.type)
       setRulePendingDeletion(null)
     }, t("resources.operationCompleted"))
   }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <ResourceNotice
-        error={remote.error || subjects.error}
-        loading={remote.loading}
-        pending={remote.pending}
-      />
+    <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <Tabs
-        className="gap-4"
+        className="-m-1 min-h-0 flex-1 gap-4 overflow-hidden p-1"
         value={activeRuleType}
         onValueChange={(value) => {
           setActiveRuleType(value as RuleType)
         }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList aria-label={t("pages.rules.type")}>
-            <TabsTrigger value="system">
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <TabsList className="shrink-0" aria-label={t("pages.rules.type")}>
+            <TabsTrigger value="system" disabled={remote.pending}>
               {t("pages.rules.systemRule")}
             </TabsTrigger>
-            <TabsTrigger value="user">{t("pages.rules.userRule")}</TabsTrigger>
+            <TabsTrigger value="user" disabled={remote.pending}>
+              {t("pages.rules.userRule")}
+            </TabsTrigger>
           </TabsList>
+          <form
+            className="order-2 flex basis-full items-center gap-2 sm:order-none sm:max-w-72 sm:min-w-40 sm:flex-1 sm:basis-0"
+            onSubmit={handleSearch}
+          >
+            <Input
+              type="search"
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
+              placeholder={t("resources.ruleSearchPlaceholder")}
+              aria-label={t("resources.ruleSearchPlaceholder")}
+            />
+          </form>
           {activeRuleType === "system" && (
             <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
               <DialogTrigger
                 render={
                   <Button
+                    className="ms-auto shrink-0"
                     onClick={() => {
-                      setEditingRuleId(null)
+                      setEditingRule(null)
                       resetRuleOptions()
                     }}
                   />
@@ -221,8 +278,11 @@ export function RulesPage() {
                 {t("pages.rules.add")}
               </DialogTrigger>
               <DialogContent
-                className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+                className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
                 closeLabel={t("common.close")}
+                aria-describedby={
+                  importedRule ? "imported-rule-readonly" : undefined
+                }
               >
                 <form
                   key={editingRule?.id ?? "new-rule"}
@@ -250,6 +310,11 @@ export function RulesPage() {
                         title={t("resources.availableScope")}
                         placeholder={t("resources.selectScope")}
                       />
+                      {importedRule && editingRule?.retired && (
+                        <p className="text-sm text-amber-700">
+                          {t("resources.retiredGrantsOnly")}
+                        </p>
+                      )}
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="rule-name">
@@ -259,6 +324,7 @@ export function RulesPage() {
                         id="rule-name"
                         name="name"
                         defaultValue={editingRule?.name}
+                        disabled={importedRule}
                         placeholder={t("pages.rules.namePlaceholder")}
                         required
                       />
@@ -272,6 +338,7 @@ export function RulesPage() {
                         id="rule-content"
                         name="content"
                         defaultValue={editingRule?.content}
+                        disabled={importedRule}
                         placeholder={t("pages.rules.contentPlaceholder")}
                         required
                       />
@@ -280,6 +347,7 @@ export function RulesPage() {
                       <Checkbox
                         id="rule-forced"
                         checked={forced}
+                        disabled={importedRule}
                         onCheckedChange={setForced}
                       />
                       <div className="flex flex-col gap-1">
@@ -297,7 +365,14 @@ export function RulesPage() {
                     loading={false}
                     pending={remote.pending}
                   />
-                  <DialogFooter>
+                  <ResourceEditorFooter
+                    id="imported-rule-readonly"
+                    reason={
+                      importedRule
+                        ? t("resources.importedRuleReadOnly")
+                        : undefined
+                    }
+                  >
                     <DialogClose
                       render={<Button type="button" variant="outline" />}
                     >
@@ -308,19 +383,45 @@ export function RulesPage() {
                         ? t("pages.rules.save")
                         : t("pages.rules.create")}
                     </Button>
-                  </DialogFooter>
+                  </ResourceEditorFooter>
                 </form>
               </DialogContent>
             </Dialog>
           )}
         </div>
 
-        {(["system", "user"] as const).map((tabType) => (
-          <TabsContent key={tabType} value={tabType}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {rules
-                .filter((rule) => rule.type === tabType)
-                .map((rule) => {
+        <TabsContent
+          key={activeRuleType}
+          value={activeRuleType}
+          className="min-h-0 overflow-hidden"
+        >
+          <ScrollArea
+            key={`${search}:${pageCursors.length}:${pageSize}`}
+            className="h-full"
+          >
+            <div className="flex flex-col gap-4 p-px">
+              <ResourceNotice
+                error={remote.error || subjects.error}
+                loading={remote.loading}
+                pending={remote.pending}
+              />
+              {remote.error && (
+                <Button
+                  className="self-start"
+                  type="button"
+                  variant="outline"
+                  onClick={remote.reload}
+                >
+                  {t("statistics.retry")}
+                </Button>
+              )}
+              {!remote.loading && !remote.error && rules.length === 0 && (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  {t("statistics.empty")}
+                </p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {rules.map((rule) => {
                   const scopeNames =
                     rule.type === "system"
                       ? getAuthorizationNames(
@@ -351,7 +452,10 @@ export function RulesPage() {
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <CardTitle className="truncate" title={rule.name}>
-                              {rule.name} {rule.origin === "package" && <span title={rule.publisher}>· 资源包导入</span>}
+                              {rule.name}{" "}
+                              {rule.origin === "package" && (
+                                <span title={rule.publisher}>· 资源包导入</span>
+                              )}
                             </CardTitle>
                             <CardDescription
                               className="truncate"
@@ -360,61 +464,63 @@ export function RulesPage() {
                               {rule.creator}
                             </CardDescription>
                           </div>
-                          {rule.origin !== "package" && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    aria-label={t("common.more")}
-                                    size="icon-sm"
-                                    type="button"
-                                    variant="ghost"
-                                  />
-                                }
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  aria-label={t("common.more")}
+                                  size="icon-sm"
+                                  type="button"
+                                  variant="ghost"
+                                />
+                              }
+                            >
+                              <HugeiconsIcon
+                                icon={MoreHorizontalIcon}
+                                strokeWidth={2}
+                              />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuGroup
+                                hidden={rule.type !== "system"}
                               >
-                                <HugeiconsIcon
-                                  icon={MoreHorizontalIcon}
-                                  strokeWidth={2}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuGroup
-                                  hidden={rule.type !== "system"}
+                                <DropdownMenuItem
+                                  onClick={() => handleEditRule(rule)}
                                 >
-                                  <DropdownMenuItem
-                                    onClick={() => handleEditRule(rule)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Edit02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.rules.edit")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                                <DropdownMenuSeparator
-                                  hidden={rule.type !== "system"}
-                                />
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => setRulePendingDeletion(rule)}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Delete02Icon}
-                                      strokeWidth={2}
-                                    />
-                                    {t("pages.rules.delete")}
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                                  <HugeiconsIcon
+                                    icon={Edit02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.edit")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                              <DropdownMenuSeparator
+                                hidden={
+                                  rule.type !== "system" ||
+                                  rule.origin === "package"
+                                }
+                              />
+                              <DropdownMenuGroup
+                                hidden={rule.origin === "package"}
+                              >
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setRulePendingDeletion(rule)}
+                                >
+                                  <HugeiconsIcon
+                                    icon={Delete02Icon}
+                                    strokeWidth={2}
+                                  />
+                                  {t("pages.rules.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuGroup>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </CardHeader>
-                      <CardContent className="flex-1">
-                        {rule.origin === "package" && <PackageGrants kind="rule" id={rule.id} name={rule.name} retired={rule.retired} subjects={subjects} onSaved={() => { void remote.reload() }} />}
+                      <CardContent className="min-h-10 flex-1">
                         <p
-                          className="line-clamp-3 min-h-16 whitespace-pre-wrap text-muted-foreground"
+                          className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
                           title={rule.content}
                         >
                           {rule.content}
@@ -448,10 +554,60 @@ export function RulesPage() {
                     </Card>
                   )
                 })}
+              </div>
             </div>
-          </TabsContent>
-        ))}
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
+
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <PageSizeSelect
+          value={pageSize}
+          onValueChange={(size) => {
+            setPageSize(size)
+            setCursors({ system: [""], user: [""] })
+          }}
+          disabled={remote.pending}
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground" aria-live="polite">
+            {t("pages.sessionReporting.clients.cursorPage", {
+              page: pageCursors.length,
+            })}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={
+              remote.loading || remote.pending || pageCursors.length === 1
+            }
+            onClick={() => previousPage()}
+            aria-label={t("pages.operationLogs.pagination.previous")}
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={remote.loading || remote.pending || !remote.nextCursor}
+            onClick={() => {
+              if (!remote.nextCursor) return
+              setCursors((current) => ({
+                ...current,
+                [activeRuleType]: [
+                  ...current[activeRuleType],
+                  remote.nextCursor,
+                ],
+              }))
+            }}
+            aria-label={t("pages.operationLogs.pagination.next")}
+          >
+            <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
+          </Button>
+        </div>
+      </div>
 
       <AlertDialog
         open={rulePendingDeletion !== null}

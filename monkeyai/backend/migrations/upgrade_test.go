@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -66,7 +68,9 @@ func TestUpgradeFrom14(t *testing.T) {
 		INSERT INTO skills (ownership_type, owner_user_id, name, description,
 			package_file_name, package_s3_key, package_size_bytes, package_sha256)
 		VALUES ('system', '00000000-0000-0000-0000-000000000001', '已有资源', '保留描述',
-			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));`); err != nil {
+			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));
+		INSERT INTO sessions (owner_user_id, title, session_type, client_type, client_name, started_at)
+		VALUES ('00000000-0000-0000-0000-000000000001', '已有会话', 'conversation', 'desktop', 'desktop', now());`); err != nil {
 		t.Fatal(err)
 	}
 	output := run("up")
@@ -74,7 +78,8 @@ func TestUpgradeFrom14(t *testing.T) {
 	for _, migration := range []string{
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
-		"21/u video_output_metadata_optional",
+		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
+		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -87,7 +92,15 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 21 || dirty {
+	paths, err := filepath.Glob("*.up.sql")
+	if err != nil || len(paths) == 0 {
+		t.Fatal("迁移文件缺失")
+	}
+	latest, err := strconv.Atoi(strings.Split(filepath.Base(paths[len(paths)-1]), "_")[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != latest || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -100,7 +113,9 @@ func TestUpgradeFrom14(t *testing.T) {
 	}
 	var valid bool
 	err = conn.QueryRow(t.Context(), `SELECT
-		to_regclass('resource_imports') IS NOT NULL AND to_regclass('resource_import_bindings') IS NOT NULL
+		to_regclass('oauth_device_requests') IS NOT NULL AND to_regclass('device_client_connections') IS NOT NULL
+		AND to_regclass('oauth_grants') IS NOT NULL
+		AND to_regclass('resource_imports') IS NOT NULL AND to_regclass('resource_import_bindings') IS NOT NULL
 		AND (SELECT count(*) = 4 FROM information_schema.columns WHERE table_schema = current_schema()
 			AND table_name IN ('skills', 'rules', 'connectors', 'experts') AND column_name = 'origin')
 		AND (SELECT count(*) = 2 FROM information_schema.columns WHERE table_schema = current_schema()
@@ -110,8 +125,28 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
+		t.Fatalf("升级后应支持 runtime 会话: %v", err)
+	}
+	down, err := os.ReadFile("000031_session_client_runtime_add.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(t.Context(), string(down)); err == nil || !strings.Contains(err.Error(), "sessions_client_type_check") {
+		t.Fatalf("存在 runtime 会话时应拒绝回滚: %v", err)
+	}
+	var clientType, title string
+	if err := conn.QueryRow(t.Context(), "SELECT client_type,title FROM sessions").Scan(&clientType, &title); err != nil || clientType != "runtime" || title != "已有会话" {
+		t.Fatalf("回滚失败不应改写已有会话: type=%s title=%s err=%v", clientType, title, err)
+	}
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='desktop'"); err != nil {
+		t.Fatal(err)
+	}
 	run("down", "1")
 	run("up")
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
+		t.Fatalf("重新升级后应支持 runtime 会话: %v", err)
+	}
 	if output := run("up"); !strings.Contains(output, "no change") {
 		t.Fatalf("重复 up 应无变更: %s", output)
 	}

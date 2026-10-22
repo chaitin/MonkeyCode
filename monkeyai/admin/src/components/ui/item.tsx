@@ -2,7 +2,7 @@ import * as React from "react"
 import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { Separator } from "@/components/ui/separator"
 
@@ -12,7 +12,7 @@ function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
       role="list"
       data-slot="item-group"
       className={cn(
-        "group/item-group flex w-full flex-col gap-4 has-data-[size=sm]:gap-2.5 has-data-[size=xs]:gap-2",
+        "group/item-group flex w-full flex-col gap-4 has-[[data-size=sm]]:gap-2.5 has-[[data-size=xs]]:gap-2",
         className
       )}
       {...props}
@@ -35,7 +35,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-md border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted",
+  "group/item flex w-full flex-wrap items-center rounded-md border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&:is(a)]:transition-colors [&:is(a)]:hover:bg-muted",
   {
     variants: {
       variant: {
@@ -46,7 +46,7 @@ const itemVariants = cva(
       size: {
         default: "gap-3.5 px-4 py-3.5",
         sm: "gap-2.5 px-3 py-2.5",
-        xs: "gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0",
+        xs: "gap-2 px-2.5 py-2 [[data-slot=dropdown-menu-content]_&]:p-0",
       },
     },
     defaultVariants: {
@@ -81,7 +81,7 @@ function Item({
 }
 
 const itemMediaVariants = cva(
-  "flex shrink-0 items-center justify-center gap-2 group-has-data-[slot=item-description]/item:translate-y-0.5 group-has-data-[slot=item-description]/item:self-start [&_svg]:pointer-events-none",
+  "flex shrink-0 items-center justify-center gap-2 group-has-[[data-slot=item-description]]/item:translate-y-0.5 group-has-[[data-slot=item-description]]/item:self-start [&_svg]:pointer-events-none",
   {
     variants: {
       variant: {

@@ -208,7 +208,7 @@ export function AuthorizationSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-80 w-(--anchor-width) gap-0 overflow-y-auto p-1"
+        className="max-h-80 w-[var(--anchor-width)] gap-0 overflow-y-auto p-1"
       >
         <PopoverHeader className="sr-only">
           <PopoverTitle>{title}</PopoverTitle>

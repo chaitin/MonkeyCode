@@ -73,8 +73,6 @@ export const ar = {
     deleted: "محذوف",
     modelScope:
       "تُحسب الاستدعاءات حسب وقت البدء والأرصدة حسب وقت الخصم والاسترداد. معدل إصابة الذاكرة المؤقتة هو نسبة الاستدعاءات التي استخدمتها.",
-    taskScope:
-      "الجلسات التي بدأت خلال الفترة. معدل الإكمال هو الناجحة / الإجمالي، ومتوسط المدة للجلسات المنتهية فقط. يلزم إرسال بيانات من العميل.",
   },
   common: {
     breadcrumb: "مسار التنقل",
@@ -157,7 +155,17 @@ export const ar = {
       timeRange: "فترة الإحصاءات المباشرة",
       pendingMetric: "بانتظار ربط البيانات",
       period24h: "24 ساعة",
+      comparison: {
+        new: "جديد",
+        unavailable: "بيانات الفترة السابقة غير متاحة",
+        increased: "زيادة بنسبة {{percent}} مقارنة بالساعات الـ24 السابقة",
+        decreased: "انخفاض بنسبة {{percent}} مقارنة بالساعات الـ24 السابقة",
+        unchanged: "دون تغيير مقارنة بالساعات الـ24 السابقة",
+        newActivity: "نشاط جديد؛ كانت القيمة صفرًا في الساعات الـ24 السابقة",
+        previousValue: "الساعات الـ24 السابقة: {{value}}",
+      },
       period30m: "30 دقيقة",
+      average: "المتوسط",
       callsTrend: "عدد الاستدعاءات",
       newUsersTrend: "المستخدمون الجدد",
       activeUsersTrend: "المستخدمون النشطون",
@@ -176,8 +184,8 @@ export const ar = {
       },
       metrics: {
         modelConsumption: "استهلاك الرصيد",
-        p95ResponseTime: "زمن استجابة النماذج",
-        p95FirstTokenTime: "زمن أول رمز للنماذج",
+        avgResponseTime: "زمن استجابة النماذج",
+        avgFirstTokenTime: "زمن أول رمز للنماذج",
         modelSuccessRate: "معدل نجاح النماذج",
         cacheHitRate: "معدل إصابة ذاكرة التخزين المؤقت",
         modelCalls: "استدعاءات النماذج",
@@ -223,47 +231,6 @@ export const ar = {
         conversationCount: "المحادثات",
       },
       empty: "لا توجد مهام تطابق عوامل التصفية الحالية",
-    },
-    taskStatistics: {
-      title: "إحصاءات المهام",
-      description: "راجع اتجاهات المهام وحالة التشغيل ومعدلات الإنجاز.",
-      timeRange: "الفترة الإحصائية",
-      ranges: {
-        "7d": "آخر 7 أيام",
-        "30d": "آخر 30 يومًا",
-        "90d": "آخر 90 يومًا",
-      },
-      comparedToPrevious: "مقارنة بالفترة السابقة",
-      metrics: {
-        totalTasks: "إجمالي المهام",
-        completionRate: "معدل الإنجاز",
-        averageDuration: "متوسط المدة",
-        runningTasks: "المهام المفتوحة",
-      },
-      taskTrend: "اتجاه المهام",
-      statusDistribution: "توزيع الحالات",
-      statuses: {
-        completed: "مكتملة",
-        running: "مفتوحة",
-        failed: "فشلت",
-      },
-      taskTypeDetails: "تفاصيل أنواع المهام",
-      columns: {
-        taskType: "نوع المهمة",
-        total: "المهام",
-        completed: "مكتملة",
-        completionRate: "معدل الإنجاز",
-        averageDuration: "متوسط المدة",
-      },
-      taskTypes: {
-        conversation: "محادثة Agent",
-        workflow: "سير العمل",
-        retrieval: "استرجاع المعرفة",
-        tool: "استدعاء أداة",
-        scheduled: "مهمة مجدولة",
-      },
-      durationSeconds: "{{count}} ث",
-      durationMinutes: "{{minutes}} د {{seconds}} ث",
     },
     models: {
       noTags: "بلا وسوم",
@@ -451,17 +418,17 @@ export const ar = {
       content: "محتوى المهارة (SKILL.md)",
       contentPlaceholder: "أدخل تعليمات المهارة",
       skillPackage: "حزمة المهارة",
-      packageHint: "ارفع مجلد المهارة كملف ZIP بحجم أقصى 20 ميجابايت.",
+      packageHint: "ارفع مجلد المهارة كملف ZIP بحجم أقصى 500 MiB.",
       packageOptionalHint: "ارفع حزمة ZIP جديدة فقط عند استبدال محتوى المهارة.",
       packageParsing: "جارٍ فحص حزمة المهارة…",
       packageSummary: "{{count}} ملفات · {{size}} بعد فك الضغط",
       packageErrors: {
-        fileTooLarge: "يجب ألا يتجاوز حجم حزمة المهارة 20 ميجابايت.",
+        fileTooLarge: "يجب ألا يتجاوز حجم حزمة المهارة 500 MiB.",
         invalidZip: "تعذرت قراءة الملف. ارفع حزمة مهارة ZIP صالحة.",
         unsafePath: "تحتوي حزمة المهارة على مسار ملف غير آمن.",
         symlink: "يجب ألا تحتوي حزمة المهارة على روابط رمزية.",
-        tooManyFiles: "يمكن أن تحتوي حزمة المهارة على 500 ملف كحد أقصى.",
-        unpackedTooLarge: "يجب ألا يتجاوز حجم الحزمة بعد فك الضغط 50 ميجابايت.",
+        tooManyFiles: "يمكن أن تحتوي حزمة المهارة على 5000 ملف كحد أقصى.",
+        unpackedTooLarge: "يجب ألا يتجاوز حجم الحزمة بعد فك الضغط 1 GiB.",
         missingManifest:
           "لم يتم العثور على SKILL.md. هذه ليست حزمة مهارة صالحة.",
         multipleManifests:
@@ -810,6 +777,9 @@ export const ar = {
       groupQuota: {
         title: "حصص المجموعات",
         memberTitle: "حصص الأعضاء",
+        memberSort: "ترتيب الأعضاء",
+        nameAscending: "الاسم",
+        creditsAscending: "الرصيد",
         manageGroups: "إدارة المجموعات",
         description:
           "يجب تعيين حصة للمجموعة الجذرية. ترث المجموعات الفرعية والمستخدمون غير المعينين من أقرب مجموعة أصل.",

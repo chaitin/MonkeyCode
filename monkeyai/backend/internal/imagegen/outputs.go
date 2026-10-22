@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	"io"
 	"log/slog"
@@ -93,7 +94,7 @@ func (s *Outputs) Save(ctx context.Context, jobID string, ordinal int32, img Ima
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
-			slog.Error("清理未登记生图结果失败", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
+			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "清理未登记生图结果失败", "module", "imagegen", "operation", "Save", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
 		}
 		return SavedOutput{}, err
 	}
@@ -106,7 +107,7 @@ func (s *Outputs) Save(ctx context.Context, jobID string, ordinal int32, img Ima
 			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
 			if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
-				slog.Error("清理冲突生图结果失败", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
+				logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "清理冲突生图结果失败", "module", "imagegen", "operation", "Save", "operation", "delete_output", "job_id", jobID, "ordinal", ordinal, "error_type", providerErrorType(cleanupErr))
 			}
 			return SavedOutput{}, errors.New("生成图片结果不一致")
 		}
@@ -145,7 +146,7 @@ func (s *Outputs) Open(ctx context.Context, userID, outputID string) ([]byte, st
 	}
 	defer func() {
 		if closeErr := body.Close(); closeErr != nil && ctx.Err() == nil {
-			slog.Warn("关闭生图结果存储流失败", "operation", "close_reader", "file_id", outputID, "error_type", providerErrorType(closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭生图结果存储流失败", "module", "imagegen", "operation", "Open", "operation", "close_reader", "file_id", outputID, "error_type", providerErrorType(closeErr))
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxOutputBytes+1))

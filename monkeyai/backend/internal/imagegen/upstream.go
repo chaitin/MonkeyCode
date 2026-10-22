@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -59,7 +60,7 @@ func CallBody(ctx context.Context, client *http.Client, target proxy.Target, end
 	}
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil && ctx.Err() == nil {
-			slog.Warn("关闭生图上游响应失败", "operation", "close_upstream_response", "model_id", target.ModelID, "status", response.StatusCode, "error_type", providerErrorType(closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭生图上游响应失败", "module", "imagegen", "operation", "CallBody", "operation", "close_upstream_response", "model_id", target.ModelID, "status", response.StatusCode, "error_type", providerErrorType(closeErr))
 		}
 	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 
@@ -74,7 +75,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚创建模型事务失败", "model_id", item.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "model.operation.error", "回滚创建模型事务失败", "module", "model", "operation", "Create", "model_id", item.ID, "error", err)
 		}
 	}()
 	advanced, err := json.Marshal(item.AdvancedConfig)
@@ -145,7 +146,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚更新模型事务失败", "model_id", item.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "model.operation.error", "回滚更新模型事务失败", "module", "model", "operation", "update", "model_id", item.ID, "error", err)
 		}
 	}()
 	advanced, err := json.Marshal(item.AdvancedConfig)
@@ -246,7 +247,7 @@ func (p *Postgres) delete(ctx context.Context, id, ownership, userID string) err
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && ctx.Err() == nil {
-			slog.ErrorContext(ctx, "回滚删除模型事务失败", "model_id", id, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "model.operation.error", "回滚删除模型事务失败", "module", "model", "operation", "delete", "model_id", id, "error", err)
 		}
 	}()
 	result, err := sqlc.New(tx).DeleteModel(ctx, sqlc.DeleteModelParams{ID: id, OwnershipType: ownership, OwnerUserID: userID})

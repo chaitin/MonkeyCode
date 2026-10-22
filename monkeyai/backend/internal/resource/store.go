@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -38,7 +39,7 @@ func ID() string                        { return uuid.New().String() }
 func Hash(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
-		slog.Error("资源内容哈希编码失败", "type", fmt.Sprintf("%T", v), "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "resource.operation.error", "资源内容哈希编码失败", "module", "resource", "operation", "Hash", "type", fmt.Sprintf("%T", v), "error", err)
 	}
 	h := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(h[:])
@@ -47,11 +48,11 @@ func Strings(v any) []string {
 	result := []string{}
 	b, err := json.Marshal(v)
 	if err != nil {
-		slog.Error("资源字符串列表编码失败", "type", fmt.Sprintf("%T", v), "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "resource.operation.error", "资源字符串列表编码失败", "module", "resource", "operation", "Strings", "type", fmt.Sprintf("%T", v), "error", err)
 		return result
 	}
 	if err := json.Unmarshal(b, &result); err != nil {
-		slog.Error("资源字符串列表解码失败", "error", err)
+		logging.Event(context.Background(), slog.Default(), slog.LevelError, "resource.operation.error", "资源字符串列表解码失败", "module", "resource", "operation", "Strings", "error", err)
 		return []string{}
 	}
 	if result == nil {
@@ -74,14 +75,16 @@ func Invalid(message string) error {
 var NotFound = &Error{Status: 404, Code: "not_found", Message: "资源不存在或无权访问"}
 var Conflict = &Error{Status: 412, Code: "revision_conflict", Message: "资源已更新，请刷新后重试"}
 
-func JSON(w http.ResponseWriter, status int, v any) {
+func JSON(ctx context.Context, w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.Error("资源响应写入失败", "status", status, "error", err)
+		if ctx.Err() == nil {
+			logging.Diagnostic(ctx, slog.Default(), slog.LevelWarn, "http.response.failed", err, slog.Int("status", status))
+		}
 	}
 }
-func Fail(w http.ResponseWriter, err error) {
+func Fail(ctx context.Context, w http.ResponseWriter, err error) {
 	var e *Error
 	var pe *pgconn.PgError
 	if !errors.As(err, &e) {
@@ -93,11 +96,22 @@ func Fail(w http.ResponseWriter, err error) {
 		case errors.As(err, &pe) && (pe.Code == "23503" || pe.Code == "22P02" || pe.Code == "23514"):
 			e = &Error{Status: 400, Code: "invalid_reference", Message: "字段或关联对象无效"}
 		default:
-			slog.Error("资源操作失败", "error", err)
 			e = &Error{Status: 500, Code: "resource_error", Message: "资源操作失败"}
 		}
 	}
-	JSON(w, e.Status, Object{"error": Object{"code": e.Code, "message": e.Message, "references": e.References}})
+	if e.Status >= 500 && !logging.Diagnosed(ctx) && !logging.IsExpected(ctx) {
+		event := "resource.operation.failed"
+		if _, ok := logging.ContextField(ctx, "upload_id"); ok {
+			event = "resource.upload.operation.failed"
+			if _, ok := logging.ContextField(ctx, "chunk_index"); ok {
+				event = "resource.upload.failed"
+			}
+		}
+		logging.Diagnostic(ctx, slog.Default(), slog.LevelError, event, err)
+	} else if e.Status < 500 {
+		logging.Expected(ctx)
+	}
+	JSON(ctx, w, e.Status, Object{"error": Object{"code": e.Code, "message": e.Message, "references": e.References}})
 }
 func Decode(w http.ResponseWriter, r *http.Request, v any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -314,7 +328,7 @@ func (c *CRUD) List(ctx context.Context, q Queryer) ([]Object, error) {
 }
 func rollback(ctx context.Context, tx pgx.Tx, operation, id string) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		slog.ErrorContext(ctx, "回滚资源事务失败", "operation", operation, "resource_id", id, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "resource.operation.error", "回滚资源事务失败", "module", "resource", "operation", "rollback", "operation", operation, "resource_id", id, "error", err)
 	}
 }
 
@@ -473,25 +487,25 @@ func (c *CRUD) Register(r chi.Router) {
 		limit := 200
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
-			if err != nil || n < 1 || n > 200 {
-				Fail(w, Invalid("limit 必须在 1—200 之间"))
+			if err != nil || n < 1 || n > 500 {
+				Fail(r.Context(), w, Invalid("limit 必须在 1—500 之间"))
 				return
 			}
 			limit = n
 		}
 		ownership := r.URL.Query().Get("ownership_type")
 		if ownership != "" && ownership != "system" && ownership != "user" {
-			Fail(w, Invalid("所有权类型无效"))
+			Fail(r.Context(), w, Invalid("所有权类型无效"))
 			return
 		}
 		filter, err := json.Marshal(Object{"ownership": ownership, "search": r.URL.Query().Get("q"), "cursor": r.URL.Query().Get("cursor"), "limit": limit + 1})
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		items, err := DecodeObjects(c.Def.Repository(c.Store.Pool).PageResources(r.Context(), filter))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		cursor := ""
@@ -502,36 +516,36 @@ func (c *CRUD) Register(r chi.Router) {
 		for i, o := range items {
 			items[i], err = c.decorate(r.Context(), c.Store.Pool, o)
 			if err != nil {
-				Fail(w, err)
+				Fail(r.Context(), w, err)
 				return
 			}
 		}
-		JSON(w, 200, Object{"items": items, "next_cursor": cursor})
+		JSON(r.Context(), w, 200, Object{"items": items, "next_cursor": cursor})
 	})
 
 	r.Get(path+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		o, err := c.Get(r.Context(), c.Store.Pool, chi.URLParam(r, "id"))
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ETag(w, o)
-		JSON(w, 200, o)
+		JSON(r.Context(), w, 200, o)
 	})
 	save := func(w http.ResponseWriter, r *http.Request) {
 		var in Object
 		if err := Decode(w, r, &in); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		u, _ := identity.UserFromContext(r.Context())
 		o, err := c.Save(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), in)
 		if err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		ETag(w, o)
-		JSON(w, 200, o)
+		JSON(r.Context(), w, 200, o)
 	}
 	r.Post(path, save)
 	r.Put(path+"/{id}", save)
@@ -539,29 +553,29 @@ func (c *CRUD) Register(r chi.Router) {
 		r.Patch(path+"/{id}/enabled", func(w http.ResponseWriter, r *http.Request) {
 			var in Object
 			if err := Decode(w, r, &in); err != nil {
-				Fail(w, err)
+				Fail(r.Context(), w, err)
 				return
 			}
 			enabled, ok := in["enabled"].(bool)
 			if !ok {
-				Fail(w, Invalid("enabled 必须为布尔值"))
+				Fail(r.Context(), w, Invalid("enabled 必须为布尔值"))
 				return
 			}
 			u, _ := identity.UserFromContext(r.Context())
 			o, err := c.SetEnabled(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), enabled)
 			if err != nil {
-				Fail(w, err)
+				Fail(r.Context(), w, err)
 				return
 			}
 			ETag(w, o)
-			JSON(w, 200, o)
+			JSON(r.Context(), w, 200, o)
 		})
 	}
 
 	r.Delete(path+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		u, _ := identity.UserFromContext(r.Context())
 		if err := c.Delete(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match")); err != nil {
-			Fail(w, err)
+			Fail(r.Context(), w, err)
 			return
 		}
 		w.WriteHeader(204)

@@ -1,30 +1,29 @@
 package resourceimport
 
 import (
-	"encoding/json"
 	"os"
 	"slices"
 	"strings"
 	"testing"
 )
 
-func TestTaggedManifestDigest(t *testing.T) {
+func TestTaggedManifest(t *testing.T) {
 	data, err := os.ReadFile("testdata/manifest-r0008.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		t.Fatal(err)
-	}
-	canonical, err := canonicalManifest(manifest)
+	archive, err := makeZIP(map[string][]byte{"manifest.json": data})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if digest(canonical) != manifest.ManifestSHA256 {
-		t.Fatalf("带标签的发布端 manifest 摘要不兼容: %s", digest(canonical))
+	pkg, err := Parse(archive)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, entry := range append(append([]Entry{}, manifest.AgentResources.Skills...), manifest.AgentResources.Rules...) {
+	if pkg.Manifest.ManifestSHA256 != digest(data) {
+		t.Fatal("带标签的 manifest 未使用实际文件指纹")
+	}
+	for _, entry := range append(append([]Entry{}, pkg.Manifest.AgentResources.Skills...), pkg.Manifest.AgentResources.Rules...) {
 		if !slices.Equal(entry.Tags, []string{"百智办公"}) {
 			t.Fatalf("标签丢失: %+v", entry)
 		}

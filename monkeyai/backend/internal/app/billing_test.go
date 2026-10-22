@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
@@ -62,7 +63,7 @@ func TestBillingIntegration(t *testing.T) {
 		}
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
-	handler, err := newApplicationHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "计费测试", InitialAdminEmail: "billing-http@example.com", InitialAdminPassword: "billing-test-password"})
+	handler, err := newMemberTestHandler(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), pool, config.Config{PublicURL: "http://localhost:8080", InitialAdminName: "计费测试", InitialAdminEmail: "billing-http@example.com", InitialAdminPassword: "billing-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +249,15 @@ func TestBillingIntegration(t *testing.T) {
 		t.Helper()
 		return must("GET", accountPath, nil, "")["account"].(map[string]any)["version"]
 	}
-	must("POST", accountPath+"/adjustments", resource.Object{"delta": "-14999", "reason": "验证零头可用", "version": accountVersion()}, "")
+	currentBalance, err := handler.(*applicationHandler).billing.Account(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := billing.ParseAmount("1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	must("POST", accountPath+"/adjustments", resource.Object{"delta": (one - currentBalance.Balance).String(), "reason": "验证零头可用", "version": accountVersion()}, "")
 	code, out, headers = call("POST", "/v1/chat/completions", body, key, "small-balance")
 	if code != 200 || requests.Load() != 2 {
 		t.Fatalf("剩余正积分应允许调用: %d %v %d", code, out, requests.Load())
@@ -507,7 +516,7 @@ func TestBillingIntegration(t *testing.T) {
 	if modelStats["last_24h"].(map[string]any)["model_calls"].(float64) == 0 {
 		t.Fatal("真实模型调用未进入统计")
 	}
-	for _, path := range []string{"realtime", "tasks", "history"} {
+	for _, path := range []string{"realtime", "tasks/overview", "history"} {
 		must("GET", "/api/admin/v1/statistics/"+path, nil, "")
 	}
 	savedCookie := cookie
@@ -538,9 +547,8 @@ func TestBillingIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			detail := must("GET", "/api/admin/v1/billing/transactions/"+headers.Get("X-Billing-Transaction-ID"), nil, "")
-			if detail.String("status") != "settled" || detail.String("amount") != "0.000000" || detail.String("mode") != "local" {
-				t.Fatalf("%s 用户模型应按零费用结算: %v", mode, detail)
+			if headers.Get("X-Billing-Transaction-ID") != "" {
+				t.Fatalf("%s 用户自建模型不应创建收费交易", mode)
 			}
 			after, err := application.billing.Account(ctx, user)
 			if err != nil || after.Balance != before.Balance || after.Frozen != before.Frozen {

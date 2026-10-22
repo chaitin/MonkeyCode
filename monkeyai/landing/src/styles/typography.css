@@ -1,0 +1,201 @@
+/* Site typography: use these six roles instead of component-specific sizes.
+ * Display is reserved for the Hero brand; ordinary brand wordmarks use brand.
+ * Only display and section change at the shared 800px breakpoint.
+ * The product interface illustration has its own proportional preview roles.
+ */
+body.site-theme {
+  --type-display: 72px;
+  --type-section: 32px;
+  --type-heading: 20px;
+  --type-body: 16px;
+  --type-caption: 14px;
+  --type-brand: 24px;
+  --leading-title: 1.3;
+  --leading-body: 1.8;
+  --leading-control: 1.4;
+  font-size: var(--type-body);
+  line-height: var(--leading-body);
+}
+
+/* Native headings and emphasis use Regular; wordmarks use Semibold. */
+body.site-theme :is(h1, h2, h3, h4, h5, h6) {
+  font-size: var(--type-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-title);
+}
+body.site-theme :is(b, strong, th) { font-weight: var(--weight-heading); }
+body.site-theme small { font-size: var(--type-caption); }
+body.site-theme :is(th, td) { font-size: var(--type-body); }
+
+/* Primary page titles. */
+body.site-theme .legal-content h1 {
+  font-size: var(--type-section);
+  line-height: var(--leading-title);
+}
+
+body.site-theme .studio-hero h1 {
+  font-size: var(--type-display);
+  font-weight: var(--weight-brand);
+  line-height: var(--leading-title);
+}
+
+body.site-theme .studio-hero-tagline {
+  font-size: var(--type-section);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-title);
+}
+
+/* Major sections, including document chapters. */
+body.site-theme :is(
+  .studio-section-heading h2,
+  .studio-why .studio-section-heading h2,
+  .studio-start h2,
+  .legal-content h2
+) {
+  font-size: var(--type-section);
+  line-height: var(--leading-title);
+}
+
+body.site-theme :is(.studio-section-heading h2, .studio-start h2) {
+  font-style: normal;
+}
+
+/* Card headings, questions and footer columns. */
+body.site-theme :is(
+  .studio-task-heading > span:first-child,
+  .studio-conversation-header strong,
+  .studio-workspace-caption strong,
+  .studio-capabilities h3,
+  .studio-benefits h3,
+  .scene-copy h3,
+  .studio-deploy-benefits h3,
+  .studio-client-benefits h3,
+  .footer-column h2,
+  .footer-community h2,
+  .legal-content h3
+) {
+  font-size: var(--type-heading);
+  line-height: var(--leading-title);
+}
+
+/* Descriptions, table text and product demonstration content. */
+body.site-theme :is(
+  .studio-hero-description,
+  .studio-flow-chat > p,
+  .studio-flow-reply,
+  .studio-section-heading > p,
+  .studio-start p,
+  .studio-conversation-message > div > p,
+  .studio-response > p,
+  .studio-response li,
+  .studio-workspace-caption p,
+  .studio-capabilities p,
+  .studio-benefits p,
+  .studio-comparison td,
+  .scene-description,
+  .studio-deploy-benefits p,
+  .studio-client-benefits p,
+  .studio-faq-list details > p,
+  .studio-accordion-description p,
+  .footer-intro,
+  .community-qr figcaption,
+  .legal-content p,
+  .legal-content li
+) {
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
+  line-height: var(--leading-body);
+}
+
+/* Controls and navigation share the body size with a tighter line height. */
+body.site-theme :is(
+  .site-section-nav a,
+  [data-slot='button']:not(summary),
+  .studio-faq-list summary,
+  .studio-accordion-title,
+  .consult-button,
+  .studio-resource-link,
+  .legal-home-link,
+  .studio-foundation > div > span,
+  .studio-workspace-tabs button,
+  .studio-sidebar-search,
+  .studio-sidebar-item,
+  .studio-composer-example,
+  .studio-task-confirm > span,
+  .studio-task-confirm small,
+  .studio-downloads a,
+  .footer-column a,
+  .legal-nav a
+) {
+  font-size: var(--type-body);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-control);
+}
+
+/* Labels, metadata, timestamps and legal fine print. */
+body.site-theme :is(
+  .skip-link,
+  .studio-flow-heading,
+  .studio-flow-heading > span:first-child,
+  .studio-flow-sources > span,
+  .studio-agent-node strong,
+  .studio-agent-node > span,
+  .studio-demo-person,
+  .studio-avatar,
+  .studio-demo-person small,
+  .studio-demo-person time,
+  .studio-badge,
+  .studio-task-meta,
+  .studio-flow-caption,
+  .studio-foundation > span,
+  .studio-eyebrow,
+  .studio-eyebrow > span,
+  .studio-workspace-label,
+  .studio-sidebar-brand > span,
+  .studio-workspace-sidebar > p,
+  .studio-sidebar-item > span,
+  .studio-sidebar-bottom,
+  .studio-sidebar-bottom > span:last-child,
+  .studio-conversation-header span,
+  .studio-conversation-date,
+  .studio-conversation-message small,
+  .studio-conversation-message small span,
+  .studio-response-confirm,
+  .studio-workspace-caption > span,
+  .studio-benefit-number,
+  .studio-comparison .studio-highlight > span,
+  .studio-compare-note,
+  .studio-downloads > span,
+  .studio-downloads p,
+  .footer-bottom,
+  .scene-kicker,
+  .scene-kicker > span,
+  .scene-tags li,
+  .pricing-note,
+  .legal-content .eyebrow,
+  .legal-content .legal-updated,
+  .legal-nav b
+) {
+  font-size: var(--type-caption);
+  line-height: var(--leading-body);
+}
+
+body.site-theme .skip-link { font-weight: var(--weight-heading); }
+
+/* Brand wordmarks are consistent at every viewport size. */
+body.site-theme :is(.site-header .brand, .site-footer .brand, .studio-sidebar-brand) {
+  font-size: var(--type-brand);
+  font-weight: var(--weight-brand);
+  line-height: var(--leading-title);
+}
+
+/* Header and footer wordmarks use Regular for a lighter appearance. */
+body.site-theme :is(.site-header .brand, .site-footer .brand) { font-weight: var(--weight-heading); }
+body.site-theme .site-header .brand { font-size: var(--type-heading); }
+
+@media (max-width: 800px) {
+  body.site-theme {
+    --type-display: 48px;
+    --type-section: 24px;
+  }
+}

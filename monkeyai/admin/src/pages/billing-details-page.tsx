@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
+import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { UserAvatar } from "@/components/user-avatar"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -85,7 +87,7 @@ type Pending = {
   migration_issues: { id: number; subject: string; reason: string }[]
 }
 type SearchField = "user" | "content" | "dateRange" | "category" | "entryType"
-const PAGE_SIZE_OPTIONS = ["20", "50", "100", "200", "500"]
+
 const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
   credits(value, locale, 0)
 const changedCredits = (value: string, locale: string) =>
@@ -119,13 +121,21 @@ const categoryNames: Record<string, string> = {
 export function BillingDetailsPage() {
   const { t, i18n } = useTranslation()
   const { showToast } = useAppToast()
-  const [params, setParams] = useSearchParams()
-  const [draft, setDraft] = useState<Record<string, string>>(() => {
-    const values = Object.fromEntries(params)
-    delete values.page
-    delete values.page_size
-    return values
-  })
+  const [rawParams, setParams] = useSearchParams()
+  const rawQuery = rawParams.toString()
+  const params = useMemo(() => billingPageParams(rawQuery), [rawQuery])
+  const initializingRange = params.toString() !== rawQuery
+  useEffect(() => {
+    if (initializingRange) setParams(params, { replace: true })
+  }, [initializingRange, params, setParams])
+  const filterParams = new URLSearchParams(params)
+  for (const key of ["page", "page_size", "view", "range"])
+    filterParams.delete(key)
+  const filterQuery = filterParams.toString()
+  const [draftQuery, setDraftQuery] = useState(filterQuery)
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(filterParams)
+  )
   const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(() => {
     const initial: SearchField[] = ["user", "dateRange"]
     if (params.get("content")) initial.push("content")
@@ -145,9 +155,15 @@ export function BillingDetailsPage() {
   const view = params.get("view") ?? "entries"
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
+  if (draftQuery !== filterQuery) {
+    setDraftQuery(filterQuery)
+    setDraft(Object.fromEntries(filterParams))
+    setPage(1)
+  }
   const requestParams = new URLSearchParams(params)
   requestParams.delete("page")
   requestParams.delete("page_size")
+  requestParams.delete("range")
   requestParams.set("page", String(page))
   requestParams.set("page_size", String(pageSize))
   const query = requestParams.toString()
@@ -161,6 +177,11 @@ export function BillingDetailsPage() {
   useEffect(() => {
     let cancelled = false
     const isSearch = searchRefreshRef.current === refresh
+    const controller = new AbortController()
+    if (!isSearch) {
+      setLoading(true)
+      setLoadFailed(false)
+    }
     const next = new URLSearchParams(query)
     next.delete("mode")
     for (const key of ["from", "until"] as const) {
@@ -170,21 +191,23 @@ export function BillingDetailsPage() {
           key,
           (key === "from"
             ? startOfLocalDay(value)
-            : endOfLocalDay(value)
+            : billingExclusiveUntil(value)
           ).toISOString()
         )
       }
     }
     const request =
       view === "entries"
-        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`).then((list) => {
+        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`, {
+            signal: controller.signal,
+          }).then((list) => {
             if (!cancelled) setEntries(list)
           })
-        : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`).then(
-            (set) => {
-              if (!cancelled) setPending(set)
-            }
-          )
+        : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`, {
+            signal: controller.signal,
+          }).then((set) => {
+            if (!cancelled) setPending(set)
+          })
     void request
       .then(() => {
         if (!cancelled && isSearch) {
@@ -211,6 +234,7 @@ export function BillingDetailsPage() {
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [query, view, refresh, showToast, t])
   const navigate = (change: Record<string, string>) => {
@@ -239,10 +263,14 @@ export function BillingDetailsPage() {
     setPage(1)
     const next = new URLSearchParams({ view: "entries" })
     for (const [key, value] of Object.entries(draft)) {
-      if (value && !["mode", "page", "page_size", "view"].includes(key)) {
+      if (
+        value &&
+        !["mode", "page", "page_size", "view", "range"].includes(key)
+      ) {
         next.set(key, value)
       }
     }
+    if (!next.has("from") && !next.has("until")) next.set("range", "all")
     const nextRefresh = refresh + 1
     searchRefreshRef.current = nextRefresh
     setSearching(true)
@@ -256,9 +284,6 @@ export function BillingDetailsPage() {
     view === "entries"
       ? (entries?.items.length ?? 0)
       : (pending?.items.length ?? 0)
-  const firstVisible = visibleCount === 0 ? 0 : (page - 1) * pageSize + 1
-  const lastVisible =
-    visibleCount === 0 ? 0 : (page - 1) * pageSize + visibleCount
   const locale = i18n.resolvedLanguage ?? i18n.language
   const fromInput = filterDate(draft.from)
   const untilInput = filterDate(draft.until)
@@ -280,78 +305,27 @@ export function BillingDetailsPage() {
     { key: "category", label: t("pages.billingDetails.filters.category") },
     { key: "entryType", label: t("pages.billingDetails.filters.entryType") },
   ]
-  const pageSizeItems = PAGE_SIZE_OPTIONS.map((value) => ({
-    value,
-    label: t("pages.operationLogs.pagination.perPage", { count: value }),
-  }))
+
   const field = (key: string, value: string) =>
     setDraft({ ...draft, [key]: value })
   const pagination = (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-(--card-spacing)">
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          items={pageSizeItems}
-          value={String(pageSize)}
-          onValueChange={(value) => {
-            if (value !== null) {
-              setPageSize(Number(value))
-              setPage(1)
-            }
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-            aria-label={t("pages.operationLogs.pagination.pageSizeLabel")}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} align="start">
-            <SelectGroup>
-              {pageSizeItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <p className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.summary", {
-            from: firstVisible,
-            to: lastVisible,
-            total,
-          })}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">
-          {t("pages.operationLogs.pagination.page", { page, pages })}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          disabled={loading || page === 1}
-          onClick={() => setPage((value) => Math.max(1, value - 1))}
-          aria-label={t("pages.operationLogs.pagination.previous")}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="rtl:rotate-180" />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          disabled={loading || loadFailed || page >= pages}
-          onClick={() => setPage((value) => Math.min(pages, value + 1))}
-          aria-label={t("pages.operationLogs.pagination.next")}
-        >
-          <HugeiconsIcon icon={ArrowRight01Icon} className="rtl:rotate-180" />
-        </Button>
-      </div>
-    </div>
+    <TablePagination
+      page={page}
+      pageSize={pageSize}
+      itemCount={visibleCount}
+      total={total}
+      loading={loading || searching}
+      error={loadFailed}
+      onPageSizeChange={(size) => {
+        setPageSize(size)
+        setPage(1)
+      }}
+      onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+      onNext={() => setPage((value) => Math.min(pages, value + 1))}
+    />
   )
   return (
-    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100svh-5rem)] md:flex-none md:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Tabs
         value={view}
         onValueChange={(value) => {
@@ -377,7 +351,7 @@ export function BillingDetailsPage() {
             <CardContent className="min-h-0 flex-1 gap-4 px-0">
               <form
                 onSubmit={search}
-                className="flex flex-wrap items-center gap-2 px-(--card-spacing)"
+                className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
               >
                 {visibleFields.has("user") && (
                   <Input
@@ -569,9 +543,9 @@ export function BillingDetailsPage() {
                   aria-busy={loading}
                   className={!entries?.items.length ? "h-full" : undefined}
                 >
-                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                  <TableHeader className="sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-[var(--card-spacing)]">
                         入账时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -581,7 +555,7 @@ export function BillingDetailsPage() {
                       </TableHead>
                       <TableHead className="text-start">积分变动</TableHead>
                       <TableHead className="text-start">剩余积分</TableHead>
-                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -591,22 +565,17 @@ export function BillingDetailsPage() {
                   >
                     {entries?.items.map((e) => (
                       <TableRow key={e.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
-                          {dateTime(e.occurred_at)}
+                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
+                          {dateTime(e.occurred_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={e.user_email}
                             onClick={() => setAccountUserID(e.user_id)}
                           >
-                            <HugeiconsIcon
-                              icon={User02Icon}
-                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            />
+                            <UserAvatar src={e.user_avatar_url} />
                             <span className="truncate">{e.user_name}</span>
                           </button>
                         </TableCell>
@@ -623,7 +592,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
                           {balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           {e.transaction_id ? (
                             <Button
                               type="button"
@@ -645,9 +614,11 @@ export function BillingDetailsPage() {
                           colSpan={7}
                           className="h-full text-center text-muted-foreground"
                         >
-                          {loading
-                            ? "正在读取流水…"
-                            : t("pages.billingDetails.empty")}
+                          {loading ? (
+                            <TableLoading />
+                          ) : (
+                            t("pages.billingDetails.empty")
+                          )}
                         </TableCell>
                       </TableRow>
                     )}
@@ -718,9 +689,9 @@ export function BillingDetailsPage() {
                   aria-busy={loading}
                   className={!pending?.items.length ? "h-full" : undefined}
                 >
-                  <TableHeader className="sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)] [&_tr]:border-b-0">
+                  <TableHeader className="sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="ps-(--card-spacing)">
+                      <TableHead className="ps-[var(--card-spacing)]">
                         调用时间
                       </TableHead>
                       <TableHead>用户</TableHead>
@@ -730,7 +701,7 @@ export function BillingDetailsPage() {
                       <TableHead>状态</TableHead>
                       <TableHead>原因</TableHead>
                       <TableHead className="text-end">预留积分</TableHead>
-                      <TableHead className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                      <TableHead className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                         {t("pages.operationLogs.columns.operations")}
                       </TableHead>
                     </TableRow>
@@ -740,22 +711,17 @@ export function BillingDetailsPage() {
                   >
                     {pending?.items.map((tx) => (
                       <TableRow key={tx.id}>
-                        <TableCell className="ps-(--card-spacing) whitespace-nowrap text-muted-foreground">
-                          {dateTime(tx.started_at)}
+                        <TableCell className="ps-[var(--card-spacing)] whitespace-nowrap text-muted-foreground">
+                          {dateTime(tx.started_at, TABLE_DATE_TIME_OPTIONS)}
                         </TableCell>
                         <TableCell>
                           <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-3 rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="flex cursor-pointer items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:enabled:hover_span]:underline"
                             title={tx.user_email}
                             onClick={() => setAccountUserID(tx.user_id)}
                           >
-                            <HugeiconsIcon
-                              icon={User02Icon}
-                              className="size-4 shrink-0 text-blue-600 dark:text-blue-400"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            />
+                            <UserAvatar src={tx.user_avatar_url} />
                             <span className="truncate">{tx.user_name}</span>
                           </button>
                         </TableCell>
@@ -771,7 +737,7 @@ export function BillingDetailsPage() {
                         <TableCell className="text-end tabular-nums">
                           {billingCredits(tx.reserve, i18n.language)}
                         </TableCell>
-                        <TableCell className="w-20 pe-(--card-spacing) whitespace-nowrap">
+                        <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           <Button
                             type="button"
                             variant="outline"
@@ -789,7 +755,7 @@ export function BillingDetailsPage() {
                           colSpan={7}
                           className="h-full text-center text-muted-foreground"
                         >
-                          {loading ? "正在读取…" : "暂无待处理交易"}
+                          {loading ? <TableLoading /> : "暂无待处理交易"}
                         </TableCell>
                       </TableRow>
                     )}

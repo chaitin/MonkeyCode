@@ -77,8 +77,6 @@ export const jaJP = {
     deleted: "削除済み",
     modelScope:
       "呼び出しは開始時刻、クレジットは課金・返金時刻で集計します。キャッシュヒット率はヒットした呼び出しの割合です。",
-    taskScope:
-      "期間内に開始したセッション。完了率は成功数 / 総数、平均時間は終了したセッションのみです。クライアントからの報告が必要です。",
   },
   common: {
     breadcrumb: "パンくずリスト",
@@ -165,7 +163,17 @@ export const jaJP = {
       timeRange: "リアルタイム集計期間",
       pendingMetric: "データ連携待ち",
       period24h: "24 時間",
+      comparison: {
+        new: "新規",
+        unavailable: "前の期間のデータがありません",
+        increased: "直前の24時間に比べて {{percent}} 増加",
+        decreased: "直前の24時間に比べて {{percent}} 減少",
+        unchanged: "直前の24時間と変化なし",
+        newActivity: "直前の24時間は0で、今期は新たな利用があります",
+        previousValue: "直前の24時間：{{value}}",
+      },
       period30m: "30 分",
+      average: "平均",
       callsTrend: "呼び出し回数",
       newUsersTrend: "新規ユーザー",
       activeUsersTrend: "アクティブユーザー",
@@ -184,8 +192,8 @@ export const jaJP = {
       },
       metrics: {
         modelConsumption: "クレジット消費量",
-        p95ResponseTime: "モデル応答時間",
-        p95FirstTokenTime: "モデル初回トークン時間",
+        avgResponseTime: "モデル応答時間",
+        avgFirstTokenTime: "モデル初回トークン時間",
         modelSuccessRate: "モデル成功率",
         cacheHitRate: "キャッシュヒット率",
         modelCalls: "モデル呼び出し回数",
@@ -231,47 +239,6 @@ export const jaJP = {
         conversationCount: "会話数",
       },
       empty: "現在の条件に一致するタスクはありません",
-    },
-    taskStatistics: {
-      title: "タスク統計",
-      description: "タスクの実行傾向、状態、完了状況を確認します。",
-      timeRange: "集計期間",
-      ranges: {
-        "7d": "過去 7 日間",
-        "30d": "過去 30 日間",
-        "90d": "過去 90 日間",
-      },
-      comparedToPrevious: "前の期間との比較",
-      metrics: {
-        totalTasks: "タスク総数",
-        completionRate: "完了率",
-        averageDuration: "平均所要時間",
-        runningTasks: "未終了タスク",
-      },
-      taskTrend: "タスクの推移",
-      statusDistribution: "ステータス分布",
-      statuses: {
-        completed: "完了",
-        running: "未終了",
-        failed: "失敗",
-      },
-      taskTypeDetails: "タスク種別の詳細",
-      columns: {
-        taskType: "タスク種別",
-        total: "タスク数",
-        completed: "完了",
-        completionRate: "完了率",
-        averageDuration: "平均所要時間",
-      },
-      taskTypes: {
-        conversation: "Agent 会話",
-        workflow: "ワークフロー",
-        retrieval: "ナレッジ検索",
-        tool: "ツール呼び出し",
-        scheduled: "スケジュールタスク",
-      },
-      durationSeconds: "{{count}} 秒",
-      durationMinutes: "{{minutes}} 分 {{seconds}} 秒",
     },
     models: {
       noTags: "タグなし",
@@ -462,20 +429,20 @@ export const jaJP = {
       contentPlaceholder: "スキルの指示を入力",
       skillPackage: "スキルパッケージ",
       packageHint:
-        "スキルディレクトリを ZIP 形式（最大 20 MB）でアップロードします。",
+        "スキルディレクトリを ZIP 形式（最大 500 MiB）でアップロードします。",
       packageOptionalHint:
         "スキル内容を更新する場合は、新しい ZIP パッケージをアップロードしてください。",
       packageParsing: "スキルパッケージを検査しています…",
       packageSummary: "{{count}} ファイル · 展開後 {{size}}",
       packageErrors: {
-        fileTooLarge: "スキルパッケージは 20 MB 以下にしてください。",
+        fileTooLarge: "スキルパッケージは 500 MiB 以下にしてください。",
         invalidZip:
           "ファイルを読み取れません。有効な ZIP スキルパッケージをアップロードしてください。",
         unsafePath: "スキルパッケージに安全でないファイルパスがあります。",
         symlink: "スキルパッケージにシンボリックリンクは含められません。",
-        tooManyFiles: "スキルパッケージに含められるのは最大 500 ファイルです。",
+        tooManyFiles: "スキルパッケージに含められるのは最大 5000 ファイルです。",
         unpackedTooLarge:
-          "展開後のスキルパッケージは 50 MB 以下にしてください。",
+          "展開後のスキルパッケージは 1 GiB 以下にしてください。",
         missingManifest:
           "SKILL.md が見つかりません。有効なスキルパッケージではありません。",
         multipleManifests:
@@ -829,6 +796,9 @@ export const jaJP = {
       groupQuota: {
         title: "グループ枠",
         memberTitle: "メンバー枠",
+        memberSort: "メンバーの並び順",
+        nameAscending: "名前",
+        creditsAscending: "クレジット",
         manageGroups: "グループを管理",
         description:
           "ルートグループの枠は必須です。子グループとユーザーが未設定の場合、最も近い親グループの枠を継承します。",

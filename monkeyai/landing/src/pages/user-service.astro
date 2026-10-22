@@ -1,0 +1,142 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LegalNav from '../components/LegalNav.astro';
+import { ActionButton } from '../components/ActionButton';
+
+const title = '服务协议｜百智办公';
+const description = '百智办公服务协议，提供常见问题、支持联系方式、账号与数据说明及系统要求。';
+const updatedAt = '2026 年 8 月';
+const sections = [
+  ['contact', '联系我们'],
+  ['faq', '常见问题'],
+  ['account-data', '账号与数据'],
+  ['requirements', '系统要求'],
+  ['developer', '开发者信息'],
+];
+---
+
+<BaseLayout title={title} description={description} pathname="/user-service/" type="article" bodyClass="page-legal">
+  <main id="main-content" class="legal-page">
+    <article class="container legal-content legal-document user-service-document">
+      <div class="legal-body">
+        <LegalNav label="服务协议导航" sections={sections} />
+        <div class="legal-main">
+        <header class="legal-header">
+          <span class="eyebrow">SERVICE AGREEMENT</span>
+          <div class="legal-title-row">
+            <h1>百智办公服务协议</h1>
+            <ActionButton client:load href={import.meta.env.BASE_URL} label="返回首页" icon="arrow-left" variant="outline" />
+          </div>
+          <p class="legal-lead">欢迎使用百智办公。</p>
+          <p class="legal-lead">百智办公是一款开源的即时通讯工具，连接消息、知识与任务让 Agent 深度融入工作流，成为真正能参与协作、推动执行的数字员工。如果您在使用过程中遇到问题，可以查阅以下常见问题或联系我们。我们会尽力协助您排查并解决问题。</p>
+        </header>
+
+        <div class="legal-sections">
+          <section id="contact" class="user-service-contact">
+            <h2>一、联系我们：</h2>
+            <p><strong>支持邮箱：</strong><a class="user-service-email" href="mailto:changzhi.li@chaitin.com">changzhi.li@chaitin.com</a></p>
+            <p><strong>服务时间：</strong>工作日 09:00–18:00（北京时间）</p>
+            <p><strong>回复时间：</strong>通常为 1–3 个工作日</p>
+            <p><strong>备注：</strong>联系我们时，请提供问题描述、App 版本、设备型号和系统版本。请勿通过邮件发送密码、验证码等敏感信息。我们会尽力为您提供协助。</p>
+          </section>
+
+          <section id="faq">
+            <h2>二、常见问题：</h2>
+            <div class="legal-faq">
+              <article class="legal-faq-item">
+                <h3>1. 如何注册或登录？</h3>
+                <ul>
+                  <li>打开百智办公，根据登录页面提示注册新账号或登录已有账号。</li>
+                  <li>如果无法登录，请检查网络连接及登录信息是否正确，然后重新尝试。如果问题仍未解决，请通过支持邮箱联系我们。</li>
+                </ul>
+              </article>
+              <article class="legal-faq-item">
+                <h3>2. 如何发送图片？</h3>
+                <ul>
+                  <li>进入对话页面，点击图片按钮，从系统相册中选择图片并发送。</li>
+                  <li>百智办公 仅在您主动选择图片时访问相册。您可以随时在系统的“设置”中修改相册访问权限。</li>
+                </ul>
+              </article>
+              <article class="legal-faq-item">
+                <h3>3. 为什么需要相册权限？</h3>
+                <ul>
+                  <li>相册权限用于让您选择图片并发送到 AI 对话中，例如上传截图进行内容识别和分析。</li>
+                  <li>百智办公 不会在未经您操作的情况下主动选择或上传相册中的其他图片。</li>
+                </ul>
+              </article>
+              <article class="legal-faq-item">
+                <h3>4. 如何使用相机？</h3>
+                <ul>
+                  <li>在支持拍摄图片的页面选择相机功能，并根据系统提示授予相机权限。</li>
+                  <li>相机权限用于拍摄并发送图片，例如拍摄文档或物品图片并在 AI 对话中进行分析。</li>
+                </ul>
+              </article>
+              <article class="legal-faq-item">
+                <h3>5. 如何管理通知权限？</h3>
+                <p>您可以在 iPhone 或 iPad 中依次进入：</p>
+                <p class="user-service-indent user-service-path">设置 → 通知 → 百智办公</p>
+                <p>在该页面中开启或关闭通知，并调整通知显示方式。</p>
+              </article>
+              <article class="legal-faq-item">
+                <h3>6. 如何退出当前账号？</h3>
+                <p>打开百智办公，依次进入：</p>
+                <p class="user-service-indent user-service-path">我的 → 账号管理 → 退出登录</p>
+                <p>退出登录不会删除您的账号或账号数据，之后仍可重新登录。</p>
+              </article>
+              <article class="legal-faq-item">
+                <h3>7. 如何永久注销账号？</h3>
+                <p>打开百智办公，依次进入：</p>
+                <p class="user-service-indent user-service-path">我的 → 账号管理 → 注销账号</p>
+                <p>阅读注销说明并确认后，即可发起永久注销。账号注销后，账号资料及相关用户数据将被删除，且无法恢复。为了防止误操作，注销过程中可能需要再次确认身份。注销账号与退出登录不同：退出登录不会删除数据，注销账号会永久删除账号及相关数据。</p>
+              </article>
+              <article class="legal-faq-item">
+                <h3>8. App 无法正常使用怎么办？</h3>
+                <p>请尝试以下方法：</p>
+                <ul>
+                  <li>检查设备的网络连接；</li>
+                  <li>完全退出 App 后重新打开；</li>
+                  <li>确认已安装最新版本；</li>
+                  <li>重启设备后再次尝试；</li>
+                  <li>如果问题仍未解决，请通过支持邮箱联系我们。</li>
+                </ul>
+                <p>反馈问题时，建议提供以下信息：</p>
+                <ul>
+                  <li>问题发生时间；</li>
+                  <li>问题描述及操作步骤；</li>
+                  <li>百智办公 的版本号；</li>
+                  <li>设备型号；</li>
+                  <li>iOS 或 iPadOS 版本；</li>
+                  <li>不包含密码、验证码等敏感信息的截图。</li>
+                </ul>
+              </article>
+            </div>
+          </section>
+
+          <section id="account-data">
+            <h2>三、账号与数据</h2>
+            <p>百智办公 重视您的个人信息和数据安全。有关个人信息的收集、使用、存储及删除规则，请查阅我们的隐私政策：</p>
+            <ul class="user-service-policy-links">
+              <li><a href={`${import.meta.env.BASE_URL}privacy-policy/`}>隐私政策</a></li>
+              <li><a href={`${import.meta.env.BASE_URL}user-agreement/`}>用户协议</a></li>
+            </ul>
+          </section>
+
+          <section id="requirements">
+            <h2>四、系统要求</h2>
+            <p>为了获得更稳定的使用体验，建议使用受支持的 iOS 或 iPadOS 版本，并将百智办公 更新至最新版本。</p>
+          </section>
+
+          <section id="developer">
+            <h2>五、开发者信息</h2>
+            <p><strong>应用名称：</strong>百智办公</p>
+            <p><strong>开发者/运营主体：</strong>北京长亭科技有限公司</p>
+            <p><strong>支持邮箱：</strong><a class="user-service-email" href="mailto:changzhi.li@chaitin.com">changzhi.li@chaitin.com</a></p>
+            <p><strong>官方网站：</strong><a href="https://jiying.chat/" target="_blank" rel="noopener noreferrer">https://jiying.chat/</a></p>
+            <p><strong>最近更新：</strong>{updatedAt}</p>
+          </section>
+        </div>
+        </div>
+      </div>
+    </article>
+  </main>
+</BaseLayout>

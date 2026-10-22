@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"time"
 )
+
+const defaultLogLevel = slog.LevelWarn
 
 type HTTP struct {
 	Addr            string
@@ -25,12 +26,21 @@ type Database struct {
 type Config struct {
 	HTTP
 	Database
-	PublicURL              string
-	EndpointMaxConnections int
-	InitialAdminName       string
-	InitialAdminEmail      string
-	InitialAdminPassword   string
-	LogLevel               slog.Level
+	Design
+	RuntimeDesktopOrigins        []string
+	RuntimeRelay                 bool
+	RuntimeStateDir              string
+	RuntimeServerID              string
+	RuntimeVerificationKeysFile  string
+	RuntimeSigningKeyFile        string
+	RuntimePreviewOriginTemplate string
+	RuntimeFilesOrigin           string
+	PublicURL                    string
+	EndpointMaxConnections       int
+	InitialAdminName             string
+	InitialAdminEmail            string
+	InitialAdminPassword         string
+	LogLevel                     slog.Level
 }
 
 func Load(args []string) (Config, error) {
@@ -54,40 +64,45 @@ func Load(args []string) (Config, error) {
 
 	logLevel := os.Getenv("MONKEYAI_LOG_LEVEL")
 	if logLevel == "" {
-		logLevel = slog.LevelInfo.String()
+		logLevel = defaultLogLevel.String()
 	}
 
 	endpointMax, err := strconv.Atoi(envOr("MONKEYAI_ENDPOINT_MAX_CONNECTIONS", "1000"))
 	if err != nil {
 		return Config{}, fmt.Errorf("解析端点连接上限: %w", err)
 	}
+	runtimeRelay, err := strconv.ParseBool(envOr("MONKEYAI_RUNTIME_RELAY", "true"))
+	if err != nil {
+		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
+	}
 	cfg := Config{
-		Addr:                   addr,
-		EndpointMaxConnections: endpointMax,
-		PprofAddr:              pprofAddr,
-		ShutdownTimeout:        shutdownTimeout,
-		URL:                    os.Getenv("MONKEYAI_DATABASE_URL"),
-		PublicURL:              envOr("MONKEYAI_PUBLIC_URL", "http://localhost:8080"),
-		InitialAdminName:       envOr("MONKEYAI_INITIAL_ADMIN_NAME", "MonkeyAI Admin"),
-		InitialAdminEmail:      strings.TrimSpace(os.Getenv("MONKEYAI_INITIAL_ADMIN_EMAIL")),
-		InitialAdminPassword:   os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
+		Design:                       loadDesign(),
+		RuntimeDesktopOrigins:        strings.FieldsFunc(os.Getenv("MONKEYAI_RUNTIME_DESKTOP_ORIGINS"), func(r rune) bool { return r == ',' || r == ' ' }),
+		RuntimeRelay:                 runtimeRelay,
+		RuntimeStateDir:              envOr("MONKEYAI_RUNTIME_STATE_DIR", "data/runtime"),
+		RuntimeServerID:              os.Getenv("MONKEYAI_RUNTIME_SERVER_ID"),
+		RuntimeVerificationKeysFile:  os.Getenv("MONKEYAI_RUNTIME_VERIFICATION_KEYS_FILE"),
+		RuntimeSigningKeyFile:        os.Getenv("MONKEYAI_RUNTIME_SIGNING_KEY_FILE"),
+		RuntimePreviewOriginTemplate: os.Getenv("MONKEYAI_RUNTIME_PREVIEW_ORIGIN_TEMPLATE"),
+		RuntimeFilesOrigin:           os.Getenv("MONKEYAI_RUNTIME_FILES_ORIGIN"),
+		Addr:                         addr,
+		EndpointMaxConnections:       endpointMax,
+		PprofAddr:                    pprofAddr,
+		ShutdownTimeout:              shutdownTimeout,
+		URL:                          os.Getenv("MONKEYAI_DATABASE_URL"),
+		PublicURL:                    envOr("MONKEYAI_PUBLIC_URL", "http://localhost:8080"),
+		InitialAdminName:             envOr("MONKEYAI_INITIAL_ADMIN_NAME", "MonkeyAI Admin"),
+		InitialAdminEmail:            strings.TrimSpace(os.Getenv("MONKEYAI_INITIAL_ADMIN_EMAIL")),
+		InitialAdminPassword:         os.Getenv("MONKEYAI_INITIAL_ADMIN_PASSWORD"),
 	}
 
-	flags := flag.NewFlagSet("monkeyai-server", flag.ContinueOnError)
-	flags.IntVar(&cfg.EndpointMaxConnections, "endpoint-max-connections", cfg.EndpointMaxConnections, "端点连接总上限（含等待握手）")
-	flags.StringVar(&cfg.Addr, "http-addr", cfg.Addr, "HTTP 监听地址")
-	flags.StringVar(&cfg.PprofAddr, "pprof-addr", cfg.PprofAddr, "pprof 监听地址")
-	flags.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "优雅退出超时时间")
-	flags.StringVar(&cfg.URL, "database-url", cfg.URL, "PostgreSQL 连接地址")
-	flags.StringVar(&cfg.PublicURL, "public-url", cfg.PublicURL, "统一对外访问地址")
-	flags.StringVar(&logLevel, "log-level", logLevel, "日志级别")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(args, &cfg, &logLevel); err != nil {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}
-	if flags.NArg() != 0 {
-		return Config{}, fmt.Errorf("无法识别的启动参数: %s", strings.Join(flags.Args(), " "))
-	}
 
+	if err := validateDesign(&cfg.Design); err != nil {
+		return Config{}, err
+	}
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
 		return Config{}, errors.New("HTTP 监听地址不能为空")
@@ -105,14 +120,18 @@ func Load(args []string) (Config, error) {
 		return Config{}, errors.New("服务端公网地址不能为空")
 	}
 	parsed, err := url.Parse(cfg.PublicURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return Config{}, errors.New("public-url 必须是绝对 HTTP(S) 地址")
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return Config{}, errors.New("public-url 必须是无凭据、查询或片段的绝对 HTTP(S) 地址")
 	}
 	if (cfg.InitialAdminEmail == "") != (cfg.InitialAdminPassword == "") {
 		return Config{}, errors.New("首次管理员邮箱和密码必须同时配置")
 	}
 	if cfg.InitialAdminPassword != "" && len(cfg.InitialAdminPassword) < 12 {
 		return Config{}, errors.New("首次管理员密码不能少于 12 个字符")
+	}
+	cfg.RuntimeFilesOrigin = strings.TrimRight(strings.TrimSpace(cfg.RuntimeFilesOrigin), "/")
+	if cfg.RuntimeFilesOrigin == "" {
+		cfg.RuntimeFilesOrigin = cfg.PublicURL
 	}
 	if cfg.EndpointMaxConnections < 1 {
 		return Config{}, errors.New("端点连接上限必须大于 0")

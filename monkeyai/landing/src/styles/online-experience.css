@@ -1,0 +1,70 @@
+.experience-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgb(12 28 23 / 42%);
+  backdrop-filter: blur(5px);
+  animation: experience-fade-in 160ms ease-out;
+}
+
+.experience-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  width: min(760px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 32px;
+  border: 1px solid var(--studio-line);
+  border-radius: 16px;
+  color: var(--studio-text);
+  background: var(--studio-surface);
+  box-shadow: 0 24px 80px rgb(12 28 23 / 20%);
+  transform: translate(-50%, -50%);
+  animation: experience-fade-in 160ms ease-out;
+}
+
+.experience-heading { padding-right: 28px; }
+body.site-theme .experience-title { font-size: var(--type-section); }
+.experience-dialog .experience-close { position: absolute; top: 20px; right: 20px; border-color: transparent; }
+.experience-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+.experience-option { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; padding: 24px; border: 1px solid var(--studio-line); border-radius: 10px; }
+.experience-option-heading { display: flex; align-items: center; gap: 12px; }
+.experience-option-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; color: var(--green); background: var(--studio-raised); }
+.experience-option-icon svg { width: 22px; height: 22px; }
+.experience-option-heading h3 { margin: 0; }
+.experience-steps { display: grid; width: 100%; gap: 24px; margin: 24px 0 0; padding: 0; list-style: none; }
+.experience-step-heading { display: flex; align-items: center; gap: 10px; }
+.experience-step-number { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 24px; height: 24px; border: 1px solid var(--studio-line); border-radius: 50%; color: var(--green); font-size: var(--type-caption); }
+body.site-theme .experience-step-heading h4 { font-size: var(--type-body); }
+.experience-step-download { width: 100%; margin-top: 12px; }
+.experience-steps .experience-server { margin: 12px 0 0; }
+.experience-login-note { margin-top: 8px; color: var(--studio-subtle); font-size: var(--type-caption); }
+.experience-server { width: 100%; margin: 18px 0 24px; }
+.experience-admin-server { margin-bottom: 0; }
+.experience-server-label { color: var(--studio-muted); font-size: var(--type-caption); }
+.experience-copy-field { display: block; min-width: 0; width: 100%; color: inherit; overflow-wrap: anywhere; user-select: text; cursor: pointer; }
+.experience-copy-field:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.experience-server-address { display: flex; align-items: center; gap: 4px; margin-top: 6px; padding: 8px; border: 1px solid var(--studio-line); border-radius: 8px; background: var(--studio-bg); }
+.experience-server-address code { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: var(--type-caption); user-select: text; }
+.experience-account { display: grid; width: 100%; gap: 10px; margin: 18px 0 24px; padding: 12px; border: 1px solid var(--studio-line); border-radius: 8px; background: var(--studio-bg); }
+.experience-account > div { display: flex; align-items: baseline; gap: 8px; }
+.experience-account dt { flex-shrink: 0; color: var(--studio-muted); font-size: var(--type-caption); }
+.experience-account dd { min-width: 0; flex: 1; margin: 0; overflow-wrap: anywhere; }
+.experience-account code { font-size: var(--type-caption); user-select: text; }
+.experience-option .experience-option-action { width: 100%; margin-top: auto; }
+
+@keyframes experience-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 640px) {
+  .experience-dialog { width: calc(100vw - 24px); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); padding: 24px 20px; }
+  .experience-dialog .experience-close { top: 16px; right: 12px; }
+  .experience-options { grid-template-columns: minmax(0, 1fr); }
+  .experience-option { padding: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experience-overlay, .experience-dialog { animation: none; }
+}

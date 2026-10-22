@@ -1,0 +1,21 @@
+.studio-openness-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.studio-openness-item { position: relative; isolation: isolate; min-width: 0; min-height: 280px; overflow: hidden; padding: 28px; border: 0; border-radius: 16px; background: var(--studio-surface); }
+.studio-openness-background { position: absolute; inset: 0; z-index: -2; opacity: .18; pointer-events: none; }
+.studio-openness-item::before { position: absolute; inset: 0; z-index: -1; background: rgb(255 255 255 / 55%); content: ''; pointer-events: none; }
+.studio-openness-content { position: relative; }
+.studio-openness-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.studio-openness-top > svg { flex-shrink: 0; color: var(--green); }
+.studio-openness-top > span { color: var(--studio-subtle); font-size: var(--type-caption); line-height: var(--leading-control); }
+.studio-openness-item h3 { margin-bottom: 14px; color: var(--studio-text); font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: var(--leading-title); }
+.studio-openness-item p { max-width: 520px; color: var(--studio-muted); font-size: var(--type-body); line-height: var(--leading-body); }
+.studio-openness > .studio-actions { margin-top: 36px; }
+
+@media (max-width: 800px) {
+  .studio-openness-grid { gap: 20px; }
+  .studio-openness-item { padding: 24px; }
+}
+@media (max-width: 520px) {
+  .studio-openness-grid { grid-template-columns: 1fr; gap: 20px; }
+  .studio-openness-item { min-height: 0; padding: 24px 20px; }
+  .studio-openness-top { gap: 10px; margin-bottom: 22px; }
+}

@@ -1,0 +1,81 @@
+---
+import { Icon } from 'astro-icon/components';
+
+const conversations = ['发布会方案与汇报', '整理本周销售数据', '制作新品宣传海报', '开发活动报名页面'];
+---
+
+<figure class="product-preview" aria-label="百智办公客户端界面示意：通过对话整理资料并生成汇报成果">
+  <div class="product-window">
+    <div class="product-titlebar" aria-hidden="true"><div class="product-traffic-lights"><i></i><i></i><i></i></div><span>百智办公</span></div>
+    <div class="product-shell">
+      <div class="product-sidebar">
+        <div class="product-brand"><span class="product-brand-icon"><img src={`${import.meta.env.BASE_URL}monkeyai-logo.png`} width="24" height="24" alt="" /></span><span><strong>百智办公</strong></span></div>
+        <div class="product-device"><Icon name="hugeicons:computer" size={11} aria-hidden="true" />这台电脑<Icon name="hugeicons:arrow-down-01" class="product-chevron" size={11} aria-hidden="true" /></div>
+        <div class="product-new-chat"><Icon name="hugeicons:bubble-chat" size={11} />新建会话<span class="product-shortcut"><Icon name="hugeicons:command" size={9} aria-hidden="true" /> N</span></div>
+        <div class="product-project"><span>项目</span><Icon name="hugeicons:more-horizontal" size={11} aria-hidden="true" /></div>
+        <div class="product-project-name">创建第一个项目</div>
+        <p class="product-history-label">今天</p>
+        <ul class="product-history">
+          {conversations.map((title, index) => <li class:list={[index === 0 && 'is-active']}><Icon name={index === 0 ? 'hugeicons:bubble-chat' : 'hugeicons:flash'} size={10} /><span>{title}</span>{index === 0 && <i aria-hidden="true"></i>}</li>)}
+        </ul>
+        <p class="product-history-label">昨天</p>
+        <div class="product-older-chat"><Icon name="hugeicons:bubble-chat" size={10} />团队知识库整理</div>
+        <div class="product-sidebar-footer"><span><Icon name="hugeicons:comment-01" size={11} aria-hidden="true" />反馈</span><span><Icon name="hugeicons:settings-01" size={11} aria-hidden="true" />设置 <span class="product-shortcut" aria-hidden="true"><Icon name="hugeicons:command" size={9} /> ,</span></span></div>
+      </div>
+      <div class="product-main">
+        <div class="product-chat-header"><span>发布会方案与汇报</span><div><span><Icon name="hugeicons:global" size={11} aria-hidden="true" />浏览器</span><span><Icon name="hugeicons:sidebar-right" size={11} aria-hidden="true" />工作区</span></div></div>
+        <div class="product-chat">
+          <span class="product-day">今天</span>
+          <div class="product-user-message">整理活动资料，生成一份发布会汇报 PPT。</div>
+          <div class="product-answer">
+            <p>已整理活动资料，并为你生成汇报内容。</p>
+            <ul class="product-steps"><li><Icon name="hugeicons:tick-02" size={11} />梳理活动目标与筹备进度</li><li><Icon name="hugeicons:tick-02" size={11} />汇总报名数据与活动预算</li><li><Icon name="hugeicons:tick-02" size={11} />生成汇报 PPT 和配套表格</li></ul>
+            <div class="product-files"><div><span class="product-file-icon ppt-icon"><Icon name="hugeicons:ppt-01" size={14} aria-hidden="true" /></span><span><strong>新品发布会汇报.pptx</strong><small>演示文稿 · 8 页</small></span></div><div><span class="product-file-icon sheet-icon"><Icon name="hugeicons:xls-01" size={14} aria-hidden="true" /></span><span><strong>活动预算.xlsx</strong><small>电子表格</small></span></div></div>
+            <span class="product-completion">已完成 · 用时 32 秒</span>
+          </div>
+        </div>
+        <div class="product-input-area">
+          <div class="product-composer"><p>描述任务，输入 / 使用技能，@ 引用文件…</p><div class="product-composer-tools"><span>更多操作<Icon name="hugeicons:arrow-down-01" size={10} aria-hidden="true" /></span><span class="product-model">选择模型<Icon name="hugeicons:arrow-down-01" size={10} aria-hidden="true" /></span><span class="product-send" aria-hidden="true"><Icon name="hugeicons:arrow-up-02" size={12} /></span></div></div>
+          <span class="product-input-hint">Enter 发送 · Shift Enter 换行</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<style>
+  .product-preview { container-type: inline-size; width: 100%; min-width: 0; margin: 0; }
+  /* This is a scaled interface illustration; keep its three text roles proportional. */
+  .product-window { --preview-body: 1.8cqw; --preview-caption: 1.4cqw; --preview-brand: 2cqw; --preview-text: #1f2937; --preview-muted: #374151; --preview-subtle: #4b5563; overflow: hidden; border: 1px solid #dedfdd; border-radius: 12px; background: #f9f9f8; color: var(--preview-text); box-shadow: 0 20px 50px -20px rgb(32 50 42 / 20%), 0 2px 8px rgb(32 50 42 / 4%); font-size: var(--preview-body); line-height: 1.5; text-align: left; }
+  .product-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; height: 5.5cqw; padding-inline: 2.2cqw; color: var(--preview-muted); font-size: var(--preview-caption); font-weight: var(--weight-heading); }
+  .product-traffic-lights { display: flex; align-items: center; gap: 1.2cqw; }
+  .product-traffic-lights i { width: 1.8cqw; height: 1.8cqw; border: 1px solid rgb(0 0 0 / 8%); border-radius: 50%; background: #ff5f57; }
+  .product-traffic-lights i:nth-child(2) { background: #febc2e; }
+  .product-traffic-lights i:nth-child(3) { background: #28c840; }
+  .product-shell { display: grid; grid-template-columns: 23% minmax(0, 1fr); min-height: 62cqw; }
+  .product-sidebar { display: flex; flex-direction: column; min-width: 0; padding: 1cqw 1.4cqw 2cqw; }
+  .product-brand { display: flex; align-items: center; gap: 1.1cqw; padding: 0 .4cqw 2.3cqw; }.product-brand-icon { display: grid; place-items: center; width: 3.6cqw; height: 3.6cqw; flex-shrink: 0; border-radius: 1cqw; }.product-brand-icon img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .product-brand strong { display: block; font-size: var(--preview-brand); font-weight: var(--weight-heading); }
+  .product-device, .product-new-chat { display: flex; align-items: center; gap: 1cqw; padding: 1cqw .7cqw; white-space: nowrap; }
+  .product-device { color: var(--preview-muted); }.product-chevron { margin-left: auto; color: var(--preview-subtle); }
+  .product-new-chat { border: 1px solid #e6e7e3; border-radius: .9cqw; background: #fff; }.product-new-chat > span { margin-left: auto; color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-sidebar svg { flex-shrink: 0; width: 1.9cqw; height: 1.9cqw; }
+  .product-project { display: flex; justify-content: space-between; margin-top: 2cqw; padding-inline: .7cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }.product-project-name { padding: .8cqw .7cqw; color: var(--preview-muted); font-size: var(--preview-body); }
+  .product-history-label { margin: 2cqw .7cqw .5cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }.product-history { display: grid; gap: .3cqw; margin: 0; padding: 0; list-style: none; }
+  .product-history li, .product-older-chat { display: flex; align-items: center; gap: .8cqw; min-width: 0; padding: .8cqw .7cqw; border-radius: .7cqw; color: var(--preview-muted); font-size: var(--preview-body); }.product-history li > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.product-history .is-active { background: #e9eae5; color: var(--preview-text); }.product-history li > i { width: .7cqw; height: .7cqw; flex-shrink: 0; margin-left: auto; border-radius: 50%; background: #4d9b79; }
+  .product-sidebar-footer { display: grid; gap: 1cqw; margin-top: auto; padding: 3cqw .7cqw 0; color: var(--preview-muted); font-size: var(--preview-body); }.product-sidebar-footer > span { display: flex; align-items: center; gap: .8cqw; }.product-sidebar-footer .product-shortcut { margin-left: auto; }.product-sidebar-footer > span > span { color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-shortcut { display: inline-flex; align-items: center; gap: .3cqw; }.product-sidebar .product-shortcut svg { width: 1.4cqw; height: 1.4cqw; }
+  .product-project { align-items: center; }
+  .product-chat-header > div > span, .product-composer-tools > span { display: inline-flex; align-items: center; gap: .5cqw; }
+  .product-chat-header svg, .product-composer-tools svg { width: 1.8cqw; height: 1.8cqw; flex-shrink: 0; }
+  .product-composer-tools .product-send { justify-content: center; }
+  .product-file-icon svg { width: 2.8cqw; height: 2.8cqw; }
+  .product-main { display: flex; flex-direction: column; min-width: 0; margin: 0 1cqw 1cqw 0; border: 1px solid #e8e9e4; border-radius: 1.5cqw; background: #fff; }
+  .product-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 1cqw; padding: 1.7cqw 1.8cqw; border-bottom: 1px solid #f0f1ed; font-size: var(--preview-body); }.product-chat-header > div { display: flex; gap: 1.6cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-chat { display: flex; flex-direction: column; flex: 1; padding: 2.5cqw 4cqw 2cqw; }.product-day { align-self: center; margin-bottom: 2.4cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-user-message { align-self: flex-end; max-width: 95%; padding: 1.5cqw 1.8cqw; border-radius: 1.7cqw 1.7cqw .4cqw 1.7cqw; background: #282b27; color: #fff; font-size: var(--preview-body); }
+  .product-answer { margin-top: 3cqw; }.product-answer > p { margin: 0; color: var(--preview-text); font-size: var(--preview-body); line-height: 1.8; }.product-steps { display: grid; gap: 1cqw; margin: 1.8cqw 0; padding: 0; list-style: none; color: var(--preview-muted); font-size: var(--preview-body); }.product-steps li { display: flex; align-items: center; gap: .8cqw; }.product-steps svg { width: 1.9cqw; height: 1.9cqw; color: #50886e; }
+  .product-files { display: grid; grid-template-columns: 1.25fr 1fr; gap: 1cqw; }.product-files > div { display: flex; align-items: center; gap: 1cqw; min-width: 0; padding: 1.3cqw 1cqw; border: 1px solid #e6e9e1; border-radius: 1cqw; background: #fcfdfb; }.product-files > div > span:last-child { min-width: 0; }.product-files strong { display: block; overflow: hidden; color: var(--preview-text); font-size: var(--preview-body); font-weight: var(--weight-heading); white-space: nowrap; text-overflow: ellipsis; }.product-files small { display: block; margin-top: .4cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-file-icon { display: grid; place-items: center; width: 3.6cqw; height: 4.1cqw; flex-shrink: 0; border-radius: .5cqw; font-size: var(--preview-body); font-weight: var(--weight-heading); }.ppt-icon { background: #f9ecdf; color: #b5834d; }.sheet-icon { background: #e9f1e5; color: #75915e; }.product-completion { display: block; margin-top: 1.6cqw; color: var(--preview-subtle); font-size: var(--preview-caption); }
+  .product-input-area { padding: 1cqw 4cqw 1.8cqw; }.product-composer { padding: 1.5cqw; border: 1px solid #d7dbd1; border-radius: 1.2cqw; box-shadow: 0 1px 1px rgb(0 0 0 / 3%); }.product-composer > p { margin: 0 0 3cqw; color: var(--preview-subtle); font-size: var(--preview-body); }.product-composer-tools { display: flex; align-items: center; gap: 1cqw; color: var(--preview-muted); font-size: var(--preview-caption); }.product-model { margin-left: auto; }.product-send { display: grid; place-items: center; width: 3cqw; height: 3cqw; border-radius: .8cqw; background: #8d9684; color: #fff; font-size: var(--preview-body); }.product-input-hint { display: block; margin-top: .8cqw; color: var(--preview-subtle); font-size: var(--preview-caption); text-align: right; }
+</style>

@@ -604,6 +604,63 @@ func (q *Queries) LockOwned(ctx context.Context, arg LockOwnedParams) (string, e
 	return id, err
 }
 
+const pageModels = `-- name: PageModels :many
+SELECT id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+FROM models
+WHERE deleted_at IS NULL
+    AND ($1::jsonb ->> 'ownership' = ''
+        OR ownership_type = $1::jsonb ->> 'ownership')
+    AND (strpos(lower(display_name), lower($1::jsonb ->> 'search')) > 0
+        OR strpos(lower(model_id), lower($1::jsonb ->> 'search')) > 0
+        OR strpos(lower(base_url), lower($1::jsonb ->> 'search')) > 0)
+    AND id::text > $1::jsonb ->> 'cursor'
+ORDER BY id
+LIMIT ($1::jsonb ->> 'limit')::integer
+`
+
+func (q *Queries) PageModels(ctx context.Context, filter []byte) ([]Model, error) {
+	rows, err := q.db.Query(ctx, pageModels, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Model{}
+	for rows.Next() {
+		var i Model
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnershipType,
+			&i.OwnerUserID,
+			&i.ModelID,
+			&i.DisplayName,
+			&i.Protocol,
+			&i.BaseUrl,
+			&i.ApiKey,
+			&i.AdvancedConfig,
+			&i.CreditMultiplier,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Kind,
+			&i.Provider,
+			&i.ProviderOptions,
+			&i.ImageConfig,
+			&i.ImagePricing,
+			&i.VideoConfig,
+			&i.VideoPricing,
+			&i.ProxyID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordModelCall = `-- name: RecordModelCall :execresult
 INSERT INTO model_calls (session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
     output_tokens, cache_hit, error_code, started_at, completed_at, first_token_duration_ms)

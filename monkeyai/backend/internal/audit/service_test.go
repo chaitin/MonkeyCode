@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -137,6 +138,7 @@ func fixture(t *testing.T) (*Service, Actor) {
 func TestRequestIntegration(t *testing.T) {
 	s, actor := fixture(t)
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(s.logger))
 	router.Use(s.Middleware(func(*http.Request) Actor { return actor }))
 	s.RegisterAdmin(router)
 	const target = "22222222-2222-4222-8222-222222222222"
@@ -187,17 +189,9 @@ func TestRequestIntegration(t *testing.T) {
 		}
 		r.Header.Set("X-Request-ID", "forged-request")
 		w := httptest.NewRecorder()
-		if operation == "panic" {
-			func() {
-				defer func() {
-					if recover() == nil {
-						t.Error("异常未传播")
-					}
-				}()
-				router.ServeHTTP(w, r)
-			}()
-		} else {
-			router.ServeHTTP(w, r)
+		router.ServeHTTP(w, r)
+		if operation == "panic" && w.Code != 500 {
+			t.Error("外层未恢复异常")
 		}
 	}
 	for _, operation := range []string{"commit", "batch", "rollback", "failed", "panic"} {
@@ -253,6 +247,7 @@ func TestCanceledRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(s.logger))
 	router.Use(s.Middleware(func(*http.Request) Actor { return actor }))
 	router.Put("/settings/{key}", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)

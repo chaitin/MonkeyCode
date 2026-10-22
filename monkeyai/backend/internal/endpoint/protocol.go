@@ -179,7 +179,7 @@ func hello(data []byte) (Hello, error) {
 		return h, errInvalid
 	}
 	p := h.Profile
-	if !text(p.DeviceName, 128) || !text(p.OSVersion, 64) || !text(p.Arch, 32) || !text(p.ClientVersion, 64) || !slices.Contains([]string{"macos", "windows", "linux", "ios", "android"}, p.Platform) {
+	if !text(p.DeviceName, 128) || !text(p.OSVersion, 64) || !text(p.Arch, 32) || !text(p.ClientVersion, 64) || !text(p.Platform, 64) {
 		return h, errInvalid
 	}
 	if !versions[1] {

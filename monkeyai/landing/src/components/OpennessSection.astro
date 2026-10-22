@@ -1,0 +1,54 @@
+---
+import { Icon } from 'astro-icon/components';
+import { Code, BookOpen } from 'lucide-react';
+import SectionTitle from './SectionTitle.astro';
+import { ShaderBackground, type ShaderBackgroundProps } from './motion/shader-background';
+import '../styles/openness.css';
+
+const background = {
+  variant: 'water', colorBack: '#f1f7f4', colorHighlight: '#93c5b4', speed: 0.15,
+} satisfies ShaderBackgroundProps;
+
+const principles = [
+  {
+    icon: 'hugeicons:github-01', title: '项目开源', label: 'OPEN SOURCE',
+    description: '源代码公开可查，支持自主部署、审查与二次开发。按团队需要理解和修改产品，把协作空间掌握在自己手中。',
+  },
+  {
+    icon: 'hugeicons:code', title: '所有 API 完全开放', label: 'OPEN API',
+    description: '所有 API 均向开发者开放。消息、项目、任务、文档等能力都能通过接口接入，让已有系统直接参与团队协作。',
+  },
+  {
+    icon: 'hugeicons:robot-01', title: '所有能力，AI 直接控制', label: 'AI CONTROL',
+    description: '所有产品能力均可由 AI 在授权范围内直接调用。从查询信息到推进任务，用自然语言安排工作，重要操作由用户确认。',
+  },
+  {
+    icon: 'hugeicons:plug-01', title: '应用开发简单，第三方轻松接入', label: 'BUILD & CONNECT',
+    description: '通过清晰的应用接入方式，轻松连接第三方服务、业务系统与 MCP 工具。让应用以独立身份加入百智办公，快速扩展团队的协作能力。',
+  },
+];
+---
+
+<section class="studio-section studio-container studio-openness" id="openness" aria-labelledby="openness-title">
+  <div class="studio-section-heading">
+    <span class="studio-eyebrow"><i></i>开放性 <span>OPEN BY DESIGN</span></span>
+    <SectionTitle id="openness-title">从代码到能力，<span>全面开放</span></SectionTitle>
+    <p>看得见源代码，调得通 API，也能让 AI 直接参与执行。<br class="studio-mobile-break" />把已有系统接进来，让团队按自己的方式工作。</p>
+  </div>
+
+  <div class="studio-openness-grid">
+    {principles.map((principle, index) => <article class="studio-openness-item">
+      <div class="studio-openness-background" aria-hidden="true"><ShaderBackground client:visible {...background} /></div>
+      <div class="studio-openness-content">
+        <div class="studio-openness-top"><Icon name={principle.icon} size={28} aria-hidden="true" /><span>{String(index + 1).padStart(2, '0')} / {principle.label}</span></div>
+        <h3>{principle.title}</h3>
+        <p>{principle.description}</p>
+      </div>
+    </article>)}
+  </div>
+
+  <div class="studio-actions">
+    <a class="studio-resource-link" href="https://github.com/chaitin/monkeycode" target="_blank" rel="noopener noreferrer"><Code size={20} aria-hidden="true" /><span>查看源代码</span></a>
+    <a class="studio-resource-link" href="https://github.com/chaitin/monkeycode" target="_blank" rel="noopener noreferrer"><BookOpen size={20} aria-hidden="true" /><span>查看开发文档</span></a>
+  </div>
+</section>

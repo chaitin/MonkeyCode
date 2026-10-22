@@ -4,6 +4,8 @@
 >
 > 适用范围：MonkeyCode/monkeyai/backend。
 >
+> 后台现状：会话总览、任务统计和会话列表页面及其专用查询 API 已移除。数据总览使用的任务指标、任务历史、会话详情、资源分析和客户端统计继续保留。下文保留一期设计记录，现行接口以 `../backend/api/admin.yaml` 为准。
+>
 > 依据：`SESSION-REPORTING-PLAN.md`、`SESSION-REPORTING-SPEC.md`，以及当前会话、网关、计费、设备和统计实现。
 
 ## 1. 目标与边界
@@ -684,7 +686,7 @@ ResolveSession(user_id, session_header, parent_header)
 - `outcome`：`complete`、`interrupted`、`error`、`max_turns`、`output_limit`、`unknown`。
 - `include_placeholders`：默认 false；仅会话列表和质量面板可用。
 - `include_purged`：默认 false；仅管理员可用，且只返回墓碑摘要，不返回清除前明细。
-- `limit`：默认 50，最大 100。
+- `limit`：默认 50，客户端和资源列表最大 500。管理端每页条数统一提供 20、50、100、200、500。
 - `cursor`：不使用 offset 深分页。
 
 列表接口的 `items` 必须返回稳定的 `next_cursor`；统计接口返回 `generated_at`、`from`、`until` 和 `data_freshness_seconds`，让页面能区分“无数据”和“数据尚未同步”。除质量面板外，所有正式会话统计接口默认增加 `reporting_enabled_at IS NOT NULL` 条件。
@@ -749,7 +751,7 @@ ResolveSession(user_id, session_header, parent_header)
 | 并发会话 | 每账号最多 2 个，会话内串行 |
 | 会话请求 | 每用户每分钟 60 次 |
 | 轮次请求 | 每用户每分钟 30 批、4 MiB |
-| 设备登记 | 每用户每小时 10 次 |
+| 设备登记 | 每用户每小时 100 次 |
 | 网关未知占位 | 每用户未补齐占位会话最多 1000 个 |
 | 重试 | 5 秒起，指数退避至 5 分钟并加抖动 |
 

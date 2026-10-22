@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,6 +26,7 @@ type View struct {
 }
 
 type Endpoint struct {
+	grantVersion int64
 	View
 	Status    string `json:"status"`
 	CreatedAt int64  `json:"created_at"`
@@ -47,7 +50,18 @@ type Store interface {
 	Touch(context.Context, string, string, time.Time) error
 }
 
-type Postgres struct{ pool *pgxpool.Pool }
+type Postgres struct {
+	pool             *pgxpool.Pool
+	auth             DeviceAuthorizer
+	executionRevoker func(string, string, int64)
+}
+
+func (p *Postgres) WithDeviceAuthorizer(auth DeviceAuthorizer) *Postgres { p.auth = auth; return p }
+
+func (p *Postgres) WithExecutionRevoker(revoke func(string, string, int64)) *Postgres {
+	p.executionRevoker = revoke
+	return p
+}
 
 func NewPostgres(pool *pgxpool.Pool) *Postgres { return &Postgres{pool: pool} }
 
@@ -73,7 +87,7 @@ func fromRow(row sqlc.Endpoint) Endpoint {
 			},
 			Alias: row.Alias, DisplayName: name, LastSeenAt: millis(row.LastSeenAt), LastReportedAt: millis(row.LastReportedAt),
 		},
-		Status: row.Status, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt),
+		Status: row.Status, grantVersion: row.GrantVersion, CreatedAt: row.CreatedAt.UnixMilli(), UpdatedAt: row.UpdatedAt.UnixMilli(), RevokedAt: millis(row.RevokedAt),
 	}
 }
 func missing(err error) error {
@@ -99,7 +113,7 @@ func rollback(ctx context.Context, tx pgx.Tx, user, operation string) {
 	if err := tx.Rollback(ctx); err != nil && ctx.Err() == nil &&
 		!errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) &&
 		!errors.Is(err, context.DeadlineExceeded) {
-		slog.Warn("端点事务回滚失败", "user_id", user, "operation", operation, "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "endpoint.operation.warn", "端点事务回滚失败", "module", "endpoint", "operation", "rollback", "user_id", user, "operation", operation, "error_type", fmt.Sprintf("%T", err))
 	}
 }
 
@@ -185,7 +199,7 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 	if err != nil {
 		return Endpoint{}, err
 	}
-	if count > 10 {
+	if count > 100 {
 		return Endpoint{}, fault{"rate_limited"}
 	}
 	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
@@ -219,7 +233,8 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 	})
 }
 func (p *Postgres) Update(ctx context.Context, user, machine, action string, alias *string, max int) (Endpoint, error) {
-	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
+	revokedGrant := ""
+	result, err := p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
 		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
 		if err != nil {
 			return old, missing(err)
@@ -232,19 +247,53 @@ func (p *Postgres) Update(ctx context.Context, user, machine, action string, ali
 			}
 			row, err = q.Rename(ctx, sqlc.RenameParams{UserID: user, MachineID: machine, Alias: alias})
 		case "revoke", "restore":
+			if old.KeyID != nil && action == "revoke" {
+				principal, ok := identity.PrincipalFromContext(ctx)
+				if !ok || !principal.Has("device:manage") || p.auth == nil {
+					return old, executionFailure(403, "permission_denied")
+				}
+				valid, authErr := p.auth.AuthorizeDevice(ctx, tx, principal, "device:manage")
+				if authErr != nil {
+					return old, authErr
+				}
+				if !valid {
+					return old, executionFailure(403, "permission_denied")
+				}
+			}
 			status := "revoked"
 			if action == "restore" {
 				status = "active"
 			}
-			if old.Status == status {
-				return old, nil
-			}
-			if status == "active" {
-				if err = limit(ctx, q, user, max); err != nil {
+			if action == "revoke" && old.DeploymentMode != nil && *old.DeploymentMode == "standalone" && old.ActiveGrantID != nil {
+				revoked, err := p.auth.RevokeRuntimeGrant(ctx, tx, user, machine, *old.ActiveGrantID)
+				if err != nil {
 					return old, err
 				}
+				if revoked {
+					revokedGrant = *old.ActiveGrantID
+				}
 			}
-			row, err = q.Status(ctx, sqlc.StatusParams{UserID: user, MachineID: machine, Status: status})
+			securityChanged := false
+			if action == "revoke" && old.KeyID != nil && old.RemoteAccessState != "revoked" {
+				old, err = q.RevokeExecution(ctx, sqlc.RevokeExecutionParams{UserID: user, MachineID: machine})
+				if err != nil {
+					return old, err
+				}
+				securityChanged = true
+			}
+			if old.Status == status {
+				if !securityChanged {
+					return old, nil
+				}
+				row = old
+			} else {
+				if status == "active" {
+					if err = limit(ctx, q, user, max); err != nil {
+						return old, err
+					}
+				}
+				row, err = q.Status(ctx, sqlc.StatusParams{UserID: user, MachineID: machine, Status: status})
+			}
 		default:
 			return old, errInvalid
 		}
@@ -254,6 +303,13 @@ func (p *Postgres) Update(ctx context.Context, user, machine, action string, ali
 		err = audit.Write(ctx, tx, audit.Event{ActorID: user, Action: "endpoint." + action, Category: "security", TargetType: "endpoint", TargetID: row.ID, Params: map[string]string{"machine_id": machine}})
 		return row, err
 	})
+	if err == nil && revokedGrant != "" {
+		p.auth.NotifyGrantRevoked(revokedGrant)
+	}
+	if err == nil && action == "revoke" && p.executionRevoker != nil {
+		p.executionRevoker(user, machine, result.grantVersion)
+	}
+	return result, err
 }
 func (p *Postgres) Touch(ctx context.Context, user, machine string, at time.Time) error {
 	return sqlc.New(p.pool).Touch(ctx, sqlc.TouchParams{UserID: user, MachineID: machine, SeenAt: at})

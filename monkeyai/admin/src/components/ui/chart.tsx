@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
 
@@ -62,7 +62,7 @@ function ChartContainer({
         data-slot="chart"
         data-chart={chartId}
         className={cn(
-          "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
+          "legacy-chart-aspect relative flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
           className
         )}
         {...props}
@@ -124,6 +124,7 @@ function ChartTooltipContent({
   labelFormatter,
   labelClassName,
   formatter,
+  valueFormatter,
   color,
   nameKey,
   labelKey,
@@ -134,6 +135,7 @@ function ChartTooltipContent({
     indicator?: "line" | "dot" | "dashed"
     nameKey?: string
     labelKey?: string
+    valueFormatter?: (value: TooltipValueType) => React.ReactNode
   } & Omit<
     RechartsPrimitive.DefaultTooltipContentProps<
       TooltipValueType,
@@ -219,7 +221,7 @@ function ChartTooltipContent({
                       !hideIndicator && (
                         <div
                           className={cn(
-                            "shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)",
+                            "shrink-0 rounded-[2px] border-[var(--color-border)] bg-[var(--color-bg)]",
                             {
                               "h-2.5 w-2.5": indicator === "dot",
                               "w-1": indicator === "line",
@@ -239,7 +241,7 @@ function ChartTooltipContent({
                     )}
                     <div
                       className={cn(
-                        "flex flex-1 justify-between leading-none",
+                        "flex flex-1 justify-between gap-2 leading-none",
                         nestLabel ? "items-end" : "items-center"
                       )}
                     >
@@ -251,9 +253,11 @@ function ChartTooltipContent({
                       </div>
                       {item.value != null && (
                         <span className="font-mono font-medium text-foreground tabular-nums">
-                          {typeof item.value === "number"
-                            ? item.value.toLocaleString()
-                            : String(item.value)}
+                          {valueFormatter
+                            ? valueFormatter(item.value)
+                            : typeof item.value === "number"
+                              ? item.value.toLocaleString()
+                              : String(item.value)}
                         </span>
                       )}
                     </div>

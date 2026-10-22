@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -327,6 +328,8 @@ func (s *Service) submit(ctx context.Context, target proxy.Target, operation, re
 		s.failUnsubmitted(ctx, job, "submit_failed")
 		return imageproxy.Task{}, err
 	}
+	logging.Bind(ctx, slog.String("job_id", job.ID), slog.String("transaction_id", reservationID), slog.String("model_id", item.ID))
+	logging.Event(ctx, slog.Default(), slog.LevelInfo, "image.job.accepted", "生图任务已受理", "job_id", job.ID, "transaction_id", reservationID)
 	held = false
 	s.active.Go(func() {
 		defer func() { <-s.slots }()
@@ -350,11 +353,11 @@ func (s *Service) failUnsubmitted(ctx context.Context, job Job, code string) {
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if err := s.jobs.Finish(finishCtx, job.ID, "failed", code, 0, map[string]any{}); err != nil {
-		slog.Error("生图任务预留失败后的状态写入失败", "job", job.ID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "image.job.persist.failed", "生图任务预留失败后的状态写入失败", "module", "imagegen", "operation", "failUnsubmitted", "job_id", job.ID, "error", err)
 	}
 	if job.BillingTransactionID != nil {
 		if err := s.billing.Finish(finishCtx, *job.BillingTransactionID, billing.Usage{Known: true, Result: "failed", ErrorCode: code}); err != nil {
-			slog.Error("生图任务预留失败后释放积分失败", "job", job.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "billing.release.failed", "生图任务预留失败后释放积分失败", "module", "imagegen", "operation", "failUnsubmitted", "job_id", job.ID, "error", err)
 		}
 	}
 	s.linkImageCall(finishCtx, job)
@@ -366,7 +369,7 @@ func (s *Service) linkImageCall(ctx context.Context, job Job) {
 		return
 	}
 	if err := linker.LinkImageCall(ctx, job); err != nil {
-		slog.Error("绑定生图调用归属失败", "job", job.ID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "绑定生图调用归属失败", "module", "imagegen", "operation", "linkImageCall", "job_id", job.ID, "error", err)
 	}
 }
 
@@ -380,7 +383,7 @@ func providerErrorType(err error) string {
 func (s *Service) handleResult(ctx context.Context, job Job, result ProviderResult, err error) {
 	if err != nil {
 		if ctx.Err() == nil {
-			slog.Warn("生图上游请求失败，任务状态待确认", "job", job.ID, "operation", job.Operation, "error_type", providerErrorType(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "生图上游请求失败，任务状态待确认", "module", "imagegen", "operation", "handleResult", "job_id", job.ID, "operation", job.Operation, "error_type", providerErrorType(err))
 		}
 		s.markUnknown(ctx, job, "provider_status_unknown")
 		return
@@ -390,7 +393,7 @@ func (s *Service) handleResult(ctx context.Context, job Job, result ProviderResu
 		if result.ID == "" {
 			s.markUnknown(ctx, job, "provider_job_id_missing")
 		} else if err := s.jobs.Running(ctx, job.ID, result.ID); err != nil {
-			slog.Error("记录生图任务运行状态失败", "job", job.ID, "operation", "running", "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "记录生图任务运行状态失败", "module", "imagegen", "operation", "handleResult", "job_id", job.ID, "operation", "running", "error", err)
 			s.markUnknown(ctx, job, "provider_job_id_missing")
 		}
 	case "failed":
@@ -410,7 +413,7 @@ func (s *Service) finish(ctx context.Context, job Job, status, code string, imag
 		}
 		for i, image := range images {
 			if _, err := s.outputs.Save(ctx, job.ID, int32(i), image); err != nil {
-				slog.Error("生图结果归档失败", "job", job.ID, "error", err)
+				logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "生图结果归档失败", "module", "imagegen", "operation", "finish", "job_id", job.ID, "error", err)
 				s.markUnknown(ctx, job, "image_archive_failed")
 				return
 			}
@@ -419,13 +422,20 @@ func (s *Service) finish(ctx context.Context, job Job, status, code string, imag
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if err := s.jobs.Finish(finishCtx, job.ID, status, code, int32(len(images)), map[string]any{"generated_images": len(images)}); err != nil {
-		slog.Error("生图任务结算状态写入失败", "job", job.ID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "image.job.persist.failed", "生图任务结算状态写入失败", "module", "imagegen", "operation", "finish", "job_id", job.ID, "error", err)
 		return
+	}
+	if job.Status != status {
+		level := slog.LevelInfo
+		if status == "failed" {
+			level = slog.LevelError
+		}
+		logging.Event(ctx, slog.Default(), level, "image.job.completed", "生图任务已结束", "job_id", job.ID, "result", status, "error_code", code)
 	}
 	if job.BillingTransactionID != nil {
 		if err := s.billing.Finish(finishCtx, *job.BillingTransactionID,
 			billing.Usage{Known: true, Result: status, Images: int64(len(images)), ErrorCode: code, RequestID: requestID}); err != nil {
-			slog.Error("生图积分结算失败，等待恢复", "job", job.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "billing.settlement.pending", "生图积分结算失败，等待恢复", "module", "imagegen", "operation", "finish", "job_id", job.ID, "error", err)
 		}
 	}
 	s.linkImageCall(finishCtx, job)
@@ -435,12 +445,14 @@ func (s *Service) markUnknown(ctx context.Context, job Job, code string) {
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if err := s.jobs.Unknown(finishCtx, job.ID, code); err != nil {
-		slog.Error("生图任务未知状态写入失败", "job", job.ID, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "生图任务未知状态写入失败", "module", "imagegen", "operation", "markUnknown", "job_id", job.ID, "error", err)
+	} else if job.Status != "unknown" {
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.unknown", "生图任务进入待核查状态", "job_id", job.ID, "error_code", code)
 	}
 	if job.BillingTransactionID != nil {
 		if err := s.billing.Finish(finishCtx, *job.BillingTransactionID,
 			billing.Usage{Known: false, Result: "failed", ErrorCode: code}); err != nil {
-			slog.Error("生图未知状态计费记录失败", "job", job.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "生图未知状态计费记录失败", "module", "imagegen", "operation", "markUnknown", "job_id", job.ID, "error", err)
 		}
 		s.linkImageCall(finishCtx, job)
 	}
@@ -475,7 +487,7 @@ func (s *Service) Get(ctx context.Context, userID, jobID string) (imageproxy.Tas
 		if amount, err := s.billing.ImageCharge(ctx, *job.BillingTransactionID, userID); err == nil {
 			usage.Credits = amount.String()
 		} else if ctx.Err() == nil {
-			slog.Warn("读取生图积分用量失败", "job", job.ID, "operation", "image_charge", "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "读取生图积分用量失败", "module", "imagegen", "operation", "Get", "job_id", job.ID, "operation", "image_charge", "error", err)
 		}
 	}
 	return imageproxy.Task{ID: job.ID, UserID: job.UserID, Operation: job.Operation, Status: status,
@@ -485,26 +497,26 @@ func (s *Service) Get(ctx context.Context, userID, jobID string) (imageproxy.Tas
 func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	s.recover(ctx)
+	worker := logging.NewWorker(slog.Default(), "imagegen", "recover_jobs", "database")
+	worker.Report(ctx, s.recover(ctx))
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.recover(ctx)
+			worker.Report(ctx, s.recover(ctx))
 		}
 	}
 }
 
-func (s *Service) recover(ctx context.Context) {
+func (s *Service) recover(ctx context.Context) error {
 	if !s.polling.TryLock() {
-		return
+		return nil
 	}
 	defer s.polling.Unlock()
 	jobs, err := s.jobs.Recover(ctx, 50)
 	if err != nil {
-		slog.Error("加载待恢复生图任务失败", "error", err)
-		return
+		return err
 	}
 	for _, job := range jobs {
 		switch job.Status {
@@ -519,7 +531,7 @@ func (s *Service) recover(ctx context.Context) {
 			item, err := s.models.Get(ctx, job.ModelID)
 			if err != nil {
 				if ctx.Err() == nil {
-					slog.Warn("加载待恢复生图模型失败", "job", job.ID, "operation", "recover_model", "error", err)
+					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "加载待恢复生图模型失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "operation", "recover_model", "error", err)
 				}
 				continue
 			}
@@ -530,12 +542,12 @@ func (s *Service) recover(ctx context.Context) {
 			proxyURL := ""
 			if item.ProxyID != "" {
 				if s.proxies == nil {
-					slog.Warn("系统代理不可用", "job", job.ID)
+					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "系统代理不可用", "module", "imagegen", "operation", "recover", "job_id", job.ID)
 					continue
 				}
 				proxyURL, err = s.proxies.ProxyURL(ctx, item.ProxyID)
 				if err != nil {
-					slog.Warn("读取系统代理失败", "job", job.ID, "error", err)
+					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "读取系统代理失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "error", err)
 					continue
 				}
 			}
@@ -545,7 +557,7 @@ func (s *Service) recover(ctx context.Context) {
 			result, err := adapter.TaskQuerier.QueryTask(callCtx, target, *job.ProviderJobID)
 			if err != nil {
 				if ctx.Err() == nil {
-					slog.Warn("查询待恢复生图任务失败", "job", job.ID, "operation", "query_task", "error_type", providerErrorType(err))
+					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "查询待恢复生图任务失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "operation", "query_task", "error_type", providerErrorType(err))
 				}
 			} else if result.Status != "running" && result.Status != "pending" {
 				s.handleResult(callCtx, job, result, nil)
@@ -555,8 +567,7 @@ func (s *Service) recover(ctx context.Context) {
 	}
 	pending, err := s.jobs.PendingBilling(ctx, 50)
 	if err != nil {
-		slog.Error("加载待结算生图任务失败", "error", err)
-		return
+		return err
 	}
 	for _, job := range pending {
 		if job.BillingTransactionID == nil {
@@ -564,10 +575,11 @@ func (s *Service) recover(ctx context.Context) {
 		}
 		u := billing.Usage{Known: true, Result: job.Status, Images: int64(job.GeneratedImages)}
 		if err := s.billing.Finish(ctx, *job.BillingTransactionID, u); err != nil {
-			slog.Error("恢复生图积分结算失败", "job", job.ID, "error", err)
+			logging.Event(ctx, slog.Default(), slog.LevelError, "image.job.retry", "恢复生图积分结算失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "error", err)
 		}
 		s.linkImageCall(ctx, job)
 	}
+	return nil
 }
 
 func (s *Service) Wait(ctx context.Context) error {

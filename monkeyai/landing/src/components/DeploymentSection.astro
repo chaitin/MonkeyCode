@@ -1,0 +1,43 @@
+---
+import { Icon } from 'astro-icon/components';
+import { CopyCommandButton } from './CopyCommandButton';
+import SectionTitle from './SectionTitle.astro';
+import '../styles/deployment.css';
+
+const command = 'bash -c "$(curl -kfsSL https://release.monkeycode-ai.com/public/monkeyai-install.sh)"';
+const benefits = [
+  ['hugeicons:security-check', '数据由你管理', '将团队的消息、文档与项目保存在自己的服务器上，自主安排访问权限、数据备份与保留策略。'],
+  ['hugeicons:server-stack-01', '独立的运行环境', '在自己的基础设施中运行，按团队的节奏安排升级和维护，掌握服务的配置与运行状态。'],
+  ['hugeicons:plug-01', '按业务自由扩展', '基于开源代码定制工作空间，选择适合的模型与工具，连接已有业务系统，构建团队专属的协作方式。'],
+];
+---
+
+<section class="studio-section-band studio-deploy" id="deployment" aria-labelledby="deployment-title">
+  <div class="studio-container">
+  <div class="studio-section-heading">
+    <span class="studio-eyebrow"><i></i>独立部署 <span>SELF-HOSTED</span></span>
+    <SectionTitle id="deployment-title">部署独立的<span>百智办公服务器</span></SectionTitle>
+    <p>一个命令，搭建属于自己团队的协作空间。<br class="studio-mobile-break" />让数据、环境和扩展能力都由你掌握。</p>
+  </div>
+
+  <div class="studio-install" data-install-terminal>
+    <div class="studio-install-terminal" aria-label="安装命令终端窗口">
+      <div class="studio-terminal-bar">
+        <span class="studio-terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <CopyCommandButton client:load command={command} />
+      </div>
+      <div class="studio-terminal-body">
+        <div class="studio-terminal-command"><span aria-hidden="true">$</span><pre><code data-install-command role="button" tabindex="0" aria-label="复制独立部署命令">{command}</code></pre></div>
+      </div>
+    </div>
+    <div class="studio-deploy-requirements" aria-label="运行环境要求">
+      <p>仅需 <strong>1 核 CPU + 1 GB 内存</strong>轻量配置</p>
+      <a class="studio-resource-link" href="https://work.docs.baizhi.cloud" target="_blank" rel="noopener noreferrer"><span>查看详细部署文档</span><Icon name="hugeicons:arrow-up-right-01" size={20} aria-hidden="true" /></a>
+    </div>
+  </div>
+
+  <div class="studio-deploy-benefits">
+    {benefits.map(([icon, title, description]) => <article><Icon name={icon} size={23} aria-hidden="true" /><h3>{title}</h3><p>{description}</p></article>)}
+  </div>
+  </div>
+</section>

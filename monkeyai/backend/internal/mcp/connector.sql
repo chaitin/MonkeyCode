@@ -37,7 +37,8 @@ WHERE
     deleted_at IS NULL
     AND (sqlc.arg(filter)::jsonb ->> 'ownership' = ''
         OR t.ownership_type = sqlc.arg(filter)::jsonb ->> 'ownership')
-    AND name ILIKE '%' || (sqlc.arg(filter)::jsonb ->> 'search') || '%'
+    AND (strpos(lower(name), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0
+        OR strpos(lower(description), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0)
     AND id::text > sqlc.arg(filter)::jsonb ->> 'cursor'
 ORDER BY
     id

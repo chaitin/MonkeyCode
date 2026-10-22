@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -76,7 +77,7 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 	for _, o := range g {
 		if o.String("kind") == "rule" {
 			rule := c.rules[o.String("id")]
-			if rule == nil || (rule.String("ownership_type") == "user" && !o.Bool("explicit")) {
+			if rule == nil {
 				continue
 			}
 		}
@@ -319,25 +320,25 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 
 func rollbackCatalog(ctx context.Context, tx pgx.Tx, operation, user string) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		slog.ErrorContext(ctx, "回滚 Agent 配置事务失败", "operation", operation, "user_id", user, "error", err)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "agentconfig.operation.error", "回滚 Agent 配置事务失败", "module", "agentconfig", "operation", "rollbackCatalog", "operation", operation, "user_id", user, "error", err)
 	}
 }
 
 func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind string) {
 	page, size, err := resource.PageParams(req)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	filter, err := resource.ParseCatalogFilter(req)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
@@ -348,7 +349,7 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		err = httpapi.CachedJSON(w, req, map[string]any{kind: resource.PageSlice(items, page, size), "total_count": total, "page": page, "page_size": size})
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 	}
 }
 
@@ -356,7 +357,7 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
@@ -365,7 +366,7 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
 	}
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 	}
 }
 
@@ -388,18 +389,18 @@ func (r *Resources) getManifest(w http.ResponseWriter, req *http.Request) {
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
 	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	out, err := r.manifest(req.Context(), tx, c, chi.URLParam(req, "id"), u.ID)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	etag := fmt.Sprintf(`"%s"`, out.String("version"))
@@ -409,19 +410,19 @@ func (r *Resources) getManifest(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(304)
 		return
 	}
-	resource.JSON(w, 200, out)
+	resource.JSON(req.Context(), w, 200, out)
 }
 func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated bool) {
 	u, _ := identity.UserFromContext(req.Context())
 	tx, err := r.transaction(req.Context())
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	defer func() { rollbackCatalog(context.WithoutCancel(req.Context()), tx, "download", u.ID) }()
 	c, err := r.load(req.Context(), tx, u.ID, "")
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	id := chi.URLParam(req, "id")
@@ -441,11 +442,11 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 		allowed = c.allowed("skill", c.skills[id], u.ID)
 	}
 	if !allowed {
-		resource.Fail(w, resource.NotFound)
+		resource.Fail(req.Context(), w, resource.NotFound)
 		return
 	}
 	if err := tx.Commit(req.Context()); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	r.skills.ServePackage(w, req, c.skills[id])
@@ -453,16 +454,16 @@ func (r *Resources) download(w http.ResponseWriter, req *http.Request, delegated
 func (r *Resources) resolve(w http.ResponseWriter, req *http.Request) {
 	var in resource.Object
 	if err := resource.Decode(w, req, &in); err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
 	u, _ := identity.UserFromContext(req.Context())
 	out, err := r.Resolve(req.Context(), u.ID, in)
 	if err != nil {
-		resource.Fail(w, err)
+		resource.Fail(req.Context(), w, err)
 		return
 	}
-	resource.JSON(w, 200, out)
+	resource.JSON(req.Context(), w, 200, out)
 }
 func uniqueIDs(items []resource.Object) []resource.Object {
 	result := make([]resource.Object, 0, len(items))
@@ -656,16 +657,16 @@ func (r *Resources) RegisterAdmin(router chi.Router) {
 	router.Post("/experts/{id}/preview", func(w http.ResponseWriter, req *http.Request) {
 		var in resource.Object
 		if err := resource.Decode(w, req, &in); err != nil {
-			resource.Fail(w, err)
+			resource.Fail(req.Context(), w, err)
 			return
 		}
 		user := in.String("user_id")
 		in["expert_id"] = chi.URLParam(req, "id")
 		out, err := r.Resolve(req.Context(), user, in)
 		if err != nil {
-			resource.Fail(w, err)
+			resource.Fail(req.Context(), w, err)
 			return
 		}
-		resource.JSON(w, 200, out)
+		resource.JSON(req.Context(), w, 200, out)
 	})
 }

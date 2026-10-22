@@ -5,6 +5,8 @@ import (
 	"errors"
 	"math/big"
 	"os"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 )
 
 type mediaInfo struct {
@@ -114,7 +116,7 @@ func inspectMP4(file *os.File, size int64) (mediaInfo, error) {
 		return mediaInfo{}, err
 	}
 	if !foundFileType || info.Width < 1 || info.Height < 1 || info.Width > 8192 || info.Height > 8192 ||
-		int64(info.Width)*int64(info.Height) > 35_000_000 || info.DurationMs < 1 || info.DurationMs > 15_000 {
+		int64(info.Width)*int64(info.Height) > 35_000_000 || info.DurationMs < 1 || info.DurationMs > billing.MaxVideoDurationMs {
 		return mediaInfo{}, errors.New("视频容器元数据无效")
 	}
 	return info, nil

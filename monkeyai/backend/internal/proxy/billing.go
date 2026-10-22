@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -51,7 +53,7 @@ func (p *Proxy) finish(ctx context.Context, pc *proxyContext, call Call) {
 				call.ErrorCode = "usage_unknown"
 			}
 			if err := p.recorder.Record(c, call); err != nil {
-				p.logger.ErrorContext(c, "记录自配模型用量失败", "model_id", call.ModelID, "error", err)
+				logging.Event(c, p.logger, slog.LevelError, "proxy.operation.error", "记录自配模型用量失败", "module", "proxy", "operation", "finish", "model_id", call.ModelID, "error", err)
 			}
 		})
 		return
@@ -63,7 +65,7 @@ func (p *Proxy) finish(ctx context.Context, pc *proxyContext, call Call) {
 		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if err := p.billing.Finish(c, pc.reservation.ID, call); err != nil {
-			p.logger.ErrorContext(c, "模型计费结算待恢复", "transaction_id", pc.reservation.ID, "error", err)
+			logging.Event(c, p.logger, slog.LevelError, "billing.settlement.pending", "模型计费结算待恢复", "module", "proxy", "operation", "finish", "transaction_id", pc.reservation.ID, "error", err)
 		}
 	})
 }
@@ -106,7 +108,7 @@ func prepareRequest(body []byte, path string, limit int64, stream bool) ([]byte,
 	}
 	return json.Marshal(data)
 }
-func billingError(w http.ResponseWriter, err error) { resource.Fail(w, err) }
+func billingError(ctx context.Context, w http.ResponseWriter, err error) { resource.Fail(ctx, w, err) }
 
 func (p *Proxy) Wait(ctx context.Context) error {
 	done := make(chan struct{})

@@ -22,15 +22,9 @@ test("billing detail user columns match the operation log actor presentation", a
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /icon=\{User02Icon\}/)
-  assert.equal(
-    (
-      source.match(
-        /className="size-4 shrink-0 text-blue-600 dark:text-blue-400"/g
-      ) ?? []
-    ).length,
-    2
-  )
+  assert.match(source, /<UserAvatar src=\{e\.user_avatar_url\}/)
+  assert.match(source, /<UserAvatar src=\{tx\.user_avatar_url\}/)
+  assert.doesNotMatch(source, /User02Icon/)
   assert.match(source, /title=\{e\.user_email\}/)
   assert.match(source, /<span className="truncate">\{e\.user_name\}<\/span>/)
   assert.match(source, /title=\{tx\.user_email\}/)
@@ -46,7 +40,7 @@ test("billing views use tabs and tables scroll inside the available page height"
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /md:h-\[calc\(100svh-5rem\)\]/)
+  assert.match(source, /md:h-\[calc\(100vh-5rem\)\]/)
   assert.match(source, /<Tabs\s+value=\{view\}/)
   assert.match(source, /<TabsTrigger value="entries">积分流水<\/TabsTrigger>/)
   assert.match(
@@ -54,7 +48,10 @@ test("billing views use tabs and tables scroll inside the available page height"
     /<TabsTrigger value="pending">待处理与对账<\/TabsTrigger>/
   )
   assert.equal((source.match(/<ScrollArea/g) ?? []).length, 3)
-  assert.equal((source.match(/sticky top-0 z-10 bg-card/g) ?? []).length, 2)
+  assert.equal(
+    (source.match(/<TableHeader className="sticky top-0 z-10">/g) ?? []).length,
+    2
+  )
   assert.equal(
     (source.match(/data-slot=table-container\]\]:h-full/g) ?? []).length,
     2
@@ -71,13 +68,13 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.doesNotMatch(source, /billing\/summary|summary\.charges|扣费积分/)
   assert.doesNotMatch(source, /w-px|max-w-52|table-fixed/)
   assert.equal(
-    (source.match(/TableHead className="ps-\(--card-spacing\)"/g) ?? []).length,
+    (source.match(/TableHead className="ps-\[var\(--card-spacing\)\]"/g) ?? []).length,
     2
   )
   assert.equal(
     (
       source.match(
-        /TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground"/g
+        /TableCell className="ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground"/g
       ) ?? []
     ).length,
     2
@@ -85,7 +82,7 @@ test("billing views use tabs and tables scroll inside the available page height"
   assert.equal(
     (
       source.match(
-        /className="w-20 pe-\(--card-spacing\) whitespace-nowrap"/g
+        /className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap"/g
       ) ?? []
     ).length,
     4
@@ -113,7 +110,7 @@ test("billing filters match the compact operation-log interaction", async () => 
   const filters = source.split("onSubmit={search}")[1].split("</form>")[0]
   assert.match(
     filters,
-    /flex flex-wrap items-center gap-2 px-\(--card-spacing\)/
+    /flex flex-wrap items-center gap-2 px-\[var\(--card-spacing\)\]/
   )
   assert.equal((filters.match(/className="w-32"/g) ?? []).length, 2)
   assert.equal((filters.match(/<DatePickerField/g) ?? []).length, 2)
@@ -159,16 +156,25 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
   assert.match(source, /next\.delete\("page"\)/)
   assert.match(source, /next\.delete\("page_size"\)/)
   assert.doesNotMatch(source, /navigate\(\{ page|navigate\(\{ page_size/)
-  assert.match(
-    source,
-    /const PAGE_SIZE_OPTIONS = \["20", "50", "100", "200", "500"\]/
+  assert.match(source, /<TablePagination/)
+  const pagination = await readFile(
+    new URL("../src/components/table-pagination.tsx", import.meta.url),
+    "utf8"
   )
-  assert.match(source, /pages\.operationLogs\.pagination\.summary/)
-  assert.match(source, /pages\.operationLogs\.pagination\.pageSizeLabel/)
-  assert.match(source, /size="icon-sm"/)
-  assert.match(source, /icon=\{ArrowLeft01Icon\}/)
-  assert.match(source, /icon=\{ArrowRight01Icon\}/)
-  assert.match(source, /className="rtl:rotate-180"/)
+  const selector = await readFile(
+    new URL("../src/components/page-size-select.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(
+    selector,
+    /import \{ PAGE_SIZE_OPTIONS \} from "@\/lib\/pagination"/
+  )
+  assert.match(pagination, /pages\.operationLogs\.pagination\.summary/)
+  assert.match(selector, /pages\.operationLogs\.pagination\.pageSizeLabel/)
+  assert.match(pagination, /size="icon-sm"/)
+  assert.match(pagination, /icon=\{ArrowLeft01Icon\}/)
+  assert.match(pagination, /icon=\{ArrowRight01Icon\}/)
+  assert.match(pagination, /className="\[\[dir=rtl\]_&\]:rotate-180"/)
 })
 
 test("billing transaction details follow the credit account key-value layout", async () => {
@@ -251,19 +257,19 @@ test("billing entries omit mode and use directional integer rounding", async () 
   assert.doesNotMatch(source, /hover:text-primary hover:underline/)
   assert.match(
     source,
-    /<TableCell className="ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground">\s*\{dateTime\(e\.occurred_at\)\}/
+    /<TableCell className="ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground">\s*\{dateTime\(\s*e\.occurred_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)\}/
   )
   assert.match(
     source,
-    /pe-\(--card-spacing\) whitespace-nowrap[\s\S]*?pages\.operationLogs\.columns\.operations/
+    /pe-\[var\(--card-spacing\)\] whitespace-nowrap[\s\S]*?pages\.operationLogs\.columns\.operations/
   )
   assert.match(
     source,
-    /ps-\(--card-spacing\) whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(tx\.started_at\)/
+    /ps-\[var\(--card-spacing\)\] whitespace-nowrap text-muted-foreground[\s\S]*?dateTime\(\s*tx\.started_at,\s*TABLE_DATE_TIME_OPTIONS\s*\)/
   )
   assert.match(
     source,
-    /<TableCell className="w-20 pe-\(--card-spacing\) whitespace-nowrap">[\s\S]*?<Button/
+    /<TableCell className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap">[\s\S]*?<Button/
   )
   assert.match(source, /next\.delete\("mode"\)/)
   assert.doesNotMatch(
