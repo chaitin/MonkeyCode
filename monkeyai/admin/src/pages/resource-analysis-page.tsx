@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -493,17 +494,7 @@ export function ResourceAnalysisPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading || searching ? (
-                        <span
-                          role="status"
-                          aria-label={t("statistics.loading")}
-                        >
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            className="mx-auto animate-spin motion-reduce:animate-none"
-                            size={20}
-                            aria-hidden="true"
-                          />
-                        </span>
+                        <TableLoading />
                       ) : error ? (
                         "—"
                       ) : (

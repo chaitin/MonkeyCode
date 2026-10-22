@@ -8,6 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -613,9 +614,11 @@ export function BillingDetailsPage() {
                           colSpan={7}
                           className="h-full text-center text-muted-foreground"
                         >
-                          {loading
-                            ? "正在读取流水…"
-                            : t("pages.billingDetails.empty")}
+                          {loading ? (
+                            <TableLoading />
+                          ) : (
+                            t("pages.billingDetails.empty")
+                          )}
                         </TableCell>
                       </TableRow>
                     )}
@@ -752,7 +755,7 @@ export function BillingDetailsPage() {
                           colSpan={7}
                           className="h-full text-center text-muted-foreground"
                         >
-                          {loading ? "正在读取…" : "暂无待处理交易"}
+                          {loading ? <TableLoading /> : "暂无待处理交易"}
                         </TableCell>
                       </TableRow>
                     )}

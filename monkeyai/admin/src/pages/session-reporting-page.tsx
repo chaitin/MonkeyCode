@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { TableLoading } from "@/components/table-loading"
 import { useReport } from "@/lib/session-reporting"
 import { cn } from "@/lib/utils"
 
@@ -112,12 +113,9 @@ export function ReportStatus({
         </div>
       )}
       {request.loading && !request.data && !request.error && (
-        <p
-          role="status"
-          className="rounded-lg border p-4 text-sm text-muted-foreground"
-        >
-          {t("statistics.loading")}
-        </p>
+        <div className="flex justify-center rounded-lg border p-4">
+          <TableLoading />
+        </div>
       )}
       {!request.loading && !request.error && empty && (
         <p

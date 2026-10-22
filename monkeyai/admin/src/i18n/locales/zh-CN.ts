@@ -108,6 +108,7 @@ export const zhCN = {
     allowTools: "工具白名单，逗号分隔；留空表示全部",
     denyTools: "工具黑名单，逗号分隔",
     loading: "正在加载…",
+    tableLoading: "正在加载",
     saving: "正在保存…",
     operationCompleted: "操作已完成。",
     availableScope: "可用范围",

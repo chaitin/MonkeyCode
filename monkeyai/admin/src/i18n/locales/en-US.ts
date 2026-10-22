@@ -111,6 +111,7 @@ export const enUS = {
     allowTools: "Allowed tools, comma separated; empty allows all",
     denyTools: "Denied tools, comma separated",
     loading: "Loading…",
+    tableLoading: "Loading",
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",

@@ -5,6 +5,7 @@ import type { ImportResult } from "@/lib/design-import"
 import { uploadBase, type ResourceUpload } from "@/lib/resource-upload"
 import { ResourceImportDialog } from "@/components/resource-import-dialog"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -91,21 +92,25 @@ export function ResourceImportsPage() {
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           {historyError && <div role="alert" className="mx-[var(--card-spacing)] flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive"><span>{historyError}</span><Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button></div>}
-          {historyLoading && !history && <p role="status" className="px-[var(--card-spacing)] text-sm text-muted-foreground">加载中…</p>}
-          {history && history.items.length === 0 && !historyLoading && <p className="px-[var(--card-spacing)] text-sm text-muted-foreground">暂无导入记录</p>}
-          {history && history.items.length > 0 && <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
-            <Table className="[&_th:first-child]:ps-[var(--card-spacing)] [&_td:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)]">
+          <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
+            <Table aria-busy={historyLoading} className={`${!history?.items.length ? "h-full " : ""}[&_th:first-child]:ps-[var(--card-spacing)] [&_td:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)]`}>
               <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "发布者", "版本", "发布 ID", "状态", "资源变更"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
-              <TableBody>{history.items.map((batch) => <TableRow key={batch.id}>
+              <TableBody className={!history?.items.length ? "h-full" : undefined}>{history?.items.map((batch) => <TableRow key={batch.id}>
                 <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>
                 <TableCell className="font-medium">{batch.publisher}</TableCell>
                 <TableCell>{batch.version > 0 ? `v${batch.version}` : "设计快照"}</TableCell>
                 <TableCell className="font-mono" title={batch.release_id}>{batch.release_id.slice(0, 8)}…</TableCell>
                 <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : batch.status === "partial" ? "部分成功" : "失败"}</Badge></TableCell>
                 <TableCell className="text-muted-foreground">{batch.section_results ? <div className="space-y-1">{Object.entries(batch.section_results).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "design" ? "设计资源" : "Agent 资源"}：{item.status === "succeeded" ? "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all font-mono text-xs">{item.result.release_id}</p>}{item.error && <p className="text-destructive">{item.error.message}</p>}</div>)}</div> : counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}</TableCell>
-              </TableRow>)}</TableBody>
+              </TableRow>)}
+                {!history?.items.length && !historyError && <TableRow className="h-full">
+                  <TableCell colSpan={6} className="h-full text-center text-muted-foreground">
+                    {historyLoading ? <TableLoading /> : "暂无导入记录"}
+                  </TableCell>
+                </TableRow>}
+              </TableBody>
             </Table>
-          </ScrollArea>}
+          </ScrollArea>
           <TablePagination page={active + 1} pageSize={pageSize} itemCount={history?.items.length ?? 0} loading={historyLoading} error={Boolean(historyError)} hasNext={Boolean(history?.next_cursor)}
             onPageSizeChange={(size) => { setPageSize(size); setCursors([undefined]); setActive(0) }}
             onPrevious={() => setActive((value) => Math.max(0, value - 1))}

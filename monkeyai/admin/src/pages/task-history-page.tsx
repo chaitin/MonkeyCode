@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays, startOfDay } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { Link } from "react-router-dom"
 
@@ -414,11 +415,13 @@ export function TaskHistoryPage() {
                       colSpan={5}
                       className="h-full text-center text-muted-foreground"
                     >
-                      {request.loading
-                        ? t("statistics.loading")
-                        : request.error
-                          ? "—"
-                          : t("pages.taskHistory.empty")}
+                      {request.loading ? (
+                        <TableLoading />
+                      ) : request.error ? (
+                        "—"
+                      ) : (
+                        t("pages.taskHistory.empty")
+                      )}
                     </TableCell>
                   </TableRow>
                 )}

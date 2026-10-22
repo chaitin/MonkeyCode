@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { ClientDistributionCards } from "@/components/client-distribution-cards"
@@ -543,7 +544,7 @@ export function ClientAnalysisPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading ? (
-                        <span role="status">{t("statistics.loading")}</span>
+                        <TableLoading />
                       ) : error ? (
                         "—"
                       ) : (

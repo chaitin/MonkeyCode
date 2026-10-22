@@ -199,7 +199,7 @@ test("billing settings separate the group tree and member item list", async () =
     .split("const renderGroup =")[0]
   const groupRows = page
     .split("const renderGroup =")[1]
-    .split("if (!settings")[0]
+    .split("const loadState =")[0]
 
   assert.match(page, /FolderIcon/)
   assert.match(page, /Folder02Icon/)
@@ -355,8 +355,8 @@ test("immediate quota reset submits selected groups and members", async () => {
   assert.match(dialog, /quotaRefresh\.resetDialogTitle/)
   assert.match(dialog, /quotaRefresh\.resetDialogDescription/)
   assert.match(dialog, /<GroupSelect/)
-  assert.match(dialog, /options=\{quotas\.groups\.map/)
-  assert.match(dialog, /users=\{quotas\.users\.map/)
+  assert.match(dialog, /options=\{\(quotas\?\.groups \?\? \[\]\)\.map/)
+  assert.match(dialog, /users=\{\(quotas\?\.users \?\? \[\]\)\.map/)
   assert.match(dialog, /value=\{resetSelection\}/)
   assert.match(
     dialog,

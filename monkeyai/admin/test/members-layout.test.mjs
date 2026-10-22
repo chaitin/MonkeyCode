@@ -56,7 +56,7 @@ test("members page keeps the original split cards and compact member list", asyn
   assert.match(source, /<UserAvatar src=\{user\.avatar_url\} size="lg"/)
   assert.doesNotMatch(source, /groupMemberIDs\(/)
   assert.match(source, /\.sort\(compareMembers\)/)
-  assert.doesNotMatch(source, /<Table/)
+  assert.doesNotMatch(source, /<Table(?:\s|>)/)
 })
 
 test("group card selection actions use secondary buttons", async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -433,8 +434,12 @@ export function FeedbackPage() {
               {t("statistics.refresh")}
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Table aria-label={t("pages.feedback.title")} aria-busy={loading}>
+          <div className="min-h-0 flex-1 overflow-auto [&_[data-slot=table-container]]:h-full">
+            <Table
+              aria-label={t("pages.feedback.title")}
+              aria-busy={loading}
+              className={!rows.length ? "h-full" : undefined}
+            >
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   <TableHead className="ps-[var(--card-spacing)]">
@@ -450,7 +455,7 @@ export function FeedbackPage() {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className={!rows.length ? "h-full" : undefined}>
                 {rows.length ? (
                   rows.map((item) => (
                     <TableRow key={item.id}>
@@ -495,13 +500,13 @@ export function FeedbackPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow>
+                  <TableRow className="h-full">
                     <TableCell
                       colSpan={7}
-                      className="py-12 text-center text-muted-foreground"
+                      className="h-full py-12 text-center text-muted-foreground"
                     >
                       {loading ? (
-                        t("resources.loading")
+                        <TableLoading />
                       ) : error ? (
                         <div role="alert" className="space-y-2">
                           <p>

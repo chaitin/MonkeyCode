@@ -14,6 +14,7 @@ import {
   type Credential,
 } from "@/lib/resources"
 import { ResourceNotice } from "@/components/resource-notice"
+import { TableLoading } from "@/components/table-loading"
 import { useEffect, useState, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -1155,11 +1156,11 @@ export function ToolsPage() {
           )}
           <ResourceNotice
             error={remote.error}
-            pending={remote.pending}
+            pending={remote.pending && toolDrafts.length > 0}
             loading={false}
           />
           <div className="max-h-[min(60vh,36rem)] overflow-y-auto rounded-md border">
-            <Table>
+            <Table aria-busy={remote.pending}>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("pages.tools.toolName")}</TableHead>
@@ -1174,6 +1175,16 @@ export function ToolsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {remote.pending && !toolDrafts.length && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={viewingServer?.authorizationMode === "centralized" ? 3 : 2}
+                      className="h-28 text-center"
+                    >
+                      <TableLoading />
+                    </TableCell>
+                  </TableRow>
+                )}
                 {toolDrafts.map((tool) => (
                   <TableRow key={tool.id}>
                     <TableCell className="max-w-72">

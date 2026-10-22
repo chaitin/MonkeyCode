@@ -7,6 +7,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -594,7 +595,7 @@ export function OperationLogsPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {loading ? (
-                        <span role="status">{t("resources.loading")}</span>
+                        <TableLoading />
                       ) : error ? (
                         "—"
                       ) : (

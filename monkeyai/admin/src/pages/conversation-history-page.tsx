@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { useSearchParams } from "react-router-dom"
 
@@ -535,18 +536,7 @@ export function ConversationHistoryPage() {
                       className="h-full text-center text-muted-foreground"
                     >
                       {request.loading ? (
-                        <span
-                          role="status"
-                          aria-label={t("statistics.loading")}
-                          className="inline-flex text-muted-foreground"
-                        >
-                          <HugeiconsIcon
-                            icon={Loading03Icon}
-                            size={20}
-                            className="animate-spin motion-reduce:animate-none"
-                            aria-hidden="true"
-                          />
-                        </span>
+                        <TableLoading />
                       ) : request.error ? (
                         <Button
                           type="button"
