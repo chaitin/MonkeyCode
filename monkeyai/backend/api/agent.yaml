@@ -531,7 +531,7 @@ paths:
                   additionalProperties: true
                   required: [type, machine_id, version]
                   properties:
-                    type: {type: string, enum: [desktop, web, extension, mobile, unknown]}
+                    type: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}
                     machine_id: {type: string, format: uuid}
                     version: {type: string}
                     engine_version: {type: [string, 'null']}

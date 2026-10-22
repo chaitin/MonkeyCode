@@ -103,7 +103,7 @@ const searchFields: ClientSearchField[] = [
   "expert_id",
 ]
 const selectValues = {
-  client_type: ["desktop", "web", "extension", "mobile", "unknown"],
+  client_type: ["desktop", "web", "extension", "mobile", "runtime", "unknown"],
   outcome: [
     "complete",
     "interrupted",

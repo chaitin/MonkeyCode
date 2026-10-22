@@ -240,6 +240,7 @@ paths:
       parameters:
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: until, in: query, schema: {type: string, format: date-time}}
+        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 50}}
         - {name: cursor, in: query, schema: {type: string}}
       responses:
@@ -256,7 +257,7 @@ paths:
       parameters:
         - {name: from, in: query, description: 窗口起点，包含；默认当前时间前 24 小时。, schema: {type: string, format: date-time}}
         - {name: until, in: query, description: 窗口终点，不包含；默认当前时间。, schema: {type: string, format: date-time}}
-        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, unknown]}}
+        - {name: client_type, in: query, description: 会话的客户端类型。, schema: {type: string, enum: [desktop, web, extension, mobile, runtime, unknown]}}
         - {name: platform, in: query, description: 当前设备平台，按客户端上报原值精确匹配，最多 64 个 UTF-8 字节。, schema: {type: string, maxLength: 64}}
         - {name: outcome, in: query, description: 轮次结束原因；先筛选再确定会话的最后匹配轮次。, schema: {type: string, enum: [complete, interrupted, error, max_turns, output_limit, unknown]}}
         - {name: user_id, in: query, description: 会话所属用户 ID。, schema: {type: string, format: uuid}}

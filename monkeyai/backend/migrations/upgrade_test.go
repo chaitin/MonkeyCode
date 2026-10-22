@@ -68,7 +68,9 @@ func TestUpgradeFrom14(t *testing.T) {
 		INSERT INTO skills (ownership_type, owner_user_id, name, description,
 			package_file_name, package_s3_key, package_size_bytes, package_sha256)
 		VALUES ('system', '00000000-0000-0000-0000-000000000001', '已有资源', '保留描述',
-			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));`); err != nil {
+			'skill.zip', 'skills/test.zip', 1, repeat('a', 64));
+		INSERT INTO sessions (owner_user_id, title, session_type, client_type, client_name, started_at)
+		VALUES ('00000000-0000-0000-0000-000000000001', '已有会话', 'conversation', 'desktop', 'desktop', now());`); err != nil {
 		t.Fatal(err)
 	}
 	output := run("up")
@@ -77,7 +79,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
-		"26/u endpoint_platform_text",
+		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -123,8 +125,28 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || !valid {
 		t.Fatalf("升级后的结构不完整: %v", err)
 	}
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
+		t.Fatalf("升级后应支持 runtime 会话: %v", err)
+	}
+	down, err := os.ReadFile("000031_session_client_runtime_add.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(t.Context(), string(down)); err == nil || !strings.Contains(err.Error(), "sessions_client_type_check") {
+		t.Fatalf("存在 runtime 会话时应拒绝回滚: %v", err)
+	}
+	var clientType, title string
+	if err := conn.QueryRow(t.Context(), "SELECT client_type,title FROM sessions").Scan(&clientType, &title); err != nil || clientType != "runtime" || title != "已有会话" {
+		t.Fatalf("回滚失败不应改写已有会话: type=%s title=%s err=%v", clientType, title, err)
+	}
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='desktop'"); err != nil {
+		t.Fatal(err)
+	}
 	run("down", "1")
 	run("up")
+	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
+		t.Fatalf("重新升级后应支持 runtime 会话: %v", err)
+	}
 	if output := run("up"); !strings.Contains(output, "no change") {
 		t.Fatalf("重复 up 应无变更: %s", output)
 	}

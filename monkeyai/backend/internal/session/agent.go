@@ -173,7 +173,7 @@ func validateSessionInput(in sessionInput) error {
 	if in.Client == nil || !requiredString(in.Client.MachineID, 256) || !validText(in.Client.Version, 128, false) || !validText(in.Client.EngineVersion, 128, false) || !validText(in.Client.RuntimeVersion, 128, false) {
 		return invalidState("client 字段无效")
 	}
-	if !contains([]string{"desktop", "web", "extension", "mobile", "unknown"}, in.Client.Type) {
+	if !contains([]string{"desktop", "web", "extension", "mobile", "runtime", "unknown"}, in.Client.Type) {
 		return invalidState("client.type 无效")
 	}
 	if in.SessionType == nil || !contains([]string{"conversation", "workflow", "tool", "scheduled"}, *in.SessionType) {
