@@ -429,6 +429,9 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 				if err = writeResource(ctx, tx, r, change, id, actor.ID, objects, ids, opts); err != nil {
 					return pre, err
 				}
+				if err = writeTags(ctx, tx, change, id, actor.ID); err != nil {
+					return pre, err
+				}
 				if err = resource.Audit(ctx, tx, actor.ID, kind, id, "import_"+change.Action); err != nil {
 					return pre, err
 				}
@@ -451,6 +454,22 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 	committed = true
 	logging.Event(ctx, slog.Default(), slog.LevelInfo, "resource.import.applied", "资源包事务已提交", "import_id", importID)
 	return locked, nil
+}
+
+func writeTags(ctx context.Context, tx pgx.Tx, change Change, id, actor string) error {
+	if change.Tags == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(change.Tags))
+	queries := sqlc.New(tx)
+	for _, name := range change.Tags {
+		tagID, err := queries.ResolveImportTag(ctx, sqlc.ResolveImportTagParams{Name: name, CreatedByUserID: actor})
+		if err != nil {
+			return err
+		}
+		ids = append(ids, tagID)
+	}
+	return resource.SaveTags(ctx, tx, change.Type, id, actor, ids)
 }
 
 func applyRetirement(ctx context.Context, tx pgx.Tx, publisher, importID string, change Change) error {

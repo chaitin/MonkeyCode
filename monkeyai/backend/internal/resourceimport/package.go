@@ -11,7 +11,9 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
+	"unicode/utf8"
 	"uuid"
 )
 
@@ -50,7 +52,7 @@ type Entry struct {
 	Slug            string            `json:"slug"`
 	Name            string            `json:"name"`
 	Description     string            `json:"description,omitempty"`
-	Tags            []string          `json:"tags,omitempty"`
+	Tags            []string          `json:"tags,omitzero"`
 	Path            string            `json:"path"`
 	SHA256          string            `json:"sha256"`
 	AvatarPath      string            `json:"avatar_path,omitempty"`
@@ -206,6 +208,27 @@ func readZIP(data []byte, maxSize, maxExpanded, maxFiles, maxFile int) (map[stri
 	return files, nil
 }
 
+func normalizeTags(names []string) ([]string, error) {
+	if names == nil {
+		return nil, nil
+	}
+	tags := make([]string, len(names))
+	for i, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || len(name) > 100 || !utf8.ValidString(name) || strings.ContainsRune(name, '\x00') {
+			return nil, fmt.Errorf("标签名称无效")
+		}
+		tags[i] = name
+	}
+	slices.SortFunc(tags, func(a, b string) int {
+		if n := strings.Compare(strings.ToLower(a), strings.ToLower(b)); n != 0 {
+			return n
+		}
+		return strings.Compare(a, b)
+	})
+	return slices.CompactFunc(tags, strings.EqualFold), nil
+}
+
 func decodeJSON(data []byte, out any) error {
 	if !json.Valid(data) {
 		return fmt.Errorf("JSON 格式无效")
@@ -359,6 +382,10 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 			}
 			entry.Slug = uniqueSlug(entry.Slug, section.kind, used)
 			entry.Name = first(entry.Name, entry.Slug)
+			entry.Tags, err = normalizeTags(entry.Tags)
+			if err != nil {
+				return Package{}, fmt.Errorf("%s %s: %w", section.kind, entry.Slug, err)
+			}
 		}
 	}
 	return p, nil

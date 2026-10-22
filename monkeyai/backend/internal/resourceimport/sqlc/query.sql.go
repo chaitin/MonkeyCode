@@ -623,6 +623,26 @@ func (q *Queries) ReadyImportUpload(ctx context.Context, arg ReadyImportUploadPa
 	return err
 }
 
+const resolveImportTag = `-- name: ResolveImportTag :one
+INSERT INTO tags (name, created_by_user_id)
+VALUES ($1, $2)
+ON CONFLICT (lower(name)) WHERE deleted_at IS NULL
+DO UPDATE SET name = tags.name
+RETURNING id::text
+`
+
+type ResolveImportTagParams struct {
+	Name            string
+	CreatedByUserID string
+}
+
+func (q *Queries) ResolveImportTag(ctx context.Context, arg ResolveImportTagParams) (string, error) {
+	row := q.db.QueryRow(ctx, resolveImportTag, arg.Name, arg.CreatedByUserID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const retireImportBinding = `-- name: RetireImportBinding :exec
 UPDATE resource_import_bindings SET retired_at=now(),retired_import_id=$1::uuid,
     last_import_id=$1::uuid,updated_at=now()

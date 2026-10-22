@@ -1,0 +1,123 @@
+{
+  "release_id": "ad77973a-6e66-4ff3-a78e-823ab715a9ef",
+  "version": 8,
+  "manifest_sha256": "sha256:a0a2f54e35a974bcdf6ed3d2cbb10fac22c561056c9b6518dfa7d5150a27c213",
+  "generated_at": "2026-10-14T06:55:37.369472Z",
+  "agent_resources": {
+    "skills": [
+      {
+        "type": "skill",
+        "slug": "copywriter",
+        "name": "copywriter",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/copywriter.zip",
+        "sha256": "sha256:c196165f838102d71030304ce4750f647468b6016220db43e00a9c26a2089a2f",
+        "description_i18n": {
+          "zh-CN": "撰写引人入胜的 UX 文案、营销内容和产品信息。适用于编写按钮标签、错误提示、落地页、电子邮件、CTA、空状态、工具提示或任何面向用户的文本。"
+        }
+      },
+      {
+        "type": "skill",
+        "slug": "frontend-design",
+        "name": "frontend-design",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/frontend-design.zip",
+        "sha256": "sha256:dee0100b0694dc54a8b002f91ccc7cf3e2def1a5c74e5454dca0116ce4ff3c15",
+        "description_i18n": {
+          "zh-CN": "用于打造美观、现代 UI 的专家级前端设计指南。适用于构建落地页、仪表盘或任何用户界面时。"
+        }
+      },
+      {
+        "type": "skill",
+        "slug": "i-have-adhd",
+        "name": "i-have-adhd",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/i-have-adhd.zip",
+        "sha256": "sha256:e3d46b6e5f4d256f2de96fe73a78739a29b86736d85d9bc899e4ca27b5e76878",
+        "description_i18n": {
+          "zh-CN": "为ADHD读者塑造输出：先给出下一步行动，给多步骤工作编号，跨轮次重述状态，抑制离题内容，给出具体时间估计，让成果可见。用 /i-have-adhd 调用；会保持开启，直到“stop adhd mode”。"
+        }
+      },
+      {
+        "type": "skill",
+        "slug": "mono",
+        "name": "dws",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/mono.zip",
+        "sha256": "sha256:6fdea9d4d40cc7fbd45649cb31ee803dd42da72c75b955cb414d4a93b9d451ef",
+        "description_i18n": {
+          "zh-CN": "管理钉钉产品能力(Agoal目标管理/AI表格/AI搜问/日历/通讯录/群聊与机器人/待办/审批/法务智能合同/考勤/日志/DING消息/开放平台文档/钉钉文档/钉钉云盘/原生Markdown文件/AI听记/邮箱/在线电子表格/知识库等)。当用户需要查询战略解码、经营合约字段、目标规则周期、个人目标、目标模板或周月报规则的按时/迟交/未提交统计与跟催，操作表格数据、管理日程会议、模糊找人/查谁负责某事项、查询通讯录、管理群聊、机器人发消息、创建待办、提交审批、查询或创建合同台账、批量导入合同、按听记起草合同、归档合同、管理合同项目/相对方/账款、查看考勤、提交日报周报（钉钉日志模版）、读写钉钉文档、上传下载云盘文件、读取或修改原生.md文件、查询听记纪要、收发邮件、读写在线电子表格(axls)、管理钉钉知识库，或订阅个人 IM、OA 审批、VoIP 通话邀请、待办或互动卡片回调事件、实时监听群成员加入、群成员退出、群改名和群解散、审批实例发起/抄送/终止/完成、审批任务创建/完成/转交、VoIP 通话邀请、待办创建/更新/删除，以及互动卡片回调时使用。周报/月报正文填报属于日志 Report；规则级提交统计、迟交、未提交和跟催属于 Agoal。"
+        }
+      },
+      {
+        "type": "skill",
+        "slug": "pair-agent",
+        "name": "pair-agent",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/pair-agent.zip",
+        "sha256": "sha256:4abb1432c6c8ec4023f4b2102f181a40844716c3de8a5c325f1211e0fa6c6920",
+        "description_i18n": {
+          "zh-CN": "将远程 AI 智能体与你的浏览器配对。（gstack）"
+        }
+      },
+      {
+        "type": "skill",
+        "slug": "research",
+        "name": "research",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/skills/research.zip",
+        "sha256": "sha256:06aef3b8b0ff6dc15917a1dce0fd18603c4f2a6a1ad41f919aec779ed2b989e7",
+        "description_i18n": {
+          "zh-CN": "针对高可信度的一手来源调查问题，并将调查结果以 Markdown 文件的形式保存到仓库中。适用于用户希望研究某个主题、收集文档或 API 事实，或将查阅资料的跑腿工作委派给后台代理时。"
+        }
+      }
+    ],
+    "rules": [
+      {
+        "type": "rule",
+        "slug": "speak-chinese",
+        "name": "和用户用简体中文交流",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/rules/speak-chinese.json",
+        "sha256": "sha256:04c977dc8968e641ebfee21964f8379ee4a29ae42c5aa094a56ce8cb1355a761",
+        "name_i18n": {
+          "zh-CN": "和用户用简体中文交流"
+        }
+      }
+    ],
+    "connectors": [
+      {
+        "type": "connector",
+        "slug": "tavily",
+        "name": "tavily",
+        "tags": [
+          "百智办公"
+        ],
+        "path": "agent/connectors/tavily.json",
+        "sha256": "sha256:571cb4c0ef9d5e0c2c915772c1b2dd67d2d28c1620f5bb3c1e26bba0de989ad2"
+      }
+    ],
+    "experts": null
+  },
+  "design_resources": {
+    "templates": [],
+    "design_systems": [],
+    "styles": [],
+    "directions": []
+  },
+  "static_assets": []
+}

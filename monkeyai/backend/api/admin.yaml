@@ -100,7 +100,7 @@ paths:
   /api/admin/v1/resource-imports/preview:
     post:
       summary: 解析资源发布包并预览变更
-      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，变更选项后须重新预览。
+      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
       requestBody:
         required: true
         content:
@@ -120,7 +120,7 @@ paths:
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认所选资源分区
-      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。
+      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
       requestBody:
         required: true
         content:
