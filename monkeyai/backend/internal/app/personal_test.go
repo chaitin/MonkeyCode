@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -287,10 +288,53 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	if contains("rules", "b", ruleID) || call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
 		t.Fatal("分组规则撤销后权限未收回")
 	}
+	parentGroupID := resource.ID()
+	if _, err := pool.Exec(t.Context(), `INSERT INTO groups(id,name) VALUES($1,'个人资源分享测试上级组')`, parentGroupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE groups SET parent_id=$1 WHERE id=$2`, parentGroupID, groupID); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		share resource.ShareInput
+	}{
+		{"直接分享", ruleShare},
+		{"用户组分享", groupRule},
+		{"上级用户组分享", resource.ShareInput{Resources: ruleShare.Resources, GroupIDs: []string{parentGroupID}}},
+		{"全员分享", resource.ShareInput{Resources: ruleShare.Resources, GroupIDs: []string{rootgroup.ID}}},
+	} {
+		call("POST", "/resources/shares", "a", "", test.share, 204)
+		input := resource.Object{"name": test.name + "创建专家", "prompt": "测试", "rule_ids": []string{ruleID}}
+		created := call("POST", "/experts", "b", "", input, 201)
+		updated := call("POST", "/experts", "b", "", resource.Object{"name": test.name + "更新专家", "prompt": "测试"}, 201)
+		update := resource.Object{"name": updated["name"], "rule_ids": []string{ruleID}}
+		updated = call("PUT", "/experts/"+updated.String("id"), "b", etag(updated), update, 200)
+		for _, expert := range []resource.Object{created, updated} {
+			manifest := call("GET", "/experts/"+expert.String("id")+"/manifest", "b", "", nil, 200)
+			if !manifest.Bool("available") || len(manifest["rules"].([]any)) != 1 {
+				t.Fatalf("引用共享规则的专家不可用: %v", manifest)
+			}
+		}
+		call("DELETE", "/resources/shares", "a", "", test.share, 204)
+		call("POST", "/experts", "b", "", input, 400)
+		call("PUT", "/experts/"+updated.String("id"), "b", etag(updated), update, 400)
+		for _, expert := range []resource.Object{created, updated} {
+			path := "/experts/" + expert.String("id")
+			manifest := call("GET", path+"/manifest", "b", "", nil, 200)
+			if manifest.Bool("available") || len(manifest["rules"].([]any)) != 0 {
+				t.Fatalf("撤销分享后专家仍可使用规则: %v", manifest)
+			}
+			call("DELETE", path, "b", etag(expert), nil, 204)
+		}
+	}
 	if _, err := pool.Exec(t.Context(), `DELETE FROM group_users WHERE group_id=$1`, groupID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(t.Context(), `DELETE FROM groups WHERE id=$1`, groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `DELETE FROM groups WHERE id=$1`, parentGroupID); err != nil {
 		t.Fatal(err)
 	}
 	expert = call("GET", expertPath, "a", "", nil, 200)
