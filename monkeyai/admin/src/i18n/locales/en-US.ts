@@ -464,6 +464,7 @@ export const enUS = {
             web: "Web",
             extension: "Extension",
             mobile: "Mobile",
+            runtime: "Runtime",
             unknown: "Unknown",
           },
         },

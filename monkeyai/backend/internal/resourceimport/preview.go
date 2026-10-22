@@ -167,14 +167,15 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 	return out, nil
 }
 
-func checkReferences(ctx context.Context, q resource.Queryer, b binding, present map[string]bool, r Resources, bindings map[string]binding) error {
+func checkReferences(ctx context.Context, q resource.Queryer, b binding, present map[string]bool, r Resources, bindings map[string]binding) ([]string, error) {
 	if b.Type != "rule" && b.Type != "skill" && b.Type != "connector" {
-		return nil
+		return nil, nil
 	}
 	ids, err := sqlc.New(q).ListImportReferences(ctx, sqlc.ListImportReferencesParams{Column1: b.Type, Column2: b.ID})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var warnings []string
 	for _, reference := range ids {
 		id := reference.ID
 		needed := false
@@ -197,20 +198,21 @@ func checkReferences(ctx context.Context, q resource.Queryer, b binding, present
 			break
 		}
 		if needed {
-			return fmt.Errorf("资源 %s（%s）仍被本次保留的 Expert「%s」（%s）引用，请在完整资源包中保留此资源或解除引用", b.Slug, b.Type, reference.Name, id)
+			return nil, fmt.Errorf("资源 %s（%s）仍被本次保留的 Expert「%s」（%s）引用，请在完整资源包中保留此资源或解除引用", b.Slug, b.Type, reference.Name, id)
 		}
-		local := true
+		external := true
 		for _, old := range bindings {
 			if old.ID == id && old.Type == "expert" {
-				local = false
+				external = false
 				break
 			}
 		}
-		if local {
-			return fmt.Errorf("资源 %s（%s）仍被其他 Expert「%s」（%s）引用；该 Expert 不属于本发布者，请先解除引用或在完整资源包中保留此资源", b.Slug, b.Type, reference.Name, id)
+		if external {
+			warnings = append(warnings, fmt.Sprintf("资源 %s（%s）仍被其他发布者或自建 Expert「%s」（%s）引用，已自动保留现有资源", b.Slug, b.Type, reference.Name, id))
 		}
 	}
-	return nil
+	slices.Sort(warnings)
+	return warnings, nil
 }
 
 func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r Resources, opts Options, packageSHA string) (Preview, error) {
@@ -290,12 +292,18 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		if v, ok := obj["enabled"].(bool); !ok || !v {
 			return result, fmt.Errorf("将退役资源 %s 启停状态异常", slug)
 		}
-		if err := checkReferences(ctx, q, b, present, r, current); err != nil {
+		warnings, err := checkReferences(ctx, q, b, present, r, current)
+		if err != nil {
 			return result, err
 		}
-		result.Changes = append(result.Changes, Change{Type: b.Type, Slug: slug, Name: obj.String("name"), Action: "retire",
-			ResourceID: b.ID, Revision: obj.Int("revision"), SourceSHA: b.SourceSHA, AppliedSHA: b.AppliedSHA})
-		result.RequiresConfirm = true
+		action := "retire"
+		if len(warnings) > 0 {
+			action = "retain"
+		} else {
+			result.RequiresConfirm = true
+		}
+		result.Changes = append(result.Changes, Change{Type: b.Type, Slug: slug, Name: obj.String("name"), Action: action,
+			ResourceID: b.ID, Revision: obj.Int("revision"), SourceSHA: b.SourceSHA, AppliedSHA: b.AppliedSHA, Warnings: warnings})
 	}
 	slices.SortFunc(result.Changes, func(a, b Change) int { return strings.Compare(a.Slug, b.Slug) })
 	result.PlanDigest = resource.Hash(resource.Object{"publisher": result.Publisher, "release_id": result.ReleaseID,

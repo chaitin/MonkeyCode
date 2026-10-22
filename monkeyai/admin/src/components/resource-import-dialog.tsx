@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const base = "/api/admin/v1/resource-imports"
-const actions = { create: "新增", update: "更新", skip: "跳过", retire: "停用", restore: "恢复" } as const
+const actions = { create: "新增", update: "更新", skip: "跳过", retain: "保留", retire: "停用", restore: "恢复" } as const
 const types = { skill: "技能", rule: "规则", connector: "连接器", expert: "专家" } as const
 
 type Change = {
@@ -101,7 +101,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const uploaded = fileBytes.reduce((sum, size) => sum + size, 0)
   const percent = total ? Math.min(100, Math.floor(uploaded / total * 100)) : 0
   const step = preview ? 2 : upload || busy ? 1 : 0
-  const needsNormalization = preview?.changes.some((item) => item.type === "skill" && (item.warnings?.length ?? 0) > 0)
+  const needsNormalization = preview?.changes.some((item) => item.type === "skill" && item.action !== "retain" && (item.warnings?.length ?? 0) > 0)
   const filteredChanges = preview?.changes.filter((item) => (typeFilter === "all" || item.type === typeFilter) && (actionFilter === "all" || (actionFilter === "changed" ? item.action !== "skip" : item.action === actionFilter))) ?? []
   const retired = preview?.changes.filter((item) => item.action === "retire").length ?? 0
   const design = designSummary(preview?.section_plans)
@@ -287,7 +287,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           <legend className="px-1 text-sm font-medium">导入分区</legend>
           {discovery.available_sections.map((section) => <div key={section} className="flex items-start gap-2 text-sm">
             <Checkbox id={`import-section-${section}`} checked={sections.includes(section)} disabled={!discovery.sections[section].supported} onCheckedChange={(checked) => selectSection(section, checked)} />
-            <label htmlFor={`import-section-${section}`} className="space-y-1"><span className="font-medium">{section === "agent" ? "Agent 资源" : "设计资源"}</span><p className="text-muted-foreground">{!discovery.sections[section].supported ? "此分区版本暂不支持，不会导入。" : section === "agent" ? "替换该发布者的完整 Agent 清单；缺失项经确认后停用。" : "激活此包的设计快照，历史快照保留；不更改 Agent 资源。"}</p></label>
+            <label htmlFor={`import-section-${section}`} className="space-y-1"><span className="font-medium">{section === "agent" ? "Agent 资源" : "设计资源"}</span><p className="text-muted-foreground">{!discovery.sections[section].supported ? "此分区版本暂不支持，不会导入。" : section === "agent" ? "替换该发布者的完整 Agent 清单；缺失项经确认后停用，仍被其他发布者或自建专家引用的资源自动保留。" : "激活此包的设计快照，历史快照保留；不更改 Agent 资源。"}</p></label>
           </div>)}
           {!discovery.available_sections.length && <p role="status" className="text-sm text-muted-foreground">包内没有可导入的分区。</p>}
         </fieldset>}
@@ -325,7 +325,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
               <div className="flex flex-wrap items-center justify-between gap-2"><span className="min-w-0 break-all font-medium">{item.name} <span className="font-normal text-muted-foreground">· {types[item.type as keyof typeof types] ?? item.type} / {item.slug}</span></span><Badge variant={item.action === "retire" ? "destructiveOutline" : item.action === "restore" ? "successOutline" : "outline"}>{actions[item.action]}</Badge></div>
               {item.warnings?.map((warning) => <p key={warning} className="mt-1 text-warning">{warning}</p>)}
               {(item.warnings?.length ?? 0) > 0 && item.storage_sha256 && <p className="mt-1 break-all text-xs text-muted-foreground">原产物：{item.source_sha256} → 存储包：{item.storage_sha256}</p>}
-              {item.type === "connector" && item.action !== "retire" && <div className="mt-2 flex items-center gap-2"><span>认证归属：</span><Select disabled={busy} value={modes[item.slug] ?? "independent"} onValueChange={(value) => {
+              {item.type === "connector" && item.action !== "retire" && item.action !== "retain" && <div className="mt-2 flex items-center gap-2"><span>认证归属：</span><Select disabled={busy} value={modes[item.slug] ?? "independent"} onValueChange={(value) => {
                 if (!value) return
                 setModes((old) => ({ ...old, [item.slug]: value }))
                 setStale(true)
@@ -338,7 +338,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           {retired > 0 && <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm">本次将停用 {retired} 项资源，请核对上方停用明细。恢复资源时，仍有效的旧授权或凭证可能重新生效。</p>}
           {!allDone && <>
             {needsNormalization && <div className="flex items-start gap-2 text-sm"><Checkbox id="import-normalization" disabled={busy} checked={normalization} onCheckedChange={setNormalization} /><label htmlFor="import-normalization">我已确认上述技能 frontmatter 规范化</label></div>}
-            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用。"}</label></div>
+            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用；仍被其他发布者或自建专家引用的资源将保留。"}</label></div>
           </>}
           <DialogFooter className="flex-wrap">
             <Button type="button" variant="outline" disabled={busy} onClick={() => { void restart() }}>重新选择</Button>

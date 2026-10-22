@@ -1581,3 +1581,9 @@ SELECT u.id,max(s.updated_at) AS created_at,
          'created_at',max(s.updated_at)) AS data
 FROM resource_import_uploads u JOIN resource_import_sections s ON s.upload_id=u.id
 GROUP BY u.id,u.actor_user_id;
+
+ALTER TABLE sessions
+    DROP CONSTRAINT sessions_client_type_check,
+    ADD CONSTRAINT sessions_client_type_check CHECK (
+        client_type IN ('desktop', 'web', 'extension', 'mobile', 'runtime', 'unknown')
+    );

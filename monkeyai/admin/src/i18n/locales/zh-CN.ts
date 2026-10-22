@@ -435,6 +435,7 @@ export const zhCN = {
             web: "网页端",
             extension: "扩展端",
             mobile: "移动端",
+            runtime: "运行时",
             unknown: "未知",
           },
         },
