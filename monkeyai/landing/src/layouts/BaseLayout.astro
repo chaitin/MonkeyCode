@@ -50,6 +50,7 @@ const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
     <link rel="alternate" hreflang="zh-CN" href={canonical} />
     <link rel="alternate" hreflang="x-default" href={canonical} />
     <link rel="icon" type="image/png" href={`${import.meta.env.BASE_URL}monkeyai-logo.png`} />
+    <link rel="stylesheet" href="https://work.docs.baizhi.cloud/widget-bot.css" />
 
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:type" content={type} />
@@ -84,5 +85,6 @@ const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
     <SiteHeader />
     <slot />
     <SiteFooter />
+    <script is:inline defer src="https://work.docs.baizhi.cloud/widget-bot.js"></script>
   </body>
 </html>
