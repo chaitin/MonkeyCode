@@ -122,6 +122,7 @@ bash -c "$(curl -fsSL 'https://monkeycode-ai.com/online/install')"
 - 企业咨询：[https://baizhi.cloud/consult](https://baizhi.cloud/consult)
 - Discord：[https://discord.gg/2pPmuyr4pP](https://discord.gg/2pPmuyr4pP)
 - GitHub Issues：[https://github.com/chaitin/MonkeyCode/issues](https://github.com/chaitin/MonkeyCode/issues)
+- 国内镜像：[AtomGit](https://atomgit.com/chaitin/MonkeyCode)，帮助中国大陆用户更快访问项目与下载 Release。
 
 ## Star History
 
