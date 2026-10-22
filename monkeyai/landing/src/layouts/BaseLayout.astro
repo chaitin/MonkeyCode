@@ -31,7 +31,7 @@ const siteOrigin = Astro.site ?? Astro.url.origin;
 const baseUrl = new URL(import.meta.env.BASE_URL, siteOrigin);
 const canonical = new URL(pathname.replace(/^\//, ''), baseUrl);
 const socialImage = new URL(image.replace(/^\//, ''), baseUrl);
-const gaId = import.meta.env.PUBLIC_GA_ID?.trim() || 'G-BW65KYSTXM';
+const gaId = import.meta.env.PUBLIC_GA_ID?.trim() || 'G-8T3M5CWFM4';
 const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
 ---
 

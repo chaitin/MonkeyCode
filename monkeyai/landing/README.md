@@ -79,7 +79,7 @@ npm run fonts:sync -- --archive /path/to/MiSans.zip
 
 ## Google Analytics
 
-官网默认使用 GA4 Measurement ID `G-BW65KYSTXM`，页面加载后直接启用统计。需要切换到其他 GA4 属性时，可在构建或部署环境中覆盖：
+官网默认使用 GA4 Measurement ID `G-8T3M5CWFM4`，页面加载后直接启用统计。需要切换到其他 GA4 属性时，可在构建或部署环境中覆盖：
 
 ```bash
 PUBLIC_GA_ID=G-XXXXXXXXXX npm run build
