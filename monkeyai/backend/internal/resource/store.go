@@ -594,22 +594,8 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 			return false, err
 		}
 	}
-	if o.String("ownership_type") == "user" {
-		if o.String("owner_user_id") == user {
-			return true, nil
-		}
-		if kind == "rule" {
-			shared, err := SharedUsers(ctx, q, kind, []string{o.String("id")})
-			if err != nil {
-				return false, err
-			}
-			for _, recipient := range shared[o.String("id")] {
-				if recipient.String("id") == user {
-					return true, nil
-				}
-			}
-			return false, nil
-		}
+	if o.String("ownership_type") == "user" && o.String("owner_user_id") == user {
+		return true, nil
 	}
 	return Allowed(ctx, q, kind, o.String("id"), user)
 }
