@@ -1,6 +1,6 @@
 # 远程执行协议 v1 联调契约
 
-状态：2026-10-16 修复五组剩余互通问题；本仓数据库和 HTTP/yamux 集成验证记录见[互通验证记录](remote-runtime-interop-validation.md)。实际客户端提交 `4eb858b1` 与 Mac/Windows UI 联合验收仍需对应客户端环境。支持 Desktop 托管和独立 runtime，服务端默认开启，可通过 `MONKEYAI_RUNTIME_RELAY=false` 关闭；设备侧发布仍须本机显式启用。设计与实施状态见[后端实现方案](remote-runtime-backend-plan.md)。
+状态：2026-10-20 增加终端数据通道代理和有界重连候选，随远程执行中转默认开启；实现及待补真实客户端验收见[终端交付记录](remote-terminal-implementation.md)。基础协议的数据库和 HTTP/yamux 集成验证记录见[互通验证记录](remote-runtime-interop-validation.md)。实际客户端提交 `4eb858b1` 与 Mac/Windows UI 联合验收仍需对应客户端环境。支持 Desktop 托管和独立 runtime，服务端默认开启，可通过 `MONKEYAI_RUNTIME_RELAY=false` 关闭；设备侧发布仍须本机显式启用。设计与实施状态见[后端实现方案](remote-runtime-backend-plan.md)。
 
 ## 1. 发现与认证
 
@@ -61,7 +61,7 @@ ready 包含 server_id、machine_id、registration_version、grant_version、bou
 
 内部 HTTP 并发上限为 16（含事件流），请求头读取 5 秒、完整请求读取 10 秒、事件写入 5 秒；慢消费者不能占用设备锁。NDJSON 首条 ready，每 15 秒发送 heartbeat。事件发送不能证明对端存活：服务端每 15 秒主动 yamux Ping，仅收到 Pong 后更新在线观测，Ping 写入和回应各有 10 秒上限。控制或事件流终止回收同 epoch 数据通道及观察流，数据故障独立重建。
 
-业务流预算控制 64、数据 16。HTTP 流逐次验证和打开，不跨请求复用身份上下文。业务 Host 和 URL Host 均为 `device.internal`，HTTP 采用 32 KiB 流式拷贝。
+业务流预算：控制 64；每个实际数据隧道常规流 15（文件、SSE、上传、预览和终端共享，其中终端最多 8），额外保留 1 条终端 `reattach=1` 候选，物理总量最多 16、终端最多 9。开流前预留，五秒候选期限内须转入常规，提升后立即释放候选槽并停止定时器。具体状态机见[终端契约](remote-terminal-backend.md)。HTTP 流逐次验证和打开，不跨请求复用身份上下文。业务 Host 和 URL Host 均为 `device.internal`，HTTP 采用 32 KiB 流式拷贝。
 
 ## 4. ticket 与业务请求
 
@@ -73,7 +73,7 @@ ready 包含 server_id、machine_id、registration_version、grant_version、bou
 
 创建和续期均实时核验；续期加 connection_id，可省略 scopes 和 supported_protocols。显式权限只能收窄，续期不能改变协议。默认 15 分钟、每设备 8 份有效授权，ticket 为 32 字节随机值，服务端只存摘要。
 
-普通代理使用 `Authorization: Bearer <ticket>`。WebSocket 使用 `monkeyai.v1` 和 `monkeyai.token.<ticket>`；中转消费票据子协议，只转发并回选 `monkeyai.v1`。允许安装版 `app://monkeyai` 和部署 origin；开发地址及端口通过 `MONKEYAI_RUNTIME_DESKTOP_ORIGINS` 显式配置，未知来源拒绝。
+普通代理使用 `Authorization: Bearer <ticket>`。ACP WebSocket 使用 `monkeyai.v1` 和 `monkeyai.token.<ticket>`；中转消费票据子协议，只转发并回选 `monkeyai.v1`。终端 WebSocket 使用 `monkeyai.terminal.v1`，要求 `session:control`，仅路由到数据通道 `/terminal`，不回退控制通道；随远程执行中转默认提供，并发布布尔 `features.terminal_ws=true`，无需终端专用环境变量。终端只允许无 query 或恰好一个 `reattach=1`，严格拒绝重复/额外协议及凭据；Bearer 与 token 子协议同时提供时必须一致。允许安装版 `app://monkeyai` 和部署 origin；开发地址及端口通过 `MONKEYAI_RUNTIME_DESKTOP_ORIGINS` 显式配置，未知来源拒绝。
 
 代理白名单：ACP GET 使用 session:read；POST `/read/session` 使用 session:read，`/read/config` 使用 resources:manage，`/read/interaction` 使用 session:control，`/write/resource` 同时要求 resources:manage/session:read；MCP POST/GET/DELETE 使用 files:read；上传 PUT/HEAD 使用 files:write；文件 GET/HEAD 使用 files:read 和精确文件授权。正文读取等待响应头 150 秒，资源写入 225 秒，其余 30 秒；取消、授权和流预算仍生效。CORS 允许 Upload-Session-ID 等上传头并暴露上传、MCP、Range/ETag 响应头。禁止本机宿主管理和能力注册，清除外部凭据与自报身份头。
 

@@ -181,6 +181,11 @@ func (f *fixture) handshake(t *testing.T, hello Hello, private ed25519.PrivateKe
 
 func (f *fixture) runtime(t *testing.T) *runtimeFixture {
 	t.Helper()
+	return f.runtimeHandler(t, nil)
+}
+
+func (f *fixture) runtimeHandler(t *testing.T, handler func(http.ResponseWriter, *http.Request) bool) *runtimeFixture {
+	t.Helper()
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +264,11 @@ func (f *fixture) runtime(t *testing.T) *runtimeFixture {
 				w.WriteHeader(400)
 				return
 			}
-			if r.URL.Path == "/acp" || strings.HasPrefix(r.URL.Path, "/read/") || r.URL.Path == "/write/resource" {
+			if r.URL.Path == "/terminal" && session != data {
+				http.NotFound(w, r)
+				return
+			}
+			if r.URL.Path == "/acp" || r.URL.Path == "/terminal" || strings.HasPrefix(r.URL.Path, "/read/") || r.URL.Path == "/write/resource" {
 				payload, ok := verifyWire(f.s.key.Public().(ed25519.PublicKey), r.Header.Get("X-MonkeyAI-Access"))
 				var claim struct {
 					Authorization FileAuthorization `json:"authorization"`
@@ -304,8 +313,15 @@ func (f *fixture) runtime(t *testing.T) *runtimeFixture {
 					return
 				}
 			}
-			if r.URL.Path == "/acp" {
-				ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, Subprotocols: []string{"monkeyai.v1"}})
+			if handler != nil && handler(w, r) {
+				return
+			}
+			if r.URL.Path == "/acp" || r.URL.Path == "/terminal" {
+				protocol := "monkeyai.v1"
+				if r.URL.Path == "/terminal" {
+					protocol = terminalProtocol
+				}
+				ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, Subprotocols: []string{protocol}, CompressionMode: websocket.CompressionDisabled})
 				if err != nil {
 					return
 				}

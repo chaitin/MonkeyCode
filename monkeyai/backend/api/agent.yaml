@@ -764,6 +764,32 @@ paths:
         '409': {description: upgrade_required}
         '429': {description: device_connection_limit 或 relay_overloaded}
         '503': {description: device_offline 或 authorization_state_unavailable}
+  /api/v1/endpoints/{machine_id}/proxy/terminal:
+    parameters:
+      - {$ref: '#/components/parameters/EndpointMachine'}
+    get:
+      summary: 通过设备数据通道附着远程终端
+      description: '远程执行中转启用时默认提供终端入口，并发布布尔 features.terminal_ws=true，无需终端专用环境变量。必须提供 monkeyai.terminal.v1 业务子协议，票据通过 monkeyai.token.<ticket> 或 Bearer 传递；双来源必须一致，拒绝重复凭据、额外业务子协议和未知查询参数。要求 session:control，observe 亦然。复用签名访问断言及实时租约，固定上游 Host device.internal、路径 /terminal。安装版允许 app://monkeyai，开发来源沿精确白名单。每数据隧道共享 15 条常规数据流（终端最多 8 条），另留 1 条候选；候选累计 5 秒内须转入常规，否则关闭。101 后透明转发，不启动或关闭 shell。详见 design/remote-terminal-backend.md。'
+      security:
+        - RuntimeTicket: []
+      parameters:
+        - name: reattach
+          in: query
+          required: false
+          description: 仅接受恰好一个值为 1 的参数；申请候选预算，不证明替换合法性。
+          schema: {type: string, const: '1'}
+      responses:
+        '101':
+          description: 执行端成功升级，回选 monkeyai.terminal.v1；不返回 token 子协议、Cookie 或压缩扩展。
+          headers:
+            Sec-WebSocket-Protocol: {schema: {type: string, const: monkeyai.terminal.v1}}
+            Cache-Control: {schema: {type: string, const: no-store}}
+        '400': {description: invalid_request；执行端非 101 错误按实际状态及内容类型透传}
+        '401': {description: connection_expired}
+        '403': {description: permission_denied 或 device_revoked}
+        '404': {description: not_found，远程执行中转未启用或路径未知}
+        '429': {description: terminal_limit_reached；执行端亦可返回 access_limit_reached}
+        '503': {description: device_offline、authorization_state_unavailable 或执行端 terminal_unavailable}
   /api/v1/endpoints/{machine_id}/proxy/{path}:
     parameters:
       - {$ref: '#/components/parameters/EndpointMachine'}

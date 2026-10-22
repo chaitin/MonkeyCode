@@ -33,6 +33,29 @@ func TestWireSignatureEnvelope(t *testing.T) {
 	}
 }
 
+func TestWireSignatureLimits(t *testing.T) {
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []int{8190, 8191} {
+		wire, err := signWire(private, "key", strings.Repeat("a", size))
+		if size == 8190 {
+			if err != nil || len(wire) > 16<<10 {
+				t.Fatal("拒绝合法的 8 KiB 载荷")
+			}
+			if _, ok := verifyWire(public, wire); !ok {
+				t.Fatal("合法上限载荷验签失败")
+			}
+		} else if err == nil {
+			t.Fatal("签发超过 8 KiB 的载荷")
+		}
+	}
+	if _, ok := verifyWire(public, strings.Repeat("a", 16<<10+1)); ok {
+		t.Fatal("接受超过 16 KiB 的签名编码")
+	}
+}
+
 func TestSigningKeysOverlapAndPurposeIsolation(t *testing.T) {
 	current, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

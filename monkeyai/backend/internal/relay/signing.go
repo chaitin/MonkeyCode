@@ -104,19 +104,29 @@ func signWire(key ed25519.PrivateKey, kid string, value any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if len(payload) > 8<<10 {
+		return "", errors.New("访问签名载荷超过上限")
+	}
 	encoded := base64.RawURLEncoding.EncodeToString(payload)
 	message := []byte("monkeyai.access.signed.v1." + encoded)
 	signature := base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, message))
-	return encoded + "." + signature, nil
+	wire := encoded + "." + signature
+	if len(wire) > 16<<10 {
+		return "", errors.New("访问签名编码超过上限")
+	}
+	return wire, nil
 }
 
 func verifyWire(public ed25519.PublicKey, wire string) (json.RawMessage, bool) {
+	if len(wire) > 16<<10 {
+		return nil, false
+	}
 	parts := strings.Split(wire, ".")
 	if len(parts) != 2 || len(public) != ed25519.PublicKeySize {
 		return nil, false
 	}
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
-	if err != nil || len(payload) == 0 {
+	if err != nil || len(payload) == 0 || len(payload) > 8<<10 {
 		return nil, false
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])

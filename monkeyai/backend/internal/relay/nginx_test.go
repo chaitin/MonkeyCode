@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 func TestNginxRelay(t *testing.T) {
@@ -70,7 +72,7 @@ func TestNginxRelay(t *testing.T) {
 		}
 	}
 	runtime := f.runtime(t)
-	scopes := []string{"session:read", "files:write"}
+	scopes := []string{"session:read", "session:control", "files:write"}
 	connection := f.connection(t, runtime.hello.MachineID, ConnectionRequest{Scopes: &scopes, SupportedProtocols: runtime.hello.Protocols}, f.token)
 	payload := strings.Repeat("中转流式上传", 10000)
 	req, _ := http.NewRequestWithContext(ctx, "PUT", f.server.URL+"/api/v1/endpoints/"+runtime.hello.MachineID+"/proxy/uploads/test", strings.NewReader(payload))
@@ -83,6 +85,21 @@ func TestNginxRelay(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 200 || string(body) != payload {
 		t.Fatalf("Nginx 上传失败，状态=%d", resp.StatusCode)
+	}
+	ws, response, err := dialTerminal(ctx, f, runtime, connection.Ticket, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+	if ws.Subprotocol() != terminalProtocol || response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("Nginx 丢失终端握手头")
+	}
+	message := []byte(`{"type":"heartbeat","nonce":"nginx-terminal"}`)
+	if err := ws.Write(ctx, websocket.MessageText, message); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, err := ws.Read(ctx); err != nil || string(out) != string(message) {
+		t.Fatalf("Nginx 终端转发失败: %s %v", out, err)
 	}
 	logs := command("logs", id)
 	if strings.Contains(logs, connection.Ticket) {
