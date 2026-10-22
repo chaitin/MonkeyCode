@@ -59,6 +59,19 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			return
 		}
 		defer loaded.cleanup()
+		if loaded.input.DiscoverOnly {
+			s.discovery(w, r, loaded)
+			return
+		}
+		if loaded.input.Sections != nil {
+			out, err := s.previewSections(r.Context(), loaded)
+			if err != nil {
+				resource.Fail(r.Context(), w, err)
+				return
+			}
+			resource.JSON(r.Context(), w, http.StatusOK, out)
+			return
+		}
 		out, err := s.Evaluate(r.Context(), s.Pool, loaded.pkg, loaded.items, loaded.input.Options, loaded.sha)
 		if err != nil {
 			resource.Fail(r.Context(), w, &resource.Error{Status: 409, Code: "import_conflict", Message: err.Error()})
@@ -73,6 +86,26 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			return
 		}
 		defer loaded.cleanup()
+		if loaded.input.DiscoverOnly {
+			resource.Fail(r.Context(), w, resource.Invalid("分区发现结果不能用于确认导入"))
+			return
+		}
+		if loaded.input.Sections != nil {
+			out, status, err := s.applySections(r.Context(), loaded)
+			if err != nil {
+				resource.Fail(r.Context(), w, err)
+				return
+			}
+			if status >= 400 {
+				resource.Fail(r.Context(), w, &resource.Error{Status: status, Code: "import_failed", Message: "所选分区导入失败，请检查分区结果", References: out})
+				return
+			}
+			if err = s.finishSections(r.Context(), loaded); err != nil {
+				out.Warning = "分区已提交，上传状态未更新；请刷新恢复"
+			}
+			resource.JSON(r.Context(), w, status, out)
+			return
+		}
 		if loaded.input.PackageSHA256 != loaded.sha || loaded.input.PlanDigest == "" || !loaded.input.Options.ConfirmFinal {
 			resource.Fail(r.Context(), w, resource.Invalid("必须先预览并确认本包是最终 Agent 资源集合"))
 			return
@@ -298,6 +331,10 @@ func connectorAvatarObject(item Connector) (string, string) {
 }
 
 func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Options, packageSHA, expectedDigest string) (Preview, error) {
+	return s.apply(ctx, p, r, opts, packageSHA, expectedDigest, nil)
+}
+
+func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Options, packageSHA, expectedDigest string, receipt func(pgx.Tx, Preview) error) (Preview, error) {
 	logging.Bind(ctx, slog.String("phase", "apply"))
 	pre, err := s.Evaluate(ctx, s.Pool, p, r, opts, packageSHA)
 	if err != nil {
@@ -401,6 +438,11 @@ func (s *Service) Apply(ctx context.Context, p Package, r Resources, opts Option
 				"source_sha256": change.SourceSHA, "applied_sha256": change.AppliedSHA, "last_import_id": importID})); err != nil {
 				return pre, err
 			}
+		}
+	}
+	if receipt != nil {
+		if err = receipt(tx, locked); err != nil {
+			return pre, err
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {

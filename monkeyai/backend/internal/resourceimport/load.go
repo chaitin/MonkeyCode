@@ -9,7 +9,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"sync"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport/sqlc"
@@ -17,30 +19,56 @@ import (
 )
 
 type importInput struct {
-	UploadID      string  `json:"upload_id"`
-	Options       Options `json:"options"`
-	PackageSHA256 string  `json:"package_sha256"`
-	PlanDigest    string  `json:"plan_digest"`
+	UploadID           string            `json:"upload_id"`
+	Options            Options           `json:"options"`
+	PackageSHA256      string            `json:"package_sha256"`
+	PlanDigest         string            `json:"plan_digest"`
+	Sections           []string          `json:"sections,omitempty"`
+	DiscoverOnly       bool              `json:"discover_only,omitempty"`
+	SectionPlanDigests map[string]string `json:"section_plan_digests,omitempty"`
 }
 
 type loadedImport struct {
-	input   importInput
-	pkg     Package
-	items   Resources
-	sha     string
-	cleanup func()
-	tx      pgx.Tx
+	input      importInput
+	pkg        Package
+	items      Resources
+	sha        string
+	cleanup    func()
+	tx         pgx.Tx
+	design     *designcatalog.Package
+	inspection designcatalog.Inspection
+	sections   []string
 }
 
 func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loadedImport, err error) {
 	var reader io.ReaderAt
 	var size int64
+	var release func()
 	loaded.cleanup = func() {}
 	defer func() {
+		cleanup := loaded.cleanup
+		var once sync.Once
+		loaded.cleanup = func() {
+			once.Do(func() {
+				cleanup()
+				if release != nil {
+					release()
+				}
+			})
+		}
 		if err != nil {
 			loaded.cleanup()
 		}
 	}()
+	if s.importSlots != nil {
+		select {
+		case s.importSlots <- struct{}{}:
+			release = func() { <-s.importSlots }
+		case <-r.Context().Done():
+			err = r.Context().Err()
+			return
+		}
+	}
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		if err = resource.Decode(w, r, &loaded.input); err != nil {
 			return
@@ -102,6 +130,19 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 			}
 		}
 		loaded.input.PackageSHA256, loaded.input.PlanDigest = r.FormValue("package_sha256"), r.FormValue("plan_digest")
+		if value := r.FormValue("sections"); value != "" {
+			if json.Unmarshal([]byte(value), &loaded.input.Sections) != nil {
+				err = resource.Invalid("导入分区无效")
+				return
+			}
+		}
+		if value := r.FormValue("section_plan_digests"); value != "" {
+			if json.Unmarshal([]byte(value), &loaded.input.SectionPlanDigests) != nil {
+				err = resource.Invalid("分区计划无效")
+				return
+			}
+		}
+		loaded.input.DiscoverOnly = r.FormValue("discover_only") == "true"
 		hash := sha256.New()
 		if _, err = io.Copy(hash, io.NewSectionReader(file, 0, header.Size)); err != nil {
 			return
@@ -109,12 +150,40 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		loaded.sha = "sha256:" + hex.EncodeToString(hash.Sum(nil))
 		reader, size = file, header.Size
 	}
-	loaded.pkg, err = ParseReader(reader, size)
-	if err == nil {
-		loaded.items, err = ParseResources(loaded.pkg)
-	}
+	loaded.inspection, err = designcatalog.Inspect(reader, size)
 	if err != nil {
 		err = resource.Invalid(err.Error())
+		return
+	}
+	if loaded.input.DiscoverOnly {
+		return
+	}
+	loaded.sections, err = selectSections(loaded.input.Sections, loaded.inspection)
+	if err != nil {
+		return
+	}
+	if containsSection(loaded.sections, "design") {
+		if s.design == nil {
+			err = &resource.Error{Status: 503, Code: "service_unavailable", Message: "设计资源导入尚未配置"}
+			return
+		}
+		loaded.design, err = designcatalog.Parse(r.Context(), reader, size)
+		if err != nil {
+			err = resource.Invalid(err.Error())
+			return
+		}
+		previous := loaded.cleanup
+		pkg := loaded.design
+		loaded.cleanup = func() { pkg.Close(); previous() }
+	}
+	if containsSection(loaded.sections, "agent") {
+		loaded.pkg, err = ParseReader(reader, size)
+		if err == nil {
+			loaded.items, err = ParseResources(loaded.pkg)
+		}
+		if err != nil {
+			err = resource.Invalid(err.Error())
+		}
 	}
 	return
 }

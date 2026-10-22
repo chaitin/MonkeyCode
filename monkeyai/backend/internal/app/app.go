@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
@@ -254,6 +255,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
+	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: cfg.InstanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
+	resourceImports.WithDesignCatalog(designs)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	identities.RegisterAgent(agent)
@@ -274,6 +277,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router := chi.NewRouter()
 	router.Use(logging.HTTP(logger))
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	designs.RegisterCatalog(router, identities.RequireAgent)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
 		WithSessionResolver(sessionResolver).

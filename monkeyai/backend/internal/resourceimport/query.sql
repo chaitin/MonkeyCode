@@ -7,14 +7,14 @@ FROM resource_imports WHERE publisher = $1 AND status = 'succeeded'
 ORDER BY version DESC LIMIT 1;
 
 -- name: ListImportHistory :many
-SELECT to_jsonb(i) FROM resource_imports i
+SELECT i.data FROM resource_import_history i
 WHERE sqlc.arg(cursor)::jsonb = '{}'::jsonb
    OR (i.created_at, i.id) < ((sqlc.arg(cursor)::jsonb->>'created_at')::timestamptz, (sqlc.arg(cursor)::jsonb->>'id')::uuid)
 ORDER BY i.created_at DESC, i.id DESC
 LIMIT sqlc.arg(page_limit)::integer;
 
 -- name: GetImportHistory :one
-SELECT to_jsonb(i) FROM resource_imports i WHERE id = $1::uuid;
+SELECT i.data FROM resource_import_history i WHERE id = $1::uuid;
 
 -- name: LockImportPublisher :one
 SELECT pg_advisory_xact_lock($1::bigint);
@@ -187,7 +187,7 @@ WHERE id=sqlc.arg(id)::uuid AND actor_user_id=sqlc.arg(actor_user_id)::uuid AND 
 -- name: LockImportUpload :one
 SELECT to_jsonb(u) FROM resource_import_uploads u
 WHERE id=sqlc.arg(id)::uuid AND actor_user_id=sqlc.arg(actor_user_id)::uuid AND status<>'cancelled' AND expires_at>now()
-FOR UPDATE;
+FOR NO KEY UPDATE;
 
 -- name: ListImportChunks :many
 SELECT to_jsonb(c) FROM resource_import_chunks c WHERE upload_id=$1::uuid ORDER BY index;
@@ -207,8 +207,32 @@ UPDATE resource_import_uploads SET status='imported' WHERE id=$1::uuid;
 UPDATE resource_import_uploads SET status='cancelled',package_sha256='',expires_at=now() WHERE id=$1::uuid;
 
 -- name: ListExpiredImportUploads :many
-SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now()
+SELECT to_jsonb(u) FROM resource_import_uploads u WHERE expires_at<=now() AND cleaned_at IS NULL
 ORDER BY expires_at LIMIT 10 FOR UPDATE SKIP LOCKED;
 
 -- name: DeleteImportUpload :exec
-DELETE FROM resource_import_uploads WHERE id=$1::uuid;
+WITH archived AS (
+    UPDATE resource_import_uploads u SET cleaned_at=now()
+    WHERE u.id=$1::uuid AND (EXISTS (SELECT 1 FROM resource_import_sections s WHERE s.upload_id=u.id)
+       OR EXISTS (SELECT 1 FROM resource_imports i WHERE i.upload_id=u.id)) RETURNING u.id
+), chunks AS (
+    DELETE FROM resource_import_chunks WHERE upload_id IN (SELECT id FROM archived)
+)
+DELETE FROM resource_import_uploads WHERE id=$1::uuid AND NOT EXISTS (SELECT 1 FROM archived);
+
+-- name: BindSectionBatch :exec
+UPDATE resource_imports SET upload_id=(sqlc.arg(data)::jsonb->>'upload_id')::uuid
+WHERE publisher=sqlc.arg(data)::jsonb->>'publisher' AND release_id=(sqlc.arg(data)::jsonb->>'release_id')::uuid;
+
+-- name: ImportSection :one
+SELECT status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid AND section=$2;
+
+-- name: SaveImportSection :exec
+INSERT INTO resource_import_sections(upload_id,section,status,plan_digest,result)
+SELECT (d->>'upload_id')::uuid,d->>'section',d->>'status',d->>'plan_digest',d->'result'
+FROM (SELECT sqlc.arg(data)::jsonb AS d) input
+ON CONFLICT(upload_id,section) DO UPDATE SET status=EXCLUDED.status,plan_digest=EXCLUDED.plan_digest,result=EXCLUDED.result,updated_at=now()
+WHERE resource_import_sections.status<>'succeeded';
+
+-- name: ListImportSections :many
+SELECT section,status,plan_digest,result FROM resource_import_sections WHERE upload_id=$1::uuid ORDER BY section;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react"
-import { api } from "@/lib/api"
+import { api, ApiError } from "@/lib/api"
+import { defaultSections, designSummary, sectionDigests, successfulSections, type Discovery, type ImportResult, type ImportSection, type SectionPlan } from "@/lib/design-import"
 import { archiveDirectory, createUpload, matchArchives, sortArchives, uploadArchives, uploadBase, uploadedFileBytes, validateArchives, type ResourceUpload, type StagedArchive, type UploadProgress } from "@/lib/resource-upload"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,8 @@ type Preview = {
   changes: Change[]
   ignored_static: string[]
   already_imported: boolean
+  sections?: ImportSection[]
+  section_plans?: Partial<Record<ImportSection, SectionPlan>>
 }
 type Phase = "idle" | "packing" | "uploading" | "checking" | "previewing" | "applying"
 
@@ -49,6 +52,9 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const [files, setFiles] = useState<File[]>([])
   const [upload, setUpload] = useState(initialUpload)
   const [preview, setPreview] = useState<Preview | null>(null)
+  const [discovery, setDiscovery] = useState<Discovery | null>(null)
+  const [sections, setSections] = useState<ImportSection[]>([])
+  const [result, setResult] = useState<ImportResult | null>(null)
   const [stale, setStale] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialUpload?.status === "ready" ? "previewing" : "idle")
   const [error, setError] = useState("")
@@ -74,8 +80,8 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
     if (initialUpload?.status !== "ready") return
     const controller = new AbortController()
     controllerRef.current = controller
-    void api<Preview>(`${base}/preview`, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: initialUpload.id, options: {} }) })
-      .then(setPreview)
+    void api<Discovery>(`${base}/preview`, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: initialUpload.id, discover_only: true }) })
+      .then((value) => { setDiscovery(value); setSections(defaultSections(value)) })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(message(reason)) })
       .finally(() => { if (!controller.signal.aborted) setPhase("idle") })
     return () => controller.abort()
@@ -98,6 +104,14 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const needsNormalization = preview?.changes.some((item) => item.type === "skill" && (item.warnings?.length ?? 0) > 0)
   const filteredChanges = preview?.changes.filter((item) => (typeFilter === "all" || item.type === typeFilter) && (actionFilter === "all" || (actionFilter === "changed" ? item.action !== "skip" : item.action === actionFilter))) ?? []
   const retired = preview?.changes.filter((item) => item.action === "retire").length ?? 0
+  const design = designSummary(preview?.section_plans)
+  const allDone = Boolean(preview?.already_imported) || Boolean(result && successfulSections(result)) || Boolean(preview?.section_plans && Object.values(preview.section_plans).every((plan) => plan.already_imported))
+  const selectSection = (section: ImportSection, checked: boolean) => {
+    setSections((current) => checked ? [...current.filter((value) => value !== section), section] : current.filter((value) => value !== section))
+    setStale(true)
+    setConfirmed(false)
+    setResult(null)
+  }
 
   const cleanupStaged = () => {
     const cleanup = cleanupRef.current
@@ -143,8 +157,12 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
       if (apply) {
         if (!current || !preview || stale) return
         setPhase("applying")
-        await api<Preview>(base, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: current.id, options: options(true), package_sha256: preview.package_sha256, plan_digest: preview.plan_digest }) })
-        onImported()
+        const outcome = await api<ImportResult>(base, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: current.id, sections: preview.sections, section_plan_digests: sectionDigests(preview.section_plans ?? {}), options: preview.sections?.includes("agent") ? options(true) : { confirm_final: true, authorization_modes: {}, accept_normalization: false }, package_sha256: preview.package_sha256, plan_digest: preview.plan_digest }) })
+        setResult(outcome)
+        setConfirmed(false)
+        setStale(!successfulSections(outcome))
+        setNotice(outcome.warning ?? (successfulSections(outcome) ? "所选分区已导入，可继续处理其他分区或关闭。" : "部分分区导入失败；已成功的分区会保留，请重新预览后重试。"))
+        onChanged()
         return
       }
       if (!current || current.status === "uploading") {
@@ -169,13 +187,26 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
         }
       }
       setPhase("previewing")
-      const result = await api<Preview>(`${base}/preview`, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: current.id, options: options() }) })
+      if (!discovery) {
+        const found = await api<Discovery>(`${base}/preview`, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: current.id, discover_only: true }) })
+        setDiscovery(found)
+        setSections(defaultSections(found))
+        setNotice("请选择要导入的分区，再解析并预览。")
+        return
+      }
+      if (!sections.length) { setError("至少选择一个导入分区"); return }
+      const nextOptions = sections.includes("agent") ? options() : { authorization_modes: {}, accept_normalization: false, confirm_final: false }
+      const result = await api<Preview>(`${base}/preview`, { method: "POST", signal: controller.signal, body: JSON.stringify({ upload_id: current.id, sections, options: nextOptions }) })
       setPreview(result)
+      setResult(null)
       setStale(false)
       setConfirmed(false)
     } catch (reason) {
       if (controller.signal.aborted) setNotice("上传已暂停，已上传的部分会保留，可稍后继续。")
-      else setError(message(reason))
+      else {
+        setError(message(reason))
+        if (reason instanceof ApiError && reason.details && typeof reason.details === "object" && "sections" in reason.details) setResult(reason.details as ImportResult)
+      }
       if (apply) { setStale(true); setConfirmed(false) }
       onChanged()
     } finally {
@@ -193,6 +224,9 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
       setUpload(null)
       setFiles([])
       setPreview(null)
+      setDiscovery(null)
+      setSections([])
+      setResult(null)
       setStale(false)
       setProgress({ chunks: [], index: -1, loaded: 0 })
       setConfirmed(false)
@@ -249,6 +283,18 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           </div>}
           {phase === "packing" && <p role="status" className="text-sm">正在打包目录…</p>}
         </>}
+        {discovery && <fieldset disabled={busy} className="space-y-3 rounded-lg border p-4">
+          <legend className="px-1 text-sm font-medium">导入分区</legend>
+          {discovery.available_sections.map((section) => <div key={section} className="flex items-start gap-2 text-sm">
+            <Checkbox id={`import-section-${section}`} checked={sections.includes(section)} disabled={!discovery.sections[section].supported} onCheckedChange={(checked) => selectSection(section, checked)} />
+            <label htmlFor={`import-section-${section}`} className="space-y-1"><span className="font-medium">{section === "agent" ? "Agent 资源" : "设计资源"}</span><p className="text-muted-foreground">{!discovery.sections[section].supported ? "此分区版本暂不支持，不会导入。" : section === "agent" ? "替换该发布者的完整 Agent 清单；缺失项经确认后停用。" : "激活此包的设计快照，历史快照保留；不更改 Agent 资源。"}</p></label>
+          </div>)}
+          {!discovery.available_sections.length && <p role="status" className="text-sm text-muted-foreground">包内没有可导入的分区。</p>}
+        </fieldset>}
+        {result && <div className="space-y-2 rounded-lg border p-3" aria-live="polite">
+          <p className="text-sm font-medium">{result.status === "succeeded" ? "所选分区导入成功" : result.status === "partial" ? "部分分区导入成功" : "所选分区导入失败"}</p>
+          {Object.entries(result.sections).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "agent" ? "Agent 资源" : "设计资源"}：{item.status === "succeeded" ? item.replayed ? "已导入，保留原结果" : "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all text-xs text-muted-foreground">源发布 ID：{item.result.release_id}</p>}{item.error && <p role="alert" className="text-destructive">{item.error.message}</p>}</div>)}
+        </div>}
         {(error || selectionError) && <p role="alert" className="break-words text-sm text-destructive">{error || selectionError}</p>}
         {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
         {!preview && <DialogFooter className="flex-wrap">
@@ -258,7 +304,14 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           {phase === "uploading" ? <Button type="button" variant="outline" onClick={() => controllerRef.current?.abort()}>暂停上传</Button> : <Button type="button" disabled={busy || Boolean(selectionError) || (!files.length && upload?.status !== "ready")} onClick={() => { void run(false) }}>{busy ? "解析中…" : upload?.status === "ready" ? "解析并预览" : upload ? "继续上传并预览" : "上传并预览"}</Button>}
         </DialogFooter>}
         {preview && <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-medium">{preview.publisher} / v{preview.version}</h2><span className="text-sm text-muted-foreground">共 {preview.changes.length} 项资源</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="break-all font-medium">{design && !preview.sections?.includes("agent") ? `设计快照 / ${design.release_id}` : `${preview.publisher} / v${preview.version}`}</h2><span className="text-sm text-muted-foreground">Agent {preview.changes.length} 项{design ? ` · 设计 ${Object.values(design.counts).reduce((total, count) => total + count, 0)} 项` : ""}</span></div>
+          {design && <section className="space-y-3 rounded-lg border p-4" aria-label="设计快照预览">
+            <div className="space-y-1 text-sm"><h3 className="font-medium">设计快照</h3><p className="break-all text-muted-foreground">发布者：{design.publisher_id}</p><p className="break-all text-muted-foreground">源发布 ID：{design.release_id}</p></div>
+            <div className="flex flex-wrap gap-2">{([["template", "模板"], ["design-system", "设计系统"], ["style", "风格"], ["direction", "方向"]] as const).map(([kind, label]) => <Badge key={kind} variant="outline">{label} {design.counts[kind]}</Badge>)}</div>
+            <div className="max-h-48 space-y-1 overflow-y-auto text-sm">{design.changes.map((item) => <div key={`${item.kind}:${item.id}`} className="flex justify-between gap-3"><span className="min-w-0 break-all">{item.name}</span><span className="shrink-0 text-muted-foreground">{({ create: "新增", update: "更新", skip: "不变", remove: "从当前目录移除" } as Record<string, string>)[item.action] ?? item.action}</span></div>)}</div>
+            <p className="text-sm text-muted-foreground">激活后默认使用此快照，历史快照仍可读取。</p>
+          </section>}
+          {preview.sections?.includes("agent") && <>
           <div className="flex flex-wrap gap-2">{Object.entries(actions).map(([action, label]) => <Badge key={action} variant={action === "retire" ? "destructiveOutline" : "outline"}>{label} {preview.changes.filter((item) => item.action === action).length}</Badge>)}</div>
           {preview.already_imported && <p role="status" className="text-sm">此发布版本已经导入。</p>}
           {preview.ignored_static.length > 0 && <p className="text-sm text-muted-foreground">已忽略 {preview.ignored_static.length} 个静态资源</p>}
@@ -280,16 +333,18 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
               }}><SelectTrigger size="sm" aria-label={`${item.name}认证归属`}><SelectValue>{modes[item.slug] === "centralized" ? "集中凭证" : "独立凭证"}</SelectValue></SelectTrigger><SelectContent><SelectGroup><SelectItem value="independent">独立凭证</SelectItem><SelectItem value="centralized">集中凭证</SelectItem></SelectGroup></SelectContent></Select></div>}
             </div>)}
           </div>
+          </>}
           {stale && <p role="status" className="text-sm text-warning">选项或资源状态已变化，请重新预览后确认。</p>}
           {retired > 0 && <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm">本次将停用 {retired} 项资源，请核对上方停用明细。恢复资源时，仍有效的旧授权或凭证可能重新生效。</p>}
-          {!preview.already_imported && <>
+          {!allDone && <>
             {needsNormalization && <div className="flex items-start gap-2 text-sm"><Checkbox id="import-normalization" disabled={busy} checked={normalization} onCheckedChange={setNormalization} /><label htmlFor="import-normalization">我已确认上述技能 frontmatter 规范化</label></div>}
-            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">我确认这是该发布者的完整资源集合，缺失项将被停用</label></div>
+            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用。"}</label></div>
           </>}
           <DialogFooter className="flex-wrap">
             <Button type="button" variant="outline" disabled={busy} onClick={() => { void restart() }}>重新选择</Button>
             <Button type="button" variant="outline" disabled={phase === "applying"} onClick={close}>稍后继续</Button>
-            {preview.already_imported ? <Button type="button" onClick={onImported}>完成</Button> : <><Button type="button" variant="outline" disabled={busy} onClick={() => { void run(false) }}>{phase === "previewing" ? "预览中…" : "重新预览"}</Button><Button type="button" disabled={busy || stale || !confirmed || (needsNormalization && !normalization)} onClick={() => { void run(true) }}>{phase === "applying" ? "导入中…" : "确认导入"}</Button></>}
+            <Button type="button" variant="outline" disabled={busy || !sections.length} onClick={() => { void run(false) }}>{phase === "previewing" ? "预览中…" : "重新预览"}</Button>
+            {allDone ? <Button type="button" onClick={onImported}>完成</Button> : <Button type="button" disabled={busy || stale || !confirmed || (needsNormalization && !normalization)} onClick={() => { void run(true) }}>{phase === "applying" ? "导入中…" : "确认导入"}</Button>}
           </DialogFooter>
         </div>}
       </DialogContent>

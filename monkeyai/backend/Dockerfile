@@ -29,9 +29,9 @@ FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 monkeyai \
     && adduser -S -D -u 10001 -G monkeyai monkeyai \
-    && mkdir -p /app/runtime \
-    && chown monkeyai:monkeyai /app/runtime \
-    && chmod 700 /app/runtime
+    && mkdir -p /app/runtime /app/import-tmp \
+    && chown monkeyai:monkeyai /app/runtime /app/import-tmp \
+    && chmod 700 /app/runtime /app/import-tmp
 
 WORKDIR /app
 ENV MONKEYAI_RUNTIME_STATE_DIR=/app/runtime

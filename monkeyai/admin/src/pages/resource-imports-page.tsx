@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import type { ImportResult } from "@/lib/design-import"
 import { uploadBase, type ResourceUpload } from "@/lib/resource-upload"
 import { ResourceImportDialog } from "@/components/resource-import-dialog"
 import { TablePagination } from "@/components/table-pagination"
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const base = "/api/admin/v1/resource-imports"
 const counts = [["create", "新增"], ["update", "更新"], ["skip", "跳过"], ["retire", "停用"], ["restore", "恢复"], ["ignored_static", "忽略静态资源"]] as const
 
-type Batch = { id: string; publisher: string; release_id: string; version: number; status: string; result_counts: Record<string, number>; created_at: string }
+type Batch = { id: string; publisher: string; release_id: string; version: number; status: string; result_counts: Record<string, number>; section_results?: ImportResult["sections"]; created_at: string }
 type HistoryPage = { items: Batch[]; next_cursor: string | null }
 type HistoryRequest = { key: string; page?: HistoryPage; error?: string }
 
@@ -98,10 +99,10 @@ export function ResourceImportsPage() {
               <TableBody>{history.items.map((batch) => <TableRow key={batch.id}>
                 <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>
                 <TableCell className="font-medium">{batch.publisher}</TableCell>
-                <TableCell>v{batch.version}</TableCell>
+                <TableCell>{batch.version > 0 ? `v${batch.version}` : "设计快照"}</TableCell>
                 <TableCell className="font-mono" title={batch.release_id}>{batch.release_id.slice(0, 8)}…</TableCell>
-                <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : "失败"}</Badge></TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">{counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}</TableCell>
+                <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : batch.status === "partial" ? "部分成功" : "失败"}</Badge></TableCell>
+                <TableCell className="text-muted-foreground">{batch.section_results ? <div className="space-y-1">{Object.entries(batch.section_results).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "design" ? "设计资源" : "Agent 资源"}：{item.status === "succeeded" ? "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all font-mono text-xs">{item.result.release_id}</p>}{item.error && <p className="text-destructive">{item.error.message}</p>}</div>)}</div> : counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}</TableCell>
               </TableRow>)}</TableBody>
             </Table>
           </ScrollArea>}
