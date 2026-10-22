@@ -191,6 +191,7 @@ body.site-theme :is(.site-header .brand, .site-footer .brand, .studio-sidebar-br
 
 /* Header and footer wordmarks use Regular for a lighter appearance. */
 body.site-theme :is(.site-header .brand, .site-footer .brand) { font-weight: var(--weight-heading); }
+body.site-theme .site-header .brand { font-size: var(--type-heading); }
 
 @media (max-width: 800px) {
   body.site-theme {

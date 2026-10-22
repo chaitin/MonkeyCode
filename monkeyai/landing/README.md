@@ -33,7 +33,7 @@ SITE_URL=https://example.com PUBLIC_BASE_PATH=/ npm run build
 
 基础样式位于 `src/styles/global.css`；整站配色、点阵背景和页头页脚位于 `src/styles/site.css`；首页内容使用 `src/styles/homepage.css`，协议页面的阅读布局使用 `src/styles/legal.css`。
 
-全站文字按 [字号规范](TYPOGRAPHY.md) 使用六个语义角色，变量集中在 `src/styles/typography.css`：Hero 品牌大字 72px、分区标题 32px、小标题 20px、品牌文字 24px、正文 16px、辅助文字 14px。800px 及以下仅将 Hero 大字、分区标题改为 48px、24px；正文、按钮和导航保持 16px，Header 与 Footer 品牌文字统一为 24px。组件只引用语义字号变量，不新增独立字号。产品预览作为界面插画，使用三个局部比例字号随容器缩放。
+全站文字按 [字号规范](TYPOGRAPHY.md) 使用六个语义角色，变量集中在 `src/styles/typography.css`：Hero 品牌大字 72px、分区标题 32px、小标题 20px、品牌文字 24px、正文 16px、辅助文字 14px。800px 及以下仅将 Hero 大字、分区标题改为 48px、24px；正文、按钮和导航保持 16px，Header 品牌文字复用小标题角色的 20px，Footer 品牌文字为 24px。组件只引用语义字号变量，不新增独立字号。产品预览作为界面插画，使用三个局部比例字号随容器缩放。
 
 静态区块与七个平台按钮使用 `@iconify-json/hugeicons`，通过 `astro-icon` 的显式图标白名单及构建时提取 SVG 数据渲染，不在浏览器加载整个图标集。Linux 两个入口使用终端图标，仍以 AMD / ARM 文字区分；React 交互组件原有的 Lucide 图标保持不变。Hugeicons 的 MIT 许可证位于 `public/licenses/hugeicons.txt`。
 
