@@ -80,7 +80,7 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 			return f, resource.Invalid(item.name + " 过长")
 		}
 	}
-	if f.clientType != "" && !oneOf(f.clientType, "desktop", "web", "extension", "mobile", "unknown") {
+	if f.clientType != "" && !oneOf(f.clientType, "desktop", "web", "extension", "mobile", "runtime", "unknown") {
 		return f, resource.Invalid("client_type 无效")
 	}
 	if len(f.platform) > 64 {

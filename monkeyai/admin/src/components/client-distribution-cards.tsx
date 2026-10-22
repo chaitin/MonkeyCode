@@ -46,7 +46,7 @@ const dimensions: {
   { field: "client_version", icon: Layers01Icon },
 ]
 const knownValues = {
-  client_type: ["desktop", "web", "extension", "mobile", "unknown"],
+  client_type: ["desktop", "web", "extension", "mobile", "runtime", "unknown"],
   platform: ["windows", "macos", "linux", "web", "android", "ios"],
 }
 const platformLabels: Record<string, string> = {
