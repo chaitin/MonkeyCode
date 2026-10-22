@@ -348,7 +348,7 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 	}
 	if pre.RequiresConfirm && !opts.AcceptNormalization {
 		for _, c := range pre.Changes {
-			if c.Type == "skill" && len(c.Warnings) != 0 {
+			if c.Type == "skill" && c.Action != "retain" && len(c.Warnings) != 0 {
 				return pre, resource.Invalid("请确认技能 frontmatter 的规范化变更")
 			}
 		}
@@ -384,7 +384,7 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 	}
 	importID := resource.ID()
 	logging.Bind(ctx, slog.String("import_id", importID))
-	counts := map[string]int{"create": 0, "update": 0, "skip": 0, "retire": 0, "restore": 0, "ignored_static": len(pre.IgnoredStatic)}
+	counts := map[string]int{"create": 0, "update": 0, "skip": 0, "retain": 0, "retire": 0, "restore": 0, "ignored_static": len(pre.IgnoredStatic)}
 	for _, c := range locked.Changes {
 		counts[c.Action]++
 	}
@@ -421,7 +421,7 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 	order = []string{"skill", "rule", "connector", "expert"}
 	for _, kind := range order {
 		for _, change := range locked.Changes {
-			if change.Type != kind || change.Action == "retire" {
+			if change.Type != kind || change.Action == "retire" || change.Action == "retain" {
 				continue
 			}
 			id := ids[change.Slug]

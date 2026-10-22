@@ -197,7 +197,12 @@ func TestUploadIntegration(t *testing.T) {
 		}
 		return w.Body.Bytes()
 	}
-	archive := packageFixture(t, nil)
+	archive := packageFixture(t, func(manifest *Manifest, files map[string][]byte) {
+		files["rule.json"] = []byte(`{"content":"演示规则"}`)
+		files["connector.json"] = []byte(`{"config":{"url":"https://example.com/mcp"}}`)
+		manifest.AgentResources.Rules = []Entry{{Slug: "demo-rule", Name: "演示规则", Path: "rule.json"}}
+		manifest.AgentResources.Connectors = []Entry{{Slug: "demo-connector", Name: "演示连接器", Path: "connector.json"}}
+	})
 	input := resource.Object{"files": []UploadFile{{"release.zip.001", int64(len(archive) / 2)}, {"release.zip.002", int64(len(archive) - len(archive)/2)}}}
 	var upload Upload
 	if err := json.Unmarshal(call("admin", "POST", "/resource-import-uploads", input, 201), &upload); err != nil {
@@ -225,8 +230,13 @@ func TestUploadIntegration(t *testing.T) {
 	if err := json.Unmarshal(call("admin", "POST", "/resource-imports/preview", importInput{UploadID: upload.ID}, 200), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if preview.PackageSHA256 != digest(archive) || len(preview.Changes) != 1 || preview.Changes[0].Action != "create" {
+	if preview.PackageSHA256 != digest(archive) || len(preview.Changes) != 3 {
 		t.Fatalf("分卷预览与完整 ZIP 不符: %+v", preview)
+	}
+	for _, change := range preview.Changes {
+		if change.Action != "create" {
+			t.Fatalf("首次导入应新增资源: %+v", change)
+		}
 	}
 	call("other", "POST", "/resource-imports/preview", importInput{UploadID: upload.ID}, 404)
 	apply := importInput{UploadID: upload.ID, Options: Options{ConfirmFinal: true, AuthorizationModes: map[string]string{}}, PackageSHA256: preview.PackageSHA256, PlanDigest: "stale"}
@@ -245,15 +255,46 @@ func TestUploadIntegration(t *testing.T) {
 	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM resource_imports").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("分卷应只产生一个批次: %d %v", count, err)
 	}
-	t.Run("外部Expert阻止停用并返回可读名称", func(t *testing.T) {
+	t.Run("外部Expert引用的缺失资源自动保留", func(t *testing.T) {
 		expertID := "d02112c9-1a1a-43bb-9757-5c354eefe4e7"
 		if _, err := pool.Exec(t.Context(), `INSERT INTO experts(id,name,description,prompt,created_by_user_id,owner_user_id)
 			SELECT $1,'外部研究助手','','',owner_user_id,owner_user_id FROM skills LIMIT 1`, expertID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(t.Context(), "INSERT INTO expert_skills(expert_id,skill_id) SELECT $1,id FROM skills LIMIT 1", expertID); err != nil {
+		for _, kind := range []string{"skill", "rule", "connector"} {
+			if _, err := pool.Exec(t.Context(), fmt.Sprintf("INSERT INTO expert_%ss(expert_id,%s_id) SELECT $1,id FROM %ss LIMIT 1", kind, kind, kind), expertID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		localExpertID := resource.ID()
+		if _, err := pool.Exec(t.Context(), `INSERT INTO experts(id,name,description,prompt,created_by_user_id,owner_user_id)
+			SELECT $1,'本发布者旧专家','','',owner_user_id,owner_user_id FROM skills LIMIT 1`, localExpertID); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := pool.Exec(t.Context(), `INSERT INTO resource_import_bindings(publisher,slug,resource_type,resource_id,source_sha256,applied_sha256,last_import_id)
+			SELECT publisher,'old-expert','expert',$1,source_sha256,applied_sha256,last_import_id
+			FROM resource_import_bindings WHERE resource_type='skill'`, localExpertID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(t.Context(), "INSERT INTO expert_skills(expert_id,skill_id) SELECT $1,id FROM skills LIMIT 1", localExpertID); err != nil {
+			t.Fatal(err)
+		}
+		snapshot := func() string {
+			t.Helper()
+			var value string
+			if err := pool.QueryRow(t.Context(), `SELECT jsonb_build_object(
+				'skills',(SELECT jsonb_agg(to_jsonb(s)) FROM skills s),
+				'rules',(SELECT jsonb_agg(to_jsonb(r)) FROM rules r),
+				'connectors',(SELECT jsonb_agg(to_jsonb(c)) FROM connectors c),
+				'bindings',(SELECT jsonb_agg(to_jsonb(b) ORDER BY slug) FROM resource_import_bindings b WHERE resource_type<>'expert'),
+				'expert_skills',(SELECT jsonb_agg(to_jsonb(l)) FROM expert_skills l),
+				'expert_rules',(SELECT jsonb_agg(to_jsonb(l)) FROM expert_rules l),
+				'expert_connectors',(SELECT jsonb_agg(to_jsonb(l)) FROM expert_connectors l))::text`).Scan(&value); err != nil {
+				t.Fatal(err)
+			}
+			return value
+		}
+		before := snapshot()
 		removed := packageFixture(t, func(manifest *Manifest, _ map[string][]byte) { manifest.AgentResources.Skills = nil })
 		pkg, err := ParseReader(bytes.NewReader(removed), int64(len(removed)))
 		if err != nil {
@@ -263,16 +304,54 @@ func TestUploadIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = service.Evaluate(t.Context(), pool, pkg, items, Options{}, digest(removed))
-		if err == nil || !strings.Contains(err.Error(), "外部研究助手") || !strings.Contains(err.Error(), expertID) || !strings.Contains(err.Error(), "不属于本发布者") {
-			t.Fatalf("未说明外部引用冲突: %v", err)
+		preview, err := service.Evaluate(t.Context(), pool, pkg, items, Options{}, digest(removed))
+		if err != nil || len(preview.Changes) != 4 || !preview.RequiresConfirm {
+			t.Fatalf("保留资源应可与旧专家停用同时预览: %+v %v", preview, err)
+		}
+		for _, change := range preview.Changes {
+			if change.Type == "expert" {
+				if change.Action != "retire" {
+					t.Fatalf("本发布者缺失专家应正常停用: %+v", change)
+				}
+				continue
+			}
+			if change.Action != "retain" || len(change.Warnings) != 1 || !strings.Contains(change.Warnings[0], "外部研究助手") || !strings.Contains(change.Warnings[0], expertID) {
+				t.Fatalf("未显示资源保留原因: %+v", change)
+			}
+		}
+		var retainedUpload Upload
+		if err := json.Unmarshal(call("admin", "POST", "/resource-import-uploads", resource.Object{"files": []UploadFile{{"removed.zip", int64(len(removed))}}}, 201), &retainedUpload); err != nil {
+			t.Fatal(err)
+		}
+		retainedPath := "/resource-import-uploads/" + retainedUpload.ID
+		call("admin", "PUT", retainedPath+"/chunks/0", removed, 204)
+		call("admin", "POST", retainedPath+"/complete", nil, 200)
+		request := importInput{UploadID: retainedUpload.ID, Options: Options{ConfirmFinal: true}, PackageSHA256: preview.PackageSHA256, PlanDigest: preview.PlanDigest}
+		call("admin", "POST", "/resource-imports", request, 200)
+		if after := snapshot(); before != after {
+			t.Fatalf("保留资源时不应修改内容、版本、绑定或引用:\n前: %s\n后: %s", before, after)
+		}
+		var localEnabled bool
+		if err := pool.QueryRow(t.Context(), "SELECT enabled FROM experts WHERE id=$1", localExpertID).Scan(&localEnabled); err != nil || localEnabled {
+			t.Fatalf("保留资源不应阻止本发布者旧专家停用: %t %v", localEnabled, err)
+		}
+		var retained int
+		if err := pool.QueryRow(t.Context(), "SELECT (result_counts->>'retain')::int FROM resource_imports ORDER BY version DESC LIMIT 1").Scan(&retained); err != nil || retained != 3 {
+			t.Fatalf("未记录保留数量: %d %v", retained, err)
 		}
 		if _, err := pool.Exec(t.Context(), "UPDATE experts SET enabled=false WHERE id=$1", expertID); err != nil {
 			t.Fatal(err)
 		}
-		preview, err := service.Evaluate(t.Context(), pool, pkg, items, Options{}, digest(removed))
-		if err != nil || len(preview.Changes) != 1 || preview.Changes[0].Action != "retire" {
+		request.PlanDigest = preview.PlanDigest
+		call("admin", "POST", "/resource-imports", request, 409)
+		preview, err = service.Evaluate(t.Context(), pool, pkg, items, Options{}, digest(removed))
+		if err != nil || len(preview.Changes) != 3 {
 			t.Fatalf("解除有效引用后应允许预览停用: %+v %v", preview, err)
+		}
+		for _, change := range preview.Changes {
+			if change.Action != "retire" {
+				t.Fatalf("解除有效引用后应恢复正常停用计划: %+v", change)
+			}
 		}
 	})
 	if _, err := pool.Exec(t.Context(), "UPDATE resource_import_uploads SET expires_at=now()-interval '1 second' WHERE id=$1", upload.ID); err != nil {

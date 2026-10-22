@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const base = "/api/admin/v1/resource-imports"
-const counts = [["create", "新增"], ["update", "更新"], ["skip", "跳过"], ["retire", "停用"], ["restore", "恢复"], ["ignored_static", "忽略静态资源"]] as const
+const counts = [["create", "新增"], ["update", "更新"], ["skip", "跳过"], ["retain", "保留"], ["retire", "停用"], ["restore", "恢复"], ["ignored_static", "忽略静态资源"]] as const
 
 type Batch = { id: string; publisher: string; release_id: string; version: number; status: string; result_counts: Record<string, number>; section_results?: ImportResult["sections"]; created_at: string }
 type HistoryPage = { items: Batch[]; next_cursor: string | null }
