@@ -2,13 +2,17 @@
 
 ARG NGINX_ACME_IMAGE=chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/nginx-acme:1.31.6-acme0.4.1-r1
 
-FROM node:24-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.12.4 --activate
+RUN npm install --global https://registry.npmjs.org/pnpm/-/pnpm-10.12.4.tgz \
+    --fetch-retries=5 \
+    --fetch-retry-mintimeout=10000 \
+    --fetch-retry-maxtimeout=60000
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ ./patches/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 

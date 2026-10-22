@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@base-ui/react@1.7.0': dfa7db08fc4fb6123c43d8713452e6836ac6efae5ead7d4cae96d4745e6264e0
+  '@base-ui/react@1.7.0':
+    hash: dfa7db08fc4fb6123c43d8713452e6836ac6efae5ead7d4cae96d4745e6264e0
+    path: patches/@base-ui__react.patch
 
 importers:
 
