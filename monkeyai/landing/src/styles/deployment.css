@@ -9,17 +9,17 @@ body.site-theme .studio-terminal-bar [data-copy-command]:not(:disabled):hover { 
 .studio-terminal-dots i:nth-child(2) { background: #febc2e; }
 .studio-terminal-dots i:nth-child(3) { background: #28c840; }
 .studio-terminal-body { padding: 36px 28px 40px; }
-.studio-terminal-command { display: flex; align-items: baseline; gap: 14px; color: var(--studio-text); font-size: var(--type-body); line-height: var(--leading-body); }
+.studio-terminal-command { display: flex; align-items: baseline; gap: 14px; color: var(--studio-text); font-family: var(--font-mono); font-size: var(--type-body); line-height: var(--leading-body); }
 .studio-terminal-command > span { flex-shrink: 0; color: var(--green); }
 .studio-terminal-command pre { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.studio-terminal-command :is(pre, code) { font-family: var(--body-font); font-size: inherit; line-height: inherit; }
+.studio-terminal-command :is(pre, code) { font-family: inherit; font-size: inherit; line-height: inherit; }
 .studio-copy-status { margin-top: 10px; color: var(--green); font-size: var(--type-caption); line-height: var(--leading-body); }
 .studio-deploy-requirements { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px; margin-top: 24px; font-size: var(--type-body); line-height: var(--leading-body); }
-.studio-deploy-requirements strong { color: var(--studio-text); font-weight: 500; }
+.studio-deploy-requirements strong { color: var(--studio-text); font-weight: var(--weight-heading); }
 .studio-deploy-requirements > p { color: var(--footer-text); }
 .studio-deploy-benefits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; margin-top: 34px; }
 .studio-deploy-benefits article > svg { color: var(--green); margin-bottom: 16px; }
-.studio-deploy-benefits h3 { margin-bottom: 10px; color: var(--studio-text); font-size: var(--type-heading); font-weight: 500; line-height: 1.4; }
+.studio-deploy-benefits h3 { margin-bottom: 10px; color: var(--studio-text); font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: 1.4; }
 .studio-deploy-benefits p { color: var(--studio-subtle); font-size: var(--type-body); line-height: var(--leading-body); }
 
 @media (max-width: 800px) {

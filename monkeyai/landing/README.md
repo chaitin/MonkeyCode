@@ -33,7 +33,7 @@ SITE_URL=https://example.com PUBLIC_BASE_PATH=/ npm run build
 
 基础样式位于 `src/styles/global.css`；整站配色、点阵背景和页头页脚位于 `src/styles/site.css`；首页内容使用 `src/styles/homepage.css`，协议页面的阅读布局使用 `src/styles/legal.css`。
 
-全站最终字号由 `src/styles/typography.css` 统一管理，通过语义分组覆盖组件中的旧字号。主标题 48px、分区标题 32px、小标题 18px、正文 14px、辅助文字 12px；800px 及以下仅将主标题和分区标题改为 32px、24px。品牌固定 24px，正文行高 1.8，按钮和导航行高 1.4。新增文案按这些角色归类，避免增加零散字号。
+全站文字按 [字号规范](TYPOGRAPHY.md) 使用六个语义角色，变量集中在 `src/styles/typography.css`：Hero 品牌大字 72px、分区标题 32px、小标题 20px、品牌文字 24px、正文 16px、辅助文字 14px。800px 及以下仅将 Hero 大字、分区标题改为 48px、24px；正文、按钮和导航保持 16px，Header 与 Footer 品牌文字统一为 24px。组件只引用语义字号变量，不新增独立字号。产品预览作为界面插画，使用三个局部比例字号随容器缩放。
 
 静态区块与七个平台按钮使用 `@iconify-json/hugeicons`，通过 `astro-icon` 的显式图标白名单及构建时提取 SVG 数据渲染，不在浏览器加载整个图标集。Linux 两个入口使用终端图标，仍以 AMD / ARM 文字区分；React 交互组件原有的 Lucide 图标保持不变。Hugeicons 的 MIT 许可证位于 `public/licenses/hugeicons.txt`。
 
@@ -41,7 +41,7 @@ shadcn/ui 配置位于 `components.json`，组件源码保存在 `src/components
 
 `HeaderActions.tsx`、`ActionButton.tsx`、`ClientPlatforms`、`CopyCommandButton.tsx` 和 `WorkspaceTabs` 使用 `client:load` 激活 React / Motion。复制按钮使用 `components/motion/action-swap-cascade.tsx` 中按需接入的 beUI Action Swap Cascade 文本/图标原语，在真实复制结果返回后逐字滚动切换状态；保留失败时手动选择命令和重试，减少动态效果时直接更新内容，并保持 SSR 首次渲染一致。复制状态和标签页键盘交互由 React 管理，下载清单在客户端列表完成 hydration 后只请求一次，避免旧 DOM 脚本与 hydration 冲突。系统开启减少动态效果时关闭缩放与 ripple，触屏不启用悬停缩放。`FaqQuestion.tsx` 的 `FaqAccordion` 通过 `client:visible` 接入 beUI Bouncy Accordion，使用图标行、单项展开、分组圆角及弹簧高度/位置过渡，问题文字不截断，仍不套用全站按钮边框或 hover 光晕。保留键盘 Enter/Space、方向键及 Home/End 导航；关闭内容设置 `aria-hidden` 和 `inert`，减少动态效果时立即切换。SSR 和 hydration 前保留可操作的原生 `details/summary`，避免无 JavaScript 时丢失答案；无 JavaScript 时 FAQ、链接和所有场景正文仍可使用。普通导航和正文链接继续使用语义化链接，产品示意图里的控件仅作展示。
 
-Hero 标语通过 `components/motion/text-cascade.tsx` 使用 beUI Text Cascade（复用 Action Swap 的逐字滚动原语）。固定文案在 hydration 后播放，并以原始速度每 5 秒重播一次；SSR 保留完整可见文字，减少动态效果时静态显示，沿用原来的容器自适应字号与配色。
+Hero 标语通过 `components/motion/text-cascade.tsx` 使用 beUI Text Cascade（复用 Action Swap 的逐字滚动原语）。固定文案在 hydration 后播放，并以原始速度每 5 秒重播一次；SSR 保留完整可见文字，减少动态效果时静态显示，字号复用分区标题角色，保留主题配色。
 
 Hero 关系图的 13 条曲线各有正反两向 SVG 光点，共 26 个可复用节点；每 500ms 启动一个单次动画，到达终点后隐藏。调度按完整轮次打乱顺序，覆盖所有方向且不会重启仍在运行的节点。页面隐藏或减少动态效果时暂停，恢复时不补发积压动画；连线和光点路径随节点尺寸变化同步更新。
 
@@ -61,19 +61,19 @@ npx shadcn@latest add dialog
 
 全站采用近黑背景、Tailwind v4 `teal-500` 强调色与细边框，设计变量集中在 `site.css` 开头；深色使用 `teal-600` / `teal-950`，半透明背景、边框和光晕通过 `color-mix` 从主色派生。页脚使用浅白栏目标题、冷灰链接及主题色品牌。`StudioHero.astro` 展示消息到任务确认的协作示意，`StudioWorkspace.astro` 提供支持键盘切换的四组场景标签页。FAQ 使用原生展开列表；禁用 JavaScript 时仍可阅读全部场景。移动端布局在 800px、520px 处调整，并遵循系统减少动态效果的设置。
 
-字体使用 [Maple Mono CN v7.9](https://github.com/subframe7536/maple-font/releases/tag/v7.9)，中文基于资源圆体，支持简体、繁体中文及日文。中文版本是静态字体，使用官方 Regular（400）、Medium（500）、SemiBold（600）、Bold（700）四个字重。字体、来源元信息和 SIL OFL-1.1 许可证位于 `src/assets/fonts/maple-mono-cn/`，正文、标题和英文标签均使用本地字体，不请求外部字体 CDN。
+正文、标题和按钮使用小米官方 [MiSans](https://hyperos.mi.com/font/)，字体本地加载，不请求外部字体 CDN。仅使用官方 Normal、Regular、Semibold 三个静态字重：正文用 `--weight-body: 350`（Normal），标题、按钮和导航用 `--weight-heading: 400`（Regular），品牌文字默认用 `--weight-brand: 600`（Semibold），页脚及产品预览内的品牌文字使用 Regular / 400。字重变量集中在 `global.css`，页面和组件复用这些变量。字体与来源元信息位于 `src/assets/fonts/misans/`；字体使用声明与许可协议随站点发布在 `public/licenses/misans.txt`。
 
-每个字重包含 26 个切片，保留原字体的 22,731 个字符。当前站点常用字符单独放在小切片中，其余字符也保留为按需加载的扩展切片；浏览器根据 `unicode-range` 和实际字重请求文件，优先使用 WOFF2，并提供 WOFF 后备。Vite 为字体资源生成内容哈希并适配 `PUBLIC_BASE_PATH`。四个字重的全部 WOFF2 约 24.23 MiB，WOFF 约 32.11 MiB，访问页面不会下载整套字体。
+命令和代码区域（`pre`、`code`、`kbd`、`samp`）使用本地 [JetBrains Mono v2.304](https://github.com/JetBrains/JetBrainsMono/tree/v2.304)，包含 400、500、600、700 四个字重，单个 WOFF2 约 90–92 KiB。`--font-mono` 定义等宽字体栈，`--studio-mono` 复用该变量，命令提示符和命令正文保持一致。中文缺字回退到 MiSans。原始字体与来源校验值位于 `src/assets/fonts/jetbrains-mono/`，SIL OFL-1.1 许可证位于 `public/licenses/jetbrains-mono.txt`。
 
-普通开发和生产构建直接使用已入库文件。只有重新划分切片或更新字体时才需要 Python 3.11+ 转换工具。先从上述官方 Release 下载 `MapleMono-CN-unhinted.zip`，再执行：
+本项目直接使用官方 MiSans 4.009 的完整 WOFF2 原文件，不修改字体或生成切片。每个字重约 4.6–4.9 MiB，浏览器根据页面实际使用的字重加载；`font-display: swap` 允许加载期间先显示系统字体。Vite 为字体资源生成内容哈希并适配 `PUBLIC_BASE_PATH`。
+
+普通开发和生产构建直接使用已入库文件。需要重新导入时，先从小米官方地址下载 `https://hyperos.mi.com/font-download/MiSans.zip`，再使用 Python 3.11+ 执行（无第三方 Python 依赖）：
 
 ```bash
-python3 -m venv .venv-fonts
-.venv-fonts/bin/pip install -r scripts/requirements-fonts.txt
-.venv-fonts/bin/python scripts/sync-fonts.py --archive /path/to/MapleMono-CN-unhinted.zip
+npm run fonts:sync -- --archive /path/to/MiSans.zip
 ```
 
-已安装 Python 依赖时，也可执行 `npm run fonts:sync -- --archive /path/to/MapleMono-CN-unhinted.zip`。脚本校验官方归档的 SHA-256、源字体字重及字符覆盖，生成 WOFF2、WOFF 和 CSS，并验证切片没有丢失字符。新增文案可直接使用现有扩展切片；重新生成只用于优化常用字符分组。
+脚本校验官方归档的 SHA-256，直接提取三个字重的 WOFF2 文件并清理已移除的字重，并生成 CSS、来源元信息及各文件校验值。更新官方字体版本时，需同步核对版本、归档校验值及官方许可协议。
 
 ## Google Analytics
 

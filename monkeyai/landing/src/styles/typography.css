@@ -1,8 +1,12 @@
-/* The site's five text roles. This is the authoritative typography layer. */
+/* Site typography: use these six roles instead of component-specific sizes.
+ * Display is reserved for the Hero brand; ordinary brand wordmarks use brand.
+ * Only display and section change at the shared 800px breakpoint.
+ * The product interface illustration has its own proportional preview roles.
+ */
 body.site-theme {
-  --type-display: 48px;
+  --type-display: 72px;
   --type-section: 32px;
-  --type-heading: 18px;
+  --type-heading: 20px;
   --type-body: 16px;
   --type-caption: 14px;
   --type-brand: 24px;
@@ -13,19 +17,32 @@ body.site-theme {
   line-height: var(--leading-body);
 }
 
+/* Native headings and emphasis use Regular; wordmarks use Semibold. */
+body.site-theme :is(h1, h2, h3, h4, h5, h6) {
+  font-size: var(--type-heading);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-title);
+}
+body.site-theme :is(b, strong, th) { font-weight: var(--weight-heading); }
+body.site-theme small { font-size: var(--type-caption); }
+body.site-theme :is(th, td) { font-size: var(--type-body); }
+
 /* Primary page titles. */
 body.site-theme .legal-content h1 {
-  font-size: var(--type-display);
+  font-size: var(--type-section);
   line-height: var(--leading-title);
 }
 
 body.site-theme .studio-hero h1 {
-  font-size: 72px;
+  font-size: var(--type-display);
+  font-weight: var(--weight-brand);
   line-height: var(--leading-title);
 }
 
-@media (max-width: 800px) {
-  body.site-theme .studio-hero h1 { font-size: 48px; }
+body.site-theme .studio-hero-tagline {
+  font-size: var(--type-section);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-title);
 }
 
 /* Major sections, including document chapters. */
@@ -50,13 +67,15 @@ body.site-theme :is(
   .studio-workspace-caption strong,
   .studio-capabilities h3,
   .studio-benefits h3,
-  .studio-faq-list summary,
+  .scene-copy h3,
+  .studio-deploy-benefits h3,
+  .studio-client-benefits h3,
   .footer-column h2,
   .footer-community h2,
   .legal-content h3
 ) {
   font-size: var(--type-heading);
-  line-height: 1.4;
+  line-height: var(--leading-title);
 }
 
 /* Descriptions, table text and product demonstration content. */
@@ -72,17 +91,19 @@ body.site-theme :is(
   .studio-workspace-caption p,
   .studio-capabilities p,
   .studio-benefits p,
-  .studio-comparison th,
   .studio-comparison td,
+  .scene-description,
+  .studio-deploy-benefits p,
+  .studio-client-benefits p,
   .studio-faq-list details > p,
   .studio-accordion-description p,
-  .footer-slogan,
   .footer-intro,
   .community-qr figcaption,
   .legal-content p,
   .legal-content li
 ) {
   font-size: var(--type-body);
+  font-weight: var(--weight-body);
   line-height: var(--leading-body);
 }
 
@@ -90,6 +111,11 @@ body.site-theme :is(
 body.site-theme :is(
   .site-section-nav a,
   [data-slot='button']:not(summary),
+  .studio-faq-list summary,
+  .studio-accordion-title,
+  .consult-button,
+  .studio-resource-link,
+  .legal-home-link,
   .studio-foundation > div > span,
   .studio-workspace-tabs button,
   .studio-sidebar-search,
@@ -102,12 +128,8 @@ body.site-theme :is(
   .legal-nav a
 ) {
   font-size: var(--type-body);
+  font-weight: var(--weight-heading);
   line-height: var(--leading-control);
-}
-
-body.site-theme [data-slot='button']:not(summary):not(.studio-client-platform-button),
-body.site-theme .site-header :is(.site-section-nav a, [data-slot='button']) {
-  font-size: 16px;
 }
 
 /* Labels, metadata, timestamps and legal fine print. */
@@ -146,6 +168,10 @@ body.site-theme :is(
   .studio-downloads > span,
   .studio-downloads p,
   .footer-bottom,
+  .scene-kicker,
+  .scene-kicker > span,
+  .scene-tags li,
+  .pricing-note,
   .legal-content .eyebrow,
   .legal-content .legal-updated,
   .legal-nav b
@@ -154,23 +180,21 @@ body.site-theme :is(
   line-height: var(--leading-body);
 }
 
-body.site-theme .footer-bottom { font-size: 12px; }
+body.site-theme .skip-link { font-weight: var(--weight-heading); }
 
 /* Brand wordmarks are consistent at every viewport size. */
 body.site-theme :is(.site-header .brand, .site-footer .brand, .studio-sidebar-brand) {
   font-size: var(--type-brand);
+  font-weight: var(--weight-brand);
   line-height: var(--leading-title);
 }
 
-body.site-theme .site-header .brand { font-size: 20px; }
+/* The footer wordmark uses Regular for a lighter appearance. */
+body.site-theme .site-footer .brand { font-weight: var(--weight-heading); }
 
 @media (max-width: 800px) {
   body.site-theme {
-    --type-display: 32px;
+    --type-display: 48px;
     --type-section: 24px;
   }
-}
-
-@media (max-width: 520px) {
-  body.site-theme .site-header .brand { font-size: 16px; }
 }

@@ -95,14 +95,14 @@ const faqs = [
 
     <section class="studio-section-band" id="faq" aria-labelledby="faq-title">
       <div class="studio-container studio-faq">
-      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>常见问题 <span>FAQ</span></span><SectionTitle id="faq-title">你可能还想了解</SectionTitle><p>关于产品、部署和 AI 协作。</p><a class="studio-resource-link studio-text-action" href="https://monkeyai.docs.baizhi.cloud/" target="_blank" rel="noopener noreferrer"><span>查看产品文档</span><Icon name="hugeicons:arrow-up-right-01" size={20} aria-hidden="true" /></a></div>
+      <div class="studio-section-heading"><span class="studio-eyebrow"><i></i>常见问题 <span>FAQ</span></span><SectionTitle id="faq-title">你可能还想了解</SectionTitle><p>关于产品、部署和 AI 协作。</p><a class="studio-resource-link studio-text-action" href="https://work.docs.baizhi.cloud" target="_blank" rel="noopener noreferrer"><span>查看产品文档</span><Icon name="hugeicons:arrow-up-right-01" size={20} aria-hidden="true" /></a></div>
       <FaqAccordion client:visible items={faqs.map(([question, answer], index) => ({ id: `faq-${index}`, question, answer }))} />
       </div>
     </section>
 
     <section class="studio-start studio-container" id="get-started" aria-labelledby="start-title">
       <div><SectionTitle id="start-title">现在开始使用<span>百智办公</span></SectionTitle><p>在线体验百智办公，或在自己的环境中部署。</p></div>
-      <div class="studio-actions"><ActionButton client:load href="https://demo.monkeycode-ai.com/" label="在线体验" icon="monitor-play" size="lg" external /><ActionButton client:load href="https://monkeyai.docs.baizhi.cloud/" label="私有化部署" icon="server" variant="outline" size="lg" external /></div>
+      <div class="studio-actions"><ActionButton client:load href="https://demo.monkeycode-ai.com/" label="在线体验" icon="monitor-play" size="lg" external /><ActionButton client:load href="https://work.docs.baizhi.cloud" label="私有化部署" icon="server" variant="outline" size="lg" external /></div>
     </section>
   </main>
 </BaseLayout>

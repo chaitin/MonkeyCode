@@ -6,7 +6,7 @@
 .studio-openness-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
 .studio-openness-top > svg { flex-shrink: 0; color: var(--green); }
 .studio-openness-top > span { color: var(--studio-subtle); font-size: var(--type-caption); line-height: var(--leading-control); }
-.studio-openness-item h3 { margin-bottom: 14px; color: var(--studio-text); font-size: var(--type-heading); font-weight: 500; line-height: var(--leading-title); }
+.studio-openness-item h3 { margin-bottom: 14px; color: var(--studio-text); font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: var(--leading-title); }
 .studio-openness-item p { max-width: 520px; color: var(--studio-muted); font-size: var(--type-body); line-height: var(--leading-body); }
 .studio-openness > .studio-actions { margin-top: 36px; }
 

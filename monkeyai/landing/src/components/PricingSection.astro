@@ -39,21 +39,22 @@ const rows = [
       </tbody>
     </table>
   </div>
-  <p class="pricing-note">付费版的席位方案、价格及技术支持服务范围，请通过「咨询购买」了解。</p>
 </section>
 
 <style>
-  .pricing-table { overflow-x: auto; border: 1px solid var(--studio-line, #303036); border-radius: 12px; }
+  .pricing-table { position: relative; overflow-x: auto; border: 1px solid var(--studio-line, #303036); border-radius: 12px; }
   .pricing-table:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
   table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; }
   th, td { width: 33.333%; padding: 22px 28px; border-bottom: 1px solid var(--studio-line, #303036); }
   thead th { vertical-align: top; padding-top: 32px; padding-bottom: 32px; }
-  tbody th { font-weight: 500; }
-  td, .pricing-note { color: var(--studio-muted); font-size: 14px; line-height: 1.7; }
+  tbody th { font-weight: var(--weight-heading); }
+  td, .pricing-note { color: var(--studio-muted); line-height: var(--leading-body); }
+  td { font-size: var(--type-body); }
+  .pricing-note { font-size: var(--type-caption); }
   .plan-name, .plan-price { display: block; }
-  .plan-name { font-size: 18px; font-weight: 500; }
-  .plan-price { margin: 18px 0 10px; font-size: 30px; font-weight: 600; letter-spacing: -0.04em; }
-  .consult-button { display: inline-flex; margin-top: 24px; padding: 12px 24px; border-radius: 6px; background: var(--green); color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; }
+  .plan-name { font-size: var(--type-heading); font-weight: var(--weight-heading); }
+  .plan-price { margin: 18px 0 10px; font-size: var(--type-section); font-weight: var(--weight-heading); letter-spacing: -0.04em; }
+  .consult-button { display: inline-flex; margin-top: 24px; padding: 12px 24px; border-radius: 6px; background: var(--green); color: #ffffff; font-size: var(--type-body); font-weight: var(--weight-heading); text-decoration: none; }
   .consult-button:hover { background: var(--green-dark); }
   .consult-button:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
   .free-plan { background: color-mix(in srgb, var(--green) 5%, transparent); }

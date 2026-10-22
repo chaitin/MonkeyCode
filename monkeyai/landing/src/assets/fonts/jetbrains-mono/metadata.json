@@ -1,0 +1,34 @@
+{
+  "family": "JetBrains Mono",
+  "version": "2.304",
+  "source": "https://github.com/JetBrains/JetBrainsMono/tree/v2.304/fonts/webfonts",
+  "license": "SIL OFL-1.1",
+  "weights": [
+    400,
+    500,
+    600,
+    700
+  ],
+  "files": {
+    "JetBrainsMono-Regular.woff2": {
+      "weight": 400,
+      "bytes": 92164,
+      "sha256": "a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2"
+    },
+    "JetBrainsMono-Medium.woff2": {
+      "weight": 500,
+      "bytes": 93824,
+      "sha256": "086c48dfbea9ddaff1320f7e09399b8e2924e88ce67453721255db3bdbb5a353"
+    },
+    "JetBrainsMono-SemiBold.woff2": {
+      "weight": 600,
+      "bytes": 94472,
+      "sha256": "918edad542a1da608fd2ba8daebaff9ac802309103fe760eed465b8b4e47faf1"
+    },
+    "JetBrainsMono-Bold.woff2": {
+      "weight": 700,
+      "bytes": 94588,
+      "sha256": "c503cc5ec5f8b2c7666b7ecda1adf44bd45f2e6579b2eba0fc292150416588a2"
+    }
+  }
+}

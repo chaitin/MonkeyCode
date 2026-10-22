@@ -1,0 +1,29 @@
+{
+  "family": "MiSans",
+  "version": "4.009",
+  "source": "https://hyperos.mi.com/font-download/MiSans.zip",
+  "sha256": "b6aa1fc827035922612df8edf36e5609bca1c5441e25cd57572204569b7b81d9",
+  "license": "https://hyperos.mi.com/font/zh/download/",
+  "weights": [
+    350,
+    400,
+    600
+  ],
+  "files": {
+    "MiSans-Normal.woff2": {
+      "weight": 350,
+      "bytes": 4882604,
+      "sha256": "672d1ab1cc9c89a91ce57c00fd972ab7a8ac04c7444991acd841698e58837af6"
+    },
+    "MiSans-Regular.woff2": {
+      "weight": 400,
+      "bytes": 4858624,
+      "sha256": "d704c1a932c0bd7e8a071d276cd81c0ed0c9fecfa26ac234f4bed0559fe1cb2d"
+    },
+    "MiSans-Semibold.woff2": {
+      "weight": 600,
+      "bytes": 5034212,
+      "sha256": "78227c6ec59566785c65ac0b5312328bfa2f879918f3d7403725785615a9a8f6"
+    }
+  }
+}

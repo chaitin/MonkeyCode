@@ -36,15 +36,15 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-xs gap-1.5 rounded-full",
-  md: "h-10 px-5 text-sm gap-2 rounded-full",
-  lg: "h-12 px-6 text-base gap-2 rounded-full",
+  sm: "h-8 px-3 gap-1.5 rounded-full",
+  md: "h-10 px-5 gap-2 rounded-full",
+  lg: "h-12 px-6 gap-2 rounded-full",
   icon: "h-8 w-8 rounded-lg",
 };
 
 export function buttonClasses(variant: ButtonVariant = "primary", size: ButtonSize = "md", className?: string) {
   return cn(
-    "inline-flex shrink-0 items-center justify-center font-medium select-none whitespace-nowrap transition-colors",
+    "inline-flex shrink-0 items-center justify-center font-normal select-none whitespace-nowrap transition-colors",
     "disabled:pointer-events-none disabled:opacity-50",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-5",
     VARIANT_CLASS[variant],

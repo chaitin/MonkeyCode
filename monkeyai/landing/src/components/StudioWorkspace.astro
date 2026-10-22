@@ -61,12 +61,12 @@ const scenes = [
   .workspace-scene { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: center; gap: 48px; padding: 16px 28px; border: 1px solid var(--studio-line); border-radius: 18px; background: var(--scene-tint); --scene-accent: #2563a6; --scene-tint: #eff7ff; }
   .scene-work { --scene-accent: #906318; --scene-tint: #fffbf5; }
   .scene-design { --scene-accent: #a34d60; --scene-tint: #fef2f2; }
-  .scene-kicker { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--studio-subtle); font-size: 11px; letter-spacing: .08em; }
-  .scene-kicker > span { color: var(--scene-accent); font-size: 14px; font-weight: 600; letter-spacing: 0; }
-  .scene-copy h3 { color: var(--studio-text); margin: 14px 0; font-size: 20px; font-weight: 500; line-height: 1.4; letter-spacing: -.04em; text-wrap: wrap; }
-  .scene-description { color: var(--studio-muted); font-size: 15px; line-height: 1.7; }
+  .scene-kicker { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--studio-subtle); font-size: var(--type-caption); letter-spacing: .08em; }
+  .scene-kicker > span { color: var(--scene-accent); font-size: var(--type-caption); font-weight: var(--weight-heading); letter-spacing: 0; }
+  .scene-copy h3 { color: var(--studio-text); margin: 14px 0; font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: 1.4; letter-spacing: -.04em; text-wrap: wrap; }
+  .scene-description { color: var(--studio-muted); font-size: var(--type-body); line-height: 1.7; }
   .scene-tags { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; margin: 18px 0 0; padding: 0; }
-  .scene-tags li { padding: 6px 12px; border: 1px solid var(--scene-accent); border-radius: 6px; color: var(--scene-accent); font-size: 12px; }
+  .scene-tags li { padding: 6px 12px; border: 1px solid var(--scene-accent); border-radius: 6px; color: var(--scene-accent); font-size: var(--type-caption); }
   .scene-copy { min-width: 0; }
   .scene-preview { margin: 0; min-width: 0; }
   .scene-illustration { display: block; width: auto; max-width: 100%; height: auto; max-height: 240px; margin-inline: auto; border-radius: 10px; }
