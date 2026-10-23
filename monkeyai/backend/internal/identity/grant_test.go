@@ -56,17 +56,24 @@ func TestDesktopAuthorizationDefaultsRuntimeScopes(t *testing.T) {
 	s := NewService(nil, nil, "http://localhost").WithDeviceAuthorization("server", []byte(strings.Repeat("k", 32)), &deviceRegistryStub{})
 	verifier := strings.Repeat("v", 64)
 	digest := sha256.Sum256([]byte(verifier))
-	request, err := s.newAuthorizationRequest(url.Values{
-		"response_type": {"code"}, "client_id": {"monkeyai-desktop"},
-		"redirect_uri": {"monkeyai-desktop://oauth/callback"}, "state": {"scope-test"},
-		"code_challenge": {base64.RawURLEncoding.EncodeToString(digest[:])}, "code_challenge_method": {"S256"},
-	})
-	if err != nil {
-		t.Fatal(err)
+	for _, scope := range []string{"", "device:bind device:connect device:publish session:report"} {
+		request, err := s.newAuthorizationRequest(url.Values{
+			"response_type": {"code"}, "client_id": {"monkeyai-desktop"},
+			"redirect_uri": {"monkeyai-desktop://oauth/callback"}, "state": {"scope-test"},
+			"code_challenge": {base64.RawURLEncoding.EncodeToString(digest[:])}, "code_challenge_method": {"S256"}, "scope": {scope},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"device:bind", "device:connect", "device:publish", "session:report"}
+		if !slices.Equal(request.Scopes, want) {
+			t.Fatalf("Desktop scope=%q 默认权限 = %v, want %v", scope, request.Scopes, want)
+		}
 	}
-	want := []string{"device:bind", "device:connect", "device:publish", "session:report"}
-	if !slices.Equal(request.Scopes, want) {
-		t.Fatalf("Desktop 默认远程权限 = %v, want %v", request.Scopes, want)
+	values := authorizationValues("monkeyai-desktop", Clients["monkeyai-desktop"].RedirectURI)
+	values.Set("scope", strings.Repeat(" ", 1025))
+	if _, err := s.newAuthorizationRequest(values); err == nil {
+		t.Fatal("空白 scope 也必须遵守长度限制")
 	}
 }
 
@@ -213,18 +220,30 @@ func TestRevokeOldTokenRevokesOnlyItsFamily(t *testing.T) {
 
 func TestScopedConsentRequiresBrowserApproval(t *testing.T) {
 	for _, origin := range []string{"https://ai.example.com", "http://203.0.113.20:8080", "http://192.168.1.20:8080"} {
-		t.Run(origin, func(t *testing.T) { testScopedConsent(t, origin) })
+		t.Run(origin, func(t *testing.T) {
+			for _, scopes := range []string{"device:connect session:read", ""} {
+				t.Run("scopes="+scopes, func(t *testing.T) { testScopedConsent(t, origin, scopes) })
+			}
+		})
 	}
 }
 
-func testScopedConsent(t *testing.T, origin string) {
+func testScopedConsent(t *testing.T, origin, scopes string) {
 	t.Helper()
 	pool := emailDatabase(t)
 	s := NewService(pool, authenticationStub{json.RawMessage(`{}`)}, origin)
 	user := grantUser(t, s)
-	r, verifier := grantRequest(t, s, "device:connect session:read")
+	r, verifier := grantRequest(t, s, scopes)
 	if _, err := s.CompleteAuthorization(t.Context(), r.ID, user.ID); err == nil {
-		t.Fatal("不能自动批准新权限")
+		t.Fatal("任何登录授权都必须明确确认")
+	}
+	approved := []string{}
+	if len(r.Scopes) > 0 {
+		approved = []string{"session:read"}
+	}
+	approvedBody, err := json.Marshal(map[string]any{"approved_scopes": approved})
+	if err != nil {
+		t.Fatal(err)
 	}
 	cookie := &http.Cookie{Name: sessionCookie, Value: "browser-consent-test"}
 	if err := s.createBrowserSession(t.Context(), user.ID, tokenHash(cookie.Value), "password", time.Now().Add(time.Hour)); err != nil {
@@ -233,6 +252,18 @@ func testScopedConsent(t *testing.T, origin string) {
 	request := httptest.NewRequest(http.MethodPost, "/client-requests/"+r.ID+"/complete", nil)
 	request.AddCookie(cookie)
 	csrf := consentToken(request, r.ID)
+	metadataRequest := httptest.NewRequest(http.MethodGet, "/client-requests/"+r.ID, nil)
+	metadataRequest.AddCookie(cookie)
+	metadataResponse := httptest.NewRecorder()
+	s.AuthRouter().ServeHTTP(metadataResponse, metadataRequest)
+	var metadata struct {
+		ConsentRequired bool     `json:"consent_required"`
+		Client          Client   `json:"client"`
+		Scopes          []string `json:"scopes"`
+	}
+	if err := json.Unmarshal(metadataResponse.Body.Bytes(), &metadata); err != nil || metadataResponse.Code != 200 || !metadata.ConsentRequired || metadata.Client.RedirectURI != r.RedirectURI || metadata.Scopes == nil {
+		t.Fatalf("授权确认元数据错误：%s %v", metadataResponse.Body.String(), err)
+	}
 	for _, tc := range []struct {
 		name, csrf, origin, body string
 		want                     int
@@ -241,7 +272,10 @@ func testScopedConsent(t *testing.T, origin string) {
 		{"错误 CSRF", "wrong", "", `{"approved_scopes":["session:read"]}`, http.StatusForbidden},
 		{"跨源", csrf, "https://evil.example.com", `{"approved_scopes":["session:read"]}`, http.StatusForbidden},
 		{"扩权", csrf, origin, `{"approved_scopes":["device:manage"]}`, http.StatusConflict},
-		{"收窄批准", csrf, origin, `{"approved_scopes":["session:read"]}`, http.StatusOK},
+		{"缺少批准", csrf, origin, `{}`, http.StatusForbidden},
+		{"空值批准", csrf, origin, `{"approved_scopes":null}`, http.StatusForbidden},
+		{"未知字段", csrf, origin, `{"approved_scopes":[],"automatic":true}`, http.StatusForbidden},
+		{"明确批准", csrf, origin, string(approvedBody), http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/client-requests/"+r.ID+"/complete", strings.NewReader(tc.body))
@@ -264,7 +298,7 @@ func testScopedConsent(t *testing.T, origin string) {
 			}
 			u, _ := url.Parse(result.LaunchURL)
 			token, err := s.ExchangeCode(t.Context(), r.ClientID, r.RedirectURI, u.Query().Get("code"), verifier)
-			if err != nil || token.Scope != "session:read" {
+			if err != nil || token.Scope != strings.Join(approved, " ") {
 				t.Fatalf("批准范围未保留：%s %v", token.Scope, err)
 			}
 		})

@@ -28,6 +28,7 @@ func TestAuthorizationRedirectPolicy(t *testing.T) {
 				Clients[clientID].RedirectURI,
 				"http://127.0.0.1:1/oauth/callback",
 				"http://127.0.0.1:54321/oauth/callback",
+				"http://localhost:54321/oauth/callback",
 				"http://[::1]:65535/oauth/callback",
 			} {
 				if clientID != "monkeyai-desktop" && redirect != Clients[clientID].RedirectURI {
@@ -46,7 +47,7 @@ func TestAuthorizationRedirectPolicy(t *testing.T) {
 				"http://127.0.0.1.review.invalid:54321/oauth/callback",
 				"http://127.0.0.1:54321@review.invalid/oauth/callback",
 				"http://user@127.0.0.1:54321/oauth/callback",
-				"http://localhost:54321/oauth/callback", "http://127.0.0.2:54321/oauth/callback",
+				"http://localhost.attacker.example:54321/oauth/callback", "http://127.0.0.2:54321/oauth/callback",
 				"https://127.0.0.1:54321/oauth/callback", "http://[::ffff:127.0.0.1]:54321/oauth/callback",
 				"http://127.0.0.1:0/oauth/callback", "http://127.0.0.1:65536/oauth/callback",
 				"http://127.0.0.1:/oauth/callback", "http://127.0.0.1:abc/oauth/callback",
@@ -78,7 +79,7 @@ func TestAuthorizationRedirectPolicy(t *testing.T) {
 			}
 			redirects := []string{Clients[other].RedirectURI}
 			if clientID == "monkeyai-mobile" {
-				redirects = append(redirects, "http://127.0.0.1:54321/oauth/callback", "http://[::1]:54321/oauth/callback")
+				redirects = append(redirects, "http://127.0.0.1:54321/oauth/callback", "http://localhost:54321/oauth/callback", "http://[::1]:54321/oauth/callback")
 			}
 			for _, redirect := range redirects {
 				if _, err := s.newAuthorizationRequest(authorizationValues(clientID, redirect)); err == nil {

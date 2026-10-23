@@ -10,11 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -359,19 +357,10 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 }
 
 func validateRedirectURI(clientID, value string) (*url.URL, error) {
-	client, ok := Clients[clientID]
-	if ok && client.RedirectURI != "" && value == client.RedirectURI {
-		return url.Parse(value)
+	if !validClientRedirect(clientID, value) {
+		return nil, oauthError("invalid_request", "redirect_uri 未匹配客户端登记的回调地址")
 	}
-	callback, err := url.Parse(value)
-	if ok && client.ID == "monkeyai-desktop" && err == nil && callback.Scheme == "http" &&
-		(callback.Hostname() == "127.0.0.1" || callback.Hostname() == "::1") {
-		port, err := strconv.Atoi(callback.Port())
-		if err == nil && port > 0 && port <= 65535 && value == "http://"+net.JoinHostPort(callback.Hostname(), callback.Port())+"/oauth/callback" {
-			return callback, nil
-		}
-	}
-	return nil, oauthError("invalid_request", "redirect_uri 未匹配客户端登记的回调地址")
+	return url.Parse(value)
 }
 
 func validChallenge(value string) bool {

@@ -12,6 +12,7 @@
     "test:browser": "node scripts/check-browser.mjs",
     "test:browser:members": "node scripts/check-members-virtualization.mjs",
     "test:browser:quotas": "node scripts/check-quota-virtualization.mjs",
+    "test:browser:auth": "node scripts/check-client-authorization.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },

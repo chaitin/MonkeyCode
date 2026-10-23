@@ -223,7 +223,7 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), chi.URLParam(r, "requestID"))
-	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
+	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !validClientRedirect(request.ClientID, request.RedirectURI) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询客户端授权请求失败", "module", "identity", "operation", "clientRequest", "request_id", chi.URLParam(r, "requestID"), "error", err)
 		}
@@ -238,13 +238,18 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	user, authenticated := s.BrowserUser(r)
 	client := Clients[request.ClientID]
+	client.RedirectURI = request.RedirectURI
+	scopes := request.Scopes
+	if scopes == nil {
+		scopes = []string{}
+	}
 	writeJSON(r.Context(), w, http.StatusOK, map[string]any{
 		"request_id":         request.ID,
 		"client":             client,
 		"authenticated":      authenticated,
 		"user":               nullableUser(user, authenticated),
 		"providers":          publicConnections(connections),
-		"scopes":             request.Scopes,
+		"scopes":             scopes,
 		"scope_descriptions": scopeNames,
 		"audience":           request.Audience,
 		"consent_required":   true,
@@ -301,7 +306,7 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request, err := s.authorizationRequest(r.Context(), requestID)
-	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
+	if err != nil || request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) || !validClientRedirect(request.ClientID, request.RedirectURI) {
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "查询上游登录授权请求失败", "module", "identity", "operation", "startUpstream", "request_id", requestID, "error", err)
 		}

@@ -225,7 +225,7 @@ paths:
   /oauth/authorize:
     get:
       summary: 创建安装登录授权请求
-      description: 旧 token 不会自动扩权；启用远程中转时，新的 Desktop 请求省略 scope 将申请远程执行权限并要求浏览器确认，权限不能在兑换或刷新时扩大。
+      description: 回调仅允许客户端已登记的应用 URI；Desktop 另允许 http://localhost:端口/oauth/callback、http://127.0.0.1:端口/oauth/callback 或 http://[::1]:端口/oauth/callback，端口必须为 1–65535，禁止用户信息、查询参数和片段。所有登录均要求浏览器明确确认和 CSRF 校验；启用远程中转时，Desktop 省略 scope 或传空字符串时使用默认远程执行权限；纯空白 scope 返回 invalid_scope。旧 token 不自动扩权，兑换和刷新不能扩大权限。
       security: []
       parameters:
         - {name: response_type, in: query, required: true, schema: {type: string, const: code}}
@@ -320,20 +320,21 @@ paths:
                   scopes: {type: array, items: {type: string}}
                   scope_descriptions: {type: object, additionalProperties: {type: string}}
                   audience: {type: string, const: monkeyai-api}
-                  consent_required: {type: boolean}
+                  consent_required: {type: boolean, const: true, description: 空权限列表也必须明确确认}
                   csrf_token: {type: string, description: 绑定当前浏览器登录和申请，提交时通过 X-CSRF-Token 回传}
         '404': {description: 申请不存在、已完成或过期}
         '503': {description: 登录方式暂不可用}
   /api/auth/v1/client-requests/{requestID}/complete:
     post:
       summary: 确认授权并生成一次性回调
-      description: 新增权限不能自动完成，必须通过 CSRF 校验并明确提供批准列表；只能收窄。无新增 scope 的旧登录保持原调用方式。
+      description: 所有授权均必须通过 CSRF 与来源校验，并明确提供批准列表；只能收窄。没有附加权限时也必须提交 approved_scopes 空数组。完成前会重新校验已保存的回调地址。
       security:
         - BrowserSession: []
       parameters:
         - {name: requestID, in: path, required: true, schema: {type: string, format: uuid}}
-        - {name: X-CSRF-Token, in: header, schema: {type: string}, description: 带 scope 的申请必填}
+        - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}, description: 所有授权申请必填}
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -355,7 +356,7 @@ paths:
         '401': {description: 浏览器未登录}
         '403': {description: 缺少明确确认或 CSRF/来源校验失败}
         '404': {description: 申请不存在}
-        '409': {description: 申请已完成、过期或批准范围无效}
+        '409': {description: 申请已完成、过期、回调地址未登记或批准范围无效}
   /oauth/device/authorization:
     post:
       summary: 申请独立 runtime 设备授权

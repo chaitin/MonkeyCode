@@ -9,16 +9,16 @@
 | 桌面端 | `monkeyai-desktop` | `monkeyai-desktop://oauth/callback` |
 | 移动端 | `monkeyai-mobile` | `monkeyai-mobile://oauth/callback` |
 
-客户端注册信息是代码中的小型静态白名单，不建立 `oauth_clients` 表。服务端按 `client_id` 精确匹配登记的应用回调地址；桌面端额外允许 `http://127.0.0.1:<port>/oauth/callback` 和 `http://[::1]:<port>/oauth/callback`，端口范围为 1–65535，以支持原生客户端随机端口。回环地址的主机、协议和路径固定，不允许 userinfo、查询参数、片段或编码路径变体。创建和完成授权请求、兑换授权码时均校验回调规则；兑换时还要求地址与授权请求保存值完全一致。非法回调在服务端返回错误，不重定向至请求地址。
+客户端注册信息是代码中的静态白名单，不建立 `oauth_clients` 表。应用回调必须与对应客户端登记的 URI 完全一致。桌面端另允许固定路径 `/oauth/callback` 的 HTTP 本机回环地址 `localhost`、`127.0.0.1` 或 `[::1]`，支持显式动态端口 1–65535；不接受其他 IP/域名、其他协议、用户信息、查询参数、片段或编码路径变体。授权开始、请求展示、完成和授权码兑换都会校验回调；兑换还要求与原记录地址完全一致，历史未完成申请和未兑换授权码也不能绕过新规则。非法回调返回错误，不重定向至请求地址。
 
 ## 2. Agent 登录流程
 
 1. 客户端生成随机 `state` 和 PKCE `code_verifier`，计算 `code_challenge = BASE64URL(SHA256(code_verifier))`。
 2. 客户端用系统浏览器打开 `GET /oauth/authorize`，传入 `response_type=code`、`client_id`、非空 `redirect_uri`、`state`、`code_challenge` 和 `code_challenge_method=S256`。
 3. 服务端校验客户端与回调白名单后创建 10 分钟有效的授权请求，并跳转到管理端 `/client-login` 页面。
-4. 页面调用服务端检查客户端用户的浏览器会话。已有会话时展示授权确认；未登录时展示管理员在后台启用的密码、邮箱验证码和 OAuth/OIDC 登录方式，并按注册开关展示邮箱注册入口。
+4. 页面调用服务端检查客户端用户的浏览器会话。未登录时展示管理员启用的密码、邮箱验证码和 OAuth/OIDC 登录方式，并按注册开关展示邮箱注册入口。身份验证后显示当前账号、实际回调地址和附加权限，必须点击确认授权；空权限列表也不能自动完成。
 5. 上游 OAuth 回调只回到 MonkeyAI 服务端。服务端绑定或创建用户，建立 HttpOnly 浏览器会话，再返回 `/client-login`。
-6. 用户明确确认后，页面携带绑定当前会话和授权请求的 `X-CSRF-Token` 及 `approved_scopes` 正文申请 2 分钟有效、仅能使用一次的授权码，并打开对应的桌面或移动应用地址；页面保留手动“打开应用”按钮。服务端对空权限请求也要求确认，并拒绝批准未申请的权限。
+6. 用户确认后，页面通过 `X-CSRF-Token` 提交与浏览器会话和申请绑定的确认凭据，并显式提交 `approved_scopes` 数组（没有附加权限时为 `[]`，不能扩大权限）。服务端生成 2 分钟有效、仅能使用一次的授权码。前端核对签发回调与确认页展示地址一致且属于登记范围后再打开应用，手动“打开应用”按钮也只使用校验通过的地址。
 7. 客户端向 `POST /oauth/token` 提交授权码和原始 `code_verifier`。服务端校验 PKCE 后返回 1 小时有效的 access token 和 30 天有效的 refresh token。
 8. refresh token 每次刷新都会轮换，旧 token 立即撤销。`POST /oauth/revoke` 可撤销当前令牌组。
 

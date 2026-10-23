@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card"
 import { api } from "@/lib/api"
 import type { AuthUser } from "@/lib/auth-context"
+import { isSafeClientLaunchURL } from "@/lib/client-callback"
 
 type Provider = { id: string; provider: string; name: string }
 type ClientRequest = {
@@ -64,35 +65,22 @@ export function ClientLoginPage() {
 
   useEffect(() => {
     if (!requestId) return
+    const controller = new AbortController()
     api<ClientRequest>(
-      `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`
+      `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`,
+      { signal: controller.signal }
     )
       .then(setRequest)
-      .catch((reason: Error) => setError(reason.message))
-  }, [requestId])
-
-  useEffect(() => {
-    if (
-      !request?.authenticated ||
-      request.consent_required ||
-      completionStarted.current
-    )
-      return
-    completionStarted.current = true
-    api<{ launch_url: string }>(
-      `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}/complete`,
-      { method: "POST" }
-    )
-      .then(({ launch_url }) => {
-        setLaunchURL(launch_url)
-        window.location.assign(launch_url)
+      .catch((reason: Error) => {
+        if (!controller.signal.aborted) setError(reason.message)
       })
-      .catch((reason: Error) => setError(reason.message))
-  }, [request, requestId])
+    return () => controller.abort()
+  }, [requestId])
 
   const approve = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!request || submitting || completionStarted.current) return
+    if (!request?.authenticated || submitting || completionStarted.current)
+      return
     completionStarted.current = true
     setSubmitting(true)
     setError("")
@@ -102,9 +90,18 @@ export function ClientLoginPage() {
         {
           method: "POST",
           headers: { "X-CSRF-Token": request.csrf_token },
-          body: JSON.stringify({ approved_scopes: request.scopes }),
+          body: JSON.stringify({ approved_scopes: request.scopes ?? [] }),
         }
       )
+      if (
+        !isSafeClientLaunchURL(
+          request.client.client_id,
+          request.client.redirect_uri,
+          launch_url
+        )
+      ) {
+        throw new Error("授权回调地址校验失败，请从客户端重新发起登录。")
+      }
       setLaunchURL(launch_url)
       window.location.assign(launch_url)
     } catch (reason) {
@@ -188,39 +185,47 @@ export function ClientLoginPage() {
               }}
             />
           )}
-          {request?.authenticated && request.consent_required && !launchURL && (
+          {request?.authenticated && !launchURL && (
             <form onSubmit={approve} className="space-y-4">
               <p className="text-sm">
-                {request.client.name} 申请以下权限，请确认后继续：
+                允许 {request.client.name} 使用当前账号登录并访问客户端功能？
               </p>
-              <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-                {request.scopes.map((scope) => (
-                  <li key={scope}>
-                    {request.scope_descriptions[scope] ?? scope}
-                  </li>
-                ))}
-              </ul>
+              <dl className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">当前账号</dt>
+                  <dd className="break-all">
+                    {request.user?.email || request.user?.name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">返回应用地址</dt>
+                  <dd className="break-all font-mono text-xs">
+                    {request.client.redirect_uri}
+                  </dd>
+                </div>
+              </dl>
+              {!!request.scopes?.length && (
+                <div className="space-y-2">
+                  <p className="text-sm">同时申请以下权限：</p>
+                  <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+                    {request.scopes.map((scope) => (
+                      <li key={scope}>
+                        {request.scope_descriptions[scope] ?? scope}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Button
                 type="submit"
                 size="lg"
                 className="min-h-11 w-full cursor-pointer"
-                disabled={submitting}
+                loading={submitting}
               >
-                {submitting ? "正在授权…" : "确认授权"}
+                确认授权
               </Button>
             </form>
           )}
-          {request?.authenticated &&
-            !request.consent_required &&
-            !launchURL &&
-            !requestError && (
-              <p
-                className="py-5 text-center text-sm text-muted-foreground"
-                role="status"
-              >
-                身份已确认，正在生成一次性授权码…
-              </p>
-            )}
           {launchURL && (
             <Button
               nativeButton={false}

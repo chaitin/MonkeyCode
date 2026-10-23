@@ -55,6 +55,15 @@ CHROME_BIN=/path/to/chrome86 pnpm test:browser:quotas
 CHROME_BIN=/path/to/current-chrome pnpm test:browser:quotas
 ```
 
+## 客户端登录授权
+
+`/client-login` 登录后必须明确确认当前账号、实际返回地址和附加权限，空权限列表也不会自动完成。确认提交始终携带 `X-CSRF-Token` 和 `approved_scopes` 数组。后台仅允许登记的应用回调，或桌面端固定路径的本机回环动态端口（`localhost`、`127.0.0.1`、`[::1]`）；前端还会核对最终返回地址与确认页展示的地址一致，拒绝外部网站、脚本 URL 和其他未登记目标。
+
+```sh
+CHROME_BIN=/path/to/chrome86 pnpm test:browser:auth
+CHROME_BIN=/path/to/current-chrome pnpm test:browser:auth
+```
+
 ## Adding components
 
 To add components to your app, run the following command:
