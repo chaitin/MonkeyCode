@@ -20,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -428,6 +429,12 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 			if change.Action != "skip" {
 				if err = writeResource(ctx, tx, r, change, id, actor.ID, objects, ids, opts); err != nil {
 					return pre, err
+				}
+				if change.Action == "create" {
+					grants := []resource.Object{{"group_id": rootgroup.ID}}
+					if err = resource.SaveGrants(ctx, tx, kind, id, actor.ID, grants, false); err != nil {
+						return pre, err
+					}
 				}
 				if err = writeTags(ctx, tx, change, id, actor.ID); err != nil {
 					return pre, err
