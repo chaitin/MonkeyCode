@@ -167,7 +167,8 @@ func TestEmailAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CompleteAuthorization(ctx, request.ID, userID); err != nil {
+	approval := []string{}
+	if _, err := s.completeAuthorization(ctx, request.ID, userID, &approval); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO oauth_tokens(user_id,client_id,access_token_hash,refresh_token_hash,access_expires_at,refresh_expires_at) VALUES($1,'monkeyai-desktop','access-hash','refresh-hash',now()+interval '1 hour',now()+interval '1 day')`, userID); err != nil {

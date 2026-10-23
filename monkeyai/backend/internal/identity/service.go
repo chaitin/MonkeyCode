@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -204,8 +206,8 @@ func (s *Service) newAuthorizationRequest(values url.Values) (AuthorizationReque
 		return AuthorizationRequest{}, oauthError("invalid_request", "client_id 无效")
 	}
 	redirectURI := values.Get("redirect_uri")
-	if redirectURI == "" {
-		return AuthorizationRequest{}, oauthError("invalid_request", "redirect_uri 不能为空")
+	if _, err := validateRedirectURI(client.ID, redirectURI); err != nil {
+		return AuthorizationRequest{}, err
 	}
 	state := values.Get("state")
 	if state == "" {
@@ -255,14 +257,16 @@ func (s *Service) completeAuthorization(ctx context.Context, requestID, userID s
 	if request.CompletedAt != nil || !s.now().Before(request.ExpiresAt) {
 		return "", errors.New("授权请求已完成或已过期")
 	}
-	if len(request.Scopes) > 0 && approval == nil {
-		return "", oauthError("consent_required", "新增权限需要用户明确批准")
+	callback, err := validateRedirectURI(request.ClientID, request.RedirectURI)
+	if err != nil {
+		return "", err
 	}
-	if approval != nil {
-		request.Scopes, err = approvedScopes(request.Scopes, *approval)
-		if err != nil {
-			return "", err
-		}
+	if approval == nil {
+		return "", oauthError("consent_required", "客户端授权需要用户明确批准")
+	}
+	request.Scopes, err = approvedScopes(request.Scopes, *approval)
+	if err != nil {
+		return "", err
 	}
 	code, err := randomToken(32)
 	if err != nil {
@@ -270,10 +274,6 @@ func (s *Service) completeAuthorization(ctx context.Context, requestID, userID s
 	}
 	if err := s.storeAuthorizationCode(ctx, request, userID, tokenHash(code), s.now().Add(s.codeTTL)); err != nil {
 		return "", err
-	}
-	callback, err := url.Parse(request.RedirectURI)
-	if err != nil {
-		return "", fmt.Errorf("解析授权请求 %s 的回调地址: %w", request.ID, err)
 	}
 	query := callback.Query()
 	query.Set("code", code)
@@ -285,6 +285,9 @@ func (s *Service) completeAuthorization(ctx context.Context, requestID, userID s
 func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code, verifier string) (Token, error) {
 	if _, ok := Clients[clientID]; !ok {
 		return Token{}, oauthError("invalid_client", "客户端信息无效")
+	}
+	if _, err := validateRedirectURI(clientID, redirectURI); err != nil {
+		return Token{}, oauthError("invalid_grant", "授权回调地址无效")
 	}
 	if !verifierPattern.MatchString(verifier) {
 		return Token{}, oauthError("invalid_grant", "code_verifier 无效")
@@ -353,6 +356,22 @@ func (s *Service) Refresh(ctx context.Context, clientID, refreshToken string) (T
 		}
 	}
 	return token, nil
+}
+
+func validateRedirectURI(clientID, value string) (*url.URL, error) {
+	client, ok := Clients[clientID]
+	if ok && client.RedirectURI != "" && value == client.RedirectURI {
+		return url.Parse(value)
+	}
+	callback, err := url.Parse(value)
+	if ok && client.ID == "monkeyai-desktop" && err == nil && callback.Scheme == "http" &&
+		(callback.Hostname() == "127.0.0.1" || callback.Hostname() == "::1") {
+		port, err := strconv.Atoi(callback.Port())
+		if err == nil && port > 0 && port <= 65535 && value == "http://"+net.JoinHostPort(callback.Hostname(), callback.Port())+"/oauth/callback" {
+			return callback, nil
+		}
+	}
+	return nil, oauthError("invalid_request", "redirect_uri 未匹配客户端登记的回调地址")
 }
 
 func validChallenge(value string) bool {

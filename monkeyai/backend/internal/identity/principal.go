@@ -60,9 +60,12 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 }
 
 func parseScopes(clientID, value string) ([]string, error) {
-	scopes := strings.Fields(value)
 	if len(value) > 1024 {
 		return nil, oauthError("invalid_scope", "权限列表过长")
+	}
+	scopes := strings.Fields(value)
+	if value != "" && len(scopes) == 0 {
+		return nil, oauthError("invalid_scope", "权限列表不能仅包含空白字符")
 	}
 	for _, scope := range scopes {
 		if _, ok := scopeNames[scope]; !ok {
