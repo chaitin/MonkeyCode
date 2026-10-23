@@ -25,6 +25,8 @@ func TransportFor(raw string) (*http.Transport, error) {
 				config = transport.TLSClientConfig.Clone()
 			}
 			config.ServerName = address.Hostname()
+			// 仅跳过 HTTPS 代理的证书校验，目标服务仍使用原有 TLS 配置。
+			config.InsecureSkipVerify = true
 			return (&tls.Dialer{Config: config}).DialContext(ctx, network, target)
 		}
 	}
