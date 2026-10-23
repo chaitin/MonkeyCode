@@ -26,13 +26,10 @@ test("私有化部署页面注册为独立路由", () => {
   assert.match(sourceFiles.page, /t\("selfHostingPage\.hero\.title"\)/);
 });
 
-test("欢迎页私有化入口指向独立页面", () => {
-  assert.match(sourceFiles.terminalChrome, /const SELF_HOSTING_PAGE_PATH = "\/self-hosting"/);
-  assert.match(sourceFiles.terminalChrome, /\{ labelKey: "welcomeShell\.nav\.selfHosting", href: SELF_HOSTING_PAGE_PATH }/);
+test("欢迎页私有化入口指向百智办公官网", () => {
+  assert.match(sourceFiles.terminalChrome, /const SELF_HOSTING_LINK = "https:\/\/work\.baizhi\.cloud\/"/);
+  assert.match(sourceFiles.terminalChrome, /\{ labelKey: "welcomeShell\.nav\.selfHosting", href: SELF_HOSTING_LINK, external: true, prefix: "🔥" }/);
   assert.doesNotMatch(sourceFiles.terminalChrome, /#self-hosting/);
-
-  assert.match(sourceFiles.terminalNative, /<HeaderAction to="\/self-hosting">/);
-  assert.doesNotMatch(sourceFiles.terminalNative, /selfHostingActionLink|SELF_HOSTING_DOC_LINK/);
 });
 
 test("私有化部署页面提供中英文文案", () => {

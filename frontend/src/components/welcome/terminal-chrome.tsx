@@ -12,7 +12,7 @@ const SHOWCASE_LINK: Record<string, string> = {
   cn: "https://showcase.monkeycode-ai.online/",
   en: "https://monkeycode-ai.gallery/",
 };
-const SELF_HOSTING_PAGE_PATH = "/self-hosting";
+const SELF_HOSTING_LINK = "https://work.baizhi.cloud/";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
 const CYBERSERVAL_LINK = "https://www.cyberserval.com/";
@@ -107,7 +107,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
     { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK[i18n.language], external: true },
     { labelKey: "welcomeShell.nav.desktopClient", href: `${navPrefix}#desktop-client` },
     { labelKey: "welcomeShell.nav.mobileClient", href: `${navPrefix}#mobile-client` },
-    { labelKey: "welcomeShell.nav.selfHosting", href: SELF_HOSTING_PAGE_PATH },
+    { labelKey: "welcomeShell.nav.selfHosting", href: SELF_HOSTING_LINK, external: true, prefix: "🔥" },
   ];
 
   React.useEffect(() => {
@@ -148,7 +148,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
                 rel="noreferrer"
                 className="px-2.5 py-1.5 text-[13px] text-[var(--a-fg-dim)] transition-colors hover:text-white"
               >
-                {t(item.labelKey)}
+                {item.prefix}{t(item.labelKey)}
               </a>
             ) : (
               <a
@@ -194,7 +194,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
                     onClick={() => setMenuOpen(false)}
                     className="rounded-[4px] border border-[var(--a-line)] px-4 py-3 text-sm text-[var(--a-fg)] transition-colors hover:bg-[#162019]"
                   >
-                    {t(item.labelKey)}
+                    {item.prefix}{t(item.labelKey)}
                   </a>
                 ) : (
                   <a

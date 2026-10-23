@@ -134,7 +134,6 @@ const desktopClientItems = [
   },
 ] as const;
 
-const selfHostingAdvantageKeys = ["dataBoundary", "governance", "integration", "offline"] as const;
 const monkeyCodeWorkAdvantageKeys = ["localFiles", "cloudTasks", "modelsAndTools", "browser"] as const;
 
 const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"] as const;
@@ -385,7 +384,6 @@ export default function TerminalNativePage() {
   const pricingRegion = getPricingRegion(serverConfig?.region);
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
-  const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
   const monkeyCodeWorkAdvantages = monkeyCodeWorkAdvantageKeys.map((key) => t(`terminalNative.monkeyCodeWork.advantages.${key}`));
   const testimonialItems = testimonialKeys.map((key) => ({
     key,
@@ -642,44 +640,8 @@ export default function TerminalNativePage() {
         </SectionShell>
 
         <SectionShell
-          id="self-hosting"
-          index="05"
-          label="SELF HOSTING"
-          title={t("terminalNative.selfHosting.title")}
-          subtitle={t("terminalNative.selfHosting.subtitle")}
-          action={
-            <HeaderAction to="/self-hosting">
-              <IconArrowRight className="size-4" />
-              <span>{t("terminalNative.selfHosting.action")}</span>
-            </HeaderAction>
-          }
-        >
-          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
-              <div className="text-[10px] tracking-[0.12em] text-[var(--a-accent)]">$ monkey deploy --self-hosted</div>
-              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[var(--a-fg)]">
-                {t("terminalNative.selfHosting.cardTitle")}
-              </h3>
-              <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">
-                {t("terminalNative.selfHosting.cardBody")}
-              </p>
-            </div>
-            <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)]">
-              {selfHostingAdvantages.map((item, index) => (
-                <div key={item} className="flex gap-4 bg-[var(--a-panel)] p-5">
-                  <span className="mt-1 text-[11px] tracking-[0.12em] text-[var(--a-accent)]">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <p className="text-sm leading-7 text-[var(--a-fg-dim)]">{item}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </SectionShell>
-
-        <SectionShell
           id="why"
-          index="06"
+          index="05"
           label="WHY MONKEYCODE"
           title={t("terminalNative.compare.title")}
           subtitle={t("terminalNative.compare.subtitle")}
@@ -750,7 +712,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="testimonials"
-          index="07"
+          index="06"
           label="WHAT DEVS SAY"
           title={t("terminalNative.testimonials.title")}
           subtitle={t("terminalNative.testimonials.subtitle")}
@@ -771,7 +733,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="pricing"
-          index="08"
+          index="07"
           label="PRICING"
           title={t("terminalNative.pricing.title")}
           subtitle={t("terminalNative.pricing.subtitle")}
@@ -980,7 +942,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="faq"
-          index="09"
+          index="08"
           label="FAQ"
           title={t("terminalNative.faq.title")}
           subtitle={t("terminalNative.faq.subtitle")}
