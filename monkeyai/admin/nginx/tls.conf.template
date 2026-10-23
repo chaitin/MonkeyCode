@@ -1,0 +1,23 @@
+server {
+    listen 8080;
+    server_name _;
+
+    include /etc/nginx/monkeyai/health.conf;
+
+    location / {
+        return 308 ${MONKEYAI_ORIGIN}$request_uri;
+    }
+}
+
+server {
+    listen 8443 ssl;
+    server_name _;
+
+    ssl_certificate /run/monkeyai/tls/server.crt;
+    ssl_certificate_key /run/monkeyai/tls/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    error_page 497 =308 ${MONKEYAI_ORIGIN}$request_uri;
+
+    include /etc/nginx/monkeyai/health.conf;
+    include /etc/nginx/monkeyai/app.conf;
+}

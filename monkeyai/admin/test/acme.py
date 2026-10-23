@@ -226,7 +226,7 @@ https.createServer({ cert, key: fs.readFileSync('/fixture/ca.key') }, (req, res)
         for changes in invalid:
             result = self.docker("run", "--rm", "--network", self.name,
                                  *self.admin_args(self.env | changes), self.image, "nginx", "-t", check=False)
-            assert result.returncode != 0 and "MonkeyAI:" in result.stderr, f"错误配置未被拒绝：{changes}"
+            assert result.returncode != 0 and "百智办公:" in result.stderr, f"错误配置未被拒绝：{changes}"
         print("通过：非法开关、地址、邮箱及多行配置被拒绝", flush=True)
 
         normalized = self.env | {"MONKEYAI_PUBLIC_URL": "https://APP.TEST:443/"}
