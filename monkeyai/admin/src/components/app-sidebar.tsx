@@ -8,6 +8,7 @@ import paidLicenseLogo from "@/assets/paid-license-logo.webp"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { VersionUpgradeButton } from "@/components/version-upgrade-button"
+import { WeChatCommunityButton } from "@/components/wechat-community-button"
 import {
   Sidebar,
   SidebarContent,
@@ -202,6 +203,7 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <VersionUpgradeButton className="w-full" variant="outline" showIcon />
+        <WeChatCommunityButton />
         <NavUser
           user={{
             name: user?.name ?? "MonkeyAI Admin",

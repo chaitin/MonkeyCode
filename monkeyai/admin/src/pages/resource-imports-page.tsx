@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+import communityQRCode from "@/assets/wecom-community-qr.png"
 import { api } from "@/lib/api"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import type { ImportResult } from "@/lib/design-import"
 import { uploadBase, type ResourceUpload } from "@/lib/resource-upload"
 import { ResourceImportDialog } from "@/components/resource-import-dialog"
@@ -9,6 +11,7 @@ import { TableLoading } from "@/components/table-loading"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -36,7 +39,7 @@ export function ResourceImportsPage() {
   const history = current?.page ?? null
   const historyError = current?.error ?? ""
   const historyLoading = current === null
-  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: "short", timeStyle: "short" })
+  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, TABLE_DATE_TIME_OPTIONS)
 
   useEffect(() => {
     let activeRequest = true
@@ -70,13 +73,6 @@ export function ResourceImportsPage() {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">资源包导入记录</h1>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
-          <Button type="button" onClick={() => setDialog({ upload: null })}>导入资源包</Button>
-        </div>
-      </div>
       {pendingError && <p role="alert" className="text-sm text-destructive">未完成任务：{pendingError}</p>}
       {pending.length > 0 && <div className="max-h-56 shrink-0 space-y-2 overflow-y-auto rounded-lg border p-3">
         <h2 className="text-sm font-medium">未完成任务 <span className="font-normal text-muted-foreground">· 上传后保留 24 小时</span></h2>
@@ -91,20 +87,45 @@ export function ResourceImportsPage() {
       </div>}
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-[var(--card-spacing)]">
+            <Dialog>
+              <DialogTrigger render={<Button type="button" />}>
+                获取资源包
+              </DialogTrigger>
+              <DialogContent closeLabel="关闭" className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-sm">
+                <DialogHeader className="pe-8">
+                  <DialogTitle>获取资源包</DialogTitle>
+                  <DialogDescription>扫描下方二维码，加入微信交流群获取 AI 资源包。</DialogDescription>
+                </DialogHeader>
+                <img
+                  src={communityQRCode}
+                  width={396}
+                  height={396}
+                  alt="微信交流群二维码"
+                  className="mx-auto block h-auto w-56 max-w-full rounded-md bg-white p-2"
+                />
+              </DialogContent>
+            </Dialog>
+            <div className="ms-auto flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={historyLoading} onClick={() => setRefresh((value) => value + 1)}>刷新</Button>
+              <Button type="button" onClick={() => setDialog({ upload: null })}>导入资源包</Button>
+            </div>
+          </div>
           {historyError && <div role="alert" className="mx-[var(--card-spacing)] flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4 text-sm text-destructive"><span>{historyError}</span><Button size="sm" variant="outline" onClick={() => setRefresh((value) => value + 1)}>重试</Button></div>}
           <ScrollArea horizontal className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
             <Table aria-busy={historyLoading} className={`${!history?.items.length ? "h-full " : ""}[&_th:first-child]:ps-[var(--card-spacing)] [&_td:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)]`}>
-              <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "发布者", "版本", "发布 ID", "状态", "资源变更"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
+              <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "版本", "状态", "资源内容"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
               <TableBody className={!history?.items.length ? "h-full" : undefined}>{history?.items.map((batch) => <TableRow key={batch.id}>
-                <TableCell className="whitespace-nowrap">{dateFormat.format(new Date(batch.created_at))}</TableCell>
-                <TableCell className="font-medium">{batch.publisher}</TableCell>
-                <TableCell>{batch.version > 0 ? `v${batch.version}` : "设计快照"}</TableCell>
-                <TableCell className="font-mono" title={batch.release_id}>{batch.release_id.slice(0, 8)}…</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{dateFormat.format(new Date(batch.created_at))}</TableCell>
+                <TableCell>{batch.version > 0 ? batch.version : "设计快照"}</TableCell>
                 <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : batch.status === "partial" ? "部分成功" : "失败"}</Badge></TableCell>
-                <TableCell className="text-muted-foreground">{batch.section_results ? <div className="space-y-1">{Object.entries(batch.section_results).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "design" ? "设计资源" : "Agent 资源"}：{item.status === "succeeded" ? "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all font-mono text-xs">{item.result.release_id}</p>}{item.error && <p className="text-destructive">{item.error.message}</p>}</div>)}</div> : counts.map(([key, label]) => `${label} ${batch.result_counts[key] ?? 0}`).join(" · ")}</TableCell>
+                <TableCell className="text-muted-foreground">{counts
+                  .filter(([key]) => (batch.result_counts[key] ?? 0) !== 0)
+                  .map(([key, label]) => `${label} ${batch.result_counts[key]}`)
+                  .join(" · ") || "无变更"}</TableCell>
               </TableRow>)}
                 {!history?.items.length && !historyError && <TableRow className="h-full">
-                  <TableCell colSpan={6} className="h-full text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="h-full text-center text-muted-foreground">
                     {historyLoading ? <TableLoading /> : "暂无导入记录"}
                   </TableCell>
                 </TableRow>}

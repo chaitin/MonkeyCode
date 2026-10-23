@@ -288,6 +288,9 @@ export const enUS = {
     label: "Navigation",
     expandOrCollapse: "Expand or collapse",
     accountSettings: "Account settings",
+    wechatCommunity: "WeChat community",
+    wechatCommunityQRCode: "WeChat community QR code",
+    wechatCommunityHint: "Scan with WeChat to join the group.",
     logout: "Sign out",
     projects: "Projects",
     viewProject: "View project",
@@ -307,7 +310,7 @@ export const enUS = {
   },
   pages: {
     resourceImports: {
-      title: "Import resource package",
+      title: "Resource packages",
       description: "Preview and apply a resource release",
     },
     license: {

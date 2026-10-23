@@ -260,6 +260,9 @@ export const zhCN = {
     label: "功能导航",
     expandOrCollapse: "展开或收起",
     accountSettings: "账户设置",
+    wechatCommunity: "微信交流群",
+    wechatCommunityQRCode: "微信交流群二维码",
+    wechatCommunityHint: "微信扫码，加入交流群",
     logout: "退出登录",
     projects: "项目",
     viewProject: "查看项目",
@@ -279,7 +282,7 @@ export const zhCN = {
   },
   pages: {
     resourceImports: {
-      title: "导入资源包",
+      title: "资源包",
       description: "预览并导入资源发布包",
     },
     license: {
