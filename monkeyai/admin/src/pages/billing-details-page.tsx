@@ -800,7 +800,8 @@ function TransactionDialog({
   const [data, setData] = useState<Transaction | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadRevision, setLoadRevision] = useState(0)
-  const [busy, setBusy] = useState(false)
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const busy = pendingAction !== null
   const [reason, setReason] = useState("")
   const [result, setResult] = useState("failed")
   const [generatedImages, setGeneratedImages] = useState("0")
@@ -836,7 +837,8 @@ function TransactionDialog({
     }
   }, [id, loadRevision, showToast])
   const act = async (action: string) => {
-    setBusy(true)
+    if (busy) return
+    setPendingAction(action)
     try {
       const body =
         action === "resolve"
@@ -873,7 +875,7 @@ function TransactionDialog({
     } catch (e) {
       showToast({ status: "error", title: (e as Error).message })
     } finally {
-      setBusy(false)
+      setPendingAction(null)
     }
   }
   const detailRows: { label: string; value: string | number }[] = data
@@ -1015,7 +1017,11 @@ function TransactionDialog({
               </div>
             ))}
             {data.status === "settling" && (
-              <Button disabled={busy} onClick={() => void act("retry")}>
+              <Button
+                loading={pendingAction === "retry"}
+                disabled={busy}
+                onClick={() => void act("retry")}
+              >
                 重试结算
               </Button>
             )}
@@ -1109,7 +1115,11 @@ function TransactionDialog({
                     onChange={(e) => setReason(e.target.value)}
                   />
                 </Field>
-                <Button type="submit" disabled={busy || !reason.trim()}>
+                <Button
+                  type="submit"
+                  loading={pendingAction === "resolve"}
+                  disabled={busy || !reason.trim()}
+                >
                   提交核查结果
                 </Button>
                 <p className="text-xs text-muted-foreground">

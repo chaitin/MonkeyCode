@@ -89,18 +89,24 @@ test("both members panels scroll inside shadcn Scroll Areas", async () => {
     page,
     /import \{ ScrollArea \} from "@\/components\/ui\/scroll-area"/
   )
-  assert.equal((panels.match(/<ScrollArea className=/g) ?? []).length, 2)
+  assert.equal((panels.match(/<ScrollArea\b/g) ?? []).length, 2)
   assert.match(
     panels,
-    /<ScrollArea className="-ms-1 -me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\]">/
+    /className="-ms-1 -me-\[var\(--card-spacing\)\] h-96 min-h-0 min-w-0 flex-1 pe-\[calc\(var\(--card-spacing\)-4px\)\] md:h-auto"/
   )
   assert.match(
     panels,
-    /<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">/
+    /className="-me-\[var\(--card-spacing\)\] h-96 min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\] md:h-auto"/
   )
   assert.equal((panels.match(/<\/ScrollArea>/g) ?? []).length, 2)
-  assert.match(panels, /<ul\s+className="flex flex-col gap-1"/)
-  assert.match(panels, /<ItemGroup className="gap-2">/)
+  assert.match(
+    panels,
+    /<MemberGroupTree[\s\S]*?scrollElement=\{groupViewport\}/
+  )
+  assert.match(panels, /<ItemGroup\s+className="relative gap-2"/)
+  assert.match(panels, /memberVirtualizer\.items\.map/)
+  assert.match(panels, /ref=\{memberVirtualizer\.measureElement\}/)
+  assert.doesNotMatch(panels, /visibleUsers\.map\(\(user\) => \{/)
   assert.doesNotMatch(panels, /<ul\s+className="[^"]*\bpe-2\b/)
   assert.doesNotMatch(panels, /<ItemGroup className="[^"]*\bpe-3\b/)
   assert.doesNotMatch(panels, /<CardContent[^>]*overflow-y-auto/)
@@ -239,11 +245,16 @@ test("the tree root starts expanded without checking its ID", async () => {
     new URL("../src/components/members/group-tree.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(tree, /useState\(group\.parent_id === null\)/)
-  assert.match(
-    tree,
-    /<Collapsible open=\{expanded\} onOpenChange=\{setExpanded\}>/
+  const model = await readFile(
+    new URL("../src/lib/member-tree.ts", import.meta.url),
+    "utf8"
   )
+  assert.match(
+    model,
+    /expansion\.get\(group\.id\) \?\? group\.parent_id === null/
+  )
+  assert.match(tree, /useState<ReadonlyMap<string, boolean>>/)
+  assert.match(tree, /aria-expanded=\{expanded\}/)
   assert.doesNotMatch(tree, /ROOT_GROUP_ID|ungroupedExpanded/)
 })
 
@@ -252,8 +263,13 @@ test("members appear directly under their group without a virtual ungrouped row"
     new URL("../src/components/members/group-tree.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(tree, /\{memberRows\}/)
-  assert.match(tree, /directMemberIDs\(groups, group\.id\)/)
+  const model = await readFile(
+    new URL("../src/lib/member-tree.ts", import.meta.url),
+    "utf8"
+  )
+  assert.match(tree, /<GroupTreeMemberRow/)
+  assert.match(model, /new Set\(group\.member_ids\)/)
+  assert.match(tree, /source_group_id: row\.groupID/)
   assert.match(tree, /const actions = group\.actions/)
   assert.doesNotMatch(tree, /ungroupedMembers|isRoot|ungroupedExpanded/)
 })
@@ -267,7 +283,8 @@ test("group rows swap the count for actions in the same slot on hover", async ()
     .split('"relative flex h-8 shrink-0 items-center justify-center"')[1]
     .split("</DropdownMenu>")[0]
   assert.match(actionSlot, /\{count\}/)
-  assert.match(actionSlot, /<DropdownMenu onOpenChange=\{setMenuOpen\}>/)
+  assert.match(actionSlot, /<DropdownMenu\s+onOpenChange=/)
+  assert.match(actionSlot, /setMenuOpen\(open\)[\s\S]*?onMenuPin\(open\)/)
   assert.match(actionSlot, /size="icon-xs"/)
   assert.match(actionSlot, /showActions && "w-6"/)
   assert.match(actionSlot, /onFocusCapture=/)
@@ -316,7 +333,10 @@ test("group rows swap the count for actions in the same slot on hover", async ()
     /"flex min-w-0 items-center gap-2 rounded-md pe-1 text-sm transition-colors",/
   )
   assert.match(memberRow, /treeActionsVisible=\{showActions\}/)
-  assert.match(memberRow, /onMenuOpenChange=\{setMenuOpen\}/)
+  assert.match(
+    memberRow,
+    /onMenuOpenChange=\{\(open\) => \{[\s\S]*?setMenuOpen\(open\)[\s\S]*?onMenuPin\(open\)/
+  )
   assert.match(memberRow, /showActions \? "w-6" : "w-0"/)
   assert.doesNotMatch(memberRow, /transition-\[width\]/)
   const memberActions = await readFile(
@@ -387,17 +407,17 @@ test("tree and list share the same member action menu", async () => {
     new URL("../src/components/members/member-actions.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(tree, /directMemberIDs\(/)
+  const model = await readFile(
+    new URL("../src/lib/member-tree.ts", import.meta.url),
+    "utf8"
+  )
+  assert.match(model, /new Set\(group\.member_ids\)/)
   assert.match(
     tree,
     /className="size-4 shrink-0 text-yellow-600 dark:text-yellow-400"/
   )
   assert.equal(
-    (
-      tree.match(
-        /\.sort\(\(a, b\) => compareByName\(a, b, nameCollator\)\)/g
-      ) ?? []
-    ).length,
+    (model.match(/compareByName\(a, b, collator\)/g) ?? []).length,
     2
   )
   assert.match(tree, /<MemberActions/)

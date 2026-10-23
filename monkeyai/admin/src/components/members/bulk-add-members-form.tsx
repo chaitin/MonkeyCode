@@ -316,6 +316,7 @@ export function BulkAddMembersForm({
         </Button>
         <Button
           type="submit"
+          loading={saving}
           disabled={
             saving || (rows !== null && (!rows.length || issues.size > 0))
           }

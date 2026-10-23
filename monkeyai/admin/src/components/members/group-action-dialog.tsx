@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Loading03Icon } from "@hugeicons/core-free-icons"
 
 import { GroupSelect } from "@/components/group-select"
 import { useAppToast } from "@/components/animated-toast-provider"
@@ -270,6 +272,7 @@ export function GroupActionDialog({
             </Button>
             <Button
               type="submit"
+              aria-busy={saving}
               variant={action === "delete" ? "destructive" : "default"}
               disabled={
                 saving ||
@@ -279,9 +282,15 @@ export function GroupActionDialog({
                 (action === "delete" && hasChildren)
               }
             >
-              {saving
-                ? t("common.saving")
-                : t(`pages.membersAndGroups.${submitKeys[action]}`)}
+              {saving && (
+                <HugeiconsIcon
+                  icon={Loading03Icon}
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                />
+              )}
+              {t(`pages.membersAndGroups.${submitKeys[action]}`)}
             </Button>
           </DialogFooter>
         </form>

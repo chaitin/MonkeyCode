@@ -34,7 +34,7 @@ test("billing settings use equal left and right columns on desktop", async () =>
   )
   assert.equal(
     (page.match(/<Card className="min-h-80 lg:min-h-0">/g) ?? []).length,
-    2
+    1
   )
   assert.match(
     page,
@@ -42,7 +42,7 @@ test("billing settings use equal left and right columns on desktop", async () =>
   )
   assert.match(
     page,
-    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]">[\s\S]*?<ItemGroup className="gap-2">/
+    /pages\.billingSettings\.groupQuota\.memberTitle[\s\S]*?<ScrollArea\s+viewportRef=\{setMemberViewport\}\s+className="-me-\[var\(--card-spacing\)\] min-h-0 min-w-0 flex-1 pe-\[var\(--card-spacing\)\]"\s*>[\s\S]*?<ItemGroup\s+className="relative gap-2"/
   )
   assert.match(
     page,
@@ -234,11 +234,18 @@ test("billing settings separate the group tree and member item list", async () =
     /text-muted-foreground tabular-nums transition-colors group-hover\/quota-row:text-foreground/
   )
 
-  assert.match(userItem, /<div key=\{user\.id\} role="listitem">/)
+  assert.match(userItem, /<div\s+key=\{user\.id\}\s+role="listitem"/)
+  assert.match(userItem, /ref=\{memberVirtualizer\.measureElement\}/)
+  assert.match(page, /memberVirtualizer\.items\.map/)
+  assert.doesNotMatch(page, /visibleUsers\.map\(userItem\)/)
+  assert.match(
+    page,
+    /<Card className="h-\[28rem\] min-h-80 lg:h-auto lg:min-h-0">/
+  )
   assert.match(userItem, /<Item\s+size="sm"\s+variant="outline"\s+render=/)
   assert.match(
     userItem,
-    /<Button\s+type="button"\s+variant="ghost"\s+className="[^"]*"\s+onClick=\{\(\) => setAccountUserID\(user\.id\)\}/
+    /<Button\s+type="button"\s+variant="ghost"\s+className="[^"]*"\s+onClick=\{\(\) => \{[\s\S]*?pin\("menu", user\.id, true\)[\s\S]*?setAccountUserID\(user\.id\)/
   )
   assert.match(userItem, /<ItemMedia>/)
   assert.match(userItem, /<ItemContent className="min-w-0">/)
@@ -259,7 +266,7 @@ test("billing settings separate the group tree and member item list", async () =
   )
   assert.match(
     page,
-    /onClose=\{\(\) => \{\s*setAccountUserID\(null\)\s*refreshQuotas\(\)\s*\}\}/
+    /onClose=\{\(\) => \{\s*memberVirtualizer\.pin\("focus", accountUserID, true\)\s*memberVirtualizer\.pin\("menu", accountUserID, false\)\s*setAccountUserID\(null\)\s*refreshQuotas\(\)\s*\}\}/
   )
   assert.match(page, /onChanged=\{refreshQuotas\}/)
   assert.doesNotMatch(
@@ -356,7 +363,8 @@ test("immediate quota reset submits selected groups and members", async () => {
   assert.match(dialog, /quotaRefresh\.resetDialogDescription/)
   assert.match(dialog, /<GroupSelect/)
   assert.match(dialog, /options=\{\(quotas\?\.groups \?\? \[\]\)\.map/)
-  assert.match(dialog, /users=\{\(quotas\?\.users \?\? \[\]\)\.map/)
+  assert.match(dialog, /users=\{resetUsers\}/)
+  assert.match(page, /const resetUsers = useMemo\(/)
   assert.match(dialog, /value=\{resetSelection\}/)
   assert.match(
     dialog,
@@ -438,7 +446,11 @@ test("billing save buttons only appear after their form changes", async () => {
     /changes: \[\s*\{\s*subject_type: target\.type,\s*id: target\.id,\s*credits: quotaMode === "inherit" \? null : quotaValue/
   )
   assert.match(page, /<form onSubmit=\{saveQuota\}>/)
-  assert.match(page, /busy === "quota" \? "保存中…" : "保存"/)
+  assert.match(
+    page,
+    /loading=\{busy === "quota"\}[\s\S]*?>\s*保存\s*<\/Button>/
+  )
+  assert.doesNotMatch(page, /busy === "quota" \? "保存中…"/)
   assert.doesNotMatch(page, /加入待保存变更/)
   assert.doesNotMatch(page, /const dirtyCycle =/)
   assert.doesNotMatch(page, /const dirtyPricing =/)

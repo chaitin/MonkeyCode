@@ -815,7 +815,11 @@ export function ExpertsPage() {
               <DialogClose render={<Button type="button" variant="outline" />}>
                 {t("pages.experts.cancel")}
               </DialogClose>
-              <Button type="submit" disabled={remote.pending}>
+              <Button
+                type="submit"
+                loading={remote.pending}
+                disabled={remote.pending}
+              >
                 {editingExpert
                   ? t("pages.experts.save")
                   : t("pages.experts.create")}
@@ -843,8 +847,14 @@ export function ExpertsPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("pages.experts.cancel")}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={deleteExpert}>
+            <AlertDialogCancel disabled={remote.pending}>
+              {t("pages.experts.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              loading={remote.pending}
+              variant="destructive"
+              onClick={deleteExpert}
+            >
               {t("pages.experts.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -35,6 +35,26 @@ CHROME_BIN=/path/to/chrome86 ADMIN_DEV_URL=http://localhost:5173 pnpm test:brows
 
 浏览器检查使用真实可执行文件，不通过修改 User-Agent 模拟旧浏览器。覆盖首页、普通 HTTP 下 UUID、深浅主题、48px 表格行、下拉菜单、日期面板、动态 `:has()`、饼图有效高度、内容宽度断点、移动布局，以及 Switch 的鼠标、空格键、确认/取消和保存期间禁用。回归中使用 Chromium 86.0.4240.0 与 141.0.7390.37；不据此声明其他浏览器已完成全量验证。浏览器测试不会访问真实业务接口。
 
+## 成员与分组虚拟滚动
+
+左侧分组树只展开顶层分组，将可见层级整理成扁平行并虚拟渲染；成员索引、排序及跨组去重人数只在数据或语言变化时重新计算。展开状态和批量选择独立于行组件保存，滚动卸载不会丢失；同一成员在不同分组中使用独立的来源键。
+
+右侧成员卡片使用 TanStack Virtual 和 ResizeObserver 测量实际高度，保留多分组徽章换行。两侧移动端都有固定高度的滚动区域；焦点、菜单和拖拽涉及的行会临时保留，避免操作过程中失去节点。现有成员与分组接口仍返回完整数据，虚拟滚动限制的是挂载数量。
+
+独立浏览器回归使用一万名模拟成员，覆盖首尾滚动、卡片高度、展开和勾选状态、菜单与拖拽节点、批量状态操作、移动来源、搜索重置及移动布局：
+
+```sh
+CHROME_BIN=/path/to/chrome86 pnpm test:browser:members
+CHROME_BIN=/path/to/current-chrome pnpm test:browser:members
+```
+
+费用设置的成员额度卡片复用相同的虚拟滚动，按实际行高测量；过滤、姓名/积分排序和重置选择器的成员选项按数据变化缓存。搜索或切换排序回到顶部，账户详情打开时保留来源行，关闭刷新后继续使用当前搜索和排序。
+
+```sh
+CHROME_BIN=/path/to/chrome86 pnpm test:browser:quotas
+CHROME_BIN=/path/to/current-chrome pnpm test:browser:quotas
+```
+
 ## Adding components
 
 To add components to your app, run the following command:

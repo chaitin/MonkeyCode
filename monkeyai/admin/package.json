@@ -10,6 +10,8 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "test": "node --test test/*.test.mjs",
     "test:browser": "node scripts/check-browser.mjs",
+    "test:browser:members": "node scripts/check-members-virtualization.mjs",
+    "test:browser:quotas": "node scripts/check-quota-virtualization.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
@@ -22,6 +24,7 @@
     "@hugeicons/react": "^1.1.10",
     "@noble/hashes": "^2.4.0",
     "@paper-design/shaders-react": "^0.0.80",
+    "@tanstack/react-virtual": "^3.14.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "core-js": "^3.51.0",

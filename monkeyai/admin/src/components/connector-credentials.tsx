@@ -42,7 +42,10 @@ export function ConnectorCredentials({
     null
   )
   const [error, setError] = useState("")
-  const [pending, setPending] = useState(false)
+  const [operation, setOperation] = useState<
+    "save" | "authorize" | "test" | "revoke" | null
+  >(null)
+  const pending = operation !== null
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadRevision, setLoadRevision] = useState(0)
@@ -92,10 +95,13 @@ export function ConnectorCredentials({
     setLoadFailed(false)
     await onChange()
   }
-  const run = async (action: () => Promise<void>) => {
+  const run = async (
+    action: () => Promise<void>,
+    kind: "save" | "authorize" | "test" | "revoke" = "save"
+  ) => {
     if (lock.current) return
     lock.current = true
-    setPending(true)
+    setOperation(kind)
     setError("")
     try {
       await action()
@@ -107,7 +113,7 @@ export function ConnectorCredentials({
       }
     } finally {
       lock.current = false
-      setPending(false)
+      setOperation(null)
     }
   }
   const test = async (id: string) => {
@@ -266,7 +272,7 @@ export function ConnectorCredentials({
       }
       // 动态注册可能已更新连接版本，不能等用户完成授权后再同步。
       await onChange()
-    })
+    }, "authorize")
   }
   return (
     <Dialog
@@ -451,6 +457,7 @@ export function ConnectorCredentials({
             {(credential || connector.authorizationMethod === "httpHeader") && (
               <Button
                 type="submit"
+                loading={operation === "save"}
                 disabled={loading || pending || !!request || !name.trim()}
               >
                 {t("pages.tools.save")}
@@ -460,6 +467,7 @@ export function ConnectorCredentials({
               <Button
                 type="button"
                 onClick={authorize}
+                loading={operation === "authorize" || !!request}
                 disabled={loading || pending || !!request || !name.trim()}
               >
                 {t(
@@ -475,7 +483,8 @@ export function ConnectorCredentials({
                   type="button"
                   variant="outline"
                   disabled={pending || !!request}
-                  onClick={() => void run(() => test(credential.id))}
+                  loading={operation === "test"}
+                  onClick={() => void run(() => test(credential.id), "test")}
                 >
                   {t("pages.tools.testConnection")}
                 </Button>
@@ -483,6 +492,7 @@ export function ConnectorCredentials({
                   type="button"
                   variant="outline"
                   disabled={pending || !!request}
+                  loading={operation === "revoke"}
                   onClick={() =>
                     void run(async () => {
                       await api(credentialPath, {
@@ -495,7 +505,7 @@ export function ConnectorCredentials({
                         status: "success",
                         title: t("resources.operationCompleted"),
                       })
-                    })
+                    }, "revoke")
                   }
                 >
                   {t("resources.revokeCredential", {

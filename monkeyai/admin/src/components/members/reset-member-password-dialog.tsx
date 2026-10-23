@@ -122,11 +122,10 @@ export function ResetMemberPasswordDialog({
               <AlertDialogAction
                 type="button"
                 disabled={saving}
+                loading={saving}
                 onClick={() => void resetPassword()}
               >
-                {saving
-                  ? t("common.saving")
-                  : t("pages.membersAndGroups.resetPassword")}
+                {t("pages.membersAndGroups.resetPassword")}
               </AlertDialogAction>
             </>
           )}

@@ -32,6 +32,7 @@ try {
   let authenticationWrites = 0
   let releaseAuthentication
   let holdAuthentication = false
+  let failAuthentication = false
   const rows = Array.from({ length: 3 }, (_, i) => ({
     id: `entry-${i}`,
     occurred_at: "2026-10-19T12:34:56Z",
@@ -68,6 +69,13 @@ try {
           await new Promise((resolve) => {
             releaseAuthentication = resolve
           })
+        if (failAuthentication) {
+          failAuthentication = false
+          return route.fulfill({
+            status: 503,
+            json: { error: { message: "保存测试失败" } },
+          })
+        }
         Object.assign(authentication, route.request().postDataJSON().value)
         body = { value: authentication }
       } else if (p.endsWith("/tags")) body = { items: [] }
@@ -357,6 +365,24 @@ try {
   )
   await saveStarted
   await page.waitForFunction(() =>
+    document.querySelector('[role="alertdialog"] button[aria-busy="true"]')
+  )
+  const pendingConfirmation = await page.evaluate(() => {
+    const button = document.querySelector(
+      '[role="alertdialog"] button[aria-busy="true"]'
+    )
+    return {
+      text: button.textContent.trim(),
+      disabled: button.disabled,
+      spinner: getComputedStyle(button.querySelector("svg")).animationName,
+    }
+  })
+  assert.deepEqual(pendingConfirmation, {
+    text: "关闭",
+    disabled: true,
+    spinner: "spin",
+  })
+  await page.waitForFunction(() =>
     [...document.querySelectorAll('[role="switch"]')].every(
       (el) => el.getAttribute("aria-disabled") === "true" || el.disabled
     )
@@ -397,9 +423,75 @@ try {
     () => !document.querySelector('[role="alertdialog"]')
   )
   assert.equal(authenticationWrites, 1, "cancel must not save")
+
+  await click(passwordSwitch)
+  await page.waitForFunction(() =>
+    document.querySelector('[role="alertdialog"]')
+  )
+  const confirmationSelector =
+    '[role="alertdialog"] [data-slot="alert-dialog-action"]'
+  const confirmationLabel = await page.evaluate(
+    (selector) => document.querySelector(selector).textContent.trim(),
+    confirmationSelector
+  )
+  holdAuthentication = true
+  failAuthentication = true
+  const failureStarted = page.waitForRequest(
+    (r) =>
+      new URL(r.url()).pathname.endsWith("/settings/authentication") &&
+      r.method() === "PUT"
+  )
+  await click(confirmationSelector)
+  await failureStarted
+  await page.waitForFunction(
+    (selector) =>
+      document.querySelector(selector)?.getAttribute("aria-busy") === "true",
+    confirmationSelector
+  )
+  assert.equal(
+    await page.evaluate(
+      (selector) => document.querySelector(selector).textContent.trim(),
+      confirmationSelector
+    ),
+    confirmationLabel
+  )
+  holdAuthentication = false
+  releaseAuthentication()
+  await page.waitForFunction((selector) => {
+    const button = document.querySelector(selector)
+    return button && !button.disabled && !button.querySelector("svg")
+  }, confirmationSelector)
+  assert.equal(
+    await page.evaluate(
+      (selector) => document.querySelector(selector).textContent.trim(),
+      confirmationSelector
+    ),
+    confirmationLabel
+  )
+  assert.equal(
+    await page.evaluate(
+      (selector) =>
+        document.querySelector(selector).getAttribute("aria-checked"),
+      passwordSwitch
+    ),
+    "false"
+  )
+  await click(confirmationSelector)
+  await page.waitForFunction(
+    () =>
+      !document.querySelector('[role="alertdialog"]') &&
+      document
+        .querySelector('[role="switch"][aria-label="使用密码登录"]')
+        .getAttribute("aria-checked") === "true"
+  )
+  assert.equal(
+    authenticationWrites,
+    3,
+    "one failed save and one successful retry"
+  )
   assert.deepEqual(errors, [])
   console.log(
-    `${await browser.version()}: homepage, HTTP UUID, dark/light table, select, dynamic :has(), container resize, mobile and Switch mouse/keyboard/confirmation/disabled checks passed`
+    `${await browser.version()}: homepage, HTTP UUID, dark/light table, select, dynamic :has(), container resize, mobile and Switch mouse/keyboard plus confirmation label/Loader/disabled/failure/retry checks passed`
   )
 } finally {
   await browser.close()

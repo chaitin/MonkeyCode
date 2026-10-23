@@ -105,7 +105,11 @@ export function MoveMembersDialog({
             >
               {t("pages.membersAndGroups.cancelAction")}
             </Button>
-            <Button type="submit" disabled={saving || !validTarget}>
+            <Button
+              type="submit"
+              loading={saving}
+              disabled={saving || !validTarget}
+            >
               {t("pages.membersAndGroups.moveAction")}
             </Button>
           </DialogFooter>

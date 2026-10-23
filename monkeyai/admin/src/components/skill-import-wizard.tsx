@@ -525,12 +525,11 @@ export function SkillImportWizard({
             </DialogClose>
             <Button
               disabled={!source || scanning}
+              loading={scanning}
               type="button"
               onClick={handleNext}
             >
-              {scanning
-                ? t("pages.skills.packageParsing")
-                : t("pages.skills.batchImport.next")}
+              {t("pages.skills.batchImport.next")}
             </Button>
           </DialogFooter>
         </div>
@@ -647,12 +646,14 @@ export function SkillImportWizard({
             <Button
               type="button"
               variant="outline"
+              disabled={importing}
               onClick={() => setStep("source")}
             >
               {t("pages.skills.batchImport.previous")}
             </Button>
             <Button
               disabled={importing || selectedCandidates.length === 0}
+              loading={importing}
               type="button"
               onClick={handleImport}
             >

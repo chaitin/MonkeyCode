@@ -560,6 +560,7 @@ export function SkillsPage() {
                           {t("pages.skills.cancel")}
                         </DialogClose>
                         <Button
+                          loading={remote.pending || packageParsing}
                           disabled={
                             remote.pending ||
                             packageParsing ||
@@ -770,9 +771,12 @@ export function SkillsPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("pages.skills.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={remote.pending}>
+              {t("pages.skills.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              loading={remote.pending}
               onClick={handleDeleteSkill}
             >
               {t("pages.skills.delete")}

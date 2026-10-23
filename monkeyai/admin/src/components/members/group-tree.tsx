@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react"
+import { useMemo, useState, type DragEvent, type HTMLAttributes } from "react"
 import {
   Add01Icon,
   Delete02Icon,
@@ -20,11 +20,6 @@ import {
   type MemberActionUser,
 } from "@/components/members/member-actions"
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -36,13 +31,12 @@ import {
   type GroupAction,
   groupActionKeys,
   type ActiveGroupAction,
-  groupMemberIDs,
-  directMemberIDs,
-  compareByName,
   type MemberGroup,
 } from "@/lib/member-groups"
 import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
+import { buildMemberTree, flattenMemberTree } from "@/lib/member-tree"
+import { useVirtualRows } from "@/hooks/use-virtual-rows"
 
 const allGroupActions: GroupAction[] = [
   "add-subgroup",
@@ -63,7 +57,6 @@ const actionIcons = {
 }
 
 type Props = {
-  group: MemberGroup
   groups: MemberGroup[]
   users: MemberActionUser[]
   nameCollator: Intl.Collator
@@ -76,55 +69,146 @@ type Props = {
   onResetPassword: (user: MemberActionUser) => void
   multiSelect: boolean
   selectionDisabled: boolean
-  selectedMemberKeys: string[]
+  selectedMemberKeys: ReadonlySet<string>
   onMemberSelect: (member: MoveMember, checked: boolean) => void
   onGroupDragStart: (group: MemberGroup, event: DragEvent) => void
   onMemberDragStart: (member: MoveMember, event: DragEvent) => void
   onDragEnd: () => void
   canDropOn: (group: MemberGroup) => boolean
   onDropOn: (group: MemberGroup, event: DragEvent) => void
-  level?: number
 }
 
-export function GroupTreeItem({
-  group,
+export function MemberGroupTree({
   groups,
   users,
   nameCollator,
-  savingID,
-  currentUserID,
+  scrollElement,
+  ...props
+}: Props & { scrollElement: HTMLDivElement | null }) {
+  const { t } = useTranslation()
+  const [expansion, setExpansion] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map()
+  )
+  const tree = useMemo(
+    () => buildMemberTree(groups, users, nameCollator),
+    [groups, users, nameCollator]
+  )
+  const rows = useMemo(
+    () => flattenMemberTree(tree, expansion),
+    [tree, expansion]
+  )
+  const keys = useMemo(() => rows.map((row) => row.key), [rows])
+  const { items, totalSize, pin, onFocusCapture, onBlurCapture } =
+    useVirtualRows({ keys, scrollElement, estimateSize: 32, gap: 4 })
+  return (
+    <ul
+      className="relative"
+      aria-label={t("pages.membersAndGroups.groupsTitle")}
+      style={{ height: totalSize }}
+      onFocusCapture={onFocusCapture}
+      onBlurCapture={onBlurCapture}
+    >
+      {items.map((item) => {
+        const row = rows[item.index]
+        const virtualProps: HTMLAttributes<HTMLLIElement> & {
+          "data-virtual-key": string
+        } = {
+          "data-virtual-key": row.key,
+          "aria-level": row.level + 1,
+          "aria-posinset": item.index + 1,
+          "aria-setsize": rows.length,
+          style: {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: item.size,
+            transform: `translateY(${item.start}px)`,
+          },
+        }
+        const onMenuPin = (active: boolean) => pin("menu", row.key, active)
+        const onDragPin = (active: boolean) => pin("drag", row.key, active)
+        return row.kind === "group" ? (
+          <GroupTreeItem
+            key={row.key}
+            {...props}
+            group={row.group}
+            count={row.count}
+            level={row.level}
+            expanded={row.expanded}
+            virtualProps={virtualProps}
+            onMenuPin={onMenuPin}
+            onDragPin={onDragPin}
+            onToggle={() =>
+              setExpansion((current) =>
+                new Map(current).set(row.group.id, !row.expanded)
+              )
+            }
+          />
+        ) : (
+          <GroupTreeMemberRow
+            key={row.key}
+            {...props}
+            member={row.member}
+            level={row.level}
+            virtualProps={virtualProps}
+            onMenuPin={onMenuPin}
+            onDragPin={onDragPin}
+            selected={
+              props.multiSelect &&
+              props.selectedMemberKeys.has(`${row.groupID}:${row.member.id}`)
+            }
+            onSelect={(checked) =>
+              props.onMemberSelect(
+                { id: row.member.id, source_group_id: row.groupID },
+                checked
+              )
+            }
+            onDragStart={(event) =>
+              props.onMemberDragStart(
+                { id: row.member.id, source_group_id: row.groupID },
+                event
+              )
+            }
+          />
+        )
+      })}
+    </ul>
+  )
+}
+
+function GroupTreeItem({
+  group,
+  count,
+  expanded,
+  level,
+  onToggle,
+  virtualProps,
+  onMenuPin,
+  onDragPin,
   onAction,
-  onViewDetails,
-  onToggleStatus,
-  onToggleRole,
-  onResetPassword,
   multiSelect,
-  selectionDisabled,
-  selectedMemberKeys,
-  onMemberSelect,
   onGroupDragStart,
-  onMemberDragStart,
   onDragEnd,
   canDropOn,
   onDropOn,
-  level = 0,
-}: Props) {
+}: Omit<Props, "groups" | "users" | "nameCollator"> & {
+  group: MemberGroup
+  count: number
+  expanded: boolean
+  level: number
+  onToggle: () => void
+  virtualProps: HTMLAttributes<HTMLLIElement>
+  onMenuPin: (active: boolean) => void
+  onDragPin: (active: boolean) => void
+}) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(group.parent_id === null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [actionsFocused, setActionsFocused] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [dropHovered, setDropHovered] = useState(false)
   const showActions = hovered || menuOpen || actionsFocused
-  const children = groups
-    .filter((child) => child.parent_id === group.id)
-    .sort((a, b) => compareByName(a, b, nameCollator))
-  const directIDs = directMemberIDs(groups, group.id)
-  const directMembers = users
-    .filter((user) => directIDs.has(user.id))
-    .sort((a, b) => compareByName(a, b, nameCollator))
   const actions = group.actions
-  const count = groupMemberIDs(groups, group.id).size
   const label = (
     <>
       <HugeiconsIcon
@@ -142,203 +226,151 @@ export function GroupTreeItem({
       size="sm"
       className="min-w-0 flex-1 cursor-pointer justify-start gap-2 border-0 text-start font-normal hover:!bg-transparent aria-expanded:!bg-transparent"
       style={{ paddingInlineStart: `${level * 1.25 + 0.5}rem` }}
-    />
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      {label}
+    </Button>
   )
 
-  const memberRows = directMembers.map((member) => (
-    <GroupTreeMemberRow
-      key={member.id}
-      member={member}
-      level={level + 1}
-      savingID={savingID}
-      currentUserID={currentUserID}
-      onViewDetails={onViewDetails}
-      onToggleStatus={onToggleStatus}
-      onToggleRole={onToggleRole}
-      onResetPassword={onResetPassword}
-      multiSelect={multiSelect}
-      selectionDisabled={selectionDisabled}
-      selected={
-        multiSelect && selectedMemberKeys.includes(`${group.id}:${member.id}`)
-      }
-      onSelect={(checked) =>
-        onMemberSelect({ id: member.id, source_group_id: group.id }, checked)
-      }
-      onDragStart={(event) =>
-        onMemberDragStart({ id: member.id, source_group_id: group.id }, event)
-      }
-      onDragEnd={onDragEnd}
-    />
-  ))
-
   return (
-    <li>
-      <Collapsible open={expanded} onOpenChange={setExpanded}>
+    <li {...virtualProps}>
+      <div
+        className={cn(
+          "group/group-row flex items-center rounded-md pe-1 transition-colors",
+          multiSelect && "gap-2",
+          !multiSelect && "cursor-grab active:cursor-grabbing",
+          (hovered || menuOpen) && "bg-foreground/5",
+          dropHovered && "bg-foreground/5 text-foreground/60"
+        )}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+        draggable={!multiSelect}
+        onDragStart={(event) => {
+          if (
+            (event.target as HTMLElement).closest(
+              "[data-slot=dropdown-menu-trigger]"
+            )
+          ) {
+            event.preventDefault()
+            return
+          }
+          onDragPin(true)
+          event.currentTarget.classList.add(...dragPreviewClasses)
+          onGroupDragStart(group, event)
+        }}
+        onDragEnd={(event) => {
+          event.currentTarget.classList.remove(...dragPreviewClasses)
+          onDragPin(false)
+          onDragEnd()
+        }}
+        onDragOver={(event) => {
+          if (canDropOn(group)) {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = "move"
+            setDropHovered(true)
+          }
+        }}
+        onDragLeave={() => setDropHovered(false)}
+        onDrop={(event) => {
+          setDropHovered(false)
+          onDropOn(group, event)
+        }}
+      >
+        {multiSelect && (
+          <Checkbox
+            checked={false}
+            disabled
+            aria-label={group.name}
+            className="ms-1 shrink-0 !border-muted-foreground/30 !bg-muted !text-muted-foreground !opacity-100"
+          />
+        )}
+        {triggerButton}
         <div
           className={cn(
-            "group/group-row flex items-center rounded-md pe-1 transition-colors",
-            multiSelect && "gap-2",
-            !multiSelect && "cursor-grab active:cursor-grabbing",
-            (hovered || menuOpen) && "bg-foreground/5",
-            dropHovered && "bg-foreground/5 text-foreground/60"
+            "relative flex h-8 shrink-0 items-center justify-center",
+            showActions && "w-6"
           )}
-          onPointerEnter={() => setHovered(true)}
-          onPointerLeave={() => setHovered(false)}
-          draggable={!multiSelect}
-          onDragStart={(event) => {
-            if (
-              (event.target as HTMLElement).closest(
-                "[data-slot=dropdown-menu-trigger]"
-              )
-            ) {
-              event.preventDefault()
-              return
-            }
-            event.currentTarget.classList.add(...dragPreviewClasses)
-            onGroupDragStart(group, event)
-          }}
-          onDragEnd={(event) => {
-            event.currentTarget.classList.remove(...dragPreviewClasses)
-            onDragEnd()
-          }}
-          onDragOver={(event) => {
-            if (canDropOn(group)) {
-              event.preventDefault()
-              event.dataTransfer.dropEffect = "move"
-              setDropHovered(true)
-            }
-          }}
-          onDragLeave={() => setDropHovered(false)}
-          onDrop={(event) => {
-            setDropHovered(false)
-            onDropOn(group, event)
-          }}
+          onFocusCapture={(event) =>
+            setActionsFocused(event.target.matches(":focus-visible"))
+          }
+          onBlurCapture={() => setActionsFocused(false)}
         >
-          {multiSelect && (
-            <Checkbox
-              checked={false}
-              disabled
-              aria-label={group.name}
-              className="ms-1 shrink-0 !border-muted-foreground/30 !bg-muted !text-muted-foreground !opacity-100"
-            />
-          )}
-          <CollapsibleTrigger render={triggerButton}>
-            {label}
-          </CollapsibleTrigger>
-          <div
+          <span
             className={cn(
-              "relative flex h-8 shrink-0 items-center justify-center",
-              showActions && "w-6"
+              "pointer-events-none px-1 text-xs text-muted-foreground tabular-nums",
+              showActions && "opacity-0"
             )}
-            onFocusCapture={(event) =>
-              setActionsFocused(event.target.matches(":focus-visible"))
-            }
-            onBlurCapture={() => setActionsFocused(false)}
           >
-            <span
-              className={cn(
-                "pointer-events-none px-1 text-xs text-muted-foreground tabular-nums",
-                showActions && "opacity-0"
-              )}
+            {count}
+          </span>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              setMenuOpen(open)
+              onMenuPin(open)
+            }}
+          >
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={cn(
+                    "pointer-events-none absolute inset-0 m-auto cursor-pointer opacity-0 transition-none hover:bg-foreground/5 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:bg-foreground/5 dark:hover:bg-foreground/5",
+                    showActions &&
+                      "pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"
+                  )}
+                  aria-label={`${group.name} · ${t("pages.membersAndGroups.groupActions")}`}
+                />
+              }
             >
-              {count}
-            </span>
-            <DropdownMenu onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className={cn(
-                      "pointer-events-none absolute inset-0 m-auto cursor-pointer opacity-0 transition-none hover:bg-foreground/5 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:bg-foreground/5 dark:hover:bg-foreground/5",
-                      showActions &&
-                        "pointer-events-auto opacity-100 transition-opacity duration-100 ease-out motion-reduce:transition-none"
-                    )}
-                    aria-label={`${group.name} · ${t("pages.membersAndGroups.groupActions")}`}
-                  />
-                }
-              >
-                <HugeiconsIcon
-                  icon={MoreHorizontalIcon}
-                  className="size-4"
-                  strokeWidth={2}
-                />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  {allGroupActions
-                    .filter((action) => action !== "delete")
-                    .map((action) => (
-                      <DropdownMenuItem
-                        key={action}
-                        disabled={!actions.includes(action)}
-                        onClick={() => onAction({ action, group })}
-                      >
-                        <HugeiconsIcon
-                          icon={actionIcons[action]}
-                          strokeWidth={2}
-                        />
-                        {t(`pages.membersAndGroups.${groupActionKeys[action]}`)}
-                      </DropdownMenuItem>
-                    ))}
-                </DropdownMenuGroup>
-                {allGroupActions.includes("delete") && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={!actions.includes("delete")}
-                        onClick={() => onAction({ action: "delete", group })}
-                      >
-                        <HugeiconsIcon
-                          icon={actionIcons.delete}
-                          strokeWidth={2}
-                        />
-                        {t("pages.membersAndGroups.deleteGroup")}
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+              <HugeiconsIcon
+                icon={MoreHorizontalIcon}
+                className="size-4"
+                strokeWidth={2}
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                {allGroupActions
+                  .filter((action) => action !== "delete")
+                  .map((action) => (
+                    <DropdownMenuItem
+                      key={action}
+                      disabled={!actions.includes(action)}
+                      onClick={() => onAction({ action, group })}
+                    >
+                      <HugeiconsIcon
+                        icon={actionIcons[action]}
+                        strokeWidth={2}
+                      />
+                      {t(`pages.membersAndGroups.${groupActionKeys[action]}`)}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuGroup>
+              {allGroupActions.includes("delete") && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={!actions.includes("delete")}
+                      onClick={() => onAction({ action: "delete", group })}
+                    >
+                      <HugeiconsIcon
+                        icon={actionIcons.delete}
+                        strokeWidth={2}
+                      />
+                      {t("pages.membersAndGroups.deleteGroup")}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        {(children.length > 0 || directMembers.length > 0) && (
-          <CollapsibleContent className="pt-1">
-            <ul className="flex flex-col gap-1">
-              {children.map((child) => (
-                <GroupTreeItem
-                  key={child.id}
-                  group={child}
-                  groups={groups}
-                  users={users}
-                  nameCollator={nameCollator}
-                  savingID={savingID}
-                  currentUserID={currentUserID}
-                  onAction={onAction}
-                  onViewDetails={onViewDetails}
-                  onToggleStatus={onToggleStatus}
-                  onToggleRole={onToggleRole}
-                  onResetPassword={onResetPassword}
-                  multiSelect={multiSelect}
-                  selectionDisabled={selectionDisabled}
-                  selectedMemberKeys={selectedMemberKeys}
-                  onMemberSelect={onMemberSelect}
-                  onGroupDragStart={onGroupDragStart}
-                  onMemberDragStart={onMemberDragStart}
-                  onDragEnd={onDragEnd}
-                  canDropOn={canDropOn}
-                  onDropOn={onDropOn}
-                  level={level + 1}
-                />
-              ))}
-              {memberRows}
-            </ul>
-          </CollapsibleContent>
-        )}
-      </Collapsible>
+      </div>
     </li>
   )
 }
@@ -358,6 +390,9 @@ function GroupTreeMemberRow({
   onSelect,
   onDragStart,
   onDragEnd,
+  virtualProps,
+  onMenuPin,
+  onDragPin,
 }: Pick<
   Props,
   | "savingID"
@@ -375,6 +410,9 @@ function GroupTreeMemberRow({
   onSelect: (checked: boolean) => void
   onDragStart: (event: DragEvent) => void
   onDragEnd: () => void
+  virtualProps: HTMLAttributes<HTMLLIElement>
+  onMenuPin: (active: boolean) => void
+  onDragPin: (active: boolean) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -383,6 +421,7 @@ function GroupTreeMemberRow({
 
   return (
     <li
+      {...virtualProps}
       aria-busy={savingID === member.id}
       draggable={!multiSelect}
       onDragStart={(event) => {
@@ -394,11 +433,13 @@ function GroupTreeMemberRow({
           event.preventDefault()
           return
         }
+        onDragPin(true)
         event.currentTarget.classList.add(...dragPreviewClasses)
         onDragStart(event)
       }}
       onDragEnd={(event) => {
         event.currentTarget.classList.remove(...dragPreviewClasses)
+        onDragPin(false)
         if (!multiSelect) onDragEnd()
       }}
       onPointerEnter={() => setHovered(true)}
@@ -422,6 +463,7 @@ function GroupTreeMemberRow({
         member.status === "disabled" && "text-muted-foreground"
       )}
       style={{
+        ...virtualProps.style,
         paddingInlineStart: multiSelect ? 0 : `${level * 1.25 + 0.5}rem`,
       }}
     >
@@ -461,7 +503,10 @@ function GroupTreeMemberRow({
             savingID={savingID}
             currentUserID={currentUserID}
             treeActionsVisible={showActions}
-            onMenuOpenChange={setMenuOpen}
+            onMenuOpenChange={(open) => {
+              setMenuOpen(open)
+              onMenuPin(open)
+            }}
             onViewDetails={onViewDetails}
             onToggleStatus={onToggleStatus}
             onToggleRole={onToggleRole}

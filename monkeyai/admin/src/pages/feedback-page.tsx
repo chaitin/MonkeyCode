@@ -290,9 +290,10 @@ function FeedbackDetails({
           </Select>
           <Button
             disabled={saving || nextState === data.state}
+            loading={saving}
             onClick={saveState}
           >
-            {saving ? t("resources.saving") : t("pages.feedback.save")}
+            {t("pages.feedback.save")}
           </Button>
         </div>
       )}

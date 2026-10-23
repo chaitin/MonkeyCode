@@ -34,7 +34,7 @@ type Preview = {
   sections?: ImportSection[]
   section_plans?: Partial<Record<ImportSection, SectionPlan>>
 }
-type Phase = "idle" | "packing" | "uploading" | "checking" | "previewing" | "applying"
+type Phase = "idle" | "packing" | "uploading" | "checking" | "previewing" | "applying" | "discarding"
 
 function sizeLabel(size: number) {
   if (size < 1024) return `${size} B`
@@ -57,6 +57,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const [result, setResult] = useState<ImportResult | null>(null)
   const [stale, setStale] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialUpload?.status === "ready" ? "previewing" : "idle")
+  const [sourceActionLabel, setSourceActionLabel] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState(initialUpload?.status === "uploading" ? "请重新选择原来的 ZIP 或全部分卷，已上传的部分会自动跳过。" : "")
   const [progress, setProgress] = useState<UploadProgress>({ chunks: initialUpload?.chunks ?? [], index: -1, loaded: 0 })
@@ -70,6 +71,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const cleanupRef = useRef<StagedArchive["cleanup"]>(undefined)
   const controllerRef = useRef<AbortController | null>(null)
   const busy = phase !== "idle"
+  const sourceButtonLabel = upload?.status === "ready" ? "解析并预览" : upload ? "继续上传并预览" : "上传并预览"
 
   useEffect(() => () => {
     controllerRef.current?.abort()
@@ -119,7 +121,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
     if (cleanup) void cleanup().catch(() => {})
   }
   const close = () => {
-    if (phase === "applying" || phase === "packing") return
+    if (phase === "applying" || phase === "packing" || phase === "discarding") return
     controllerRef.current?.abort()
     onChanged()
     onClose()
@@ -212,11 +214,13 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
     } finally {
       setProgress((value) => ({ ...value, index: -1, loaded: 0 }))
       setPhase("idle")
+      setSourceActionLabel(null)
     }
   }
 
   const restart = async () => {
     if (busy) return
+    setPhase("discarding")
     setError("")
     try {
       if (upload) await api(`${uploadBase}/${upload.id}`, { method: "DELETE" })
@@ -235,6 +239,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
       setNotice("")
       onChanged()
     } catch (reason) { setError(message(reason)) }
+    finally { setPhase("idle") }
   }
 
   return (
@@ -298,10 +303,11 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
         {(error || selectionError) && <p role="alert" className="break-words text-sm text-destructive">{error || selectionError}</p>}
         {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
         {!preview && <DialogFooter className="flex-wrap">
-          {upload && <Button type="button" variant="outline" disabled={busy} onClick={() => { void restart() }}>放弃任务并重新选择</Button>}
+          {upload && <Button type="button" variant="outline" loading={phase === "discarding"} disabled={busy} onClick={() => { void restart() }}>放弃任务并重新选择</Button>}
           {!upload && files.length > 0 && <Button type="button" variant="outline" disabled={busy} onClick={() => { cleanupStaged(); setFiles([]); setError("") }}>清空选择</Button>}
-          <Button type="button" variant="outline" disabled={phase === "packing" || phase === "applying"} onClick={close}>{upload ? "稍后继续" : "取消"}</Button>
-          {phase === "uploading" ? <Button type="button" variant="outline" onClick={() => controllerRef.current?.abort()}>暂停上传</Button> : <Button type="button" disabled={busy || Boolean(selectionError) || (!files.length && upload?.status !== "ready")} onClick={() => { void run(false) }}>{busy ? "解析中…" : upload?.status === "ready" ? "解析并预览" : upload ? "继续上传并预览" : "上传并预览"}</Button>}
+          <Button type="button" variant="outline" disabled={phase === "packing" || phase === "applying" || phase === "discarding"} onClick={close}>{upload ? "稍后继续" : "取消"}</Button>
+          {phase === "uploading" && <Button type="button" variant="outline" onClick={() => controllerRef.current?.abort()}>暂停上传</Button>}
+          <Button type="button" loading={busy && phase !== "discarding"} disabled={busy || Boolean(selectionError) || (!files.length && upload?.status !== "ready")} onClick={() => { setSourceActionLabel(sourceButtonLabel); void run(false) }}>{sourceActionLabel ?? sourceButtonLabel}</Button>
         </DialogFooter>}
         {preview && <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="break-all font-medium">{design && !preview.sections?.includes("agent") ? `设计快照 / ${design.release_id}` : `${preview.publisher} / v${preview.version}`}</h2><span className="text-sm text-muted-foreground">Agent {preview.changes.length} 项{design ? ` · 设计 ${Object.values(design.counts).reduce((total, count) => total + count, 0)} 项` : ""}</span></div>
@@ -341,10 +347,10 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
             <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用；仍被其他发布者或自建专家引用的资源将保留。"}</label></div>
           </>}
           <DialogFooter className="flex-wrap">
-            <Button type="button" variant="outline" disabled={busy} onClick={() => { void restart() }}>重新选择</Button>
-            <Button type="button" variant="outline" disabled={phase === "applying"} onClick={close}>稍后继续</Button>
-            <Button type="button" variant="outline" disabled={busy || !sections.length} onClick={() => { void run(false) }}>{phase === "previewing" ? "预览中…" : "重新预览"}</Button>
-            {allDone ? <Button type="button" onClick={onImported}>完成</Button> : <Button type="button" disabled={busy || stale || !confirmed || (needsNormalization && !normalization)} onClick={() => { void run(true) }}>{phase === "applying" ? "导入中…" : "确认导入"}</Button>}
+            <Button type="button" variant="outline" loading={phase === "discarding"} disabled={busy} onClick={() => { void restart() }}>重新选择</Button>
+            <Button type="button" variant="outline" disabled={phase === "applying" || phase === "discarding"} onClick={close}>稍后继续</Button>
+            <Button type="button" variant="outline" loading={phase === "previewing"} disabled={busy || !sections.length} onClick={() => { void run(false) }}>重新预览</Button>
+            {allDone ? <Button type="button" onClick={onImported}>完成</Button> : <Button type="button" loading={phase === "applying"} disabled={busy || stale || !confirmed || (needsNormalization && !normalization)} onClick={() => { void run(true) }}>确认导入</Button>}
           </DialogFooter>
         </div>}
       </DialogContent>

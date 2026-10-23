@@ -378,7 +378,11 @@ export function RulesPage() {
                     >
                       {t("pages.rules.cancel")}
                     </DialogClose>
-                    <Button type="submit" disabled={remote.pending}>
+                    <Button
+                      type="submit"
+                      loading={remote.pending}
+                      disabled={remote.pending}
+                    >
                       {editingRule
                         ? t("pages.rules.save")
                         : t("pages.rules.create")}
@@ -629,8 +633,14 @@ export function RulesPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("pages.rules.cancel")}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDeleteRule}>
+            <AlertDialogCancel disabled={remote.pending}>
+              {t("pages.rules.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              loading={remote.pending}
+              variant="destructive"
+              onClick={handleDeleteRule}
+            >
               {t("pages.rules.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>

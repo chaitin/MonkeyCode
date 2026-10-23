@@ -88,7 +88,8 @@ import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
 import { UserAvatar } from "@/components/user-avatar"
 import { MemberGroupSelect } from "@/components/members/member-group-select"
-import { GroupTreeItem } from "@/components/members/group-tree"
+import { MemberGroupTree } from "@/components/members/group-tree"
+import { useVirtualRows } from "@/hooks/use-virtual-rows"
 import { ResetMemberPasswordDialog } from "@/components/members/reset-member-password-dialog"
 import {
   MemberActions,
@@ -112,6 +113,12 @@ export function MembersAndGroupsPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const { user: currentUser } = useAuth()
+  const [groupViewport, setGroupViewport] = useState<HTMLDivElement | null>(
+    null
+  )
+  const [memberViewport, setMemberViewport] = useState<HTMLDivElement | null>(
+    null
+  )
   const [users, setUsers] = useState<User[]>([])
   const [groups, setGroups] = useState<MemberGroup[]>([])
   const [multiSelect, setMultiSelect] = useState(false)
@@ -252,6 +259,20 @@ export function MembersAndGroupsPage() {
       )
       .sort(compareMembers)
   }, [query, users])
+  const memberKeys = useMemo(
+    () => visibleUsers.map((user) => user.id),
+    [visibleUsers]
+  )
+  const memberVirtualizer = useVirtualRows({
+    keys: memberKeys,
+    scrollElement: memberViewport,
+    estimateSize: 112,
+    gap: 8,
+  })
+  const { scrollToOffset: scrollMembersTo } = memberVirtualizer
+  useEffect(() => {
+    scrollMembersTo(0)
+  }, [query, scrollMembersTo])
 
   const reloadGroups = () =>
     api<{ groups: MemberGroup[] }>("/api/admin/v1/groups")
@@ -260,7 +281,10 @@ export function MembersAndGroupsPage() {
         showToast({ status: "error", title: reason.message })
       )
 
-  const selectedMemberKeys = selectedMembers.map(memberMoveKey)
+  const selectedMemberKeys = useMemo(
+    () => new Set(selectedMembers.map(memberMoveKey)),
+    [selectedMembers]
+  )
   const selectMember = (member: MoveMember, checked: boolean) => {
     if (!multiSelect || moving) return
     setPendingMove(null)
@@ -338,7 +362,7 @@ export function MembersAndGroupsPage() {
   }
   const dragMember = (member: MoveMember, event: DragEvent) => {
     const members =
-      multiSelect && selectedMemberKeys.includes(memberMoveKey(member))
+      multiSelect && selectedMemberKeys.has(memberMoveKey(member))
         ? selectedMembers
         : [member]
     startDrag({ kind: "member", members }, event)
@@ -414,9 +438,12 @@ export function MembersAndGroupsPage() {
     () => directGroupsByMember(groups, nameCollator),
     [groups, nameCollator]
   )
-  const dateFormatter = new Intl.DateTimeFormat(
-    i18n.resolvedLanguage ?? i18n.language,
-    { dateStyle: "medium" }
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, {
+        dateStyle: "medium",
+      }),
+    [i18n.resolvedLanguage, i18n.language]
   )
   const moveNames = pendingMove
     ? pendingMove.payload.kind === "group"
@@ -466,7 +493,7 @@ export function MembersAndGroupsPage() {
         </div>
       )}
       <div className="grid flex-1 gap-4 md:min-h-0 md:grid-cols-[minmax(14rem,1fr)_minmax(0,1.5fr)]">
-        <Card className="min-h-64 md:min-h-0">
+        <Card className="h-[28rem] min-h-64 md:h-auto md:min-h-0">
           <CardHeader>
             <CardTitle>{t("pages.membersAndGroups.groupsTitle")}</CardTitle>
             <CardAction className="flex items-center gap-2">
@@ -548,47 +575,40 @@ export function MembersAndGroupsPage() {
                 <TableLoading />
               </div>
             ) : (
-              <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)]">
-                <ul
-                  className="flex flex-col gap-1"
-                  aria-label={t("pages.membersAndGroups.groupsTitle")}
-                >
-                  {groups
-                    .filter((group) => group.parent_id === null)
-                    .map((group) => (
-                      <GroupTreeItem
-                        key={group.id}
-                        group={group}
-                        groups={groups}
-                        users={users}
-                        nameCollator={nameCollator}
-                        savingID={savingID}
-                        currentUserID={currentUser?.id}
-                        onAction={setActiveGroupAction}
-                        onViewDetails={setAccountUserID}
-                        onToggleStatus={toggleUserStatus}
-                        onToggleRole={toggleUserRole}
-                        onResetPassword={setPasswordResetUser}
-                        multiSelect={multiSelect}
-                        selectionDisabled={moving || batchUpdatingStatus}
-                        selectedMemberKeys={selectedMemberKeys}
-                        onMemberSelect={selectMember}
-                        onGroupDragStart={dragGroup}
-                        onMemberDragStart={dragMember}
-                        onDragEnd={() => setDragging(null)}
-                        canDropOn={(target) =>
-                          !!dragging && canMoveTo(groups, dragging, target)
-                        }
-                        onDropOn={dropOn}
-                      />
-                    ))}
-                </ul>
+              <ScrollArea
+                viewportRef={setGroupViewport}
+                className="-ms-1 -me-[var(--card-spacing)] h-96 min-h-0 min-w-0 flex-1 pe-[calc(var(--card-spacing)-4px)] md:h-auto"
+              >
+                <MemberGroupTree
+                  scrollElement={groupViewport}
+                  groups={groups}
+                  users={users}
+                  nameCollator={nameCollator}
+                  savingID={savingID}
+                  currentUserID={currentUser?.id}
+                  onAction={setActiveGroupAction}
+                  onViewDetails={setAccountUserID}
+                  onToggleStatus={toggleUserStatus}
+                  onToggleRole={toggleUserRole}
+                  onResetPassword={setPasswordResetUser}
+                  multiSelect={multiSelect}
+                  selectionDisabled={moving || batchUpdatingStatus}
+                  selectedMemberKeys={selectedMemberKeys}
+                  onMemberSelect={selectMember}
+                  onGroupDragStart={dragGroup}
+                  onMemberDragStart={dragMember}
+                  onDragEnd={() => setDragging(null)}
+                  canDropOn={(target) =>
+                    !!dragging && canMoveTo(groups, dragging, target)
+                  }
+                  onDropOn={dropOn}
+                />
               </ScrollArea>
             )}
           </CardContent>
         </Card>
 
-        <Card className="min-h-96 md:min-h-0">
+        <Card className="h-[32rem] min-h-96 md:h-auto md:min-h-0">
           <CardHeader className="gap-3">
             <CardTitle>{t("pages.membersAndGroups.membersTitle")}</CardTitle>
             <CardAction className="flex max-w-full items-center gap-2">
@@ -625,15 +645,36 @@ export function MembersAndGroupsPage() {
                 <TableLoading />
               </div>
             ) : (
-              <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
-                <ItemGroup className="gap-2">
-                  {visibleUsers.map((user) => {
+              <ScrollArea
+                viewportRef={setMemberViewport}
+                className="-me-[var(--card-spacing)] h-96 min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)] md:h-auto"
+              >
+                <ItemGroup
+                  className="relative gap-2"
+                  style={{ height: memberVirtualizer.totalSize }}
+                  onFocusCapture={memberVirtualizer.onFocusCapture}
+                  onBlurCapture={memberVirtualizer.onBlurCapture}
+                >
+                  {memberVirtualizer.items.map((virtualRow) => {
+                    const user = visibleUsers[virtualRow.index]
                     const isDisabled = user.status === "disabled"
                     const joinedAt = new Date(user.joined_at)
 
                     return (
                       <Item
                         key={user.id}
+                        ref={memberVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                        data-virtual-key={user.id}
+                        aria-posinset={virtualRow.index + 1}
+                        aria-setsize={visibleUsers.length}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
                         role="listitem"
                         size="sm"
                         variant="outline"
@@ -643,13 +684,17 @@ export function MembersAndGroupsPage() {
                         <ItemMedia
                           className="cursor-grab active:cursor-grabbing"
                           draggable
-                          onDragStart={(event) =>
+                          onDragStart={(event) => {
+                            memberVirtualizer.pin("drag", user.id, true)
                             startDrag(
                               { kind: "member", members: [{ id: user.id }] },
                               event
                             )
-                          }
-                          onDragEnd={() => setDragging(null)}
+                          }}
+                          onDragEnd={() => {
+                            memberVirtualizer.pin("drag", user.id, false)
+                            setDragging(null)
+                          }}
                         >
                           <UserAvatar src={user.avatar_url} size="lg" />
                         </ItemMedia>
@@ -686,6 +731,9 @@ export function MembersAndGroupsPage() {
                             user={user}
                             savingID={savingID}
                             currentUserID={currentUser?.id}
+                            onMenuOpenChange={(open) =>
+                              memberVirtualizer.pin("menu", user.id, open)
+                            }
                             onViewDetails={setAccountUserID}
                             onToggleStatus={toggleUserStatus}
                             onToggleRole={toggleUserRole}
@@ -724,12 +772,12 @@ export function MembersAndGroupsPage() {
                       </Item>
                     )
                   })}
-                  {!loading && visibleUsers.length === 0 && (
-                    <p className="py-12 text-center text-sm text-muted-foreground">
-                      {t("pages.membersAndGroups.noMembersFound")}
-                    </p>
-                  )}
                 </ItemGroup>
+                {!loading && visibleUsers.length === 0 && (
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    {t("pages.membersAndGroups.noMembersFound")}
+                  </p>
+                )}
               </ScrollArea>
             )}
           </CardContent>
@@ -927,12 +975,14 @@ export function MembersAndGroupsPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={creating}
                     onClick={() => setCreateOpen(false)}
                   >
                     {t("pages.membersAndGroups.bulk.cancel")}
                   </Button>
                   <Button
                     type="submit"
+                    loading={creating}
                     disabled={
                       creating ||
                       !newUser.name.trim() ||
@@ -940,11 +990,7 @@ export function MembersAndGroupsPage() {
                       (newUser.role === "admin" && newUser.password.length < 12)
                     }
                   >
-                    {t(
-                      creating
-                        ? "pages.membersAndGroups.bulk.creating"
-                        : "pages.membersAndGroups.bulk.createOne"
-                    )}
+                    {t("pages.membersAndGroups.bulk.createOne")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1011,10 +1057,9 @@ export function MembersAndGroupsPage() {
                   pendingBatchStatus === "disabled" ? "destructive" : "default"
                 }
                 disabled={batchUpdatingStatus}
+                loading={batchUpdatingStatus}
               >
-                {batchUpdatingStatus
-                  ? t("common.saving")
-                  : t("pages.membersAndGroups.treeSelection.confirm")}
+                {t("pages.membersAndGroups.treeSelection.confirm")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </form>
@@ -1060,11 +1105,10 @@ export function MembersAndGroupsPage() {
                     : "default"
                 }
                 disabled={!pendingMemberAction || Boolean(savingID)}
+                loading={Boolean(savingID)}
               >
-                {savingID
-                  ? t("common.saving")
-                  : pendingMemberAction &&
-                    t(`pages.membersAndGroups.${pendingMemberAction.action}`)}
+                {pendingMemberAction &&
+                  t(`pages.membersAndGroups.${pendingMemberAction.action}`)}
               </AlertDialogAction>
             </AlertDialogFooter>
           </form>

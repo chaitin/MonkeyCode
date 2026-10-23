@@ -1424,7 +1424,7 @@ export function ModelsPage() {
                       >
                         {t("pages.models.cancel")}
                       </DialogClose>
-                      <Button disabled={saving} type="submit">
+                      <Button loading={saving} disabled={saving} type="submit">
                         {editingModel
                           ? t("pages.models.save")
                           : t("pages.models.create")}
@@ -1728,9 +1728,12 @@ export function ModelsPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("pages.models.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={remote.pending}>
+              {t("pages.models.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              loading={remote.pending}
               onClick={handleDeleteModel}
             >
               {t("pages.models.delete")}

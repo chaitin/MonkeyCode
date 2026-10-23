@@ -252,14 +252,13 @@ export function SessionDetailPage() {
                     <AlertDialogAction
                       variant="destructive"
                       disabled={clearing || confirmID !== sessionId}
+                      loading={clearing}
                       onClick={(event) => {
                         event.preventDefault()
                         void clearSession()
                       }}
                     >
-                      {clearing
-                        ? t(`${key}.detail.clearing`)
-                        : t(`${key}.detail.clear`)}
+                      {t(`${key}.detail.clear`)}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

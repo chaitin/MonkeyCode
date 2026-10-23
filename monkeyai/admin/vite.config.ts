@@ -4,7 +4,7 @@ import { defineConfig } from "vite"
 
 const backend = process.env.MONKEYAI_DEV_BACKEND_URL ?? "http://localhost:8080"
 const apiBackend =
-  process.env.MONKEYAI_DEV_API_URL ?? "https://demo.monkeycode-ai.com"
+  process.env.MONKEYAI_DEV_API_URL ?? "https://work.chaitin.net"
 
 // https://vite.dev/config/
 export default defineConfig({

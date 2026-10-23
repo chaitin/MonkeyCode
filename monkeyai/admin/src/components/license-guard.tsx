@@ -28,7 +28,10 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<LicenseStatus | null>(null)
   const [unsupported, setUnsupported] = useState(false)
   const [error, setError] = useState("")
-  const [busy, setBusy] = useState(false)
+  const [pendingAction, setPendingAction] = useState<
+    "downgrade" | "upload" | null
+  >(null)
+  const busy = pendingAction !== null
   const fileInput = useRef<HTMLInputElement>(null)
   const revision = useRef(0)
 
@@ -88,7 +91,8 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
   }, [info, load])
 
   async function downgrade() {
-    setBusy(true)
+    if (busy) return
+    setPendingAction("downgrade")
     setError("")
     try {
       const next = await api<LicenseStatus>("/api/admin/v1/license/downgrade", {
@@ -104,12 +108,13 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
       await load()
       setError((reason as Error).message)
     } finally {
-      setBusy(false)
+      setPendingAction(null)
     }
   }
 
   async function upload(file: File) {
-    setBusy(true)
+    if (busy) return
+    setPendingAction("upload")
     setError("")
     try {
       const form = new FormData()
@@ -124,7 +129,7 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
-      setBusy(false)
+      setPendingAction(null)
       if (fileInput.current) fileInput.current.value = ""
     }
   }
@@ -210,18 +215,18 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
             <Button
               variant="outline"
               disabled={busy || !info.can_downgrade}
+              loading={pendingAction === "downgrade"}
               onClick={() => void downgrade()}
             >
               {t("pages.license.downgrade")}
             </Button>
             <Button
               disabled={busy}
-              aria-busy={busy}
+              loading={pendingAction === "upload"}
+              aria-busy={pendingAction === "upload"}
               onClick={() => fileInput.current?.click()}
             >
-              {busy
-                ? t("pages.license.processing")
-                : t("pages.license.uploadNew")}
+              {t("pages.license.uploadNew")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react"
+import type { VirtualItem } from "@tanstack/react-virtual"
 import {
   Folder02Icon,
   FolderIcon,
@@ -11,6 +18,7 @@ import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { TableLoading } from "@/components/table-loading"
 import { UserAvatar } from "@/components/user-avatar"
+import { useVirtualRows } from "@/hooks/use-virtual-rows"
 import {
   GroupSelect,
   type GroupSelectionValue,
@@ -117,12 +125,51 @@ export function BillingSettingsPage() {
   const [walletVersion, setWalletVersion] = useState(0)
   const [query, setQuery] = useState("")
   const [memberSort, setMemberSort] = useState<QuotaMemberSort>("name-asc")
+  const [memberViewport, setMemberViewport] = useState<HTMLDivElement | null>(
+    null
+  )
   const [target, setTarget] = useState<Target | null>(null)
   const [quotaValue, setQuotaValue] = useState("")
   const [quotaMode, setQuotaMode] = useState<"inherit" | "custom">("custom")
   const [pricingTarget, setPricingTarget] = useState<PricingKey | null>(null)
   const [pricingValue, setPricingValue] = useState("")
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
+  const quotaUsers = quotas?.users
+  const memberLocale = i18n.resolvedLanguage ?? i18n.language
+  const visibleUsers = useMemo(() => {
+    const normalizedQuery = query.toLowerCase()
+    return sortQuotaUsers(
+      (quotaUsers ?? []).filter((user) =>
+        `${user.name} ${user.email}`.toLowerCase().includes(normalizedQuery)
+      ),
+      memberSort,
+      memberLocale
+    )
+  }, [quotaUsers, query, memberSort, memberLocale])
+  const memberKeys = useMemo(
+    () => visibleUsers.map((user) => user.id),
+    [visibleUsers]
+  )
+  const resetUsers = useMemo(
+    () =>
+      (quotaUsers ?? []).map((user) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        groupIds: user.group_ids,
+      })),
+    [quotaUsers]
+  )
+  const memberVirtualizer = useVirtualRows({
+    keys: memberKeys,
+    scrollElement: memberViewport,
+    estimateSize: 58,
+    gap: 8,
+  })
+  const { scrollToOffset: scrollMembersTo } = memberVirtualizer
+  useEffect(() => {
+    scrollMembersTo(0)
+  }, [query, memberSort, scrollMembersTo])
 
   const loadSettings = useCallback(
     (signal?: AbortSignal) =>
@@ -343,11 +390,26 @@ export function BillingSettingsPage() {
       cycle: quotaCycleName,
       credits: formatQuota(value),
     })
-  const userItem = (user: QuotaUser) => {
+  const userItem = (user: QuotaUser, row: VirtualItem) => {
     const disabled = user.status === "disabled"
     const balance = user.balance_credits
     return (
-      <div key={user.id} role="listitem">
+      <div
+        key={user.id}
+        role="listitem"
+        ref={memberVirtualizer.measureElement}
+        data-index={row.index}
+        data-virtual-key={user.id}
+        aria-posinset={row.index + 1}
+        aria-setsize={visibleUsers.length}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          transform: `translateY(${row.start}px)`,
+        }}
+      >
         <Item
           size="sm"
           variant="outline"
@@ -356,7 +418,10 @@ export function BillingSettingsPage() {
               type="button"
               variant="ghost"
               className="h-auto cursor-pointer justify-start whitespace-normal text-start underline-offset-2 hover:bg-muted [&:enabled:hover_[data-slot=item-title]_span]:underline"
-              onClick={() => setAccountUserID(user.id)}
+              onClick={() => {
+                memberVirtualizer.pin("menu", user.id, true)
+                setAccountUserID(user.id)
+              }}
             />
           }
           className={cn("gap-2", disabled && "text-muted-foreground")}
@@ -528,13 +593,6 @@ export function BillingSettingsPage() {
       label: t("pages.billingSettings.groupQuota.creditsAscending"),
     },
   ] satisfies { value: QuotaMemberSort; label: string }[]
-  const visibleUsers = sortQuotaUsers(
-    (quotas?.users ?? []).filter((user) =>
-      `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase())
-    ),
-    memberSort,
-    i18n.resolvedLanguage ?? i18n.language
-  )
   const selectedMode = enabled ? mode : "disabled"
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px lg:h-[calc(100vh-5rem)] lg:flex-none lg:overflow-hidden">
@@ -573,7 +631,7 @@ export function BillingSettingsPage() {
               )}
             </CardContent>
           </Card>
-          <Card className="min-h-80 lg:min-h-0">
+          <Card className="h-[28rem] min-h-80 lg:h-auto lg:min-h-0">
             <CardHeader className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>
                 {t("pages.billingSettings.groupQuota.memberTitle")}
@@ -622,9 +680,19 @@ export function BillingSettingsPage() {
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
               {quotas && settings ? (
-                <ScrollArea className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]">
-                  <ItemGroup className="gap-2">
-                    {visibleUsers.map(userItem)}
+                <ScrollArea
+                  viewportRef={setMemberViewport}
+                  className="-me-[var(--card-spacing)] min-h-0 min-w-0 flex-1 pe-[var(--card-spacing)]"
+                >
+                  <ItemGroup
+                    className="relative gap-2"
+                    style={{ height: memberVirtualizer.totalSize }}
+                    onFocusCapture={memberVirtualizer.onFocusCapture}
+                    onBlurCapture={memberVirtualizer.onBlurCapture}
+                  >
+                    {memberVirtualizer.items.map((row) =>
+                      userItem(visibleUsers[row.index], row)
+                    )}
                   </ItemGroup>
                   {query && visibleUsers.length === 0 && (
                     <p className="py-6 text-center text-sm text-muted-foreground">
@@ -898,12 +966,7 @@ export function BillingSettingsPage() {
                   parentId: group.parent_id,
                   name: group.name,
                 }))}
-                users={(quotas?.users ?? []).map((user) => ({
-                  id: user.id,
-                  name: user.name,
-                  email: user.email,
-                  groupIds: user.group_ids,
-                }))}
+                users={resetUsers}
                 value={resetSelection}
                 onValueChange={(value) => {
                   setResetSelection(value)
@@ -943,6 +1006,7 @@ export function BillingSettingsPage() {
               </Button>
               <Button
                 type="submit"
+                loading={busy === "reset"}
                 variant="destructive"
                 disabled={
                   busy === "reset" ||
@@ -950,9 +1014,7 @@ export function BillingSettingsPage() {
                     resetSelection.userIds.length === 0)
                 }
               >
-                {busy === "reset"
-                  ? t("pages.billingSettings.quotaRefresh.resetting")
-                  : t("pages.billingSettings.quotaRefresh.resetNow")}
+                {t("pages.billingSettings.quotaRefresh.resetNow")}
               </Button>
             </DialogFooter>
           </form>
@@ -1020,10 +1082,12 @@ export function BillingSettingsPage() {
               >
                 {t("pages.billingSettings.quotaRefresh.cancel")}
               </Button>
-              <Button type="submit" disabled={busy === "cycle"}>
-                {busy === "cycle"
-                  ? "保存中…"
-                  : t("pages.billingSettings.quotaRefresh.confirm")}
+              <Button
+                type="submit"
+                loading={busy === "cycle"}
+                disabled={busy === "cycle"}
+              >
+                {t("pages.billingSettings.quotaRefresh.confirm")}
               </Button>
             </DialogFooter>
           </form>
@@ -1099,11 +1163,10 @@ export function BillingSettingsPage() {
               </Button>
               <Button
                 type="submit"
+                loading={busy === "pricing"}
                 disabled={!validCredits(pricingValue) || busy === "pricing"}
               >
-                {busy === "pricing"
-                  ? "保存中…"
-                  : t("pages.billingSettings.modelPricing.confirm")}
+                {t("pages.billingSettings.modelPricing.confirm")}
               </Button>
             </DialogFooter>
           </form>
@@ -1179,12 +1242,13 @@ export function BillingSettingsPage() {
               </Button>
               <Button
                 type="submit"
+                loading={busy === "quota"}
                 disabled={
                   busy === "quota" ||
                   (quotaMode === "custom" && !validQuota(quotaValue))
                 }
               >
-                {busy === "quota" ? "保存中…" : "保存"}
+                保存
               </Button>
             </DialogFooter>
           </form>
@@ -1195,6 +1259,8 @@ export function BillingSettingsPage() {
           key={accountUserID}
           userId={accountUserID}
           onClose={() => {
+            memberVirtualizer.pin("focus", accountUserID, true)
+            memberVirtualizer.pin("menu", accountUserID, false)
             setAccountUserID(null)
             refreshQuotas()
           }}

@@ -79,6 +79,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useSkillTags } from "@/hooks/use-skill-tags"
+import { useAppToast } from "@/components/animated-toast-provider"
 import {
   getAuthorizationNames,
   type AuthorizationSelection,
@@ -298,6 +299,7 @@ function getCreatorInitials(creator: string) {
 
 export function KnowledgeBasesPage() {
   const { i18n, t } = useTranslation()
+  const { showToast } = useAppToast()
   const { tags: availableTags } = useSkillTags()
   const [knowledgeBases, setKnowledgeBases] = useState(INITIAL_KNOWLEDGE_BASES)
   const [activeType, setActiveType] = useState<KnowledgeBaseType>("system")
@@ -372,6 +374,7 @@ export function KnowledgeBasesPage() {
     useState<KnowledgeBase | null>(null)
   const [contentDialogOpen, setContentDialogOpen] = useState(false)
   const [contentMode, setContentMode] = useState<KnowledgeContentType>("text")
+  const [contentSaving, setContentSaving] = useState(false)
   const [editingContentId, setEditingContentId] = useState<string | null>(null)
   const [previewContent, setPreviewContent] = useState<KnowledgeContent | null>(
     null
@@ -536,6 +539,7 @@ export function KnowledgeBasesPage() {
 
   const handleSubmitContent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (contentSaving) return
     if (!selectedKnowledgeBase || selectedKnowledgeBase.type !== "system") {
       return
     }
@@ -591,56 +595,66 @@ export function KnowledgeBasesPage() {
       return
     }
 
-    const createdAt = Date.now()
-    const newContents: KnowledgeContent[] =
-      contentMode === "text"
-        ? [
-            {
-              id: `knowledge-content-${createdAt}`,
-              name: textTitle,
-              type: "text",
-              status: "learning",
-              updatedAt: new Date().toISOString(),
-              size: t("pages.knowledgeBases.characterCount", {
-                count: body.length,
-              }),
-              body,
-            },
-          ]
-        : await Promise.all(
-            selectedFiles.map(async (selectedFile, index) => ({
-              id: `knowledge-content-${createdAt}-${index}`,
-              name: selectedFile.name,
-              type: "file" as const,
-              status: "learning" as const,
-              updatedAt: new Date().toISOString(),
-              size: formatFileSize(selectedFile.size),
-              body: await extractFileAsMarkdown(
-                selectedFile,
-                t("pages.knowledgeBases.fileExtractionPlaceholder", {
-                  fileName: selectedFile.name,
-                })
-              ),
-            }))
-          )
+    setContentSaving(true)
+    try {
+      const createdAt = Date.now()
+      const newContents: KnowledgeContent[] =
+        contentMode === "text"
+          ? [
+              {
+                id: `knowledge-content-${createdAt}`,
+                name: textTitle,
+                type: "text",
+                status: "learning",
+                updatedAt: new Date().toISOString(),
+                size: t("pages.knowledgeBases.characterCount", {
+                  count: body.length,
+                }),
+                body,
+              },
+            ]
+          : await Promise.all(
+              selectedFiles.map(async (selectedFile, index) => ({
+                id: `knowledge-content-${createdAt}-${index}`,
+                name: selectedFile.name,
+                type: "file" as const,
+                status: "learning" as const,
+                updatedAt: new Date().toISOString(),
+                size: formatFileSize(selectedFile.size),
+                body: await extractFileAsMarkdown(
+                  selectedFile,
+                  t("pages.knowledgeBases.fileExtractionPlaceholder", {
+                    fileName: selectedFile.name,
+                  })
+                ),
+              }))
+            )
 
-    setKnowledgeBases((current) =>
-      current.map((knowledgeBase) =>
-        knowledgeBase.id === selectedKnowledgeBase.id
-          ? {
-              ...knowledgeBase,
-              contents: [...newContents, ...knowledgeBase.contents],
-            }
-          : knowledgeBase
+      setKnowledgeBases((current) =>
+        current.map((knowledgeBase) =>
+          knowledgeBase.id === selectedKnowledgeBase.id
+            ? {
+                ...knowledgeBase,
+                contents: [...newContents, ...knowledgeBase.contents],
+              }
+            : knowledgeBase
+        )
       )
-    )
 
-    newContents.forEach((content) =>
-      finishLearning(selectedKnowledgeBase.id, content.id)
-    )
+      newContents.forEach((content) =>
+        finishLearning(selectedKnowledgeBase.id, content.id)
+      )
 
-    form.reset()
-    handleContentDialogOpenChange(false)
+      form.reset()
+      handleContentDialogOpenChange(false)
+    } catch (reason) {
+      showToast({
+        status: "error",
+        title: reason instanceof Error ? reason.message : String(reason),
+      })
+    } finally {
+      setContentSaving(false)
+    }
   }
 
   const handleDeleteContent = () => {
@@ -942,7 +956,9 @@ export function KnowledgeBasesPage() {
         {isSystemKnowledgeBase && (
           <Dialog
             open={contentDialogOpen}
-            onOpenChange={handleContentDialogOpenChange}
+            onOpenChange={(open) => {
+              if (!contentSaving) handleContentDialogOpenChange(open)
+            }}
           >
             <DialogContent
               className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
@@ -1060,11 +1076,12 @@ export function KnowledgeBasesPage() {
 
                 <DialogFooter>
                   <DialogClose
+                    disabled={contentSaving}
                     render={<Button type="button" variant="outline" />}
                   >
                     {t("pages.knowledgeBases.cancel")}
                   </DialogClose>
-                  <Button type="submit">
+                  <Button type="submit" loading={contentSaving}>
                     {editingContent
                       ? t("pages.knowledgeBases.saveAndRelearn")
                       : t("pages.knowledgeBases.addAndLearn")}

@@ -418,6 +418,7 @@ export function ImageGenerationTest({
           </div>
           <Button
             type="submit"
+            loading={busy}
             disabled={
               busy ||
               !capability ||

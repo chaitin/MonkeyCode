@@ -888,7 +888,11 @@ export function ToolsPage() {
                       >
                         {t("pages.tools.cancel")}
                       </DialogClose>
-                      <Button type="submit" disabled={remote.pending}>
+                      <Button
+                        type="submit"
+                        loading={remote.pending}
+                        disabled={remote.pending}
+                      >
                         {editingServer
                           ? t("pages.tools.save")
                           : t("pages.tools.create")}
@@ -1268,6 +1272,7 @@ export function ToolsPage() {
                 )
               }
               type="button"
+              loading={remote.pending && toolDrafts.length > 0}
               onClick={handleSaveTools}
             >
               {t("pages.tools.saveToolSettings")}
@@ -1294,9 +1299,12 @@ export function ToolsPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("pages.tools.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={remote.pending}>
+              {t("pages.tools.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              loading={remote.pending}
               onClick={handleDeleteServer}
             >
               {t("pages.tools.delete")}

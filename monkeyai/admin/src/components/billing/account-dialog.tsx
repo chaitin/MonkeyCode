@@ -50,7 +50,10 @@ export function AccountDialog({
   const [data, setData] = useState<AccountDetails | null>(null)
   const [member, setMember] = useState<AccountMember | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [pendingAction, setPendingAction] = useState<
+    "adjust" | "wallet" | null
+  >(null)
+  const busy = pendingAction !== null
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [adjustmentType, setAdjustmentType] = useState<"add" | "deduct">("add")
   const [adjustmentAmount, setAdjustmentAmount] = useState("")
@@ -84,7 +87,7 @@ export function AccountDialog({
   const run = async (kind: "adjust" | "wallet") => {
     if (running.current) return
     running.current = true
-    setBusy(true)
+    setPendingAction(kind)
     try {
       if (kind === "adjust") {
         await api(`${accountPath}/adjustments`, {
@@ -122,7 +125,7 @@ export function AccountDialog({
       }
     } finally {
       running.current = false
-      setBusy(false)
+      setPendingAction(null)
     }
   }
   const adjustmentValid =
@@ -216,6 +219,7 @@ export function AccountDialog({
                   <Button
                     variant="outline"
                     disabled={busy || !external.trim()}
+                    loading={pendingAction === "wallet"}
                     onClick={() => void run("wallet")}
                   >
                     核实并绑定
@@ -353,8 +357,9 @@ export function AccountDialog({
                   adjustmentType === "deduct" ? "destructive" : "default"
                 }
                 disabled={busy || !adjustmentValid}
+                loading={pendingAction === "adjust"}
               >
-                {busy ? "调整中…" : "确认调整"}
+                确认调整
               </Button>
             </DialogFooter>
           </form>

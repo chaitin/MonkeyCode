@@ -320,6 +320,9 @@ export function OtherSettingsPage() {
     boolean | null
   >(null)
   const [testSending, setTestSending] = useState(false)
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [tagSaving, setTagSaving] = useState(false)
+  const [tagDeleting, setTagDeleting] = useState(false)
   const [knowledgeBaseSettings, setKnowledgeBaseSettings] = useState(
     INITIAL_KNOWLEDGE_BASE_SETTINGS
   )
@@ -678,6 +681,7 @@ export function OtherSettingsPage() {
   }
 
   const handleEmailDialogOpenChange = (open: boolean) => {
+    if (emailSaving) return
     setEmailDialogOpen(open)
     setEmailSettings(savedEmailSettings)
   }
@@ -686,23 +690,29 @@ export function OtherSettingsPage() {
     event: FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault()
-    const saved = await saveSetting("email", {
-      sender_name: emailSettings.senderName,
-      sender_email: emailSettings.senderEmail,
-      smtp_host: emailSettings.smtpHost,
-      smtp_port: Number(emailSettings.smtpPort),
-      smtp_username: emailSettings.smtpUsername,
-      smtp_password: emailSettings.smtpPassword,
-      smtp_encryption: emailSettings.encryption,
-    })
-    if (saved) {
-      setSavedEmailSettings(emailSettings)
-      setEmailConfigured(true)
-      setEmailDialogOpen(false)
-      showToast({
-        status: "success",
-        title: t("pages.otherSettings.email.saved"),
+    if (emailSaving) return
+    setEmailSaving(true)
+    try {
+      const saved = await saveSetting("email", {
+        sender_name: emailSettings.senderName,
+        sender_email: emailSettings.senderEmail,
+        smtp_host: emailSettings.smtpHost,
+        smtp_port: Number(emailSettings.smtpPort),
+        smtp_username: emailSettings.smtpUsername,
+        smtp_password: emailSettings.smtpPassword,
+        smtp_encryption: emailSettings.encryption,
       })
+      if (saved) {
+        setSavedEmailSettings(emailSettings)
+        setEmailConfigured(true)
+        setEmailDialogOpen(false)
+        showToast({
+          status: "success",
+          title: t("pages.otherSettings.email.saved"),
+        })
+      }
+    } finally {
+      setEmailSaving(false)
     }
   }
 
@@ -852,21 +862,27 @@ export function OtherSettingsPage() {
 
   const handleTagSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const result = editingTagId
-      ? await renameTag(editingTagId, tagName)
-      : await addTag(tagName)
+    if (tagSaving) return
+    setTagSaving(true)
+    try {
+      const result = editingTagId
+        ? await renameTag(editingTagId, tagName)
+        : await addTag(tagName)
 
-    if (result === "conflict") {
-      setTagError(t("pages.otherSettings.skillTags.duplicate"))
-      return
+      if (result === "conflict") {
+        setTagError(t("pages.otherSettings.skillTags.duplicate"))
+        return
+      }
+      if (result === "failed") return
+
+      handleTagDialogOpenChange(false)
+      showToast({
+        status: "success",
+        title: t("pages.otherSettings.skillTags.saved"),
+      })
+    } finally {
+      setTagSaving(false)
     }
-    if (result === "failed") return
-
-    handleTagDialogOpenChange(false)
-    showToast({
-      status: "success",
-      title: t("pages.otherSettings.skillTags.saved"),
-    })
   }
 
   const tagPendingDeletion = skillTags.find(
@@ -1015,7 +1031,12 @@ export function OtherSettingsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={tagDialogOpen} onOpenChange={handleTagDialogOpenChange}>
+      <Dialog
+        open={tagDialogOpen}
+        onOpenChange={(open) => {
+          if (!tagSaving) handleTagDialogOpenChange(open)
+        }}
+      >
         <DialogContent className="sm:max-w-sm" closeLabel={t("common.close")}>
           <form className="flex flex-col gap-6" onSubmit={handleTagSubmit}>
             <DialogHeader>
@@ -1049,10 +1070,17 @@ export function OtherSettingsPage() {
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <DialogClose render={<Button type="button" variant="outline" />}>
+              <DialogClose
+                disabled={tagSaving}
+                render={<Button type="button" variant="outline" />}
+              >
                 {t("pages.otherSettings.skillTags.cancel")}
               </DialogClose>
-              <Button disabled={!tagName.trim()} type="submit">
+              <Button
+                loading={tagSaving}
+                disabled={!tagName.trim()}
+                type="submit"
+              >
                 {editingTagId
                   ? t("pages.otherSettings.skillTags.save")
                   : t("pages.otherSettings.skillTags.create")}
@@ -1065,7 +1093,7 @@ export function OtherSettingsPage() {
       <AlertDialog
         open={tagPendingDeletionId !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !tagDeleting) {
             setTagPendingDeletionId(null)
           }
         }}
@@ -1082,21 +1110,28 @@ export function OtherSettingsPage() {
             })}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>
+            <AlertDialogCancel disabled={tagDeleting}>
               {t("pages.otherSettings.skillTags.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              loading={tagDeleting}
               onClick={async (event) => {
                 event.preventDefault()
-                if (tagPendingDeletionId) {
-                  if (!(await deleteTag(tagPendingDeletionId))) return
+                if (tagDeleting) return
+                setTagDeleting(true)
+                try {
+                  if (tagPendingDeletionId) {
+                    if (!(await deleteTag(tagPendingDeletionId))) return
+                  }
+                  setTagPendingDeletionId(null)
+                  showToast({
+                    status: "success",
+                    title: t("pages.otherSettings.skillTags.deleted"),
+                  })
+                } finally {
+                  setTagDeleting(false)
                 }
-                setTagPendingDeletionId(null)
-                showToast({
-                  status: "success",
-                  title: t("pages.otherSettings.skillTags.deleted"),
-                })
               }}
             >
               {t("pages.otherSettings.skillTags.delete")}
@@ -1864,20 +1899,15 @@ export function OtherSettingsPage() {
                     </DialogClose>
                     <Button
                       type="submit"
+                      loading={oauthSaving}
                       disabled={oauthSaving}
                       aria-busy={oauthSaving}
                     >
-                      {oauthSaving
-                        ? `${t(
-                            editingOauthConnection
-                              ? "pages.otherSettings.oauth.updateConnection"
-                              : "pages.otherSettings.oauth.addConnection"
-                          )}…`
-                        : t(
-                            editingOauthConnection
-                              ? "pages.otherSettings.oauth.updateConnection"
-                              : "pages.otherSettings.oauth.addConnection"
-                          )}
+                      {t(
+                        editingOauthConnection
+                          ? "pages.otherSettings.oauth.updateConnection"
+                          : "pages.otherSettings.oauth.addConnection"
+                      )}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -2068,6 +2098,7 @@ export function OtherSettingsPage() {
                   : "default"
               }
               disabled={oauthActionSaving}
+              loading={oauthActionSaving}
               aria-busy={oauthActionSaving}
               onClick={confirmOauthAction}
             >
@@ -2258,11 +2289,16 @@ export function OtherSettingsPage() {
 
                 <DialogFooter>
                   <DialogClose
+                    disabled={emailSaving}
                     render={<Button type="button" variant="outline" />}
                   >
                     {t("pages.otherSettings.email.cancel")}
                   </DialogClose>
-                  <Button disabled={!emailSettingsDirty} type="submit">
+                  <Button
+                    loading={emailSaving}
+                    disabled={!emailSettingsDirty}
+                    type="submit"
+                  >
                     {t("pages.otherSettings.email.save")}
                   </Button>
                 </DialogFooter>
@@ -2368,15 +2404,16 @@ export function OtherSettingsPage() {
                       type="submit"
                       variant="secondary"
                       disabled={testSending}
+                      loading={testSending}
                       aria-busy={testSending}
                     >
-                      <HugeiconsIcon
-                        icon={MailSend02Icon}
-                        data-icon="inline-start"
-                      />
-                      {testSending
-                        ? t("login.sendingCode", "发送中…")
-                        : t("pages.otherSettings.email.sendTest")}
+                      {!testSending && (
+                        <HugeiconsIcon
+                          icon={MailSend02Icon}
+                          data-icon="inline-start"
+                        />
+                      )}
+                      {t("pages.otherSettings.email.sendTest")}
                     </Button>
                   </ItemActions>
                 </Item>
@@ -2417,6 +2454,7 @@ export function OtherSettingsPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={loginMethodSaving !== null}
+              loading={loginMethodSaving === "passwordEnabled"}
               aria-busy={loginMethodSaving === "passwordEnabled"}
               onClick={async () => {
                 if (passwordPendingValue === null) {
@@ -2474,6 +2512,7 @@ export function OtherSettingsPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={loginMethodSaving !== null}
+              loading={loginMethodSaving === "emailCodeEnabled"}
               aria-busy={loginMethodSaving === "emailCodeEnabled"}
               onClick={async () => {
                 if (emailCodePendingValue === null) {
@@ -2547,6 +2586,7 @@ export function OtherSettingsPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={autoRegistrationSaving}
+              loading={autoRegistrationSaving}
               aria-busy={autoRegistrationSaving}
               onClick={confirmAutoRegistration}
             >

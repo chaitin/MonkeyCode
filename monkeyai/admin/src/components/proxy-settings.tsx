@@ -227,7 +227,7 @@ export function ProxySettings() {
                     >
                       {t("pages.otherSettings.proxies.cancel")}
                     </Button>
-                    <Button type="submit" disabled={saving}>
+                    <Button type="submit" loading={saving} disabled={saving}>
                       {t("pages.otherSettings.proxies.save")}
                     </Button>
                   </DialogFooter>
