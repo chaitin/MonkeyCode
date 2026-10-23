@@ -879,6 +879,11 @@ const en = {
       pricePerUse: "{{price}} credits/use",
       toolEnabledAria: "{{name}} enabled state",
       builtInService: "Built-in MCP service",
+      parallel: {
+        usePreset: "Use Parallel Search",
+        description: "Free web search and page fetching, no account or API key needed. Search uses Fast mode. Rate limits apply.",
+        docs: "Setup guide",
+      },
       labels: {
         name: "Name",
         url: "MCP server URL",
