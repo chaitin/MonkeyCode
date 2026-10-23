@@ -33,6 +33,10 @@ SITE_URL=https://example.com PUBLIC_BASE_PATH=/ npm run build
 
 页头和首页底部的“在线体验”共用 `OnlineExperienceButton.tsx`，使用 Radix Dialog 介绍两种方式：下载客户端并连接演示服务器，或在新标签页查看演示管理后台。客户端体验分为下载客户端、使用邮箱验证码登录演示服务器两步，两侧直接展示对应服务器地址，并展示管理后台的演示账号和密码。点击地址、账号或密码时，先完整选中该字段文本，再复制并使用 Radix Toast 提示结果，复制失败时保留选区供手动复制；支持 Escape、点击遮罩关闭、焦点约束和关闭后返回触发按钮，选择下载时则将焦点移到下载区。下载入口使用 `BASE_URL`，从协议页也能返回首页的下载区域。
 
+页面最顶部的广告横条由 `PromotionBanner.tsx` 提供，位于导航上方，点击后使用 Radix Dialog 展示详情。活动文案和目标链接集中在 `src/lib/promotion.ts`，当前活动为“企业专享 1000 元算力补贴”：百智办公可免费使用，企业用户在线登记并安装使用，销售联系并确认企业身份后赠送百智云“满 2000 元送 1000 元”优惠券。留资入口为 `https://baizhi.cloud/consult`，百智云链接为 `https://baizhi.cloud/`。弹窗支持 Escape、点击遮罩和关闭按钮关闭、焦点约束及关闭后返回横条，移动端可滚动阅读完整内容。横条采用橘红与浅金配色，与导航统一包在 `SiteTopbar.astro` 中吸顶，滚动时两者始终保留。顶部实际高度通过 ResizeObserver 同步到 `--site-topbar-height`，用于锚点跳转及协议页目录的避让；手机端横条换行后也会自动更新。
+
+Hero 的第二个按钮为 `WeChatCommunityButton.tsx`：鼠标悬停时展示微信交流群二维码卡片，指针移入卡片后保持显示；键盘可用 Enter/Space 打开、Escape 关闭，触屏可点击打开并点击外部关闭。卡片使用 Radix Popover Portal 避免被 Hero 裁切，复用页脚的 `wecom-community-qr.png`，图片路径跟随 `BASE_URL`。
+
 基础样式位于 `src/styles/global.css`；整站配色、点阵背景和页头页脚位于 `src/styles/site.css`；首页内容使用 `src/styles/homepage.css`，协议页面的阅读布局使用 `src/styles/legal.css`。
 
 全站文字按 [字号规范](TYPOGRAPHY.md) 使用六个语义角色，变量集中在 `src/styles/typography.css`：Hero 品牌大字 72px、分区标题 32px、小标题 20px、品牌文字 24px、正文 16px、辅助文字 14px。800px 及以下仅将 Hero 大字、分区标题改为 48px、24px；正文、按钮和导航保持 16px，Header 品牌文字复用小标题角色的 20px，Footer 品牌文字为 24px。组件只引用语义字号变量，不新增独立字号。产品预览作为界面插画，使用三个局部比例字号随容器缩放。

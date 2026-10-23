@@ -1,7 +1,7 @@
 /* Homepage content. Shared colors and site chrome live in site.css. */
 .studio-container { width: min(calc(100% - 64px), var(--container)); margin-inline: auto; }
 .studio-main { overflow: clip; }
-.studio-main section { scroll-margin-top: 96px; }
+.studio-main section { scroll-margin-top: 16px; }
 .studio-main .studio-hero + .studio-section-band { margin-top: 0; }
 
 /* Left-aligned hero and a responsive product interface preview. */
@@ -13,6 +13,12 @@
 .studio-hero-description { margin-top: 24px; color: var(--studio-subtle); font-size: var(--type-body); line-height: var(--leading-body); }
 .studio-actions { display: flex; flex-wrap: wrap; gap: 16px; max-width: 100%; margin-top: 30px; }
 body.site-theme .studio-actions [data-slot='button'][data-variant='outline']:not(:disabled):is(:hover, :focus-visible) { border-color: color-mix(in srgb, var(--green) 35%, transparent); color: var(--green); background: transparent; box-shadow: none; }
+/* The community card is portalled outside the clipped hero content. */
+.studio-community-card { z-index: 60; display: grid; justify-items: center; gap: 12px; width: 248px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid var(--studio-line); border-radius: 12px; color: var(--studio-text); background: var(--studio-surface); box-shadow: 0 12px 40px rgb(23 43 39 / 14%); }
+body.site-theme .studio-community-title { margin: 0; font-size: var(--type-heading); font-weight: var(--weight-heading); line-height: var(--leading-control); }
+.studio-community-card img { display: block; width: 200px; max-width: 100%; height: auto; aspect-ratio: 1; border-radius: 4px; background: #fff; object-fit: contain; }
+.studio-community-hint { margin: 0; color: var(--studio-muted); font-size: var(--type-caption); line-height: var(--leading-control); text-align: center; }
+.studio-community-arrow { fill: var(--studio-surface); }
 .studio-flow { position: relative; min-width: 0; padding: 24px; border: 1px solid var(--studio-line); border-radius: 8px; background: linear-gradient(145deg, #edf5ef99, #ffffffe6 50%); animation: studio-enter 900ms 120ms ease-out both; }
 .studio-flow::before { position: absolute; z-index: -1; inset: -70px; background: radial-gradient(ellipse, color-mix(in srgb, var(--green-dark) 6%, transparent), transparent 65%); content: ''; pointer-events: none; }
 .studio-flow-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; color: var(--studio-subtle); font-size: 10px; }

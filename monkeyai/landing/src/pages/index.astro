@@ -8,6 +8,7 @@ import ClientsSection from '../components/ClientsSection.astro';
 import PricingSection from '../components/PricingSection.astro';
 import { ActionButton } from '../components/ActionButton';
 import { OnlineExperienceButton } from '../components/OnlineExperienceButton';
+import { WeChatCommunityButton } from '../components/WeChatCommunityButton';
 import { FaqAccordion } from '../components/FaqQuestion';
 import { TextCascade } from '../components/motion/text-cascade';
 import SectionTitle from '../components/SectionTitle.astro';
@@ -63,7 +64,7 @@ const faqs = [
         <p class="studio-hero-description">百智办公是一款面向团队的开源 AI 办公工作台。用自然语言提出需求，让 AI 完成办公、编程与设计任务，直接交付工作成果。支持团队资源共享、统一管控与私有化部署。</p>
         <div class="studio-actions">
           <ActionButton client:load href="#deployment" label="独立部署" icon="server" size="lg" />
-          <ActionButton client:load href="#clients" label="下载客户端" icon="download" variant="outline" size="lg" />
+          <WeChatCommunityButton client:load />
         </div>
       </div>
       <StudioHero />
