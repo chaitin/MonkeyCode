@@ -4,7 +4,7 @@ import '../styles/site.css';
 import '../styles/legal.css';
 import '../styles/shadcn.css';
 import '../styles/typography.css';
-import SiteHeader from '../components/SiteHeader.astro';
+import SiteTopbar from '../components/SiteTopbar.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 
 interface Props {
@@ -82,7 +82,7 @@ const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
   </head>
   <body class:list={['site-theme', bodyClass]}>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
-    <SiteHeader />
+    <SiteTopbar />
     <slot />
     <SiteFooter />
     <script is:inline defer src="https://work.docs.baizhi.cloud/widget-bot.js"></script>

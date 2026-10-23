@@ -1,0 +1,21 @@
+---
+import SiteHeader from './SiteHeader.astro';
+import { PromotionBanner } from './PromotionBanner';
+import '../styles/promotion.css';
+---
+
+<div class="site-topbar" data-site-topbar>
+  <PromotionBanner client:load />
+  <SiteHeader />
+</div>
+
+<script>
+  const topbar = document.querySelector<HTMLElement>('[data-site-topbar]');
+  if (topbar) {
+    const updateHeight = () => {
+      document.documentElement.style.setProperty('--site-topbar-height', `${Math.ceil(topbar.getBoundingClientRect().height)}px`);
+    };
+    updateHeight();
+    new ResizeObserver(updateHeight).observe(topbar);
+  }
+</script>

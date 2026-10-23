@@ -1,0 +1,35 @@
+/* Loaded by SiteTopbar.astro for the server-rendered banner and portalled dialog. */
+.promotion-banner, .promotion-dialog { --promotion-red: #c2410c; --promotion-gold: #fff1c2; }
+.promotion-banner { display: block; width: 100%; padding: 0; border-bottom: 1px solid rgb(255 241 194 / 45%); color: #fff7ed; background: linear-gradient(110deg, #b93815, #c2410c 55%, #b84a12); font-size: var(--type-caption); font-weight: var(--weight-heading); line-height: var(--leading-control); text-align: left; }
+.promotion-banner:hover { background: linear-gradient(110deg, #9a3412, #b33a12 55%, #9a3f0b); }
+.promotion-banner:focus-visible { outline: 2px solid var(--promotion-gold); outline-offset: -4px; }
+.promotion-banner-inner { display: flex; align-items: center; justify-content: center; gap: 16px; width: min(calc(100% - 64px), var(--container)); min-height: 40px; margin-inline: auto; padding-block: 8px; }
+.promotion-banner-label { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; padding: 1px 8px; border: 1px solid rgb(255 241 194 / 40%); border-radius: 4px; color: var(--promotion-gold); background: rgb(255 255 255 / 8%); }
+.promotion-banner-label svg, .promotion-banner-action svg { width: 16px; height: 16px; flex-shrink: 0; }
+.promotion-banner-copy { min-width: 0; overflow-wrap: anywhere; }
+.promotion-banner-action { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; color: var(--promotion-gold); white-space: nowrap; }
+.promotion-banner:hover .promotion-banner-action { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Keep the dialog above the embedded support widget. */
+.promotion-overlay { position: fixed; inset: 0; z-index: 11000; background: rgb(12 28 23 / 42%); backdrop-filter: blur(5px); animation: promotion-fade-in 160ms ease-out; }
+.promotion-dialog { --primary: var(--promotion-red); --primary-foreground: #fff; --ring: var(--promotion-red); --button-hover-shadow: 0 0 18px rgb(194 65 12 / 20%); position: fixed; top: 50%; left: 50%; z-index: 11001; width: min(680px, calc(100vw - 40px)); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 36px; border: 1px solid #f0d4b5; border-radius: 16px; color: var(--studio-text); background: linear-gradient(180deg, #fff7ed, #fff 180px); box-shadow: 0 24px 80px rgb(12 28 23 / 20%); transform: translate(-50%, -50%); animation: promotion-fade-in 160ms ease-out; }
+body.site-theme .promotion-title { padding-right: 20px; font-size: var(--type-section); font-weight: var(--weight-heading); line-height: var(--leading-title); text-wrap: balance; }
+.promotion-description { margin-top: 16px; color: var(--studio-muted); font-size: var(--type-body); line-height: var(--leading-body); }
+.promotion-note { display: block; margin-top: 8px; color: var(--studio-subtle); font-size: var(--type-caption); line-height: var(--leading-body); }
+.promotion-description a { color: var(--promotion-red); text-decoration: underline; text-underline-offset: 3px; }
+body.site-theme .promotion-dialog .promotion-close { position: absolute; top: 16px; right: 16px; border-color: transparent; }
+.promotion-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+
+@keyframes promotion-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 800px) {
+  .promotion-banner-inner { width: calc(100% - 40px); }
+}
+@media (max-width: 640px) {
+  .promotion-banner-inner { justify-content: space-between; gap: 12px; }
+  .promotion-banner-label { display: none; }
+  .promotion-dialog { width: calc(100vw - 24px); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); padding: 28px 20px 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .promotion-overlay, .promotion-dialog { animation: none; }
+}
