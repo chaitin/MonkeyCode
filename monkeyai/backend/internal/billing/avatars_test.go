@@ -104,14 +104,22 @@ func TestAdminListUserAvatars(t *testing.T) {
 					w := httptest.NewRecorder()
 					router.ServeHTTP(w, httptest.NewRequest("GET", "/billing/"+endpoint+"?content=avatar-test&page_size=1&page="+page, nil))
 					var out struct {
-						Total int              `json:"total"`
-						Items []map[string]any `json:"items"`
+						Total   *int             `json:"total"`
+						HasNext bool             `json:"has_next"`
+						Items   []map[string]any `json:"items"`
 					}
 					if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 						t.Fatal(err)
 					}
-					if w.Code != 200 || out.Total != 2 || len(out.Items) != 1 {
+					if w.Code != 200 || len(out.Items) != 1 {
 						t.Fatalf("%s 分页错误: %d %s", endpoint, w.Code, w.Body)
+					}
+					if endpoint == "entries" {
+						if out.Total != nil || out.HasNext != (page == "1") {
+							t.Fatalf("流水分页不能依赖总数: %s", w.Body)
+						}
+					} else if out.Total == nil || *out.Total != 2 {
+						t.Fatalf("待处理交易总数错误: %s", w.Body)
 					}
 					item := out.Items[0]
 					owner := item["user_id"].(string)

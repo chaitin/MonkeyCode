@@ -71,7 +71,8 @@ import {
 
 type Entries = {
   items: Entry[]
-  total: number
+  has_next?: boolean
+  total?: number // Compatibility with servers that still return an exact total.
   page: number
   page_size: number
 }
@@ -163,7 +164,6 @@ export function BillingDetailsPage() {
   const requestParams = new URLSearchParams(params)
   requestParams.delete("page")
   requestParams.delete("page_size")
-  requestParams.delete("range")
   requestParams.set("page", String(page))
   requestParams.set("page_size", String(pageSize))
   const query = requestParams.toString()
@@ -277,9 +277,8 @@ export function BillingDetailsPage() {
     setParams(next)
     setRefresh(nextRefresh)
   }
-  const total =
-    view === "entries" ? (entries?.total ?? 0) : (pending?.total ?? 0)
-  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const total = view === "entries" ? undefined : (pending?.total ?? 0)
+  const pages = Math.max(1, Math.ceil((total ?? 0) / pageSize))
   const visibleCount =
     view === "entries"
       ? (entries?.items.length ?? 0)
@@ -314,6 +313,11 @@ export function BillingDetailsPage() {
       pageSize={pageSize}
       itemCount={visibleCount}
       total={total}
+      hasNext={
+        view === "entries"
+          ? (entries?.has_next ?? page * pageSize < (entries?.total ?? 0))
+          : undefined
+      }
       loading={loading || searching}
       error={loadFailed}
       onPageSizeChange={(size) => {
@@ -321,7 +325,11 @@ export function BillingDetailsPage() {
         setPage(1)
       }}
       onPrevious={() => setPage((value) => Math.max(1, value - 1))}
-      onNext={() => setPage((value) => Math.min(pages, value + 1))}
+      onNext={() =>
+        setPage((value) =>
+          view === "entries" ? value + 1 : Math.min(pages, value + 1)
+        )
+      }
     />
   )
   return (

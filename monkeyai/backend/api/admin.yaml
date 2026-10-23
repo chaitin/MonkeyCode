@@ -1708,7 +1708,7 @@ paths:
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
-      description: 读取按周分区的不可变账本。时间范围为左闭右开；不传时间时查询全部记录。管理页面初次打开默认最近 28 个自然日，支持清空或调整范围。
+      description: 读取不可变账本，不执行 COUNT 或返回精确总数。每页最多查询 page_size 加一条，以 has_next 判断后续页。时间范围为左闭右开；from 和 until 均未传入时，默认北京时间最近 28 个自然日（含今天）。range=all 显式取消默认范围；已提供的单侧或双侧时间条件保持原样。响应 from/until 返回实际生效的边界。
       responses:
         '200':
           description: 请求成功
@@ -1721,8 +1721,14 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/CreditEntry'
-                  total:
-                    type: integer
+                  has_next:
+                    type: boolean
+                  from:
+                    type: [string, 'null']
+                    format: date-time
+                  until:
+                    type: [string, 'null']
+                    format: date-time
                   page:
                     type: integer
                   page_size:
@@ -1781,6 +1787,12 @@ paths:
           type: integer
           minimum: 1
           maximum: 500
+      - in: query
+        name: range
+        description: 仅支持 all，表示显式取消缺省时间范围；仍保留已提供的 from/until。
+        schema:
+          type: string
+          enum: [all]
   /api/admin/v1/billing/summary:
     get:
       summary: 按同一筛选口径汇总扣费和退款

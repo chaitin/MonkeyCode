@@ -48,9 +48,10 @@ func TestAdminLargePages(t *testing.T) {
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, httptest.NewRequest("GET", fmt.Sprintf("/billing/%s?content=large-pagination&page_size=%d&page=%d", endpoint, size, page), nil))
 				var out struct {
-					Total int              `json:"total"`
-					Size  int              `json:"page_size"`
-					Items []map[string]any `json:"items"`
+					Total   *int             `json:"total"`
+					Size    int              `json:"page_size"`
+					HasNext bool             `json:"has_next"`
+					Items   []map[string]any `json:"items"`
 				}
 				if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 					t.Fatal(err)
@@ -58,8 +59,15 @@ func TestAdminLargePages(t *testing.T) {
 				if w.Code != 200 {
 					t.Fatalf("%s 查询失败: %d %s", endpoint, w.Code, w.Body)
 				}
-				if out.Total != 505 || out.Size != size || len(out.Items) != min(size, 505-offset) {
-					t.Fatalf("%s 大分页错误: total=%d size=%d count=%d offset=%d", endpoint, out.Total, out.Size, len(out.Items), offset)
+				if out.Size != size || len(out.Items) != min(size, 505-offset) {
+					t.Fatalf("%s 大分页错误: size=%d count=%d offset=%d", endpoint, out.Size, len(out.Items), offset)
+				}
+				if endpoint == "entries" {
+					if out.Total != nil || out.HasNext != (offset+size < 505) {
+						t.Fatalf("流水必须省略总数并正确判断下一页: %s", w.Body)
+					}
+				} else if out.Total == nil || *out.Total != 505 {
+					t.Fatalf("待处理交易总数错误: %s", w.Body)
 				}
 				for _, item := range out.Items {
 					id := item["id"].(string)

@@ -51,21 +51,16 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
+	if requested := r.URL.Query().Get("range"); requested != "" && requested != "all" {
+		resource.Fail(r.Context(), w, resource.Invalid("range 仅支持 all"))
+		return
+	}
+	if filter.FromTime == nil && filter.UntilTime == nil && r.URL.Query().Get("range") != "all" {
+		from, until := defaultEntryRange(s.now())
+		filter.FromTime, filter.UntilTime = &from, &until
+	}
 	page, size := pageParams(r, 500)
-	tx, err := s.pool.Begin(r.Context())
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
-	}
-	defer rollback(r.Context(), tx, "list_entries", "")
-	var total int64
-	total, err = sqlc.New(tx).CountEntries(r.Context(), filter)
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
-	}
-
-	rows, err := resource.DecodeObjects(sqlc.New(tx).ListEntries(r.Context(), sqlc.ListEntriesParams{
+	rows, err := resource.DecodeObjects(sqlc.New(s.pool).ListEntries(r.Context(), sqlc.ListEntriesParams{
 		UserQuery:    filter.UserQuery,
 		ContentQuery: filter.ContentQuery,
 		Category:     filter.Category,
@@ -74,15 +69,33 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		FromTime:     filter.FromTime,
 		UntilTime:    filter.UntilTime,
 		GroupID:      filter.GroupID,
-		Limit:        int32(size),
+		Limit:        int32(size + 1),
 		Offset:       int32((page - 1) * size),
 	}))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	resource.JSON(r.Context(), w, 200, map[string]any{"items": rows, "total": total, "page": page, "page_size": size})
+	hasNext := len(rows) > size
+	if hasNext {
+		rows = rows[:size]
+	}
+	resource.JSON(r.Context(), w, 200, map[string]any{
+		"items": rows, "has_next": hasNext, "page": page, "page_size": size,
+		"from": filter.FromTime, "until": filter.UntilTime,
+	})
 }
+
+func defaultEntryRange(now time.Time) (time.Time, time.Time) {
+	zone, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		zone = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	local := now.In(zone)
+	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, zone)
+	return today.AddDate(0, 0, -27), today.AddDate(0, 0, 1)
+}
+
 func (s *Service) summary(w http.ResponseWriter, r *http.Request) {
 	filter, err := filters(r)
 	if err != nil {
