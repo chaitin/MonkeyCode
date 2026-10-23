@@ -37,9 +37,6 @@ func verifyConsent(r *http.Request, requestID, publicURL string) error {
 }
 
 func readApproval(w http.ResponseWriter, r *http.Request, request AuthorizationRequest, publicURL string) (*[]string, error) {
-	if len(request.Scopes) == 0 {
-		return nil, nil
-	}
 	if err := verifyConsent(r, request.ID, publicURL); err != nil {
 		return nil, err
 	}

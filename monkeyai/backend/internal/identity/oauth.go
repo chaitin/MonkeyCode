@@ -247,7 +247,7 @@ func (s *Service) clientRequest(w http.ResponseWriter, r *http.Request) {
 		"scopes":             request.Scopes,
 		"scope_descriptions": scopeNames,
 		"audience":           request.Audience,
-		"consent_required":   len(request.Scopes) > 0,
+		"consent_required":   true,
 		"csrf_token":         consentToken(r, request.ID),
 	})
 }

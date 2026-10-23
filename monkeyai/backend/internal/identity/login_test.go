@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -99,8 +100,10 @@ func checkClientAuthorization(t *testing.T, s *Service, cookie *http.Cookie, use
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/client-requests/"+request.ID+"/complete", nil)
+	req := httptest.NewRequest(http.MethodPost, "/client-requests/"+request.ID+"/complete", strings.NewReader(`{"approved_scopes":[]}`))
 	req.AddCookie(cookie)
+	req.Header.Set("X-CSRF-Token", consentToken(req, request.ID))
+	req.Header.Set("Origin", s.publicURL)
 	response := httptest.NewRecorder()
 	s.AuthRouter().ServeHTTP(response, req)
 	if response.Code != http.StatusOK {
