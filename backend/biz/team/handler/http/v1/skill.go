@@ -4,6 +4,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
@@ -23,6 +25,7 @@ const defaultSkillPackageMaxSize int64 = 50 << 20 // 50 MiB fallback
 
 type TeamSkillHandler struct {
 	usecase domain.TeamSkillUsecase
+	repo    domain.TeamGroupUserRepo
 	cfg     *config.Config
 }
 
@@ -33,11 +36,19 @@ func NewTeamSkillHandler(i *do.Injector) (*TeamSkillHandler, error) {
 
 	h := &TeamSkillHandler{
 		usecase: do.MustInvoke[domain.TeamSkillUsecase](i),
+		repo:    do.MustInvoke[domain.TeamGroupUserRepo](i),
 		cfg:     do.MustInvoke[*config.Config](i),
 	}
+	adminAuth := middleware.TeamAdminAuth(func(ctx context.Context, teamID, userID uuid.UUID) bool {
+		member, err := h.repo.GetMember(ctx, teamID, userID)
+		if err != nil {
+			return false
+		}
+		return member.Role == consts.TeamMemberRoleAdmin
+	})
 
 	g := w.Group("/api/v1/teams/skills")
-	g.Use(auth.TeamAuth())
+	g.Use(auth.TeamAuth(), adminAuth)
 	g.GET("", web.BaseHandler(h.List))
 	g.POST("", web.BindHandler(h.Add), audit.Audit("add_team_skill"))
 	g.POST("/package", web.BindHandler(h.AddPackage), audit.Audit("add_team_skill_package"))

@@ -72,6 +72,13 @@ func (c *AliyunClient) PutFile(_ context.Context, prefix, filename string, body 
 	return nil
 }
 
+func (c *AliyunClient) DeleteObject(_ context.Context, key string) error {
+	if err := c.bucket.DeleteObject(key); err != nil {
+		return fmt.Errorf("aliyun oss: delete %q: %w", key, err)
+	}
+	return nil
+}
+
 // PresignGet returns a presigned GET URL valid for `expires`. The aliyun SDK
 // signs with `OSS4-HMAC-SHA256` (or v1 depending on endpoint), which OSS
 // accepts. Aliyun SDK takes expiry as seconds; we floor sub-second values to 1
