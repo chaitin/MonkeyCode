@@ -1561,6 +1561,52 @@ fn bare_inner_events(tag: &str) -> (Arc<Inner>, EmittedEvents) {
     (inner, events)
 }
 
+#[tokio::test]
+async fn pet_waiting_projection_preserves_other_interactions_when_one_closes() {
+    let (inner, events) = bare_inner_events("pet-waiting-projection");
+    inner.write_sidecar("s1", |meta| meta["title"] = json!("测试任务"));
+    inner
+        .sess
+        .pending_perms
+        .lock()
+        .unwrap()
+        .insert("p1".into(), "s1".into());
+    inner
+        .sess
+        .pending_questions
+        .lock()
+        .unwrap()
+        .insert("q1".into(), ("s1".into(), json!([])));
+    inner.sess.pending_design_selections.lock().unwrap().insert(
+        "s1".into(),
+        crate::driver::session::PendingDesignSelection {
+            request_id: "d1".into(),
+            previews: HashMap::new(),
+            responding: false,
+        },
+    );
+    let expected = json!([
+        {"id":"p1","kind":"approval"}, {"id":"d1","kind":"design"}, {"id":"q1","kind":"question"}
+    ]);
+    let list = OhmyDriver(inner.clone()).sessions_list().await.unwrap();
+    assert_eq!(list[0]["waiting_ask"], true);
+    assert_eq!(list[0]["waiting_items"], expected);
+    inner.emit_session_ask("s1", true);
+    assert_eq!(
+        events.lock().unwrap().last().unwrap().1["waiting_items"],
+        expected
+    );
+    inner.sess.pending_perms.lock().unwrap().clear();
+    inner.emit_session_ask("s1", false);
+    let payload = events.lock().unwrap().last().unwrap().1.clone();
+    assert_eq!(payload["open"], true);
+    assert_eq!(payload["waiting_items"].as_array().unwrap().len(), 2);
+    inner.sess.pending_questions.lock().unwrap().clear();
+    inner.sess.pending_design_selections.lock().unwrap().clear();
+    inner.emit_session_ask("s1", false);
+    assert_eq!(events.lock().unwrap().last().unwrap().1["open"], false);
+}
+
 /// 同 bare_inner_events，并保留 RPC 出站接收端，供请求/事件竞态测试
 /// 精确控制 Agent 应答时序。
 fn bare_inner_rpc(

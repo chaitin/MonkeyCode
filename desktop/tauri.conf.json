@@ -167,7 +167,19 @@
             "allow-background-confirm",
             "allow-background-discard",
             "allow-background-read",
-            "allow-background-clear"
+            "allow-background-clear",
+            "allow-pet-preferences",
+            "allow-pet-set-preferences",
+            "allow-pet-set-enabled",
+            "allow-pet-wallet",
+            "allow-pet-activate",
+            "allow-pet-reset-position",
+            "allow-pet-preview-sound",
+            "allow-pet-sound-list",
+            "allow-pet-sound-import",
+            "allow-pet-sound-read",
+            "allow-pet-sound-remove",
+            "allow-pet-account-changed"
           ]
         },
         {
@@ -187,7 +199,14 @@
             "allow-sessions-list",
             "allow-show-main",
             "allow-pet-native-render",
-            "allow-sound-enabled"
+            "allow-pet-audio-error",
+            "allow-pet-sound-read",
+            "allow-sound-enabled",
+            "allow-pet-preferences",
+            "allow-pet-wallet",
+            "allow-pet-activate",
+            "allow-pet-menu",
+            "allow-pet-drag-finished"
           ]
         }
       ]
