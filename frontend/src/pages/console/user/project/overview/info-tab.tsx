@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ProjectFileManager } from "@/components/console/project/files"
 import { Markdown } from "@/components/common/markdown"
 import { type DomainBranch, type DomainProject } from "@/api/Api"
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { IconFileText, IconLoader } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+import { resolveReadmeMediaUrl } from "@/utils/readme-media"
 
 interface ProjectOverviewInfoTabProps {
   projectId: string
@@ -152,6 +153,17 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
     }
   }, [project?.id, project?.git_identity_id, project?.full_name, readmeRef, readmeRefProjectId, readmeRefResolved])
 
+  const resolveReadmeImageUrl = useCallback((src: string) => {
+    if (!project?.id) return undefined
+
+    return resolveReadmeMediaUrl({
+      src,
+      readmePath,
+      projectId: project.id,
+      ref: readmeRef || undefined,
+    })
+  }, [project?.id, readmePath, readmeRef])
+
   const ReadmeHeader = (
     <div className="px-4 py-2 flex items-center border-b bg-muted/50">
       <Label className="flex items-center h-6">
@@ -196,7 +208,7 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
       <div className={cn("flex flex-1 flex-col border rounded-md w-full max-w-full")}>
         {ReadmeHeader}
         <div className="p-4">
-          <Markdown>{readmeContent}</Markdown>
+          <Markdown allowHtml resolveImageUrl={resolveReadmeImageUrl}>{readmeContent}</Markdown>
         </div>
       </div>
     )
