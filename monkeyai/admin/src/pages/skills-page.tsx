@@ -532,7 +532,7 @@ export function SkillsPage() {
                             </FieldLabel>
                             <Textarea
                               id="skill-content"
-                              className="min-h-48 resize-y font-mono"
+                              className="max-h-64 min-h-48 resize-y overflow-y-auto font-mono"
                               value={draft.content}
                               onChange={(e) =>
                                 setDraft((current) => ({
