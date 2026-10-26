@@ -136,3 +136,25 @@ func TestOutboundTransportUsesSelectedProxy(t *testing.T) {
 		}
 	}
 }
+
+func TestTransportReportsConnectRejection(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		code   string
+	}{{http.StatusProxyAuthRequired, "proxy_auth_required"}, {http.StatusForbidden, "proxy_connect_rejected"}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(tc.status)
+		}))
+		transport, err := TransportFor(server.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = (&http.Client{Transport: transport}).Get("https://upstream.invalid/v1/models")
+		transport.CloseIdleConnections()
+		server.Close()
+		connect, ok := errors.AsType[*ConnectError](err)
+		if !ok || connect.Status != tc.status || connect.DiagnosticCode() != tc.code {
+			t.Fatalf("CONNECT 拒绝分类错误: %v", err)
+		}
+	}
+}

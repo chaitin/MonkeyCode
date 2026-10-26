@@ -11,6 +11,18 @@ import (
 
 type outboundTransport struct{ direct http.RoundTripper }
 
+// ConnectError reports a non-200 CONNECT response from the system proxy.
+type ConnectError struct{ Status int }
+
+func (e *ConnectError) Error() string { return fmt.Sprintf("系统代理拒绝连接: %d", e.Status) }
+
+func (e *ConnectError) DiagnosticCode() string {
+	if e.Status == http.StatusProxyAuthRequired {
+		return "proxy_auth_required"
+	}
+	return "proxy_connect_rejected"
+}
+
 func TransportFor(raw string) (*http.Transport, error) {
 	address, err := url.Parse(raw)
 	if err != nil || address.Host == "" {
@@ -18,6 +30,12 @@ func TransportFor(raw string) (*http.Transport, error) {
 	}
 	transport := DirectTransport()
 	transport.Proxy = http.ProxyURL(address)
+	transport.OnProxyConnectResponse = func(_ context.Context, _ *url.URL, _ *http.Request, response *http.Response) error {
+		if response.StatusCode != http.StatusOK {
+			return &ConnectError{Status: response.StatusCode}
+		}
+		return nil
+	}
 	if address.Scheme == "https" {
 		transport.DialTLSContext = func(ctx context.Context, network, target string) (net.Conn, error) {
 			config := &tls.Config{}
