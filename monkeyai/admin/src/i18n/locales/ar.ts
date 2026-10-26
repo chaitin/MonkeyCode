@@ -503,6 +503,8 @@ export const ar = {
       editDialogTitle: "تعديل القاعدة",
       name: "الاسم",
       namePlaceholder: "أدخل اسم القاعدة",
+      ruleDescription: "الوصف",
+      ruleDescriptionPlaceholder: "صف بإيجاز الغرض من القاعدة",
       content: "محتوى القاعدة",
       contentPlaceholder: "أدخل القواعد التي يجب على الوكيل اتباعها",
       type: "النوع",

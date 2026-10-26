@@ -1,0 +1,9 @@
+ALTER TABLE experts
+    DROP COLUMN admin_overrides;
+ALTER TABLE connectors
+    DROP COLUMN admin_overrides;
+ALTER TABLE rules
+    DROP COLUMN admin_overrides,
+    DROP COLUMN description;
+ALTER TABLE skills
+    DROP COLUMN admin_overrides;

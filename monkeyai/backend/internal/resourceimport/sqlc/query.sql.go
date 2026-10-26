@@ -106,8 +106,8 @@ func (q *Queries) CreateImportExpert(ctx context.Context, data []byte) error {
 }
 
 const createImportRule = `-- name: CreateImportRule :exec
-INSERT INTO rules (id,owner_user_id,ownership_type,origin,name,content,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'content',d->'name_i18n',d->'description_i18n'
+INSERT INTO rules (id,owner_user_id,ownership_type,origin,name,description,content,name_i18n,description_i18n)
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->>'content',d->'name_i18n',d->'description_i18n'
 FROM (SELECT $1::jsonb AS d) input
 `
 
@@ -747,7 +747,7 @@ func (q *Queries) UpdateImportExpert(ctx context.Context, data []byte) error {
 }
 
 const updateImportRule = `-- name: UpdateImportRule :exec
-UPDATE rules SET origin='package',name=d->>'name',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+UPDATE rules SET origin='package',name=d->>'name',description=d->>'description',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        enabled=true,revision=revision+1,updated_at=now()
 FROM (SELECT $1::jsonb AS d) input WHERE id=(d->>'id')::uuid
 `

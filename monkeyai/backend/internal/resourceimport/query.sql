@@ -86,12 +86,12 @@ UPDATE skills SET origin='package',name=d->>'name',description=d->>'description'
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 
 -- name: CreateImportRule :exec
-INSERT INTO rules (id,owner_user_id,ownership_type,origin,name,content,name_i18n,description_i18n)
-SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'content',d->'name_i18n',d->'description_i18n'
+INSERT INTO rules (id,owner_user_id,ownership_type,origin,name,description,content,name_i18n,description_i18n)
+SELECT (d->>'id')::uuid,(d->>'actor_id')::uuid,'system','package',d->>'name',d->>'description',d->>'content',d->'name_i18n',d->'description_i18n'
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input;
 
 -- name: UpdateImportRule :exec
-UPDATE rules SET origin='package',name=d->>'name',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
+UPDATE rules SET origin='package',name=d->>'name',description=d->>'description',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        enabled=true,revision=revision+1,updated_at=now()
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 

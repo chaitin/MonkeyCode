@@ -68,6 +68,25 @@ export type ResourceRow = {
   callback_url: string
 }
 export const base = "/api/admin/v1"
+export function localized(
+  row: Pick<ResourceRow, "name" | "description"> &
+    Partial<Pick<ResourceRow, "name_i18n" | "description_i18n">>,
+  language: string
+) {
+  const pick = (
+    values: Record<string, string> | undefined,
+    fallback: string
+  ) => {
+    if (!values) return fallback
+    const exact = values[language]
+    if (exact) return exact
+    return values[language.split("-")[0]] ?? fallback
+  }
+  return {
+    name: pick(row.name_i18n, row.name),
+    description: pick(row.description_i18n, row.description),
+  }
+}
 export function selection(
   grants: Grant[] = [],
   required?: boolean

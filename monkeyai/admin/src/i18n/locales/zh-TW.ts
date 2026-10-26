@@ -512,6 +512,8 @@ export const zhTW = {
       editDialogTitle: "修改規則",
       name: "名稱",
       namePlaceholder: "輸入規則名稱",
+      ruleDescription: "描述",
+      ruleDescriptionPlaceholder: "簡要說明規則用途",
       content: "規則內容",
       contentPlaceholder: "輸入 Agent 需要遵循的規則",
       type: "類型",

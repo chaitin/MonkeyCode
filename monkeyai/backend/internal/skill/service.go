@@ -26,7 +26,7 @@ type Service struct {
 
 func NewService(store *resource.Store, storage resource.Storage) *Service {
 	s := &Service{store: store, storage: storage}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, UserFields: []string{"name", "description", "content", "tag_ids", "package_bytes"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "skill", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/skills", Fields: []string{"name", "description", "package_file_name", "package_s3_key", "package_size_bytes", "package_sha256", "file_count", "enabled"}, UserFields: []string{"name", "description", "content", "tag_ids", "package_bytes"}, OverrideFields: []string{"name", "description"}, Hidden: []string{"package_s3_key"}, Validate: s.validate, Decorate: s.decorate, Persist: s.tags, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
 		return resource.DecodeObjects(sqlc.New(tx).ListReferences(ctx, id))
 	}})
 	return s

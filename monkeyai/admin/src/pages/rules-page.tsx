@@ -6,6 +6,7 @@ import {
   match,
   saveResource,
   savePackageGrants,
+  localized,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
@@ -90,6 +91,7 @@ type AgentRule = {
   revision: number
   id: string
   name: string
+  description: string
   content: string
   type: RuleType
   creator: string
@@ -99,14 +101,16 @@ type AgentRule = {
   forced: boolean
 }
 
-function toRule(row: ResourceRow): AgentRule {
+function toRule(row: ResourceRow, language: string): AgentRule {
+  const text = localized(row, language)
   return {
     id: row.id,
     origin: row.origin,
     publisher: row.publisher,
     retired: row.retired,
     revision: row.revision,
-    name: row.name,
+    name: text.name,
+    description: text.description,
     content: row.content,
     type: row.ownership_type,
     creator: row.user.name || row.user.email || row.user.id,
@@ -124,7 +128,7 @@ function getCreatorInitials(creator: string) {
 }
 
 export function RulesPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [activeRuleType, setActiveRuleType] = useState<RuleType>("system")
   const [searchDraft, setSearchDraft] = useState("")
   const [search, setSearch] = useState("")
@@ -140,7 +144,7 @@ export function RulesPage() {
     search,
     pageSize
   )
-  const rules = remote.items.map(toRule)
+  const rules = remote.items.map((row) => toRule(row, i18n.language))
   const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
@@ -197,11 +201,25 @@ export function RulesPage() {
   const handleSubmitRule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
+    const name = String(data.get("name") ?? "")
+    const description = String(data.get("description") ?? "")
     await remote.run(async () => {
       if (editingRule?.origin === "package") {
+        const overrides: Record<string, string> = {}
+        if (name !== editingRule.name) overrides.name = name
+        if (description !== editingRule.description) {
+          overrides.description = description
+        }
+        const resource = Object.keys(overrides).length
+          ? await saveResource(
+              `/rules/${editingRule.id}`,
+              overrides,
+              editingRule.revision
+            )
+          : editingRule
         await savePackageGrants(
           "rule",
-          editingRule,
+          resource,
           authorization,
           editingRule.forced
         )
@@ -209,7 +227,8 @@ export function RulesPage() {
         await saveResource(
           editingRule ? `/rules/${editingRule.id}` : "/rules",
           {
-            name: String(data.get("name") ?? ""),
+            name,
+            description,
             content: String(data.get("content") ?? ""),
             grants: grants(authorization, forced),
           },
@@ -324,9 +343,22 @@ export function RulesPage() {
                         id="rule-name"
                         name="name"
                         defaultValue={editingRule?.name}
-                        disabled={importedRule}
                         placeholder={t("pages.rules.namePlaceholder")}
                         required
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="rule-description">
+                        {t("pages.rules.ruleDescription")}
+                      </FieldLabel>
+                      <Textarea
+                        className="max-h-32 min-h-20 resize-none overflow-y-auto"
+                        id="rule-description"
+                        name="description"
+                        defaultValue={editingRule?.description}
+                        placeholder={t(
+                          "pages.rules.ruleDescriptionPlaceholder"
+                        )}
                       />
                     </Field>
                     <Field>

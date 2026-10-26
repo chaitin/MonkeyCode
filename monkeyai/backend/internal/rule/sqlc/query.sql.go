@@ -10,12 +10,16 @@ import (
 )
 
 const createResource = `-- name: CreateResource :exec
-INSERT INTO rules (name, content, id, owner_user_id, ownership_type)
+INSERT INTO rules (name, description, content, id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN $1::jsonb ? 'name' THEN
             ($1::jsonb ->> 'name')::text
         ELSE
             NULL
+        END, CASE WHEN $1::jsonb ? 'description' THEN
+            ($1::jsonb ->> 'description')::text
+        ELSE
+            ''
         END, CASE WHEN $1::jsonb ? 'content' THEN
             ($1::jsonb ->> 'content')::text
         ELSE
@@ -217,10 +221,30 @@ SET
     ELSE
         name
     END,
+    description = CASE WHEN $1::jsonb ? 'description' THEN
+        ($1::jsonb ->> 'description')::text
+    ELSE
+        description
+    END,
+    name_i18n = CASE WHEN $1::jsonb ? 'name_i18n' THEN
+        NULLIF($1::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN $1::jsonb ? 'description_i18n' THEN
+        NULLIF($1::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     content = CASE WHEN $1::jsonb ? 'content' THEN
         ($1::jsonb ->> 'content')::text
     ELSE
         content
+    END,
+    admin_overrides = CASE WHEN $1::jsonb ? 'admin_overrides' THEN
+        NULLIF($1::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE
+        admin_overrides
     END,
     revision = revision + 1,
     updated_at = now()

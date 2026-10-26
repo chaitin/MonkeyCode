@@ -113,7 +113,7 @@ func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	return (o.String("ownership_type") == "user" && o.String("owner_user_id") == user) || c.grants[kind+":"+o.String("id")]
 }
 func ruleDTO(o resource.Object, required bool) resource.Object {
-	return resource.Object{"id": o["id"], "name": o["name"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "content": o["content"], "sha256": resource.Hash(o["content"]), "required": required}
+	return resource.Object{"id": o["id"], "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "content": o["content"], "sha256": resource.Hash(o["content"]), "required": required}
 }
 func skillDTO(o resource.Object, expert string) resource.Object {
 	path := "/api/v1/skills/" + o.String("id") + "/package"

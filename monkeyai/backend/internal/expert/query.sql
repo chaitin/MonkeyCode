@@ -108,6 +108,16 @@ SET
     ELSE
         description
     END,
+    name_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'name_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'description_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     prompt = CASE WHEN sqlc.arg(DATA)::jsonb ? 'prompt' THEN
         (sqlc.arg(DATA)::jsonb ->> 'prompt')::text
     ELSE
@@ -117,6 +127,11 @@ SET
         (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean
     ELSE
         enabled
+    END,
+    admin_overrides = CASE WHEN sqlc.arg(DATA)::jsonb ? 'admin_overrides' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE
+        admin_overrides
     END,
     revision = revision + 1,
     updated_at = now()

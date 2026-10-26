@@ -517,6 +517,8 @@ export const jaJP = {
       editDialogTitle: "ルールを編集",
       name: "名前",
       namePlaceholder: "ルール名を入力",
+      ruleDescription: "説明",
+      ruleDescriptionPlaceholder: "ルールの用途を簡単に説明",
       content: "ルール内容",
       contentPlaceholder: "Agent が従うルールを入力",
       type: "種類",

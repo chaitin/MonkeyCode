@@ -122,7 +122,7 @@ func desiredItems(r Resources, opts Options, existing map[string]binding, ctx co
 			source = resource.Hash(r.Content)
 		}
 		out = append(out, desired{Kind: "rule", Slug: r.Entry.Slug, Name: r.Entry.Name, Source: source, Tags: r.Entry.Tags,
-			Fields: resource.Object{"name": r.Entry.Name, "content": r.Content, "name_i18n": r.Entry.NameI18n, "description_i18n": r.Entry.DescriptionI18n}})
+			Fields: resource.Object{"name": r.Entry.Name, "description": first(r.Entry.Description, description(r.Entry.DescriptionI18n)), "content": r.Content, "name_i18n": r.Entry.NameI18n, "description_i18n": r.Entry.DescriptionI18n}})
 	}
 	for _, c := range r.Connectors {
 		method, mode := "", "none"

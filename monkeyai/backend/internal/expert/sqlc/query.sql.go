@@ -431,6 +431,16 @@ SET
     ELSE
         description
     END,
+    name_i18n = CASE WHEN $1::jsonb ? 'name_i18n' THEN
+        NULLIF($1::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN $1::jsonb ? 'description_i18n' THEN
+        NULLIF($1::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     prompt = CASE WHEN $1::jsonb ? 'prompt' THEN
         ($1::jsonb ->> 'prompt')::text
     ELSE
@@ -440,6 +450,11 @@ SET
         ($1::jsonb ->> 'enabled')::boolean
     ELSE
         enabled
+    END,
+    admin_overrides = CASE WHEN $1::jsonb ? 'admin_overrides' THEN
+        NULLIF($1::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE
+        admin_overrides
     END,
     revision = revision + 1,
     updated_at = now()

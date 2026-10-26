@@ -532,6 +532,9 @@ export const frFR = {
       editDialogTitle: "Modifier la règle",
       name: "Nom",
       namePlaceholder: "Saisissez le nom de la règle",
+      ruleDescription: "Description",
+      ruleDescriptionPlaceholder:
+        "Décrivez brièvement l’objectif de la règle",
       content: "Contenu de la règle",
       contentPlaceholder: "Saisissez les règles que l’Agent doit respecter",
       type: "Type",

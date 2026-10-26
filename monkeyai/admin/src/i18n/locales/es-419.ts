@@ -528,6 +528,8 @@ export const es419 = {
       editDialogTitle: "Editar regla",
       name: "Nombre",
       namePlaceholder: "Ingresa el nombre de la regla",
+      ruleDescription: "Descripción",
+      ruleDescriptionPlaceholder: "Describe brevemente el propósito de la regla",
       content: "Contenido de la regla",
       contentPlaceholder: "Ingresa las reglas que debe seguir el Agent",
       type: "Tipo",

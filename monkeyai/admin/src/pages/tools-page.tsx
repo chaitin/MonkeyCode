@@ -9,6 +9,7 @@ import {
   match,
   saveResource,
   savePackageGrants,
+  localized,
   useSubjects,
   type ResourceRow,
   type Credential,
@@ -113,7 +114,7 @@ function oauthFormConfig(
   mode: OAuthClientMode,
   formData: FormData,
   existing?: Record<string, string>
-) {
+): Record<string, string> {
   if (mode === "dynamic") return { mode: "dynamic" }
   const tokenAuthMethod = String(formData.get("oauthTokenAuthMethod") ?? "")
   return {
@@ -133,6 +134,28 @@ function oauthFormConfig(
   }
 }
 type ConnectionStatus = "connected" | "error" | "unknown"
+
+function oauthConfigChanged(
+  mode: OAuthClientMode,
+  server: McpServer,
+  next: Record<string, string>
+) {
+  if (mode === "dynamic") {
+    return server.oauthConfig.mode !== "dynamic"
+  }
+  if (server.oauthConfig.mode === "dynamic") return true
+  const keys = [
+    "authorization_url",
+    "token_url",
+    "client_id",
+    "registration_url",
+    "token_endpoint_auth_method",
+    "scopes",
+  ]
+  return keys.some(
+    (key) => (next[key] ?? "") !== (server.oauthConfig[key] ?? "")
+  )
+}
 
 type McpToolConfig = {
   id: string
@@ -172,7 +195,8 @@ type McpServer = {
   toolCount: number
 }
 
-function toServer(row: ResourceRow): McpServer {
+function toServer(row: ResourceRow, language: string): McpServer {
+  const text = localized(row, language)
   return {
     id: row.id,
     origin: row.origin,
@@ -182,8 +206,8 @@ function toServer(row: ResourceRow): McpServer {
     grants: row.grants,
     iconPath: row.icon_path,
     credentials: row.credentials ?? [],
-    name: row.name,
-    description: row.description,
+    name: text.name,
+    description: text.description,
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     url: row.url,
     proxyId: row.proxy_id ?? "",
@@ -215,10 +239,10 @@ function getCreatorInitials(creator: string) {
 }
 
 export function ToolsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const remote = useResourceList("/connectors")
-  const servers = remote.items.map(toServer)
+  const servers = remote.items.map((row) => toServer(row, i18n.language))
   const reload = remote.reload
   const subjects = useSubjects()
   const activeType = remote.type
@@ -335,8 +359,72 @@ export function ToolsPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (editingServer?.origin === "package") {
+      const formData = new FormData(event.currentTarget)
+      const name = String(formData.get("name") ?? "").trim()
+      const description = String(formData.get("description") ?? "").trim()
+      const url = String(formData.get("url") ?? "").trim()
+      const proxyId = String(formData.get("proxyId") ?? "").replace(
+        /^__direct__$/,
+        ""
+      )
+      const secret = String(formData.get("oauthClientSecret") ?? "")
+      const authHeaderName = String(formData.get("authHeaderName") ?? "").trim()
+      const nextMethod =
+        authorizationMode === "none"
+          ? null
+          : authorizationMethod === "httpHeader"
+            ? "http_header"
+            : "oauth"
+      const nextOAuth = oauthFormConfig(
+        oauthClientMode,
+        formData,
+        editingServer.oauthConfig
+      )
+      const overrides: Record<string, unknown> = {}
+      if (name !== editingServer.name) overrides.name = name
+      if (description !== editingServer.description) {
+        overrides.description = description
+      }
+      if (url !== editingServer.url) overrides.url = url
+      if (proxyId !== (editingServer.proxyId ?? "")) {
+        overrides.proxy_id = proxyId
+      }
+      if (authorizationMode !== editingServer.authorizationMode) {
+        overrides.authorization_mode = authorizationMode
+      }
+      if (nextMethod !== editingServer.authorizationMethod) {
+        overrides.authorization_method = nextMethod
+      }
+      if (
+        nextMethod === "http_header" &&
+        authHeaderName !== (editingServer.authHeaderName ?? "")
+      ) {
+        overrides.auth_header_name = authHeaderName
+      }
+      if (
+        nextMethod === "oauth" &&
+        oauthConfigChanged(oauthClientMode, editingServer, nextOAuth)
+      ) {
+        overrides.oauth_config = nextOAuth
+      }
+      if (secret) overrides.oauth_client_secret = secret
+      const nextTagIds = [...tagIds].sort()
+      const currentTagIds = [...editingServer.tagIds].sort()
+      if (
+        nextTagIds.length !== currentTagIds.length ||
+        nextTagIds.some((id, index) => id !== currentTagIds[index])
+      ) {
+        overrides.tag_ids = tagIds
+      }
       await remote.run(async () => {
-        await savePackageGrants("connector", editingServer, authorization)
+        const saved = Object.keys(overrides).length
+          ? await saveResource(
+              `/connectors/${editingServer.id}`,
+              overrides,
+              editingServer.revision
+            )
+          : editingServer
+        await savePackageGrants("connector", saved, authorization)
         handleDialogOpenChange(false)
       }, t("resources.operationCompleted"))
       return
@@ -368,6 +456,7 @@ export function ToolsPage() {
               : authorizationMethod === "httpHeader"
                 ? "http_header"
                 : "oauth",
+          auth_header_name: String(formData.get("authHeaderName") ?? "").trim(),
           oauth_config: oauthFormConfig(
             oauthClientMode,
             formData,
@@ -379,7 +468,7 @@ export function ToolsPage() {
         },
         editingServer?.revision
       )
-      setEditingServer(toServer(saved))
+      setEditingServer(toServer(saved, i18n.language))
       const icon = formData.get("icon")
       if (icon instanceof File && icon.size > 0) {
         const data = new FormData()
@@ -392,7 +481,7 @@ export function ToolsPage() {
       }
       if (saved.authorization_mode === "centralized") {
         handleDialogOpenChange(false)
-        setCredentialServer(toServer(saved))
+        setCredentialServer(toServer(saved, i18n.language))
       } else if (
         !saved.callback_url ||
         editingServer ||
@@ -559,7 +648,7 @@ export function ToolsPage() {
                           </p>
                         )}
                       </Field>
-                      <fieldset disabled={importedServer} className="contents">
+                      <fieldset className="contents">
                         <Field>
                           <FieldLabel htmlFor="mcp-name">
                             {t("pages.tools.name")}
@@ -577,6 +666,7 @@ export function ToolsPage() {
                             {t("resources.connectorIcon")}
                           </FieldLabel>
                           <Input
+                            disabled={importedServer}
                             id="mcp-icon"
                             name="icon"
                             type="file"
@@ -595,7 +685,7 @@ export function ToolsPage() {
                             placeholder={t(
                               "pages.tools.descriptionPlaceholder"
                             )}
-                            required
+                            required={!importedServer}
                           />
                         </Field>
                         <Field>
@@ -703,6 +793,22 @@ export function ToolsPage() {
                               </Tabs>
                             )}
                           </div>
+                          {authorizationMode !== "none" &&
+                            authorizationMethod === "httpHeader" && (
+                              <Field>
+                                <FieldLabel htmlFor="mcp-auth-header-name">
+                                  {t("resources.authHeaderName")}
+                                </FieldLabel>
+                                <Input
+                                  defaultValue={editingServer?.authHeaderName}
+                                  id="mcp-auth-header-name"
+                                  name="authHeaderName"
+                                  placeholder={t(
+                                    "resources.authHeaderNamePlaceholder"
+                                  )}
+                                />
+                              </Field>
+                            )}
                           <FieldDescription>
                             {t(
                               authorizationMode === "none"
