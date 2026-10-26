@@ -14,6 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// InstanceIdentity 可由传给 Run 的宿主扩展实现，提供持久化的部署身份。
+// 读取失败仅禁用设计资源签发，不影响应用启动。
+type InstanceIdentity = app.InstanceIdentity
+
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
 type AdminRegistrar interface {
 	RegisterAdmin(chi.Router)
