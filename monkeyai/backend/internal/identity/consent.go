@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 func consentToken(r *http.Request, requestID string) string {
@@ -22,18 +23,43 @@ func consentToken(r *http.Request, requestID string) string {
 }
 
 func verifyConsent(r *http.Request, requestID, publicURL string) error {
-	if origin := r.Header.Get("Origin"); origin != "" {
-		actual, err := url.Parse(origin)
-		expected, expectedErr := url.Parse(publicURL)
-		if err != nil || expectedErr != nil || actual.User != nil || actual.Path != "" || actual.RawQuery != "" || actual.Fragment != "" || actual.Scheme != expected.Scheme || actual.Host != expected.Host {
-			return errors.New("授权确认来源无效")
-		}
+	if origin := r.Header.Get("Origin"); origin != "" && !sameOrigin(origin, publicURL) {
+		return errors.New("授权确认来源无效")
 	}
 	csrf := consentToken(r, requestID)
 	if csrf == "" || !hmac.Equal([]byte(csrf), []byte(r.Header.Get("X-CSRF-Token"))) {
 		return errors.New("授权确认已失效，请刷新页面")
 	}
 	return nil
+}
+
+// sameOrigin 按 scheme、host 和有效端口比较来源。浏览器序列化 Origin 时会省略
+// 默认端口并小写化主机名，因此不能直接比较原始字符串。
+func sameOrigin(origin, publicURL string) bool {
+	actual, err := url.Parse(origin)
+	if err != nil || actual.User != nil || actual.Path != "" || actual.RawQuery != "" || actual.Fragment != "" {
+		return false
+	}
+	expected, err := url.Parse(publicURL)
+	if err != nil || expected.Hostname() == "" {
+		return false
+	}
+	return strings.EqualFold(actual.Scheme, expected.Scheme) &&
+		strings.EqualFold(actual.Hostname(), expected.Hostname()) &&
+		effectivePort(actual) == effectivePort(expected)
+}
+
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	}
+	return ""
 }
 
 func readApproval(w http.ResponseWriter, r *http.Request, request AuthorizationRequest, publicURL string) (*[]string, error) {
