@@ -29,7 +29,7 @@ docker compose up --build
 
 管理台“资源管理 → 导入资源包”可选择 Agent/设计分区，预览后分别提交并展示结果。设计资源保存不可变快照，提供本地目录、媒体与 ZIP 下载，旧快照保留；设计-only 不退役 Agent。部署配置、部分成功重试、双源 Token 与 API 说明见 [设计资源操作指南](design/design-resource-import.md)。
 
-设计配置支持运行环境变量 > 编译期 `-X` 默认值 > 未配置；显式空环境变量也覆盖编译默认值。离线部署不配置 `MONKEYAI_DESIGN_RESPUB_URL`，在线时填写完整 base。`MONKEYAI_INSTANCE_ID` 为部署稳定身份，hub 与本地媒体使用独立服务端密钥。新增 `source_skill_path` 字段及 respub/Desktop 跨项目联调仍待联合验收，不应将本地测试视为线上已验收。
+设计资源的 Hub 地址固定内置为 `https://hub.monkeycode-ai.com/api/design`；部署实例 ID 由 Pro 入口复用 `pro_statistics_identity` 的持久化身份，通过 `server.InstanceIdentity` 扩展注入，不读取实例 ID 或 Hub 地址环境变量。发布者与签发密钥支持运行环境变量覆盖编译期默认值，显式空值也覆盖默认值；hub 与本地媒体使用独立服务端密钥。新增 `source_skill_path` 字段及 respub/Desktop 跨项目联调仍待联合验收，不应将本地测试视为线上已验收。
 
 ## 客户端下载
 

@@ -141,15 +141,14 @@ type ImportSections struct {
 - [x] 配置项固定为：
 
 ```text
-MONKEYAI_INSTANCE_ID                  部署级稳定实例ID，重启不变
-MONKEYAI_DESIGN_RESPUB_URL            可空；完整base，示例 https://hub.monkeycode-ai.com/api/design
-                                      未配置表示只用本地渠道；不在运行时自动补 /api/design
+instance_id                          由Pro统计扩展注入，复用pro_statistics_identity的持久化UUIDv7
+respub base                          二进制固定内置https://hub.monkeycode-ai.com/api/design
 MONKEYAI_DESIGN_PUBLISHER_ID           预期发布者身份
 MONKEYAI_DESIGN_RESPUB_JWT_SECRET      与respub验证密钥一致
 MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分离
 ```
 
-`MONKEYAI_DESIGN_RESPUB_URL` 名称保留，语义改为完整 base，避免与现有配置计划冲突。值必须是绝对 URL，带完整 path，无 userinfo、query、fragment；尾斜杠可归一化但不改变已有路径段。配置存在但非法时启动报错，不把非法值降级成“未配置”。`MONKEYAI_DESIGN_PUBLISHER_ID` 未配置时输出 null。
+实例身份由 Pro 入口通过 `server.InstanceIdentity` 扩展注入；统计首次迁移生成并持久保存，后续启动复用，身份不可用时 token 返回503。Hub base 为完整固定常量，不读取实例 ID 或 Hub URL 环境变量，也不支持 `-X` 覆盖这两项。`MONKEYAI_DESIGN_PUBLISHER_ID` 未配置时输出 null。
 
 - [x] 增加 endpoint 归属查询适配器，校验 `(当前用户ID,machine_id)` 为有效登记设备；不把客户端传入 ID 当已认证事实。JWT client_id 取验证后的 MachineID，不能用 OAuth 的公共 client_id=monkeyai-desktop。
 - [x] 固定控制面响应（由现有 OAuth Bearer 保护）：
@@ -165,7 +164,7 @@ MONKEYAI_DESIGN_MEDIA_JWT_SECRET       本地媒体专用，与respub密钥分�
 }
 ```
 
-- [x] 明确 `config` 语义：`respub` 未配置时为 `null`，不是 `{"base_url":""}`；配置时 `base_url` 是可直接拼接 `/catalog/...` 或 `/design-systems/...` 的完整 base。`monkeyai` 始终为对象，`base_url` 固定以 `/api/v1/design-resources` 结尾；未导入本地快照时 `available=false`、`snapshot=null`，但 `base_url` 仍可供认证和错误诊断使用。publisher_id 未配置为 null，不使用 omitempty；响应不含任何 secret。
+- [x] 明确 `config` 语义：标准构建的 `respub.base_url` 始终为内置完整 Hub base，可直接拼接 `/catalog/...` 或 `/design-systems/...`。底层契约保留空源为 `null` 的表示，不提供运行时 URL 配置。`monkeyai` 始终为对象，`base_url` 固定以 `/api/v1/design-resources` 结尾；未导入本地快照时 `available=false`、`snapshot=null`，但 `base_url` 仍可供认证和错误诊断使用。publisher_id 未配置为 null，不使用 omitempty；响应不含任何 secret。
 - [x] 实现 `GET /api/v1/design-resources/config` 和 `POST /api/v1/design-resources/token`。Token 请求为 `{machine_id,target}`，target=`respub` 或 `monkeyai-media`，响应 `{token,expires_at}`；不使用旧的 `/api/v1/design/resources/token`。Token 端点与 catalog 同前缀但是控制面兄弟路径，不属于 catalog 契约，也不从 respub base 派生。
 - [x] respub Token 固定 HS256/iss=monkeyai/aud=respub-design；本地媒体固定 aud=monkeyai-design-media、sub=用户ID，签名不同。两者均含 instance_id/client_id/iat/exp，10分钟有效。JWT claims 与既有 respub 验证实现保持一致，不因控制面改名而改 claim。缺签发配置 503，不使其他功能启动失败。给 Desktop 签发 hub token 复用此控制面；`monkeyai-media` 是独立本地 token，不与 hub token 混用。
 - [ ] 运行针对性测试；与 respub JWT 验证测试互验，且无真实凭据进入夹具。
@@ -224,22 +223,23 @@ export type DesignImportSummary = {
 
 **文件：** 新增 `design/design-resource-import.md`，修改项目 `README.md`、`.env.example`、`docker-compose.yml` 和 backend API 文档。
 
-- [x] 写管理员操作说明：复制部署稳定 instance_id；配置预期 publisher_id；分别配置 respub 签发密钥与本地媒体密钥；离线部署可不配置 respub URL；配置 respub 时填写完整 base（示例 `https://hub.monkeycode-ai.com/api/design`），不要填裸域名后期待运行时补路径。
-- [x] 在 README 和 `design/design-resource-import.md` 写清配置优先级：运行环境变量 > 编译期 `-X` 默认值 > 未配置。必须使用 LookupEnv 一类的存在性判断，显式空值也覆盖默认值，测试空值关闭编译期 respub 配置。`MONKEYAI_DESIGN_RESPUB_URL`、`MONKEYAI_DESIGN_PUBLISHER_ID`、`MONKEYAI_DESIGN_RESPUB_JWT_SECRET`、`MONKEYAI_DESIGN_MEDIA_JWT_SECRET`，以及部署级 `MONKEYAI_INSTANCE_ID`，都允许在构建时通过 `-X` 设置默认字符串；运行环境变量始终覆盖编译期默认值。具体变量符号路径由实现任务按 module path 决定，本节不声称已实现。
+- [x] 写管理员操作说明：实例身份由Pro入口复用持久化统计ID，无需手工配置；Hub完整base固定内置。配置预期publisher_id、respub签发密钥与独立本地媒体密钥；断网部署仍可使用本地资源。
+- [x] 在 README 和 `design/design-resource-import.md` 写清发布者和密钥的配置优先级：运行环境变量 > 编译期 `-X` 默认值 > 源码默认值。使用 LookupEnv 的存在性判断，显式空值也覆盖默认值。仅 `MONKEYAI_DESIGN_PUBLISHER_ID`、`MONKEYAI_DESIGN_RESPUB_JWT_SECRET`、`MONKEYAI_DESIGN_MEDIA_JWT_SECRET` 支持运行环境或 `-X` 默认值；实例ID和HubURL不参与此配置机制。
 - [x] Go `-X` 只能设置 string 包变量。实现时在 `internal/config`（或该包内明确命名的配置默认值文件）定义空字符串默认变量，并由 config 统一读取；不得在业务包散落 `os.Getenv`，不得把 secret 写进源码、镜像构建参数、日志、错误响应或 API JSON。编译期注入只是构建产物内的默认值，用 `strings`/二进制分析仍可能提取，不等同于安全保管，也不表示可把凭据放进公开客户端。
 - [x] 示例构建命令仅说明形式，占位符由实现任务替换；不得在文档写入真实 secret：
 
 ```bash
 go build -trimpath -o monkeyai-server \
-  -ldflags "-X '<module>/internal/config.defaultDesignRespubURL=https://hub.monkeycode-ai.com/api/design' \
-            -X '<module>/internal/config.defaultDesignPublisherID=<publisher-id>' \
+  -ldflags "-X '<module>/internal/config.defaultDesignPublisherID=<publisher-id>' \
             -X '<module>/internal/config.defaultDesignRespubJWTSecret=<secret-from-secure-input>'" \
   ./cmd/server
 ```
 
 - [x] 在专用测试库验证迁移、make generate 与 make sqlc-check；不对开发者已有数据执行 down 迁移。
 - [x] 后端运行 `go test ./...`、`go vet ./...`、`make sqlc-check`；记录通过或环境依赖阻塞，不将跳过测试算通过。
-- [ ] 用服务端本地测试注册设备调用 `POST /api/v1/design-resources/token`；外来 machine_id 应拒绝，合法 Token 经 respub 验证成功。另验证未配置 respub 时 `config.respub=null`、本地 `monkeyai-media` 仍可签发，以及 `/api/v1/design-resources/catalog/...` 资源可读。
+- [ ] 用服务端本地测试注册设备调用 `POST /api/v1/design-resources/token`；外来 machine_id 应拒绝，合法 Token 经 respub 验证成功。另验证断网时本地 `monkeyai-media` 仍可签发，以及 `/api/v1/design-resources/catalog/...` 资源可读。
+- [x] Pro入口签发回归：实例身份复用 `pro_statistics_identity`，不读取实例ID环境变量；HubURL固定内置，空URL环境变量不能禁用它。隔离 PostgreSQL/S3 测试验证JWT签名、claims与统计接口的实例身份一致。
+- [x] 本次身份链路调整验证：MonkeyCode后端与Pro模块均通过 `go test -p 2 ./...`（隔离PostgreSQL/S3）和 `go vet ./...`；后端 `make sqlc-check`、Compose解析、迁移编号与up/down配对检查通过。线上Hub与Desktop联合验收仍待完成。
 
 ## M8. 与 respub / Desktop 联合验收
 
@@ -267,7 +267,7 @@ go build -trimpath -o monkeyai-server \
 | MonkeyAI 本地资源 | `https://<server>/api/v1/design-resources` | 导入快照的离线目录；后缀与 hub 相同 |
 | MonkeyAI 控制面 | `https://<server>/api/v1/design-resources` | `config`、`token` 是 catalog 的兄弟路径，不属于资源契约 |
 
-- `MONKEYAI_DESIGN_RESPUB_URL` 保存**完整 base**（示例 `https://hub.monkeycode-ai.com/api/design`），不得由客户端或服务端按域名补 `/api/design`。Desktop 只用“完整 base + 相对后缀”拼 URL。
+- Hub base 固定内置为 `https://hub.monkeycode-ai.com/api/design`，不得由客户端或服务端按域名补 `/api/design`。Desktop 只用“完整 base + 相对后缀”拼 URL。
 - JSON、snapshot、ZIP：`Authorization: Bearer <token>`。
 - 媒体 GET/HEAD：允许 `?token=`；同时存在 Authorization 时以它为准，失败不降级到 query token。
 - 管理控制面（`config`/`token`）走 MonkeyAI 现有登录/Agent 认证，不复用 hub JWT。
@@ -282,14 +282,14 @@ go build -trimpath -o monkeyai-server \
 {
   "iss": "monkeyai",
   "aud": "respub-design",
-  "instance_id": "<MONKEYAI_INSTANCE_ID>",
+  "instance_id": "<Pro pro_statistics_identity.instance_id>",
   "client_id": "<已登记设备的 MachineID>",
   "iat": 1792108800,
   "exp": 1792109400
 }
 ```
 
-- `instance_id` 取部署级稳定实例 ID；`client_id` 必须来自 `(当前用户, machine_id)` 的已登记设备校验，不能使用客户端传入的任意值，也不能使用 OAuth 公共 `client_id=monkeyai-desktop`。
+- `instance_id` 由 Pro 入口复用统计数据库中的部署级稳定实例 ID；`client_id` 必须来自 `(当前用户, machine_id)` 的已登记设备校验，不能使用客户端传入的任意值，也不能使用 OAuth 公共 `client_id=monkeyai-desktop`。
 - `exp` 必须存在，默认 10 分钟；respub 验证允许 30 秒时钟偏差。算法只接受 HS256。
 - 其他用户设备、已移除设备：403，拒绝签发。缺部署稳定实例ID或对应密钥：503，不影响其他功能启动。
 - 签发结果只在 token 响应中返回；不得写入日志、错误、快照、ZIP、任务文件或缓存到磁盘。
@@ -1081,7 +1081,7 @@ type SnapshotRef struct {
 
 **错误**：401、403、503。
 
-- 未配置 respub：`respub` 为 `null`，不是 `{"base_url":""}`。
+- 标准构建 `respub.base_url` 为二进制内置完整Hub地址；底层空源的兼容表示保留为 `null`，不使用 `{"base_url":""}`。
 - 未导入本地快照：`available=false`、`snapshot=null`，`base_url` 仍返回。
 - 响应不得包含 secret；`Cache-Control: no-store`。
 
@@ -1116,9 +1116,9 @@ type SnapshotRef struct {
 | 400 | `invalid_argument` | body 非法、target 不支持 |
 | 401 | `unauthorized` | 未登录/凭据无效 |
 | 403 | `forbidden` | machine_id 不属于当前用户、设备已移除 |
-| 503 | `unavailable` | 对应签发密钥或部署稳定实例ID未配置 |
+| 503 | `unavailable` | 对应签发密钥缺失，或宿主部署实例身份不可用 |
 
-- `target=respub` 还要求完整 respub base 已配置，未配置返回503；离线场景只影响 hub token，本地媒体 token 仍按独立配置签发。
+- `target=respub` 使用二进制内置的完整 Hub base；离线场景仍可签发短期凭据，但客户端访问Hub需网络，本地媒体 token 按独立密钥签发。
 - config/token 的错误保持现有控制面 `{"error":{"code":"...","message":"..."}}` 信封；本节错误表的 code 是这两个新端点自身的业务错误。既有 RequireAgent 在进入 handler 前产生的控制面错误仍保留现状；不套用 catalog 中间件错误转换。
 - 响应 `Cache-Control: no-store`，不得回显 secret 或额外 claims。
 - `respub` 与 `monkeyai-media` 不得混用：hub JWT 不能访问本地媒体，本地媒体 JWT 不能访问 hub。

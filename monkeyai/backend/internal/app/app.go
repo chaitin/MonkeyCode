@@ -74,6 +74,11 @@ type AdminRegistrar interface {
 	RegisterAdmin(chi.Router)
 }
 
+// InstanceIdentity 由宿主扩展提供部署身份，在成员工厂完成后读取一次。
+type InstanceIdentity interface {
+	InstanceID(context.Context) (string, error)
+}
+
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
 	return newApp(ctx, cfg, logger, func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error) {
 		return member.EmptyUserWriter{}, member.EmptyGroupWriter{}, nil
@@ -269,7 +274,18 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
-	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: cfg.InstanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
+	var instanceID string
+	for _, registrar := range registrars {
+		if source, ok := registrar.(InstanceIdentity); ok {
+			instanceID, err = source.InstanceID(ctx)
+			if err != nil {
+				logger.WarnContext(ctx, "读取部署实例身份失败，设计资源签发不可用", "error", err)
+				instanceID = ""
+			}
+			break
+		}
+	}
+	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
 	resourceImports.WithDesignCatalog(designs)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)

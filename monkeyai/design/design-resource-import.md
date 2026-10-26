@@ -8,13 +8,13 @@
 
 | 环境变量 | 用途 |
 | --- | --- |
-| MONKEYAI_INSTANCE_ID | 部署级稳定身份，生成一次后持久保存；不要每次重启生成 |
 | MONKEYAI_DESIGN_PUBLISHER_ID | 可选预期发布者；配置时导入与激活必须匹配 |
-| MONKEYAI_DESIGN_RESPUB_URL | 可选完整 hub base，例如 `https://hub.monkeycode-ai.com/api/design` |
 | MONKEYAI_DESIGN_RESPUB_JWT_SECRET | 可选覆盖进程内置的 hub 签名密钥；须与 hub 的 DESIGN_OPENAPI_JWT_SECRET 一致 |
 | MONKEYAI_DESIGN_MEDIA_JWT_SECRET | 独立的本地媒体签名密钥，不能复用 hub 密钥 |
 
-不配置 hub URL 即离线模式，config.respub 为 null；本地资源只依赖 PostgreSQL/S3。缺少签发密钥或实例身份时相应 token 端点503，不使其他功能启动失败。无设计快照时 available=false、snapshot=null，目录请求404 snapshot_not_found。非法非空 hub URL 在启动时报错：必须包含完整路径，禁止 userinfo/query/fragment，不能只填裸域名后期待补 `/api/design`。
+Hub 完整 base 固定内置为 `https://hub.monkeycode-ai.com/api/design`，不读取 URL 环境变量或编译期 `-X` 覆盖。`instance_id` 由 Pro 入口的统计扩展通过 `server.InstanceIdentity` 提供：首次统计迁移生成 UUIDv7 并持久保存在 `pro_statistics_identity`，后续启动复用同一身份；不读取实例 ID 环境变量，也不另行生成身份。授权机器码与统计实例 ID 是独立字段。
+
+本地资源只依赖 PostgreSQL/S3，断网时仍可使用；config 始终下发内置 Hub 地址。缺少签发密钥、未接入宿主身份扩展或统计身份读取失败时，相应 token 端点返回503，不使其他功能启动失败。无设计快照时 available=false、snapshot=null，目录请求404 snapshot_not_found。
 
 首期每部署只激活一个发布者：预期发布者未配置时，首次成功激活绑定源 publisher；随后其他 publisher 返回409。config 顶层 publisher_id 仅表示预期配置，未配置时仍为 null；实际身份从 snapshot 读取。暂不提供发布者切换操作。
 
@@ -37,7 +37,7 @@ hub 签名密钥已作为后端默认值内嵌；运行环境变量或编译期 
 - config/token：使用现有 Agent OAuth Bearer，成功返回裸对象，错误沿用控制面 error 信封，no-store。
 - JSON/ZIP：使用现有 Agent OAuth Bearer；资源响应使用 `{code:0,message:"",data:...}`，错误 code 为字符串，data=null。
 - 媒体：先以自己的已登记 machine_id 请求 target=monkeyai-media，使用独立本地媒体 JWT 的 Bearer 或临时 query token。存在 Authorization 时优先验证它，失败不降级；hub JWT 和 Agent access token 不能代替本地媒体 JWT。
-- hub：target=respub 返回 HS256/iss=monkeyai/aud=respub-design 的短期JWT，client_id取服务端验证后的MachineID。需要 hub base、对应密钥与实例身份。
+- hub：target=respub 返回 HS256/iss=monkeyai/aud=respub-design 的短期JWT，client_id取服务端验证后的MachineID，instance_id与Pro统计一致。使用内置Hub地址与对应签名密钥。
 - 从 config 读取完整 base，再请求 `/catalog/snapshot`，后续固定 snapshot/publisher_id/content_digest。明确指定的未知快照404、摘要不符409，不静默回落 current；401最多刷新一次，403不切源绕过。
 - 模板/系统下载直接读取冻结 ZIP，不302到S3。Range、HEAD、If-None-Match、If-Range 使用真实字节强ETag；鉴权先于304/206。媒体只允许image/video/audio，SVG加sandbox CSP，缓存私有。
 - 原 metadata.skillPath 保留；模板详情 source_skill_path 是独立解析的源文件逻辑路径，无技能时null，不参与业务摘要。这个新增字段尚待 respub/Desktop 跨项目互验，不能假定旧客户端已消费。
@@ -54,15 +54,13 @@ S3复用现有bucket，需要条件创建、HeadObject和字节Range读取能力
 
 ## 编译期默认值
 
-配置优先级为运行环境变量 > 编译期 `-X` 默认值 > 源码默认值。hub 签名密钥有内置默认值，其余设计配置默认为空。显式空环境变量也会覆盖默认值，可以关闭编译预置的hub或签发配置。Compose 中 hub 密钥未设置时保留内置默认值，显式设置（包括空值）时传入容器；其他设计配置仍显式传入空值，使用其编译默认值的部署需移除相应运行环境项。
+发布者和签名密钥的配置优先级为运行环境变量 > 编译期 `-X` 默认值 > 源码默认值。hub 签名密钥有内置默认值，其余密钥与发布者配置默认为空。显式空环境变量也会覆盖默认值。Compose 中 hub 密钥未设置时保留内置默认值，显式设置（包括空值）时传入容器；发布者与本地媒体密钥仍显式传入空值，使用其编译默认值的部署需移除相应运行环境项。实例身份由 Pro 提供、Hub URL 为固定常量，均不属于这些可覆盖配置。
 
 实际字符串符号位于 `github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config`：
 
 ```bash
 go build -trimpath -o monkeyai-server \
-  -ldflags "-X 'github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config.defaultInstanceID=<stable-instance-id>' \
-            -X 'github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config.defaultDesignRespubURL=https://hub.monkeycode-ai.com/api/design' \
-            -X 'github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config.defaultDesignPublisherID=<publisher-id>'" \
+  -ldflags "-X 'github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config.defaultDesignPublisherID=<publisher-id>'" \
   ./cmd/server
 ```
 

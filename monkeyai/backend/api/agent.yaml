@@ -13,7 +13,7 @@ paths:
       description: 成功返回裸对象，错误沿用现有控制面 error 信封；Cache-Control 为 no-store。base_url 是完整 base，不追加固定路径；publisher_id 未配置为 null。
       responses:
         '200':
-          description: 配置不含密钥；未配置 hub 时 respub=null，未导入时 available=false、snapshot=null。
+          description: 配置不含密钥；hub 地址固定内置；未导入时 available=false、snapshot=null。
           content:
             application/json:
               schema: {$ref: '#/components/schemas/DesignConfig'}
@@ -22,7 +22,7 @@ paths:
   /api/v1/design-resources/token:
     post:
       summary: 为当前用户已登记设备签发设计凭据
-      description: hub JWT 使用 aud=respub-design；本地媒体 JWT 使用 aud=monkeyai-design-media 及 sub=用户ID，密钥独立，有效期10分钟。响应 no-store，禁止记录凭据。设备移除后不得签发，已签发短期凭据按过期时间失效。
+      description: hub JWT 使用 aud=respub-design；本地媒体 JWT 使用 aud=monkeyai-design-media 及 sub=用户ID，密钥独立，有效期10分钟。instance_id 由 Pro 入口复用持久化统计身份。响应 no-store，禁止记录凭据。设备移除后不得签发，已签发短期凭据按过期时间失效。
       requestBody:
         required: true
         content:

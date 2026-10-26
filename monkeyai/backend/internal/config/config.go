@@ -100,9 +100,6 @@ func Load(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("解析启动参数: %w", err)
 	}
 
-	if err := validateDesign(&cfg.Design); err != nil {
-		return Config{}, err
-	}
 	cfg.Addr = strings.TrimSpace(cfg.Addr)
 	if cfg.Addr == "" {
 		return Config{}, errors.New("HTTP 监听地址不能为空")
