@@ -2946,7 +2946,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB。
                 metadata:
                   type: string
                   description: JSON 字符串，包含 tag_ids 和 grants。
@@ -3711,7 +3711,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB。
                 metadata:
                   type: string
                   description: JSON 字符串，包含 tag_ids 和 grants。

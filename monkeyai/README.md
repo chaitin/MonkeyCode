@@ -199,7 +199,7 @@ Compose 默认使用 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 供后端初始�
 
 RustFS 镜像固定为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustfs:v1.0.0-rc.5`。数据位于 `./data/rustfs`，日志位于 `./data/rustfs-logs`，RustFS 容器以非 root 用户 `10001:10001` 运行，挂载目录权限在部署前准备，不使用独立权限初始化容器。S3 API 默认仅在 Compose 网络开放，控制台只绑定宿主机回环地址。
 
-`/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 通用请求体上限为 100 MiB，技能上传路径允许 501 MiB（含 multipart 开销）；技能文件限 500 MiB，解包限 1 GiB/5000 个条目，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
+`/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 通用请求体上限为 100 MiB，技能上传路径允许 501 MiB（含 multipart 开销）；技能文件限 500 MiB，解包限 1 GiB，文件数量和 `SKILL.md` 大小不设独立上限，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
 
 MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_ALLOWED_CIDRS` 明确配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。系统连接新发现工具默认禁用，个人连接工具自动启用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，需要登记到上游 OAuth 应用。
 

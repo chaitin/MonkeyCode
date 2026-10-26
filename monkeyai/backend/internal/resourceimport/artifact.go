@@ -106,7 +106,7 @@ func mergeTranslations(manifest, artifact map[string]string) map[string]string {
 }
 
 func zipSkillFiles(data []byte) (map[string][]byte, error) {
-	files, err := readZIP(data, skill.MaxPackage, skill.MaxExpanded, skill.MaxFiles, skill.MaxExpanded)
+	files, err := readZIP(data, skill.MaxPackage, skill.MaxExpanded, skill.MaxExpanded)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func embeddedSkill(entry Entry, files map[string][]byte) (Skill, error) {
 
 func parseExpert(entry Entry, data []byte, resources *Resources) (Expert, error) {
 	out := Expert{Entry: entry}
-	files, err := readZIP(data, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
+	files, err := readZIP(data, MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
 		return out, fmt.Errorf("专家 ZIP 无效: %w", err)
 	}
@@ -400,7 +400,7 @@ func parseEntrySkill(entry Entry, archive []byte) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
-	original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, skill.MaxFiles, skill.MaxExpanded)
+	original, err := readZIP(archive, skill.MaxPackage, skill.MaxExpanded, skill.MaxExpanded)
 	if err != nil {
 		return Skill{}, err
 	}
@@ -432,7 +432,7 @@ func (p Package) SkillBytes(item Skill) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		files, err := readZIP(archive, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
+		files, err := readZIP(archive, MaxPackage, MaxExpanded, MaxFile)
 		if err != nil {
 			return nil, err
 		}
@@ -469,7 +469,7 @@ func (p Package) AvatarBytes(item Expert) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	files, err := readZIP(archive, MaxExpertPackage, MaxExpertExpanded, MaxFiles, 50<<20)
+	files, err := readZIP(archive, MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +478,6 @@ func (p Package) AvatarBytes(item Expert) ([]byte, error) {
 
 func ParseResources(p Package) (Resources, error) {
 	out := Resources{Skills: map[string]Skill{}, Rules: map[string]Rule{}, Connectors: map[string]Connector{}, Experts: map[string]Expert{}, types: map[string]string{}, aliases: map[string]string{}, streamed: p.streamed}
-	retainedText := 0
 	for _, entry := range append(append(append(append([]Entry{}, p.Manifest.AgentResources.Skills...), p.Manifest.AgentResources.Rules...), p.Manifest.AgentResources.Connectors...), p.Manifest.AgentResources.Experts...) {
 		out.types[entry.Slug] = entry.Type
 		key := entry.Type + ":" + first(entry.SourceSlug, entry.Slug)
@@ -496,19 +495,12 @@ func ParseResources(p Package) (Resources, error) {
 			return out, fmt.Errorf("技能 %s: %w", entry.Slug, err)
 		}
 		item.SourcePath = entry.Path
-		retainedText += len(item.Package.Content)
-		if retainedText > MaxRetainedText {
-			return out, fmt.Errorf("资源文本总量超限")
-		}
 		if p.streamed {
 			item.Files, item.Package.Files, item.Package.Bytes = nil, nil, nil
 		}
 		out.Skills[entry.Slug] = item
 	}
 	for _, entry := range p.Manifest.AgentResources.Rules {
-		if file := p.entries[entry.Path]; file != nil && file.UncompressedSize64 > 2<<20 {
-			return out, fmt.Errorf("规则产物过大: %s", entry.Slug)
-		}
 		var info struct {
 			Content string
 		}
@@ -520,16 +512,9 @@ func ParseResources(p Package) (Resources, error) {
 			return out, fmt.Errorf("规则 %s: %w", entry.Slug, err)
 		}
 		entry.SHA256 = digest(data)
-		retainedText += len(info.Content)
-		if retainedText > MaxRetainedText {
-			return out, fmt.Errorf("资源文本总量超限")
-		}
 		out.Rules[entry.Slug] = Rule{Entry: entry, Content: info.Content}
 	}
 	for _, entry := range p.Manifest.AgentResources.Connectors {
-		if file := p.entries[entry.Path]; file != nil && file.UncompressedSize64 > 1<<20 {
-			return out, fmt.Errorf("连接器产物过大: %s", entry.Slug)
-		}
 		var info struct {
 			Config ConnectorConfig
 		}
@@ -584,15 +569,6 @@ func ParseResources(p Package) (Resources, error) {
 		item, err := parseExpert(entry, data, &out)
 		if err != nil {
 			return out, err
-		}
-		retainedText += len(item.Prompt)
-		for _, slug := range item.Skills {
-			if embedded := out.Skills[slug]; embedded.ExpertPath == entry.Path {
-				retainedText += len(embedded.Package.Content)
-			}
-		}
-		if retainedText > MaxRetainedText {
-			return out, fmt.Errorf("资源文本总量超限")
 		}
 		out.Experts[entry.Slug] = item
 	}

@@ -21,31 +21,38 @@ type Inspection struct {
 
 func Inspect(reader io.ReaderAt, size int64) (Inspection, error) {
 	var out Inspection
+	if size <= 0 || size > MaxPackage {
+		return out, fault(400, "invalid_argument", "资源包大小超限")
+	}
 	z, err := zip.NewReader(reader, size)
 	if err != nil {
 		return out, err
 	}
-	if len(z.File) > MaxFiles {
-		return out, fault(400, "invalid_argument", "ZIP条目数超限")
-	}
 	var f *zip.File
+	var expanded uint64
 	for _, entry := range z.File {
 		if !SafePath(strings.TrimSuffix(entry.Name, "/")) || entry.Mode()&os.ModeSymlink != 0 {
 			return out, fault(400, "invalid_argument", "不安全ZIP路径")
+		}
+		if !entry.FileInfo().IsDir() {
+			if entry.UncompressedSize64 > uint64(MaxExpanded)-expanded {
+				return out, fault(400, "invalid_argument", "ZIP 展开大小超限")
+			}
+			expanded += entry.UncompressedSize64
 		}
 		if entry.Name == "manifest.json" && f == nil {
 			f = entry
 		}
 	}
-	if f == nil || f.UncompressedSize64 > uint64(MaxMetadata) {
-		return out, fault(400, "invalid_argument", "缺少 manifest 或元数据超限")
+	if f == nil {
+		return out, fault(400, "invalid_argument", "缺少 manifest.json")
 	}
 	r, err := f.Open()
 	if err != nil {
 		return out, err
 	}
 	defer r.Close()
-	b, err := io.ReadAll(io.LimitReader(r, MaxMetadata+1))
+	b, err := io.ReadAll(io.LimitReader(r, int64(f.UncompressedSize64)+1))
 	if err != nil {
 		return out, err
 	}

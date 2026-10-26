@@ -84,7 +84,7 @@ for (const extra of [0, 1]) {
 
 for (const count of [5000, 5001]) {
   for (const source of ["archive", "directory"]) {
-    test(`${source} ${count === 5000 ? "accepts" : "rejects"} a skill with ${count} files`, async () => {
+    test(`${source} accepts a skill with ${count} files`, async () => {
       const files = { "SKILL.md": VALID_MANIFEST }
       for (let i = 1; i < count; i++) {
         files[`reference-${i}.md`] = "reference"
@@ -98,20 +98,22 @@ for (const count of [5000, 5001]) {
               )
             )
 
-      if (count > 5000) {
-        await assert.rejects(
-          inspection,
-          (error) =>
-            error instanceof SkillPackageError && error.code === "tooManyFiles"
-        )
-        return
-      }
-
       const result = await inspection
       const analysis = source === "archive" ? result : result[0]
       assert.equal(analysis.fileCount, count)
     })
   }
+}
+
+for (const source of ["archive", "directory"]) {
+  test(`${source} 接受超过 512 KiB 的 SKILL.md`, async () => {
+    const content = VALID_MANIFEST + "正文\n".repeat(200000)
+    const analysis = source === "archive"
+      ? await inspectSkillPackage(await createArchive({ "SKILL.md": content }))
+      : (await inspectSkillDirectory([new File([content], "SKILL.md")]))[0]
+    assert.equal(analysis.content, content)
+    assert.equal(analysis.name, "code-review")
+  })
 }
 
 test("recognizes a skill directory and parses SKILL.md metadata", async () => {

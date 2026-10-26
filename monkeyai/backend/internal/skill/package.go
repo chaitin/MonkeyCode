@@ -18,7 +18,6 @@ import (
 
 const MaxPackage = 500 << 20
 const MaxExpanded = 1 << 30
-const MaxFiles = 5000
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
@@ -37,9 +36,6 @@ func Parse(b []byte) (Package, error) {
 	r, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 	if err != nil {
 		return p, fmt.Errorf("无效 ZIP")
-	}
-	if len(r.File) > MaxFiles {
-		return p, fmt.Errorf("技能包超过 %d 个文件", MaxFiles)
 	}
 	root := ""
 	found := false
@@ -91,8 +87,8 @@ func Parse(b []byte) (Package, error) {
 	}
 	p.Files = normalized
 	manifest := p.Files["SKILL.md"]
-	if len(manifest) > 512<<10 || !utf8.Valid(manifest) {
-		return p, fmt.Errorf("SKILL.md 必须是 512 KiB 内的 UTF-8 文本")
+	if !utf8.Valid(manifest) {
+		return p, fmt.Errorf("SKILL.md 必须是 UTF-8 文本")
 	}
 	text := strings.ReplaceAll(string(manifest), "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {

@@ -430,14 +430,12 @@ export const ar = {
         invalidZip: "تعذرت قراءة الملف. ارفع حزمة مهارة ZIP صالحة.",
         unsafePath: "تحتوي حزمة المهارة على مسار ملف غير آمن.",
         symlink: "يجب ألا تحتوي حزمة المهارة على روابط رمزية.",
-        tooManyFiles: "يمكن أن تحتوي حزمة المهارة على 5000 ملف كحد أقصى.",
         unpackedTooLarge: "يجب ألا يتجاوز حجم الحزمة بعد فك الضغط 1 GiB.",
         missingManifest:
           "لم يتم العثور على SKILL.md. هذه ليست حزمة مهارة صالحة.",
         multipleManifests:
           "تم العثور على عدة ملفات SKILL.md وتعذر تحديد نقطة الدخول.",
         mixedRoot: "تم العثور على ملفات خارج المجلد الذي يحتوي على SKILL.md.",
-        manifestTooLarge: "يجب ألا يتجاوز حجم SKILL.md ‏512 كيلوبايت.",
         invalidFrontmatter: "لا يحتوي SKILL.md على YAML frontmatter صالح.",
         missingName: "يفتقد frontmatter في SKILL.md إلى name.",
         invalidName:

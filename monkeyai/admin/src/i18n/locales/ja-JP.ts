@@ -443,7 +443,6 @@ export const jaJP = {
           "ファイルを読み取れません。有効な ZIP スキルパッケージをアップロードしてください。",
         unsafePath: "スキルパッケージに安全でないファイルパスがあります。",
         symlink: "スキルパッケージにシンボリックリンクは含められません。",
-        tooManyFiles: "スキルパッケージに含められるのは最大 5000 ファイルです。",
         unpackedTooLarge:
           "展開後のスキルパッケージは 1 GiB 以下にしてください。",
         missingManifest:
@@ -451,7 +450,6 @@ export const jaJP = {
         multipleManifests:
           "複数の SKILL.md が見つかったため、スキルの入口を特定できません。",
         mixedRoot: "SKILL.md のあるディレクトリ外にファイルがあります。",
-        manifestTooLarge: "SKILL.md は 512 KB 以下にしてください。",
         invalidFrontmatter: "SKILL.md に有効な YAML frontmatter がありません。",
         missingName: "SKILL.md の frontmatter に name がありません。",
         invalidName:

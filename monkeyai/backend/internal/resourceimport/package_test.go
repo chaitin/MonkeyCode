@@ -71,7 +71,7 @@ func TestAcceptLoosePackageMetadata(t *testing.T) {
 }
 
 func TestAcceptMissingOptionalMetadata(t *testing.T) {
-	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,62 @@ func TestImportSkillAboveOldSizeLimits(t *testing.T) {
 	}
 }
 
-func TestImportSkillFileCountLimit(t *testing.T) {
+func TestImportLargeResources(t *testing.T) {
+	rule := strings.Repeat("规则正文\n", 400000)
+	description := strings.Repeat("连接器描述", 100000)
+	data := packageFixture(t, func(m *Manifest, files map[string][]byte) {
+		m.AgentResources.Rules = []Entry{{Slug: "large-rule", Path: "agent/rules/large.json"}}
+		m.AgentResources.Connectors = []Entry{{Slug: "large-connector", Path: "agent/connectors/large.json"}}
+		m.AgentResources.Experts = []Entry{{Slug: "large-expert", Path: "agent/experts/large.zip"}}
+		files["agent/rules/large.json"], _ = json.Marshal(map[string]string{"content": rule})
+		files["agent/connectors/large.json"], _ = json.Marshal(map[string]any{"config": map[string]string{"description": description}})
+		expert, err := makeZIP(map[string][]byte{"agents/expert.md": []byte("专家提示词"), "data.bin": make([]byte, 51<<20)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["agent/experts/large.zip"] = expert
+	})
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ParseResources(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resources.Rules["large-rule"].Content != rule || resources.Connectors["large-connector"].Config.Description != description || resources.Experts["large-expert"].Prompt != "专家提示词" {
+		t.Fatal("超过旧限制的资源内容未完整保留")
+	}
+	if _, err := pkg.AvatarBytes(resources.Experts["large-expert"]); err != nil {
+		t.Fatalf("应能按需重读大专家包: %v", err)
+	}
+}
+
+func TestPackageLargeMetadataAndManyEntries(t *testing.T) {
+	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"manifest.json", "release.json", "CHECKSUMS.sha256"} {
+		files[name] = append(files[name], bytes.Repeat([]byte(" "), 9<<20)...)
+	}
+	for i := range 5001 {
+		files[fmt.Sprintf("extra/%d", i)] = nil
+	}
+	data, err := makeZIP(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := ParseReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseResources(pkg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImportSkillManyFiles(t *testing.T) {
 	for _, root := range []string{"", "root/"} {
 		for _, count := range []int{5000, 5001} {
 			t.Run(fmt.Sprintf("%s%d", root, count), func(t *testing.T) {
@@ -409,12 +464,6 @@ func TestImportSkillFileCountLimit(t *testing.T) {
 					t.Fatal(err)
 				}
 				resources, err := ParseResources(pkg)
-				if count > 5000 {
-					if err == nil || !strings.Contains(err.Error(), "条目数超限") {
-						t.Fatalf("应拒绝超过 5000 个文件的技能包: %v", err)
-					}
-					return
-				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -431,7 +480,7 @@ func TestImportSkillFileCountLimit(t *testing.T) {
 }
 
 func TestIgnoresReleaseCounts(t *testing.T) {
-	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -451,7 +451,6 @@ export const es419 = {
         invalidZip: "No se puede leer el archivo. Sube un paquete ZIP válido.",
         unsafePath: "El paquete contiene una ruta de archivo no segura.",
         symlink: "El paquete no puede contener enlaces simbólicos.",
-        tooManyFiles: "El paquete puede contener como máximo 5000 archivos.",
         unpackedTooLarge:
           "El paquete descomprimido no puede superar 1 GiB.",
         missingManifest:
@@ -460,7 +459,6 @@ export const es419 = {
           "Se encontraron varios SKILL.md y no se puede determinar la entrada.",
         mixedRoot:
           "Se encontraron archivos fuera del directorio que contiene SKILL.md.",
-        manifestTooLarge: "SKILL.md no puede superar los 512 KB.",
         invalidFrontmatter: "SKILL.md no contiene frontmatter YAML válido.",
         missingName: "Falta name en el frontmatter de SKILL.md.",
         invalidName:

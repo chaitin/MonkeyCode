@@ -253,7 +253,7 @@ func TestUnsafeZIP(t *testing.T) {
 			w.Write([]byte("x"))
 		}
 		z.Close()
-		if _, err := openArchive(bytes.NewReader(buf.Bytes()), int64(buf.Len()), MaxExpanded); err == nil {
+		if _, err := openArchive(bytes.NewReader(buf.Bytes()), int64(buf.Len())); err == nil {
 			t.Fatalf("不安全 ZIP 被接受: %v", names)
 		}
 	}

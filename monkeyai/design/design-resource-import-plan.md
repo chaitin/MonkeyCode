@@ -83,7 +83,7 @@ type File struct {
 - [x] publisher_id 读取 `release.json.publisher.id`，并核对 `manifest.json.publisher_id`；保存资源 catalog_id 与 provenance，不能用内部 slug 或名称替代这些字段。
 - [x] 旧 design_resources 仅 RawMessage 的逻辑改为有设计导入结果；旧未版本化分区返回 unsupported_design_section 提示，不标记成功。
 - [ ] 按 A.6.11 解析并保存独立 `source_skill_path`，不改 metadata.skillPath 或摘要；实际包 110 个 bundle 的路径可由显式映射唯一恢复，109 个 prompt 的 has_skill=false，忽略其遗留 `SKILL.md` 默认值。补充有技能但缺文件/映射歧义拒绝、无技能默认值不误报的测试。
-- [ ] 测量夹具及真实测试包的条目数/大小，在外包现有 2 GiB/解压 4 GiB 限制内做流式读取；分别限制嵌套 ZIP，防止层层放大和全包读内存。外包条目上限保留 5000，嵌套单包先使用 5000 条/512 MiB 展开上限，整次导入按所有层实际读取字节累计不超过 4 GiB；v30 嵌套总计 5358 条，不能把 5000 当作所有层条目总和。补充元数据、单文件、临时磁盘与并发导入预算，按实际读取量计数，不只相信 ZIP 声明。运行针对性测试，预期全部 PASS。
+- [ ] 测量夹具及真实测试包的条目数/大小，在外包现有 2 GiB/解压 4 GiB 限制内做流式读取；整次导入按所有层实际读取字节累计不超过 4 GiB。不再单独限制 ZIP 条目数、元数据文件大小、嵌套包展开大小或累计保留的发布元数据。补充临时磁盘与并发导入预算，按实际读取量计数，不只相信 ZIP 声明。运行针对性测试，预期全部 PASS。
 
 ## M2. 设计快照数据库与不可变文件存储
 

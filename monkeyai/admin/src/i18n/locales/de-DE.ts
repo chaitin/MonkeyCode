@@ -456,8 +456,6 @@ export const deDE = {
           "Die Datei kann nicht gelesen werden. Laden Sie ein gültiges ZIP-Paket hoch.",
         unsafePath: "Das Fähigkeitspaket enthält einen unsicheren Dateipfad.",
         symlink: "Das Fähigkeitspaket darf keine symbolischen Links enthalten.",
-        tooManyFiles:
-          "Das Fähigkeitspaket darf höchstens 5000 Dateien enthalten.",
         unpackedTooLarge:
           "Das entpackte Fähigkeitspaket darf höchstens 1 GiB groß sein.",
         missingManifest:
@@ -466,7 +464,6 @@ export const deDE = {
           "Mehrere SKILL.md-Dateien wurden gefunden; der Einstieg ist nicht eindeutig.",
         mixedRoot:
           "Außerhalb des Ordners mit SKILL.md wurden weitere Dateien gefunden.",
-        manifestTooLarge: "SKILL.md darf höchstens 512 KB groß sein.",
         invalidFrontmatter: "SKILL.md enthält kein gültiges YAML-Frontmatter.",
         missingName: "Im Frontmatter von SKILL.md fehlt name.",
         invalidName:
