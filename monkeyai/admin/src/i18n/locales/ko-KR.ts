@@ -506,6 +506,8 @@ export const koKR = {
       editDialogTitle: "규칙 수정",
       name: "이름",
       namePlaceholder: "규칙 이름 입력",
+      ruleDescription: "설명",
+      ruleDescriptionPlaceholder: "규칙 용도를 간단히 설명",
       content: "규칙 내용",
       contentPlaceholder: "Agent가 따라야 할 규칙 입력",
       type: "유형",

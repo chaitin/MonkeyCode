@@ -6,6 +6,7 @@ import {
   match,
   saveResource,
   savePackageGrants,
+  localized,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
@@ -119,7 +120,8 @@ type SkillDraft = {
   tagIds: string[]
 }
 
-function toSkill(row: ResourceRow): AgentSkill {
+function toSkill(row: ResourceRow, language: string): AgentSkill {
+  const text = localized(row, language)
   return {
     id: row.id,
     origin: row.origin,
@@ -127,8 +129,8 @@ function toSkill(row: ResourceRow): AgentSkill {
     retired: row.retired,
     grants: row.grants,
     revision: row.revision,
-    name: row.name,
-    description: row.description,
+    name: text.name,
+    description: text.description,
     content: "",
     tagIds: (row.tags ?? []).map((t) => t.id),
     type: row.ownership_type,
@@ -163,10 +165,10 @@ function formatBytes(bytes: number) {
 }
 
 export function SkillsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const remote = useResourceList("/skills")
-  const skills = remote.items.map(toSkill)
+  const skills = remote.items.map((row) => toSkill(row, i18n.language))
   const subjects = useSubjects()
   const activeSkillType = remote.type
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -313,7 +315,19 @@ export function SkillsPage() {
     if (!editingSkill) return
     await remote.run(async () => {
       if (editingSkill.origin === "package") {
-        await savePackageGrants("skill", editingSkill, authorization)
+        const overrides: Record<string, string> = {}
+        if (draft.name !== editingSkill.name) overrides.name = draft.name
+        if (draft.description !== editingSkill.description) {
+          overrides.description = draft.description
+        }
+        const resource = Object.keys(overrides).length
+          ? await saveResource(
+              `/skills/${editingSkill.id}`,
+              overrides,
+              editingSkill.revision
+            )
+          : editingSkill
+        await savePackageGrants("skill", resource, authorization)
         handleDialogOpenChange(false)
         return
       }
@@ -325,7 +339,7 @@ export function SkillsPage() {
           base + `/skills/${item.id}/package`,
           { method: "PUT", headers: match(item.revision), body: form }
         )
-        item = toSkill(row)
+        item = toSkill(row, i18n.language)
       }
       await saveResource(
         `/skills/${item.id}`,
@@ -469,42 +483,56 @@ export function SkillsPage() {
                               </Item>
                             )}
                           </Field>
-                          <Field>
-                            <FieldLabel htmlFor="skill-name">
-                              {t("pages.skills.name")}
-                            </FieldLabel>
-                            <Input
-                              aria-readonly="true"
-                              id="skill-name"
-                              placeholder={t("pages.skills.namePlaceholder")}
-                              readOnly
-                              required
-                              value={draft.name}
-                            />
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="skill-description">
-                              {t("pages.skills.skillDescription")}
-                            </FieldLabel>
-                            <Textarea
-                              aria-readonly="true"
-                              className="max-h-32 min-h-20 resize-none overflow-y-auto"
-                              id="skill-description"
-                              placeholder={t(
-                                "pages.skills.skillDescriptionPlaceholder"
-                              )}
-                              readOnly
-                              required
-                              value={draft.description}
-                            />
-                          </Field>
+                        </fieldset>
+                        <Field>
+                          <FieldLabel htmlFor="skill-name">
+                            {t("pages.skills.name")}
+                          </FieldLabel>
+                          <Input
+                            aria-readonly={!importedSkill}
+                            id="skill-name"
+                            placeholder={t("pages.skills.namePlaceholder")}
+                            readOnly={!importedSkill}
+                            required={!importedSkill}
+                            value={draft.name}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="skill-description">
+                            {t("pages.skills.skillDescription")}
+                          </FieldLabel>
+                          <Textarea
+                            aria-readonly={!importedSkill}
+                            className="max-h-32 min-h-20 resize-none overflow-y-auto"
+                            id="skill-description"
+                            placeholder={t(
+                              "pages.skills.skillDescriptionPlaceholder"
+                            )}
+                            readOnly={!importedSkill}
+                            required={!importedSkill}
+                            value={draft.description}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                description: event.target.value,
+                              }))
+                            }
+                          />
+                        </Field>
+                        <fieldset disabled={importedSkill} className="contents">
                           <Field>
                             <FieldLabel htmlFor="skill-content">
                               {t("resources.skillContent")}
                             </FieldLabel>
                             <Textarea
                               id="skill-content"
-                              className="min-h-48 resize-y font-mono"
+                              className="max-h-64 min-h-48 resize-y overflow-y-auto font-mono"
                               value={draft.content}
                               onChange={(e) =>
                                 setDraft((current) => ({

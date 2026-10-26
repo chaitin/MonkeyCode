@@ -467,6 +467,15 @@ func writeTags(ctx context.Context, tx pgx.Tx, change Change, id, actor string) 
 	if change.Tags == nil {
 		return nil
 	}
+	if change.Action != "create" {
+		_, overrides, err := importTarget(ctx, tx, change.Type, id)
+		if err != nil {
+			return err
+		}
+		if overrides["tag_ids"] {
+			return nil
+		}
+	}
 	ids := make([]string, 0, len(change.Tags))
 	queries := sqlc.New(tx)
 	for _, name := range change.Tags {
@@ -509,6 +518,39 @@ func description(values map[string]string) string {
 	return ""
 }
 
+// importTarget loads the current row and the administrator overrides recorded
+// for it, so an update can leave those fields at their local values.
+func importTarget(ctx context.Context, tx pgx.Tx, kind, id string) (resource.Object, map[string]bool, error) {
+	data, err := sqlc.New(tx).GetImportTarget(ctx, sqlc.GetImportTargetParams{Column1: kind, Column2: id})
+	if err != nil {
+		return nil, nil, err
+	}
+	var old resource.Object
+	if err := json.Unmarshal(data, &old); err != nil {
+		return nil, nil, err
+	}
+	overrides := map[string]bool{}
+	if values, ok := old["admin_overrides"].(map[string]any); ok {
+		for key := range values {
+			overrides[key] = true
+		}
+	}
+	return old, overrides, nil
+}
+
+func preserveOverride(old, data resource.Object, overrides map[string]bool, key string) {
+	if !overrides[key] {
+		return
+	}
+	data[key] = old[key]
+	if key == "name" {
+		data["name_i18n"] = old["name_i18n"]
+	}
+	if key == "description" {
+		data["description_i18n"] = old["description_i18n"]
+	}
+}
+
 func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, id, actor string, objects, ids map[string]string, opts Options) error {
 	create := change.Action == "create"
 	switch change.Type {
@@ -522,15 +564,39 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 		if create {
 			return sqlc.New(tx).CreateImportSkill(ctx, data)
 		}
-		return sqlc.New(tx).UpdateImportSkill(ctx, data)
+		old, overrides, err := importTarget(ctx, tx, "skill", id)
+		if err != nil {
+			return err
+		}
+		payloadObject := resource.Object{}
+		if err := json.Unmarshal(data, &payloadObject); err != nil {
+			return err
+		}
+		preserveOverride(old, payloadObject, overrides, "name")
+		preserveOverride(old, payloadObject, overrides, "description")
+		return sqlc.New(tx).UpdateImportSkill(ctx, payload(payloadObject))
 	case "rule":
 		item := r.Rules[change.Slug]
-		data := payload(resource.Object{"id": id, "actor_id": actor, "name": change.Name, "content": item.Content,
+		ruleDescription := item.Entry.Description
+		if ruleDescription == "" {
+			ruleDescription = description(item.Entry.DescriptionI18n)
+		}
+		data := payload(resource.Object{"id": id, "actor_id": actor, "name": change.Name, "description": ruleDescription, "content": item.Content,
 			"name_i18n": mapOrEmpty(item.Entry.NameI18n), "description_i18n": mapOrEmpty(item.Entry.DescriptionI18n)})
 		if create {
 			return sqlc.New(tx).CreateImportRule(ctx, data)
 		}
-		return sqlc.New(tx).UpdateImportRule(ctx, data)
+		old, overrides, err := importTarget(ctx, tx, "rule", id)
+		if err != nil {
+			return err
+		}
+		payloadObject := resource.Object{}
+		if err := json.Unmarshal(data, &payloadObject); err != nil {
+			return err
+		}
+		preserveOverride(old, payloadObject, overrides, "name")
+		preserveOverride(old, payloadObject, overrides, "description")
+		return sqlc.New(tx).UpdateImportRule(ctx, payload(payloadObject))
 	case "connector":
 		return writeConnector(ctx, tx, r.Connectors[change.Slug], change, id, actor, objects, opts)
 	case "expert":
@@ -545,7 +611,17 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 				return err
 			}
 		} else {
-			if err := queries.UpdateImportExpert(ctx, data); err != nil {
+			old, overrides, err := importTarget(ctx, tx, "expert", id)
+			if err != nil {
+				return err
+			}
+			payloadObject := resource.Object{}
+			if err := json.Unmarshal(data, &payloadObject); err != nil {
+				return err
+			}
+			preserveOverride(old, payloadObject, overrides, "name")
+			preserveOverride(old, payloadObject, overrides, "description")
+			if err := queries.UpdateImportExpert(ctx, payload(payloadObject)); err != nil {
 				return err
 			}
 			if err := queries.ClearImportExpertSkills(ctx, id); err != nil {
@@ -608,12 +684,11 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 		method, mode = "oauth", "independent"
 	}
 	var old resource.Object
+	overrides := map[string]bool{}
 	if change.Action != "create" {
-		data, err := sqlc.New(tx).GetImportTarget(ctx, sqlc.GetImportTargetParams{Column1: "connector", Column2: id})
+		var err error
+		old, overrides, err = importTarget(ctx, tx, "connector", id)
 		if err != nil {
-			return err
-		}
-		if err := json.Unmarshal(data, &old); err != nil {
 			return err
 		}
 		if method != "" {
@@ -623,10 +698,38 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 	if picked := opts.AuthorizationModes[change.Slug]; picked != "" {
 		mode = picked
 	}
+	if overrides["authorization_mode"] {
+		mode = old.String("authorization_mode")
+	}
+	if overrides["authorization_method"] {
+		method = old.String("authorization_method")
+	}
+	if mode == "none" {
+		method = ""
+	}
+	url := item.Config.URL
+	if overrides["url"] {
+		url = old.String("url")
+	}
+	authHeaderName := item.Auth.Header
+	if overrides["auth_header_name"] {
+		authHeaderName = old.String("auth_header_name")
+	}
+	var nameI18n any = mapOrEmpty(item.Entry.NameI18n)
+	var descriptionI18n any = mapOrEmpty(item.Entry.DescriptionI18n)
+	if overrides["name"] {
+		nameI18n = mapOrEmptyFrom(old["name_i18n"])
+	}
+	if overrides["description"] {
+		descriptionI18n = mapOrEmptyFrom(old["description_i18n"])
+	}
+	scopes := strings.Join(strings.Fields(item.OAuth.Scope), " ")
 	oauth := resource.Object{}
 	if method == "oauth" {
-		oauth["mode"], oauth["scopes"] = "dynamic", strings.Join(strings.Fields(item.OAuth.Scope), " ")
-		if old.String("url") == item.Config.URL && old.String("authorization_method") == "oauth" {
+		oauth["mode"], oauth["scopes"] = "dynamic", scopes
+		if overrides["oauth_config"] {
+			oauth = mapOrEmptyFrom(old["oauth_config"])
+		} else if old.String("url") == url && old.String("authorization_method") == "oauth" {
 			if previous, ok := old["oauth_config"].(map[string]any); ok {
 				for key, value := range previous {
 					if key != "scopes" {
@@ -635,12 +738,22 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 				}
 			}
 		}
+		if overriddenScopes, ok := oauth["scopes"].(string); ok {
+			scopes = overriddenScopes
+		}
 	}
-	data := resource.Object{"id": id, "actor_id": actor, "name": change.Name, "description": item.Entry.Description, "url": item.Config.URL,
+	name, description := change.Name, item.Entry.Description
+	if overrides["name"] {
+		name = old.String("name")
+	}
+	if overrides["description"] {
+		description = old.String("description")
+	}
+	data := resource.Object{"id": id, "actor_id": actor, "name": name, "description": description, "url": url,
 		"authorization_mode": mode, "authorization_method": method, "oauth_config": oauth,
-		"timeout_ms": item.Config.TimeoutMs, "auth_header_name": item.Auth.Header,
+		"timeout_ms": item.Config.TimeoutMs, "auth_header_name": authHeaderName,
 		"icon_s3_key": objects["connector:"+change.Slug],
-		"name_i18n":   mapOrEmpty(item.Entry.NameI18n), "description_i18n": mapOrEmpty(item.Entry.DescriptionI18n)}
+		"name_i18n":   nameI18n, "description_i18n": descriptionI18n}
 	if change.Action == "create" {
 		return sqlc.New(tx).CreateImportConnector(ctx, payload(data))
 	}
@@ -648,9 +761,12 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 	if oldConfig, ok := old["oauth_config"].(map[string]any); ok {
 		previousScopes, _ = oldConfig["scopes"].(string)
 	}
-	changed := old.String("url") != item.Config.URL || old.String("authorization_mode") != mode ||
+	if overrides["oauth_config"] {
+		previousScopes = scopes
+	}
+	changed := old.String("url") != url || old.String("authorization_mode") != mode ||
 		old.String("authorization_method") != method || old.Int("timeout_ms") != int64(item.Config.TimeoutMs) ||
-		old.String("auth_header_name") != item.Auth.Header || previousScopes != strings.Join(strings.Fields(item.OAuth.Scope), " ")
+		old.String("auth_header_name") != authHeaderName || previousScopes != scopes
 	revision := old.Int("config_revision")
 	connectionStatus := old.String("connection_status")
 	if changed {
@@ -667,4 +783,12 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 	}
 	data["config_revision"], data["connection_status"], data["config_changed"] = revision, connectionStatus, changed
 	return sqlc.New(tx).UpdateImportConnector(ctx, payload(data))
+}
+
+func mapOrEmptyFrom(value any) map[string]any {
+	out, _ := value.(map[string]any)
+	if out == nil {
+		return map[string]any{}
+	}
+	return out
 }

@@ -232,16 +232,18 @@ func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error
 }
 
 type Definition struct {
-	Kind, Path   string
-	Repository   func(Queryer) Repository
-	Fields       []string
-	UserFields   []string
-	Hidden       []string
-	Validate     func(context.Context, pgx.Tx, Object, Object) error
-	Persist      func(context.Context, pgx.Tx, Object) error
-	Decorate     func(context.Context, Queryer, Object) error
-	UserDecorate func(Object)
-	References   func(context.Context, pgx.Tx, string) ([]Object, error)
+	Kind, Path      string
+	Repository      func(Queryer) Repository
+	Fields          []string
+	UserFields      []string
+	Hidden          []string
+	OverrideFields  []string
+	Validate        func(context.Context, pgx.Tx, Object, Object) error
+	PrepareOverride func(context.Context, pgx.Tx, Object, Object) error
+	Persist         func(context.Context, pgx.Tx, Object) error
+	Decorate        func(context.Context, Queryer, Object) error
+	UserDecorate    func(Object)
+	References      func(context.Context, pgx.Tx, string) ([]Object, error)
 }
 type CRUD struct {
 	Store *Store
@@ -353,10 +355,29 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 		if personal && !owned(old, actor) {
 			return nil, NotFound
 		}
+		imported, err := Imported(ctx, tx, c.Def.Kind, id)
+		if err != nil {
+			return nil, err
+		}
+		if imported {
+			if personal {
+				return nil, ImportedReadOnly
+			}
+			if old.String("ownership_type") == "user" {
+				return nil, Invalid("个人资源仅允许治理删除")
+			}
+			if match == "" {
+				return nil, &Error{Status: 428, Code: "precondition_required", Message: "更新需要 If-Match"}
+			}
+			if match != fmt.Sprintf(`"%v"`, old["revision"]) {
+				return nil, Conflict
+			}
+			return c.override(ctx, tx, actor, id, in, old)
+		}
 		if err = RequireEditable(ctx, tx, c.Def.Kind, id); err != nil {
 			return nil, err
 		}
-		if !personal && old.String("ownership_type") == "user" {
+		if old.String("ownership_type") == "user" && !personal {
 			return nil, Invalid("个人资源仅允许治理删除")
 		}
 		if match == "" {
@@ -434,6 +455,126 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 	}
 	return c.Get(ctx, c.Store.Pool, id)
 }
+
+// override updates the whitelisted fields of a package-managed resource and
+// records the field names so a later package import leaves them untouched.
+func (c *CRUD) override(ctx context.Context, tx pgx.Tx, actor, id string, in, old Object) (Object, error) {
+	allowed := make(map[string]bool, len(c.Def.OverrideFields))
+	for _, key := range c.Def.OverrideFields {
+		allowed[key] = true
+	}
+	for key := range in {
+		if key == "id" {
+			continue
+		}
+		if !allowed[key] {
+			return nil, Invalid("资源包导入的资源不允许修改字段：" + key)
+		}
+	}
+	overrides := map[string]any{}
+	if current, ok := old["admin_overrides"].(map[string]any); ok {
+		for key := range current {
+			overrides[key] = true
+		}
+	}
+	changed := map[string]bool{}
+	data := Object{"id": id, "actor_id": actor, "ownership_type": old.String("ownership_type")}
+	if raw, ok := in["name"]; ok {
+		name, isString := raw.(string)
+		if !isString {
+			return nil, Invalid("名称必须为字符串")
+		}
+		name = strings.TrimSpace(name)
+		if name == "" || len(name) > 200 {
+			return nil, Invalid("名称不能为空且不能超过 200 字节")
+		}
+		if name != old.String("name") {
+			data["name"] = name
+			// The administrator's value replaces package translations for every locale.
+			data["name_i18n"] = Object{}
+			overrides["name"], overrides["name_i18n"] = true, true
+			changed["name"] = true
+		}
+	}
+	if raw, ok := in["description"]; ok {
+		description, isString := raw.(string)
+		if !isString {
+			return nil, Invalid("描述必须为字符串")
+		}
+		if description != old.String("description") {
+			data["description"] = description
+			data["description_i18n"] = Object{}
+			overrides["description"], overrides["description_i18n"] = true, true
+			changed["description"] = true
+		}
+	}
+	for _, key := range c.Def.OverrideFields {
+		if key == "name" || key == "description" || key == "tag_ids" {
+			continue
+		}
+		value, ok := in[key]
+		if !ok || Hash(value) == Hash(old[key]) {
+			continue
+		}
+		data[key] = value
+		overrides[key] = true
+		changed[key] = true
+	}
+	tagsChanged := false
+	if raw, ok := in["tag_ids"]; ok && allowed["tag_ids"] {
+		current, err := Tags(ctx, tx, c.Def.Kind, id)
+		if err != nil {
+			return nil, err
+		}
+		currentIDs := make([]string, 0, len(current))
+		for _, tag := range current {
+			currentIDs = append(currentIDs, tag.String("id"))
+		}
+		tagsChanged = Hash(sortedStrings(Strings(raw))) != Hash(sortedStrings(currentIDs))
+		if tagsChanged {
+			data["tag_ids"] = raw
+			overrides["tag_ids"] = true
+		}
+	}
+	if len(changed) == 0 && !tagsChanged {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return c.Get(ctx, c.Store.Pool, id)
+	}
+	data["admin_overrides"] = overrides
+	if c.Def.PrepareOverride != nil {
+		if err := c.Def.PrepareOverride(ctx, tx, data, old); err != nil {
+			return nil, err
+		}
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	if err = c.Def.Repository(tx).UpdateResource(ctx, payload); err != nil {
+		return nil, err
+	}
+	if tagsChanged {
+		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, data["tag_ids"]); err != nil {
+			return nil, err
+		}
+	}
+	if err = Audit(ctx, tx, actor, c.Def.Kind, id, "override"); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return c.Get(ctx, c.Store.Pool, id)
+}
+
+func sortedStrings(values []string) []string {
+	out := slices.Clone(values)
+	slices.Sort(out)
+	return out
+}
+
 func (c *CRUD) Delete(ctx context.Context, actor, id, match string) error {
 	return c.delete(ctx, actor, id, match, false)
 }

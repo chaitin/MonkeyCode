@@ -1689,3 +1689,16 @@ CREATE TABLE video_calls_partitioned (
 ) PARTITION BY RANGE (created_at);
 
 CREATE TABLE video_calls_default PARTITION OF video_calls_partitioned DEFAULT;
+
+ALTER TABLE skills
+    ADD COLUMN admin_overrides jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(admin_overrides) = 'object');
+
+ALTER TABLE rules
+    ADD COLUMN description text NOT NULL DEFAULT '',
+    ADD COLUMN admin_overrides jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(admin_overrides) = 'object');
+
+ALTER TABLE connectors
+    ADD COLUMN admin_overrides jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(admin_overrides) = 'object');
+
+ALTER TABLE experts
+    ADD COLUMN admin_overrides jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(admin_overrides) = 'object');

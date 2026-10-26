@@ -46,7 +46,7 @@ LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
 INSERT INTO connectors (name, description, url, authorization_mode, authorization_method, oauth_config,
-    oauth_client_secret, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
+    oauth_client_secret, auth_header_name, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
@@ -56,7 +56,7 @@ INSERT INTO connectors (name, description, url, authorization_mode, authorizatio
             (sqlc.arg(DATA)::jsonb ->> 'description')::text
         ELSE
             '' END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'url' THEN (sqlc.arg(DATA)::JSONB->>'url')::text ELSE NULL END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'authorization_mode' THEN (sqlc.arg(DATA)::JSONB->>'authorization_mode')::text ELSE NULL END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'authorization_method' THEN (sqlc.arg(DATA)::JSONB->>'authorization_method')::text ELSE NULL END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'oauth_config' THEN NULLIF(sqlc.arg(DATA)::JSONB->'oauth_config', 'null'::JSONB) ELSE '{}'::JSONB END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'oauth_client_secret' THEN (sqlc.arg(DATA)::JSONB->>'oauth_client_secret')::text ELSE ''
-        END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'enabled' THEN
+        END, CASE WHEN sqlc.arg(DATA)::JSONB ? 'auth_header_name' THEN (sqlc.arg(DATA)::JSONB->>'auth_header_name')::text ELSE '' END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'enabled' THEN
             (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean
         ELSE
             TRUE
@@ -85,6 +85,16 @@ SET
     ELSE
         description
     END,
+    name_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'name_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'description_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     url = CASE WHEN sqlc.arg(DATA)::jsonb ? 'url' THEN
         (sqlc.arg(DATA)::jsonb ->> 'url')::text
     ELSE
@@ -108,6 +118,12 @@ SET
     proxy_id = CASE WHEN sqlc.arg(DATA)::jsonb ? 'proxy_id' THEN
         (sqlc.arg(DATA)::jsonb ->> 'proxy_id')::text
     ELSE proxy_id END,
+    auth_header_name = CASE WHEN sqlc.arg(DATA)::jsonb ? 'auth_header_name' THEN
+        (sqlc.arg(DATA)::jsonb ->> 'auth_header_name')::text
+    ELSE auth_header_name END,
+    admin_overrides = CASE WHEN sqlc.arg(DATA)::jsonb ? 'admin_overrides' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE admin_overrides END,
     oauth_client_secret = CASE WHEN sqlc.arg(DATA)::jsonb ? 'oauth_client_secret' THEN
         (sqlc.arg(DATA)::jsonb ->> 'oauth_client_secret')::text
     ELSE

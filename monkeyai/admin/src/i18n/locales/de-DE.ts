@@ -533,6 +533,8 @@ export const deDE = {
       editDialogTitle: "Regel bearbeiten",
       name: "Name",
       namePlaceholder: "Regelnamen eingeben",
+      ruleDescription: "Beschreibung",
+      ruleDescriptionPlaceholder: "Beschreiben Sie kurz den Zweck der Regel",
       content: "Regelinhalt",
       contentPlaceholder: "Regeln eingeben, die der Agent befolgen muss",
       type: "Typ",

@@ -11,7 +11,7 @@ import (
 
 const createResource = `-- name: CreateResource :exec
 INSERT INTO connectors (name, description, url, authorization_mode, authorization_method, oauth_config,
-    oauth_client_secret, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
+    oauth_client_secret, auth_header_name, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
     VALUES (
         CASE WHEN $1::jsonb ? 'name' THEN
             ($1::jsonb ->> 'name')::text
@@ -21,7 +21,7 @@ INSERT INTO connectors (name, description, url, authorization_mode, authorizatio
             ($1::jsonb ->> 'description')::text
         ELSE
             '' END, CASE WHEN $1::JSONB ? 'url' THEN ($1::JSONB->>'url')::text ELSE NULL END, CASE WHEN $1::JSONB ? 'authorization_mode' THEN ($1::JSONB->>'authorization_mode')::text ELSE NULL END, CASE WHEN $1::JSONB ? 'authorization_method' THEN ($1::JSONB->>'authorization_method')::text ELSE NULL END, CASE WHEN $1::JSONB ? 'oauth_config' THEN NULLIF($1::JSONB->'oauth_config', 'null'::JSONB) ELSE '{}'::JSONB END, CASE WHEN $1::JSONB ? 'oauth_client_secret' THEN ($1::JSONB->>'oauth_client_secret')::text ELSE ''
-        END, CASE WHEN $1::jsonb ? 'enabled' THEN
+        END, CASE WHEN $1::JSONB ? 'auth_header_name' THEN ($1::JSONB->>'auth_header_name')::text ELSE '' END, CASE WHEN $1::jsonb ? 'enabled' THEN
             ($1::jsonb ->> 'enabled')::boolean
         ELSE
             TRUE
@@ -214,6 +214,16 @@ SET
     ELSE
         description
     END,
+    name_i18n = CASE WHEN $1::jsonb ? 'name_i18n' THEN
+        NULLIF($1::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN $1::jsonb ? 'description_i18n' THEN
+        NULLIF($1::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     url = CASE WHEN $1::jsonb ? 'url' THEN
         ($1::jsonb ->> 'url')::text
     ELSE
@@ -237,6 +247,12 @@ SET
     proxy_id = CASE WHEN $1::jsonb ? 'proxy_id' THEN
         ($1::jsonb ->> 'proxy_id')::text
     ELSE proxy_id END,
+    auth_header_name = CASE WHEN $1::jsonb ? 'auth_header_name' THEN
+        ($1::jsonb ->> 'auth_header_name')::text
+    ELSE auth_header_name END,
+    admin_overrides = CASE WHEN $1::jsonb ? 'admin_overrides' THEN
+        NULLIF($1::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE admin_overrides END,
     oauth_client_secret = CASE WHEN $1::jsonb ? 'oauth_client_secret' THEN
         ($1::jsonb ->> 'oauth_client_secret')::text
     ELSE

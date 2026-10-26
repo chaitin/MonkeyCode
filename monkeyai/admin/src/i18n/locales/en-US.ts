@@ -120,17 +120,19 @@ export const enUS = {
     systemExpert: "System experts",
     userExpert: "User experts",
     importedRuleReadOnly:
-      "The content of built-in system rules cannot be modified.",
+      "Rule content is managed by the resource package. Only the name and description can be modified.",
     importedSkillReadOnly:
-      "The content of built-in system skills cannot be modified.",
+      "Skill content is managed by the resource package. Only the name and description can be modified.",
     importedExpertReadOnly:
-      "Built-in system expert settings cannot be modified.",
+      "Expert prompts and links are managed by the resource package. Only the name and description can be modified.",
     importedConnectorReadOnly:
-      "Built-in system connector settings cannot be modified.",
+      "Connector icons and tools are managed by the resource package. The name, description, and connection settings can be modified.",
     retiredGrantsOnly:
       "This resource is retired. Existing access can only be revoked; new access cannot be granted.",
     selectScope: "Select users or groups",
     oauthClientMode: "OAuth client configuration",
+    authHeaderName: "Credential header name",
+    authHeaderNamePlaceholder: "For example, Authorization",
     oauthClientDynamic: "Dynamic client (auto-discovery)",
     oauthClientManual: "Manual configuration",
     oauthDiscoveryHint:
@@ -1009,6 +1011,8 @@ export const enUS = {
       editDialogTitle: "Edit rule",
       name: "Name",
       namePlaceholder: "Enter a rule name",
+      ruleDescription: "Description",
+      ruleDescriptionPlaceholder: "Briefly describe what this rule is for",
       content: "Rule content",
       contentPlaceholder: "Enter the instructions the agent must follow",
       type: "Type",

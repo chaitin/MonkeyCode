@@ -528,6 +528,9 @@ export const ruRU = {
       editDialogTitle: "Изменить правило",
       name: "Название",
       namePlaceholder: "Введите название правила",
+      ruleDescription: "Описание",
+      ruleDescriptionPlaceholder:
+        "Кратко опишите назначение правила",
       content: "Содержание правила",
       contentPlaceholder: "Введите правила, которым должен следовать агент",
       type: "Тип",

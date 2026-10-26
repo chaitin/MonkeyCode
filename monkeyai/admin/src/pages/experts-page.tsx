@@ -7,6 +7,7 @@ import {
   saveResource,
   savePackageGrants,
   listResources,
+  localized,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
@@ -119,7 +120,8 @@ type AssociationOption = {
   description: string
 }
 
-function toExpert(row: ResourceRow): Expert {
+function toExpert(row: ResourceRow, language: string): Expert {
+  const text = localized(row, language)
   return {
     id: row.id,
     origin: row.origin,
@@ -129,8 +131,8 @@ function toExpert(row: ResourceRow): Expert {
     grants: row.grants,
     owner: row.user.name || row.user.email || row.user.id,
     revision: row.revision,
-    name: row.name,
-    description: row.description,
+    name: text.name,
+    description: text.description,
     prompt: row.prompt,
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     connectorSettings: row.connectors ?? [],
@@ -292,11 +294,11 @@ function ExpertAssociationSelect({
 }
 
 export function ExpertsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const remote = useResourceList("/experts")
-  const experts = remote.items.map(toExpert)
+  const experts = remote.items.map((row) => toExpert(row, i18n.language))
   const subjects = useSubjects()
   const [options, setOptions] = useState<
     Record<AssociationKey, AssociationOption[]>
@@ -324,11 +326,14 @@ export function ExpertsPage() {
         const map = (rows: ResourceRow[]) =>
           rows
             .filter((r) => r.enabled !== false)
-            .map((r) => ({
-              id: r.id,
-              name: r.name,
-              description: r.description ?? r.content ?? "",
-            }))
+            .map((r) => {
+              const text = localized(r, i18n.language)
+              return {
+                id: r.id,
+                name: text.name,
+                description: text.description ?? r.content ?? "",
+              }
+            })
         setOptions({
           knowledgeBaseIds: [],
           ruleIds: map(rules.items),
@@ -351,7 +356,7 @@ export function ExpertsPage() {
     return () => {
       cancelled = true
     }
-  }, [editorOpen, optionRevision, showToast, t])
+  }, [editorOpen, optionRevision, showToast, t, i18n.language])
 
   const openCreateDialog = () => {
     setEditingExpert(null)
@@ -408,7 +413,19 @@ export function ExpertsPage() {
     event.preventDefault()
     await remote.run(async () => {
       if (editingExpert?.origin === "package") {
-        await savePackageGrants("expert", editingExpert, form.authorization)
+        const overrides: Record<string, string> = {}
+        if (form.name !== editingExpert.name) overrides.name = form.name
+        if (form.description !== editingExpert.description) {
+          overrides.description = form.description
+        }
+        const resource = Object.keys(overrides).length
+          ? await saveResource(
+              `/experts/${editingExpert.id}`,
+              overrides,
+              editingExpert.revision
+            )
+          : editingExpert
+        await savePackageGrants("expert", resource, form.authorization)
       } else {
         await saveResource(
           editingExpert ? `/experts/${editingExpert.id}` : "/experts",
@@ -678,7 +695,7 @@ export function ExpertsPage() {
                   </p>
                 )}
               </Field>
-              <fieldset disabled={importedExpert} className="contents">
+              <fieldset className="contents">
                 <Field>
                   <FieldLabel htmlFor="expert-name">
                     {t("pages.experts.name")}
@@ -703,9 +720,11 @@ export function ExpertsPage() {
                     }
                     placeholder={t("pages.experts.descriptionPlaceholder")}
                     rows={3}
-                    required
+                    required={!importedExpert}
                   />
                 </Field>
+              </fieldset>
+              <fieldset disabled={importedExpert} className="contents">
                 <Field>
                   <FieldLabel htmlFor="expert-prompt">
                     {t("pages.experts.prompt")}

@@ -55,12 +55,16 @@ ORDER BY
 LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
-INSERT INTO rules (name, content, id, owner_user_id, ownership_type)
+INSERT INTO rules (name, description, content, id, owner_user_id, ownership_type)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
         ELSE
             NULL
+        END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'description' THEN
+            (sqlc.arg(DATA)::jsonb ->> 'description')::text
+        ELSE
+            ''
         END, CASE WHEN sqlc.arg(DATA)::jsonb ? 'content' THEN
             (sqlc.arg(DATA)::jsonb ->> 'content')::text
         ELSE
@@ -77,10 +81,30 @@ SET
     ELSE
         name
     END,
+    description = CASE WHEN sqlc.arg(DATA)::jsonb ? 'description' THEN
+        (sqlc.arg(DATA)::jsonb ->> 'description')::text
+    ELSE
+        description
+    END,
+    name_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'name_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'name_i18n', 'null'::jsonb)
+    ELSE
+        name_i18n
+    END,
+    description_i18n = CASE WHEN sqlc.arg(DATA)::jsonb ? 'description_i18n' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'description_i18n', 'null'::jsonb)
+    ELSE
+        description_i18n
+    END,
     content = CASE WHEN sqlc.arg(DATA)::jsonb ? 'content' THEN
         (sqlc.arg(DATA)::jsonb ->> 'content')::text
     ELSE
         content
+    END,
+    admin_overrides = CASE WHEN sqlc.arg(DATA)::jsonb ? 'admin_overrides' THEN
+        NULLIF(sqlc.arg(DATA)::jsonb -> 'admin_overrides', 'null'::jsonb)
+    ELSE
+        admin_overrides
     END,
     revision = revision + 1,
     updated_at = now()
