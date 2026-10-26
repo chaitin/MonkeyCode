@@ -18,6 +18,22 @@ import (
 
 const maxProviderResponse = 1 << 20
 
+type diagnosticError struct {
+	code    string
+	message string
+}
+
+func (e diagnosticError) Error() string          { return e.message }
+func (e diagnosticError) DiagnosticCode() string { return e.code }
+
+var (
+	errUpstreamURL      = diagnosticError{code: "upstream_url_invalid", message: "视频上游地址必须是无查询参数的 HTTP(S) URL"}
+	errUpstreamEndpoint = diagnosticError{code: "upstream_url_invalid", message: "视频上游接口地址无效"}
+	errResolveFailed    = diagnosticError{code: "upstream_resolve_failed", message: "上游地址无法解析"}
+	errAddressBlocked   = diagnosticError{code: "upstream_address_blocked", message: "上游地址不在公网范围"}
+	errProxyUnavailable = diagnosticError{code: "proxy_unavailable", message: "系统代理不可用"}
+)
+
 func externalIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.Zone() != "" {
@@ -41,11 +57,11 @@ func providerClient() *http.Client {
 		}
 		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		if err != nil || len(ips) == 0 {
-			return nil, errors.New("上游地址无法解析")
+			return nil, errResolveFailed
 		}
 		for _, ip := range ips {
 			if !externalIP(ip) {
-				return nil, errors.New("上游地址不在公网范围")
+				return nil, errAddressBlocked
 			}
 		}
 		var last error
@@ -66,11 +82,11 @@ func providerClient() *http.Client {
 func providerURL(base, endpoint string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
-		return "", errors.New("视频上游地址必须是无查询参数的 HTTP(S) URL")
+		return "", errUpstreamURL
 	}
 	suffix, err := url.Parse(endpoint)
 	if err != nil || suffix.IsAbs() || suffix.Host != "" || suffix.User != nil || suffix.Fragment != "" {
-		return "", errors.New("视频上游接口地址无效")
+		return "", errUpstreamEndpoint
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(suffix.Path, "/")
 	u.RawQuery = suffix.RawQuery

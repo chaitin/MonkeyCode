@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,23 @@ FROM video_jobs j JOIN billing_transactions b ON b.id=j.billing_transaction_id W
 	}
 	if jobStatus != "unknown" || billingStatus != "unknown" || jobCode != reason || billingCode != reason || known {
 		t.Fatalf("应停止轮询并保留待核查计费: job=%s/%s billing=%s/%s known=%v", jobStatus, jobCode, billingStatus, billingCode, known)
+	}
+}
+
+func TestPollFailureArgs(t *testing.T) {
+	blocked := &url.Error{Op: "Get", URL: "https://private.example/path", Err: errAddressBlocked}
+	failed := &processFailure{phase: "query_provider", proxy: true, err: blocked}
+	got, attrs := pollFailureArgs(failed)
+	if got != blocked || len(attrs) != 4 || attrs[0] != "phase" || attrs[1] != "query_provider" || attrs[2] != "proxy_used" || attrs[3] != true {
+		t.Fatalf("失败诊断错误: %v %v", got, attrs)
+	}
+	var coded interface{ DiagnosticCode() string }
+	if !errors.As(got, &coded) || coded.DiagnosticCode() != "upstream_address_blocked" {
+		t.Fatalf("根错误分类丢失: %v", got)
+	}
+	raw := errors.New("raw")
+	if got, attrs := pollFailureArgs(raw); got != raw || attrs != nil {
+		t.Fatalf("无包装错误不应附加诊断: %v %v", got, attrs)
 	}
 }
 

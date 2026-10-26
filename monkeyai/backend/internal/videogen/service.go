@@ -444,13 +444,13 @@ func (s *Service) poll(ctx context.Context) error {
 			reason = "provider_poll_exhausted"
 		}
 		if reason != "" {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "video.job.stopped", "视频任务轮询达到限制", "module", "videogen", "operation", "poll", "job_id", id, "failures", failures, "error", err)
+			logPollFailure(ctx, "video.job.stopped", "视频任务轮询达到限制", id, failures, err)
 			if err := s.stopPoll(ctx, id, *claim.BillingTransactionID, reason); err != nil {
 				return err
 			}
 			continue
 		}
-		logging.Event(ctx, slog.Default(), slog.LevelWarn, "video.job.retry", "处理视频任务失败，等待重试", "module", "videogen", "operation", "poll", "job_id", id, "failures", failures, "max_failures", maxPollFailures, "retry_at", retryAt, "error", err)
+		logPollFailure(ctx, "video.job.retry", "处理视频任务失败，等待重试", id, failures, err, "max_failures", maxPollFailures, "retry_at", retryAt)
 	}
 	return nil
 }
@@ -468,25 +468,64 @@ func (s *Service) stopPoll(ctx context.Context, id, transactionID, reason string
 	return nil
 }
 
-func (s *Service) process(ctx context.Context, id, modelID, providerID, transactionID, userID string) error {
+// processFailure records where a poll attempt failed and whether it used the
+// system proxy, so retry logs can identify the failing path.
+type processFailure struct {
+	phase string
+	proxy bool
+	err   error
+}
+
+func (e *processFailure) Error() string { return e.err.Error() }
+func (e *processFailure) Unwrap() error { return e.err }
+
+// pollFailureArgs unwraps processFailure and keeps the upstream error itself
+// for classification, so error_code/cause_type still describe the root cause.
+func pollFailureArgs(err error) (error, []any) {
+	var failure *processFailure
+	if !errors.As(err, &failure) {
+		return err, nil
+	}
+	return failure.err, []any{"phase", failure.phase, "proxy_used", failure.proxy}
+}
+
+func logPollFailure(ctx context.Context, event, message, id string, failures int32, err error, extra ...any) {
+	err, diagnostics := pollFailureArgs(err)
+	args := []any{"module", "videogen", "operation", "poll", "job_id", id, "failures", failures}
+	args = append(args, diagnostics...)
+	args = append(args, extra...)
+	args = append(args, "error", err)
+	logging.Event(ctx, slog.Default(), slog.LevelWarn, event, message, args...)
+}
+
+func (s *Service) process(ctx context.Context, id, modelID, providerID, transactionID, userID string) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
+	phase, proxyUsed := "get_model", false
+	defer func() {
+		if err != nil {
+			err = &processFailure{phase: phase, proxy: proxyUsed, err: err}
+		}
+	}()
 	item, err := s.models.Get(ctx, modelID)
 	if err != nil {
 		return err
 	}
 	proxyURL := ""
 	if item.ProxyID != "" {
+		phase = "resolve_proxy"
 		if s.proxies == nil {
-			return errors.New("系统代理不可用")
+			return errProxyUnavailable
 		}
 		proxyURL, err = s.proxies.ProxyURL(ctx, item.ProxyID)
 		if err != nil {
 			return err
 		}
+		proxyUsed = proxyURL != ""
 	}
 	client := s.clientFor(proxyURL)
 	target := proxy.Target{UpstreamModel: item.ModelID, BaseURL: item.BaseURL, APIKey: item.APIKey, ProxyURL: proxyURL}
+	phase = "query_provider"
 	result, err := queryProvider(ctx, client, target, providerID)
 	if err != nil {
 		return err
@@ -496,10 +535,13 @@ func (s *Service) process(ctx context.Context, id, modelID, providerID, transact
 		return nil
 	}
 	if result.Status != "succeeded" {
+		phase = "mark_running"
 		return sqlc.New(s.pool).MarkVideoJobRunning(ctx, id)
 	}
+	phase = "load_output_duration"
 	duration, err := sqlc.New(s.pool).VideoJobOutputDuration(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
+		phase = "save_output"
 		output, err := s.saveOutput(ctx, client, id, result.URL, result.DurationMs)
 		if err != nil {
 			return err
@@ -508,14 +550,18 @@ func (s *Service) process(ctx context.Context, id, modelID, providerID, transact
 	} else if err != nil {
 		return err
 	}
+	phase = "billing_finish"
 	if err := s.billing.Finish(ctx, transactionID, billing.Usage{Result: "succeeded", Known: true, VideoDurationMs: duration}); err != nil {
 		return err
 	}
+	phase = "billing_settle"
 	if err := s.billing.Settle(ctx, transactionID); err != nil {
 		return err
 	}
+	phase = "billing_charge"
 	if _, err := s.billing.VideoCharge(ctx, transactionID, userID); err != nil {
 		return err
 	}
+	phase = "mark_succeeded"
 	return sqlc.New(s.pool).MarkVideoJobSucceeded(ctx, sqlc.MarkVideoJobSucceededParams{ID: id, OutputDurationMs: &duration})
 }
