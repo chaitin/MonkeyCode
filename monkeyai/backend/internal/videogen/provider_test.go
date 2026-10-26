@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
@@ -15,6 +16,20 @@ import (
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestDownloadClientTimeout(t *testing.T) {
+	client := &http.Client{Timeout: 45 * time.Second}
+	if got := downloadClient(client).Timeout; got != outputDownloadTimeout {
+		t.Fatalf("视频下载超时未延长: got=%s want=%s", got, outputDownloadTimeout)
+	}
+	if client.Timeout != 45*time.Second {
+		t.Fatalf("不应修改原始客户端超时: %s", client.Timeout)
+	}
+	long := &http.Client{Timeout: 15 * time.Minute}
+	if got := downloadClient(long).Timeout; got != long.Timeout {
+		t.Fatalf("不应缩短已有下载超时: got=%s want=%s", got, long.Timeout)
+	}
+}
 
 func TestProviderURLHTTP(t *testing.T) {
 	for _, base := range []string{"http://provider.example/v1", "https://provider.example/v1"} {
