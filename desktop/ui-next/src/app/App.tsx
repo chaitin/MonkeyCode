@@ -1,3 +1,4 @@
+import { notifyPetAccountChanged } from "@/lib/ipc/pet";
 // 壳层拼装:标题栏 + **工作台主壳**(2026-08-18 用户终案「工作台升级为
 // 主界面」:旧 rail/侧栏/单会话主区三列壳退役——导航收进工作台任务列的
 // 三 tab,设置/新建仍是覆盖视图,云端任务与本地任务/会话一样入格)。
@@ -164,6 +165,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     clearCloud();
     setCloudIdentityRevision((n) => n + 1);
     reloadCloud();
+    if (inDesktopShell()) void notifyPetAccountChanged().catch(() => {});
   }, [clearCloud, reloadCloud]);
   // 云端数据源(任务列云端 tab 与格内 CloudTaskView 同一份;工作台即主壳,
   // 恒启用)
@@ -178,7 +180,7 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
   const focusSeqRef = useRef(0);
   const requestComposerFocus = () => setComposerFocusRequest(++focusSeqRef.current);
   const openSettings = useCallback((section: SettingsSection = "account") => {
-    if (settingsOpenRef.current) return;
+    if (settingsOpenRef.current) { settingsRef.current?.openSection(section); return; }
     settingsOpenRef.current = true;
     setSettingsInitialSection(section);
     const active = document.activeElement;
@@ -389,17 +391,17 @@ function AppShell({ onTransportChanged }: { onTransportChanged: (generation: num
     // 壳意图:启动补取一次(窗口唤起前托盘/桌宠塞的),再听后续推送
     void takeUiIntent().then((intent) => {
       if (!alive) return;
-      if (intent === "open-settings") {
-        openSettings();
+      if (intent === "open-settings" || intent === "open-settings:pet" || intent === "open-settings:account") {
+        openSettings(intent === "open-settings:pet" ? "pet" : "account");
         return;
       }
       const id = sessionIdFromUiIntent(intent);
       if (id) void openSessionByIdRef.current(id);
     });
     // H9:事件送达立即消费壳侧意图副本——不消费的话整页刷新会重放同一意图
-    const offOpenSettings = listen<void>("open-settings", () => {
+    const offOpenSettings = listen<string | undefined>("open-settings", (section) => {
       void takeUiIntent();
-      openSettings();
+      openSettings(section === "pet" ? "pet" : "account");
     });
     const offOpenSession = listen<string>("open-session", (id) => {
       void takeUiIntent();
