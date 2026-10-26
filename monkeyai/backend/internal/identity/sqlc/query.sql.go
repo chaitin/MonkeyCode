@@ -1284,6 +1284,29 @@ func (q *Queries) RedeemAuthorizationCode(ctx context.Context, id string) (pgcon
 	return q.db.Exec(ctx, redeemAuthorizationCode, id)
 }
 
+const resetAdminPassword = `-- name: ResetAdminPassword :one
+UPDATE users SET password_hash = $1, updated_at = now()
+WHERE lower(email) = $2 AND role = 'admin' AND deleted_at IS NULL
+RETURNING id, email
+`
+
+type ResetAdminPasswordParams struct {
+	PasswordHash *string
+	Email        string
+}
+
+type ResetAdminPasswordRow struct {
+	ID    string
+	Email string
+}
+
+func (q *Queries) ResetAdminPassword(ctx context.Context, arg ResetAdminPasswordParams) (ResetAdminPasswordRow, error) {
+	row := q.db.QueryRow(ctx, resetAdminPassword, arg.PasswordHash, arg.Email)
+	var i ResetAdminPasswordRow
+	err := row.Scan(&i.ID, &i.Email)
+	return i, err
+}
+
 const resetPassword = `-- name: ResetPassword :one
 UPDATE users SET password_hash = $2, updated_at = now()
 WHERE lower(email) = $1 AND deleted_at IS NULL AND status = 'active' RETURNING id

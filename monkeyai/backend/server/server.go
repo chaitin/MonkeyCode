@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
@@ -24,9 +25,17 @@ type AdminRegistrar interface {
 }
 
 // ParseLogLevel reads only shared startup flags, before business initialization.
-func ParseLogLevel(args []string) (slog.Level, error) { return config.ParseLogLevel(args) }
+func ParseLogLevel(args []string) (slog.Level, error) {
+	if len(args) > 0 && args[0] == "reset" {
+		args = args[1:]
+	}
+	return config.ParseLogLevel(args)
+}
 
 func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
+	if len(args) > 0 && args[0] == "reset" {
+		args = args[1:]
+	}
 	return config.ParseLogging(args)
 }
 
@@ -34,6 +43,9 @@ func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
 func PrintUsage(output io.Writer) { config.PrintUsage(output) }
 
 func Run(ctx context.Context, args []string, logger *slog.Logger, factory MemberWriters, registrars ...AdminRegistrar) error {
+	if len(args) > 0 && args[0] == "reset" {
+		return Reset(ctx, args[1:], os.Stdin, os.Stdout)
+	}
 	if logger == nil {
 		return errors.New("日志实例不可为空")
 	}

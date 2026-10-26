@@ -147,6 +147,15 @@ go run ./cmd/server
 
 空数据库首次启动时，必须通过 `MONKEYAI_INITIAL_ADMIN_EMAIL` 和 `MONKEYAI_INITIAL_ADMIN_PASSWORD` 创建管理员账号，可选 `MONKEYAI_INITIAL_ADMIN_NAME` 设置显示名称。密码至少 12 个字符；未配置时服务会拒绝启动，避免产生无法管理的实例。服务只在用户表为空时创建账号，不会在后续启动时重置密码。创建完成后应移除密码环境变量。完整登录流程见 [`../design/agent-auth-settings.md`](../design/agent-auth-settings.md)。
 
+忘记管理员密码时，在相同数据库配置下运行：
+
+```bash
+go run ./cmd/server reset
+# 编译后的程序：./monkeyai-server reset
+```
+
+命令优先重置 `admin@baizhi.cloud`；未找到该管理员时，会提示填写一个现有管理员的邮箱。成功后输出账号邮箱和 16 位随机新密码，并撤销该账号的旧会话、OAuth 令牌、授权码及登录/重置验证码。只修改现有管理员的密码，不创建账号、不修改角色或启停状态。命令仅需 `MONKEYAI_DATABASE_URL`，也可通过 `reset --database-url 'postgres://...'` 指定，无需启动 HTTP、S3 或远程执行服务。供私有后端复用的 `server.Run` 同样支持此命令；自定义启动器应在日志控制 socket、License 等初始化之前调用 `server.Reset`，以便服务运行时也能执行恢复命令。
+
 服务提供 `/healthz` 存活检查和 `/readyz` 数据库及 RustFS Bucket 就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
 
 ## 端点桥接

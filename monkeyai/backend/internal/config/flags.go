@@ -88,6 +88,6 @@ func PrintUsage(output io.Writer) {
 	level := defaultLogLevel.String()
 	flags := startupFlags(&cfg, &level)
 	flags.SetOutput(output)
-	_, _ = io.WriteString(output, "用法: monkeyai-server [启动参数]\n")
+	_, _ = io.WriteString(output, "用法: monkeyai-server [启动参数]\n      monkeyai-server reset [--database-url PostgreSQL连接地址]\n\nreset: 重置 admin@baizhi.cloud 的密码；未找到时提示填写管理员邮箱，成功后输出账号密码。\n\n启动参数:\n")
 	flags.PrintDefaults()
 }
