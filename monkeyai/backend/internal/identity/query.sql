@@ -506,6 +506,11 @@ DELETE FROM email_codes WHERE email = $1 AND purpose = $2;
 UPDATE users SET password_hash = $2, updated_at = now()
 WHERE lower(email) = $1 AND deleted_at IS NULL AND status = 'active' RETURNING id;
 
+-- name: ResetAdminPassword :one
+UPDATE users SET password_hash = sqlc.arg(password_hash), updated_at = now()
+WHERE lower(email) = sqlc.arg(email) AND role = 'admin' AND deleted_at IS NULL
+RETURNING id, email;
+
 -- name: ResetUserPassword :one
 UPDATE users SET password_hash = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL RETURNING id;

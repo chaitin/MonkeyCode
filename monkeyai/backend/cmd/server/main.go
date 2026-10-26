@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/server"
 )
 
 func main() {
@@ -19,6 +21,13 @@ func main() {
 }
 
 func mainCode() int {
+	if len(os.Args) > 1 && os.Args[1] == "reset" {
+		if err := server.Reset(context.Background(), os.Args[2:], os.Stdin, os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	level, settings, err := config.ParseLogging(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		config.PrintUsage(os.Stdout)
