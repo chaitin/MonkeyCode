@@ -817,7 +817,6 @@ export const enUS = {
           "This file cannot be read. Upload a valid ZIP skill package.",
         unsafePath: "The skill package contains an unsafe file path.",
         symlink: "The skill package must not contain symbolic links.",
-        tooManyFiles: "The skill package can contain at most 5000 files.",
         unpackedTooLarge: "The unpacked skill package must not exceed 1 GiB.",
         missingManifest:
           "No SKILL.md was found. This is not a valid skill package.",
@@ -825,7 +824,6 @@ export const enUS = {
           "Multiple SKILL.md files were found, so the skill entry cannot be determined.",
         mixedRoot:
           "Files were found outside the directory containing SKILL.md.",
-        manifestTooLarge: "SKILL.md must not exceed 512 KB.",
         invalidFrontmatter: "SKILL.md does not contain valid YAML frontmatter.",
         missingName: "The SKILL.md frontmatter is missing name.",
         invalidName:

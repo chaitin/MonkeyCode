@@ -453,14 +453,12 @@ export const ruRU = {
           "Не удалось прочитать файл. Загрузите корректный ZIP-пакет навыка.",
         unsafePath: "Пакет навыка содержит небезопасный путь к файлу.",
         symlink: "Пакет навыка не должен содержать символические ссылки.",
-        tooManyFiles: "Пакет навыка может содержать не более 5000 файлов.",
         unpackedTooLarge:
           "Размер распакованного пакета не должен превышать 1 GiB.",
         missingManifest: "SKILL.md не найден. Это некорректный пакет навыка.",
         multipleManifests:
           "Найдено несколько файлов SKILL.md, точка входа не определена.",
         mixedRoot: "Обнаружены файлы вне каталога, содержащего SKILL.md.",
-        manifestTooLarge: "Размер SKILL.md не должен превышать 512 КБ.",
         invalidFrontmatter: "SKILL.md не содержит корректный YAML frontmatter.",
         missingName: "В frontmatter SKILL.md отсутствует name.",
         invalidName:

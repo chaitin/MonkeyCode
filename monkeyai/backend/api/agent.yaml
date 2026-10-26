@@ -2182,7 +2182,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB。
                 metadata:
                   type: string
                   description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。
@@ -2210,7 +2210,7 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 技能包最多 500 MiB，解包最多 1 GiB、5000 个文件。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
+      description: 技能包最多 500 MiB，解包最多 1 GiB。归属固定为当前用户；初始启用，上传元数据不能配置授权、归属或存储路径。
   /api/v1/experts/tags:
     get:
       summary: 列出当前用户可用专家配置的标签
@@ -2852,7 +2852,7 @@ paths:
                 package:
                   type: string
                   format: binary
-                  description: 最多 500 MiB ZIP，解包最多 1 GiB、5000 个文件。
+                  description: 最多 500 MiB ZIP，解包最多 1 GiB。
                 metadata:
                   type: string
                   description: 可选 JSON 对象字符串，仅 tag_ids 可写；名称、描述和包信息以服务端解析 SKILL.md 的结果为准。

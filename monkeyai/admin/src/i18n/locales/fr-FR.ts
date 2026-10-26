@@ -454,7 +454,6 @@ export const frFR = {
         invalidZip: "Ce fichier est illisible. Chargez un paquet ZIP valide.",
         unsafePath: "Le paquet contient un chemin de fichier non sécurisé.",
         symlink: "Le paquet ne doit pas contenir de liens symboliques.",
-        tooManyFiles: "Le paquet peut contenir au maximum 5000 fichiers.",
         unpackedTooLarge: "Le paquet décompressé ne doit pas dépasser 1 GiB.",
         missingManifest:
           "Aucun SKILL.md trouvé. Ce paquet de compétence n’est pas valide.",
@@ -462,7 +461,6 @@ export const frFR = {
           "Plusieurs fichiers SKILL.md ont été trouvés ; l’entrée est ambiguë.",
         mixedRoot:
           "Des fichiers se trouvent hors du dossier contenant SKILL.md.",
-        manifestTooLarge: "SKILL.md ne doit pas dépasser 512 Ko.",
         invalidFrontmatter:
           "SKILL.md ne contient pas de frontmatter YAML valide.",
         missingName: "Le champ name manque dans le frontmatter de SKILL.md.",

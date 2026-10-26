@@ -18,14 +18,9 @@ import (
 )
 
 const (
-	MaxPackage        = 2 << 30
-	MaxExpanded       = 4 << 30
-	MaxFiles          = 5000
-	MaxFile           = MaxPackage
-	MaxMetadata       = 8 << 20
-	MaxExpertPackage  = 100 << 20
-	MaxExpertExpanded = 200 << 20
-	MaxRetainedText   = 256 << 20
+	MaxPackage  = 2 << 30
+	MaxExpanded = 4 << 30
+	MaxFile     = MaxPackage
 )
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
@@ -145,13 +140,13 @@ func ignoredZIPPath(name string) bool {
 	return name == "__MACOSX" || strings.HasPrefix(name, "__MACOSX/") || path.Base(name) == ".DS_Store"
 }
 
-func readZIP(data []byte, maxSize, maxExpanded, maxFiles, maxFile int) (map[string][]byte, error) {
+func readZIP(data []byte, maxSize, maxExpanded, maxFile int) (map[string][]byte, error) {
 	if len(data) == 0 || len(data) > maxSize {
 		return nil, fmt.Errorf("压缩包大小超限")
 	}
 	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil || len(z.File) > maxFiles {
-		return nil, fmt.Errorf("ZIP 无效或条目数超限")
+	if err != nil {
+		return nil, fmt.Errorf("ZIP 无效: %w", err)
 	}
 	files := make(map[string][]byte, len(z.File))
 	seen := make(map[string]*zip.File)
@@ -287,8 +282,8 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 		return p, fmt.Errorf("压缩包大小超限")
 	}
 	z, err := zip.NewReader(reader, size)
-	if err != nil || len(z.File) > MaxFiles {
-		return p, fmt.Errorf("ZIP 无效或条目数超限")
+	if err != nil {
+		return p, fmt.Errorf("ZIP 无效: %w", err)
 	}
 	seen := make(map[string]*zip.File)
 	var total uint64
@@ -321,11 +316,7 @@ func ParseReader(reader io.ReaderAt, size int64) (Package, error) {
 			continue
 		}
 		seen[key] = f
-		limit := uint64(MaxFile)
-		if name == "release.json" || name == "manifest.json" || name == "CHECKSUMS.sha256" {
-			limit = MaxMetadata
-		}
-		if !f.Mode().IsRegular() || f.UncompressedSize64 > limit || f.UncompressedSize64 > uint64(MaxExpanded)-total {
+		if !f.Mode().IsRegular() || f.UncompressedSize64 > uint64(MaxFile) || f.UncompressedSize64 > uint64(MaxExpanded)-total {
 			return Package{}, fmt.Errorf("ZIP 文件类型或解压大小无效: %q", name)
 		}
 		total += f.UncompressedSize64

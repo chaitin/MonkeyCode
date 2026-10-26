@@ -90,7 +90,7 @@ func TestPackageRejectOversizedExpandedFile(t *testing.T) {
 	}
 }
 
-func TestPackageFileCountLimit(t *testing.T) {
+func TestPackageManyFiles(t *testing.T) {
 	for _, count := range []int{5000, 5001} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			entries := map[string]string{"SKILL.md": manifest}
@@ -98,12 +98,6 @@ func TestPackageFileCountLimit(t *testing.T) {
 				entries[fmt.Sprintf("reference-%d.md", i)] = "reference"
 			}
 			p, err := Parse(archive(entries))
-			if count > 5000 {
-				if err == nil || !strings.Contains(err.Error(), "技能包超过 5000 个文件") {
-					t.Fatalf("应拒绝超过 5000 个文件的技能包: %v", err)
-				}
-				return
-			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,6 +105,20 @@ func TestPackageFileCountLimit(t *testing.T) {
 				t.Fatalf("文件数量不一致: got %d, want %d", len(p.Files), count)
 			}
 		})
+	}
+}
+
+func TestPackageLargeManifest(t *testing.T) {
+	content := strings.Repeat("正文\n", 512<<10)
+	p, err := Parse(archive(map[string]string{"SKILL.md": manifest + content}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Content != "Original\n"+content {
+		t.Fatal("大 SKILL.md 正文未完整保留")
+	}
+	if _, err := Parse(archive(map[string]string{"SKILL.md": manifest + "\xff"})); err == nil {
+		t.Fatal("应拒绝非 UTF-8 的 SKILL.md")
 	}
 }
 

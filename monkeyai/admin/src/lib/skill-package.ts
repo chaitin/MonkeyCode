@@ -5,20 +5,16 @@ type ParseDocument = (typeof import("yaml"))["parseDocument"]
 
 const MAX_PACKAGE_SIZE = 500 * 1024 * 1024
 const MAX_UNPACKED_SIZE = 1024 * 1024 * 1024
-const MAX_FILE_COUNT = 5000
-const MAX_MANIFEST_SIZE = 512 * 1024
 
 export type SkillPackageErrorCode =
   | "fileTooLarge"
   | "invalidZip"
   | "unsafePath"
   | "symlink"
-  | "tooManyFiles"
   | "unpackedTooLarge"
   | "missingManifest"
   | "multipleManifests"
   | "mixedRoot"
-  | "manifestTooLarge"
   | "invalidFrontmatter"
   | "missingName"
   | "invalidName"
@@ -179,10 +175,6 @@ async function analyzeSkillEntries(
           )
       )
 
-      if (skillEntries.length > MAX_FILE_COUNT) {
-        throw new SkillPackageError("tooManyFiles")
-      }
-
       const unpackedSize = skillEntries.reduce(
         (total, entry) => total + entry.size,
         0
@@ -191,14 +183,7 @@ async function analyzeSkillEntries(
         throw new SkillPackageError("unpackedTooLarge")
       }
 
-      if (manifestEntry.size > MAX_MANIFEST_SIZE) {
-        throw new SkillPackageError("manifestTooLarge")
-      }
-
       const content = await manifestEntry.text()
-      if (new TextEncoder().encode(content).byteLength > MAX_MANIFEST_SIZE) {
-        throw new SkillPackageError("manifestTooLarge")
-      }
 
       const metadata = parseSkillManifest(content, parseDocument)
 

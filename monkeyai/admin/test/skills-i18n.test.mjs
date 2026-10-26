@@ -42,6 +42,5 @@ test("skill package limits are consistent in every supported language", () => {
     assert.ok(skills.packageHint.includes("500 MiB"), language)
     assert.ok(skills.packageErrors.fileTooLarge.includes("500 MiB"), language)
     assert.ok(skills.packageErrors.unpackedTooLarge.includes("1 GiB"), language)
-    assert.ok(skills.packageErrors.tooManyFiles.includes("5000"), language)
   }
 })

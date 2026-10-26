@@ -159,7 +159,6 @@ export async function archiveDirectory(list: FileList): Promise<StagedArchive> {
     entries.push([relativePath, file])
   }
   const byPath = new Map(entries.sort(([a], [b]) => a.localeCompare(b)))
-  if (byPath.size > 5000) throw new Error("目录文件数量超限")
   const size = [...byPath.values()].reduce((sum, file) => sum + file.size, 0)
   if (size > maxPackage) throw new Error("目录文件总大小超过 2 GiB，请选择现成 ZIP")
   if (!navigator.storage?.getDirectory) {

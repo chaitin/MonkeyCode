@@ -18,10 +18,6 @@ import (
 
 const MaxPackage int64 = 2 << 30
 const MaxExpanded int64 = 4 << 30
-const MaxMetadata int64 = 8 << 20
-const MaxNested int64 = 512 << 20
-const MaxRetainedMetadata int64 = 64 << 20
-const MaxFiles = 5000
 
 func SafePath(name string) bool {
 	return name != "" && utf8.ValidString(name) && !strings.ContainsAny(name, "\\\x00\r\n:") && !strings.HasPrefix(name, "/") && path.Clean(name) == name && name != "." && !strings.HasPrefix(name, "../") && name != ".." && !strings.Contains(name, "//") && !strings.HasSuffix(name, "/")
@@ -29,13 +25,10 @@ func SafePath(name string) bool {
 
 type archive struct{ files map[string]*zip.File }
 
-func openArchive(reader io.ReaderAt, size, expanded int64) (*archive, error) {
+func openArchive(reader io.ReaderAt, size int64) (*archive, error) {
 	z, err := zip.NewReader(reader, size)
 	if err != nil {
 		return nil, fmt.Errorf("ZIP 无效: %w", err)
-	}
-	if len(z.File) > MaxFiles {
-		return nil, errors.New("ZIP 条目数超限")
 	}
 	a := &archive{files: map[string]*zip.File{}}
 	seen := map[string]bool{}
@@ -52,7 +45,7 @@ func openArchive(reader io.ReaderAt, size, expanded int64) (*archive, error) {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		if !f.Mode().IsRegular() || f.UncompressedSize64 > uint64(expanded) || total > uint64(expanded)-f.UncompressedSize64 {
+		if !f.Mode().IsRegular() || f.UncompressedSize64 > uint64(MaxExpanded) || total > uint64(MaxExpanded)-f.UncompressedSize64 {
 			return nil, errors.New("ZIP 文件类型或展开大小超限")
 		}
 		total += f.UncompressedSize64
@@ -69,19 +62,9 @@ func openArchive(reader io.ReaderAt, size, expanded int64) (*archive, error) {
 }
 
 type parser struct {
-	ctx      context.Context
-	p        *Package
-	bytes    int64
-	retained int64
-}
-
-func (r *parser) keepExport(e *Entry, raw []byte) error {
-	if int64(len(raw)) > MaxRetainedMetadata-r.retained {
-		return errors.New("累计发布元数据内存预算超限")
-	}
-	r.retained += int64(len(raw))
-	e.Export = raw
-	return nil
+	ctx   context.Context
+	p     *Package
+	bytes int64
 }
 
 func (r *parser) copy(dst io.Writer, f *zip.File) (int64, error) {
@@ -138,9 +121,6 @@ func (r *parser) read(a *archive, name string) ([]byte, error) {
 	if f == nil {
 		return nil, fmt.Errorf("缺少文件: %s", name)
 	}
-	if f.UncompressedSize64 > uint64(MaxMetadata) {
-		return nil, fmt.Errorf("元数据文件超限: %s", name)
-	}
 	var b bytes.Buffer
 	_, err := r.copy(&b, f)
 	return b.Bytes(), err
@@ -187,7 +167,7 @@ func Parse(ctx context.Context, reader io.ReaderAt, size int64) (_ *Package, err
 	if size <= 0 || size > MaxPackage {
 		return nil, errors.New("资源包大小超限")
 	}
-	outer, err := openArchive(reader, size, MaxExpanded)
+	outer, err := openArchive(reader, size)
 	if err != nil {
 		return nil, err
 	}
@@ -347,9 +327,6 @@ func Parse(ctx context.Context, reader io.ReaderAt, size int64) (_ *Package, err
 			if err != nil {
 				return nil, err
 			}
-			if err = r.keepExport(e, e.Export); err != nil {
-				return nil, err
-			}
 			var export map[string]json.RawMessage
 			if err = decode(e.Export, &export); err != nil {
 				return nil, err
@@ -389,7 +366,7 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 	if err != nil {
 		return err
 	}
-	nz, err := openArchive(file, info.Size(), MaxNested)
+	nz, err := openArchive(file, info.Size())
 	if err != nil {
 		return err
 	}
@@ -401,9 +378,7 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 	if err != nil {
 		return err
 	}
-	if err = r.keepExport(e, raw); err != nil {
-		return err
-	}
+	e.Export = raw
 	var meta struct {
 		ContentDigest string            `json:"content_digest"`
 		Files         []FileRef         `json:"files"`

@@ -1,9 +1,11 @@
 package designcatalog
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,11 +50,69 @@ func TestDesignPackage(t *testing.T) {
 	}
 }
 
-func TestMetadataBudget(t *testing.T) {
-	r := &parser{retained: MaxRetainedMetadata - 1}
-	e := &Entry{}
-	if err := r.keepExport(e, []byte("{}")); err == nil || len(e.Export) != 0 {
-		t.Fatal("发布元数据超预算仍被保留")
+func TestDesignPackageLargeMetadata(t *testing.T) {
+	raw, err := os.ReadFile("../../testdata/design-contract/v1/release.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := unpack(t, raw)
+	for _, name := range []string{"manifest.json", "design/catalog.json"} {
+		old := strings.TrimPrefix(Hash(files[name]), "sha256:")
+		files[name] = append(files[name], bytes.Repeat([]byte(" "), 9<<20)...)
+		next := strings.TrimPrefix(Hash(files[name]), "sha256:")
+		files["CHECKSUMS.sha256"] = bytes.ReplaceAll(files["CHECKSUMS.sha256"], []byte(old+"  "+name), []byte(next+"  "+name))
+	}
+	data := pack(t, files)
+	inspection, err := Inspect(bytes.NewReader(data), int64(len(data)))
+	if err != nil || !inspection.Design.Supported {
+		t.Fatalf("大 manifest 预检失败: %+v %v", inspection, err)
+	}
+	p, err := Parse(t.Context(), bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if len(p.Entries) != 5 {
+		t.Fatalf("大 catalog 导入资源数量错误: %d", len(p.Entries))
+	}
+}
+
+func TestArchiveManyEntries(t *testing.T) {
+	files := map[string][]byte{"manifest.json": []byte(`{"agent_resources":{}}`)}
+	for i := range 5001 {
+		files[fmt.Sprintf("assets/%d", i)] = nil
+	}
+	data := pack(t, files)
+	if _, err := Inspect(bytes.NewReader(data), int64(len(data))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openArchive(bytes.NewReader(data), int64(len(data))); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestArchiveExpandedSize(t *testing.T) {
+	for _, size := range []uint64{(512 << 20) + 1, uint64(MaxExpanded) + 1} {
+		var buf bytes.Buffer
+		z := zip.NewWriter(&buf)
+		if _, err := z.CreateRaw(&zip.FileHeader{Name: "manifest.json", Method: zip.Store, UncompressedSize64: size}); err != nil {
+			t.Fatal(err)
+		}
+		if err := z.Close(); err != nil {
+			t.Fatal(err)
+		}
+		_, err := openArchive(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		if size <= uint64(MaxExpanded) && err != nil {
+			t.Fatalf("不应拒绝超过旧嵌套包上限的大小: %v", err)
+		}
+		if size > uint64(MaxExpanded) {
+			if err == nil {
+				t.Fatal("应拒绝超过总解压上限的归档")
+			}
+			if _, err := Inspect(bytes.NewReader(buf.Bytes()), int64(buf.Len())); err == nil {
+				t.Fatal("预检应拒绝超过总解压上限的归档")
+			}
+		}
 	}
 }
 

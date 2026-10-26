@@ -434,7 +434,6 @@ export const koKR = {
           "파일을 읽을 수 없습니다. 유효한 ZIP 스킬 패키지를 업로드하세요.",
         unsafePath: "스킬 패키지에 안전하지 않은 파일 경로가 있습니다.",
         symlink: "스킬 패키지에는 심볼릭 링크를 포함할 수 없습니다.",
-        tooManyFiles: "스킬 패키지는 최대 5000개의 파일을 포함할 수 있습니다.",
         unpackedTooLarge:
           "압축 해제된 스킬 패키지는 1 GiB를 초과할 수 없습니다.",
         missingManifest:
@@ -442,7 +441,6 @@ export const koKR = {
         multipleManifests:
           "여러 SKILL.md가 있어 스킬 진입점을 결정할 수 없습니다.",
         mixedRoot: "SKILL.md가 있는 디렉터리 외부에 파일이 있습니다.",
-        manifestTooLarge: "SKILL.md는 512 KB를 초과할 수 없습니다.",
         invalidFrontmatter: "SKILL.md에 유효한 YAML frontmatter가 없습니다.",
         missingName: "SKILL.md frontmatter에 name이 없습니다.",
         invalidName:

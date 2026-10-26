@@ -182,7 +182,7 @@ func TestDesignSectionsIntegration(t *testing.T) {
 		return result
 	}
 	legacy := packageFixture(t, nil)
-	files, err := readZIP(legacy, MaxPackage, MaxExpanded, MaxFiles, MaxFile)
+	files, err := readZIP(legacy, MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
 		t.Fatal(err)
 	}
