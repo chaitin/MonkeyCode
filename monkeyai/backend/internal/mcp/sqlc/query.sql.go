@@ -641,6 +641,7 @@ const updateToolCallDuration = `-- name: UpdateToolCallDuration :exec
 UPDATE mcp_tool_calls
 SET duration_ms = $1::integer
 WHERE id = $2::uuid
+    AND started_at=(SELECT billing_activity_time('mcp_tool_calls',$2::uuid))
 `
 
 type UpdateToolCallDurationParams struct {

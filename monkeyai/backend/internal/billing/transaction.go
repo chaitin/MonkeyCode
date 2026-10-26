@@ -544,7 +544,12 @@ func (s *Service) Run(ctx context.Context) {
 		defer close(partitionDone)
 		s.runLedgerPartitions(partitionCtx)
 	}()
-	defer func() { cancelPartitions(); <-partitionDone }()
+	activityDone := make(chan struct{})
+	go func() {
+		defer close(activityDone)
+		s.runActivityPartitions(partitionCtx)
+	}()
+	defer func() { cancelPartitions(); <-partitionDone; <-activityDone }()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	recoveries := logging.NewWorker(slog.Default(), "billing", "recover_transactions", "database")

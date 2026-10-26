@@ -203,18 +203,27 @@ func TestHourlyMigrationBackfill(t *testing.T) {
         VALUES($1,$2,$3,'model',$4,'未知用量','统计用户','stats@example.com','local','unknown',0,'{}','{"known":false}')`, id, user, account, model)
 	exec(t, s, `INSERT INTO model_calls(id,user_id,model_id,status,started_at,completed_at,input_tokens,output_tokens) VALUES($1,$2,$3,'succeeded',$4,$5,9999,999)`, id, user, model, s.now().Add(-3*time.Minute), s.now().Add(-2*time.Minute))
 	exec(t, s, `INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,item_name,credit_delta,balance_after,occurred_at) VALUES($1,$2,'charge','model','历史费用',-1.234567,0,$3)`, account, user, s.now().Add(-25*time.Hour))
+	apply := func(name, direction string) {
+		t.Helper()
+		data, err := os.ReadFile("../../migrations/" + name + "." + direction + ".sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.pool.Exec(t.Context(), string(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The newer partition migration owns views of usage_known; remove those
+	// dependencies before testing removal/recreation of the older column.
+	apply("000032_billing_activity_weekly", "down")
 	for range 2 {
 		for _, direction := range []string{"down", "up"} {
-			data, err := os.ReadFile("../../migrations/000028_stats_model_hourly." + direction + ".sql")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = s.pool.Exec(t.Context(), string(data)); err != nil {
-				t.Fatal(err)
-			}
+			apply("000028_stats_model_hourly", direction)
 		}
 		assertHourlyOverview(t, s)
 	}
+	apply("000032_billing_activity_weekly", "up")
+	assertHourlyOverview(t, s)
 }
 
 func TestHourlyUpsertRetries(t *testing.T) {

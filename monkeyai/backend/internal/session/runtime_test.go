@@ -40,7 +40,7 @@ func TestRuntimeSessionReporting(t *testing.T) {
 	router.Use(identities.RequireAgent)
 	s.RegisterAgent(router)
 	body, err := json.Marshal(resource.Object{
-		"state_seq": 1, "session_type": "conversation", "started_at": time.Now().UTC(),
+		"state_seq": 1, "session_type": "conversation", "started_at": time.Now().UTC().Truncate(time.Microsecond),
 		"client": resource.Object{"type": "runtime", "machine_id": machine, "version": "1", "runtime_version": "2"},
 	})
 	if err != nil {

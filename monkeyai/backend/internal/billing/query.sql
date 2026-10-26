@@ -239,7 +239,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE;
 
 -- name: EventExists :one
@@ -386,7 +386,7 @@ SELECT
 FROM
     billing_transactions t
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: TransactionEntries :many
 SELECT
@@ -469,7 +469,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: LockTransactionStatus :one
 SELECT
@@ -481,7 +481,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE;
 
 -- name: ImageJobReview :one
@@ -700,7 +700,8 @@ SELECT
 FROM
     a
     JOIN users u ON u.id = a.user_id
-    LEFT JOIN billing_transactions t ON t.id = NULLIF (sqlc.arg(transaction_id)::text, '')::uuid;
+    LEFT JOIN billing_transactions t ON t.id = NULLIF (sqlc.arg(transaction_id)::text, '')::uuid
+        AND t.started_at = (SELECT billing_activity_time('billing_transactions',NULLIF(sqlc.arg(transaction_id)::text,'')::uuid));
 
 -- name: SharePolicy :one
 SELECT
@@ -739,15 +740,16 @@ WHERE
     id = $1;
 
 -- name: IdempotentTransaction :one
-SELECT
-    id,
-    request_hash
-FROM
-    billing_transactions
-WHERE
-    user_id = $1
-    AND category = $2
-    AND idempotency_key = $3;
+WITH identity AS (
+    SELECT k.id,k.partition_at FROM billing_transactions_keys k WHERE k.user_id=$1 AND k.category=$2 AND k.idempotency_key=$3
+    UNION ALL
+    SELECT o.id,o.started_at FROM billing_transactions_original o WHERE o.user_id=$1 AND o.category=$2 AND o.idempotency_key=$3
+        AND (SELECT billing_activity_backfilling('billing_transactions'))
+        AND NOT EXISTS(SELECT 1 FROM billing_transactions_keys registered WHERE registered.user_id=$1 AND registered.category=$2 AND registered.idempotency_key=$3)
+)
+SELECT t.id,t.request_hash FROM identity k CROSS JOIN LATERAL (
+    SELECT id,request_hash FROM billing_transactions WHERE id=k.id AND started_at=k.partition_at OFFSET 0
+) t;
 
 -- name: SessionOwned :one
 SELECT
@@ -777,7 +779,7 @@ WHERE
 
 -- name: ImageCharge :one
 SELECT amount::text FROM billing_transactions
-WHERE id = $1 AND user_id = $2 AND category = 'image'
+WHERE id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id = $2 AND category = 'image'
     AND amount IS NOT NULL AND status IN ('settled', 'released');
 
 -- name: ImagePricingModel :one
@@ -791,13 +793,16 @@ WHERE id=$1 AND kind='video' AND enabled AND deleted_at IS NULL;
 
 -- name: VideoCharge :one
 SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
-WHERE id=$1 AND user_id=$2 AND category='video' AND status IN ('settled', 'released');
+WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video' AND status IN ('settled', 'released');
 
 -- name: UpsertVideoCall :exec
-INSERT INTO video_calls (job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms)
-SELECT j.id, t.id, t.user_id, t.resource_id, t.session_id, sqlc.arg(result)::text, sqlc.arg(duration_ms)::bigint
+INSERT INTO video_calls (id, job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms, created_at)
+SELECT COALESCE((SELECT id FROM video_calls_keys WHERE job_id=j.id), (SELECT id FROM video_calls_original WHERE job_id=j.id AND (SELECT billing_activity_backfilling('video_calls'))), j.id),
+    j.id, t.id, t.user_id, t.resource_id, t.session_id, sqlc.arg(result)::text, sqlc.arg(duration_ms)::bigint,
+    COALESCE((SELECT partition_at FROM video_calls_keys WHERE job_id=j.id), (SELECT created_at FROM video_calls_original WHERE job_id=j.id AND (SELECT billing_activity_backfilling('video_calls'))), j.created_at)
 FROM billing_transactions t JOIN video_jobs j ON j.billing_transaction_id=t.id WHERE t.id=sqlc.arg(transaction_id)::uuid
-ON CONFLICT (job_id) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms;
+    AND t.started_at=(SELECT billing_activity_time('billing_transactions',sqlc.arg(transaction_id)::uuid))
+ON CONFLICT (job_id,created_at) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms;
 
 -- name: ToolPricing :one
 SELECT
@@ -835,7 +840,7 @@ SET
     status = 'running',
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'reserved';
 
 -- name: LockUsage :one
@@ -849,7 +854,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE;
 
 -- name: SaveUsage :execresult
@@ -867,7 +872,7 @@ SET
     updated_at = now(),
     next_retry_at = now()
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: UpsertModelCall :execresult
 INSERT INTO model_calls (id, session_id, user_id, model_id, request_id, status, input_tokens, cached_input_tokens,
@@ -884,14 +889,14 @@ SELECT
     sqlc.arg(output_tokens)::bigint,
     sqlc.arg(cached_input_tokens)::bigint > 0,
     NULLIF (error_code, ''),
-    started_at,
+    COALESCE((SELECT billing_activity_time('model_calls',bt.id)), bt.started_at),
     completed_at,
     sqlc.narg(first_token_duration_ms)::integer
 FROM
     billing_transactions bt
 WHERE
-    bt.id = sqlc.arg(id)
-ON CONFLICT (id)
+    bt.id = sqlc.arg(id) AND bt.started_at=(SELECT billing_activity_time('billing_transactions',sqlc.arg(id)::uuid))
+ON CONFLICT (id,started_at)
     DO UPDATE SET
         status = EXCLUDED.status,
         input_tokens = EXCLUDED.input_tokens,
@@ -906,11 +911,11 @@ ON CONFLICT (id)
 INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code,
     started_at, completed_at, billing_transaction_id, job_id, session_id)
 SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, sqlc.arg(generated_images)::bigint,
-    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at, bt.id,
+    NULLIF(bt.error_code, ''), COALESCE((SELECT billing_activity_time('image_calls',bt.id)), bt.started_at), bt.completed_at, bt.id,
     (SELECT job.id FROM image_jobs job WHERE job.billing_transaction_id = bt.id), bt.session_id
 FROM billing_transactions bt
-WHERE bt.id = sqlc.arg(id)
-ON CONFLICT (id) DO UPDATE SET
+WHERE bt.id = sqlc.arg(id) AND bt.started_at=(SELECT billing_activity_time('billing_transactions',sqlc.arg(id)::uuid))
+ON CONFLICT (id,started_at) DO UPDATE SET
     status = EXCLUDED.status,
     generated_images = EXCLUDED.generated_images,
     error_code = EXCLUDED.error_code,
@@ -931,13 +936,13 @@ SELECT
     NULLIF (request_id, ''),
     RESULT,
     NULLIF (error_code, ''),
-    started_at,
+    COALESCE((SELECT billing_activity_time('mcp_tool_calls',bt.id)), bt.started_at),
     completed_at
 FROM
     billing_transactions bt
 WHERE
-    bt.id = $1
-ON CONFLICT (id)
+    bt.id = $1 AND bt.started_at=(SELECT billing_activity_time('billing_transactions',$1::uuid))
+ON CONFLICT (id,started_at)
     DO UPDATE SET
         status = EXCLUDED.status,
         error_code = EXCLUDED.error_code,
@@ -966,7 +971,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: LockSettlement :one
 SELECT
@@ -978,7 +983,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE;
 
 -- name: ChargeBalance :execresult
@@ -1004,7 +1009,7 @@ SET
     next_retry_at = NULL,
     updated_at = now()
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: MarkInterrupted :execresult
 UPDATE
@@ -1037,7 +1042,7 @@ SET
     attempts = attempts + 1,
     next_retry_at = now() + make_interval(secs => LEAST (3600, 30 * power(2, LEAST (attempts, 7)))::int)
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status IN ('settling', 'unknown');
 
 -- name: TransactionsToReconcile :many
@@ -1075,7 +1080,7 @@ SET
     next_retry_at = NULL,
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'unknown';
 
 -- name: ActiveUsersWithoutAccount :many
@@ -1137,7 +1142,7 @@ SET
     error_code = $3,
     updated_at = now()
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: MarkWalletReserved :execresult
 UPDATE
@@ -1155,7 +1160,7 @@ SET
     status = 'reserved',
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'created';
 
 -- name: WalletConfirmation :one
@@ -1172,7 +1177,7 @@ FROM
     wallet_billing_records w
     JOIN billing_transactions t ON t.id = w.transaction_id
 WHERE
-    t.id = $1;
+    t.id = $1 AND t.started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: MarkWalletConfirming :execresult
 UPDATE
@@ -1201,7 +1206,7 @@ UPDATE
 SET
     error_code = $2
 WHERE
-    id = $1;
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid));
 
 -- name: MarkWalletConfirmed :execresult
 UPDATE
@@ -1267,6 +1272,15 @@ SELECT EXISTS (
     WHERE t.status NOT IN ('settled', 'released', 'rejected')
         AND (w.base_url <> $1 OR w.app_id <> $2)
 );
+
+-- name: EnsureActivityWeeks :one
+SELECT billing_ensure_activity_weeks(sqlc.arg(table_name)::text,sqlc.arg(at_time)::timestamptz)::boolean;
+
+-- name: CopyActivityBatch :one
+SELECT billing_copy_activity_batch(sqlc.arg(table_name)::text,1000)::integer;
+
+-- name: CutoverActivity :one
+SELECT billing_cutover_activity(sqlc.arg(table_name)::text)::boolean;
 
 -- name: EnsureLedgerWeeks :one
 SELECT billing_ensure_ledger_weeks(sqlc.arg(at)::timestamptz)::boolean;

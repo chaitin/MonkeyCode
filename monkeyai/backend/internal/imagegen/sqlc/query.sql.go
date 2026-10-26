@@ -459,10 +459,11 @@ INSERT INTO image_calls (
 )
 SELECT COALESCE(job.billing_transaction_id, job.id), job.user_id, job.model_id,
     job.status, job.generated_images, job.error_code,
-    job.created_at, job.completed_at, job.billing_transaction_id, job.id, job.session_id
+    COALESCE((SELECT billing_activity_time('image_calls',COALESCE(job.billing_transaction_id,job.id))),job.created_at),
+    job.completed_at, job.billing_transaction_id, job.id, job.session_id
 FROM image_jobs job
 WHERE job.id = $1::uuid AND job.status IN ('succeeded', 'failed')
-ON CONFLICT (id) DO UPDATE SET
+ON CONFLICT (id,started_at) DO UPDATE SET
     job_id = EXCLUDED.job_id,
     billing_transaction_id = EXCLUDED.billing_transaction_id,
     session_id = EXCLUDED.session_id,

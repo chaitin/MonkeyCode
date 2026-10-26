@@ -161,6 +161,7 @@ FROM
     a
     JOIN users u ON u.id = a.user_id
     LEFT JOIN billing_transactions t ON t.id = NULLIF ($1::text, '')::uuid
+        AND t.started_at = (SELECT billing_activity_time('billing_transactions',NULLIF($1::text,'')::uuid))
 `
 
 type AppendLedgerParams struct {
@@ -266,11 +267,22 @@ SET
     next_retry_at = NULL,
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 func (q *Queries) CompleteSettlement(ctx context.Context, id string) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, completeSettlement, id)
+}
+
+const copyActivityBatch = `-- name: CopyActivityBatch :one
+SELECT billing_copy_activity_batch($1::text,1000)::integer
+`
+
+func (q *Queries) CopyActivityBatch(ctx context.Context, tableName string) (int32, error) {
+	row := q.db.QueryRow(ctx, copyActivityBatch, tableName)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const copyLedgerBatch = `-- name: CopyLedgerBatch :one
@@ -527,6 +539,17 @@ func (q *Queries) CreateWalletRecord(ctx context.Context, arg CreateWalletRecord
 	)
 }
 
+const cutoverActivity = `-- name: CutoverActivity :one
+SELECT billing_cutover_activity($1::text)::boolean
+`
+
+func (q *Queries) CutoverActivity(ctx context.Context, tableName string) (bool, error) {
+	row := q.db.QueryRow(ctx, cutoverActivity, tableName)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const cutoverLedger = `-- name: CutoverLedger :one
 SELECT billing_cutover_ledger()::boolean
 `
@@ -624,6 +647,22 @@ func (q *Queries) EffectiveQuota(ctx context.Context, arg EffectiveQuotaParams) 
 	var i EffectiveQuotaRow
 	err := row.Scan(&i.Credits, &i.GroupID, &i.Source)
 	return i, err
+}
+
+const ensureActivityWeeks = `-- name: EnsureActivityWeeks :one
+SELECT billing_ensure_activity_weeks($1::text,$2::timestamptz)::boolean
+`
+
+type EnsureActivityWeeksParams struct {
+	TableName string
+	AtTime    time.Time
+}
+
+func (q *Queries) EnsureActivityWeeks(ctx context.Context, arg EnsureActivityWeeksParams) (bool, error) {
+	row := q.db.QueryRow(ctx, ensureActivityWeeks, arg.TableName, arg.AtTime)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const ensureLedgerWeeks = `-- name: EnsureLedgerWeeks :one
@@ -775,7 +814,7 @@ SELECT
 FROM
     billing_transactions t
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 func (q *Queries) GetTransaction(ctx context.Context, id string) ([]byte, error) {
@@ -849,15 +888,16 @@ func (q *Queries) HasWalletIdentity(ctx context.Context, arg HasWalletIdentityPa
 }
 
 const idempotentTransaction = `-- name: IdempotentTransaction :one
-SELECT
-    id,
-    request_hash
-FROM
-    billing_transactions
-WHERE
-    user_id = $1
-    AND category = $2
-    AND idempotency_key = $3
+WITH identity AS (
+    SELECT k.id,k.partition_at FROM billing_transactions_keys k WHERE k.user_id=$1 AND k.category=$2 AND k.idempotency_key=$3
+    UNION ALL
+    SELECT o.id,o.started_at FROM billing_transactions_original o WHERE o.user_id=$1 AND o.category=$2 AND o.idempotency_key=$3
+        AND (SELECT billing_activity_backfilling('billing_transactions'))
+        AND NOT EXISTS(SELECT 1 FROM billing_transactions_keys registered WHERE registered.user_id=$1 AND registered.category=$2 AND registered.idempotency_key=$3)
+)
+SELECT t.id,t.request_hash FROM identity k CROSS JOIN LATERAL (
+    SELECT id,request_hash FROM billing_transactions WHERE id=k.id AND started_at=k.partition_at OFFSET 0
+) t
 `
 
 type IdempotentTransactionParams struct {
@@ -880,7 +920,7 @@ func (q *Queries) IdempotentTransaction(ctx context.Context, arg IdempotentTrans
 
 const imageCharge = `-- name: ImageCharge :one
 SELECT amount::text FROM billing_transactions
-WHERE id = $1 AND user_id = $2 AND category = 'image'
+WHERE id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id = $2 AND category = 'image'
     AND amount IS NOT NULL AND status IN ('settled', 'released')
 `
 
@@ -1418,7 +1458,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE
 `
 
@@ -1455,7 +1495,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE
 `
 
@@ -1490,7 +1530,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE
 `
 
@@ -1526,7 +1566,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 FOR UPDATE
 `
 
@@ -1593,7 +1633,7 @@ SET
     status = 'reserved',
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'created'
 `
 
@@ -1901,7 +1941,7 @@ SET
     updated_at = now(),
     next_retry_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 type SaveUsageParams struct {
@@ -1947,7 +1987,7 @@ SET
     attempts = attempts + 1,
     next_retry_at = now() + make_interval(secs => LEAST (3600, 30 * power(2, LEAST (attempts, 7)))::int)
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status IN ('settling', 'unknown')
 `
 
@@ -2025,7 +2065,7 @@ UPDATE
 SET
     error_code = $2
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 type SetTransactionErrorParams struct {
@@ -2045,7 +2085,7 @@ SET
     error_code = $3,
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 type SetTransactionStatusParams struct {
@@ -2132,7 +2172,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 type SettlementStatusRow struct {
@@ -2170,7 +2210,7 @@ SET
     status = 'running',
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'reserved'
 `
 
@@ -2185,7 +2225,7 @@ SET
     next_retry_at = NULL,
     updated_at = now()
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
     AND status = 'unknown'
 `
 
@@ -2375,7 +2415,7 @@ SELECT
 FROM
     billing_transactions
 WHERE
-    id = $1
+    id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 func (q *Queries) TransactionStatus(ctx context.Context, id string) (string, error) {
@@ -2561,11 +2601,11 @@ const upsertImageCall = `-- name: UpsertImageCall :execresult
 INSERT INTO image_calls (id, user_id, model_id, request_id, status, generated_images, error_code,
     started_at, completed_at, billing_transaction_id, job_id, session_id)
 SELECT bt.id, bt.user_id, bt.resource_id, NULLIF(bt.request_id, ''), bt.result, $1::bigint,
-    NULLIF(bt.error_code, ''), bt.started_at, bt.completed_at, bt.id,
+    NULLIF(bt.error_code, ''), COALESCE((SELECT billing_activity_time('image_calls',bt.id)), bt.started_at), bt.completed_at, bt.id,
     (SELECT job.id FROM image_jobs job WHERE job.billing_transaction_id = bt.id), bt.session_id
 FROM billing_transactions bt
-WHERE bt.id = $2
-ON CONFLICT (id) DO UPDATE SET
+WHERE bt.id = $2 AND bt.started_at=(SELECT billing_activity_time('billing_transactions',$2::uuid))
+ON CONFLICT (id,started_at) DO UPDATE SET
     status = EXCLUDED.status,
     generated_images = EXCLUDED.generated_images,
     error_code = EXCLUDED.error_code,
@@ -2599,14 +2639,14 @@ SELECT
     $3::bigint,
     $2::bigint > 0,
     NULLIF (error_code, ''),
-    started_at,
+    COALESCE((SELECT billing_activity_time('model_calls',bt.id)), bt.started_at),
     completed_at,
     $4::integer
 FROM
     billing_transactions bt
 WHERE
-    bt.id = $5
-ON CONFLICT (id)
+    bt.id = $5 AND bt.started_at=(SELECT billing_activity_time('billing_transactions',$5::uuid))
+ON CONFLICT (id,started_at)
     DO UPDATE SET
         status = EXCLUDED.status,
         input_tokens = EXCLUDED.input_tokens,
@@ -2648,13 +2688,13 @@ SELECT
     NULLIF (request_id, ''),
     RESULT,
     NULLIF (error_code, ''),
-    started_at,
+    COALESCE((SELECT billing_activity_time('mcp_tool_calls',bt.id)), bt.started_at),
     completed_at
 FROM
     billing_transactions bt
 WHERE
-    bt.id = $1
-ON CONFLICT (id)
+    bt.id = $1 AND bt.started_at=(SELECT billing_activity_time('billing_transactions',$1::uuid))
+ON CONFLICT (id,started_at)
     DO UPDATE SET
         status = EXCLUDED.status,
         error_code = EXCLUDED.error_code,
@@ -2666,10 +2706,13 @@ func (q *Queries) UpsertToolCall(ctx context.Context, id string) (pgconn.Command
 }
 
 const upsertVideoCall = `-- name: UpsertVideoCall :exec
-INSERT INTO video_calls (job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms)
-SELECT j.id, t.id, t.user_id, t.resource_id, t.session_id, $1::text, $2::bigint
+INSERT INTO video_calls (id, job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms, created_at)
+SELECT COALESCE((SELECT id FROM video_calls_keys WHERE job_id=j.id), (SELECT id FROM video_calls_original WHERE job_id=j.id AND (SELECT billing_activity_backfilling('video_calls'))), j.id),
+    j.id, t.id, t.user_id, t.resource_id, t.session_id, $1::text, $2::bigint,
+    COALESCE((SELECT partition_at FROM video_calls_keys WHERE job_id=j.id), (SELECT created_at FROM video_calls_original WHERE job_id=j.id AND (SELECT billing_activity_backfilling('video_calls'))), j.created_at)
 FROM billing_transactions t JOIN video_jobs j ON j.billing_transaction_id=t.id WHERE t.id=$3::uuid
-ON CONFLICT (job_id) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms
+    AND t.started_at=(SELECT billing_activity_time('billing_transactions',$3::uuid))
+ON CONFLICT (job_id,created_at) DO UPDATE SET status=EXCLUDED.status, output_duration_ms=EXCLUDED.output_duration_ms
 `
 
 type UpsertVideoCallParams struct {
@@ -2724,7 +2767,7 @@ func (q *Queries) UsersWithoutAccount(ctx context.Context, periodStartAt time.Ti
 
 const videoCharge = `-- name: VideoCharge :one
 SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
-WHERE id=$1 AND user_id=$2 AND category='video' AND status IN ('settled', 'released')
+WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video' AND status IN ('settled', 'released')
 `
 
 type VideoChargeParams struct {
@@ -2770,7 +2813,7 @@ FROM
     wallet_billing_records w
     JOIN billing_transactions t ON t.id = w.transaction_id
 WHERE
-    t.id = $1
+    t.id = $1 AND t.started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
 `
 
 type WalletConfirmationRow struct {

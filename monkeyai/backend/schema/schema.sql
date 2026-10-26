@@ -1587,3 +1587,105 @@ ALTER TABLE sessions
     ADD CONSTRAINT sessions_client_type_check CHECK (
         client_type IN ('desktop', 'web', 'extension', 'mobile', 'runtime', 'unknown')
     );
+
+CREATE TABLE billing_activity_partition_state (
+    table_name text PRIMARY KEY CHECK (table_name IN ('billing_transactions','model_calls','mcp_tool_calls','image_calls','video_calls')),
+    time_column text NOT NULL,
+    source_relation regclass NOT NULL,
+    target_relation regclass NOT NULL,
+    phase text NOT NULL DEFAULT 'backfill' CHECK (phase IN ('backfill','partitioned')),
+    source_end_at timestamptz,
+    source_end_id uuid,
+    cursor_at timestamptz,
+    cursor_id uuid,
+    checked_rows bigint NOT NULL DEFAULT 0,
+    switched_at timestamptz,
+    mirror_legacy boolean NOT NULL DEFAULT true
+);
+
+CREATE VIEW billing_transactions_original AS SELECT * FROM billing_transactions;
+
+CREATE TABLE billing_transactions_keys (
+    id uuid PRIMARY KEY,
+    partition_at timestamptz NOT NULL CHECK (isfinite(partition_at)),
+    user_id uuid NOT NULL,
+    category text NOT NULL,
+    idempotency_key text
+);
+
+CREATE TABLE billing_transactions_partitioned (
+    LIKE billing_transactions INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id,started_at),
+    FOREIGN KEY (id) REFERENCES billing_transactions_keys(id),
+    CHECK (isfinite(started_at))
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE billing_transactions_default PARTITION OF billing_transactions_partitioned DEFAULT;
+
+CREATE VIEW model_calls_original AS SELECT * FROM model_calls;
+
+CREATE TABLE model_calls_keys (
+    id uuid PRIMARY KEY,
+    partition_at timestamptz NOT NULL CHECK (isfinite(partition_at))
+);
+
+CREATE TABLE model_calls_partitioned (
+    LIKE model_calls INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id,started_at),
+    FOREIGN KEY (id) REFERENCES model_calls_keys(id),
+    CHECK (isfinite(started_at))
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE model_calls_default PARTITION OF model_calls_partitioned DEFAULT;
+
+CREATE VIEW mcp_tool_calls_original AS SELECT * FROM mcp_tool_calls;
+
+CREATE TABLE mcp_tool_calls_keys (
+    id uuid PRIMARY KEY,
+    partition_at timestamptz NOT NULL CHECK (isfinite(partition_at))
+);
+
+CREATE TABLE mcp_tool_calls_partitioned (
+    LIKE mcp_tool_calls INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id,started_at),
+    FOREIGN KEY (id) REFERENCES mcp_tool_calls_keys(id),
+    CHECK (isfinite(started_at))
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE mcp_tool_calls_default PARTITION OF mcp_tool_calls_partitioned DEFAULT;
+
+CREATE VIEW image_calls_original AS SELECT * FROM image_calls;
+
+CREATE TABLE image_calls_keys (
+    id uuid PRIMARY KEY,
+    partition_at timestamptz NOT NULL CHECK (isfinite(partition_at)),
+    billing_transaction_id uuid UNIQUE,
+    job_id uuid UNIQUE
+);
+
+CREATE TABLE image_calls_partitioned (
+    LIKE image_calls INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id,started_at),
+    FOREIGN KEY (id) REFERENCES image_calls_keys(id),
+    CHECK (isfinite(started_at))
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE image_calls_default PARTITION OF image_calls_partitioned DEFAULT;
+
+CREATE VIEW video_calls_original AS SELECT * FROM video_calls;
+
+CREATE TABLE video_calls_keys (
+    id uuid PRIMARY KEY,
+    partition_at timestamptz NOT NULL CHECK (isfinite(partition_at)),
+    billing_transaction_id uuid UNIQUE,
+    job_id uuid UNIQUE NOT NULL
+);
+
+CREATE TABLE video_calls_partitioned (
+    LIKE video_calls INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (id,created_at),
+    FOREIGN KEY (id) REFERENCES video_calls_keys(id),
+    CHECK (isfinite(created_at))
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE video_calls_default PARTITION OF video_calls_partitioned DEFAULT;

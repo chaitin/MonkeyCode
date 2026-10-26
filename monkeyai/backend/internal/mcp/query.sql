@@ -1,7 +1,8 @@
 -- name: UpdateToolCallDuration :exec
 UPDATE mcp_tool_calls
 SET duration_ms = sqlc.arg(duration_ms)::integer
-WHERE id = sqlc.arg(id)::uuid;
+WHERE id = sqlc.arg(id)::uuid
+    AND started_at=(SELECT billing_activity_time('mcp_tool_calls',sqlc.arg(id)::uuid));
 
 -- name: CountTools :one
 SELECT
