@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -16,7 +15,10 @@ import (
 	"time"
 )
 
-const maxProviderResponse = 1 << 20
+const (
+	maxProviderResponse   = 1 << 20
+	outputDownloadTimeout = 10 * time.Minute
+)
 
 type diagnosticError struct {
 	code    string
@@ -126,11 +128,33 @@ func providerJSON(ctx context.Context, client *http.Client, method, base, endpoi
 	return content, response.StatusCode, nil
 }
 
+var (
+	errOutputURL        = diagnosticError{code: "video_output_url_invalid", message: "生成视频地址无效"}
+	errOutputTooLarge   = diagnosticError{code: "video_output_too_large", message: "生成视频超出大小限制"}
+	errOutputEmpty      = diagnosticError{code: "video_output_empty", message: "生成视频内容为空"}
+	errOutputIncomplete = diagnosticError{code: "video_output_incomplete", message: "生成视频下载不完整"}
+)
+
+type mediaResponseError struct {
+	diagnosticError
+	status   int
+	expected int64
+}
+
+func downloadClient(client *http.Client) *http.Client {
+	copy := *client
+	if copy.Timeout < outputDownloadTimeout {
+		copy.Timeout = outputDownloadTimeout
+	}
+	return &copy
+}
+
 func providerMedia(ctx context.Context, client *http.Client, address string) (io.ReadCloser, int64, error) {
 	u, err := url.Parse(address)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" {
-		return nil, 0, errors.New("生成视频地址无效")
+		return nil, 0, errOutputURL
 	}
+	client = downloadClient(client)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, 0, err
@@ -139,9 +163,18 @@ func providerMedia(ctx context.Context, client *http.Client, address string) (io
 	if err != nil {
 		return nil, 0, err
 	}
-	if response.StatusCode != http.StatusOK || response.ContentLength > 256<<20 || response.ContentLength == 0 {
+	var invalid diagnosticError
+	switch {
+	case response.StatusCode != http.StatusOK:
+		invalid = diagnosticError{code: "video_output_http_error", message: "生成视频响应状态异常"}
+	case response.ContentLength > maxOutputBytes:
+		invalid = errOutputTooLarge
+	case response.ContentLength == 0:
+		invalid = errOutputEmpty
+	}
+	if invalid.code != "" {
 		response.Body.Close()
-		return nil, 0, fmt.Errorf("生成视频响应无效: %d", response.StatusCode)
+		return nil, 0, &mediaResponseError{diagnosticError: invalid, status: response.StatusCode, expected: response.ContentLength}
 	}
 	return response.Body, response.ContentLength, nil
 }

@@ -479,14 +479,22 @@ type processFailure struct {
 func (e *processFailure) Error() string { return e.err.Error() }
 func (e *processFailure) Unwrap() error { return e.err }
 
-// pollFailureArgs unwraps processFailure and keeps the upstream error itself
-// for classification, so error_code/cause_type still describe the root cause.
+// 解开阶段包装，保留原始错误分类和安全的诊断字段。
 func pollFailureArgs(err error) (error, []any) {
-	var failure *processFailure
-	if !errors.As(err, &failure) {
-		return err, nil
+	var args []any
+	if failure, ok := errors.AsType[*processFailure](err); ok {
+		args = append(args, "phase", failure.phase, "proxy_used", failure.proxy)
+		err = failure.err
 	}
-	return failure.err, []any{"phase", failure.phase, "proxy_used", failure.proxy}
+	if failure, ok := errors.AsType[*outputFailure](err); ok {
+		args = append(args, slog.Group("output", "phase", failure.phase,
+			"expected_bytes", failure.expected, "received_bytes", failure.received))
+		err = failure.err
+	}
+	if response, ok := errors.AsType[*mediaResponseError](err); ok {
+		args = append(args, "upstream_status", response.status, "expected_bytes", response.expected)
+	}
+	return err, args
 }
 
 func logPollFailure(ctx context.Context, event, message, id string, failures int32, err error, extra ...any) {
