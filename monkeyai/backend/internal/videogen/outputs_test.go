@@ -124,7 +124,7 @@ VALUES($1,'system',$2,'MiniMax-H3','视频测试','video_generation','video','mi
 		credits     string
 		interrupted bool
 	}{
-		{"时长与上游不一致", mp4, 768, 6584, "65.84", true},
+		{"时长与上游不一致", mp4, 768, 6584, "60", true},
 		{"元数据无法解析", []byte("provider video with unsupported metadata"), 0, 6000, "60", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,7 +162,7 @@ VALUES($1::uuid,$2,$3,'minimax','text_to_video','running','test',$4,$5,$1::uuid:
 			if err != nil || task.Status != "succeeded" || task.Output == nil || task.Usage == nil {
 				t.Fatalf("上游成功的视频未完成保存和结算: %+v, %v", task, err)
 			}
-			if task.Output.Width != tc.width || task.Output.Height != tc.width || task.Output.DurationMs != tc.duration || task.Usage.Credits != tc.credits {
+			if task.Output.Width != tc.width || task.Output.Height != tc.width || task.Output.DurationMs != tc.duration || task.Usage.Credits != tc.credits || task.Usage.OutputDurationMs != 6000 {
 				t.Fatalf("视频元数据或积分错误: output=%+v usage=%+v", task.Output, task.Usage)
 			}
 			body, size, mime, err := service.OpenOutput(ctx, userID, task.Output.FileID)

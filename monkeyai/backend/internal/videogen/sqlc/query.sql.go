@@ -464,7 +464,7 @@ func (q *Queries) VideoOutputOwned(ctx context.Context, arg VideoOutputOwnedPara
 }
 
 const videoTaskOwned = `-- name: VideoTaskOwned :one
-SELECT j.status,j.mode,j.created_at,j.completed_at,j.error_code,j.billing_transaction_id,
+SELECT j.status,j.mode,j.created_at,j.completed_at,j.error_code,j.billing_transaction_id,j.output_duration_ms,
 j.request_config,j.pricing_snapshot,o.id AS output_id,o.mime_type,o.width,o.height,o.duration_ms,o.byte_size,o.expires_at
 FROM video_jobs j LEFT JOIN video_outputs o ON o.job_id=j.id
 WHERE j.id=$1 AND j.user_id=$2
@@ -482,6 +482,7 @@ type VideoTaskOwnedRow struct {
 	CompletedAt          *time.Time
 	ErrorCode            *string
 	BillingTransactionID *string
+	OutputDurationMs     *int64
 	RequestConfig        []byte
 	PricingSnapshot      []byte
 	OutputID             *string
@@ -503,6 +504,7 @@ func (q *Queries) VideoTaskOwned(ctx context.Context, arg VideoTaskOwnedParams) 
 		&i.CompletedAt,
 		&i.ErrorCode,
 		&i.BillingTransactionID,
+		&i.OutputDurationMs,
 		&i.RequestConfig,
 		&i.PricingSnapshot,
 		&i.OutputID,

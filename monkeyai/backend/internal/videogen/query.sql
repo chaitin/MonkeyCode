@@ -32,7 +32,7 @@ INSERT INTO video_job_inputs(job_id,input_id,ordinal,role) VALUES($1,$2,$3,$4);
 SELECT id,request_hash FROM video_jobs WHERE user_id=$1 AND idempotency_key=$2;
 
 -- name: VideoTaskOwned :one
-SELECT j.status,j.mode,j.created_at,j.completed_at,j.error_code,j.billing_transaction_id,
+SELECT j.status,j.mode,j.created_at,j.completed_at,j.error_code,j.billing_transaction_id,j.output_duration_ms,
 j.request_config,j.pricing_snapshot,o.id AS output_id,o.mime_type,o.width,o.height,o.duration_ms,o.byte_size,o.expires_at
 FROM video_jobs j LEFT JOIN video_outputs o ON o.job_id=j.id
 WHERE j.id=$1 AND j.user_id=$2;
