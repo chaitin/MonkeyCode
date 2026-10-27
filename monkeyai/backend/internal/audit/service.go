@@ -50,9 +50,10 @@ func Write(ctx context.Context, db sqlc.DBTX, event Event) error {
 	state, _ := ctx.Value(requestKey{}).(*requestState)
 	if state != nil && state.actor.ID == event.ActorID {
 		in.ActorName, in.ActorEmail = state.actor.Name, optional(state.actor.Email)
-		in.RequestID, in.SourceIp, in.UserAgent = new(state.id), state.ip, optional(state.agent)
+		in.RequestID, in.SourceIp, in.UserAgent = optional(state.id), state.ip, optional(state.agent)
 		in.OccurredAt = state.at
-	} else {
+	}
+	if in.ActorName == "" {
 		actor, err := sqlc.New(db).Actor(ctx, event.ActorID)
 		if err != nil {
 			return err
