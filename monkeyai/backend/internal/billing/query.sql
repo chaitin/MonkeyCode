@@ -792,8 +792,8 @@ SELECT display_name, ownership_type FROM models
 WHERE id=$1 AND kind='video' AND enabled AND deleted_at IS NULL;
 
 -- name: VideoCharge :one
-SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
-WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video' AND status IN ('settled', 'released');
+SELECT COALESCE(raw_amount, 0)::text AS raw_amount, status, error_code FROM billing_transactions
+WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video';
 
 -- name: UpsertVideoCall :exec
 INSERT INTO video_calls (id, job_id, billing_transaction_id, user_id, model_id, session_id, status, output_duration_ms, created_at)

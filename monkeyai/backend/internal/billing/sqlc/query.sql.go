@@ -2766,8 +2766,8 @@ func (q *Queries) UsersWithoutAccount(ctx context.Context, periodStartAt time.Ti
 }
 
 const videoCharge = `-- name: VideoCharge :one
-SELECT COALESCE(raw_amount, 0)::text FROM billing_transactions
-WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video' AND status IN ('settled', 'released')
+SELECT COALESCE(raw_amount, 0)::text AS raw_amount, status, error_code FROM billing_transactions
+WHERE id=$1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid)) AND user_id=$2 AND category='video'
 `
 
 type VideoChargeParams struct {
@@ -2775,11 +2775,17 @@ type VideoChargeParams struct {
 	UserID string
 }
 
-func (q *Queries) VideoCharge(ctx context.Context, arg VideoChargeParams) (string, error) {
+type VideoChargeRow struct {
+	RawAmount string
+	Status    string
+	ErrorCode string
+}
+
+func (q *Queries) VideoCharge(ctx context.Context, arg VideoChargeParams) (VideoChargeRow, error) {
 	row := q.db.QueryRow(ctx, videoCharge, arg.ID, arg.UserID)
-	var column_1 string
-	err := row.Scan(&column_1)
-	return column_1, err
+	var i VideoChargeRow
+	err := row.Scan(&i.RawAmount, &i.Status, &i.ErrorCode)
+	return i, err
 }
 
 const videoPricingModel = `-- name: VideoPricingModel :one

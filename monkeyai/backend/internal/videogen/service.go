@@ -309,7 +309,7 @@ func (s *Service) GetTask(ctx context.Context, userID, id string) (Task, error) 
 		task.Output = &VideoOutput{FileID: *row.OutputID, URL: "/v1/videos/outputs/" + *row.OutputID, MIMEType: *row.MimeType,
 			Width: int(*row.Width), Height: int(*row.Height), DurationMs: *row.DurationMs, ByteSize: *row.ByteSize}
 	}
-	if row.DurationMs != nil && (task.Status == "succeeded" || task.Status == "expired") {
+	if row.OutputDurationMs != nil && (task.Status == "succeeded" || task.Status == "expired") {
 		credit := "0"
 		if row.BillingTransactionID != nil {
 			amount, err := s.billing.VideoCharge(ctx, *row.BillingTransactionID, userID)
@@ -322,7 +322,7 @@ func (s *Service) GetTask(ctx context.Context, userID, id string) (Task, error) 
 			Resolution       string `json:"resolution"`
 			OutputDurationMs int64  `json:"output_duration_ms"`
 			Credits          string `json:"credits"`
-		}{price.Resolution, *row.DurationMs, credit}
+		}{price.Resolution, *row.OutputDurationMs, credit}
 	}
 	return task, nil
 }
@@ -452,6 +452,14 @@ func (s *Service) poll(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if charge, ok := errors.AsType[*billing.VideoChargeError](err); ok && charge.Status == "unknown" {
+			logPollFailure(ctx, "video.job.stopped", "视频计费需要核查，停止自动轮询", id, claim.PollFailures, err)
+			code := charge.DiagnosticCode()
+			if err := queries.MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &code}); err != nil {
+				return err
+			}
+			continue
+		}
 		delay := min(30*time.Second<<min(claim.PollFailures, 4), 5*time.Minute)
 		retryAt := time.Now().Add(delay)
 		if retryAt.After(deadline) {
@@ -573,17 +581,18 @@ func (s *Service) process(ctx context.Context, id, modelID, providerID, transact
 		return sqlc.New(s.pool).MarkVideoJobRunning(ctx, id)
 	}
 	phase = "load_output_duration"
-	duration, err := sqlc.New(s.pool).VideoJobOutputDuration(ctx, id)
+	_, err = sqlc.New(s.pool).VideoJobOutputDuration(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		phase = "save_output"
-		output, err := s.saveOutput(ctx, client, id, result.URL, result.DurationMs)
+		_, err := s.saveOutput(ctx, client, id, result.URL, result.DurationMs)
 		if err != nil {
 			return err
 		}
-		duration = output.DurationMs
 	} else if err != nil {
 		return err
 	}
+	// 计费采用供应商确认的时长，MP4 时长仅用于文件元数据。
+	duration := result.DurationMs
 	phase = "billing_finish"
 	if err := s.billing.Finish(ctx, transactionID, billing.Usage{Result: "succeeded", Known: true, VideoDurationMs: duration}); err != nil {
 		return err
