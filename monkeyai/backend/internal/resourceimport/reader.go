@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -50,8 +51,12 @@ func (s *Service) openUpload(ctx context.Context, upload Upload) (*archiveReader
 	reader := &archiveReader{}
 	cleanup := func() {
 		for _, file := range reader.files {
-			_ = file.Close()
-			_ = os.Remove(file.Name())
+			if err := file.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "resourceimport", "operation", "openUpload", "error", err)
+			}
+			if err := os.Remove(file.Name()); err != nil && !os.IsNotExist(err) {
+				slog.Error("清理临时文件失败", "module", "resourceimport", "operation", "openUpload", "error", err)
+			}
 		}
 	}
 	fail := func(err error) (*archiveReader, string, func(), error) {
@@ -72,7 +77,9 @@ func (s *Service) openUpload(ctx context.Context, upload Upload) (*archiveReader
 		}
 		file, err := os.CreateTemp("", "resource-import-*")
 		if err != nil {
-			_ = stream.Close()
+			if err := stream.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "resourceimport", "operation", "openUpload", "error", err)
+			}
 			return fail(err)
 		}
 		reader.files = append(reader.files, file)
@@ -80,7 +87,13 @@ func (s *Service) openUpload(ctx context.Context, upload Upload) (*archiveReader
 		chunkHash := sha256.New()
 		n, readErr := io.Copy(io.MultiWriter(file, hash, chunkHash), io.LimitReader(stream, chunk.Size+1))
 		closeErr := stream.Close()
-		if readErr != nil || closeErr != nil || n != chunk.Size || "sha256:"+hex.EncodeToString(chunkHash.Sum(nil)) != chunk.SHA256 {
+		if readErr != nil {
+			return fail(readErr)
+		}
+		if closeErr != nil {
+			return fail(closeErr)
+		}
+		if n != chunk.Size || "sha256:"+hex.EncodeToString(chunkHash.Sum(nil)) != chunk.SHA256 {
 			return fail(resource.Invalid(fmt.Sprintf("资源包传输块 %d 损坏，请重新上传", index+1)))
 		}
 	}

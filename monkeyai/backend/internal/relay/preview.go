@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,9 @@ func validatePreviewTemplate(template, control, files string) error {
 	}
 	u, err := url.Parse(strings.Replace(template, "{artifact}", strings.Repeat("a", 32), 1))
 	if err != nil || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Port() != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "validatePreviewTemplate", "error", err)
+		}
 		return errors.New("预览 origin 模板不能包含端口、路径或凭据")
 	}
 	base := strings.TrimPrefix(u.Hostname(), strings.Repeat("a", 32)+".")
@@ -51,14 +55,18 @@ func previewHost(template, host string) bool {
 	if template == "" {
 		return false
 	}
-	u, _ := url.Parse(strings.Replace(template, "{artifact}", "artifact", 1))
+	u, err := url.Parse(strings.Replace(template, "{artifact}", "artifact", 1))
+	if err != nil {
+		slog.Error("解析预览域名失败", "error", err)
+		return false
+	}
 	base := strings.TrimPrefix(u.Host, "artifact.")
 	host = strings.ToLower(host)
 	if !strings.HasSuffix(host, "."+base) {
 		return false
 	}
 	label := strings.TrimSuffix(host, "."+base)
-	_, err := hex.DecodeString(label)
+	_, err = hex.DecodeString(label)
 	return len(label) == 32 && err == nil
 }
 
@@ -71,6 +79,7 @@ func previewDomain(template, host string) bool {
 	}
 	u, err := url.Parse(strings.Replace(template, "{artifact}", "artifact", 1))
 	if err != nil {
+		slog.Warn("操作失败", "module", "relay", "operation", "previewDomain", "error", err)
 		return false
 	}
 	base := strings.TrimPrefix(u.Host, "artifact.")
@@ -104,6 +113,7 @@ func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawPath != "" {
 		decoded, err := url.PathUnescape(requested)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "preview", "error", err)
 			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
@@ -119,6 +129,9 @@ func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	expected := PreviewOrigin(s.config.PreviewOriginTemplate, grant.ServerID, grant.OwnerUserID, grant.MachineID, grant.SessionID, grant.ArtifactID)
 	u, err := url.Parse(expected)
 	if err != nil || !validUUID(grant.ArtifactID) || grant.PreviewOrigin != expected || r.Host != u.Host || grant.Scope != "directory" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "preview", "error", err)
+		}
 		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}

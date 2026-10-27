@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model/sqlc"
@@ -78,6 +79,9 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 		if raw := query.Get("limit"); raw != "" {
 			limit, err = strconv.Atoi(raw)
 			if err != nil || limit < 1 || limit > 500 {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "listModels", "error", err)
+				}
 				modelError(w, http.StatusBadRequest, "limit 必须在 1—500 之间")
 				return
 			}

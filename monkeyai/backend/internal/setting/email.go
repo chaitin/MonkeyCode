@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"mime"
 	"net"
@@ -18,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
 type emailConfig struct {
@@ -33,6 +34,9 @@ type emailConfig struct {
 func (c emailConfig) validate() error {
 	address, err := mail.ParseAddress(c.SenderEmail)
 	if err != nil || address.Address != c.SenderEmail || strings.ContainsAny(c.SenderName, "\r\n") {
+		if err != nil {
+			slog.Warn("操作失败", "module", "setting", "operation", "validate", "error", err)
+		}
 		return errors.New("发件人邮箱或名称无效")
 	}
 	if strings.TrimSpace(c.Host) == "" || strings.ContainsAny(c.Host, "\r\n /\\") || c.Port < 1 || c.Port > 65535 {
@@ -62,6 +66,9 @@ func sendEmail(ctx context.Context, cfg emailConfig, to, subject, body string) e
 	}
 	recipient, err := mail.ParseAddress(to)
 	if err != nil || recipient.Address != to {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "sendEmail", "error", err)
+		}
 		return errors.New("收件邮箱无效")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -73,12 +80,12 @@ func sendEmail(ctx context.Context, cfg emailConfig, to, subject, body string) e
 	}
 	defer func() {
 		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "关闭 SMTP 连接失败", "module", "setting", "operation", "sendEmail", "failure", smtpFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "关闭 SMTP 连接失败", "module", "setting", "operation", "sendEmail", "error", err)
 		}
 	}()
 	stop := context.AfterFunc(ctx, func() {
 		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "取消 SMTP 连接时关闭失败", "module", "setting", "operation", "sendEmail", "failure", smtpFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "取消 SMTP 连接时关闭失败", "module", "setting", "operation", "sendEmail", "error", err)
 		}
 	})
 	defer stop()
@@ -101,7 +108,7 @@ func sendEmail(ctx context.Context, cfg emailConfig, to, subject, body string) e
 	}
 	defer func() {
 		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "关闭 SMTP 客户端失败", "module", "setting", "operation", "sendEmail", "failure", smtpFailure(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "关闭 SMTP 客户端失败", "module", "setting", "operation", "sendEmail", "error", err)
 		}
 	}()
 	if cfg.Encryption == "starttls" {
@@ -141,7 +148,7 @@ func sendEmail(ctx context.Context, cfg emailConfig, to, subject, body string) e
 	}
 	// DATA 已确认接收后，QUIT 失败不应误报发送失败。
 	if err := client.Quit(); err != nil && !errors.Is(err, net.ErrClosed) {
-		logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "SMTP QUIT 失败", "module", "setting", "operation", "sendEmail", "failure", smtpFailure(err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "setting.operation.warn", "SMTP QUIT 失败", "module", "setting", "operation", "sendEmail", "error", err)
 	}
 	return nil
 }
@@ -157,30 +164,32 @@ func (s *Service) testEmail(w http.ResponseWriter, r *http.Request) {
 	input.Recipient = strings.TrimSpace(input.Recipient)
 	address, err := mail.ParseAddress(input.Recipient)
 	if err != nil || address.Address != input.Recipient {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "setting", "operation", "testEmail", "error", err)
+		}
 		settingError(r.Context(), w, 400, "收件邮箱无效")
 		return
 	}
 	if err := s.Send(r.Context(), input.Recipient, "MonkeyAI 测试邮件", "这是一封 MonkeyAI 测试邮件，SMTP 发件配置已生效。"); err != nil {
-		logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "测试邮件发送失败", "module", "setting", "operation", "testEmail", "failure", smtpFailure(err))
+		logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "测试邮件发送失败", "module", "setting", "operation", "testEmail", "error", err)
 		settingError(r.Context(), w, http.StatusBadGateway, "邮件发送失败，请检查已保存的 SMTP 配置和服务连接")
 		return
 	}
 	settingJSON(r.Context(), w, http.StatusOK, map[string]bool{"sent": true})
 }
 
-// SMTP 响应和网络错误可能回显收件人或认证信息，只记录协议状态及错误类别。
 func smtpFailure(err error) []any {
 	if response, ok := errors.AsType[*textproto.Error](err); ok {
-		return []any{"reason", "smtp_rejected", "smtp_status", response.Code}
+		return []any{"error", err, "reason", "smtp_rejected", "smtp_status", response.Code}
 	}
 	if errors.Is(err, ErrNotFound) {
-		return []any{"error", ErrNotFound}
+		return []any{"error", err}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return []any{"reason", "timeout"}
+		return []any{"error", err, "reason", "timeout"}
 	}
 	if network, ok := errors.AsType[net.Error](err); ok {
-		return []any{"reason", "network_error", "timeout", network.Timeout()}
+		return []any{"error", err, "reason", "network_error", "timeout", network.Timeout()}
 	}
-	return []any{"reason", "email_error", "error_type", fmt.Sprintf("%T", err)}
+	return []any{"error", err, "reason", "email_error"}
 }

@@ -2,8 +2,11 @@ package videogen
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen/sqlc"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) Cleanup(ctx context.Context) error {
@@ -26,7 +29,9 @@ func (s *Service) Cleanup(ctx context.Context) error {
 			err = q.RemoveExpiredVideoInput(ctx, input.ID)
 		}
 		if err != nil {
-			_ = transaction.Rollback(ctx)
+			if err := transaction.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				slog.Error("回滚事务失败", "module", "videogen", "operation", "Cleanup", "error", err)
+			}
 			return err
 		}
 		if err := transaction.Commit(ctx); err != nil {

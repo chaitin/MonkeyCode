@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"uuid"
@@ -59,7 +60,13 @@ type Snapshot struct {
 	Taxonomy Taxonomy
 }
 
-func payload(v any) []byte { b, _ := json.Marshal(v); return b }
+func payload(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("编码设计目录数据失败", "error", err)
+	}
+	return b
+}
 func (s *Service) Current(ctx context.Context) (*SnapshotRef, int64, error) {
 	row, err := sqlc.New(s.pool).Current(ctx)
 	if err != nil {
@@ -92,12 +99,18 @@ func snapshot(ctx context.Context, q *sqlc.Queries, publisher, release string) (
 			return nil, err
 		}
 		if digest, checkErr := ContentDigest(e); checkErr != nil || digest != e.ContentDigest {
+			if checkErr != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "designcatalog", "operation", "snapshot", "error", checkErr)
+			}
 			return nil, fault(503, "unavailable", "快照资源元数据损坏")
 		}
 		out.Entries = append(out.Entries, e)
 	}
 	computed, checkErr := (&Package{SnapshotRef: out.SnapshotRef, Entries: out.Entries, Taxonomy: out.Taxonomy}).Digest()
 	if checkErr != nil || computed != out.Digest {
+		if checkErr != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "designcatalog", "operation", "snapshot", "error", checkErr)
+		}
 		return nil, fault(503, "unavailable", "快照指纹损坏")
 	}
 	return out, nil
@@ -154,7 +167,9 @@ func (s *Service) plan(ctx context.Context, q *sqlc.Queries, p *Package) (Plan, 
 			}
 		}
 		var fields map[string]json.RawMessage
-		_ = json.Unmarshal(e.Metadata, &fields)
+		if err := json.Unmarshal(e.Metadata, &fields); err != nil {
+			slog.Error("解析数据失败", "module", "designcatalog", "operation", "plan", "error", err)
+		}
 		name := stringValue(fields["name"])
 		if name == "" {
 			name = e.ID
@@ -196,7 +211,9 @@ func (s *Service) Apply(ctx context.Context, tx pgx.Tx, p *Package, actor, expec
 		}
 		for _, entry := range p.Entries {
 			var fields map[string]json.RawMessage
-			_ = json.Unmarshal(entry.Metadata, &fields)
+			if err := json.Unmarshal(entry.Metadata, &fields); err != nil {
+				slog.Error("解析数据失败", "module", "designcatalog", "operation", "Apply", "error", err)
+			}
 			if (entry.Kind == "design-system" || entry.Kind == "template" && boolValue(fields["downloadable"])) && entry.Native == nil {
 				return plan, fmt.Errorf("资源 ZIP 尚未持久化: %s", entry.ID)
 			}

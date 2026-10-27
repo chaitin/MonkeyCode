@@ -111,6 +111,9 @@ func clientIP(r *http.Request) string {
 	remote := sourceIP(r.RemoteAddr)
 	peer, err := netip.ParseAddr(remote)
 	if err != nil || !peer.IsPrivate() {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "audit", "operation", "clientIP", "error", err)
+		}
 		return remote
 	}
 	// 默认部署由内网 Nginx 转发；公网或本机直连不信任代理头。
@@ -120,6 +123,7 @@ func clientIP(r *http.Request) string {
 	}
 	ip, err := netip.ParseAddr(values[0])
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "audit", "operation", "clientIP", "error", err)
 		return remote
 	}
 	return ip.WithZone("").Unmap().String()
@@ -128,10 +132,12 @@ func clientIP(r *http.Request) string {
 func sourceIP(remote string) string {
 	host, _, err := net.SplitHostPort(remote)
 	if err != nil {
+		slog.Warn("操作失败", "module", "audit", "operation", "sourceIP", "error", err)
 		host = remote
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
+		slog.Warn("操作失败", "module", "audit", "operation", "sourceIP", "error", err)
 		return ""
 	}
 	return ip.WithZone("").Unmap().String()

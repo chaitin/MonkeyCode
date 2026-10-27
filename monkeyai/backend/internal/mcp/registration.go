@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc/connector"
@@ -107,6 +108,7 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.RegistrationURL, bytes.NewReader(data))
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "error", err)
 		return fail()
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -114,6 +116,7 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "error", err)
 		return fail()
 	}
 	defer func() {
@@ -126,6 +129,9 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 	}
 	data, err = io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "error", err)
+		}
 		return fail()
 	}
 	var result oauthRegistration

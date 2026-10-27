@@ -3,10 +3,11 @@ package mcp
 import (
 	"context"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -44,11 +45,11 @@ func NewService(store *resource.Store, publicURL string) *Service {
 	s := &Service{Store: store, PublicURL: strings.TrimRight(publicURL, "/")}
 	s.Connectors = resource.NewCRUD(store, resource.Definition{
 		Kind: "connector", Path: "/connectors",
-		Repository: func(q resource.Queryer) resource.Repository { return connector.New(q) },
-		Fields:         []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "proxy_id", "enabled", "config_revision", "connection_status"},
-		UserFields:     []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
-		OverrideFields: []string{"name", "description", "url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "tag_ids"},
-		Hidden:         []string{"oauth_client_secret", "icon_s3_key"},
+		Repository:      func(q resource.Queryer) resource.Repository { return connector.New(q) },
+		Fields:          []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "proxy_id", "enabled", "config_revision", "connection_status"},
+		UserFields:      []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
+		OverrideFields:  []string{"name", "description", "url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "tag_ids"},
+		Hidden:          []string{"oauth_client_secret", "icon_s3_key"},
 		PrepareOverride: s.validateConnector,
 		Validate:        s.validateConnector, Decorate: s.decorateConnector, UserDecorate: userIcon,
 		References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
@@ -79,6 +80,7 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 			return resource.Invalid("系统代理不可用")
 		}
 		if _, err := s.proxies.ProxyURL(ctx, id); err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "validateConnector", "error", err)
 			return resource.Invalid("系统代理不存在")
 		}
 	}
@@ -281,6 +283,9 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		Credits billing.Amount `json:"credits_per_call"`
 	}
 	if err := resource.Decode(w, r, &in); err != nil || in.Enabled == nil || in.Credits < 0 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "updateTool", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("工具配置无效"))
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -219,6 +220,7 @@ func validateState(in sessionInput, row sessionRow) (bool, []byte, error) {
 	in.Runtime = nil
 	data, err := json.Marshal(in)
 	if err != nil {
+		slog.Warn("操作失败", "module", "session", "operation", "validateState", "error", err)
 		return false, nil, invalidState("会话快照无法规范化")
 	}
 	digest := sha256.Sum256(data)
@@ -276,6 +278,7 @@ func turnHash(in turnInput, facts int32) ([]byte, error) {
 		Turn         turnInput `json:"turn"`
 	}{FactsVersion: facts, Turn: in})
 	if err != nil {
+		slog.Warn("操作失败", "module", "session", "operation", "turnHash", "error", err)
 		return nil, invalidState("轮次无法规范化")
 	}
 	digest := sha256.Sum256(data)

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -47,6 +48,9 @@ func (s *Service) read(ctx context.Context, object resource.Object) (Package, er
 	}
 	p, err := Parse(b)
 	if err != nil || int64(len(b)) != object.Int("package_size_bytes") || p.SHA != object.String("package_sha256") {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "skill", "operation", "read", "error", err)
+		}
 		return Package{}, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "技能包大小或摘要不一致，请重新上传"}
 	}
 	return p, nil
@@ -158,6 +162,7 @@ func (s *Service) manifest(w http.ResponseWriter, r *http.Request, personal bool
 func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(1<<20))
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("技能包上传无效或超限"))
 		return
 	}
@@ -168,6 +173,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	}()
 	f, _, err := r.FormFile("package")
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("缺少 package"))
 		return
 	}
@@ -189,6 +195,9 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	in := resource.Object{}
 	if meta := r.FormValue("metadata"); meta != "" {
 		if err = json.Unmarshal([]byte(meta), &in); err != nil || in == nil {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
+			}
 			resource.Fail(r.Context(), w, resource.Invalid("元数据格式无效"))
 			return
 		}

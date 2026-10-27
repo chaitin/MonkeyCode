@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
@@ -21,7 +22,7 @@ type dependencyError struct {
 	cause error
 }
 
-func (e *dependencyError) Error() string { return "依赖检查失败" }
+func (e *dependencyError) Error() string { return e.name + ": " + e.cause.Error() }
 func (e *dependencyError) Unwrap() error { return e.cause }
 func Dependency(name string, err error) error {
 	if err == nil {
@@ -35,7 +36,7 @@ type DiagnosticCoder interface {
 	DiagnosticCode() string
 }
 
-// ErrorAttrs never formats the error, URL, SQL, certificate or its payload.
+// ErrorAttrs 保留原始错误文本及用于检索的分类字段。
 func ErrorAttrs(err error) []slog.Attr {
 	if err == nil {
 		return nil
@@ -106,7 +107,7 @@ func ErrorAttrs(err error) []slog.Attr {
 	if inner, ok := innerURLCause(err); ok {
 		extra = append(extra, slog.String("cause_type", reflect.TypeOf(inner).String()))
 	}
-	attrs := []slog.Attr{slog.String("error_code", code), slog.String("error_type", reflect.TypeOf(cause).String())}
+	attrs := []slog.Attr{slog.String("error_code", code), slog.String("error_type", reflect.TypeOf(cause).String()), slog.String("error_message", fmt.Sprint(err))}
 	var dependency *dependencyError
 	if errors.As(err, &dependency) {
 		attrs = append(attrs, slog.String("dependency", dependency.name))
@@ -131,8 +132,7 @@ func tlsReason(err error) string {
 	return "unknown"
 }
 
-// innerURLCause unwraps nested *url.Error values so logs can show the root
-// transport error's type without exposing its URL or message.
+// innerURLCause 提取 URL 错误链中最内层的传输错误。
 func innerURLCause(err error) (error, bool) {
 	cause := err
 	for range 8 {

@@ -3,7 +3,7 @@ package relay
 import (
 	"context"
 	"encoding/json"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay/sqlc"
 	"github.com/hashicorp/yamux"
@@ -45,7 +47,9 @@ func (a *access) closeReason(reason string) {
 		cancel()
 	}
 	if conn != nil {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "closeReason", "error", err)
+		}
 	}
 }
 func (a *access) deadline() time.Time {
@@ -64,7 +68,9 @@ func (a *access) renew(verified, expires time.Time) {
 	}
 	a.verifiedAt, a.expiresAt = verified, expires
 	if a.stream != nil {
-		a.stream.SetDeadline(minTime(expires, verified.Add(180*time.Second)))
+		if err := a.stream.SetDeadline(minTime(expires, verified.Add(180*time.Second))); err != nil {
+			slog.Error("设置连接截止时间失败", "module", "relay", "operation", "renew", "error", err)
+		}
 	}
 }
 func minTime(a, b time.Time) time.Time {
@@ -122,7 +128,11 @@ func (s *Service) revocation(r *route, connection string, version int64) string 
 		payload["connection_id"] = connection
 		payload["access_version"] = version
 	}
-	wire, _ := signWire(s.key, s.kid, payload)
+	wire, err := signWire(s.key, s.kid, payload)
+	if err != nil {
+		s.logger.Error("签发中转凭据失败", "error", err)
+		return ""
+	}
 	return wire
 }
 func (s *Service) pushControl(r *route, value any) bool {
@@ -264,11 +274,13 @@ func (s *Service) lease(ctx context.Context, r *route, in LeaseRequest) (leaseRe
 	}
 	state := "fresh"
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "lease", "error", err)
 		state = "grace"
 	}
 	wire, err := signWire(s.key, s.kid, map[string]any{"type": "monkeyai.access.lease.v1", "issuer": s.config.PublicURL, "audience": "monkeyai-runtime", "kid": s.kid,
 		"authorization": auth, "nonce": in.Nonce, "lease_seq": in.LeaseSeq, "boot_id": in.BootID, "ttl_ms": ttl.Milliseconds(), "ticket_remaining_ms": min(int64(900000), max(0, time.Until(expires).Milliseconds())), "auth_age_ms": age, "server_time": now.UTC().Format(time.RFC3339Nano), "verification_state": state})
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "lease", "error", err)
 		return leaseResponse{Code: "authorization_state_unavailable"}, 503
 	}
 	return leaseResponse{Signed: wire}, 200
@@ -299,7 +311,9 @@ func (l *controlListener) Accept() (net.Conn, error) {
 		case l.slots <- struct{}{}:
 			return &controlConn{Conn: c, slots: l.slots}, nil
 		default:
-			c.Close()
+			if err := c.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "relay", "operation", "Accept", "error", err)
+			}
 		}
 	}
 }
@@ -322,8 +336,14 @@ func (s *Service) control(ctx context.Context, r *route) {
 	go s.probe(r, stop)
 	server := &http.Server{ErrorLog: logging.ErrorLog(s.logger), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10,
 		BaseContext: func(net.Listener) context.Context { return ctx }, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { s.controlHTTP(w, req, r) })}
-	defer server.Close()
-	_ = server.Serve(&controlListener{session: r.control, slots: make(chan struct{}, 16)})
+	defer func() {
+		if err := server.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "control", "error", err)
+		}
+	}()
+	if err := server.Serve(&controlListener{session: r.control, slots: make(chan struct{}, 16)}); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("操作失败", "module", "relay", "operation", "control", "error", err)
+	}
 }
 func (s *Service) probe(r *route, stop <-chan struct{}) {
 	ticker := time.NewTicker(15 * time.Second)
@@ -334,6 +354,7 @@ func (s *Service) probe(r *route, stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			if _, err := r.control.Ping(); err != nil {
+				slog.Warn("操作失败", "module", "relay", "operation", "probe", "error", err)
 				s.closeRoute(r)
 				return
 			}
@@ -351,7 +372,9 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 		return
 	}
 	rc := http.NewResponseController(w)
-	_ = rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		slog.Error("设置连接截止时间失败", "module", "relay", "operation", "controlHTTP", "error", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	switch {
@@ -359,19 +382,27 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 		s.mu.Lock()
 		online := r.data != nil && !r.data.IsClosed()
 		s.mu.Unlock()
-		json.NewEncoder(w).Encode(map[string]any{"lease_epoch": r.state.LeaseEpoch, "data_online": online})
+		if err := json.NewEncoder(w).Encode(map[string]any{"lease_epoch": r.state.LeaseEpoch, "data_online": online}); err != nil {
+			slog.Error("写入输出失败", "module", "relay", "operation", "controlHTTP", "error", err)
+		}
 	case req.Method == "POST" && req.URL.Path == "/_control/access-lease":
 		raw, err := io.ReadAll(http.MaxBytesReader(w, req.Body, maxControlMessage))
 		var in LeaseRequest
 		if err != nil || decodeMessage(raw, &in) != nil {
 			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(leaseResponse{Code: "invalid_tunnel_message"})
+			if err := json.NewEncoder(w).Encode(leaseResponse{Code: "invalid_tunnel_message"}); err != nil {
+				slog.Error("写入输出失败", "module", "relay", "operation", "controlHTTP", "error", err)
+			}
 			return
 		}
 		result, status := s.lease(req.Context(), r, in)
-		_ = rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			slog.Error("设置连接截止时间失败", "module", "relay", "operation", "controlHTTP", "error", err)
+		}
 		w.WriteHeader(status)
-		json.NewEncoder(w).Encode(result)
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			slog.Error("写入输出失败", "module", "relay", "operation", "controlHTTP", "error", err)
+		}
 	case req.Method == "GET" && req.URL.Path == "/_control/events":
 		s.mu.Lock()
 		duplicate := r.eventsActive
@@ -384,15 +415,23 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 			return
 		}
 		defer func() { s.closeRoute(r) }()
-		_ = rc.SetReadDeadline(time.Time{})
+		if err := rc.SetReadDeadline(time.Time{}); err != nil {
+			slog.Error("设置连接截止时间失败", "module", "relay", "operation", "controlHTTP", "error", err)
+		}
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		send := func(value any) bool {
-			_ = rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				slog.Error("设置连接截止时间失败", "module", "relay", "operation", "controlHTTP", "error", err)
+			}
 			raw, err := json.Marshal(value)
 			if err != nil || len(raw) > maxControlMessage {
+				if err != nil {
+					slog.WarnContext(req.Context(), "操作失败", "module", "relay", "operation", "controlHTTP", "error", err)
+				}
 				return false
 			}
 			if _, err = w.Write(append(raw, '\n')); err != nil {
+				slog.WarnContext(req.Context(), "操作失败", "module", "relay", "operation", "controlHTTP", "error", err)
 				return false
 			}
 			return rc.Flush() == nil
@@ -418,7 +457,9 @@ func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route
 		}
 	default:
 		w.WriteHeader(404)
-		json.NewEncoder(w).Encode(map[string]string{"code": "not_found"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"code": "not_found"}); err != nil {
+			slog.Error("写入输出失败", "module", "relay", "operation", "controlHTTP", "error", err)
+		}
 	}
 }
 
@@ -488,6 +529,9 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 					continue
 				}
 				if a.id == "" || verifyErr != nil {
+					if verifyErr != nil {
+						slog.Warn("操作失败", "module", "relay", "operation", "monitor", "error", verifyErr)
+					}
 					continue
 				}
 				row, found := states[a.id]

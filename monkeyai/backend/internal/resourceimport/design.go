@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -266,7 +267,9 @@ func (s *Service) applySections(ctx context.Context, loaded loadedImport) (Secti
 					if err == nil {
 						err = tx.Commit(ctx)
 					}
-					_ = tx.Rollback(context.WithoutCancel(ctx))
+					if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+						slog.Error("回滚事务失败", "module", "resourceimport", "operation", "applySections", "error", err)
+					}
 				}
 			}
 		}
@@ -285,6 +288,7 @@ func (s *Service) applySections(ctx context.Context, loaded loadedImport) (Secti
 			recordErr := saveSection(recordCtx, s.Pool, loaded, section, plan.PlanDigest, result)
 			cancel()
 			if recordErr != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "resourceimport", "operation", "applySections", "error", recordErr)
 				result.Error = &SectionError{"service_unavailable", "分区结果未能持久化，请重新预览恢复状态"}
 				result.HTTPStatus = 503
 				failureStatus = 503

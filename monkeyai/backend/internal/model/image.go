@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -56,6 +57,9 @@ func validateImageModel(item *Model) error {
 	if len(item.ProviderOptions) != 0 {
 		var options map[string]json.RawMessage
 		if err := json.Unmarshal(item.ProviderOptions, &options); err != nil || options == nil {
+			if err != nil {
+				slog.Warn("操作失败", "module", "model", "operation", "validateImageModel", "error", err)
+			}
 			return errors.New("provider_options 必须是 JSON 对象")
 		}
 	}
@@ -112,6 +116,9 @@ func validRatio(value string) bool {
 func validateImagePricing(config *ImageConfig, pricing *ImagePricing) error {
 	base, err := billing.ParseAmount(pricing.BaseCreditsPerImage)
 	if err != nil || base < 0 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "model", "operation", "validateImagePricing", "error", err)
+		}
 		return errors.New("base_credits_per_image 必须是非负积分")
 	}
 	seen := make(map[string]bool, len(pricing.QualityMultipliers))
@@ -122,6 +129,9 @@ func validateImagePricing(config *ImageConfig, pricing *ImagePricing) error {
 		seen[entry.Name] = true
 		value, err := billing.ParseAmount(entry.Multiplier)
 		if err != nil || value <= 0 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "model", "operation", "validateImagePricing", "error", err)
+			}
 			return errors.New("quality 倍率必须大于 0")
 		}
 	}

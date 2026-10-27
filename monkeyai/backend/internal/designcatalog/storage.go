@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -33,7 +34,9 @@ func (s *Service) Prepare(ctx context.Context, p *Package) error {
 				return err
 			}
 			err = s.storage.PutImmutable(ctx, ObjectKey(ref.SHA256), f, ref.Size, ref.MIME, ref.SHA256)
-			f.Close()
+			if err := f.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "designcatalog", "operation", "Prepare", "error", err)
+			}
 			if err != nil {
 				return err
 			}
@@ -55,7 +58,9 @@ func (s *Service) Prepare(ctx context.Context, p *Package) error {
 			return err
 		}
 		err = s.storage.PutImmutable(ctx, ObjectKey(native.SHA256), f, native.Size, "application/zip", native.SHA256)
-		f.Close()
+		if err := f.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "Prepare", "error", err)
+		}
 		if err != nil {
 			return err
 		}
@@ -69,10 +74,16 @@ func (p *Package) native(ctx context.Context, e *Entry) (_ *Object, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "native", "error", err)
+		}
+	}()
 	defer func() {
 		if err != nil {
-			os.Remove(f.Name())
+			if err := os.Remove(f.Name()); err != nil && !os.IsNotExist(err) {
+				slog.Error("清理临时文件失败", "module", "designcatalog", "operation", "native", "error", err)
+			}
 		}
 	}()
 	h := sha256.New()
@@ -96,7 +107,9 @@ func (p *Package) native(ctx context.Context, e *Entry) (_ *Object, err error) {
 			return nil, openErr
 		}
 		n, copyErr := io.Copy(out, src)
-		src.Close()
+		if err := src.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "native", "error", err)
+		}
 		if copyErr != nil {
 			return nil, copyErr
 		}

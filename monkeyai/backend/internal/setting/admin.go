@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/go-chi/chi/v5"
@@ -46,6 +47,7 @@ func (s *Service) putSetting(w http.ResponseWriter, r *http.Request) {
 		SchemaVersion int             `json:"schema_version"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20)).Decode(&input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "setting", "operation", "putSetting", "error", err)
 		settingError(r.Context(), w, http.StatusBadRequest, "请求格式无效")
 		return
 	}

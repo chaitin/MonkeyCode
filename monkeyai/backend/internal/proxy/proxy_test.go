@@ -304,7 +304,7 @@ func (r *usageRecorderStub) Record(_ context.Context, call Call) error {
 	return nil
 }
 
-func TestProxyErrorHandlerRedactsUpstreamError(t *testing.T) {
+func TestProxyErrorHandlerLogsUpstreamError(t *testing.T) {
 	var logs bytes.Buffer
 	proxy := NewProxy(nil, slog.New(slog.NewTextHandler(&logs, nil)))
 	pc := &proxyContext{target: Target{ModelID: "model-1"}, reservation: Reservation{ID: "transaction-1"}}
@@ -316,7 +316,7 @@ func TestProxyErrorHandlerRedactsUpstreamError(t *testing.T) {
 		t.Fatalf("代理错误响应不正确: %d %q", recorder.Code, recorder.Body.String())
 	}
 	text := logs.String()
-	if !strings.Contains(text, "model-1") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "proxy_request") || strings.Contains(text, "upstream-token-and-private-response") {
-		t.Fatalf("代理日志缺少安全上下文或泄漏上游详情: %s", text)
+	if !strings.Contains(text, "model-1") || !strings.Contains(text, "transaction-1") || !strings.Contains(text, "proxy_request") || !strings.Contains(text, "upstream-token-and-private-response") {
+		t.Fatalf("代理日志缺少上下文或原始错误: %s", text)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"mime"
 	"path"
@@ -67,6 +68,9 @@ func validateMetadata(e Entry) error {
 	}
 	var meta map[string]json.RawMessage
 	if err := decode(e.Metadata, &meta); err != nil || meta == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "validateMetadata", "error", err)
+		}
 		return errors.New("metadata 必须是对象")
 	}
 	for key, b := range meta {
@@ -103,6 +107,7 @@ func validateMetadata(e Entry) error {
 			return fmt.Errorf("metadata.%s 不接受 null", key)
 		}
 		if err := json.Unmarshal(b, target); err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "validateMetadata", "error", err)
 			return fmt.Errorf("metadata.%s 类型错误", key)
 		}
 	}
@@ -165,6 +170,7 @@ func ContentDigest(e Entry) (string, error) {
 			return "", errors.New("files 引用无效或重复")
 		}
 		if _, _, err := mime.ParseMediaType(f.MIME); err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "ContentDigest", "error", err)
 			return "", errors.New("files MIME 无效")
 		}
 		names[f.Path] = true
@@ -244,6 +250,9 @@ func ManifestDigest(raw []byte) (string, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	token, err := dec.Token()
 	if err != nil || token != json.Delim('{') {
+		if err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "ManifestDigest", "error", err)
+		}
 		return "", errors.New("manifest 必须是对象")
 	}
 	var buf bytes.Buffer
@@ -264,7 +273,10 @@ func ManifestDigest(raw []byte) (string, error) {
 		if n > 0 {
 			buf.WriteByte(',')
 		}
-		k, _ := json.Marshal(key)
+		k, err := json.Marshal(key)
+		if err != nil {
+			return "", err
+		}
 		v, err := json.Marshal(value)
 		if err != nil {
 			return "", err
@@ -283,5 +295,11 @@ func ManifestDigest(raw []byte) (string, error) {
 	buf.WriteByte('}')
 	return Hash(buf.Bytes()), nil
 }
-func stringValue(raw json.RawMessage) string { var s string; _ = json.Unmarshal(raw, &s); return s }
-func boolValue(raw json.RawMessage) bool     { return bytes.Equal(raw, []byte("true")) }
+func stringValue(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "stringValue", "error", err)
+	}
+	return s
+}
+func boolValue(raw json.RawMessage) bool { return bytes.Equal(raw, []byte("true")) }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"reflect"
 	"slices"
 	"strings"
@@ -126,6 +127,9 @@ func validateHello(h Hello, channel string, tunnelVersion int) ([]byte, error) {
 	}
 	public, err := base64.RawURLEncoding.Strict().DecodeString(h.ExecutionPublicKey)
 	if err != nil || len(public) != ed25519.PublicKeySize {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "validateHello", "error", err)
+		}
 		return nil, errProtocol
 	}
 	return public, nil
@@ -138,6 +142,7 @@ func decodeMessage(data []byte, out any) error {
 	check := json.NewDecoder(bytes.NewReader(data))
 	check.UseNumber()
 	if err := checkJSON(check, 0); err != nil {
+		slog.Warn("操作失败", "module", "relay", "operation", "decodeMessage", "error", err)
 		return errProtocol
 	}
 	if _, err := check.Token(); err != io.EOF {
@@ -149,6 +154,7 @@ func decodeMessage(data []byte, out any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
+		slog.Warn("操作失败", "module", "relay", "operation", "decodeMessage", "error", err)
 		return errProtocol
 	}
 	return nil
@@ -233,6 +239,9 @@ func checkJSON(d *json.Decoder, depth int) error {
 	}
 	end, err := d.Token()
 	if err != nil || delim == '{' && end != json.Delim('}') || delim == '[' && end != json.Delim(']') {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "checkJSON", "error", err)
+		}
 		return errProtocol
 	}
 	return nil

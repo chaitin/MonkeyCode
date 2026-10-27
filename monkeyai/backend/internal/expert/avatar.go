@@ -2,6 +2,7 @@ package expert
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert/sqlc"
@@ -44,13 +45,22 @@ func (s *Service) serveAvatar(w http.ResponseWriter, req *http.Request, admin bo
 		resource.Fail(req.Context(), w, err)
 		return
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "expert", "operation", "serveAvatar", "error", err)
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(body, 2<<20))
 	if err != nil || len(data) >= 2<<20 {
+		if err != nil {
+			slog.WarnContext(req.Context(), "操作失败", "module", "expert", "operation", "serveAvatar", "error", err)
+		}
 		resource.Fail(req.Context(), w, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "专家头像读取失败"})
 		return
 	}
 	w.Header().Set("Content-Type", "image/webp")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		slog.Error("写入输出失败", "module", "expert", "operation", "serveAvatar", "error", err)
+	}
 }

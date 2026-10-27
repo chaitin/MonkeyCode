@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint/sqlc"
@@ -113,7 +114,7 @@ func rollback(ctx context.Context, tx pgx.Tx, user, operation string) {
 	if err := tx.Rollback(ctx); err != nil && ctx.Err() == nil &&
 		!errors.Is(err, pgx.ErrTxClosed) && !errors.Is(err, context.Canceled) &&
 		!errors.Is(err, context.DeadlineExceeded) {
-		logging.Event(ctx, slog.Default(), slog.LevelWarn, "endpoint.operation.warn", "端点事务回滚失败", "module", "endpoint", "operation", "rollback", "user_id", user, "operation", operation, "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "endpoint.operation.warn", "端点事务回滚失败", "module", "endpoint", "operation", "rollback", "user_id", user, "operation", operation, "error_type", fmt.Sprintf("%T", err), "error", err)
 	}
 }
 

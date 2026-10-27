@@ -12,8 +12,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/jackc/pgx/v5"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const machineA = "4f1207be-1ce0-4e88-8e3e-e92690567ec8"
@@ -121,7 +122,7 @@ type rollbackTestTx struct {
 
 func (tx rollbackTestTx) Rollback(context.Context) error { return tx.err }
 
-func TestRollbackLoggingSkipsNormalErrorsAndRedactsDetails(t *testing.T) {
+func TestRollbackLoggingSkipsNormalErrorsAndKeepsDetails(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
@@ -137,7 +138,7 @@ func TestRollbackLoggingSkipsNormalErrorsAndRedactsDetails(t *testing.T) {
 	}
 	rollback(context.Background(), rollbackTestTx{err: errors.New("https://example.com/?token=private-token")}, "user-1", "page")
 	if !strings.Contains(logs.String(), "error_type=") || !strings.Contains(logs.String(), "user_id=user-1") ||
-		strings.Contains(logs.String(), "private-token") || strings.Contains(logs.String(), "token=") {
-		t.Fatalf("回滚失败日志缺少安全上下文或泄露敏感信息: %s", logs.String())
+		!strings.Contains(logs.String(), "https://example.com/?token=private-token") {
+		t.Fatalf("回滚失败日志缺少上下文或原始错误: %s", logs.String())
 	}
 }

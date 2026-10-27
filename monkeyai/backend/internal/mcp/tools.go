@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -177,6 +178,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: cred.String("id")})
 		for _, tool := range tools {
 			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "testConnection", "error", err)
 				break
 			}
 			schema, marshalErr := json.Marshal(tool.InputSchema)
@@ -206,6 +208,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 		return nil, err
 	}
 	if discoveryErr != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "testConnection", "error", discoveryErr)
 		return nil, &resource.Error{Status: 502, Code: "upstream_error", Message: message}
 	}
 	return resource.Object{"credential_id": cred.String("id"), "connection_status": status, "tool_count": len(tools)}, nil

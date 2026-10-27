@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 )
@@ -19,6 +20,9 @@ func PageParamsWithLimit(r *http.Request, maxSize int) (page, size int, err erro
 		if raw := r.URL.Query().Get(field.name); raw != "" {
 			n, parseErr := strconv.Atoi(raw)
 			if parseErr != nil || n < 1 || n > field.max {
+				if parseErr != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "resource", "operation", "PageParamsWithLimit", "error", parseErr)
+				}
 				return 0, 0, Invalid(field.name + " 无效")
 			}
 			*field.value = n

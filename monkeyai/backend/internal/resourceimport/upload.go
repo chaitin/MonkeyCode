@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 	"uuid"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -70,7 +71,10 @@ func validateUpload(files []UploadFile) (int64, error) {
 		if match == nil {
 			return 0, resource.Invalid("请选择普通 ZIP，或按字节拆分的 .zip.001、.002 等全部分卷；不支持 .z01 或 7z 分卷")
 		}
-		n, _ := strconv.Atoi(match[2])
+		n, err := strconv.Atoi(match[2])
+		if err != nil {
+			return 0, resource.Invalid(err.Error())
+		}
 		if n != i+1 || (base != "" && !strings.EqualFold(base, match[1])) {
 			return 0, resource.Invalid("分卷编号必须从 001 连续递增，且属于同一资源包")
 		}
@@ -114,6 +118,7 @@ func (s *Service) uploadChunks(ctx context.Context, q resource.Queryer, upload *
 
 func (s *Service) lockUpload(ctx context.Context, id, actor string) (Upload, pgx.Tx, error) {
 	if _, err := uuid.Parse(id); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "resourceimport", "operation", "lockUpload", "error", err)
 		return Upload{}, nil, resource.NotFound
 	}
 	logging.Bind(ctx, slog.String("upload_id", id), slog.String("module", "resourceimport"), slog.String("phase", "lock_upload"))
@@ -123,7 +128,9 @@ func (s *Service) lockUpload(ctx context.Context, id, actor string) (Upload, pgx
 	}
 	data, err := sqlc.New(tx).LockImportUpload(ctx, sqlc.LockImportUploadParams{ID: id, ActorUserID: actor})
 	if err != nil {
-		_ = tx.Rollback(context.WithoutCancel(ctx))
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "lockUpload", "error", err)
+		}
 		return Upload{}, nil, err
 	}
 	upload, err := decodeUpload(data)
@@ -131,7 +138,9 @@ func (s *Service) lockUpload(ctx context.Context, id, actor string) (Upload, pgx
 		err = s.uploadChunks(ctx, tx, &upload)
 	}
 	if err != nil {
-		_ = tx.Rollback(context.WithoutCancel(ctx))
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "lockUpload", "error", err)
+		}
 		return Upload{}, nil, err
 	}
 	return upload, tx, nil
@@ -216,6 +225,7 @@ func (s *Service) listUploads(w http.ResponseWriter, r *http.Request) {
 func (s *Service) getUpload(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if _, err := uuid.Parse(id); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "getUpload", "error", err)
 		resource.Fail(r.Context(), w, resource.NotFound)
 		return
 	}
@@ -243,10 +253,17 @@ func (s *Service) putChunk(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "putChunk", "error", err)
+		}
+	}()
 	index, err := strconv.Atoi(chi.URLParam(r, "index"))
 	size := upload.chunkSize(index)
 	if err != nil || size == 0 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "putChunk", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("传输块编号无效"))
 		return
 	}
@@ -265,10 +282,20 @@ func (s *Service) putChunk(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer func() { _ = file.Close(); _ = os.Remove(file.Name()) }()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "resourceimport", "operation", "putChunk", "error", err)
+		}
+		if err := os.Remove(file.Name()); err != nil && !os.IsNotExist(err) {
+			slog.Error("清理临时文件失败", "module", "resourceimport", "operation", "putChunk", "error", err)
+		}
+	}()
 	hash := sha256.New()
 	length, err := io.Copy(io.MultiWriter(file, hash), http.MaxBytesReader(w, r.Body, size))
 	if err != nil || length != size || "sha256:"+hex.EncodeToString(hash.Sum(nil)) != expected {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "putChunk", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("传输块大小或校验值不匹配，请重试"))
 		return
 	}
@@ -323,7 +350,11 @@ func (s *Service) completeUpload(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "completeUpload", "error", err)
+		}
+	}()
 	if upload.Status != "uploading" {
 		resource.JSON(r.Context(), w, http.StatusOK, upload)
 		return
@@ -346,6 +377,9 @@ func (s *Service) completeUpload(w http.ResponseWriter, r *http.Request) {
 			n, readErr := io.Copy(io.Discard, io.LimitReader(stream, int64(entry.UncompressedSize64)+1))
 			closeErr := stream.Close()
 			if readErr != nil || closeErr != nil || uint64(n) != entry.UncompressedSize64 {
+				if closeErr != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "completeUpload", "error", closeErr)
+				}
 				err = fmt.Errorf("文件 %s 损坏，请检查分卷是否完整且来自同一资源包", name)
 				break
 			}
@@ -375,7 +409,11 @@ func (s *Service) cancelUpload(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "cancelUpload", "error", err)
+		}
+	}()
 	if upload.Status == "imported" {
 		resource.Fail(r.Context(), w, conflict("该任务已完成导入"))
 		return
@@ -396,7 +434,11 @@ func (s *Service) CleanupUploads(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "CleanupUploads", "error", err)
+		}
+	}()
 	rows, err := sqlc.New(tx).ListExpiredImportUploads(ctx)
 	if err != nil {
 		return err

@@ -118,6 +118,9 @@ func Load(args []string) (Config, error) {
 	}
 	parsed, err := url.Parse(cfg.PublicURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "config", "operation", "Load", "error", err)
+		}
 		return Config{}, errors.New("public-url 必须是无凭据、查询或片段的绝对 HTTP(S) 地址")
 	}
 	if (cfg.InitialAdminEmail == "") != (cfg.InitialAdminPassword == "") {

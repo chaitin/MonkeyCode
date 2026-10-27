@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"hash/fnv"
 	"log/slog"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"time"
 	"uuid"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -39,6 +40,9 @@ func decodeHistoryCursor(value string) ([]byte, error) {
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil || len(data) > 256 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "resourceimport", "operation", "decodeHistoryCursor", "error", err)
+		}
 		return nil, resource.Invalid("分页游标无效")
 	}
 	var cursor historyCursor
@@ -46,6 +50,7 @@ func decodeHistoryCursor(value string) ([]byte, error) {
 		return nil, resource.Invalid("分页游标无效")
 	}
 	if _, err = uuid.Parse(cursor.ID); err != nil {
+		slog.Warn("操作失败", "module", "resourceimport", "operation", "decodeHistoryCursor", "error", err)
 		return nil, resource.Invalid("分页游标无效")
 	}
 	return json.Marshal(cursor)
@@ -102,6 +107,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 				return
 			}
 			if err = s.finishSections(r.Context(), loaded); err != nil {
+				slog.Warn("操作失败", "module", "resourceimport", "operation", "RegisterAdmin", "error", err)
 				out.Warning = "分区已提交，上传状态未更新；请刷新恢复"
 			}
 			resource.JSON(r.Context(), w, status, out)
@@ -133,6 +139,9 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
 			if err != nil || n < 1 || n > 500 {
+				if err != nil {
+					slog.Warn("操作失败", "module", "resourceimport", "operation", "RegisterAdmin", "error", err)
+				}
 				resource.Fail(r.Context(), w, resource.Invalid("limit 必须为 1 至 500"))
 				return
 			}
@@ -181,6 +190,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/resource-imports/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		if _, err := uuid.Parse(id); err != nil {
+			slog.Warn("操作失败", "module", "resourceimport", "operation", "RegisterAdmin", "error", err)
 			resource.Fail(r.Context(), w, resource.NotFound)
 			return
 		}
@@ -368,7 +378,11 @@ func (s *Service) apply(ctx context.Context, p Package, r Resources, opts Option
 	if err != nil {
 		return pre, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "resourceimport", "operation", "apply", "error", err)
+		}
+	}()
 	if err = s.lockBindings(ctx, tx, pre.Publisher); err != nil {
 		return pre, err
 	}
@@ -671,7 +685,11 @@ func mapOrEmpty(value map[string]string) map[string]string {
 }
 
 func payload(value any) []byte {
-	data, _ := json.Marshal(value)
+	data, err := json.Marshal(value)
+	if err != nil {
+		slog.Error("编码资源数据失败", "error", err)
+		return nil
+	}
 	return data
 }
 

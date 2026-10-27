@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -224,7 +225,11 @@ func decodeBody(w http.ResponseWriter, r *http.Request, limit int, target any) e
 			}
 			return resource.Invalid("gzip 请求格式无效")
 		}
-		defer unzipped.Close()
+		defer func() {
+			if err := unzipped.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "session", "operation", "decodeBody", "error", err)
+			}
+		}()
 		body = http.MaxBytesReader(w, unzipped, int64(decodedLimit))
 	}
 	decoder := json.NewDecoder(body)
@@ -240,6 +245,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, limit int, target any) e
 		return resource.Invalid("请求必须为 JSON 对象")
 	}
 	if err := validateUniqueJSON(raw); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "session", "operation", "decodeBody", "error", err)
 		return resource.Invalid("请求 JSON 字段重复或格式无效")
 	}
 	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
@@ -252,6 +258,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, limit int, target any) e
 		return resource.Invalid("请求格式无效")
 	}
 	if err := json.Unmarshal(raw, target); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "session", "operation", "decodeBody", "error", err)
 		return resource.Invalid("请求字段或格式无效")
 	}
 	return nil

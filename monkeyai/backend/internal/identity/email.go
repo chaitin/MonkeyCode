@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
@@ -85,6 +86,9 @@ func readEmailInput(w http.ResponseWriter, r *http.Request) (emailInput, bool) {
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	if err != nil || !validEmail(input.Email) || len(input.Email) > 254 || len(input.Password) > 1024 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "readEmailInput", "error", err)
+		}
 		writeError(r.Context(), w, 400, "invalid_request", "请求格式或邮箱无效")
 		return input, false
 	}
@@ -110,12 +114,14 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 	}
 	number, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "sendCode", "error", err)
 		writeError(r.Context(), w, 500, "server_error", "生成验证码失败")
 		return
 	}
 	code := fmt.Sprintf("%06d", number.Int64())
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "sendCode", "error", err)
 		ip = r.RemoteAddr
 	}
 	err = s.reserveCode(r.Context(), input, code, tokenHash(ip))

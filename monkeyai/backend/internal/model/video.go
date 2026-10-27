@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,7 +34,11 @@ func marshalVideoFields(item Model) ([]byte, []byte, error) {
 func videoValues(values ...any) []json.RawMessage {
 	result := make([]json.RawMessage, 0, len(values))
 	for _, value := range values {
-		data, _ := json.Marshal(value)
+		data, err := json.Marshal(value)
+		if err != nil {
+			slog.Error("编码视频能力失败", "error", err)
+			continue
+		}
 		result = append(result, data)
 	}
 	return result
@@ -179,6 +184,7 @@ func userVideoPricing(kind Kind, provider Provider, modelID string, config *Vide
 	}
 	cap, err := VideoCapabilitiesFor(provider, modelID)
 	if err != nil {
+		slog.Warn("操作失败", "module", "model", "operation", "userVideoPricing", "error", err)
 		return nil
 	}
 	pricing := &VideoPricing{Rates: []VideoResolutionRate{}}
@@ -290,6 +296,9 @@ func ValidateVideoCapabilities(item Model, cap VideoCapabilities) error {
 	for _, entry := range item.VideoPricing.Rates {
 		amount, err := billing.ParseAmount(entry.CreditsPerSecond)
 		if !resolutions[entry.Resolution] || err != nil || amount < 0 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "model", "operation", "ValidateVideoCapabilities", "error", err)
+			}
 			return errors.New("视频清晰度或每秒积分无效")
 		}
 		delete(resolutions, entry.Resolution)
@@ -428,12 +437,22 @@ func VideoMaxDuration(cap VideoCapabilities) (int64, error) {
 func VideoDuration(values map[string]json.RawMessage) (int64, error) {
 	var seconds int64
 	if err := json.Unmarshal(values["duration_seconds"], &seconds); err != nil || seconds < 1 || seconds > billing.MaxVideoDurationMs/1000 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "model", "operation", "VideoDuration", "error", err)
+		}
 		return 0, errors.New("视频时长无效")
 	}
 	return seconds, nil
 }
 
 func VideoResolution(values map[string]json.RawMessage) string {
-	value, _ := strconv.Unquote(strings.TrimSpace(string(values["resolution"])))
+	if len(values["resolution"]) == 0 {
+		return ""
+	}
+	value, err := strconv.Unquote(strings.TrimSpace(string(values["resolution"])))
+	if err != nil {
+		slog.Error("解析视频分辨率失败", "error", err)
+		return ""
+	}
 	return value
 }

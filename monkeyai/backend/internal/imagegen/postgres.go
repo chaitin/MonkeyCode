@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -98,7 +99,7 @@ func (p *Postgres) LinkInputs(ctx context.Context, jobID string, fileIDs []strin
 		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && ctx.Err() == nil &&
 			!errors.Is(rollbackErr, pgx.ErrTxClosed) && !errors.Is(rollbackErr, context.Canceled) &&
 			!errors.Is(rollbackErr, context.DeadlineExceeded) {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "生图参考图关联回滚失败", "module", "imagegen", "operation", "LinkInputs", "job_id", jobID, "operation", "rollback_link_inputs", "error_type", fmt.Sprintf("%T", rollbackErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "生图参考图关联回滚失败", "module", "imagegen", "operation", "LinkInputs", "job_id", jobID, "operation", "rollback_link_inputs", "error_type", fmt.Sprintf("%T", rollbackErr), "error", rollbackErr)
 		}
 	}()
 	for _, fileID := range fileIDs {

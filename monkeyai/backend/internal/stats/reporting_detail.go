@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -15,6 +16,9 @@ func (s *Service) reportingDetail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var uuid pgtype.UUID
 	if err := uuid.Scan(id); err != nil || !uuid.Valid {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "reportingDetail", "error", err)
+		}
 		w.Header().Set("Cache-Control", "private, no-store")
 		resource.Fail(r.Context(), w, resource.Invalid("会话 ID 无效"))
 		return

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/coder/websocket"
@@ -161,6 +162,7 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) 
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1024))
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "endpoint", "operation", "update", "error", err)
 		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
@@ -169,6 +171,9 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) 
 		fields, err := object(data)
 		raw, ok := fields["alias"]
 		if err != nil || !ok || len(fields) != 1 || json.Unmarshal(raw, &alias) != nil || (alias != nil && !text(*alias, 128)) {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "endpoint", "operation", "update", "error", err)
+			}
 			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
@@ -197,6 +202,9 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) 
 func origin(value string) string {
 	u, err := url.Parse(value)
 	if err != nil || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "origin", "error", err)
+		}
 		return ""
 	}
 	host := strings.ToLower(u.Hostname())
@@ -218,6 +226,9 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		o := values[0]
 		parsed, err := url.Parse(o)
 		if len(values) != 1 || err != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || origin(o) == "" || origin(o) != origin(s.origin) {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "endpoint", "operation", "connect", "error", err)
+			}
 			failure(r.Context(), w, 403, "forbidden")
 			return
 		}
@@ -228,6 +239,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	err := u.enter(ctx)
 	cancel()
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "endpoint", "operation", "connect", "error", err)
 		failure(r.Context(), w, 503, "service_unavailable")
 		return
 	}
@@ -262,7 +274,9 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	if s.draining.Load() {
 		s.mu.Unlock()
 		cancel()
-		ws.CloseNow()
+		if err := ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "endpoint", "operation", "connect", "error", err)
+		}
 		return
 	}
 	s.connections[c] = struct{}{}
@@ -273,7 +287,9 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		c.stop(1000)
 		workers.Wait()
 		cancel()
-		ws.CloseNow()
+		if err := ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "endpoint", "operation", "connect", "error", err)
+		}
 		cleanup, cancel := context.WithTimeout(context.Background(), s.timeDB)
 		defer cancel()
 		// 清理必须完成，不能因管理操作持锁而遗留一个永久离线连接。

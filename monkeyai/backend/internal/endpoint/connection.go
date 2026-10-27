@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net"
@@ -14,6 +13,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/coder/websocket"
 )
@@ -157,7 +158,7 @@ func (c *connection) writer() {
 			code = 1000
 		}
 		if err := c.ws.Close(websocket.StatusCode(code), ""); err != nil && !c.expected(err) {
-			logging.Event(context.Background(), c.service.logger, slog.LevelWarn, "endpoint.operation.warn", "端点 WebSocket 关闭失败", "module", "endpoint", "operation", "writer", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_close", "close_code", code, "error_type", fmt.Sprintf("%T", err))
+			logging.Event(context.Background(), c.service.logger, slog.LevelWarn, "endpoint.operation.warn", "端点 WebSocket 关闭失败", "module", "endpoint", "operation", "writer", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "ws_close", "close_code", code, "error_type", fmt.Sprintf("%T", err), "error", err)
 		}
 		c.cancel()
 	}()
@@ -244,6 +245,7 @@ func (c *connection) reader() {
 		if err := json.Unmarshal(data, &envelope); err == nil {
 			if raw, ok := envelope["type"]; ok {
 				if err := json.Unmarshal(raw, &messageType); err != nil {
+					slog.Warn("操作失败", "module", "endpoint", "operation", "reader", "error", err)
 					messageType = ""
 				}
 			}
@@ -254,6 +256,7 @@ func (c *connection) reader() {
 		}
 		m, err := message(data)
 		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "reader", "error", err)
 			c.reject("invalid_message", "")
 			violations++
 			if violations >= 3 {

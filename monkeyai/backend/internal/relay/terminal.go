@@ -3,6 +3,7 @@ package relay
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -32,6 +33,9 @@ func terminalHandshake(r *http.Request) (string, bool, bool) {
 	}
 	key, err := base64.StdEncoding.Strict().DecodeString(keys[0])
 	if err != nil || len(key) != 16 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "terminalHandshake", "error", err)
+		}
 		return "", false, false
 	}
 	if len(r.URL.RawQuery) > 64 {
@@ -40,6 +44,9 @@ func terminalHandshake(r *http.Request) (string, bool, bool) {
 	query, err := url.ParseQuery(r.URL.RawQuery)
 	candidate := false
 	if err != nil || r.URL.ForceQuery {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "terminalHandshake", "error", err)
+		}
 		return "", false, false
 	}
 	if r.URL.RawQuery != "" {

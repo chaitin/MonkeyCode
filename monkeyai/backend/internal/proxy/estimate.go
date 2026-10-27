@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -15,11 +16,19 @@ const maxEstimateBytes = 32 << 20
 
 var (
 	o200kCodec = sync.OnceValue(func() tokenizer.Codec {
-		codec, _ := tokenizer.Get(tokenizer.O200kBase)
+		codec, err := tokenizer.Get(tokenizer.O200kBase)
+		if err != nil {
+			slog.Error("加载分词器失败", "error", err)
+			return nil
+		}
 		return codec
 	})
 	cl100kCodec = sync.OnceValue(func() tokenizer.Codec {
-		codec, _ := tokenizer.Get(tokenizer.Cl100kBase)
+		codec, err := tokenizer.Get(tokenizer.Cl100kBase)
+		if err != nil {
+			slog.Error("加载分词器失败", "error", err)
+			return nil
+		}
 		return codec
 	})
 )
@@ -44,6 +53,7 @@ func newTokenEstimate(pc *proxyContext) *tokenEstimate {
 	var err error
 	e.request, err = estimateObject(pc.requestBody)
 	if err != nil {
+		slog.Warn("操作失败", "module", "proxy", "operation", "newTokenEstimate", "error", err)
 		return nil
 	}
 	model := pc.target.UpstreamModel
@@ -167,6 +177,7 @@ func (e *tokenEstimate) jsonPart(key string, value any) {
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
+		slog.Warn("操作失败", "module", "proxy", "operation", "jsonPart", "error", err)
 		e.supported = false
 		return
 	}
@@ -256,6 +267,9 @@ func (e *tokenEstimate) response(path string, data []byte) {
 	}
 	response, err := estimateObject(data)
 	if err != nil || response == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "proxy", "operation", "response", "error", err)
+		}
 		e.supported = false
 		return
 	}
@@ -300,6 +314,9 @@ func (e *tokenEstimate) event(path string, event sseEvent) {
 	}
 	data, err := estimateObject(event.Data)
 	if err != nil || data == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "proxy", "operation", "event", "error", err)
+		}
 		e.supported = false
 		return
 	}

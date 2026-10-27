@@ -17,7 +17,6 @@ var stringFields = map[string]bool{
 	"previous_level": true, "current_level": true, "origin": true,
 	"intent": true, "code": true, "kind": true, "status": true, "provider": true,
 	"usage_error_code": true, "file": true, "resource_id": true, "key_id": true,
-	"original_event": true, "original_level": true, "fingerprint": true, "flush_reason": true,
 	"input_source": true, "output_source": true,
 }
 
@@ -29,7 +28,7 @@ func sensitive(key string) bool {
 		}
 	}
 	switch key {
-	case "key", "path", "url", "endpoint", "body", "query", "args", "config", "dsn", "message", "error_message", "panic", "source", "time", "level", "msg":
+	case "key", "path", "url", "endpoint", "body", "query", "args", "config", "dsn", "message", "panic", "source", "time", "level", "msg":
 		return true
 	}
 	return false
@@ -40,10 +39,7 @@ func safeAttr(a slog.Attr) slog.Attr {
 		return slog.Attr{}
 	}
 	switch a.Value.Kind() {
-	case slog.KindLogValuer:
-		// JSONHandler resolves LogValuer before ReplaceAttr, so filter here.
-		return slog.Attr{}
-	case slog.KindAny:
+	case slog.KindAny, slog.KindLogValuer:
 		if err, ok := a.Value.Any().(error); ok && err != nil {
 			attrs := ErrorAttrs(err)
 			return slog.Attr{Key: a.Key, Value: slog.GroupValue(attrs...)}
@@ -64,6 +60,9 @@ func safeAttr(a slog.Attr) slog.Attr {
 		value := a.Value.String()
 		if value == "" {
 			return slog.Attr{}
+		}
+		if a.Key == "error_message" || a.Key == "error" || a.Key == "err" {
+			return a
 		}
 		if a.Key == "function" {
 			if len(value) > 256 {

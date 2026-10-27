@@ -102,6 +102,9 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 	machine := chi.URLParam(r, "machine")
 	p, pathErr := requestPath(r, "/"+chi.URLParam(r, "*"))
 	if pathErr != nil || !validUUID(machine) || !safePath(p) {
+		if pathErr != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "proxy", "error", pathErr)
+		}
 		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
@@ -253,6 +256,7 @@ func (s *Service) proxy(w http.ResponseWriter, r *http.Request) {
 		"authorization": map[string]any{"server_id": s.config.ServerID, "owner_user_id": row.UserID, "machine_id": machine, "connection_id": row.ID, "client_grant_id": row.ClientGrantID,
 			"grant_version": row.GrantVersion, "access_version": row.AccessVersion, "lease_epoch": current.state.LeaseEpoch, "scopes": row.Scopes}, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano)})
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "proxy", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
@@ -394,6 +398,7 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 			stream, err := s.openStream(ctx, mux, opens, a, permit)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "forward", "error", err)
 				s.metrics.openFailed.Add(1)
 			}
 			return stream, err
@@ -431,7 +436,9 @@ func (s *Service) forward(w http.ResponseWriter, r *http.Request, route *route, 
 			}
 			if terminal {
 				if response.StatusCode == http.StatusSwitchingProtocols && !validTerminalUpgrade(response, r.Header.Get("Sec-WebSocket-Key")) {
-					response.Body.Close()
+					if err := response.Body.Close(); err != nil {
+						slog.Error("关闭资源失败", "module", "relay", "operation", "forward", "error", err)
+					}
 					return errors.New("执行端终端 Upgrade 无效")
 				}
 				handshakeTimer.Stop()

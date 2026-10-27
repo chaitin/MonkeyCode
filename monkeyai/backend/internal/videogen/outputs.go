@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -54,15 +55,27 @@ func (s *Service) saveOutput(ctx context.Context, client *http.Client, jobID, ad
 	if err != nil {
 		return VideoOutput{}, err
 	}
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videogen", "operation", "saveOutput", "error", err)
+		}
+	}()
 	failure.expected = expected
 	failure.phase = "create_temp"
 	file, err := os.CreateTemp("", "monkeyai-video-*.mp4")
 	if err != nil {
 		return VideoOutput{}, err
 	}
-	defer os.Remove(file.Name())
-	defer file.Close()
+	defer func() {
+		if err := os.Remove(file.Name()); err != nil && !os.IsNotExist(err) {
+			slog.Error("清理临时文件失败", "module", "videogen", "operation", "saveOutput", "error", err)
+		}
+	}()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videogen", "operation", "saveOutput", "error", err)
+		}
+	}()
 	failure.phase = "download_body"
 	count, err := io.Copy(file, io.LimitReader(stream, maxOutputBytes+1))
 	failure.received = count
@@ -81,6 +94,7 @@ func (s *Service) saveOutput(ctx context.Context, client *http.Client, jobID, ad
 	failure.phase = "inspect_media"
 	info, err := inspectMP4(file, count)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "saveOutput", "error", err)
 		info = mediaInfo{DurationMs: upstreamDurationMs}
 	}
 	failure.phase = "hash_output"
@@ -114,7 +128,9 @@ func (s *Service) saveOutput(ctx context.Context, client *http.Client, jobID, ad
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		_ = s.storage.Delete(cleanup, key)
+		if err := s.storage.Delete(cleanup, key); err != nil {
+			slog.Error("清理存储对象失败", "module", "videogen", "operation", "saveOutput", "error", err)
+		}
 		return VideoOutput{}, err
 	}
 	return VideoOutput{FileID: id, URL: "/v1/videos/outputs/" + id, MIMEType: "video/mp4", Width: info.Width, Height: info.Height,

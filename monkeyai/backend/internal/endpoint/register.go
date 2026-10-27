@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 
@@ -36,6 +37,7 @@ func registration(data []byte) (Registration, error) {
 	var r Registration
 	fields, err := object(data)
 	if err != nil {
+		slog.Warn("操作失败", "module", "endpoint", "operation", "registration", "error", err)
 		return r, errInvalid
 	}
 	allowed := []string{
@@ -49,6 +51,7 @@ func registration(data []byte) (Registration, error) {
 		}
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
+		slog.Warn("操作失败", "module", "endpoint", "operation", "registration", "error", err)
 		return r, errInvalid
 	}
 	if !text(r.DeviceName, 128) || !text(r.OSVersion, 64) || !text(r.Arch, 32) || !text(r.ClientVersion, 64) ||
@@ -79,11 +82,13 @@ func (s *Service) register(w http.ResponseWriter, req *http.Request) {
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, req.Body, 4096))
 	if err != nil {
+		slog.WarnContext(req.Context(), "操作失败", "module", "endpoint", "operation", "register", "error", err)
 		failure(req.Context(), w, 400, "invalid_request")
 		return
 	}
 	r, err := registration(data)
 	if err != nil {
+		slog.WarnContext(req.Context(), "操作失败", "module", "endpoint", "operation", "register", "error", err)
 		failure(req.Context(), w, 400, "invalid_request")
 		return
 	}

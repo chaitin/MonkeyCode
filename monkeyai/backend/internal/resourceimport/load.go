@@ -5,9 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -57,6 +60,7 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 			})
 		}
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			loaded.cleanup()
 		}
 	}()
@@ -71,6 +75,7 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 	}
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		if err = resource.Decode(w, r, &loaded.input); err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			return
 		}
 		actor, ok := identity.UserFromContext(r.Context())
@@ -81,9 +86,14 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		var upload Upload
 		upload, loaded.tx, err = s.lockUpload(r.Context(), loaded.input.UploadID, actor.ID)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			return
 		}
-		loaded.cleanup = func() { _ = loaded.tx.Rollback(context.WithoutCancel(r.Context())) }
+		loaded.cleanup = func() {
+			if err := loaded.tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				slog.Error("回滚事务失败", "module", "resourceimport", "operation", "loadImport", "error", err)
+			}
+		}
 		if upload.Status != "ready" && upload.Status != "imported" {
 			err = resource.Invalid("请先完成资源包上传和完整性检查")
 			return
@@ -91,11 +101,14 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		var cleanup func()
 		reader, loaded.sha, cleanup, err = s.openUpload(r.Context(), upload)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			return
 		}
 		loaded.cleanup = func() {
 			cleanup()
-			_ = loaded.tx.Rollback(context.WithoutCancel(r.Context()))
+			if err := loaded.tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				slog.Error("回滚事务失败", "module", "resourceimport", "operation", "loadImport", "error", err)
+			}
 		}
 		size = upload.TotalSize
 	} else {
@@ -103,10 +116,14 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		var file multipart.File
 		loaded.cleanup = func() {
 			if file != nil {
-				_ = file.Close()
+				if err := file.Close(); err != nil {
+					slog.Error("关闭资源失败", "module", "resourceimport", "operation", "loadImport", "error", err)
+				}
 			}
 			if r.MultipartForm != nil {
-				_ = r.MultipartForm.RemoveAll()
+				if err := r.MultipartForm.RemoveAll(); err != nil && !os.IsNotExist(err) {
+					slog.Error("清理临时文件失败", "module", "resourceimport", "operation", "loadImport", "error", err)
+				}
 			}
 		}
 		if err = r.ParseMultipartForm(8 << 20); err != nil {
@@ -145,6 +162,7 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		loaded.input.DiscoverOnly = r.FormValue("discover_only") == "true"
 		hash := sha256.New()
 		if _, err = io.Copy(hash, io.NewSectionReader(file, 0, header.Size)); err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			return
 		}
 		loaded.sha = "sha256:" + hex.EncodeToString(hash.Sum(nil))
@@ -160,6 +178,7 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 	}
 	loaded.sections, err = selectSections(loaded.input.Sections, loaded.inspection)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 		return
 	}
 	if containsSection(loaded.sections, "design") {
@@ -174,7 +193,12 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 		}
 		previous := loaded.cleanup
 		pkg := loaded.design
-		loaded.cleanup = func() { pkg.Close(); previous() }
+		loaded.cleanup = func() {
+			if err := pkg.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "resourceimport", "operation", "loadImport", "error", err)
+			}
+			previous()
+		}
 	}
 	if containsSection(loaded.sections, "agent") {
 		loaded.pkg, err = ParseReader(reader, size)

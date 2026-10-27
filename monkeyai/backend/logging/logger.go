@@ -3,6 +3,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -32,10 +33,9 @@ func New(output io.Writer, level slog.Leveler) *slog.Logger {
 }
 
 type safeHandler struct {
-	next    slog.Handler
-	runtime *Runtime
-	attrs   []slog.Attr
-	groups  []string
+	next   slog.Handler
+	attrs  []slog.Attr
+	groups []string
 }
 
 func (h *safeHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -90,10 +90,9 @@ func (h *safeHandler) Handle(ctx context.Context, record slog.Record) error {
 	attrs = append(attrs, contextAttrs(ctx)...)
 	clean := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
 	clean.AddAttrs(mergeAttrs(attrs)...)
-	if h.runtime != nil {
-		return h.runtime.submit(ctx, clean)
-	}
-	return h.next.Handle(ctx, clean)
+	err := h.next.Handle(ctx, clean)
+	reportOutput(err)
+	return err
 }
 
 func (h *safeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
@@ -130,13 +129,22 @@ func ErrorLog(logger *slog.Logger) *log.Logger { return log.New(runtimeWriter{lo
 type runtimeWriter struct{ logger *slog.Logger }
 
 func (w runtimeWriter) Write(p []byte) (int, error) {
-	w.logger.Error("HTTP 运行时错误", "event", "runtime.http.error")
+	w.logger.Error("HTTP 运行时错误", "event", "runtime.http.error", "error_message", string(p))
 	return len(p), nil
 }
 
-func runtimeFor(logger *slog.Logger) *Runtime {
-	if h, ok := logger.Handler().(*safeHandler); ok {
-		return h.runtime
+func reportOutput(err error) {
+	if err == nil {
+		return
 	}
-	return nil
+	if _, fallback := fmt.Fprintln(os.Stderr, "结构化日志输出失败:", err); fallback != nil {
+		println("结构化日志及 stderr 输出失败:", err.Error(), fallback.Error())
+	}
+}
+
+func handle(ctx context.Context, logger *slog.Logger, record slog.Record) {
+	err := logger.Handler().Handle(ctx, record)
+	if _, ok := logger.Handler().(*safeHandler); !ok {
+		reportOutput(err)
+	}
 }

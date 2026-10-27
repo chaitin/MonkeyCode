@@ -63,7 +63,7 @@ func TestHealthWriteFailureLogged(t *testing.T) {
 	var logs bytes.Buffer
 	handler := New(slog.New(slog.NewTextHandler(&logs, nil)), stubPinger{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler())
 	handler.ServeHTTP(brokenWriter{httptest.NewRecorder()}, httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	if !strings.Contains(logs.String(), "event=http.response.failed") || !strings.Contains(logs.String(), "error_code=internal_error") || strings.Contains(logs.String(), "write failed") {
+	if !strings.Contains(logs.String(), "event=http.response.failed") || !strings.Contains(logs.String(), "error_code=internal_error") || !strings.Contains(logs.String(), "write failed") {
 		t.Fatalf("缺少写入错误日志: %s", logs.String())
 	}
 }

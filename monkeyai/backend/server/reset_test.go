@@ -171,7 +171,7 @@ func TestResetFlags(t *testing.T) {
 func TestEmbeddedResetCommand(t *testing.T) {
 	t.Setenv("MONKEYAI_DATABASE_URL", "")
 	args := []string{"reset", "--database-url", "postgres://test", "--help"}
-	if _, _, err := ParseLogging([]string{"reset", "--database-url", "postgres://test"}); err != nil {
+	if _, err := ParseLogLevel([]string{"reset", "--database-url", "postgres://test"}); err != nil {
 		t.Fatalf("嵌入入口未识别 reset: %v", err)
 	}
 	if _, err := ParseLogLevel([]string{"reset"}); err != nil {

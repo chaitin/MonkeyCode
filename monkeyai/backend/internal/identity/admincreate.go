@@ -2,6 +2,7 @@ package identity
 
 import (
 	"errors"
+	"log/slog"
 	"slices"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
@@ -21,6 +22,9 @@ func normalizeCreationGroups(ids []string) ([]string, error) {
 	for _, id := range ids {
 		var value pgtype.UUID
 		if err := value.Scan(id); err != nil || !value.Valid {
+			if err != nil {
+				slog.Warn("操作失败", "module", "identity", "operation", "normalizeCreationGroups", "error", err)
+			}
 			return nil, errors.New("group_ids 必须包含有效的分组 UUID")
 		}
 		if value.String() == rootgroup.ID {

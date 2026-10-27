@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"log/slog"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	_ "golang.org/x/image/webp"
 
@@ -50,6 +51,9 @@ func (s *Inputs) Upload(ctx context.Context, userID string, data []byte) (Input,
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxInputPixels {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "imagegen", "operation", "Upload", "error", err)
+		}
 		return Input{}, resource.Invalid("参考图格式或像素数无效")
 	}
 	var mime string
@@ -79,7 +83,7 @@ func (s *Inputs) Upload(ctx context.Context, userID string, data []byte) (Input,
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if cleanupErr := s.storage.Delete(cleanupCtx, key); cleanupErr != nil {
-			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "清理未登记参考图失败", "module", "imagegen", "operation", "Upload", "operation", "delete_input", "file_id", id, "error_type", providerErrorType(cleanupErr))
+			logging.Event(ctx, slog.Default(), slog.LevelError, "imagegen.operation.error", "清理未登记参考图失败", "module", "imagegen", "operation", "Upload", "operation", "delete_input", "file_id", id, "error_type", providerErrorType(cleanupErr), "error", cleanupErr)
 		}
 		return Input{}, err
 	}
@@ -100,7 +104,7 @@ func (s *Inputs) Read(ctx context.Context, userID, fileID string) (Input, error)
 	}
 	defer func() {
 		if closeErr := body.Close(); closeErr != nil && ctx.Err() == nil {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭参考图存储流失败", "module", "imagegen", "operation", "Read", "operation", "close_reader", "file_id", fileID, "error_type", providerErrorType(closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭参考图存储流失败", "module", "imagegen", "operation", "Read", "operation", "close_reader", "file_id", fileID, "error_type", providerErrorType(closeErr), "error", closeErr)
 		}
 	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxInputBytes+1))

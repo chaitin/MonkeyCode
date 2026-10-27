@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -56,6 +57,7 @@ func WalletFromEnv() (*Wallet, error) {
 	if raw := os.Getenv("BAIZHIYUN_APP_ID"); raw != "" {
 		appID, err := strconv.Atoi(raw)
 		if err != nil {
+			slog.Warn("操作失败", "module", "billing", "operation", "WalletFromEnv", "error", err)
 			return nil, resource.Invalid("BAIZHIYUN_APP_ID 必须为整数")
 		}
 		cfg.AppID = appID
@@ -94,6 +96,7 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 	}
 	pair, err := tls.X509KeyPair([]byte(cfg.Certificate), []byte(cfg.PrivateKey))
 	if err != nil {
+		slog.Warn("操作失败", "module", "billing", "operation", "newWallet", "error", err)
 		return nil, resource.Invalid("客户端证书或私钥格式无效，或证书与私钥不匹配")
 	}
 	block, _ := pem.Decode([]byte(cfg.PrivateKey))
@@ -102,10 +105,14 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 	}
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if _, ok := key.(*ecdsa.PrivateKey); err != nil || !ok {
+		if err != nil {
+			slog.Warn("操作失败", "module", "billing", "operation", "newWallet", "error", err)
+		}
 		return nil, resource.Invalid("百智云私钥必须为 PKCS#8 格式的 ECDSA 私钥（BEGIN PRIVATE KEY）")
 	}
 	cert, err := x509.ParseCertificate(pair.Certificate[0])
 	if err != nil {
+		slog.Warn("操作失败", "module", "billing", "operation", "newWallet", "error", err)
 		return nil, resource.Invalid("客户端证书格式无效")
 	}
 	if time.Now().Before(cert.NotBefore) || !time.Now().Before(cert.NotAfter) {
@@ -121,6 +128,9 @@ func newWallet(cfg WalletConfig) (*Wallet, error) {
 		}
 		ca, err := x509.ParseCertificate(block.Bytes)
 		if err != nil || !ca.IsCA {
+			if err != nil {
+				slog.Warn("操作失败", "module", "billing", "operation", "newWallet", "error", err)
+			}
 			return nil, resource.Invalid("CA 证书无效或不具备 CA 签发用途")
 		}
 		if time.Now().Before(ca.NotBefore) || !time.Now().Before(ca.NotAfter) {
@@ -151,6 +161,7 @@ func (s *Service) walletConfig(ctx context.Context, q resource.Queryer) (*Wallet
 		Wallet *WalletConfig `json:"wallet"`
 	}
 	if err = json.Unmarshal(record.Value, &value); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "billing", "operation", "walletConfig", "error", err)
 		return nil, errors.New("读取百智云配置失败")
 	}
 	return value.Wallet, nil
@@ -250,6 +261,9 @@ func (s *Service) saveWallet(ctx context.Context, q resource.Queryer, in map[str
 func normalizeWalletURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "billing", "operation", "normalizeWalletURL", "error", err)
+		}
 		return "", errors.New("请输入完整的 HTTPS 服务地址，不含用户名或密码")
 	}
 	if (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
@@ -259,6 +273,9 @@ func normalizeWalletURL(raw string) (string, error) {
 	if port != "" {
 		n, err := strconv.Atoi(port)
 		if err != nil || n < 1 || n > 65535 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "billing", "operation", "normalizeWalletURL", "error", err)
+			}
 			return "", errors.New("端口必须在 1 到 65535 之间")
 		}
 		port = strconv.Itoa(n)

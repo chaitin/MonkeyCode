@@ -6,13 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
 type remoteClient struct {
@@ -87,6 +88,7 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	}
 	media, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
 		return nil, fmt.Errorf("MCP 响应类型无效")
 	}
 	var data []byte
@@ -120,6 +122,9 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	case "application/json":
 		data, err = io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
 		if err != nil || len(data) > 4<<20 {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
+			}
 			return nil, fmt.Errorf("MCP 响应超限或不完整")
 		}
 	default:
@@ -132,6 +137,9 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 		Error   json.RawMessage `json:"error"`
 	}
 	if err = json.Unmarshal(data, &reply); err != nil || reply.ID != id || reply.Version != "2.0" || (len(reply.Result) == 0) == (len(reply.Error) == 0) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
+		}
 		return nil, fmt.Errorf("MCP 协议响应无效")
 	}
 	if len(reply.Error) > 0 {

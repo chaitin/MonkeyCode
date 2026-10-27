@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -218,7 +219,11 @@ func normalizeDescription(data []byte) ([]byte, string, bool) {
 	if !strings.Contains(value, ": ") || value == "" || strings.ContainsAny(value[:1], `"'|>`) {
 		return nil, "", false
 	}
-	quoted, _ := json.Marshal(value)
+	quoted, err := json.Marshal(value)
+	if err != nil {
+		slog.Error("编码资源属性失败", "error", err)
+		return nil, "", false
+	}
 	ending := "\n"
 	if strings.HasSuffix(original, "\r\n") {
 		ending = "\r\n"

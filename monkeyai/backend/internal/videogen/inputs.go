@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log/slog"
+
 	_ "image/jpeg"
+
 	_ "image/png"
 	"io"
 	"math/big"
@@ -40,6 +43,9 @@ func (s *Service) Upload(ctx context.Context, userID string, data []byte) (Input
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width < 1 || config.Height < 1 || int64(config.Width)*int64(config.Height) > maxInputPixels {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "Upload", "error", err)
+		}
 		return InputFile{}, resource.Invalid("视频参考图像素无效")
 	}
 	mime := ""
@@ -66,7 +72,9 @@ func (s *Service) Upload(ctx context.Context, userID string, data []byte) (Input
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		_ = s.storage.Delete(cleanup, key)
+		if err := s.storage.Delete(cleanup, key); err != nil {
+			slog.Error("清理存储对象失败", "module", "videogen", "operation", "Upload", "error", err)
+		}
 		return InputFile{}, err
 	}
 	return InputFile{FileID: id, MIMEType: mime, Width: config.Width, Height: config.Height, ExpiresAt: expiry}, nil
@@ -97,9 +105,16 @@ func (s *Service) loadInput(ctx context.Context, userID string, ref Reference, s
 	if err != nil {
 		return Reference{}, err
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videogen", "operation", "loadInput", "error", err)
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(body, maxInputBytes+1))
 	if err != nil || len(data) != int(row.ByteSize) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "loadInput", "error", err)
+		}
 		return Reference{}, errors.New("参考图读取或大小校验失败")
 	}
 	digest := sha256.Sum256(data)

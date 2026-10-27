@@ -49,9 +49,6 @@ func (w *Worker) Report(ctx context.Context, err error) {
 		w.logger.LogAttrs(ctx, slog.LevelWarn, "后台依赖检查失败", fields...)
 		return
 	}
-	if r := runtimeFor(w.logger); r != nil {
-		r.Recovered(ctx, "worker.scan.failed", fields...)
-	}
 	fields = append(fields, slog.String("event", "dependency.recovered"), slog.Uint64("failure_count", count), slog.Int64("duration_ms", time.Since(first).Milliseconds()))
 	w.logger.LogAttrs(ctx, slog.LevelInfo, "后台依赖已恢复", fields...)
 }

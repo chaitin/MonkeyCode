@@ -166,11 +166,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	meta, err := readRequestMeta(body)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
@@ -207,6 +209,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if target.UpstreamModel != "" && target.UpstreamModel != meta.Model {
 		body, err = rewriteModel(body, target.UpstreamModel)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -281,6 +284,9 @@ func protocolForPath(requestPath string) string {
 func rewriteModel(body []byte, upstreamModel string) ([]byte, error) {
 	var request map[string]json.RawMessage
 	if err := json.Unmarshal(body, &request); err != nil || request == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "proxy", "operation", "rewriteModel", "error", err)
+		}
 		return nil, errors.New("请求体必须是 JSON 对象")
 	}
 	encoded, err := json.Marshal(upstreamModel)

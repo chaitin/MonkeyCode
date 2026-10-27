@@ -117,6 +117,7 @@ func Decode(w http.ResponseWriter, r *http.Request, v any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	var body json.RawMessage
 	if err := d.Decode(&body); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "resource", "operation", "Decode", "error", err)
 		return Invalid("请求格式无效")
 	}
 	if data := bytes.TrimSpace(body); len(data) == 0 || data[0] != '{' {
@@ -126,6 +127,7 @@ func Decode(w http.ResponseWriter, r *http.Request, v any) error {
 		return Invalid("请求只能包含一个 JSON 对象")
 	}
 	if err := json.Unmarshal(body, v); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "resource", "operation", "Decode", "error", err)
 		return Invalid("请求格式无效")
 	}
 	return nil
@@ -177,6 +179,7 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 		Usage    string `json:"usage_requirement"`
 	}
 	if err := json.Unmarshal(b, &grants); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "resource", "operation", "SaveGrants", "error", err)
 		return Invalid("授权格式无效")
 	}
 	if _, err := sqlc.New(tx).DeleteGrants(ctx, sqlc.DeleteGrantsParams{ResourceType: kind, ResourceID: id}); err != nil {
@@ -629,6 +632,9 @@ func (c *CRUD) Register(r chi.Router) {
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
 			if err != nil || n < 1 || n > 500 {
+				if err != nil {
+					slog.Warn("操作失败", "module", "resource", "operation", "Register", "error", err)
+				}
 				Fail(r.Context(), w, Invalid("limit 必须在 1—500 之间"))
 				return
 			}

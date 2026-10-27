@@ -9,12 +9,8 @@ import (
 )
 
 func BenchmarkHTTPStreaming(b *testing.B) {
-	r, err := NewRuntime(io.Discard, slog.LevelInfo, DefaultSettings())
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer r.Close()
-	handler := HTTP(r.Logger())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	logger := New(io.Discard, slog.LevelInfo)
+	handler := HTTP(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for i := 0; i < 10; i++ {
 			_, _ = io.WriteString(w, "data: hello\n\n")

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -42,6 +43,7 @@ func (s *Service) mediaClaims(token string, now time.Time) (Claims, error) {
 	}
 	header, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
+		slog.Warn("操作失败", "module", "designcatalog", "operation", "mediaClaims", "error", err)
 		return c, unauthorized
 	}
 	var h struct {
@@ -54,6 +56,7 @@ func (s *Service) mediaClaims(token string, now time.Time) (Claims, error) {
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
+		slog.Warn("操作失败", "module", "designcatalog", "operation", "mediaClaims", "error", err)
 		return c, unauthorized
 	}
 	mac := hmac.New(sha256.New, []byte(s.access.MediaSecret))
@@ -63,6 +66,9 @@ func (s *Service) mediaClaims(token string, now time.Time) (Claims, error) {
 	}
 	body, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil || decode(body, &c) != nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "mediaClaims", "error", err)
+		}
 		return c, unauthorized
 	}
 	n := now.Unix()

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -12,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
@@ -41,6 +42,7 @@ func (s *Service) iconRoutes(r chi.Router, admin bool) {
 func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, (1<<20)+4096)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "uploadIcon", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("图标必须小于 1 MiB"))
 		return
 	}
@@ -51,6 +53,7 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	}()
 	f, _, err := r.FormFile("icon")
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "uploadIcon", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("缺少 icon 文件"))
 		return
 	}
@@ -61,11 +64,17 @@ func (s *Service) uploadIcon(w http.ResponseWriter, r *http.Request, admin bool)
 	}()
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "uploadIcon", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("图标超限"))
 		return
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg") || config.Width > 4096 || config.Height > 4096 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "uploadIcon", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("图标仅支持不超过 4096 × 4096 的 PNG/JPEG"))
 		return
 	}

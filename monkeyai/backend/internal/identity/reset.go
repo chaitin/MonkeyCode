@@ -2,10 +2,13 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,7 +26,11 @@ func ResetAdminPassword(ctx context.Context, db *pgxpool.Pool, email string) (st
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "ResetAdminPassword", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	user, err := q.ResetAdminPassword(ctx, sqlc.ResetAdminPasswordParams{
 		Email: strings.ToLower(strings.TrimSpace(email)), PasswordHash: new(hash),

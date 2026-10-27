@@ -3,11 +3,12 @@ package identity
 import (
 	"context"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
@@ -89,6 +90,7 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 			}
 			current, err := s.runtimeFeatures(r.Context())
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "OAuthMetadata", "error", err)
 				writeError(r.Context(), w, 503, "capabilities_unavailable", "功能策略暂不可用")
 				return
 			}
@@ -122,6 +124,7 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "token", "error", err)
 		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "请求格式无效"))
 		return
 	}
@@ -153,6 +156,7 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "revoke", "error", err)
 		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "请求格式无效"))
 		return
 	}
@@ -270,6 +274,7 @@ func (s *Service) completeClientRequest(w http.ResponseWriter, r *http.Request) 
 	requestID := chi.URLParam(r, "requestID")
 	request, err := s.authorizationRequest(r.Context(), requestID)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "completeClientRequest", "error", err)
 		writeError(r.Context(), w, http.StatusNotFound, "request_not_found", "授权请求不存在")
 		return
 	}
@@ -299,6 +304,9 @@ func (s *Service) startUpstream(w http.ResponseWriter, r *http.Request) {
 		}
 		request, err := sqlc.New(s.db).DeviceRequestByID(r.Context(), requestID)
 		if err != nil || request.Status != "pending" || !s.now().Before(request.ExpiresAt) {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "startUpstream", "error", err)
+			}
 			writeError(r.Context(), w, 400, "request_unavailable", "设备申请已完成或过期")
 			return
 		}
@@ -444,7 +452,7 @@ func (s *Service) clientLoginURL(requestID, errorCode string) string {
 
 func logUpstreamFailure(ctx context.Context, operation, connectionID string, err error) {
 	if response, ok := errors.AsType[*upstreamHTTPError](err); ok {
-		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status)
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", "http_status", "status", response.status, "error", err)
 		return
 	}
 	reason := "invalid_upstream_response"
@@ -461,5 +469,5 @@ func logUpstreamFailure(ctx context.Context, operation, connectionID string, err
 			reason = "request_failed"
 		}
 	}
-	logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", reason)
+	logging.Event(ctx, slog.Default(), slog.LevelError, "identity.request.failed", "上游 OAuth 操作失败", "module", "identity", "operation", "logUpstreamFailure", "operation", operation, "connection_id", connectionID, "reason", reason, "error", err)
 }

@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -18,7 +19,11 @@ func (s *Service) redeemCodeAndStoreToken(ctx context.Context, code Authorizatio
 	if err != nil {
 		return sqlc.OauthGrant{}, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "redeemCodeAndStoreToken", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	result, err := q.RedeemAuthorizationCode(ctx, code.ID)
 	if err != nil {
@@ -44,7 +49,11 @@ func (s *Service) rotateToken(ctx context.Context, oldRefreshHash, clientID, acc
 	if err != nil {
 		return sqlc.OauthGrant{}, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "rotateToken", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	params := sqlc.GetRefreshTokenParams{RefreshTokenHash: oldRefreshHash, ClientID: clientID}
 	old, err := q.GetRefreshToken(ctx, params)
@@ -115,7 +124,11 @@ func (s *Service) RevokeGrant(ctx context.Context, id, reason string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "RevokeGrant", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	if _, err := q.LockGrant(ctx, id); errors.Is(err, pgx.ErrNoRows) {
 		return nil

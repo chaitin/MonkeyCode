@@ -5,10 +5,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -261,6 +262,7 @@ func (s *Service) BindWallet(ctx context.Context, actor, user, external string) 
 	defer cancel()
 	profile, err := wallet.Client.GetUserByID(c, external)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "billing", "operation", "BindWallet", "error", err)
 		return fail(422, "wallet_user_invalid", "无法核实百智云用户")
 	}
 	if profile.ID != external {

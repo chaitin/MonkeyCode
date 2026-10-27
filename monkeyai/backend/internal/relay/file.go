@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -81,6 +83,9 @@ func (s *Service) verifyFileV1(ctx context.Context, machine, raw, requested stri
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
 	var in FileGrantV1
 	if err != nil || len(payload) > 8<<10 || decodeMessage(payload, &in) != nil || in.Type != "monkeyai.file-grant.v1" || in.Version != 1 || in.KeyID == "" || in.SessionID == "" || in.Path == "" || (in.Purpose != "resource" && in.Purpose != "download") {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "verifyFileV1", "error", err)
+		}
 		return FileGrant{}, nil, denied
 	}
 	if !safePath("/"+in.Path) || requested != "/"+in.Path {
@@ -107,8 +112,14 @@ func (s *Service) verifyFileV1(ctx context.Context, machine, raw, requested stri
 		return FileGrant{}, nil, err
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(parts[2])
-	message, _ := FileGrantV1Bytes(in)
+	message, encodeErr := FileGrantV1Bytes(in)
+	if encodeErr != nil {
+		return FileGrant{}, nil, encodeErr
+	}
 	if err != nil || len(state.PublicKey) != ed25519.PublicKeySize || in.KeyID != state.KeyID || !ed25519.Verify(state.PublicKey, message, signature) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "verifyFileV1", "error", err)
+		}
 		return FileGrant{}, nil, denied
 	}
 	now := time.Now()
@@ -152,6 +163,9 @@ func (s *Service) verifyFile(ctx context.Context, machine, raw, requested string
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
 	var grant FileGrant
 	if err != nil || decodeMessage(payload, &grant) != nil || grant.Version != 1 || grant.ServerID != s.config.ServerID || grant.MachineID != machine || !validUUID(grant.OwnerUserID) || !validUUID(grant.SessionID) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "verifyFile", "error", err)
+		}
 		return grant, nil, denied
 	}
 	state, err := s.devices.State(ctx, grant.OwnerUserID, machine)
@@ -163,8 +177,14 @@ func (s *Service) verifyFile(ctx context.Context, machine, raw, requested string
 		return grant, nil, err
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
-	message, _ := FileGrantBytes(grant)
+	message, encodeErr := FileGrantBytes(grant)
+	if encodeErr != nil {
+		return grant, nil, encodeErr
+	}
 	if err != nil || len(state.PublicKey) != ed25519.PublicKeySize || grant.KeyID != state.KeyID || !ed25519.Verify(state.PublicKey, message, signature) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "relay", "operation", "verifyFile", "error", err)
+		}
 		return grant, nil, denied
 	}
 	now := time.Now()
@@ -189,7 +209,12 @@ func (s *Service) verifyFile(ctx context.Context, machine, raw, requested string
 }
 
 func (s *Service) file(w http.ResponseWriter, r *http.Request) {
-	origin, _ := url.Parse(s.config.FilesOrigin)
+	origin, err := url.Parse(s.config.FilesOrigin)
+	if err != nil {
+		logging.Diagnostic(r.Context(), s.logger, slog.LevelError, "relay.file.failed", err)
+		failure(r.Context(), w, 500, "internal_error")
+		return
+	}
 	if !strings.EqualFold(r.Host, origin.Host) || r.Method != "GET" && r.Method != "HEAD" {
 		failure(r.Context(), w, 403, "permission_denied")
 		return
@@ -197,6 +222,9 @@ func (s *Service) file(w http.ResponseWriter, r *http.Request) {
 	machine, raw := chi.URLParam(r, "machine"), chi.URLParam(r, "grant")
 	requested, pathErr := requestPath(r, "/"+chi.URLParam(r, "*"))
 	if pathErr != nil || !safePath(requested) {
+		if pathErr != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "file", "error", pathErr)
+		}
 		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
@@ -214,6 +242,7 @@ func (s *Service) file(w http.ResponseWriter, r *http.Request) {
 			"authorization": map[string]any{"server_id": s.config.ServerID, "owner_user_id": grant.OwnerUserID, "machine_id": machine, "connection_id": grant.ConnectionID, "client_grant_id": grant.ClientGrantID,
 				"grant_version": grant.GrantVersion, "access_version": grant.AccessVersion, "lease_epoch": grant.LeaseEpoch, "scopes": grant.Scopes}, "expires_at": grant.ExpiresAt.UTC().Format(time.RFC3339Nano)})
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "file", "error", err)
 			failure(r.Context(), w, 503, "authorization_state_unavailable")
 			return
 		}

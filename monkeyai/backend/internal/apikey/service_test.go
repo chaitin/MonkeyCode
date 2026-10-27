@@ -101,7 +101,7 @@ func TestRotateLogsFailedCompensationWithoutSecret(t *testing.T) {
 	if err == nil || len(store.revoked) != 2 || store.revoked[0] != "key-1" || store.revoked[1] != "key-2" {
 		t.Fatalf("撤销失败后应尝试回收新密钥: %v, %v", store.revoked, err)
 	}
-	if !strings.Contains(output.String(), "error.error_code=internal_error") || strings.Contains(output.String(), "cleanup failed") || !strings.Contains(output.String(), "key-2") || strings.Contains(output.String(), store.hash) {
+	if !strings.Contains(output.String(), "error.error_code=internal_error") || !strings.Contains(output.String(), "cleanup failed") || !strings.Contains(output.String(), "key-2") || strings.Contains(output.String(), store.hash) {
 		t.Fatalf("补偿日志缺少错误或包含密钥摘要: %s", output.String())
 	}
 }

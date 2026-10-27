@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
 type OAuthConnection struct {
@@ -200,6 +201,9 @@ func (s *Service) exchangeUpstream(ctx context.Context, connection OAuthConnecti
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&tokenResponse); err != nil || tokenResponse.AccessToken == "" {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "identity", "operation", "exchangeUpstream", "error", err)
+		}
 		return upstreamProfile{}, errors.New("上游未返回 access_token")
 	}
 
@@ -313,6 +317,6 @@ func stringValue(values map[string]any, keys ...string) string {
 
 func closeUpstreamBody(ctx context.Context, body io.ReadCloser, operation string) {
 	if err := body.Close(); err != nil && ctx.Err() == nil {
-		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.upstream.close.failed", "关闭上游响应失败", "module", "identity", "operation", map[string]string{"读取 OIDC 元数据": "read_oidc_metadata", "交换上游令牌": "exchange_token", "读取上游用户": "read_userinfo"}[operation], "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelError, "identity.upstream.close.failed", "关闭上游响应失败", "module", "identity", "operation", map[string]string{"读取 OIDC 元数据": "read_oidc_metadata", "交换上游令牌": "exchange_token", "读取上游用户": "read_userinfo"}[operation], "error_type", fmt.Sprintf("%T", err), "error", err)
 	}
 }

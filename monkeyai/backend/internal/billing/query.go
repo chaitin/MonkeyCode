@@ -3,6 +3,7 @@ package billing
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,6 +21,7 @@ func filters(r *http.Request) (sqlc.CountEntriesParams, error) {
 		if v := q.Get(key); v != "" {
 			t, err := time.Parse(time.RFC3339, v)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "filters", "error", err)
 				return sqlc.CountEntriesParams{}, resource.Invalid("筛选时间需使用带时区的 ISO 格式")
 			}
 			*target = &t
@@ -89,6 +90,7 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 func defaultEntryRange(now time.Time) (time.Time, time.Time) {
 	zone, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
+		slog.Warn("操作失败", "module", "billing", "operation", "defaultEntryRange", "error", err)
 		zone = time.FixedZone("Asia/Shanghai", 8*60*60)
 	}
 	local := now.In(zone)

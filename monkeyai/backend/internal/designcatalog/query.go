@@ -2,6 +2,7 @@ package designcatalog
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -77,7 +78,9 @@ func boundPreview(value any, base string) bool {
 
 func (s *Service) present(snap *Snapshot, e Entry, detail bool) map[string]any {
 	var metadata map[string]any
-	_ = json.Unmarshal(e.Metadata, &metadata)
+	if err := json.Unmarshal(e.Metadata, &metadata); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "present", "error", err)
+	}
 	out := map[string]any{"id": e.ID, "content_digest": e.ContentDigest, "asset_snapshot_id": "release:" + snap.ReleaseID}
 	fields := map[string][]string{
 		"template":      {"template_kind", "downloadable", "has_skill", "name", "localizedName", "description", "localizedDescription", "mode", "category"},
@@ -192,6 +195,9 @@ func pageValue(q url.Values, key string, defaultValue int) (int, error) {
 	}
 	n, err := strconv.ParseInt(raw[0], 10, 64)
 	if err != nil || n < 1 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "pageValue", "error", err)
+		}
 		return 0, fault(400, "invalid_argument", "分页参数无效")
 	}
 	return int(n), nil
@@ -201,7 +207,9 @@ func termMatches(actual, requested string) bool {
 }
 func matches(e Entry, q url.Values, t Taxonomy) bool {
 	var meta map[string]json.RawMessage
-	_ = json.Unmarshal(e.Metadata, &meta)
+	if err := json.Unmarshal(e.Metadata, &meta); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "matches", "error", err)
+	}
 	if text := strings.ToLower(q.Get("q")); text != "" && !strings.Contains(strings.ToLower(e.ID+" "+string(e.Metadata)), text) {
 		return false
 	}

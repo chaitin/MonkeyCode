@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -59,6 +60,9 @@ func providerClient() *http.Client {
 		}
 		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		if err != nil || len(ips) == 0 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "videogen", "operation", "providerClient", "error", err)
+			}
 			return nil, errResolveFailed
 		}
 		for _, ip := range ips {
@@ -84,10 +88,16 @@ func providerClient() *http.Client {
 func providerURL(base, endpoint string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "videogen", "operation", "providerURL", "error", err)
+		}
 		return "", errUpstreamURL
 	}
 	suffix, err := url.Parse(endpoint)
 	if err != nil || suffix.IsAbs() || suffix.Host != "" || suffix.User != nil || suffix.Fragment != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "videogen", "operation", "providerURL", "error", err)
+		}
 		return "", errUpstreamEndpoint
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/" + strings.TrimLeft(suffix.Path, "/")
@@ -104,6 +114,9 @@ func providerJSON(ctx context.Context, client *http.Client, method, base, endpoi
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil || len(encoded) > 40<<20 {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "providerJSON", "error", err)
+			}
 			return nil, 0, errors.New("视频上游请求超过大小限制")
 		}
 		body = bytes.NewReader(encoded)
@@ -120,9 +133,16 @@ func providerJSON(ctx context.Context, client *http.Client, method, base, endpoi
 	if err != nil {
 		return nil, 0, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videogen", "operation", "providerJSON", "error", err)
+		}
+	}()
 	content, err := io.ReadAll(io.LimitReader(response.Body, maxProviderResponse+1))
 	if err != nil || len(content) > maxProviderResponse {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "providerJSON", "error", err)
+		}
 		return nil, 0, errors.New("视频上游响应过大或读取失败")
 	}
 	return content, response.StatusCode, nil
@@ -152,6 +172,9 @@ func downloadClient(client *http.Client) *http.Client {
 func providerMedia(ctx context.Context, client *http.Client, address string) (io.ReadCloser, int64, error) {
 	u, err := url.Parse(address)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "providerMedia", "error", err)
+		}
 		return nil, 0, errOutputURL
 	}
 	client = downloadClient(client)
@@ -173,7 +196,9 @@ func providerMedia(ctx context.Context, client *http.Client, address string) (io
 		invalid = errOutputEmpty
 	}
 	if invalid.code != "" {
-		response.Body.Close()
+		if err := response.Body.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videogen", "operation", "providerMedia", "error", err)
+		}
 		return nil, 0, &mediaResponseError{diagnosticError: invalid, status: response.StatusCode, expected: response.ContentLength}
 	}
 	return response.Body, response.ContentLength, nil

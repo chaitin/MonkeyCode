@@ -2,7 +2,6 @@ package feedback
 
 import (
 	"bytes"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -61,6 +62,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	if parseErr != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "feedback", "operation", "create", "error", parseErr)
 		resource.Fail(r.Context(), w, resource.Invalid("反馈请求无效或超过 16 MiB"))
 		return
 	}
@@ -114,6 +116,9 @@ func parseRating(value string) (*int32, error) {
 	}
 	n, err := strconv.ParseInt(value, 10, 32)
 	if err != nil || n < 1 || n > 5 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "feedback", "operation", "parseRating", "error", err)
+		}
 		return nil, resource.Invalid("评分必须为 1 至 5")
 	}
 	rating := int32(n)
@@ -126,11 +131,19 @@ func readImage(header *multipart.FileHeader) (Image, error) {
 	}
 	file, err := header.Open()
 	if err != nil {
+		slog.Warn("操作失败", "module", "feedback", "operation", "readImage", "error", err)
 		return Image{}, resource.Invalid("读取图片失败")
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "feedback", "operation", "readImage", "error", err)
+		}
+	}()
 	data, err := io.ReadAll(io.LimitReader(file, maxImageBytes+1))
 	if err != nil || len(data) == 0 || len(data) > maxImageBytes {
+		if err != nil {
+			slog.Warn("操作失败", "module", "feedback", "operation", "readImage", "error", err)
+		}
 		return Image{}, resource.Invalid("单张图片不能超过 5 MiB")
 	}
 	return decodeImage(data)
@@ -139,10 +152,16 @@ func readImage(header *multipart.FileHeader) (Image, error) {
 func decodeImage(data []byte) (Image, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxImagePixels {
+		if err != nil {
+			slog.Warn("操作失败", "module", "feedback", "operation", "decodeImage", "error", err)
+		}
 		return Image{}, resource.Invalid("图片格式、尺寸或像素数无效")
 	}
 	decoded, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil || decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
+		if err != nil {
+			slog.Warn("操作失败", "module", "feedback", "operation", "decodeImage", "error", err)
+		}
 		return Image{}, resource.Invalid("图片内容无效")
 	}
 	if format != "png" && format != "jpeg" && format != "webp" {

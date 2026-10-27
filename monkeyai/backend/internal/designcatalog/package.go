@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
@@ -78,7 +79,11 @@ func (r *parser) copy(dst io.Writer, f *zip.File) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer src.Close()
+	defer func() {
+		if err := src.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "copy", "error", err)
+		}
+	}()
 	remaining := MaxExpanded - r.bytes
 	if remaining < 0 {
 		return 0, errors.New("累计展开大小超限")
@@ -130,7 +135,11 @@ func (r *parser) capture(f *zip.File) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "capture", "error", err)
+		}
+	}()
 	h := sha256.New()
 	size, err := r.copy(io.MultiWriter(file, h), f)
 	if err != nil {
@@ -153,7 +162,11 @@ func ParseFile(ctx context.Context, name string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "ParseFile", "error", err)
+		}
+	}()
 	stat, err := f.Stat()
 	if err != nil {
 		return nil, err
@@ -178,7 +191,9 @@ func Parse(ctx context.Context, reader io.ReaderAt, size int64) (_ *Package, err
 	p := &Package{dir: dir, objects: map[string]string{}}
 	defer func() {
 		if err != nil {
-			_ = p.Close()
+			if err := p.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "designcatalog", "operation", "Parse", "error", err)
+			}
 		}
 	}()
 	r := &parser{ctx: ctx, p: p}
@@ -275,8 +290,14 @@ func Parse(ctx context.Context, reader io.ReaderAt, size int64) (_ *Package, err
 	if err = decode(raw, &taxonomy); err != nil {
 		return nil, err
 	}
-	a, _ := canonicalHash(taxonomy)
-	b, _ := canonicalHash(p.Taxonomy)
+	a, err := canonicalHash(taxonomy)
+	if err != nil {
+		return nil, err
+	}
+	b, err := canonicalHash(p.Taxonomy)
+	if err != nil {
+		return nil, err
+	}
 	if a != b {
 		return nil, errors.New("taxonomy 不一致")
 	}
@@ -357,8 +378,16 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
-	defer file.Close()
+	defer func() {
+		if err := os.Remove(file.Name()); err != nil && !os.IsNotExist(err) {
+			slog.Error("清理临时文件失败", "module", "designcatalog", "operation", "nested", "error", err)
+		}
+	}()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "nested", "error", err)
+		}
+	}()
 	if _, err = r.copy(file, outer.files[e.Artifact.Path]); err != nil {
 		return err
 	}
@@ -420,8 +449,14 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 			refs[ref.Source] = ref.Archive
 		}
 		if mapping != nil {
-			a, _ := canonicalHash(mapping)
-			b, _ := canonicalHash(refs)
+			a, err := canonicalHash(mapping)
+			if err != nil {
+				return err
+			}
+			b, err := canonicalHash(refs)
+			if err != nil {
+				return err
+			}
 			if a != b {
 				return errors.New("两种源路径映射不一致")
 			}
@@ -471,9 +506,13 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 		}
 	}
 	var fields map[string]json.RawMessage
-	_ = json.Unmarshal(e.Metadata, &fields)
+	if err := json.Unmarshal(e.Metadata, &fields); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "nested", "error", err)
+	}
 	var export map[string]json.RawMessage
-	_ = json.Unmarshal(raw, &export)
+	if err := json.Unmarshal(raw, &export); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "nested", "error", err)
+	}
 	if e.Kind == "design-system" {
 		body, err := r.read(nz, meta.Body)
 		if err != nil {
@@ -504,9 +543,15 @@ func (r *parser) nested(outer *archive, e *Entry) error {
 					}
 					texts[lang] = string(text)
 				}
-				a, _ := canonicalHash(texts)
+				a, err := canonicalHash(texts)
+				if err != nil {
+					return err
+				}
 				want, err := Canonical(fields[pair[1]])
 				if err != nil || a != Hash(want) {
+					if err != nil {
+						slog.Warn("操作失败", "module", "designcatalog", "operation", "nested", "error", err)
+					}
 					return errors.New("外置提示词不符")
 				}
 			} else {

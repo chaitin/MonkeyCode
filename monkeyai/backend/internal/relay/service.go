@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"hash/fnv"
 	"io"
 	"log/slog"
@@ -18,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -109,6 +110,9 @@ func NewService(pool *pgxpool.Pool, identities *identity.Service, devices *endpo
 	} {
 		u, err := url.Parse(origin.value)
 		if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Path != "" || (u.Scheme != "http" && u.Scheme != "https") {
+			if err != nil {
+				slog.Warn("操作失败", "module", "relay", "operation", "NewService", "error", err)
+			}
 			return nil, fmt.Errorf("%s 必须为不含账号、路径、查询参数或片段的 HTTP(S) origin", origin.name)
 		}
 	}
@@ -118,6 +122,9 @@ func NewService(pool *pgxpool.Pool, identities *identity.Service, devices *endpo
 		}
 		u, err := url.Parse(origin)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+			if err != nil {
+				slog.Warn("操作失败", "module", "relay", "operation", "NewService", "error", err)
+			}
 			return nil, errors.New("Desktop Origin 必须为完整 HTTP(S) origin")
 		}
 	}
@@ -282,13 +289,19 @@ func (s *Service) closeRoute(r *route) {
 		a.close()
 	}
 	if data != nil {
-		data.Close()
+		if err := data.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
+		}
 	}
 	if control != nil {
-		control.Close()
+		if err := control.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
+		}
 	}
 	if r.ws != nil {
-		r.ws.CloseNow()
+		if err := r.ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
+		}
 	}
 }
 
@@ -346,7 +359,9 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		s.closeRoute(r)
 	}
 	for _, ws := range connections {
-		ws.CloseNow()
+		if err := ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "Shutdown", "error", err)
+		}
 	}
 	finished := make(chan struct{})
 	go func() { s.workers.Wait(); close(finished) }()
@@ -382,6 +397,9 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	versionText := strings.Trim(r.Header.Get("If-Match"), "\"")
 	version, err := strconv.ParseInt(versionText, 10, 64)
 	if err != nil || version < 0 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "revoke", "error", err)
+		}
 		failure(r.Context(), w, http.StatusPreconditionRequired, "device_registration_changed")
 		return
 	}

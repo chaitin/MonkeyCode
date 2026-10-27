@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -151,6 +152,7 @@ func (s *Service) Submit(ctx context.Context, userID string, in Request) (Feedba
 		attachmentIDs = append(attachmentIDs, attachmentID)
 		objectKeys = append(objectKeys, key)
 		if err := s.storage.Put(ctx, key, image.Data, image.MIMEType); err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "feedback", "operation", "Submit", "error", err)
 			return Feedback{}, true, s.fail(ctx, row.ID, attachmentIDs, objectKeys, storageFailure())
 		}
 		count, err := sqlc.New(s.pool).SetAttachmentReady(ctx, sqlc.SetAttachmentReadyParams{ID: attachmentID, FeedbackID: row.ID})
@@ -210,7 +212,7 @@ func (s *Service) fail(ctx context.Context, feedbackID string, attachmentIDs []s
 	defer cancel()
 	for _, key := range objectKeys {
 		if err := s.storage.Delete(cleanupCtx, key); err != nil {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "补偿删除反馈附件失败", "module", "feedback", "operation", "fail", "feedback_id", feedbackID, "error_type", fmt.Sprintf("%T", err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "feedback.operation.warn", "补偿删除反馈附件失败", "module", "feedback", "operation", "fail", "feedback_id", feedbackID, "error_type", fmt.Sprintf("%T", err), "error", err)
 		}
 	}
 	return cause

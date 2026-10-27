@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
 var metadataUnavailable = errors.New("OAuth 元数据端点不存在")
@@ -40,6 +41,7 @@ func discoveryURL(value, source string) bool {
 	}
 	u, err := url.Parse(value)
 	if err != nil {
+		slog.Warn("操作失败", "module", "mcp", "operation", "discoveryURL", "error", err)
 		return false
 	}
 	origin, err := url.Parse(source)
@@ -69,6 +71,9 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 || json.Unmarshal(data, out) != nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "readOAuthMetadata", "error", err)
+		}
 		return fmt.Errorf("OAuth 元数据响应无效")
 	}
 	return nil
@@ -77,6 +82,7 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 func metadataURLs(issuer, kind string) []string {
 	u, err := url.Parse(issuer)
 	if err != nil {
+		slog.Warn("操作失败", "module", "mcp", "operation", "metadataURLs", "error", err)
 		return nil
 	}
 	origin := u.Scheme + "://" + u.Host
@@ -114,14 +120,17 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 	// 不附带现有凭证；所有发现请求复用 MCP 的地址限制及禁止重定向策略。
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
 		return fail()
 	}
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	resp, err := h.Do(req)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
 		return fail()
 	}
 	if err := resp.Body.Close(); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
 		return fail()
 	}
 	var metadataURL string
@@ -158,6 +167,7 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 
 	u, err := url.Parse(target)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
 		return fail()
 	}
 	issuer := u.Scheme + "://" + u.Host
@@ -168,6 +178,9 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 		// 将资源标识绑定到用户配置的 MCP URL，避免接受其他资源的元数据。
 		resourceURL, err := url.Parse(prm.Resource)
 		if err != nil || !discoveryURL(prm.Resource, target) || resourceURL.Scheme != u.Scheme || resourceURL.Host != u.Host || resourceURL.EscapedPath() != u.EscapedPath() || resourceURL.RawQuery != "" || len(prm.AuthorizationServers) == 0 {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
+			}
 			return fail()
 		}
 		issuer = prm.AuthorizationServers[0]
@@ -179,6 +192,7 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 	}
 	issuerURL, err := url.Parse(issuer)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
 		return fail()
 	}
 	if issuerURL.RawQuery != "" {

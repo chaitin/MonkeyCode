@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -65,6 +66,9 @@ func normalizeVerificationKey(key map[string]string) (map[string]string, error) 
 	}
 	public, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
 	if err != nil || len(public) != ed25519.PublicKeySize || key["kid"] != endpoint.KeyID(public) {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "normalizeVerificationKey", "error", err)
+		}
 		return nil, errors.New("中转公钥集合包含无效 Ed25519 公钥")
 	}
 	return verificationKey(ed25519.PublicKey(public)), nil
@@ -127,10 +131,16 @@ func verifyWire(public ed25519.PublicKey, wire string) (json.RawMessage, bool) {
 	}
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[0])
 	if err != nil || len(payload) == 0 || len(payload) > 8<<10 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "verifyWire", "error", err)
+		}
 		return nil, false
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(parts[1])
 	if err != nil || !ed25519.Verify(public, []byte("monkeyai.access.signed.v1."+parts[0]), signature) {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "verifyWire", "error", err)
+		}
 		return nil, false
 	}
 	return payload, true

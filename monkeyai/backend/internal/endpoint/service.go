@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
 type Credential struct {
@@ -255,7 +256,9 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		case <-c.finished:
 		case <-ctx.Done():
 			for _, pending := range all {
-				pending.ws.CloseNow()
+				if err := pending.ws.CloseNow(); err != nil {
+					slog.Error("关闭资源失败", "module", "endpoint", "operation", "Shutdown", "error", err)
+				}
 				pending.cancel()
 			}
 			return ctx.Err()

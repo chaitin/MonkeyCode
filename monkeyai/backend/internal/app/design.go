@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"uuid"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
@@ -12,6 +13,7 @@ type designDevices struct{ store *endpoint.Postgres }
 
 func (d designDevices) OwnedDevice(ctx context.Context, user, machine string) (string, error) {
 	if _, err := uuid.Parse(machine); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "OwnedDevice", "error", err)
 		return "", &designcatalog.Fault{Status: 403, Code: "forbidden", Message: "设备标识无效"}
 	}
 	row, err := d.store.Get(ctx, user, machine)

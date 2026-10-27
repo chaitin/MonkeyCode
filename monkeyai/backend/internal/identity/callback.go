@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"log/slog"
 	"net"
 	"net/url"
 	"strconv"
@@ -22,10 +23,16 @@ func validClientRedirect(clientID, raw string) bool {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "http" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.EscapedPath() != "/oauth/callback" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "validClientRedirect", "error", err)
+		}
 		return false
 	}
 	host, port, err := net.SplitHostPort(u.Host)
 	if err != nil || (host != "127.0.0.1" && host != "::1" && host != "localhost") {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "validClientRedirect", "error", err)
+		}
 		return false
 	}
 	number, err := strconv.Atoi(port)

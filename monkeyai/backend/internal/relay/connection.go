@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -55,6 +56,9 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 	var in ConnectionRequest
 	data, err := readBody(w, r, maxControlMessage)
 	if err != nil || decodeMessage(data, &in) != nil {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
+		}
 		failure(r.Context(), w, 400, "invalid_request")
 		return
 	}
@@ -82,22 +86,30 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 	}
 	ticket, err := randomSecret()
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "relay", "operation", "connections", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	if _, err = q.LockUser(r.Context(), p.UserID); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	valid, err := s.identity.AuthorizeDevice(r.Context(), tx, p, "device:connect")
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
@@ -116,6 +128,7 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 	}
 	hostValid, hostErr := s.identity.AuthorizeDevice(r.Context(), tx, route.principal, "device:publish")
 	if hostErr != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", hostErr)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
@@ -135,6 +148,9 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		row, err = q.LockConnection(r.Context(), sqlc.LockConnectionParams{ID: in.ConnectionID, UserID: p.UserID, ClientGrantID: p.GrantID})
 		if err != nil || row.MachineID != machine || row.RevokedAt != nil || !time.Now().Before(row.ExpiresAt) || row.GrantVersion != state.GrantVersion {
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
+				}
 				failure(r.Context(), w, 503, "authorization_state_unavailable")
 			} else {
 				failure(r.Context(), w, 401, "connection_expired")
@@ -168,6 +184,7 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		}
 		count, err := q.CountConnections(r.Context(), sqlc.CountConnectionsParams{UserID: p.UserID, MachineID: machine, GrantVersion: state.GrantVersion})
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 			failure(r.Context(), w, 503, "authorization_state_unavailable")
 			return
 		}
@@ -194,7 +211,13 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 			}
 			negotiated[name] = 1
 		}
-		protocol, _ = json.Marshal(negotiated)
+		var encodeErr error
+		protocol, encodeErr = json.Marshal(negotiated)
+		if encodeErr != nil {
+			s.logger.ErrorContext(r.Context(), "编码连接协议失败", "error", encodeErr)
+			failure(r.Context(), w, 500, "internal_error")
+			return
+		}
 		if in.ConnectionID != "" && !sameProtocol(row.Protocol, protocol) {
 			failure(r.Context(), w, 409, "upgrade_required")
 			return
@@ -207,10 +230,12 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		row, err = q.RotateTicket(r.Context(), sqlc.RotateTicketParams{ID: row.ID, TicketHash: secretHash(ticket), Scopes: scopes, ExpiresAt: expiry})
 	}
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "connections", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}

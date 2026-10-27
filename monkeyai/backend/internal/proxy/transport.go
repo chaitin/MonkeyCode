@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -26,6 +27,9 @@ func (e *ConnectError) DiagnosticCode() string {
 func TransportFor(raw string) (*http.Transport, error) {
 	address, err := url.Parse(raw)
 	if err != nil || address.Host == "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "proxy", "operation", "TransportFor", "error", err)
+		}
 		return nil, fmt.Errorf("系统代理配置无效")
 	}
 	transport := DirectTransport()

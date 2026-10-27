@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -90,6 +91,7 @@ func submitProvider(ctx context.Context, client *http.Client, target proxy.Targe
 			endpoint = "/contents/generations/tasks"
 			var audio bool
 			if err := json.Unmarshal(input.Params["generate_audio"], &audio); err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "submitProvider", "error", err)
 				return "", errors.New("视频音频开关无效")
 			}
 			request["generate_audio"] = audio
@@ -254,6 +256,9 @@ func queryProvider(ctx context.Context, client *http.Client, target proxy.Target
 		result.Status = "succeeded"
 		result.DurationMs, err = durationMillis(value, maxSeconds)
 		if err != nil || result.URL == "" {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "queryProvider", "error", err)
+			}
 			return providerResult{}, errors.New("视频供应商未提供可验证的结果")
 		}
 	case "failed", "expired", "cancelled":
