@@ -87,10 +87,7 @@ test("the public root has its own page and the admin link opens login", async ()
     app,
     /if \(location\.pathname !== LOGIN_PATH && location\.pathname !== "\/"\) \{\s*document\.title = t\("app\.documentTitle"\)/
   )
-  assert.match(
-    landing,
-    /api<\{ product_name: string; workspace_name: string \}>\(/
-  )
+  assert.match(landing, /api<PublicBranding>\(/)
   assert.match(landing, /"\/api\/auth\/v1\/branding"/)
   assert.match(landing, /branding\.product_name\.trim\(\) \|\| "MonkeyAI"/)
   assert.match(landing, /branding\.workspace_name\.trim\(\) \|\| "Monkey AI"/)
@@ -168,7 +165,7 @@ test("landing copy is available in every supported language", () => {
     }
     assert.ok(resource.landing.title.includes("{{productName}}"), language)
     assert.ok(
-      resource.landing.poweredBy.includes("<repo>Monkey AI</repo>"),
+      resource.landing.poweredBy.includes("<repo>百智办公</repo>"),
       language
     )
   }
@@ -190,10 +187,10 @@ test("landing copy is available in every supported language", () => {
     zhCN.landing.enterprise.sharingDescription,
     /大模型、知识库、技能、专家、MCP 和规则/
   )
-  assert.equal(zhCN.landing.poweredBy, "当前系统由 <repo>Monkey AI</repo> 驱动")
+  assert.equal(zhCN.landing.poweredBy, "当前系统由 <repo>百智办公</repo> 驱动")
 })
 
-test("powered-by footer renders Monkey AI inside a clickable link", async () => {
+test("powered-by footer renders 百智办公 inside a clickable link", async () => {
   const i18n = i18next.createInstance()
   await i18n.use(initReactI18next).init({
     lng: "zh-CN",
@@ -210,7 +207,7 @@ test("powered-by footer renders Monkey AI inside a clickable link", async () => 
       })
     )
   )
-  assert.equal(markup, `当前系统由 <a href="${url}">Monkey AI</a> 驱动`)
+  assert.equal(markup, `当前系统由 <a href="${url}">百智办公</a> 驱动`)
 })
 
 test("client download configuration covers every platform and both desktop architectures", async () => {

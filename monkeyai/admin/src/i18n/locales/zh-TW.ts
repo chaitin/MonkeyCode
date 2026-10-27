@@ -34,7 +34,7 @@ export const zhTW = {
       work: "製作 PPT、撰寫文件、處理試算表、整理檔案",
       design: "製作海報、製作短劇、互動設計、平面設計等",
     },
-    poweredBy: "目前系統由 <repo>Monkey AI</repo> 驅動",
+    poweredBy: "目前系統由 <repo>百智办公</repo> 驅動",
     enterprise: {
       title: "企業管理與團隊協作",
       sharingTitle: "團隊資源共享",

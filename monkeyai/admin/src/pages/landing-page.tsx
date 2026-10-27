@@ -18,6 +18,13 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { LOGIN_PATH } from "@/lib/routes"
 
+type PublicBranding = {
+  product_name: string
+  workspace_name: string
+  machine_code?: string
+  has_commercial_license?: boolean
+}
+
 const modes = [
   {
     id: "coding",
@@ -52,16 +59,16 @@ export function LandingPage() {
   const { t } = useTranslation()
   const [productName, setProductName] = useState("MonkeyAI")
   const [workspaceName, setWorkspaceName] = useState("Monkey AI")
+  const [hasCommercialLicense, setHasCommercialLicense] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
-    api<{ product_name: string; workspace_name: string }>(
-      "/api/auth/v1/branding",
-      {
-        signal: controller.signal,
-      }
-    )
+    api<PublicBranding>("/api/auth/v1/branding", {
+      signal: controller.signal,
+    })
       .then((branding) => {
+        if (controller.signal.aborted) return
+        setHasCommercialLicense(branding.has_commercial_license === true)
         setProductName(branding.product_name.trim() || "MonkeyAI")
         setWorkspaceName(branding.workspace_name.trim() || "Monkey AI")
       })
@@ -115,7 +122,7 @@ export function LandingPage() {
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_25%_25%,var(--color-muted),transparent_55%)] opacity-60" />
         <div className="mx-auto grid w-full max-w-6xl gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-center lg:gap-16">
           <div className="max-w-2xl">
-            <h1 className="font-heading text-4xl leading-[1.18] font-semibold tracking-tight text-balance sm:text-5xl">
+            <h1 className="text-balance font-heading text-4xl font-semibold leading-[1.18] tracking-tight sm:text-5xl">
               {t("landing.positioning")}
             </h1>
             <p className="mt-7 max-w-xl border-s-2 border-foreground/70 ps-5 text-lg leading-8 sm:text-xl sm:leading-9">
@@ -190,21 +197,23 @@ export function LandingPage() {
             <span className="truncate">{workspaceName}</span>
           </span>
           <div className="ms-auto flex min-w-0 items-center gap-3">
-            <span className="text-end">
-              <Trans
-                i18nKey="landing.poweredBy"
-                components={{
-                  repo: (
-                    <a
-                      href="https://work.baizhi.cloud/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-foreground underline-offset-4 hover:underline"
-                    />
-                  ),
-                }}
-              />
-            </span>
+            {!hasCommercialLicense && (
+              <span className="text-end">
+                <Trans
+                  i18nKey="landing.poweredBy"
+                  components={{
+                    repo: (
+                      <a
+                        href="https://work.baizhi.cloud/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-foreground underline-offset-4 hover:underline"
+                      />
+                    ),
+                  }}
+                />
+              </span>
+            )}
             <div className="flex shrink-0 items-center gap-1 sm:hidden">
               <LanguageToggle variant="ghost" size="icon-sm" />
               <ThemeToggle variant="ghost" size="icon-sm" />

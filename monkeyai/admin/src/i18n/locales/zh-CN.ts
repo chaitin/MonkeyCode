@@ -162,7 +162,7 @@ export const zhCN = {
       work: "制作 PPT、编写文档、处理表格、整理文件",
       design: "制作海报、制作短剧、交互设计、平面设计等",
     },
-    poweredBy: "当前系统由 <repo>Monkey AI</repo> 驱动",
+    poweredBy: "当前系统由 <repo>百智办公</repo> 驱动",
     enterprise: {
       title: "企业管理与团队协作",
       sharingTitle: "团队资源共享",

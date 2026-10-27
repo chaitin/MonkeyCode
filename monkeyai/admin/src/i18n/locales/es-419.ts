@@ -38,7 +38,7 @@ export const es419 = {
       design:
         "Crear pósteres y dramas cortos, diseñar interacciones y piezas gráficas",
     },
-    poweredBy: "Este sistema funciona con <repo>Monkey AI</repo>",
+    poweredBy: "Este sistema funciona con <repo>百智办公</repo>",
     enterprise: {
       title: "Gestión empresarial y colaboración en equipo",
       sharingTitle: "Recursos compartidos en equipo",

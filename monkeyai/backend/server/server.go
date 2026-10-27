@@ -18,6 +18,10 @@ import (
 // 读取失败仅禁用设计资源签发，不影响应用启动。
 type InstanceIdentity = app.InstanceIdentity
 
+// PublicLicenseReader lets the host expose only a machine code and a verified
+// commercial-license flag through the anonymous branding endpoint.
+type PublicLicenseReader = app.PublicLicenseReader
+
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
 type AdminRegistrar interface {
 	RegisterAdmin(chi.Router)

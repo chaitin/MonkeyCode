@@ -74,6 +74,9 @@ type AdminRegistrar interface {
 	RegisterAdmin(chi.Router)
 }
 
+// PublicLicenseReader is an optional host extension for public branding.
+type PublicLicenseReader = identity.PublicLicenseReader
+
 // InstanceIdentity 由宿主扩展提供部署身份，在成员工厂完成后读取一次。
 type InstanceIdentity interface {
 	InstanceID(context.Context) (string, error)
@@ -193,6 +196,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	executions := endpoint.NewExecution(pool, identities)
 	sessions.WithHostAuthorizer(executions)
 	identities.WithUserWriter(users)
+	configurePublicLicense(identities, registrars)
 	if err := identities.EnsureInitialAdmin(ctx, cfg.InitialAdminName, cfg.InitialAdminEmail, cfg.InitialAdminPassword); err != nil && !errors.Is(err, member.ErrWriterUnavailable) {
 		return nil, fmt.Errorf("初始化管理员: %w", err)
 	}

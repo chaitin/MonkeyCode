@@ -43,7 +43,7 @@ export const frFR = {
       design:
         "Créer affiches et courtes séries, concevoir des interfaces et des visuels graphiques",
     },
-    poweredBy: "Ce système est propulsé par <repo>Monkey AI</repo>",
+    poweredBy: "Ce système est propulsé par <repo>百智办公</repo>",
     enterprise: {
       title: "Gestion d’entreprise et collaboration",
       sharingTitle: "Ressources partagées en équipe",

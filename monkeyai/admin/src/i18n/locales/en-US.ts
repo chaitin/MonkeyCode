@@ -172,7 +172,7 @@ export const enUS = {
       design:
         "Create posters and short dramas, interactive and graphic designs",
     },
-    poweredBy: "Powered by <repo>Monkey AI</repo>",
+    poweredBy: "Powered by <repo>百智办公</repo>",
     enterprise: {
       title: "Enterprise management and team collaboration",
       sharingTitle: "Shared team resources",

@@ -339,7 +339,7 @@ paths:
   /api/auth/v1/branding:
     get:
       summary: 读取公开品牌信息
-      description: 返回登录页展示所需的团队名称和工具名称；未配置或配置不可用时返回默认值，不包含其他设置。
+      description: 公开返回团队名称、产品名称、授权机器码及有效商业授权标记。仅宿主确认合法且当前有效的付费授权时标记为 true；未配置校验器或读取失败时为 false。不会返回授权文件、客户信息、席位、有效期或密钥。
       security: []
       responses:
         "200":
@@ -351,6 +351,9 @@ paths:
                 required:
                   - workspace_name
                   - product_name
+                  - machine_code
+                  - has_commercial_license
+                additionalProperties: false
                 properties:
                   workspace_name:
                     type: string
@@ -358,6 +361,12 @@ paths:
                   product_name:
                     type: string
                     description: 工具名称。
+                  machine_code:
+                    type: string
+                    description: 与管理员付费授权页面相同的授权机器码；宿主未提供时为空字符串，不是统计实例 ID。
+                  has_commercial_license:
+                    type: boolean
+                    description: 是否已导入通过现有付费授权校验且当前有效的商业授权。缺失、无效、过期或无法确认时为 false。
   /api/auth/v1/email/code:
     post:
       summary: 发送邮箱验证码

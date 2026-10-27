@@ -139,6 +139,7 @@ type Service struct {
 	writer          member.UserWriter
 	db              *pgxpool.Pool
 	settings        SettingReader
+	publicLicense   PublicLicenseReader
 	client          *http.Client
 	publicURL       string
 	secureCookie    bool

@@ -42,7 +42,7 @@ export const deDE = {
       design:
         "Poster und Kurzdramen erstellen, Interaktions- und Grafikdesign gestalten",
     },
-    poweredBy: "Dieses System wird von <repo>Monkey AI</repo> betrieben",
+    poweredBy: "Dieses System wird von <repo>百智办公</repo> betrieben",
     enterprise: {
       title: "Unternehmensverwaltung und Teamarbeit",
       sharingTitle: "Ressourcen im Team teilen",

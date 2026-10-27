@@ -38,7 +38,7 @@ export const jaJP = {
       design:
         "ポスターやショートドラマの制作、インタラクション・グラフィックデザインなど",
     },
-    poweredBy: "このシステムは <repo>Monkey AI</repo> によって提供されています",
+    poweredBy: "このシステムは <repo>百智办公</repo> によって提供されています",
     enterprise: {
       title: "企業管理とチームの共同作業",
       sharingTitle: "チームでリソースを共有",

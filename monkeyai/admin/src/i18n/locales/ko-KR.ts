@@ -35,7 +35,7 @@ export const koKR = {
       work: "PPT·문서·스프레드시트를 만들고 파일을 정리",
       design: "포스터·숏드라마 제작, 인터랙션·그래픽 디자인 등",
     },
-    poweredBy: "현재 시스템은 <repo>Monkey AI</repo>로 구동됩니다",
+    poweredBy: "현재 시스템은 <repo>百智办公</repo>로 구동됩니다",
     enterprise: {
       title: "기업 관리와 팀 협업",
       sharingTitle: "팀 리소스 공유",
