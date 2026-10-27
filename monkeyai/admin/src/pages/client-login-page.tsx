@@ -1,25 +1,28 @@
 import { useEffect, useRef, useState } from "react"
 import {
-  ArrowRight01Icon,
-  CheckmarkCircle02Icon,
-  ComputerIcon,
+  AlertCircleIcon,
+  Loading03Icon,
+  LockKeyIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { EmailAuthForm } from "@/components/email-auth-form"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
+import { Field, FieldGroup } from "@/components/ui/field"
+import { Marker, MarkerContent } from "@/components/ui/marker"
 import { api } from "@/lib/api"
 import type { AuthUser } from "@/lib/auth-context"
 import { isSafeClientLaunchURL } from "@/lib/client-callback"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 
 type Provider = { id: string; provider: string; name: string }
 type ClientRequest = {
@@ -29,7 +32,6 @@ type ClientRequest = {
   user: AuthUser | null
   providers: Provider[]
   scopes: string[]
-  scope_descriptions: Record<string, string>
   consent_required: boolean
   csrf_token: string
 }
@@ -43,7 +45,7 @@ const callbackErrorMessages: Record<string, string> = {
 }
 
 export function ClientLoginPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const errorMessages: Record<string, string> = {
     ...callbackErrorMessages,
     seats_exceeded: t("login.seatsExceeded"),
@@ -53,15 +55,40 @@ export function ClientLoginPage() {
   const requestId = search.get("request_id") ?? ""
   const callbackError = search.get("error") ?? ""
   const [request, setRequest] = useState<ClientRequest | null>(null)
+  const [productName, setProductName] = useState("MonkeyAI")
+  const [workspaceName, setWorkspaceName] = useState("Monkey AI")
+  const [hasEmailLogin, setHasEmailLogin] = useState(false)
+  const [oauthSubmitting, setOauthSubmitting] = useState("")
+  const [failedAvatarURL, setFailedAvatarURL] = useState("")
+  const avatarURL = request?.user?.avatar_url?.trim() ?? ""
+  const avatarSrc = avatarURL !== failedAvatarURL ? avatarURL : ""
   const [launchURL, setLaunchURL] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const completionStarted = useRef(false)
+  const lastLoginAt = request?.user?.last_login_at
+    ? new Date(request.user.last_login_at)
+    : null
   const requestError = !requestId
     ? (errorMessages[callbackError] ?? "缺少授权请求参数。")
     : callbackError
       ? (errorMessages[callbackError] ?? "登录失败，请重试。")
       : error
+
+  useEffect(() => {
+    const controller = new AbortController()
+    api<{ product_name: string; workspace_name: string }>(
+      "/api/auth/v1/branding",
+      { signal: controller.signal }
+    )
+      .then(({ product_name, workspace_name }) => {
+        if (controller.signal.aborted) return
+        setProductName(product_name.trim() || "MonkeyAI")
+        setWorkspaceName(workspace_name.trim() || "Monkey AI")
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (!requestId) return
@@ -113,109 +140,170 @@ export function ClientLoginPage() {
   }
 
   const startLogin = (provider: Provider) => {
+    if (oauthSubmitting) return
+    setOauthSubmitting(provider.id)
     const query = new URLSearchParams({ request_id: requestId })
-    window.location.assign(
-      `/api/auth/v1/oauth/${encodeURIComponent(provider.id)}/start?${query}`
-    )
+    try {
+      window.location.assign(
+        `/api/auth/v1/oauth/${encodeURIComponent(provider.id)}/start?${query}`
+      )
+    } catch (reason) {
+      setOauthSubmitting("")
+      setError(reason instanceof Error ? reason.message : "登录失败，请重试。")
+    }
   }
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgb(var(--primary-rgb)/0.14),transparent_48%)]" />
-      <Card className="relative w-full max-w-md border-border/80 bg-card/95 shadow-2xl shadow-black/5 backdrop-blur">
-        <CardHeader className="items-center text-center">
-          <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <HugeiconsIcon
-              icon={launchURL ? CheckmarkCircle02Icon : ComputerIcon}
-              strokeWidth={2}
+      <Card className="relative w-full max-w-md gap-6 border-border/80 bg-card/95 py-6 shadow-2xl shadow-black/5 backdrop-blur">
+        <CardHeader className="items-center px-8 text-center">
+          <div className="mx-auto mb-5 flex max-w-full items-center justify-center gap-3">
+            <img
+              key={avatarURL}
+              src={avatarSrc || "/monkeyai-logo.webp"}
+              alt={avatarSrc ? request?.user?.name || "用户头像" : productName}
+              width={48}
+              height={48}
+              className="size-12 shrink-0 rounded-md object-cover"
+              onError={
+                avatarSrc ? () => setFailedAvatarURL(avatarSrc) : undefined
+              }
             />
           </div>
-          <CardTitle className="text-2xl">
-            {launchURL
-              ? "登录成功"
-              : `登录 ${request?.client.name ?? "MonkeyAI"}`}
-          </CardTitle>
-          <CardDescription>
-            {launchURL
-              ? "正在返回应用，你可以关闭此页面。"
-              : "浏览器只负责验证身份，授权结果会安全返回应用。"}
+          <CardDescription className="text-base text-foreground">
+            {launchURL ? (
+              "登录成功，正在返回应用，你可以关闭此页面。"
+            ) : (
+              <>
+                <strong className="mx-1 font-semibold">{productName}</strong>
+                即将登录到
+                <strong className="mx-1 font-semibold">{workspaceName}</strong>
+                的团队空间
+              </>
+            )}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 px-8">
           {!request && !requestError && (
             <p
-              className="py-5 text-center text-sm text-muted-foreground"
+              className="flex items-center justify-center gap-2 py-5 text-sm text-muted-foreground"
               role="status"
             >
-              正在检查登录状态…
+              <HugeiconsIcon
+                icon={Loading03Icon}
+                aria-hidden="true"
+                className="size-4 animate-spin motion-reduce:animate-none"
+              />
+              正在检查登录状态
             </p>
           )}
           {requestError && (
-            <p
-              className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
-            >
-              {requestError}
-            </p>
+            <Alert>
+              <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} />
+              <AlertTitle>授权请求访问失败</AlertTitle>
+              <AlertDescription>
+                {requestError === "授权请求不存在、已完成或已过期" ||
+                requestError === "授权请求不存在"
+                  ? "授权请求可能不存在、已完成或已过期。请返回客户端重新发起登录。"
+                  : requestError}
+              </AlertDescription>
+            </Alert>
           )}
-          {request &&
-            !request.authenticated &&
-            request.providers.map((provider) => (
-              <Button
-                key={provider.id}
-                type="button"
-                variant="outline"
-                size="lg"
-                className="min-h-11 w-full cursor-pointer justify-between transition-colors duration-200"
-                onClick={() => startLogin(provider)}
-              >
-                <span>使用 {provider.name} 登录</span>
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
-              </Button>
-            ))}
           {request && !request.authenticated && (
-            <EmailAuthForm
-              hasProviders={request.providers.length > 0}
-              onAuthenticated={() => {
-                api<ClientRequest>(
-                  `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`
-                )
-                  .then(setRequest)
-                  .catch((reason: Error) => setError(reason.message))
-              }}
-            />
+            <FieldGroup className="w-full">
+              <EmailAuthForm
+                disabled={Boolean(oauthSubmitting)}
+                hasProviders={request.providers.length > 0}
+                onLoginMethodsChange={setHasEmailLogin}
+                onAuthenticated={() =>
+                  api<ClientRequest>(
+                    `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`
+                  )
+                    .then(setRequest)
+                    .catch((reason: Error) => setError(reason.message))
+                }
+              />
+              {request.providers.length > 0 && (
+                <>
+                  {hasEmailLogin && (
+                    <Marker variant="separator">
+                      <MarkerContent>
+                        {t("login.otherLoginMethods")}
+                      </MarkerContent>
+                    </Marker>
+                  )}
+                  <Field className="flex flex-col gap-3">
+                    {request.providers.map((provider) => (
+                      <Button
+                        key={provider.id}
+                        variant="outline"
+                        size="lg"
+                        type="button"
+                        className="w-full min-w-0"
+                        disabled={Boolean(oauthSubmitting)}
+                        aria-busy={oauthSubmitting === provider.id}
+                        aria-label={t("login.loginWith", {
+                          provider: provider.name,
+                        })}
+                        title={provider.name}
+                        onClick={() => startLogin(provider)}
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={
+                            oauthSubmitting === provider.id
+                              ? Loading03Icon
+                              : LockKeyIcon
+                          }
+                          className={
+                            oauthSubmitting === provider.id
+                              ? "animate-spin motion-reduce:animate-none"
+                              : undefined
+                          }
+                          strokeWidth={2}
+                        />
+                        <span className="truncate">{provider.name}</span>
+                      </Button>
+                    ))}
+                  </Field>
+                </>
+              )}
+            </FieldGroup>
           )}
           {request?.authenticated && !launchURL && (
-            <form onSubmit={approve} className="space-y-4">
-              <p className="text-sm">
-                允许 {request.client.name} 使用当前账号登录并访问客户端功能？
-              </p>
-              <dl className="space-y-3 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">当前账号</dt>
-                  <dd className="break-all">
-                    {request.user?.email || request.user?.name}
+            <form onSubmit={approve} className="space-y-8">
+              <dl className="divide-y divide-input rounded-md border border-input bg-transparent text-sm shadow-xs dark:bg-input/30">
+                <div className="flex items-baseline gap-3 px-5 py-2.5">
+                  <dt className="w-16 shrink-0 text-left text-muted-foreground">
+                    姓名
+                  </dt>
+                  <dd className="min-w-0 flex-1 select-text break-all text-right">
+                    {request.user?.name || "—"}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">返回应用地址</dt>
-                  <dd className="break-all font-mono text-xs">
-                    {request.client.redirect_uri}
+                <div className="flex items-baseline gap-3 px-5 py-2.5">
+                  <dt className="w-16 shrink-0 text-left text-muted-foreground">
+                    账号
+                  </dt>
+                  <dd className="min-w-0 flex-1 select-text break-all text-right">
+                    {request.user?.email || "—"}
+                  </dd>
+                </div>
+                <div className="flex items-baseline gap-3 px-5 py-2.5">
+                  <dt className="w-16 shrink-0 text-left text-muted-foreground">
+                    上次登录
+                  </dt>
+                  <dd className="min-w-0 flex-1 select-text break-all text-right">
+                    {lastLoginAt && !Number.isNaN(lastLoginAt.getTime())
+                      ? lastLoginAt.toLocaleString(
+                          i18n.resolvedLanguage ?? i18n.language,
+                          TABLE_DATE_TIME_OPTIONS
+                        )
+                      : "—"}
                   </dd>
                 </div>
               </dl>
-              {!!request.scopes?.length && (
-                <div className="space-y-2">
-                  <p className="text-sm">同时申请以下权限：</p>
-                  <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-                    {request.scopes.map((scope) => (
-                      <li key={scope}>
-                        {request.scope_descriptions[scope] ?? scope}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
               <Button
                 type="submit"
                 size="lg"
@@ -236,9 +324,6 @@ export function ClientLoginPage() {
               打开 {request?.client.name ?? "MonkeyAI"}
             </Button>
           )}
-          <p className="pt-3 text-center text-xs text-muted-foreground">
-            授权码仅可使用一次，并将在 2 分钟后失效。
-          </p>
         </CardContent>
       </Card>
     </main>
