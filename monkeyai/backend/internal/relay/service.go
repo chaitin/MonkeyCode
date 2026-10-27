@@ -89,6 +89,7 @@ type route struct {
 	data               *yamux.Session
 	ws                 *websocket.Conn
 	ready              bool
+	closed             bool
 	seen               time.Time
 	slotsControl       chan struct{}
 	opensControl       chan struct{}
@@ -275,6 +276,11 @@ func (s *Service) closeRoute(r *route) {
 		return
 	}
 	s.mu.Lock()
+	if r.closed {
+		s.mu.Unlock()
+		return
+	}
+	r.closed = true
 	if s.routes[r.target] == r {
 		delete(s.routes, r.target)
 	}
@@ -289,17 +295,17 @@ func (s *Service) closeRoute(r *route) {
 		a.close()
 	}
 	if data != nil {
-		if err := data.Close(); err != nil {
+		if err := data.Close(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
 		}
 	}
 	if control != nil {
-		if err := control.Close(); err != nil {
+		if err := control.Close(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
 		}
 	}
 	if r.ws != nil {
-		if err := r.ws.CloseNow(); err != nil {
+		if err := r.ws.CloseNow(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "closeRoute", "error", err)
 		}
 	}
@@ -359,7 +365,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		s.closeRoute(r)
 	}
 	for _, ws := range connections {
-		if err := ws.CloseNow(); err != nil {
+		if err := ws.CloseNow(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "Shutdown", "error", err)
 		}
 	}

@@ -24,7 +24,7 @@ func UserFromContext(ctx context.Context) (User, bool) {
 func (s *Service) BrowserUser(r *http.Request) (User, bool) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil || cookie.Value == "" {
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrNoCookie) {
 			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "BrowserUser", "error", err)
 		}
 		return User{}, false
@@ -40,8 +40,8 @@ func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil || cookie.Value == "" {
-			if err != nil {
-				slog.Warn("操作失败", "module", "identity", "operation", "RequireAdmin", "error", err)
+			if err != nil && !errors.Is(err, http.ErrNoCookie) {
+				slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "RequireAdmin", "error", err)
 			}
 			writeError(r.Context(), w, http.StatusUnauthorized, "unauthorized", "请先登录")
 			return

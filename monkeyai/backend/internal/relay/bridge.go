@@ -68,7 +68,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if s.draining.Load() {
 		s.mu.Unlock()
-		if err := ws.CloseNow(); err != nil {
+		if err := ws.CloseNow(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
 		}
 		return
@@ -76,7 +76,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	s.active[ws] = struct{}{}
 	s.mu.Unlock()
 	defer func() {
-		if err := ws.CloseNow(); err != nil {
+		if err := ws.CloseNow(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
 		}
 		s.mu.Lock()
@@ -225,7 +225,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() {
-		if err := mux.Close(); err != nil {
+		if err := mux.Close(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
 		}
 	}()
@@ -244,7 +244,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		gate.Unlock()
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")
 		if previous != nil {
-			if err := previous.Close(); err != nil {
+			if err := previous.Close(); err != nil && !closedConnection(err) {
 				slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
 			}
 		}
@@ -257,13 +257,17 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		}()
 		// 数据通道只接受控制面打开的业务流，拒绝执行端反向拨号。
 		if incoming, err := mux.AcceptStream(); err == nil {
-			if err := incoming.Close(); err != nil {
+			if err := incoming.Close(); err != nil && !closedConnection(err) {
 				slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
 			}
 		}
 		return
 	}
 	s.mu.Lock()
+	if current.closed {
+		s.mu.Unlock()
+		return
+	}
 	current.control = mux
 	s.mu.Unlock()
 	s.control(r.Context(), current)

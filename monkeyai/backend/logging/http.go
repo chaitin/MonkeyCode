@@ -57,6 +57,9 @@ func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
 					}
 				}
 				route := "unmatched"
+				if bound, ok := ContextField(ctx, "route"); ok {
+					route = bound.Value.String()
+				}
 				if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
 					route = rc.RoutePattern()
 				}

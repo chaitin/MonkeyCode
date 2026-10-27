@@ -85,6 +85,10 @@ func JSON(ctx context.Context, w http.ResponseWriter, status int, v any) {
 	}
 }
 func Fail(ctx context.Context, w http.ResponseWriter, err error) {
+	if errors.Is(ctx.Err(), context.Canceled) && errors.Is(err, context.Canceled) {
+		logging.Expected(ctx)
+		return
+	}
 	var e *Error
 	var pe *pgconn.PgError
 	if !errors.As(err, &e) {

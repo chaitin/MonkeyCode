@@ -109,3 +109,22 @@ func TestResponseReconciliationCloseLogIsSafe(t *testing.T) {
 		})
 	}
 }
+
+func TestResponseReconciliationExplainsPendingAndStopped(t *testing.T) {
+	for _, tc := range []struct {
+		status       int
+		body, reason string
+	}{
+		{404, `{}`, "upstream_http_error"},
+		{401, `{}`, "upstream_rejected"},
+		{200, `{"id":"resp_test","status":"in_progress"}`, "response_pending"},
+		{200, `{"id":"resp_test","status":"completed"}`, "usage_missing"},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status); io.WriteString(w, tc.body) }))
+		result, err := NewResponseReconciler().Reconcile(t.Context(), Target{BaseURL: server.URL, Protocol: "openai_responses"}, "resp_test")
+		server.Close()
+		if err != nil || result.Reason != tc.reason || result.UpstreamStatus != tc.status {
+			t.Fatalf("对账原因丢失: %+v %v", result, err)
+		}
+	}
+}

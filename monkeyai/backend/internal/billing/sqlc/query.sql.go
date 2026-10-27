@@ -1601,7 +1601,7 @@ FROM
 WHERE
     id = $1
     AND deleted_at IS NULL
-FOR UPDATE
+FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockUser(ctx context.Context, id string) (string, error) {
@@ -2226,7 +2226,7 @@ SET
     updated_at = now()
 WHERE
     id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
-    AND status = 'unknown'
+    AND status = 'unknown' AND next_retry_at IS NOT NULL
 `
 
 func (q *Queries) StopReconciliation(ctx context.Context, id string) (pgconn.CommandTag, error) {

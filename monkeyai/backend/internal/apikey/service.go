@@ -164,6 +164,9 @@ func (s *Service) Authenticate(ctx context.Context, raw, scope string) (string, 
 	}
 	userID, err := s.store.Authenticate(ctx, hash(raw), scope)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return "", err
+		}
 		if !errors.Is(err, ErrInvalidKey) {
 			logging.Event(ctx, slog.Default(), slog.LevelError, "apikey.request.failed", "验证调用密钥失败", "module", "apikey", "operation", "Authenticate", "scope", scope, "error", err)
 		}

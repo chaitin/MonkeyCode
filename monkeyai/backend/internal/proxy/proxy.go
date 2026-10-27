@@ -159,6 +159,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("route", r.URL.Path))
 	credential, ok := Credential(r)
 	if !ok {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -189,8 +190,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 		return
 	}
+	logging.Bind(r.Context(), slog.String("phase", "resolve_model"))
 	target, err := p.resolver.Resolve(r.Context(), credential, meta.Model)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
 		logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.operation.warn", "解析模型失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
@@ -214,6 +220,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	logging.Bind(r.Context(), slog.String("phase", "ensure_session"))
 	sessionID, parentID := requestSession(r)
 	if sessionID != "" {
 		if p.sessions != nil {
@@ -230,6 +237,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var reservation Reservation
 	if p.billing != nil && target.OwnershipType != "user" {
+		logging.Bind(r.Context(), slog.String("phase", "billing_begin"))
 		reservation, err = p.billing.Begin(r.Context(), target, BillingRequest{Path: r.URL.Path, Body: body, IdempotencyKey: r.Header.Get("Idempotency-Key"), SessionID: sessionID})
 		if err != nil {
 			billingError(r.Context(), w, err)
@@ -242,6 +250,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			billingError(r.Context(), w, err)
 			return
 		}
+		logging.Bind(r.Context(), slog.String("phase", "billing_start"))
 		if err = p.billing.Start(r.Context(), reservation.ID); err != nil {
 			billingError(r.Context(), w, err)
 			return
@@ -254,7 +263,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
+	logging.Bind(r.Context(), slog.String("phase", "upstream"))
+	r.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+	r.Body, _ = r.GetBody()
 	r.ContentLength = int64(len(body))
 	ctx := context.WithValue(r.Context(), proxyContextKey{}, &proxyContext{
 		target:       target,

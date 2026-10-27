@@ -359,7 +359,7 @@ func (q *Queries) LockFamily(ctx context.Context, dollar_1 string) ([]string, er
 }
 
 const lockReportingUser = `-- name: LockReportingUser :one
-SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE
+SELECT id::text FROM users WHERE id = $1::uuid FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockReportingUser(ctx context.Context, dollar_1 string) (string, error) {
@@ -380,7 +380,7 @@ SELECT jsonb_build_object(
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
  'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
-) AS data FROM sessions WHERE id = $1::uuid FOR UPDATE
+) AS data FROM sessions WHERE id = $1::uuid FOR NO KEY UPDATE
 `
 
 func (q *Queries) LockSession(ctx context.Context, dollar_1 string) ([]byte, error) {

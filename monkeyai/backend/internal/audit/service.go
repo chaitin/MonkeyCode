@@ -71,6 +71,9 @@ func optional(value string) *string {
 }
 
 func uuid(value string) *string {
+	if value == "" {
+		return nil
+	}
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil || !id.Valid {
 		if err != nil {
