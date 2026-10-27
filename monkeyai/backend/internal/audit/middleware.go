@@ -26,6 +26,15 @@ type requestState struct {
 	at            time.Time
 }
 
+// WithRequest 为主动写入的业务审计附加请求来源，不自动生成请求审计。
+func WithRequest(r *http.Request, actor Actor) context.Context {
+	state := &requestState{
+		id: logging.RequestID(r.Context()), actor: actor, at: time.Now().UTC(),
+		ip: clientIP(r), agent: clean(r.UserAgent(), 512),
+	}
+	return context.WithValue(r.Context(), requestKey{}, state)
+}
+
 func Identify(ctx context.Context, actor Actor) {
 	if state, ok := ctx.Value(requestKey{}).(*requestState); ok {
 		state.actor = actor

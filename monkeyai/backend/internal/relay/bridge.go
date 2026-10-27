@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -45,6 +46,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		failure(r.Context(), w, 403, "permission_denied")
 		return
 	}
+	r = r.WithContext(audit.WithRequest(r, audit.Actor{ID: p.UserID}))
 	s.mu.Lock()
 	full := s.draining.Load() || s.slots >= s.config.MaxDevices*2
 	if !full {
