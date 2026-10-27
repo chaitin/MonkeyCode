@@ -56,6 +56,7 @@ export function ClientLoginPage() {
   const [launchURL, setLaunchURL] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const completionStarted = useRef(false)
   const requestError = !requestId
     ? (errorMessages[callbackError] ?? "缺少授权请求参数。")
@@ -79,7 +80,12 @@ export function ClientLoginPage() {
 
   const approve = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!request?.authenticated || submitting || completionStarted.current)
+    if (
+      !request?.authenticated ||
+      submitting ||
+      loggingOut ||
+      completionStarted.current
+    )
       return
     completionStarted.current = true
     setSubmitting(true)
@@ -109,6 +115,22 @@ export function ClientLoginPage() {
       completionStarted.current = false
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const logout = async () => {
+    if (loggingOut || submitting || completionStarted.current) return
+    setLoggingOut(true)
+    setError("")
+    try {
+      await api<void>("/api/auth/v1/logout", { method: "POST" })
+      const query = new URLSearchParams({ request_id: requestId })
+      window.location.assign(`/client-login?${query}`)
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "退出登录失败，请重试。"
+      )
+      setLoggingOut(false)
     }
   }
 
@@ -190,20 +212,24 @@ export function ClientLoginPage() {
               <p className="text-sm">
                 允许 {request.client.name} 使用当前账号登录并访问客户端功能？
               </p>
-              <dl className="space-y-3 text-sm">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <dl className="min-w-0 text-sm">
                   <dt className="text-muted-foreground">当前账号</dt>
                   <dd className="break-all">
                     {request.user?.email || request.user?.name}
                   </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">返回应用地址</dt>
-                  <dd className="break-all font-mono text-xs">
-                    {request.client.redirect_uri}
-                  </dd>
-                </div>
-              </dl>
+                </dl>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 cursor-pointer"
+                  loading={loggingOut}
+                  disabled={submitting}
+                  onClick={logout}
+                >
+                  退出登录
+                </Button>
+              </div>
               {!!request.scopes?.length && (
                 <div className="space-y-2">
                   <p className="text-sm">同时申请以下权限：</p>
@@ -221,6 +247,7 @@ export function ClientLoginPage() {
                 size="lg"
                 className="min-h-11 w-full cursor-pointer"
                 loading={submitting}
+                disabled={loggingOut}
               >
                 确认授权
               </Button>

@@ -160,7 +160,12 @@ try {
         "an existing login/empty scopes/legacy consent=false must never auto-authorize"
       )
       assert.ok((await page.textContent("body")).includes(user.email))
-      assert.ok((await page.textContent("body")).includes(redirect))
+      assert.ok(!(await page.textContent("body")).includes(redirect))
+      assert.ok(!(await page.textContent("body")).includes("返回应用地址"))
+      assert.equal(
+        await page.getByRole("button", { name: "退出登录" }).count(),
+        1
+      )
       assert.ok(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth
