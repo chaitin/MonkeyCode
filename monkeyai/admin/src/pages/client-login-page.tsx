@@ -10,6 +10,17 @@ import { useSearchParams } from "react-router-dom"
 
 import { EmailAuthForm } from "@/components/email-auth-form"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -19,6 +30,7 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldGroup } from "@/components/ui/field"
 import { Marker, MarkerContent } from "@/components/ui/marker"
+import { useAuth } from "@/hooks/use-auth"
 import { api } from "@/lib/api"
 import type { AuthUser } from "@/lib/auth-context"
 import { isSafeClientLaunchURL } from "@/lib/client-callback"
@@ -46,6 +58,7 @@ const callbackErrorMessages: Record<string, string> = {
 
 export function ClientLoginPage() {
   const { t, i18n } = useTranslation()
+  const { logout } = useAuth()
   const errorMessages: Record<string, string> = {
     ...callbackErrorMessages,
     seats_exceeded: t("login.seatsExceeded"),
@@ -65,7 +78,10 @@ export function ClientLoginPage() {
   const [launchURL, setLaunchURL] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const completionStarted = useRef(false)
+  const [switchingAccount, setSwitchingAccount] = useState(false)
+  const [switchDialogOpen, setSwitchDialogOpen] = useState(false)
+  const [switchError, setSwitchError] = useState("")
+  const pendingAction = useRef<"approve" | "switch" | null>(null)
   const lastLoginAt = request?.user?.last_login_at
     ? new Date(request.user.last_login_at)
     : null
@@ -106,9 +122,8 @@ export function ClientLoginPage() {
 
   const approve = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!request?.authenticated || submitting || completionStarted.current)
-      return
-    completionStarted.current = true
+    if (!request?.authenticated || pendingAction.current) return
+    pendingAction.current = "approve"
     setSubmitting(true)
     setError("")
     try {
@@ -133,9 +148,39 @@ export function ClientLoginPage() {
       window.location.assign(launch_url)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "授权失败，请重试。")
-      completionStarted.current = false
+      pendingAction.current = null
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const switchAccount = async () => {
+    if (!request?.authenticated || pendingAction.current) return
+    pendingAction.current = "switch"
+    setSwitchingAccount(true)
+    setError("")
+    setSwitchError("")
+    let loggedOut = false
+    try {
+      await logout()
+      loggedOut = true
+      setSwitchDialogOpen(false)
+      setRequest(null)
+      setHasEmailLogin(false)
+      setOauthSubmitting("")
+      setFailedAvatarURL("")
+      const nextRequest = await api<ClientRequest>(
+        `/api/auth/v1/client-requests/${encodeURIComponent(requestId)}`
+      )
+      setRequest(nextRequest)
+    } catch (reason) {
+      const message =
+        reason instanceof Error ? reason.message : "切换账号失败，请重试。"
+      if (loggedOut) setError(message)
+      else setSwitchError(message)
+    } finally {
+      pendingAction.current = null
+      setSwitchingAccount(false)
     }
   }
 
@@ -304,14 +349,69 @@ export function ClientLoginPage() {
                   </dd>
                 </div>
               </dl>
-              <Button
-                type="submit"
-                size="lg"
-                className="min-h-11 w-full cursor-pointer"
-                loading={submitting}
-              >
-                确认授权
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="min-h-11 w-full cursor-pointer"
+                  disabled={switchingAccount}
+                  loading={submitting}
+                >
+                  确认授权
+                </Button>
+                <AlertDialog
+                  open={switchDialogOpen}
+                  onOpenChange={(open) => {
+                    if (pendingAction.current) return
+                    setSwitchDialogOpen(open)
+                    if (open) setSwitchError("")
+                  }}
+                >
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="min-h-11 w-full cursor-pointer"
+                        disabled={submitting || switchingAccount}
+                      />
+                    }
+                  >
+                    切换账号
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>切换账号</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogDescription>
+                      当前账号将要登出。确认后可使用其他账号继续本次授权。
+                    </AlertDialogDescription>
+                    {switchError && (
+                      <Alert>
+                        <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} />
+                        <AlertTitle>退出登录失败</AlertTitle>
+                        <AlertDescription>{switchError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        type="button"
+                        disabled={switchingAccount}
+                      >
+                        取消
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        type="button"
+                        loading={switchingAccount}
+                        onClick={() => void switchAccount()}
+                      >
+                        确认登出
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </form>
           )}
           {launchURL && (

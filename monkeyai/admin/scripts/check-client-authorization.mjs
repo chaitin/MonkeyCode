@@ -28,6 +28,9 @@ try {
     "logged-out-sso",
     "logged-out-sso-only",
     "logged-out-password",
+    "switch-account",
+    "switch-account-error",
+    "switch-account-expired",
   ]) {
     const page = await browser.newPage({
       viewport: { width: 390, height: 844 },
@@ -38,7 +41,8 @@ try {
     const errors = [],
       navigations = []
     page.on("pageerror", (error) => errors.push(error.message))
-    const scopes = scenario === "scoped" ? ["files:read"] : []
+    const switching = scenario.startsWith("switch-account")
+    const scopes = scenario === "scoped" || switching ? ["files:read"] : []
     const redirect =
       scenario === "scoped"
         ? "http://[::1]:54322/oauth/callback"
@@ -46,12 +50,13 @@ try {
           ? "http://localhost:54323/oauth/callback"
           : "http://127.0.0.1:54321/oauth/callback"
     const loggedOut = scenario.startsWith("logged-out")
-    const providers = scenario.startsWith("logged-out-sso")
-      ? [
-          { id: "enterprise", provider: "oidc", name: "企业统一登录" },
-          { id: "backup", provider: "oauth2", name: "备用登录" },
-        ]
-      : []
+    const providers =
+      scenario.startsWith("logged-out-sso") || switching
+        ? [
+            { id: "enterprise", provider: "oidc", name: "企业统一登录" },
+            { id: "backup", provider: "oauth2", name: "备用登录" },
+          ]
+        : []
     const user = {
       id: "review-user",
       name: "授权测试用户",
@@ -68,7 +73,19 @@ try {
       role: "user",
       status: "active",
     }
-    let completions = 0,
+    const loginUser = switching
+      ? {
+          ...user,
+          id: "switched-user",
+          name: "切换后的用户",
+          email: "other@example.com",
+          avatar_url: "http://auth.test/avatar-valid.webp",
+        }
+      : user
+    let activeUser = user,
+      csrfToken = "csrf-review-proof",
+      logoutCalls = 0,
+      completions = 0,
       brandingRequests = 0,
       authenticated = !loggedOut,
       passwordLogins = 0,
@@ -98,7 +115,7 @@ try {
         if (p.endsWith("/session"))
           return json({
             authenticated,
-            user: authenticated ? user : null,
+            user: authenticated ? activeUser : null,
           })
         if (p.endsWith("/branding")) {
           brandingRequests++
@@ -122,17 +139,29 @@ try {
             body: "<p>正在打开登录提供方</p>",
           })
         }
+        if (p === "/api/auth/v1/logout") {
+          assert.equal(request.method(), "POST")
+          logoutCalls++
+          await pending
+          if (scenario === "switch-account-error" && logoutCalls === 1)
+            return json({ error: { message: "模拟退出失败" } }, 503)
+          authenticated = false
+          csrfToken = "csrf-signed-out"
+          return route.fulfill({ status: 204 })
+        }
         if (p === "/api/auth/v1/login") {
           assert.equal(request.method(), "POST")
           assert.deepEqual(request.postDataJSON(), {
-            email: user.email,
+            email: loginUser.email,
             password: "fixture-password",
             code: "",
           })
           passwordLogins++
-          await pending
+          if (!switching) await pending
           authenticated = true
-          return json(user)
+          activeUser = loginUser
+          if (switching) csrfToken = "csrf-switched-proof"
+          return json(loginUser)
         }
         if (p.endsWith("/methods"))
           return json({
@@ -140,7 +169,11 @@ try {
             email_code_enabled: false,
             email_code_auto_registration_enabled: false,
           })
-        if (p.endsWith("/client-requests/review") && scenario === "expired")
+        if (
+          p.endsWith("/client-requests/review") &&
+          (scenario === "expired" ||
+            (scenario === "switch-account-expired" && logoutCalls > 0))
+        )
           return json(
             { error: { message: "授权请求不存在、已完成或已过期" } },
             404
@@ -154,17 +187,17 @@ try {
               redirect_uri: redirect,
             },
             authenticated,
-            user: authenticated ? user : null,
+            user: authenticated ? activeUser : null,
             providers,
             scopes,
             scope_descriptions: { "files:read": "读取获准文件" },
             consent_required: scenario === "scoped",
-            csrf_token: "csrf-review-proof",
+            csrf_token: csrfToken,
           })
         if (p.endsWith("/client-requests/review/complete")) {
           completions++
           assert.equal(request.method(), "POST")
-          assert.equal(request.headers()["x-csrf-token"], "csrf-review-proof")
+          assert.equal(request.headers()["x-csrf-token"], csrfToken)
           assert.deepEqual(request.postDataJSON(), { approved_scopes: scopes })
           if (scenario.startsWith("unsafe-") && completions === 1) {
             await pending
@@ -233,7 +266,151 @@ try {
         image.naturalWidth > 0
       )
     }, expectedImage)
-    if (scenario === "expired") {
+    if (switching) {
+      const openSwitch = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll("button")]
+            .find((button) => button.textContent.trim() === "切换账号")
+            .click()
+        )
+      const confirmSwitch = () =>
+        page.evaluate(() =>
+          document.querySelector('[data-slot="alert-dialog-action"]').click()
+        )
+      await openSwitch()
+      await page.waitForFunction(() =>
+        document.querySelector('[role="alertdialog"]')
+      )
+      assert.ok((await page.textContent("body")).includes("当前账号将要登出"))
+      assert.equal(logoutCalls, 0, "opening the dialog must not sign out")
+      await page.evaluate(() =>
+        document.querySelector('[data-slot="alert-dialog-cancel"]').click()
+      )
+      await page.waitForFunction(
+        () => !document.querySelector('[role="alertdialog"]')
+      )
+      assert.equal(logoutCalls, 0, "cancelling must not sign out")
+      assert.ok((await page.textContent("body")).includes(user.email))
+      await openSwitch()
+      await page.waitForFunction(() =>
+        document.querySelector('[role="alertdialog"]')
+      )
+      await confirmSwitch()
+      await page.waitForFunction(
+        () =>
+          document
+            .querySelector('[data-slot="alert-dialog-action"]')
+            ?.getAttribute("aria-busy") === "true"
+      )
+      const busy = await page.evaluate(() => ({
+        confirmDisabled: document.querySelector('button[type="submit"]')
+          .disabled,
+        cancelDisabled: document.querySelector(
+          '[data-slot="alert-dialog-cancel"]'
+        ).disabled,
+        spinner: getComputedStyle(
+          document.querySelector('[data-slot="alert-dialog-action"] svg')
+        ).animationName,
+      }))
+      assert.deepEqual(busy, {
+        confirmDisabled: true,
+        cancelDisabled: true,
+        spinner: "spin",
+      })
+      await confirmSwitch()
+      await page.keyboard.press("Escape")
+      assert.equal(logoutCalls, 1)
+      assert.equal(completions, 0)
+      assert.ok(
+        await page.evaluate(
+          () => !!document.querySelector('[role="alertdialog"]')
+        )
+      )
+      release()
+      if (scenario === "switch-account-error") {
+        await page.waitForFunction(
+          () =>
+            document
+              .querySelector('[role="alertdialog"]')
+              ?.textContent.includes("模拟退出失败") &&
+            !document.querySelector('[data-slot="alert-dialog-action"]')
+              .disabled
+        )
+        assert.ok((await page.textContent("body")).includes(user.email))
+        await confirmSwitch()
+      }
+      if (scenario === "switch-account-expired") {
+        await page.waitForFunction(() =>
+          document
+            .querySelector('[data-slot="alert-description"]')
+            ?.textContent.includes("已过期")
+        )
+        assert.equal(await page.locator('button[type="submit"]').count(), 0)
+        assert.equal(completions, 0)
+      } else {
+        await page.waitForFunction(() =>
+          document.querySelector('input[type="email"]')
+        )
+        assert.equal(
+          new URL(page.url()).searchParams.get("request_id"),
+          "review"
+        )
+        assert.equal(logoutCalls, scenario === "switch-account-error" ? 2 : 1)
+        assert.equal(completions, 0)
+        const signedOutBody = await page.textContent("body")
+        assert.equal(signedOutBody.includes(user.email), false)
+        assert.equal(signedOutBody.includes(user.name), false)
+        await page.evaluate(
+          ({ email, password }) => {
+            const setValue = Object.getOwnPropertyDescriptor(
+              HTMLInputElement.prototype,
+              "value"
+            ).set
+            for (const [id, value] of [
+              ["auth-email", email],
+              ["auth-password", password],
+            ]) {
+              const input = document.getElementById(id)
+              setValue.call(input, value)
+              input.dispatchEvent(new Event("input", { bubbles: true }))
+            }
+          },
+          { email: loginUser.email, password: "fixture-password" }
+        )
+        await page.evaluate(() =>
+          document.querySelector('button[type="submit"]').click()
+        )
+        await page.waitForFunction(() =>
+          [...document.querySelectorAll("button")].some(
+            (button) => button.textContent.trim() === "确认授权"
+          )
+        )
+        assert.equal(passwordLogins, 1)
+        assert.equal(
+          completions,
+          0,
+          "the new account still requires explicit approval"
+        )
+        const signedInBody = await page.textContent("body")
+        assert.ok(signedInBody.includes(loginUser.email))
+        assert.ok(signedInBody.includes(loginUser.name))
+        assert.equal(signedInBody.includes(user.email), false)
+        await page.waitForFunction(
+          () =>
+            document
+              .querySelector('[data-slot="card-header"] img')
+              ?.getAttribute("src") === "http://auth.test/avatar-valid.webp"
+        )
+        await page.evaluate(() =>
+          document.querySelector('button[type="submit"]').click()
+        )
+        await page.waitForFunction(() =>
+          document.body.textContent.includes("应用已收到授权码")
+        )
+        assert.equal(completions, 1)
+        assert.equal(csrfToken, "csrf-switched-proof")
+      }
+    } else if (scenario === "expired") {
       await page.waitForFunction(() => {
         const alert = document.querySelector('[data-slot="alert"]')
         return (
