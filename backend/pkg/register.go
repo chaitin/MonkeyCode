@@ -196,6 +196,13 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return delayqueue.NewVMExpireQueue(r, l), nil
 	})
 
+	// Skill Guard pending-scan recovery queue
+	do.Provide(i, func(i *do.Injector) (*delayqueue.SkillGuardQueue, error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return delayqueue.NewSkillGuardQueue(r, l), nil
+	})
+
 	do.Provide(i, vmrecycle.NewRecorder)
 	do.Provide(i, vmrecycle.NewRecycler)
 	do.Provide(i, vmrecycle.NewAnalyzer)

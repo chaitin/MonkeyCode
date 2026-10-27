@@ -62,6 +62,8 @@ func (f *fakeObjectStore) PutFile(_ context.Context, prefix, filename string, bo
 	return nil
 }
 
+func (f *fakeObjectStore) DeleteObject(context.Context, string) error { return nil }
+
 func (f *fakeObjectStore) PresignGet(_ context.Context, key string, _ time.Duration) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
