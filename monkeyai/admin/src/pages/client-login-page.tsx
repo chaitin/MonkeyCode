@@ -378,11 +378,11 @@ export function ClientLoginPage() {
                       />
                     }
                   >
-                    退出登录
+                    切换账号
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>退出登录</AlertDialogTitle>
+                      <AlertDialogTitle>切换账号</AlertDialogTitle>
                     </AlertDialogHeader>
                     <AlertDialogDescription>
                       当前账号将要登出。确认后可使用其他账号继续本次授权。
