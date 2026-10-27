@@ -270,7 +270,7 @@ try {
       const openSwitch = () =>
         page.evaluate(() =>
           [...document.querySelectorAll("button")]
-            .find((button) => button.textContent.trim() === "切换账号")
+            .find((button) => button.textContent.trim() === "退出登录")
             .click()
         )
       const confirmSwitch = () =>
@@ -548,6 +548,12 @@ try {
       )
       assert.equal(body.includes("授权码仅可使用一次"), false)
       assert.equal(body.includes("返回应用地址"), false)
+      assert.equal(
+        await page
+          .getByRole("button", { name: "退出登录", exact: true })
+          .count(),
+        1
+      )
       assert.equal(body.includes(redirect), false)
       assert.equal(body.includes("同时申请以下权限"), false)
       assert.equal(body.includes("读取获准文件"), false)
