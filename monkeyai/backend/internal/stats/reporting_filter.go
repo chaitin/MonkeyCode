@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -36,6 +37,7 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 		}
 		at, err := time.Parse(time.RFC3339, q.Get(key))
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
 			return f, resource.Invalid(key + " 需使用 RFC3339 时间")
 		}
 		if key == "from" {
@@ -47,6 +49,9 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 	if q.Has("limit") {
 		n, err := strconv.Atoi(q.Get("limit"))
 		if err != nil || n < 1 || n > maxLimit {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
+			}
 			return f, resource.Invalid("limit 必须为 1 至 " + strconv.Itoa(maxLimit))
 		}
 		f.limit = n
@@ -64,6 +69,9 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 		if *item.target != "" {
 			var id pgtype.UUID
 			if err := id.Scan(*item.target); err != nil || !id.Valid {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
+				}
 				return f, resource.Invalid(item.name + " 无效")
 			}
 		}
@@ -96,6 +104,7 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 		if q.Has(item.name) {
 			value, err := strconv.ParseBool(q.Get(item.name))
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
 				return f, resource.Invalid(item.name + " 无效")
 			}
 			*item.target = value
@@ -109,17 +118,22 @@ func parseReportingFilter(r *http.Request, now time.Time, maxLimit int) (reporti
 		var c reportCursor
 		raw, err := base64.RawURLEncoding.DecodeString(f.cursor)
 		if err != nil || json.Unmarshal(raw, &c) != nil {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
+			}
 			return f, resource.Invalid("cursor 无效")
 		}
 		if !q.Has("from") {
 			f.from, err = time.Parse(time.RFC3339Nano, c.From)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
 				return f, resource.Invalid("cursor 时间无效")
 			}
 		}
 		if !q.Has("until") {
 			f.until, err = time.Parse(time.RFC3339Nano, c.Until)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseReportingFilter", "error", err)
 				return f, resource.Invalid("cursor 时间无效")
 			}
 		}
@@ -169,7 +183,11 @@ func (f reportingFilter) sqlParams(c reportCursor, sessionID string) []byte {
 		"outcome": optional(f.outcome), "include_placeholders": f.placeholders,
 		"include_purged": f.purged, "cursor_key": optional(c.Key), "session_id": optional(sessionID),
 	}
-	data, _ := json.Marshal(values)
+	data, err := json.Marshal(values)
+	if err != nil {
+		slog.Error("编码统计筛选条件失败", "error", err)
+		return nil
+	}
 	return data
 }
 
@@ -182,6 +200,9 @@ func (f reportingFilter) decodeCursor() (reportCursor, error) {
 	var c reportCursor
 	raw, err := base64.RawURLEncoding.DecodeString(f.cursor)
 	if err != nil || json.Unmarshal(raw, &c) != nil || c.Fingerprint != f.fingerprint || c.From != f.from.Format(time.RFC3339Nano) || c.Until != f.until.Format(time.RFC3339Nano) {
+		if err != nil {
+			slog.Warn("操作失败", "module", "stats", "operation", "decodeCursor", "error", err)
+		}
 		return c, resource.Invalid("cursor 无效或筛选条件已变化")
 	}
 	return c, nil
@@ -189,7 +210,11 @@ func (f reportingFilter) decodeCursor() (reportCursor, error) {
 func (f reportingFilter) encodeCursor(c reportCursor) string {
 	c.Fingerprint = f.fingerprint
 	c.From, c.Until = f.from.Format(time.RFC3339Nano), f.until.Format(time.RFC3339Nano)
-	raw, _ := json.Marshal(c)
+	raw, err := json.Marshal(c)
+	if err != nil {
+		slog.Error("编码统计游标失败", "error", err)
+		return ""
+	}
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 

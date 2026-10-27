@@ -2,6 +2,7 @@ package imagegen
 
 import (
 	"errors"
+	"log/slog"
 	"math/big"
 	"slices"
 
@@ -23,6 +24,9 @@ func Quote(item model.Model, operation, quality, aspectRatio string) (billing.Am
 	}
 	base, err := billing.ParseAmount(item.ImagePricing.BaseCreditsPerImage)
 	if err != nil || base < 0 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "imagegen", "operation", "Quote", "error", err)
+		}
 		return 0, errors.New("生图基础积分无效")
 	}
 	multiplier := billing.Amount(creditScale)
@@ -32,6 +36,9 @@ func Quote(item model.Model, operation, quality, aspectRatio string) (billing.Am
 		}
 		multiplier, err = billing.ParseAmount(candidate.Multiplier)
 		if err != nil || multiplier <= 0 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "imagegen", "operation", "Quote", "error", err)
+			}
 			return 0, errors.New("生图积分倍率无效")
 		}
 		break

@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -46,6 +47,9 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 			Deny        []string `json:"tool_denylist"`
 		}
 		if err != nil || string(b) == "null" || json.Unmarshal(b, &links) != nil {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "expert", "operation", "validate", "error", err)
+			}
 			return resource.Invalid("连接依赖格式无效")
 		}
 		for _, link := range links {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -21,16 +22,25 @@ type outboundProxy struct {
 func validateProxies(raw json.RawMessage) error {
 	var proxies []outboundProxy
 	if err := json.Unmarshal(raw, &proxies); err != nil || proxies == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "setting", "operation", "validateProxies", "error", err)
+		}
 		return errors.New("proxies 必须是数组")
 	}
 	seen := map[string]bool{}
 	for _, proxy := range proxies {
 		address, err := url.Parse(proxy.URL)
 		if err != nil || (address.Scheme != "http" && address.Scheme != "https" && address.Scheme != "socks5") || address.Host == "" || address.User != nil || address.RawQuery != "" || address.Fragment != "" || address.Path != "" || address.Hostname() == "" || address.Port() == "" {
+			if err != nil {
+				slog.Warn("操作失败", "module", "setting", "operation", "validateProxies", "error", err)
+			}
 			return errors.New("代理 URL 必须是 http、https 或 socks5 地址（含端口）")
 		}
 		port, err := strconv.Atoi(address.Port())
 		if err != nil || port < 1 || port > 65535 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "setting", "operation", "validateProxies", "error", err)
+			}
 			return errors.New("代理端口无效")
 		}
 		if proxy.ID == "" || proxy.Name == "" || seen[proxy.ID] || strings.TrimSpace(proxy.Name) != proxy.Name || (proxy.Password != "" && proxy.Username == "") {

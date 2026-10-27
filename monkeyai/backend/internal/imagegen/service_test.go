@@ -316,7 +316,7 @@ type testCloseBody struct {
 
 func (b testCloseBody) Close() error { return b.err }
 
-func TestProviderErrorLogsDoNotExposeWrappedURL(t *testing.T) {
+func TestProviderErrorLogsPreserveWrappedError(t *testing.T) {
 	const secret = "private-token-123"
 	var logs bytes.Buffer
 	original := slog.Default()
@@ -334,7 +334,7 @@ func TestProviderErrorLogsDoNotExposeWrappedURL(t *testing.T) {
 	svc := NewService(nil, jobs, nil, nil, nil)
 	svc.handleResult(context.Background(), Job{ID: "job-1", Operation: "generate"}, ProviderResult{}, wrapped)
 	if jobs.job.Status != "unknown" || !strings.Contains(logs.String(), "error_type=url_error") ||
-		strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "api_key=") {
+		!strings.Contains(logs.String(), secret) || !strings.Contains(logs.String(), "api_key=") {
 		t.Fatalf("上游错误日志包含敏感详情或状态错误: %s", logs.String())
 	}
 
@@ -349,7 +349,7 @@ func TestProviderErrorLogsDoNotExposeWrappedURL(t *testing.T) {
 		t.Fatalf("上游响应异常: status=%d error=%v", status, err)
 	}
 	if !strings.Contains(logs.String(), "error_type=url_error") || !strings.Contains(logs.String(), "status=200") ||
-		strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "token=") {
+		!strings.Contains(logs.String(), secret) || !strings.Contains(logs.String(), "token=") {
 		t.Fatalf("上游关闭日志包含敏感详情: %s", logs.String())
 	}
 }

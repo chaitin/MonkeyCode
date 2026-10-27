@@ -122,11 +122,9 @@ func Event(ctx context.Context, logger *slog.Logger, level slog.Level, event, me
 	runtime.Callers(2, pc[:])
 	clean := slog.NewRecord(record.Time, level, message, pc[0])
 	clean.AddAttrs(mergeAttrs(attrs)...)
-	_ = logger.Handler().Handle(ctx, clean)
+	handle(ctx, logger, clean)
 }
 
-// Diagnostic records ownership before level filtering or deduplication. This
-// prevents HTTP fallback errors from bypassing the primary event's policy.
 func syncRoute(ctx context.Context) {
 	if state, ok := ctx.Value(contextKey{}).(*observation); ok {
 		state.mu.Lock()
@@ -161,7 +159,7 @@ func Diagnostic(ctx context.Context, logger *slog.Logger, level slog.Level, even
 		}
 	}
 	record.AddAttrs(mergeAttrs(clean)...)
-	_ = logger.Handler().Handle(ctx, record)
+	handle(ctx, logger, record)
 }
 
 func contextAttrs(ctx context.Context) []slog.Attr {

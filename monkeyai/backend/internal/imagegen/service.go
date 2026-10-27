@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imageproxy"
@@ -383,7 +384,7 @@ func providerErrorType(err error) string {
 func (s *Service) handleResult(ctx context.Context, job Job, result ProviderResult, err error) {
 	if err != nil {
 		if ctx.Err() == nil {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "生图上游请求失败，任务状态待确认", "module", "imagegen", "operation", "handleResult", "job_id", job.ID, "operation", job.Operation, "error_type", providerErrorType(err))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "生图上游请求失败，任务状态待确认", "module", "imagegen", "operation", "handleResult", "job_id", job.ID, "operation", job.Operation, "error_type", providerErrorType(err), "error", err)
 		}
 		s.markUnknown(ctx, job, "provider_status_unknown")
 		return
@@ -557,7 +558,7 @@ func (s *Service) recover(ctx context.Context) error {
 			result, err := adapter.TaskQuerier.QueryTask(callCtx, target, *job.ProviderJobID)
 			if err != nil {
 				if ctx.Err() == nil {
-					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "查询待恢复生图任务失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "operation", "query_task", "error_type", providerErrorType(err))
+					logging.Event(ctx, slog.Default(), slog.LevelWarn, "image.job.retry", "查询待恢复生图任务失败", "module", "imagegen", "operation", "recover", "job_id", job.ID, "operation", "query_task", "error_type", providerErrorType(err), "error", err)
 				}
 			} else if result.Status != "running" && result.Status != "pending" {
 				s.handleResult(callCtx, job, result, nil)

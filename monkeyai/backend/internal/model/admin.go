@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
@@ -54,6 +55,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 func (s *Service) createModel(w http.ResponseWriter, r *http.Request) {
 	var input SaveInput
 	if err := decodeModelRequest(w, r, &input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "createModel", "error", err)
 		modelError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
@@ -69,6 +71,7 @@ func (s *Service) createModel(w http.ResponseWriter, r *http.Request) {
 func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 	var input SaveInput
 	if err := decodeModelRequest(w, r, &input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "updateModel", "error", err)
 		modelError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
@@ -92,6 +95,9 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		Enabled *bool `json:"enabled"`
 	}
 	if err := decodeModelRequest(w, r, &input); err != nil || input.Enabled == nil {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "setModelEnabled", "error", err)
+		}
 		modelError(w, http.StatusBadRequest, "enabled 必须是布尔值")
 		return
 	}

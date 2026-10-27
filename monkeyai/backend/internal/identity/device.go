@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -61,6 +62,7 @@ func (s *Service) deviceLimit(r *http.Request, kind string, limit int) bool {
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceLimit", "error", err)
 		host = r.RemoteAddr
 	}
 	key := kind + ":" + tokenHash(host)
@@ -165,6 +167,9 @@ func (s *Service) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	machine, display, platform, arch := r.PostForm.Get("machine_id"), r.PostForm.Get("display_name"), r.PostForm.Get("platform"), r.PostForm.Get("arch")
 	public, err := base64.RawURLEncoding.Strict().DecodeString(r.PostForm.Get("execution_public_key"))
 	if err != nil || len(public) != ed25519.PublicKeySize || !deviceUUID(machine) || !deviceText(display, 128) || !deviceText(arch, 32) || !slices.Contains([]string{"macos", "windows", "linux"}, platform) {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceAuthorization", "error", err)
+		}
 		s.writeOAuthError(r.Context(), w, oauthError("invalid_request", "设备信息或公钥无效"))
 		return
 	}
@@ -216,11 +221,13 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceRequest", "error", err)
 		writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备申请暂不可用")
 		return
 	}
 	connections, err := s.connections(r.Context())
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceRequest", "error", err)
 		writeError(r.Context(), w, 503, "settings_unavailable", "登录方式暂不可用")
 		return
 	}
@@ -229,14 +236,18 @@ func (s *Service) deviceRequest(w http.ResponseWriter, r *http.Request) {
 	if authenticated {
 		tx, beginErr := s.db.BeginTx(r.Context(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
 		if beginErr != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceRequest", "error", beginErr)
 			writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备状态暂不可用")
 			return
 		}
 		requiresRestore, err = s.device.registry.VerifyDeviceRequest(r.Context(), tx, user.ID, request.MachineID, request.ExecutionPublicKey)
-		tx.Rollback(r.Context())
+		if err := tx.Rollback(r.Context()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "deviceRequest", "error", err)
+		}
 		if errors.Is(err, ErrDeviceBindingConflict) {
 			conflict = true
 		} else if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceRequest", "error", err)
 			writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备状态暂不可用")
 			return
 		}
@@ -274,10 +285,15 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 503, "authorization_state_unavailable", "授权状态暂不可用")
 		return
 	}
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(r.Context())); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "deviceDecision", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	request, err := q.LockDeviceRequest(r.Context(), in.RequestID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -285,12 +301,17 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 503, "authorization_state_unavailable", "设备申请暂不可用")
 		return
 	}
 	if !s.now().Before(request.ExpiresAt) {
-		q.ResolveDeviceRequest(r.Context(), sqlc.ResolveDeviceRequestParams{ID: request.ID, Status: "expired"})
-		tx.Commit(r.Context())
+		if err := q.ResolveDeviceRequest(r.Context(), sqlc.ResolveDeviceRequestParams{ID: request.ID, Status: "expired"}); err != nil {
+			slog.Error("操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			slog.Error("操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
+		}
 		writeError(r.Context(), w, 409, "device_request_resolved", "设备申请已过期")
 		return
 	}
@@ -299,6 +320,7 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err = q.LockDeviceOwner(r.Context(), user.ID); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 403, "permission_denied", "账号不可用于设备授权")
 		return
 	}
@@ -331,14 +353,19 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	changed, err := q.DecideDeviceRequest(r.Context(), sqlc.DecideDeviceRequestParams{ID: request.ID, Status: status, OwnerUserID: new(user.ID), ApprovedScopes: scopes, RestoreRevoked: in.RestoreRevoked})
 	if err != nil || changed != 1 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
+		}
 		writeError(r.Context(), w, 409, "device_request_resolved", "设备申请已被其他操作处理")
 		return
 	}
 	if err = audit.Write(r.Context(), tx, audit.Event{ActorID: user.ID, Action: "device." + status, Category: "security", TargetType: "endpoint", TargetID: request.MachineID, Params: map[string]any{"request_id": request.ID, "scopes": scopes, "restore_revoked": in.RestoreRevoked}}); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 503, "authorization_state_unavailable", "无法保存授权决定")
 		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 503, "authorization_state_unavailable", "无法保存授权决定")
 		return
 	}
@@ -353,7 +380,11 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string)
 	if err != nil {
 		return Token{}, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "identity", "operation", "ExchangeDeviceCode", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	request, err := q.LockDeviceCode(ctx, sqlc.LockDeviceCodeParams{DeviceCodeHash: tokenHash(code), ClientID: clientID})
 	if errors.Is(err, pgx.ErrNoRows) {

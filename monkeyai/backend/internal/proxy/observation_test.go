@@ -32,11 +32,10 @@ func TestModelFailureObservedWithoutBillingOrRecorder(t *testing.T) {
 			}))
 			defer upstream.Close()
 			var output bytes.Buffer
-			logs, _ := logging.NewRuntime(&output, slog.LevelDebug, logging.DefaultSettings())
-			defer logs.Close()
+			logger := logging.New(&output, slog.LevelDebug)
 			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
 				return Target{ModelID: "model-1", BaseURL: upstream.URL}, nil
-			}), logs.Logger())
+			}), logger)
 			body := `{"model":"test","messages":[],"stream":false}`
 			if test.stream {
 				body = `{"model":"test","messages":[],"stream":true}`
@@ -44,7 +43,7 @@ func TestModelFailureObservedWithoutBillingOrRecorder(t *testing.T) {
 			r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 			r.Header.Set("Authorization", "Bearer private-key")
 			response := httptest.NewRecorder()
-			logging.HTTP(logs.Logger())(p).ServeHTTP(response, r)
+			logging.HTTP(logger)(p).ServeHTTP(response, r)
 			if err := p.Wait(t.Context()); err != nil {
 				t.Fatal(err)
 			}

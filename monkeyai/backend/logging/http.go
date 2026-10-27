@@ -44,11 +44,13 @@ func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
 							}
 						}
 						Diagnostic(ctx, logger, slog.LevelError, "http.request.panicked", nil,
-							slog.String("error_type", fmt.Sprintf("%T", fault)), slog.Attr{Key: "stack", Value: slog.GroupValue(stack...)})
+							slog.String("error_type", fmt.Sprintf("%T", fault)), slog.String("error_message", fmt.Sprint(fault)), slog.Attr{Key: "stack", Value: slog.GroupValue(stack...)})
 						if writer.status == 0 && !writer.hijacked {
 							writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 							writer.WriteHeader(http.StatusInternalServerError)
-							_, _ = io.WriteString(writer, "{\"error\":{\"code\":\"internal_error\",\"message\":\"服务内部错误\"}}\n")
+							if _, err := io.WriteString(writer, "{\"error\":{\"code\":\"internal_error\",\"message\":\"服务内部错误\"}}\n"); err != nil {
+								Diagnostic(ctx, logger, slog.LevelError, "http.response.failed", err)
+							}
 						} else {
 							abort = true
 						}
@@ -64,14 +66,6 @@ func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
 				diagnosed, expected := state.diagnosed, state.expected
 				state.mu.Unlock()
 				failed := writer.status >= 500 || writer.aborted || r.Context().Err() != nil
-				if rt := runtimeFor(logger); rt != nil {
-					rt.mu.Lock()
-					rt.stats.Requests++
-					if failed {
-						rt.stats.FailedRequests++
-					}
-					rt.mu.Unlock()
-				}
 				result := "completed"
 				if writer.hijacked {
 					result = "upgraded"

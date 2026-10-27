@@ -89,10 +89,10 @@ func TestExchangeRejectsHTTPProxyTarget(t *testing.T) {
 	}
 }
 
-func TestOAuthFailureDoesNotExposeURL(t *testing.T) {
+func TestOAuthFailurePreservesOriginalError(t *testing.T) {
 	err := &url.Error{Op: "POST", URL: "https://oauth.example/token?code=private-code", Err: errors.New("private-token")}
 	logged := fmt.Sprint(safeMCPFailure(err))
-	if strings.Contains(logged, "private-code") || strings.Contains(logged, "private-token") || !strings.Contains(logged, "network_error") {
+	if !strings.Contains(logged, err.Error()) || !strings.Contains(logged, "network_error") {
 		t.Fatalf("上游错误分类不安全: %s", logged)
 	}
 }

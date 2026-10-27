@@ -1,8 +1,20 @@
 # 后端日志实施验收记录
 
+> 后续修订：已移除日志去重、定时摘要及 Runtime，入口使用 `logging.New`，错误原文写入 `error_message`。下文保留原方案及历史验收记录，当前行为以[运行日志说明](logging.md)为准。
+
 日期：2026-10-20；范围调整：2026-10-21。对应[设计方案](../../design/error-logging-optimization-plan.md)与[运行日志说明](logging.md)。本记录描述本地实现和测试，不代表镜像已发布或已部署。
 
 本次范围调整暂缓 Nginx 日志改造，已还原两份 Nginx 配置并移除新增的 `TestNginxSafeLogging`。下述完整回归数字保留为调整前的历史记录，不将此前 Nginx 日志验证结果作为当前版本的验收依据。
+
+## 移除聚合后的验证
+
+本轮删除聚合运行时和配置，并将错误处理调整为向上返回或记录原始原因，覆盖响应输出、存储清理、事务回滚、后台任务和日志输出失败。
+
+- 后端与 Pro：`go test -race ./...`、`go vet ./...`、`go run github.com/kisielk/errcheck@v1.30.0 -blank -ignoretests ./...` 通过。
+- 安装包：`go test ./pkg/installer/deploy` 通过，确保 Compose 和环境模板不再下发去重配置。
+- 后端：`go run ./tools/sqlcschema -check` 通过，迁移编号无冲突，API 与迁移文件未修改。
+- 回归覆盖并发重复事件逐条保留、错误链和长文本、HTTP 运行时及 panic 原文、日志输出失败的 stderr 回退。
+- 当前环境未提供专项数据库、对象存储、浏览器和容器配置，相应集成测试按既有条件跳过；下文历史集成结果不作为本轮验证证据。
 
 ## 实现结果
 

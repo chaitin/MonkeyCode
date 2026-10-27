@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 	"regexp"
 	"sort"
@@ -35,6 +36,7 @@ func Parse(b []byte) (Package, error) {
 	}
 	r, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 	if err != nil {
+		slog.Warn("操作失败", "module", "skill", "operation", "Parse", "error", err)
 		return p, fmt.Errorf("无效 ZIP")
 	}
 	root := ""
@@ -61,9 +63,14 @@ func Parse(b []byte) (Package, error) {
 			return p, err
 		}
 		data, err := io.ReadAll(io.LimitReader(rd, int64(MaxExpanded-total+1)))
-		rd.Close()
+		if err := rd.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "skill", "operation", "Parse", "error", err)
+		}
 		total += len(data)
 		if err != nil || total > MaxExpanded {
+			if err != nil {
+				slog.Warn("操作失败", "module", "skill", "operation", "Parse", "error", err)
+			}
 			return p, fmt.Errorf("技能包损坏或解包大小超限")
 		}
 		p.Files[name] = data
@@ -99,6 +106,7 @@ func Parse(b []byte) (Package, error) {
 		return p, fmt.Errorf("SKILL.md 元信息未闭合")
 	}
 	if err = yaml.Unmarshal([]byte(text[4:4+end]), &p.Front); err != nil {
+		slog.Warn("操作失败", "module", "skill", "operation", "Parse", "error", err)
 		return p, fmt.Errorf("SKILL.md 元信息无效")
 	}
 	p.Name, _ = p.Front["name"].(string)

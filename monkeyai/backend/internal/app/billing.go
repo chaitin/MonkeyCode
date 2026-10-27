@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math"
 	"net/http"
 
@@ -115,6 +116,7 @@ func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.Rec
 func (b modelBilling) Begin(ctx context.Context, t proxy.Target, r proxy.BillingRequest) (proxy.Reservation, error) {
 	var data map[string]json.RawMessage
 	if err := json.Unmarshal(r.Body, &data); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "Begin", "error", err)
 		return proxy.Reservation{}, resource.Invalid("模型请求无效")
 	}
 	for _, key := range []string{"n", "best_of"} {
@@ -136,6 +138,9 @@ func (b modelBilling) Begin(ctx context.Context, t proxy.Target, r proxy.Billing
 		if raw, ok := data[k]; ok {
 			var v int64
 			if err := json.Unmarshal(raw, &v); err != nil || v <= 0 {
+				if err != nil {
+					slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "Begin", "error", err)
+				}
 				return proxy.Reservation{}, resource.Invalid("输出限制须为正整数")
 			}
 			if limit == 0 || v < limit {

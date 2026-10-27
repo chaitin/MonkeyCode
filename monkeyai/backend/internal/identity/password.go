@@ -9,13 +9,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
@@ -73,6 +74,9 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&input); err != nil || len(input.Password) > 1024 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "passwordLogin", "error", err)
+		}
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "请求格式无效")
 		return
 	}
@@ -95,6 +99,9 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	valid := verifyPassword(input.Password, passwordHash)
 	if err != nil || !valid {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "passwordLogin", "error", err)
+		}
 		writeError(r.Context(), w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
 		return
 	}
@@ -139,14 +146,23 @@ func verifyPassword(password, encoded string) bool {
 	}
 	iterations, err := strconv.Atoi(parts[2])
 	if err != nil || iterations < 100_000 || iterations > 2_000_000 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "verifyPassword", "error", err)
+		}
 		return false
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
 	if err != nil || len(salt) < 16 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "verifyPassword", "error", err)
+		}
 		return false
 	}
 	expected, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil || len(expected) != 32 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "verifyPassword", "error", err)
+		}
 		return false
 	}
 	actual, err := pbkdf2.Key(sha256.New, password, salt, iterations, len(expected))

@@ -5,10 +5,6 @@ import (
 	"flag"
 	"io"
 	"log/slog"
-	"os"
-	"strconv"
-
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"time"
 )
 
@@ -48,37 +44,10 @@ func ParseLogLevel(args []string) (slog.Level, error) {
 	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(text)); err != nil {
+		slog.Warn("操作失败", "module", "config", "operation", "ParseLogLevel", "error", err)
 		return 0, errors.New("日志级别无效")
 	}
 	return level, nil
-}
-
-// ParseLogging reads construction settings only for the logger's owner.
-func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
-	level, err := ParseLogLevel(args)
-	if err != nil {
-		return 0, logging.Settings{}, err
-	}
-	settings := logging.DefaultSettings()
-	if value, ok := os.LookupEnv("MONKEYAI_LOG_DEDUP_ENABLED"); ok {
-		settings.Enabled, err = strconv.ParseBool(value)
-		if err != nil {
-			return 0, settings, errors.New("MONKEYAI_LOG_DEDUP_ENABLED 格式无效")
-		}
-	}
-	if value, ok := os.LookupEnv("MONKEYAI_LOG_DEDUP_WINDOW"); ok {
-		settings.Window, err = time.ParseDuration(value)
-		if err != nil {
-			return 0, settings, errors.New("MONKEYAI_LOG_DEDUP_WINDOW 格式无效")
-		}
-	}
-	if value, ok := os.LookupEnv("MONKEYAI_LOG_DEDUP_MAX_KEYS"); ok {
-		settings.MaxKeys, err = strconv.Atoi(value)
-		if err != nil {
-			return 0, settings, errors.New("MONKEYAI_LOG_DEDUP_MAX_KEYS 格式无效")
-		}
-	}
-	return level, settings, settings.Validate()
 }
 
 // PrintUsage uses static defaults, never secrets from the current environment.
@@ -88,6 +57,8 @@ func PrintUsage(output io.Writer) {
 	level := defaultLogLevel.String()
 	flags := startupFlags(&cfg, &level)
 	flags.SetOutput(output)
-	_, _ = io.WriteString(output, "用法: monkeyai-server [启动参数]\n      monkeyai-server reset [--database-url PostgreSQL连接地址]\n\nreset: 重置 admin@baizhi.cloud 的密码；未找到时提示填写管理员邮箱，成功后输出账号密码。\n\n启动参数:\n")
+	if _, err := io.WriteString(output, "用法: monkeyai-server [启动参数]\n      monkeyai-server reset [--database-url PostgreSQL连接地址]\n\nreset: 重置 admin@baizhi.cloud 的密码；未找到时提示填写管理员邮箱，成功后输出账号密码。\n\n启动参数:\n"); err != nil {
+		slog.Error("写入输出失败", "module", "config", "operation", "PrintUsage", "error", err)
+	}
 	flags.PrintDefaults()
 }

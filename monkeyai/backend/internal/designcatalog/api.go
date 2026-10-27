@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,6 +38,7 @@ func pathParam(r *http.Request, name string) string {
 	if r.URL.RawPath != "" {
 		decoded, err := url.PathUnescape(value)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "pathParam", "error", err)
 			return ""
 		}
 		return decoded
@@ -101,6 +103,7 @@ func catalogAuth(require func(http.Handler) http.Handler) func(http.Handler) htt
 	}
 }
 func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.ErrorContext(r.Context(), "设计资源请求失败", "error", err)
 	var f *Fault
 	if !errors.As(err, &f) {
 		f = &Fault{503, "unavailable", "设计目录或存储暂不可用"}
@@ -113,7 +116,9 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Del("Content-Disposition")
 	w.WriteHeader(f.Status)
 	if r.Method != "HEAD" {
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": f.Code, "message": f.Message, "data": nil})
+		if err := json.NewEncoder(w).Encode(map[string]any{"code": f.Code, "message": f.Message, "data": nil}); err != nil {
+			slog.Error("写入输出失败", "module", "designcatalog", "operation", "writeAPIError", "error", err)
+		}
 	}
 }
 func apiJSON(w http.ResponseWriter, data any) {
@@ -121,11 +126,16 @@ func apiJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Header().Set("Vary", "Authorization")
 	w.WriteHeader(200)
-	_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "", "data": data})
+	if err := json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "", "data": data}); err != nil {
+		slog.Error("写入输出失败", "module", "designcatalog", "operation", "apiJSON", "error", err)
+	}
 }
 func query(r *http.Request) (url.Values, error) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(r.URL.RawQuery) > 16384 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "query", "error", err)
+		}
 		return nil, fault(400, "invalid_argument", "查询编码无效")
 	}
 	for key, values := range q {
@@ -211,6 +221,7 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		Target    string `json:"target"`
 	}
 	if err := resource.Decode(w, r, &input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "token", "error", err)
 		controlError(w, r, fault(400, "invalid_argument", "Token 请求无效"))
 		return
 	}

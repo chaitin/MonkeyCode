@@ -103,7 +103,7 @@ func TestResponseReconciliationCloseLogIsSafe(t *testing.T) {
 				t.Fatalf("响应关闭不能改变对账结果: %+v %v", result, err)
 			}
 			text := logs.String()
-			if strings.Contains(text, "private-upstream-key-and-body") || tc.logged && (!strings.Contains(text, "close_reconciliation_response") || !strings.Contains(text, "model-1")) || !tc.logged && text != "" {
+			if tc.logged && !strings.Contains(text, tc.closeErr.Error()) || tc.logged && (!strings.Contains(text, "close_reconciliation_response") || !strings.Contains(text, "model-1")) || !tc.logged && text != "" {
 				t.Fatalf("关闭响应时的日志不安全或有误报: %s", text)
 			}
 		})

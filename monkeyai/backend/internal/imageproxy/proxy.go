@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -162,16 +163,23 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 17<<20)
 	parts, err := r.MultipartReader()
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "imageproxy", "operation", "upload", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("参考图上传格式无效"))
 		return
 	}
 	part, err := parts.NextPart()
 	if err != nil || part.FormName() != "file" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "imageproxy", "operation", "upload", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("缺少参考图 file 字段"))
 		return
 	}
 	data, err := io.ReadAll(io.LimitReader(part, (16<<20)+1))
 	if err != nil || len(data) == 0 || len(data) > 16<<20 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "imageproxy", "operation", "upload", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("参考图超过大小限制"))
 		return
 	}
@@ -385,6 +393,7 @@ func decode(w http.ResponseWriter, r *http.Request, value any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "imageproxy", "operation", "decode", "error", err)
 		return resource.Invalid("生图请求格式无效")
 	}
 	var extra json.RawMessage

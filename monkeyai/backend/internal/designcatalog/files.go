@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -47,12 +48,18 @@ func ranges(raw string, size int64) ([]byteRange, error) {
 		} else {
 			start, err = strconv.ParseInt(pair[0], 10, 64)
 			if err != nil || start < 0 {
+				if err != nil {
+					slog.Warn("操作失败", "module", "designcatalog", "operation", "ranges", "error", err)
+				}
 				return nil, fault(400, "invalid_argument", "Range 起点无效")
 			}
 			end = size - 1
 			if pair[1] != "" {
 				end, err = strconv.ParseInt(pair[1], 10, 64)
 				if err != nil || end < start {
+					if err != nil {
+						slog.Warn("操作失败", "module", "designcatalog", "operation", "ranges", "error", err)
+					}
 					return nil, fault(400, "invalid_argument", "Range 终点无效")
 				}
 			}
@@ -102,7 +109,10 @@ func (s *Service) serveObject(w http.ResponseWriter, r *http.Request, object Obj
 	if filename != "" {
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	}
-	mediaType, _, _ := mime.ParseMediaType(contentType)
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		slog.Error("解析内容类型失败", "error", err)
+	}
 	if mediaType == "image/svg+xml" {
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'")
 	}
@@ -134,9 +144,15 @@ func (s *Service) serveObject(w http.ResponseWriter, r *http.Request, object Obj
 			writeAPIError(w, r, err)
 			return
 		}
-		defer body.Close()
+		defer func() {
+			if err := body.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+			}
+		}()
 		w.WriteHeader(200)
-		_, _ = io.CopyN(w, body, object.Size)
+		if _, err := io.CopyN(w, body, object.Size); err != nil {
+			slog.Error("传输响应失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+		}
 		return
 	}
 	if len(selected) == 1 {
@@ -153,15 +169,23 @@ func (s *Service) serveObject(w http.ResponseWriter, r *http.Request, object Obj
 			writeAPIError(w, r, err)
 			return
 		}
-		defer body.Close()
+		defer func() {
+			if err := body.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+			}
+		}()
 		w.WriteHeader(206)
-		_, _ = io.CopyN(w, body, length)
+		if _, err := io.CopyN(w, body, length); err != nil {
+			slog.Error("传输响应失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+		}
 		return
 	}
 	bodies := []io.ReadCloser{}
 	defer func() {
 		for _, body := range bodies {
-			body.Close()
+			if err := body.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+			}
 		}
 	}()
 	if r.Method != "HEAD" {
@@ -184,13 +208,17 @@ func (s *Service) serveObject(w http.ResponseWriter, r *http.Request, object Obj
 		header := textproto.MIMEHeader{"Content-Type": {contentType}, "Content-Range": {fmt.Sprintf("bytes %d-%d/%d", part.start, part.end, object.Size)}}
 		dest, err := multi.CreatePart(header)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "serveObject", "error", err)
 			return
 		}
 		if _, err = io.CopyN(dest, bodies[i], part.end-part.start+1); err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "serveObject", "error", err)
 			return
 		}
 	}
-	_ = multi.Close()
+	if err := multi.Close(); err != nil {
+		slog.Error("关闭资源失败", "module", "designcatalog", "operation", "serveObject", "error", err)
+	}
 }
 func (s *Service) downloadAPI(w http.ResponseWriter, r *http.Request) {
 	snap, q, err := s.selected(r)
@@ -258,6 +286,9 @@ func (s *Service) mediaAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		typ, _, parseErr := mime.ParseMediaType(ref.MIME)
 		if parseErr != nil || !strings.HasPrefix(typ, "image/") && !strings.HasPrefix(typ, "video/") && !strings.HasPrefix(typ, "audio/") {
+			if parseErr != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "designcatalog", "operation", "mediaAPI", "error", parseErr)
+			}
 			break
 		}
 		s.serveObject(w, r, Object{Key: ObjectKey(ref.SHA256), SHA256: ref.SHA256, Size: ref.Size}, ref.MIME, "")

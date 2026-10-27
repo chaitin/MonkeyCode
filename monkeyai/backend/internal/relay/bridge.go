@@ -7,11 +7,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"time"
 	"uuid"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -59,18 +60,23 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	defer func() { s.mu.Lock(); s.slots--; s.mu.Unlock() }()
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
 	}
 	s.mu.Lock()
 	if s.draining.Load() {
 		s.mu.Unlock()
-		ws.CloseNow()
+		if err := ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
+		}
 		return
 	}
 	s.active[ws] = struct{}{}
 	s.mu.Unlock()
 	defer func() {
-		ws.CloseNow()
+		if err := ws.CloseNow(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
+		}
 		s.mu.Lock()
 		delete(s.active, ws)
 		s.mu.Unlock()
@@ -106,6 +112,7 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	nonce, err := randomSecret()
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
 	}
 	challenge := Challenge{Type: "challenge", ServerID: s.config.ServerID, OwnerUserID: p.UserID, ChallengeID: uuid.New().String(), Nonce: nonce, TTLMS: 60000, ServerTime: time.Now().UTC(), GrantID: p.GrantID, RegistrationVersion: state.RegistrationVersion}
@@ -114,12 +121,22 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	var proof Proof
 	if err := readWS(handshake, ws, &proof); err != nil || proof.Type != "proof" || proof.ChallengeID != challenge.ChallengeID {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
+		}
 		s.wsError(handshake, ws, errProtocol)
 		return
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(proof.Signature)
-	message, _ := ProofBytes(hello, challenge)
+	message, encodeErr := ProofBytes(hello, challenge)
+	if encodeErr != nil {
+		s.wsError(handshake, ws, encodeErr)
+		return
+	}
 	if err != nil || len(public) != ed25519.PublicKeySize || !ed25519.Verify(public, message, signature) {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
+		}
 		s.wsError(handshake, ws, &resource.Error{Status: 403, Code: "invalid_device_proof", Message: "设备证明无效"})
 		return
 	}
@@ -188,6 +205,9 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	}
 	var ack ReadyAck
 	if err := readWS(handshake, ws, &ack); err != nil || ack.Type != "ready_ack" || ack.RegistrationVersion != ready.RegistrationVersion || !identityOnly && ack.LeaseEpoch != ready.LeaseEpoch {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
+		}
 		s.wsError(handshake, ws, errProtocol)
 		return
 	}
@@ -199,9 +219,14 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 	ws.SetReadLimit(1 << 20)
 	mux, err := yamux.Server(conn, muxConfig())
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "bridge", "error", err)
 		return
 	}
-	defer mux.Close()
+	defer func() {
+		if err := mux.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
+		}
+	}()
 	if channel == "data" {
 		gate.Lock()
 		s.mu.Lock()
@@ -217,7 +242,9 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		gate.Unlock()
 		logging.Event(r.Context(), s.logger, slog.LevelInfo, "relay.bridge.ready", "设备数据通道已就绪")
 		if previous != nil {
-			previous.Close()
+			if err := previous.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
+			}
 		}
 		defer func() {
 			s.mu.Lock()
@@ -228,7 +255,9 @@ func (s *Service) bridge(w http.ResponseWriter, r *http.Request) {
 		}()
 		// 数据通道只接受控制面打开的业务流，拒绝执行端反向拨号。
 		if incoming, err := mux.AcceptStream(); err == nil {
-			incoming.Close()
+			if err := incoming.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "relay", "operation", "bridge", "error", err)
+			}
 		}
 		return
 	}
@@ -265,7 +294,9 @@ func (s *Service) wsError(ctx context.Context, ws *websocket.Conn, err error) {
 	} else if errors.Is(err, errProtocol) {
 		code = "invalid_tunnel_message"
 	}
-	_ = writeWS(ctx, ws, map[string]any{"type": "error", "code": code})
+	if err := writeWS(ctx, ws, map[string]any{"type": "error", "code": code}); err != nil {
+		slog.Error("操作失败", "module", "relay", "operation", "wsError", "error", err)
+	}
 	logCode := "internal_error"
 	switch code {
 	case "authorization_state_unavailable", "invalid_tunnel_message", "permission_denied", "invalid_device_proof", "device_process_conflict", "device_registration_changed", "device_revoked", "device_not_found":

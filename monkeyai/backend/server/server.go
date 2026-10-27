@@ -9,7 +9,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -30,13 +29,6 @@ func ParseLogLevel(args []string) (slog.Level, error) {
 		args = args[1:]
 	}
 	return config.ParseLogLevel(args)
-}
-
-func ParseLogging(args []string) (slog.Level, logging.Settings, error) {
-	if len(args) > 0 && args[0] == "reset" {
-		args = args[1:]
-	}
-	return config.ParseLogging(args)
 }
 
 // PrintUsage writes startup help without reading environment secrets.

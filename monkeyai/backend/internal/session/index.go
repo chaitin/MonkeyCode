@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -70,6 +71,7 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 	p, _ := identity.PrincipalFromContext(ctx)
 	enabled, full, err := s.indexPolicy(ctx)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "session", "operation", "sessionIndex", "error", err)
 		resource.Fail(r.Context(), w, sessionFailure(503, "authorization_state_unavailable", "摘要策略暂不可用"))
 		return
 	}
@@ -135,6 +137,7 @@ func (s *Service) sessionIndex(w http.ResponseWriter, r *http.Request) {
 			if s.runtime != nil {
 				current.status, current.boot, current.epoch, err = s.runtime.RuntimeStatus(ctx, p.UserID, machine)
 				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "session", "operation", "sessionIndex", "error", err)
 					resource.Fail(r.Context(), w, sessionFailure(503, "authorization_state_unavailable", "设备状态暂不可用"))
 					return
 				}

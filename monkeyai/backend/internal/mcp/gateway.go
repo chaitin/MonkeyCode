@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -48,9 +49,13 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 			provided, err := url.Parse(origin)
 			public, publicErr := url.Parse(s.PublicURL)
 			if publicErr != nil {
+				slog.Warn("操作失败", "module", "mcp", "operation", "RegisterGateway", "error", publicErr)
 				logging.Event(r.Context(), slog.Default(), slog.LevelError, "mcp.operation.error", "MCP 公共地址配置无效", "module", "mcp", "operation", "RegisterGateway", "operation", "origin_check", "failure_reason", "invalid_public_url")
 			}
 			if err != nil || publicErr != nil || public == nil || provided.User != nil || provided.Path != "" || provided.RawQuery != "" || provided.Fragment != "" || !strings.EqualFold(provided.Scheme, public.Scheme) || !strings.EqualFold(provided.Host, public.Host) {
+				if publicErr != nil {
+					slog.Warn("操作失败", "module", "mcp", "operation", "RegisterGateway", "error", publicErr)
+				}
 				rpcFail(r.Context(), w, nil, &resource.Error{Status: 403, Code: "invalid_origin", Message: "请求来源不被允许"})
 				return
 			}
@@ -63,6 +68,7 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		}
 		user, err := keys.Authenticate(r.Context(), strings.TrimSpace(token), "mcp:invoke")
 		if err != nil {
+			slog.Warn("操作失败", "module", "mcp", "operation", "RegisterGateway", "error", err)
 			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp", error="invalid_token"`)
 			rpcFail(r.Context(), w, nil, &resource.Error{Status: 401, Code: "invalid_key", Message: "MCP 调用密钥无效或权限不足"})
 			return
@@ -74,6 +80,9 @@ func (s *Service) RegisterGateway(router chi.Router, keys KeyAuthenticator, bill
 		}
 		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || media != "application/json" {
+			if err != nil {
+				slog.Warn("操作失败", "module", "mcp", "operation", "RegisterGateway", "error", err)
+			}
 			rpcFail(r.Context(), w, nil, &resource.Error{Status: 415, Code: "invalid_content_type", Message: "请求须使用 application/json"})
 			return
 		}
@@ -193,6 +202,9 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	arguments, hasArguments := params["arguments"]
 	_, objectArguments := arguments.(map[string]any)
 	if err != nil || name == "" || (hasArguments && !objectArguments) {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "invoke", "error", err)
+		}
 		rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具参数无效"})
 		return
 	}
@@ -222,6 +234,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 	}
 	h, err := s.clientFor(r.Context(), connector.String("proxy_id"))
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "invoke", "error", err)
 		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "系统代理不可用"})
 		return
 	}

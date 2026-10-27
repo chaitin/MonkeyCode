@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/mail"
 	"os"
 	"strings"
@@ -37,6 +38,7 @@ func Reset(ctx context.Context, args []string, input io.Reader, output io.Writer
 	}
 	pool, err := database.Open(ctx, url)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "server", "operation", "Reset", "error", err)
 		return errors.New("无法连接数据库，请检查 MONKEYAI_DATABASE_URL 或 --database-url")
 	}
 	defer pool.Close()
@@ -75,5 +77,7 @@ func Reset(ctx context.Context, args []string, input io.Reader, output io.Writer
 }
 
 func PrintResetUsage(output io.Writer) {
-	_, _ = io.WriteString(output, "用法: monkeyai-server reset [--database-url PostgreSQL连接地址]\n优先重置 admin@baizhi.cloud；未找到时提示填写管理员邮箱。\n数据库连接默认读取 MONKEYAI_DATABASE_URL，成功后输出账号和随机新密码。\n")
+	if _, err := io.WriteString(output, "用法: monkeyai-server reset [--database-url PostgreSQL连接地址]\n优先重置 admin@baizhi.cloud；未找到时提示填写管理员邮箱。\n数据库连接默认读取 MONKEYAI_DATABASE_URL，成功后输出账号和随机新密码。\n"); err != nil {
+		slog.Error("写入输出失败", "module", "server", "operation", "PrintResetUsage", "error", err)
+	}
 }

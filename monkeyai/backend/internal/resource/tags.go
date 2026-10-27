@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -80,6 +81,7 @@ func Tags(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 func SaveTags(ctx context.Context, q Queryer, kind, id, actor string, raw any) error {
 	data, err := json.Marshal(raw)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "resource", "operation", "SaveTags", "error", err)
 		return Invalid("标签格式无效")
 	}
 	var ids []string

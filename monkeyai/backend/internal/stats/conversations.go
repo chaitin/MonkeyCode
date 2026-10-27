@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,9 @@ func parseConversationFilter(r *http.Request) (conversationFilter, error) {
 	if f.params.TaskID != "" {
 		var id pgtype.UUID
 		if err := id.Scan(f.params.TaskID); err != nil || !id.Valid {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseConversationFilter", "error", err)
+			}
 			return f, resource.Invalid("task_id 无效")
 		}
 	}
@@ -52,6 +56,7 @@ func parseConversationFilter(r *http.Request) (conversationFilter, error) {
 		if value := q.Get(field.name); value != "" {
 			at, err := time.Parse(time.RFC3339, value)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseConversationFilter", "error", err)
 				return f, resource.Invalid(field.name + " 需使用带时区的 RFC3339 时间")
 			}
 			*field.target = &at
@@ -71,6 +76,9 @@ func parseConversationFilter(r *http.Request) (conversationFilter, error) {
 		if value := q.Get(field.name); value != "" {
 			n, err := strconv.Atoi(value)
 			if err != nil || n < 1 || n > field.maximum {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "parseConversationFilter", "error", err)
+				}
 				return f, resource.Invalid(field.message)
 			}
 			*field.target = n

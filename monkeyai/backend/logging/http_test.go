@@ -17,12 +17,11 @@ import (
 
 func TestHTTPRequestIdentityAndDiagnosticOwnership(t *testing.T) {
 	var out bytes.Buffer
-	runtime, _ := NewRuntime(&out, slog.LevelDebug, DefaultSettings())
-	defer runtime.Close()
+	logger := New(&out, slog.LevelDebug)
 	router := chi.NewRouter()
-	router.Use(HTTP(runtime.Logger()))
+	router.Use(HTTP(logger))
 	router.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-		Diagnostic(r.Context(), runtime.Logger(), slog.LevelError, "resource.operation.failed", errors.New("private"))
+		Diagnostic(r.Context(), logger, slog.LevelError, "resource.operation.failed", errors.New("数据库连接失败"))
 		w.Header().Set("X-Request-ID", "upstream-forgery")
 		w.WriteHeader(503)
 	})
@@ -43,8 +42,8 @@ func TestHTTPRequestIdentityAndDiagnosticOwnership(t *testing.T) {
 			t.Fatal("日志泄漏", secret)
 		}
 	}
-	if s := runtime.Snapshot(); s.Requests != 1 || s.FailedRequests != 1 {
-		t.Fatalf("请求计数错误: %+v", s)
+	if rows[0]["error_message"] != "数据库连接失败" {
+		t.Fatalf("原始错误丢失: %v", rows)
 	}
 }
 func TestHTTPPanicAndAbort(t *testing.T) {
@@ -88,8 +87,11 @@ func TestHTTPPanicAndAbort(t *testing.T) {
 					t.Fatalf("异常恢复未返回通用 JSON 错误: %s", response.Body.String())
 				}
 			}
-			if strings.Contains(out.String(), "secret-panic-value") || strings.Contains(response.Body.String(), "secret-panic-value") {
-				t.Fatal("panic 泄漏")
+			if strings.Contains(response.Body.String(), "secret-panic-value") {
+				t.Fatal("panic 泄漏到响应")
+			}
+			if !test.control && records(t, &out)[0]["error_message"] != "secret-panic-value" {
+				t.Fatal("panic 原因丢失")
 			}
 		})
 	}

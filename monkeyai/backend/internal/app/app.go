@@ -158,7 +158,9 @@ func debugHandler(runtime *relay.Service) http.Handler {
 		mux.HandleFunc("GET /debug/relay", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
-			json.NewEncoder(w).Encode(runtime.Metrics())
+			if err := json.NewEncoder(w).Encode(runtime.Metrics()); err != nil {
+				slog.Error("写入输出失败", "module", "app", "operation", "debugHandler", "error", err)
+			}
 		})
 	}
 	return mux
@@ -339,6 +341,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := keys.RevokeRuntimeKeys(ctx, id); err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "newApplicationHandlerWithMembers", "error", err)
 				logging.Event(ctx, logger, slog.LevelWarn, "app.operation.warn", "撤销独立执行密钥标记失败", "module", "app", "operation", "newApplicationHandlerWithMembers", "grant_id", id, "reason", "storage_unavailable")
 			}
 		})
@@ -411,6 +414,9 @@ func (a *App) Run(ctx context.Context) error {
 				case <-cleanupKeys.C:
 					ctx, cancel := context.WithTimeout(workerCtx, 5*time.Second)
 					if err := a.runtimeKeys.CleanupRuntimeKeys(ctx); err != nil && workerCtx.Err() == nil {
+						if err != nil {
+							slog.WarnContext(ctx, "操作失败", "module", "app", "operation", "Run", "error", err)
+						}
 						logging.Event(ctx, slog.Default(), slog.LevelWarn, "worker.scan.failed", "回收独立执行密钥失败", "module", "app", "operation", "Run", "dependency", "storage", "reason", "storage_unavailable")
 					}
 					cancel()
@@ -434,7 +440,12 @@ func (a *App) Run(ctx context.Context) error {
 	cleanupDone := make(chan struct{})
 	go func() { defer close(cleanupDone); runImageCleanup(workerCtx, a.inputs) }()
 	feedbackCleanupDone := make(chan struct{})
-	go func() { defer close(feedbackCleanupDone); _ = a.feedback.Run(workerCtx, time.Hour) }()
+	go func() {
+		defer close(feedbackCleanupDone)
+		if err := a.feedback.Run(workerCtx, time.Hour); err != nil {
+			slog.Error("操作失败", "module", "app", "operation", "Run", "error", err)
+		}
+	}()
 	uploadCleanupDone := make(chan struct{})
 	go func() {
 		defer close(uploadCleanupDone)

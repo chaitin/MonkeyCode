@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -85,6 +86,7 @@ func (p *Provider) Generate(ctx context.Context, target proxy.Target, req imageg
 	}
 	size, err := Size(target.UpstreamModel, req.Quality, req.AspectRatio)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "images", "operation", "Generate", "error", err)
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_image_size"}, nil
 	}
 	response, status, err := imagegen.Call(ctx, p.client, target, "images/generations", map[string]any{
@@ -100,6 +102,7 @@ func (p *Provider) Edit(ctx context.Context, target proxy.Target, req imagegen.P
 	}
 	size, err := Size(target.UpstreamModel, req.Quality, req.AspectRatio)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "images", "operation", "Edit", "error", err)
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_image_size"}, nil
 	}
 	var body bytes.Buffer

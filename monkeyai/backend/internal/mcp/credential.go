@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
@@ -168,6 +169,9 @@ func decodeHeaders(raw []byte) (map[string]string, error) {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	first, err := d.Token()
 	if err != nil || first != json.Delim('{') {
+		if err != nil {
+			slog.Warn("操作失败", "module", "mcp", "operation", "decodeHeaders", "error", err)
+		}
 		return nil, invalid
 	}
 	out, seen := map[string]string{}, map[string]bool{}
@@ -176,6 +180,9 @@ func decodeHeaders(raw []byte) (map[string]string, error) {
 		token, err := d.Token()
 		key, ok := token.(string)
 		if err != nil || !ok || key == "" || len(key) > 256 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "mcp", "operation", "decodeHeaders", "error", err)
+			}
 			return nil, invalid
 		}
 		for _, ch := range key {
@@ -206,6 +213,9 @@ func decodeHeaders(raw []byte) (map[string]string, error) {
 		}
 	}
 	if _, err := d.Token(); err != nil || len(out) == 0 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "mcp", "operation", "decodeHeaders", "error", err)
+		}
 		return nil, invalid
 	}
 	if _, err := d.Token(); err != io.EOF {

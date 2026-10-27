@@ -2,13 +2,14 @@ package feedback
 
 import (
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -152,6 +153,7 @@ func (s *Service) download(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := s.storage.Get(r.Context(), row.ObjectKey)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "feedback", "operation", "download", "error", err)
 		resource.Fail(r.Context(), w, storageFailure())
 		return
 	}

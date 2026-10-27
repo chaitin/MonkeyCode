@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 
@@ -16,6 +17,9 @@ func (p checkedProxy) RoundTrip(req *http.Request) (*http.Response, error) {
 	name := req.URL.Hostname()
 	ips, err := net.DefaultResolver.LookupNetIP(req.Context(), "ip", name)
 	if err != nil || len(ips) == 0 {
+		if err != nil {
+			slog.WarnContext(req.Context(), "操作失败", "module", "mcp", "operation", "RoundTrip", "error", err)
+		}
 		return nil, fmt.Errorf("无法解析连接目标")
 	}
 	for _, ip := range ips {

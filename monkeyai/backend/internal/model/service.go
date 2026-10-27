@@ -3,11 +3,12 @@ package model
 import (
 	"context"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
@@ -222,6 +223,9 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 		if item.Kind == KindVideo && item.VideoConfig != nil {
 			cap, err := VideoCapabilitiesFor(item.Provider, item.ModelID)
 			if err != nil || ValidateVideoCapabilities(item, cap) != nil {
+				if err != nil {
+					slog.WarnContext(ctx, "操作失败", "module", "model", "operation", "AgentModels", "error", err)
+				}
 				continue
 			}
 			videoConfig = &AgentVideoConfig{VideoConfig: *item.VideoConfig,
@@ -272,6 +276,7 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 	}
 	userID, err := s.keys.Authenticate(ctx, credential, "model:invoke")
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "model", "operation", "Resolve", "error", err)
 		return Target{}, ErrUnauthorized
 	}
 	item, err := s.repository.Resolve(ctx, userID, requestedModel)
@@ -354,6 +359,9 @@ func modelFromInput(input SaveInput) (Model, error) {
 	}
 	parsed, err := url.Parse(item.BaseURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "model", "operation", "modelFromInput", "error", err)
+		}
 		return Model{}, errors.New("base_url 必须是有效的 HTTP(S) 地址")
 	}
 	if kind == KindVideo && (parsed.RawQuery != "" || parsed.Fragment != "") {

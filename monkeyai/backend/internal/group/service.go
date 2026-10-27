@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -136,6 +137,7 @@ func (s *Service) Save(ctx context.Context, actor, id string, in Input) (Group, 
 	var parentID *string
 	if len(in.ParentID) > 0 {
 		if err := json.Unmarshal(in.ParentID, &parentID); err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "group", "operation", "Save", "error", err)
 			return Group{}, resource.Invalid("parent_id 必须是分组 ID 或 null")
 		}
 		if parentID != nil && *parentID == rootgroup.ID {

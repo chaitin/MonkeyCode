@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 )
@@ -51,7 +52,11 @@ func Inspect(reader io.ReaderAt, size int64) (Inspection, error) {
 	if err != nil {
 		return out, err
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "designcatalog", "operation", "Inspect", "error", err)
+		}
+	}()
 	b, err := io.ReadAll(io.LimitReader(r, int64(f.UncompressedSize64)+1))
 	if err != nil {
 		return out, err
@@ -75,7 +80,9 @@ func Inspect(reader io.ReaderAt, size int64) (Inspection, error) {
 		return out, nil
 	}
 	_, out.NewDesign = design["schema_version"]
-	_ = json.Unmarshal(design["schema_version"], &out.Design.SchemaVersion)
+	if err := json.Unmarshal(design["schema_version"], &out.Design.SchemaVersion); err != nil {
+		slog.Error("解析数据失败", "module", "designcatalog", "operation", "Inspect", "error", err)
+	}
 	out.Design.Supported = out.Design.SchemaVersion == SchemaVersion && stringValue(design["digest_schema"]) == DigestSchema
 	return out, nil
 }

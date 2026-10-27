@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -75,7 +76,9 @@ func executionState(row sqlc.Endpoint) ExecutionState {
 		PublicKey: slices.Clone(row.ExecutionPublicKey), RemoteAccessState: row.RemoteAccessState,
 		RegistrationVersion: row.RegistrationVersion, GrantVersion: row.GrantVersion, LeaseEpoch: row.LeaseEpoch,
 		LastSeenAt: row.LastSeenAt, RuntimeVersion: row.RuntimeVersion, EngineVersion: row.EngineVersion}
-	json.Unmarshal(row.ExecutionProtocols, &out.Protocols)
+	if err := json.Unmarshal(row.ExecutionProtocols, &out.Protocols); err != nil {
+		slog.Error("解析数据失败", "module", "endpoint", "operation", "executionState", "error", err)
+	}
 	if row.Alias != nil {
 		out.DisplayName = *row.Alias
 	}
@@ -233,7 +236,10 @@ func (e *Execution) Enroll(ctx context.Context, p identity.Principal, in Enrollm
 				revokedGrant = *old.ActiveGrantID
 			}
 		}
-		protocols, _ := json.Marshal(in.Protocols)
+		protocols, err := json.Marshal(in.Protocols)
+		if err != nil {
+			return ExecutionState{}, err
+		}
 		if in.Protocols == nil {
 			protocols = []byte("{}")
 		}

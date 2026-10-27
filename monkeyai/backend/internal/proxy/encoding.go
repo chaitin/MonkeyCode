@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"log/slog"
 	"strconv"
 	"strings"
 )
@@ -28,6 +29,9 @@ func negotiateEncoding(values []string) (string, bool) {
 				}
 				q, err := strconv.ParseFloat(strings.TrimSpace(weight), 64)
 				if err != nil || !(q >= 0 && q <= 1) {
+					if err != nil {
+						slog.Warn("操作失败", "module", "proxy", "operation", "negotiateEncoding", "error", err)
+					}
 					quality = 0
 					break
 				}

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
@@ -41,10 +42,12 @@ func (p *Provider) Edit(ctx context.Context, target proxy.Target, req imagegen.P
 
 func (p *Provider) call(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest, action string) (imagegen.ProviderResult, error) {
 	if _, err := p.Capabilities(target.UpstreamModel); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "responses", "operation", "call", "error", err)
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_model"}, nil
 	}
 	size, err := images.Size("gpt-image-2.5-sunburst", req.Quality, req.AspectRatio)
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "responses", "operation", "call", "error", err)
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_image_size"}, nil
 	}
 	contents := []map[string]string{{"type": "input_text", "text": req.Prompt}}

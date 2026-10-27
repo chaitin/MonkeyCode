@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
@@ -46,6 +47,9 @@ func (p *Provider) Edit(ctx context.Context, target proxy.Target, req imagegen.P
 
 func (p *Provider) call(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest) (imagegen.ProviderResult, error) {
 	if _, err := p.Capabilities(target.UpstreamModel); err != nil || req.Count != 1 || req.Mask != nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "volcengine", "operation", "call", "error", err)
+		}
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_image_parameter"}, nil
 	}
 	size := sizes[req.Quality][req.AspectRatio]

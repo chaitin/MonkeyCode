@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/go-chi/chi/v5"
@@ -33,6 +34,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "apikey", "operation", "create", "error", err)
 		keyError(r.Context(), w, http.StatusBadRequest, "请求格式无效")
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 )
 
@@ -29,6 +30,9 @@ func validateProvenance(b json.RawMessage) error {
 	}
 	var fields map[string]json.RawMessage
 	if err := decode(b, &fields); err != nil || fields == nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "designcatalog", "operation", "validateProvenance", "error", err)
+		}
 		return errors.New("provenance 必须是对象")
 	}
 	for key, raw := range fields {

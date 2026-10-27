@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"regexp"
@@ -120,6 +121,9 @@ func (p Package) ReadFile(name string) ([]byte, error) {
 	data, readErr := io.ReadAll(io.LimitReader(reader, int64(entry.UncompressedSize64)+1))
 	closeErr := reader.Close()
 	if readErr != nil || closeErr != nil || uint64(len(data)) != entry.UncompressedSize64 {
+		if closeErr != nil {
+			slog.Warn("操作失败", "module", "resourceimport", "operation", "ReadFile", "error", closeErr)
+		}
 		return nil, fmt.Errorf("资源包中文件损坏: %s", name)
 	}
 	return data, nil
@@ -189,12 +193,17 @@ func readZIP(data []byte, maxSize, maxExpanded, maxFile int) (map[string][]byte,
 		}
 		limit := min(maxFile, maxExpanded-total)
 		if limit < 0 {
-			reader.Close()
+			if err := reader.Close(); err != nil {
+				slog.Error("关闭资源失败", "module", "resourceimport", "operation", "readZIP", "error", err)
+			}
 			return nil, fmt.Errorf("ZIP 解压大小超限")
 		}
 		content, readErr := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
 		closeErr := reader.Close()
 		if readErr != nil || closeErr != nil || len(content) > limit || uint64(len(content)) != f.UncompressedSize64 {
+			if closeErr != nil {
+				slog.Warn("操作失败", "module", "resourceimport", "operation", "readZIP", "error", closeErr)
+			}
 			return nil, fmt.Errorf("ZIP 文件损坏或解压大小超限: %q", name)
 		}
 		total += len(content)
@@ -229,7 +238,9 @@ func decodeJSON(data []byte, out any) error {
 		return fmt.Errorf("JSON 格式无效")
 	}
 	// 字段类型不匹配时保留可读取的字段，其余使用导入默认值。
-	_ = json.Unmarshal(data, out)
+	if err := json.Unmarshal(data, out); err != nil {
+		slog.Error("解析数据失败", "module", "resourceimport", "operation", "decodeJSON", "error", err)
+	}
 	return nil
 }
 

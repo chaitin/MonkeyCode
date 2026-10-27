@@ -3,10 +3,11 @@ package identity
 import (
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
@@ -65,6 +66,7 @@ func (s *Service) patchUser(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "patchUser", "error", err)
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "请求格式无效")
 		return
 	}
@@ -172,6 +174,7 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		GroupIDs []string `json:"group_ids"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "createUser", "error", err)
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "请求格式无效")
 		return
 	}

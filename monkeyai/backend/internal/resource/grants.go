@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
-	"github.com/jackc/pgx/v5"
-
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
-
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 func checkRetiredGrants(ctx context.Context, tx pgx.Tx, kind, id string, raw any) error {
@@ -42,6 +41,9 @@ func checkRetiredGrants(ctx context.Context, tx pgx.Tx, kind, id string, raw any
 	var requested []Object
 	data, err := json.Marshal(raw)
 	if err != nil || json.Unmarshal(data, &requested) != nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "resource", "operation", "checkRetiredGrants", "error", err)
+		}
 		return Invalid("授权格式无效")
 	}
 	for _, entry := range requested {

@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
@@ -96,6 +97,9 @@ func prepareRequest(body []byte, path string, limit int64, stream bool) ([]byte,
 		options := map[string]json.RawMessage{}
 		if b, ok := data["stream_options"]; ok {
 			if err := json.Unmarshal(b, &options); err != nil || options == nil {
+				if err != nil {
+					slog.Warn("操作失败", "module", "proxy", "operation", "prepareRequest", "error", err)
+				}
 				return nil, resource.Invalid("stream_options 无效")
 			}
 		}

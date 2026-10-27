@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -169,6 +170,9 @@ func parseAfterTurn(r *http.Request) (int32, error) {
 	}
 	value, err := strconv.ParseInt(values[0], 10, 32)
 	if err != nil || value < 0 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "session", "operation", "parseAfterTurn", "error", err)
+		}
 		return 0, invalidState("after_turn 无效")
 	}
 	return int32(value), nil
@@ -541,13 +545,23 @@ func persistSnapshot(ctx context.Context, tx pgx.Tx, sessionID string, snapshot 
 func sameSnapshotJSON(stored, expected []byte) bool {
 	var left, right any
 	if err := json.Unmarshal(stored, &left); err != nil {
+		slog.Warn("操作失败", "module", "session", "operation", "sameSnapshotJSON", "error", err)
 		return false
 	}
 	if err := json.Unmarshal(expected, &right); err != nil {
+		slog.Warn("操作失败", "module", "session", "operation", "sameSnapshotJSON", "error", err)
 		return false
 	}
-	leftData, _ := json.Marshal(left)
-	rightData, _ := json.Marshal(right)
+	leftData, err := json.Marshal(left)
+	if err != nil {
+		slog.Error("编码会话状态失败", "error", err)
+		return false
+	}
+	rightData, err := json.Marshal(right)
+	if err != nil {
+		slog.Error("编码会话状态失败", "error", err)
+		return false
+	}
 	return bytes.Equal(leftData, rightData)
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func TestErrorClassificationAndWrappedSecrets(t *testing.T) {
+func TestErrorClassificationAndWrappedMessages(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		err        error
@@ -38,9 +38,12 @@ func TestErrorClassificationAndWrappedSecrets(t *testing.T) {
 			values := map[string]string{}
 			for _, a := range attrs {
 				values[a.Key] = a.Value.String()
-				if strings.Contains(a.Value.String(), "private-") {
+				if a.Key != "error_message" && strings.Contains(a.Value.String(), "private-") {
 					t.Fatal("错误分类泄漏秘密", a)
 				}
+			}
+			if values["error_message"] != fmt.Sprint(Dependency("database", err)) {
+				t.Fatalf("原始错误丢失: %v", values)
 			}
 			if values["error_code"] != test.code || values["dependency"] != "database" || test.kind != "" && values["error_type"] != test.kind {
 				t.Fatalf("分类错误: %v", values)
@@ -78,7 +81,7 @@ func TestErrorAttrsKeepsURLRootCause(t *testing.T) {
 	values := map[string]string{}
 	for _, a := range ErrorAttrs(err) {
 		values[a.Key] = a.Value.String()
-		if strings.Contains(a.Value.String(), "private-") || strings.Contains(a.Value.String(), "example.test") {
+		if a.Key != "error_message" && (strings.Contains(a.Value.String(), "private-") || strings.Contains(a.Value.String(), "example.test")) {
 			t.Fatal("根错误分类泄漏秘密", a)
 		}
 	}
@@ -93,9 +96,9 @@ func (e domainError) Error() string          { return "domain failure" }
 func (e domainError) DiagnosticCode() string { return e.code }
 
 func TestEventKeepsPollDiagnostics(t *testing.T) {
-	r, out, _, _ := runtimeTest(t)
+	logger, out := testLogger()
 	err := &url.Error{Op: "Get", URL: "https://private-host.example/path?video_id=private", Err: domainError{code: "upstream_address_blocked"}}
-	Event(t.Context(), r.Logger(), slog.LevelWarn, "video.job.retry", "重试", "module", "videogen", "operation", "poll", "job_id", "job-1", "failures", int32(1), "phase", "query_provider", "proxy_used", true, "error", err)
+	Event(t.Context(), logger, slog.LevelWarn, "video.job.retry", "重试", "module", "videogen", "operation", "poll", "job_id", "job-1", "failures", int32(1), "phase", "query_provider", "proxy_used", true, "error", err)
 	row := records(t, out)[0]
 	if row["phase"] != "query_provider" || row["proxy_used"] != true {
 		t.Fatalf("阶段或代理标记丢失: %v", row)
@@ -104,14 +107,14 @@ func TestEventKeepsPollDiagnostics(t *testing.T) {
 	if !ok || fields["error_code"] != "upstream_address_blocked" || fields["error_type"] != "*url.Error" || fields["cause_type"] != "logging.domainError" {
 		t.Fatalf("根错误字段错误: %v", row)
 	}
-	if strings.Contains(out.String(), "private") {
+	if fields["error_message"] != err.Error() {
 		t.Fatal(out.String())
 	}
 }
 
 func TestDerivedHandlerPreservesSource(t *testing.T) {
-	r, out, _, _ := runtimeTest(t)
-	Event(t.Context(), r.Logger().With("module", "proxy").WithGroup("call"), slog.LevelInfo, "test.event", "测试")
+	logger, out := testLogger()
+	Event(t.Context(), logger.With("module", "proxy").WithGroup("call"), slog.LevelInfo, "test.event", "测试")
 	row := records(t, out)[0]
 	source, ok := row["source"].(map[string]any)
 	if !ok || source["file"] != "error_test.go" || !strings.Contains(source["function"].(string), "TestDerivedHandlerPreservesSource") {

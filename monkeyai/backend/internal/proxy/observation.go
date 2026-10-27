@@ -27,7 +27,6 @@ func (p *Proxy) logCall(ctx context.Context, pc *proxyContext, call Call, cause 
 		if ctx.Err() != nil && result == "failed" && (call.ErrorCode == "stream_interrupted" || call.ErrorCode == "upstream_connection_failed") {
 			result, level = "canceled", slog.LevelDebug
 		}
-		logging.CountCall(p.logger, result)
 		attrs := []slog.Attr{slog.String("module", "proxy"), slog.String("operation", "proxy_request"),
 			slog.String("model_id", pc.target.ModelID), slog.String("transaction_id", pc.reservation.ID),
 			slog.String("response_id", call.RequestID), slog.String("result", result), slog.Bool("stream", pc.stream),

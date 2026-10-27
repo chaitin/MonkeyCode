@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -64,8 +65,16 @@ func loadIdentity(dir string) (serverIdentity, error) {
 	if err != nil {
 		return serverIdentity{}, fmt.Errorf("创建远程执行身份文件: %w", err)
 	}
-	defer os.Remove(temp.Name())
-	defer temp.Close()
+	defer func() {
+		if err := os.Remove(temp.Name()); err != nil && !os.IsNotExist(err) {
+			slog.Error("清理临时文件失败", "module", "relay", "operation", "loadIdentity", "error", err)
+		}
+	}()
+	defer func() {
+		if err := temp.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "loadIdentity", "error", err)
+		}
+	}()
 	if _, err = temp.Write(data); err != nil {
 		return serverIdentity{}, err
 	}
@@ -85,7 +94,9 @@ func loadIdentity(dir string) (serverIdentity, error) {
 			return serverIdentity{}, err
 		}
 		err = directory.Sync()
-		directory.Close()
+		if err := directory.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "loadIdentity", "error", err)
+		}
 		if err != nil {
 			return serverIdentity{}, err
 		}
@@ -98,7 +109,11 @@ func readIdentity(path string) (serverIdentity, error) {
 	if err != nil {
 		return serverIdentity{}, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "relay", "operation", "readIdentity", "error", err)
+		}
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return serverIdentity{}, err
@@ -110,12 +125,16 @@ func readIdentity(path string) (serverIdentity, error) {
 	decoder := json.NewDecoder(io.LimitReader(file, 16<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&state); err != nil || !validUUID(state.ServerID) {
+		if err != nil {
+			slog.Warn("操作失败", "module", "relay", "operation", "readIdentity", "error", err)
+		}
 		return serverIdentity{}, errors.New("远程执行身份文件无效，拒绝覆盖已有身份")
 	}
 	if decoder.Decode(new(any)) != io.EOF {
 		return serverIdentity{}, errors.New("远程执行身份文件含多余内容，拒绝覆盖已有身份")
 	}
 	if _, err := parseSigningKey([]byte(state.PrivateKey)); err != nil {
+		slog.Warn("操作失败", "module", "relay", "operation", "readIdentity", "error", err)
 		return serverIdentity{}, errors.New("远程执行身份私钥无效，拒绝覆盖已有身份")
 	}
 	return state, nil

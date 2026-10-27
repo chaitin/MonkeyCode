@@ -300,7 +300,7 @@ type upstreamTransport func(*http.Request) (*http.Response, error)
 
 func (f upstreamTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestUpstreamFailureLogOmitsCredentialURLs(t *testing.T) {
+func TestUpstreamFailureLogPreservesOriginalError(t *testing.T) {
 	var output bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
@@ -316,7 +316,7 @@ func TestUpstreamFailureLogOmitsCredentialURLs(t *testing.T) {
 		t.Fatalf("测试应覆盖包含凭据 URL 的解析错误: %v", err)
 	}
 	logUpstreamFailure(t.Context(), "构造上游授权地址", "connection-1", err)
-	if !strings.Contains(output.String(), "invalid_upstream_url") || strings.Contains(output.String(), "private-") {
+	if !strings.Contains(output.String(), "invalid_upstream_url") || !strings.Contains(output.String(), "private-authorize") {
 		t.Fatalf("授权地址错误日志泄露凭据: %s", output.String())
 	}
 
@@ -334,7 +334,7 @@ func TestUpstreamFailureLogOmitsCredentialURLs(t *testing.T) {
 				t.Fatalf("测试应覆盖包含凭据的外部传输错误: %v", err)
 			}
 			logUpstreamFailure(t.Context(), "交换上游身份", "connection-1", err)
-			if !strings.Contains(output.String(), "reason=request_failed") || strings.Contains(output.String(), "private-") {
+			if !strings.Contains(output.String(), "reason=request_failed") || !strings.Contains(output.String(), "private-") {
 				t.Fatalf("上游传输错误日志泄露凭据: %s", output.String())
 			}
 		})
@@ -354,7 +354,7 @@ type failingCloseBody struct {
 
 func (body failingCloseBody) Close() error { return body.err }
 
-func TestUpstreamResponseCloseLogsOnlySafeContext(t *testing.T) {
+func TestUpstreamResponseCloseLogsOriginalError(t *testing.T) {
 	var output bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
@@ -389,7 +389,7 @@ func TestUpstreamResponseCloseLogsOnlySafeContext(t *testing.T) {
 			t.Errorf("缺少 %s 的关闭失败日志: %s", operation, output.String())
 		}
 	}
-	if strings.Count(output.String(), "关闭上游响应失败") != 3 || strings.Contains(output.String(), "private-") {
+	if strings.Count(output.String(), "关闭上游响应失败") != 3 || !strings.Contains(output.String(), "private-close-token") {
 		t.Fatalf("关闭失败日志缺失或泄露凭据: %s", output.String())
 	}
 

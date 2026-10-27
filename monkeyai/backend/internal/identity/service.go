@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -285,6 +286,7 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 		return Token{}, oauthError("invalid_client", "客户端信息无效")
 	}
 	if _, err := validateRedirectURI(clientID, redirectURI); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "identity", "operation", "ExchangeCode", "error", err)
 		return Token{}, oauthError("invalid_grant", "授权回调地址无效")
 	}
 	if !verifierPattern.MatchString(verifier) {
@@ -295,6 +297,9 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 		return Token{}, err
 	}
 	if err != nil || stored.ClientID != clientID || stored.RedirectURI != redirectURI || stored.RedeemedAt != nil || !s.now().Before(stored.ExpiresAt) {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "identity", "operation", "ExchangeCode", "error", err)
+		}
 		return Token{}, oauthError("invalid_grant", "授权码无效或已过期")
 	}
 	digest := sha256.Sum256([]byte(verifier))

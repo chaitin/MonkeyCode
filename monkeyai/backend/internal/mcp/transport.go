@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -150,6 +151,7 @@ func discoverWithClient(ctx context.Context, target string, headers map[string]s
 			NextCursor string       `json:"nextCursor"`
 		}
 		if err = json.Unmarshal(data, &list); err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverWithClient", "error", err)
 			return nil, fmt.Errorf("工具目录格式无效")
 		}
 		for _, t := range list.Tools {

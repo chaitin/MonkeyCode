@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,9 @@ import (
 func consentToken(r *http.Request, requestID string) string {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil || cookie.Value == "" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "consentToken", "error", err)
+		}
 		return ""
 	}
 	mac := hmac.New(sha256.New, []byte(cookie.Value))
@@ -38,10 +42,16 @@ func verifyConsent(r *http.Request, requestID, publicURL string) error {
 func sameOrigin(origin, publicURL string) bool {
 	actual, err := url.Parse(origin)
 	if err != nil || actual.User != nil || actual.Path != "" || actual.RawQuery != "" || actual.Fragment != "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "sameOrigin", "error", err)
+		}
 		return false
 	}
 	expected, err := url.Parse(publicURL)
 	if err != nil || expected.Hostname() == "" {
+		if err != nil {
+			slog.Warn("操作失败", "module", "identity", "operation", "sameOrigin", "error", err)
+		}
 		return false
 	}
 	return strings.EqualFold(actual.Scheme, expected.Scheme) &&

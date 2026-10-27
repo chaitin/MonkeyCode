@@ -2,11 +2,12 @@ package identity
 
 import (
 	"context"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
 )
@@ -25,6 +26,9 @@ func (s *Service) searchUsers(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.Atoi(raw)
 	}
 	if err != nil || limit < 1 || limit > 100 || query == "" || len(query) > 200 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "searchUsers", "error", err)
+		}
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "q 必须为 1—200 字节，limit 必须为 1—100")
 		return
 	}

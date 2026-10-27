@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,6 +55,9 @@ func (p *Proxy) authorize(w http.ResponseWriter, r *http.Request) (string, strin
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
 	if err != nil || userID == "" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "authorize", "error", err)
+		}
 		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "API Key 无效"})
 		return "", "", false
 	}
@@ -68,16 +72,23 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 11<<20)
 	parts, err := r.MultipartReader()
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "upload", "error", err)
 		resource.Fail(r.Context(), w, resource.Invalid("参考图上传格式无效"))
 		return
 	}
 	part, err := parts.NextPart()
 	if err != nil || part.FormName() != "file" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "upload", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("缺少参考图 file 字段"))
 		return
 	}
 	data, err := io.ReadAll(io.LimitReader(part, (10<<20)+1))
 	if err != nil || len(data) == 0 || len(data) > 10<<20 {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "upload", "error", err)
+		}
 		resource.Fail(r.Context(), w, &resource.Error{Status: http.StatusRequestEntityTooLarge, Code: "video_input_too_large", Message: "视频参考图超过大小限制"})
 		return
 	}
@@ -106,6 +117,9 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil || input.Model == "" || input.Mode == "" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "generate", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("视频生成请求格式无效"))
 		return
 	}
@@ -172,30 +186,40 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			slog.Error("关闭资源失败", "module", "videoproxy", "operation", "output", "error", err)
+		}
+	}()
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Accept-Ranges", "bytes")
 	start, end, ranged, err := parseRange(r.Header.Get("Range"), size)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "output", "error", err)
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
 	if ranged {
 		if _, err := io.CopyN(io.Discard, body, start); err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "videoproxy", "operation", "output", "error", err)
 			return
 		}
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
-		_, _ = io.CopyN(w, body, end-start+1)
+		if _, err := io.CopyN(w, body, end-start+1); err != nil {
+			slog.Error("传输响应失败", "module", "videoproxy", "operation", "output", "error", err)
+		}
 		return
 	}
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.CopyN(w, body, size)
+	if _, err := io.CopyN(w, body, size); err != nil {
+		slog.Error("传输响应失败", "module", "videoproxy", "operation", "output", "error", err)
+	}
 }
 
 func parseRange(header string, size int64) (int64, int64, bool, error) {
@@ -212,6 +236,9 @@ func parseRange(header string, size int64) (int64, int64, bool, error) {
 	if parts[0] == "" {
 		length, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil || length <= 0 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "videoproxy", "operation", "parseRange", "error", err)
+			}
 			return 0, 0, false, errors.New("视频 Range 长度无效")
 		}
 		if length > size {
@@ -221,12 +248,18 @@ func parseRange(header string, size int64) (int64, int64, bool, error) {
 	}
 	start, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || start >= size || start < 0 {
+		if err != nil {
+			slog.Warn("操作失败", "module", "videoproxy", "operation", "parseRange", "error", err)
+		}
 		return 0, 0, false, errors.New("视频 Range 起点无效")
 	}
 	end := size - 1
 	if parts[1] != "" {
 		end, err = strconv.ParseInt(parts[1], 10, 64)
 		if err != nil || end < start {
+			if err != nil {
+				slog.Warn("操作失败", "module", "videoproxy", "operation", "parseRange", "error", err)
+			}
 			return 0, 0, false, errors.New("视频 Range 终点无效")
 		}
 		if end >= size {

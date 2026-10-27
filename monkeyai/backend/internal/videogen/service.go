@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
@@ -94,6 +95,9 @@ func (s *Service) Submit(ctx context.Context, target proxy.Target, input Generat
 	}
 	cap, err := model.VideoCapabilitiesFor(item.Provider, item.ModelID)
 	if err != nil || model.ValidateVideoCapabilities(item, cap) != nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "videogen", "operation", "Submit", "error", err)
+		}
 		return Task{}, resource.Invalid("视频模型能力不可用")
 	}
 	values, err := model.NormalizeVideoParams(item.VideoConfig, cap, input.Mode, input.Params)
@@ -173,14 +177,21 @@ func (s *Service) Submit(ctx context.Context, target proxy.Target, input Generat
 	})
 	if err != nil {
 		if key != "" {
-			if existing, _ := s.idempotent(ctx, target.UserID, key, requestHash); existing != "" {
+			existing, lookupErr := s.idempotent(ctx, target.UserID, key, requestHash)
+			if lookupErr != nil {
+				return Task{}, errors.Join(err, lookupErr)
+			}
+			if existing != "" {
 				return s.GetTask(ctx, target.UserID, existing)
 			}
 		}
 		return Task{}, err
 	}
 	jobID := resource.ID()
-	priceJSON, _ := json.Marshal(price)
+	priceJSON, err := json.Marshal(price)
+	if err != nil {
+		return Task{}, errors.Join(err, s.billing.Release(context.WithoutCancel(ctx), reservation.ID, "task_encode_failed"))
+	}
 	err = sqlc.New(s.pool).InsertVideoJob(ctx, sqlc.InsertVideoJobParams{
 		ID: jobID, UserID: target.UserID, ModelID: item.ID, SessionID: target.SessionID,
 		Provider: string(item.Provider), Mode: string(input.Mode), RequestHash: requestHash,
@@ -188,7 +199,9 @@ func (s *Service) Submit(ctx context.Context, target proxy.Target, input Generat
 		BillingTransactionID: reservation.ID,
 	})
 	if err != nil {
-		_ = s.billing.Release(context.WithoutCancel(ctx), reservation.ID, "task_create_failed")
+		if err := s.billing.Release(context.WithoutCancel(ctx), reservation.ID, "task_create_failed"); err != nil {
+			slog.Error("释放计费预留失败", "module", "videogen", "operation", "Submit", "error", err)
+		}
 		return Task{}, err
 	}
 	for ordinal, ref := range loaded {
@@ -320,16 +333,21 @@ func (s *Service) fail(ctx context.Context, id, transactionID, reason string) {
 	if err := s.billing.Release(ctx, transactionID, reason); err != nil {
 		logging.Event(ctx, slog.Default(), slog.LevelError, "videogen.operation.error", "释放视频计费预留失败", "module", "videogen", "operation", "fail", "job_id", id, "error", err)
 		code := "billing_unknown"
-		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &code})
+		if err := sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: id, ErrorCode: &code}); err != nil {
+			slog.Error("更新视频任务状态失败", "module", "videogen", "operation", "fail", "error", err)
+		}
 		return
 	}
-	_ = sqlc.New(s.pool).MarkVideoJobFailed(ctx, sqlc.MarkVideoJobFailedParams{ID: id, ErrorCode: &reason})
+	if err := sqlc.New(s.pool).MarkVideoJobFailed(ctx, sqlc.MarkVideoJobFailedParams{ID: id, ErrorCode: &reason}); err != nil {
+		slog.Error("更新视频任务状态失败", "module", "videogen", "operation", "fail", "error", err)
+	}
 }
 
 func (s *Service) dispatch(ctx context.Context, target proxy.Target, jobID, reservationID string, input GenerateInput) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if err := s.billing.Start(ctx, reservationID); err != nil {
+		logging.Diagnostic(ctx, slog.Default(), slog.LevelError, "billing.start.failed", err, slog.String("job_id", jobID), slog.String("transaction_id", reservationID))
 		s.fail(ctx, jobID, reservationID, "billing_start_failed")
 		return
 	}
@@ -337,19 +355,27 @@ func (s *Service) dispatch(ctx context.Context, target proxy.Target, jobID, rese
 	if err != nil {
 		var rejected providerRejected
 		if errors.As(err, &rejected) {
+			logging.Diagnostic(ctx, slog.Default(), slog.LevelWarn, "video.provider.rejected", err, slog.String("job_id", jobID))
 			s.fail(ctx, jobID, reservationID, "provider_rejected")
 			return
 		}
 		logging.Event(ctx, slog.Default(), slog.LevelWarn, "videogen.operation.warn", "视频上游受理结果未知", "module", "videogen", "operation", "dispatch", "job_id", jobID, "error", err)
 		code := "provider_submit_unknown"
-		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code})
+		if err := sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code}); err != nil {
+			slog.Error("更新视频任务状态失败", "module", "videogen", "operation", "dispatch", "error", err)
+		}
 		return
 	}
 	if affected, e := sqlc.New(s.pool).MarkVideoJobSubmitted(ctx, sqlc.MarkVideoJobSubmittedParams{ID: jobID, ProviderJobID: &providerID}); e != nil || affected != 1 {
 		err = e
+		if err == nil {
+			err = errors.New("视频任务状态已变化，未登记上游任务")
+		}
 		logging.Event(ctx, slog.Default(), slog.LevelError, "videogen.operation.error", "登记视频上游任务失败", "module", "videogen", "operation", "dispatch", "job_id", jobID, "error", err)
 		code := "provider_job_unknown"
-		_ = sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code})
+		if err := sqlc.New(s.pool).MarkVideoJobUnknown(ctx, sqlc.MarkVideoJobUnknownParams{ID: jobID, ErrorCode: &code}); err != nil {
+			slog.Error("更新视频任务状态失败", "module", "videogen", "operation", "dispatch", "error", err)
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package group
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +28,9 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			limit, err = strconv.Atoi(raw)
 		}
 		if err != nil || limit < 1 || limit > 100 {
+			if err != nil {
+				slog.Warn("操作失败", "module", "group", "operation", "RegisterAgent", "error", err)
+			}
 			resource.Fail(r.Context(), w, resource.Invalid("limit 必须为 1—100"))
 			return
 		}

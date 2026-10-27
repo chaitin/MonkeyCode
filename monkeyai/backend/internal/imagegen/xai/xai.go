@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -31,6 +32,9 @@ func (p *Provider) Capabilities(string) (imagegen.Capabilities, error) {
 func (p *Provider) Generate(ctx context.Context, target proxy.Target, req imagegen.ProviderRequest) (imagegen.ProviderResult, error) {
 	cap, err := p.Capabilities(target.UpstreamModel)
 	if err != nil || !slices.Contains(cap.Qualities, req.Quality) || !slices.Contains(cap.AspectRatios, req.AspectRatio) || len(req.Images) != 0 {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "xai", "operation", "Generate", "error", err)
+		}
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "unsupported_image_parameter"}, nil
 	}
 	return p.call(ctx, target, "images/generations", map[string]any{
@@ -44,6 +48,9 @@ func (p *Provider) Edit(ctx context.Context, target proxy.Target, req imagegen.P
 	cap, err := p.Capabilities(target.UpstreamModel)
 	if err != nil || !slices.Contains(cap.Qualities, req.Quality) || !slices.Contains(cap.AspectRatios, req.AspectRatio) ||
 		len(req.Images) == 0 || len(req.Images) > cap.MaxReferences || req.Mask != nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "xai", "operation", "Edit", "error", err)
+		}
 		return imagegen.ProviderResult{Status: "failed", ErrorCode: "invalid_reference_image"}, nil
 	}
 	references := make([]map[string]string, 0, len(req.Images))

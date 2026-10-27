@@ -3,6 +3,7 @@ package testmember
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	groupdb "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group/sqlc"
@@ -26,7 +27,11 @@ func (w userWriter) EnsureInitialAdmin(ctx context.Context, in member.InitialAdm
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "testmember", "operation", "EnsureInitialAdmin", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	if _, err = q.LockInitialAdmin(ctx); err != nil {
 		return err
@@ -53,7 +58,11 @@ func (w userWriter) CreateUser(ctx context.Context, in member.CreateUser) (membe
 	if err != nil {
 		return member.User{}, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("回滚事务失败", "module", "testmember", "operation", "CreateUser", "error", err)
+		}
+	}()
 	q := sqlc.New(tx)
 	if err = q.LockUserCreationGroups(ctx); err != nil {
 		return member.User{}, err

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
@@ -53,6 +54,7 @@ func oauthSettings(c resource.Object) oauthConfig {
 	}
 	var o oauthConfig
 	if err := json.Unmarshal(b, &o); err != nil {
+		slog.Warn("操作失败", "module", "mcp", "operation", "oauthSettings", "error", err)
 		logging.Event(context.Background(), slog.Default(), slog.LevelError, "mcp.operation.error", "解析 OAuth 配置失败", "module", "mcp", "operation", "oauthSettings", "connector_id", c.String("id"), "operation", "decode_config", "failure_reason", "invalid_config_format")
 		return oauthConfig{}
 	}
@@ -162,6 +164,9 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request, admin bool) 
 	o := oauthSettings(c)
 	target, err := url.Parse(o.AuthorizationURL)
 	if err != nil || target == nil || target.Scheme == "" || target.Host == "" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "authorize", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("OAuth 授权地址无效"))
 		return
 	}
@@ -350,11 +355,12 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	success = true
 	message := "授权成功，已自动测试连接并更新工具列表，请返回 MonkeyAI。"
 	if testErr != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "Callback", "error", testErr)
 		message = "授权成功，但自动连接测试失败，请返回 MonkeyAI 查看凭证状态并重试连接测试。"
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := fmt.Fprintf(w, "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\"><title>授权成功</title><p>%s</p></html>", message); err != nil {
-		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "写入 OAuth 授权结果失败", "module", "mcp", "operation", "Callback", "connector_id", id, "credential_id", credential, "failure_reason", "response_write_failed", "error_type", fmt.Sprintf("%T", err))
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "写入 OAuth 授权结果失败", "module", "mcp", "operation", "Callback", "connector_id", id, "credential_id", credential, "failure_reason", "response_write_failed", "error_type", fmt.Sprintf("%T", err), "error", err)
 	}
 }
 
@@ -372,39 +378,38 @@ type tokenExchangeError struct {
 
 func (e tokenExchangeError) Error() string { return e.reason }
 
-// 上游及回调错误可能携带 URL 查询串、授权码或 Token，仅输出受控分类与状态。
 func safeMCPFailure(err error) []any {
 	if exchangeErr, ok := errors.AsType[tokenExchangeError](err); ok {
 		if exchangeErr.status != 0 {
-			return []any{"reason", exchangeErr.reason, "upstream_status", exchangeErr.status}
+			return []any{"error", err, "reason", exchangeErr.reason, "upstream_status", exchangeErr.status}
 		}
-		return []any{"reason", exchangeErr.reason}
+		return []any{"error", err, "reason", exchangeErr.reason}
 	}
 	if failure, ok := errors.AsType[*resource.Error](err); ok {
-		return []any{"reason", failure.Code, "status", failure.Status}
+		return []any{"error", err, "reason", failure.Code, "status", failure.Status}
 	}
 	if upstream, ok := errors.AsType[remoteStatus](err); ok {
-		return []any{"reason", "upstream_http_error", "upstream_status", int(upstream)}
+		return []any{"error", err, "reason", "upstream_http_error", "upstream_status", int(upstream)}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return []any{"reason", "timeout"}
+		return []any{"error", err, "reason", "timeout"}
 	}
 	if errors.Is(err, context.Canceled) {
-		return []any{"reason", "canceled"}
+		return []any{"error", err, "reason", "canceled"}
 	}
 	if network, ok := errors.AsType[net.Error](err); ok {
-		return []any{"reason", "network_error", "timeout", network.Timeout()}
+		return []any{"error", err, "reason", "network_error", "timeout", network.Timeout()}
 	}
 	if _, ok := errors.AsType[*url.Error](err); ok {
-		return []any{"reason", "transport_error"}
+		return []any{"error", err, "reason", "transport_error"}
 	}
 	if databaseErr, ok := errors.AsType[*pgconn.PgError](err); ok {
-		return []any{"reason", "database_error", "sqlstate", databaseErr.Code}
+		return []any{"error", err, "reason", "database_error", "sqlstate", databaseErr.Code}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return []any{"error", pgx.ErrNoRows}
+		return []any{"error", err}
 	}
-	return []any{"reason", "internal_error", "error_type", fmt.Sprintf("%T", err)}
+	return []any{"error", err, "reason", "internal_error"}
 }
 
 type configuredProxyKey struct{}
@@ -444,6 +449,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", o.TokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "exchangeWithProxy", "error", err)
 		return tokens{}, tokenExchangeError{reason: "invalid_token_url"}
 	}
 	if o.TokenAuthMethod == "client_secret_basic" {
@@ -473,6 +479,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	}()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "exchangeWithProxy", "error", err)
 		return tokens{}, tokenExchangeError{reason: "response_read_error", status: resp.StatusCode}
 	}
 	if len(data) > 1<<20 {
@@ -489,6 +496,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	if json.Unmarshal(data, &payload) != nil {
 		form, err = url.ParseQuery(string(data))
 		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "exchangeWithProxy", "error", err)
 			return tokens{}, tokenExchangeError{reason: "invalid_token_response", status: resp.StatusCode}
 		}
 		payload.Access = form.Get("access_token")
@@ -509,6 +517,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 		if expires := form.Get("expires_in"); expires != "" {
 			seconds, err := strconv.ParseInt(expires, 10, 64)
 			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "exchangeWithProxy", "error", err)
 				return tokens{}, tokenExchangeError{reason: "invalid_expires_in", status: resp.StatusCode}
 			}
 			payload.Expires = seconds

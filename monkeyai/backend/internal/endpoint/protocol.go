@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -72,6 +73,7 @@ func object(data []byte) (map[string]json.RawMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err := value(decoder, 0); err != nil {
+		slog.Warn("操作失败", "module", "endpoint", "operation", "object", "error", err)
 		return nil, errInvalid
 	}
 	if _, err := decoder.Token(); err != io.EOF {
@@ -124,6 +126,9 @@ func value(d *json.Decoder, depth int) error {
 	}
 	end, err := d.Token()
 	if err != nil || (delim == '{' && end != json.Delim('}')) || (delim == '[' && end != json.Delim(']')) {
+		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "value", "error", err)
+		}
 		return errInvalid
 	}
 	return nil
@@ -157,6 +162,9 @@ func hello(data []byte) (Hello, error) {
 	var h Hello
 	fields, err := object(data)
 	if err != nil || len(data) > 4096 || reserved(fields) || decode(fields, &h, "type", "protocol_versions", "machine_id") != nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "hello", "error", err)
+		}
 		return h, errInvalid
 	}
 	for _, key := range []string{"message_id", "target", "method", "reply_to", "payload"} {
@@ -176,6 +184,9 @@ func hello(data []byte) (Hello, error) {
 	}
 	profile, err := object(fields["profile"])
 	if err != nil || decode(profile, &h.Profile, "device_name", "platform", "os_version", "arch", "client_version") != nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "hello", "error", err)
+		}
 		return h, errInvalid
 	}
 	p := h.Profile
@@ -192,6 +203,9 @@ func message(data []byte) (Message, error) {
 	var m Message
 	fields, err := object(data)
 	if err != nil || reserved(fields) || decode(fields, &m, "type", "message_id", "target", "method", "reply_to", "payload") != nil {
+		if err != nil {
+			slog.Warn("操作失败", "module", "endpoint", "operation", "message", "error", err)
+		}
 		return m, errInvalid
 	}
 	for _, key := range []string{"protocol_versions", "machine_id", "profile"} {
@@ -203,6 +217,7 @@ func message(data []byte) (Message, error) {
 		return m, errInvalid
 	}
 	if _, err := object(m.Payload); err != nil {
+		slog.Warn("操作失败", "module", "endpoint", "operation", "message", "error", err)
 		return m, errInvalid
 	}
 	switch m.Type {

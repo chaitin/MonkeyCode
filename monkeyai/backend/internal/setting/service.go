@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -79,6 +80,9 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 	}
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(value, &object); err != nil || object == nil {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "Put", "error", err)
+		}
 		return Record{}, errors.New("value 必须是 JSON 对象")
 	}
 	if key == "authentication" {
@@ -114,6 +118,9 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 	if key == "proxies" {
 		var proxies []map[string]json.RawMessage
 		if err := json.Unmarshal(object["proxies"], &proxies); err != nil || proxies == nil {
+			if err != nil {
+				slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "Put", "error", err)
+			}
 			return Record{}, errors.New("proxies 必须是数组")
 		}
 		for _, proxy := range proxies {
@@ -121,17 +128,30 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 				return Record{}, errors.New("代理配置无效")
 			}
 			if rawString(proxy["id"]) == "" {
-				proxy["id"], _ = json.Marshal(resource.ID())
+				encoded, encodeErr := json.Marshal(resource.ID())
+				if encodeErr != nil {
+					return Record{}, encodeErr
+				}
+				proxy["id"] = encoded
 			}
 		}
-		object["proxies"], _ = json.Marshal(proxies)
-		value, _ = json.Marshal(object)
+		encoded, encodeErr := json.Marshal(proxies)
+		if encodeErr != nil {
+			return Record{}, encodeErr
+		}
+		object["proxies"] = encoded
+		encoded, encodeErr = json.Marshal(object)
+		if encodeErr != nil {
+			return Record{}, encodeErr
+		}
+		value = encoded
 	}
 	value, err := s.mergeSecrets(ctx, key, value)
 	if err != nil {
 		return Record{}, err
 	}
 	if err := json.Unmarshal(value, &object); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "Put", "error", err)
 		return Record{}, errors.New("value 必须是 JSON 对象")
 	}
 	if err := validate(key, object); err != nil {
@@ -280,6 +300,7 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 	}
 	var next, previous map[string]any
 	if err := json.Unmarshal(value, &next); err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "mergeSecrets", "error", err)
 		return nil, errors.New("value 必须是 JSON 对象")
 	}
 	if err := json.Unmarshal(existing.Value, &previous); err != nil {
@@ -377,6 +398,7 @@ func validate(key string, value map[string]json.RawMessage) error {
 	case "email":
 		data, err := json.Marshal(value)
 		if err != nil {
+			slog.Warn("操作失败", "module", "setting", "operation", "validate", "error", err)
 			return errors.New("邮件配置格式无效")
 		}
 		var config emailConfig
@@ -400,6 +422,7 @@ func validate(key string, value map[string]json.RawMessage) error {
 func rawString(value json.RawMessage) string {
 	var result string
 	if err := json.Unmarshal(value, &result); err != nil {
+		slog.Warn("操作失败", "module", "setting", "operation", "rawString", "error", err)
 		return ""
 	}
 	return result

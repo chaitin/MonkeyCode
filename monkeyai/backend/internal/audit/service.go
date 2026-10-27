@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit/sqlc"
 	"github.com/go-chi/chi/v5"
@@ -71,6 +72,9 @@ func optional(value string) *string {
 func uuid(value string) *string {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil || !id.Valid {
+		if err != nil {
+			slog.Warn("操作失败", "module", "audit", "operation", "uuid", "error", err)
+		}
 		return nil
 	}
 	return new(value)
@@ -97,12 +101,18 @@ func filters(r *http.Request) (sqlc.PageParams, int, error) {
 	if q.Has("page") {
 		page, err = strconv.Atoi(q.Get("page"))
 		if err != nil || page < 1 || page > 1000000 {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "audit", "operation", "filters", "error", err)
+			}
 			return in, 0, invalid
 		}
 	}
 	if q.Has("page_size") {
 		size, err = strconv.Atoi(q.Get("page_size"))
 		if err != nil || size < 1 || size > 500 {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "audit", "operation", "filters", "error", err)
+			}
 			return in, 0, invalid
 		}
 	}
@@ -111,6 +121,7 @@ func filters(r *http.Request) (sqlc.PageParams, int, error) {
 		if q.Has(key) {
 			at, err := time.Parse(time.RFC3339, q.Get(key))
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "audit", "operation", "filters", "error", err)
 				return in, 0, invalid
 			}
 			*target = &at

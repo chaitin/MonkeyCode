@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
-
 	"github.com/jackc/pgx/v5"
 )
 
@@ -25,6 +25,7 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 		if value := q.Get(key); value != "" {
 			at, err := time.Parse(time.RFC3339, value)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "history", "error", err)
 				resource.Fail(r.Context(), w, resource.Invalid("筛选时间需使用带时区的 ISO 格式"))
 				return
 			}
@@ -40,6 +41,9 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 		if value := q.Get(key); value != "" {
 			n, err := strconv.Atoi(value)
 			if err != nil || n < 1 || n > 1_000_000 || (key == "page_size" && n > 500) {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "stats", "operation", "history", "error", err)
+				}
 				resource.Fail(r.Context(), w, resource.Invalid("分页参数无效"))
 				return
 			}

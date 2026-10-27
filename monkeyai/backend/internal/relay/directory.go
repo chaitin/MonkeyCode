@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,6 +55,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	if value := r.URL.Query().Get("page"); value != "" {
 		page, err = strconv.Atoi(value)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
@@ -61,6 +63,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	if value := r.URL.Query().Get("page_size"); value != "" {
 		size, err = strconv.Atoi(value)
 		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 			failure(r.Context(), w, 400, "invalid_request")
 			return
 		}
@@ -72,6 +75,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.devices.Snapshot(ctx, p.UserID, capability == "execute")
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}
@@ -87,6 +91,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 		} else if online {
 			valid, err := s.identity.VerifyGrant(ctx, current.principal)
 			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 				failure(r.Context(), w, 503, "authorization_state_unavailable")
 				return
 			}
@@ -115,6 +120,7 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	}
 	encoded, err := json.Marshal(out)
 	if err != nil {
+		slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 		failure(r.Context(), w, 503, "authorization_state_unavailable")
 		return
 	}

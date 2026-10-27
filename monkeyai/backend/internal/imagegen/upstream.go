@@ -6,12 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 )
@@ -29,6 +30,9 @@ func Call(ctx context.Context, client *http.Client, target proxy.Target, endpoin
 func CallBody(ctx context.Context, client *http.Client, target proxy.Target, endpoint string, body []byte, contentType string) ([]byte, int, error) {
 	base, err := url.Parse(target.BaseURL)
 	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Hostname() == "" || base.User != nil || base.Fragment != "" {
+		if err != nil {
+			slog.WarnContext(ctx, "操作失败", "module", "imagegen", "operation", "CallBody", "error", err)
+		}
 		return nil, 0, errors.New("生图上游地址无效")
 	}
 	if len(body) > maxUpstreamResponse {
@@ -60,7 +64,7 @@ func CallBody(ctx context.Context, client *http.Client, target proxy.Target, end
 	}
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil && ctx.Err() == nil {
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭生图上游响应失败", "module", "imagegen", "operation", "CallBody", "operation", "close_upstream_response", "model_id", target.ModelID, "status", response.StatusCode, "error_type", providerErrorType(closeErr))
+			logging.Event(ctx, slog.Default(), slog.LevelWarn, "imagegen.operation.warn", "关闭生图上游响应失败", "module", "imagegen", "operation", "CallBody", "operation", "close_upstream_response", "model_id", target.ModelID, "status", response.StatusCode, "error_type", providerErrorType(closeErr), "error", closeErr)
 		}
 	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -82,6 +86,9 @@ func DecodeImage(encoded string) ([]byte, error) {
 	}
 	content, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil || len(content) == 0 || len(content) > maxOutputBytes {
+		if err != nil {
+			slog.Warn("操作失败", "module", "imagegen", "operation", "DecodeImage", "error", err)
+		}
 		return nil, errors.New("生图 Base64 结果无效")
 	}
 	return content, nil

@@ -28,22 +28,18 @@ func mainCode() int {
 		}
 		return 0
 	}
-	level, settings, err := config.ParseLogging(os.Args[1:])
+	level, err := config.ParseLogLevel(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		config.PrintUsage(os.Stdout)
 		return 0
 	}
 	if err != nil {
-		_, _ = os.Stderr.WriteString("启动参数无效，请使用 --help 查看用法\n")
+		if _, err := os.Stderr.WriteString("启动参数无效，请使用 --help 查看用法\n"); err != nil {
+			slog.Error("写入输出失败", "module", "main", "operation", "mainCode", "error", err)
+		}
 		return 2
 	}
-	logs, err := logging.NewRuntime(os.Stdout, level, settings)
-	if err != nil {
-		_, _ = os.Stderr.WriteString("日志配置无效\n")
-		return 2
-	}
-	defer logs.Close()
-	logger := logs.Logger()
+	logger := logging.New(os.Stdout, level)
 	slog.SetDefault(logger)
 	if err := run(logger); err != nil {
 		logger.Error("服务退出失败", "error", err)

@@ -92,7 +92,8 @@ func TestOutputFailureDiagnostics(t *testing.T) {
 					Code string `json:"error_code"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(logs.Bytes(), &row); err != nil {
+			lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+			if err := json.Unmarshal(lines[len(lines)-1], &row); err != nil {
 				t.Fatal(err)
 			}
 			if row.Phase != "save_output" || !row.Proxy || row.Output.Phase != tc.phase || row.Error.Code != tc.code {

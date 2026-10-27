@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"time"
 
@@ -17,7 +18,9 @@ type meteredConn struct {
 
 func (c *meteredConn) Close() error {
 	// yamux.Close 是半关闭；先中断读写，确保代理两侧都能退出。
-	c.Conn.SetDeadline(time.Now())
+	if err := c.Conn.SetDeadline(time.Now()); err != nil {
+		slog.Error("设置连接截止时间失败", "module", "relay", "operation", "Close", "error", err)
+	}
 	return c.Conn.Close()
 }
 
@@ -78,18 +81,24 @@ func (s *Service) openStream(ctx context.Context, mux *yamux.Session, opens chan
 			a.mu.Lock()
 			if a.closed || ctx.Err() != nil {
 				a.mu.Unlock()
-				conn.Close()
+				if err := conn.Close(); err != nil {
+					slog.Error("关闭资源失败", "module", "relay", "operation", "openStream", "error", err)
+				}
 				return
 			}
 			a.stream = conn
-			conn.SetDeadline(minTime(a.expiresAt, a.verifiedAt.Add(180*time.Second)))
+			if err := conn.SetDeadline(minTime(a.expiresAt, a.verifiedAt.Add(180*time.Second))); err != nil {
+				slog.Error("设置连接截止时间失败", "module", "relay", "operation", "openStream", "error", err)
+			}
 			a.mu.Unlock()
 		}
 		select {
 		case done <- result{conn, err}:
 		case <-ctx.Done():
 			if conn != nil {
-				conn.Close()
+				if err := conn.Close(); err != nil {
+					slog.Error("关闭资源失败", "module", "relay", "operation", "openStream", "error", err)
+				}
 			}
 		}
 	}()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/billing/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -118,6 +118,9 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	case "pricing":
 		for key, target := range map[string]*Amount{"input_credits_per_million_tokens": &p.Input, "cached_input_credits_per_million_tokens": &p.Cached, "output_credits_per_million_tokens": &p.Output} {
 			if err = json.Unmarshal(in[key], target); err != nil || *target < 0 || *target > Amount(1_000_000*scale) {
+				if err != nil {
+					slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "saveSettings", "error", err)
+				}
 				resource.Fail(r.Context(), w, resource.Invalid("单价须为 0 到 1000000 的积分值，最多六位小数"))
 				return
 			}
@@ -266,6 +269,9 @@ func (s *Service) saveQuotas(w http.ResponseWriter, r *http.Request) {
 		seen[v.Type+v.ID] = true
 		var amount *Amount
 		if err = json.Unmarshal(v.Credits, &amount); err != nil || amount != nil && (*amount < 0 || int64(*amount)%scale != 0) {
+			if err != nil {
+				slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "saveQuotas", "error", err)
+			}
 			resource.Fail(r.Context(), w, resource.Invalid("额度需为非负整数积分或 null"))
 			return
 		}
@@ -337,6 +343,9 @@ func normalizeResetIDs(ids []string, field string) ([]string, error) {
 	for _, id := range ids {
 		var value pgtype.UUID
 		if err := value.Scan(id); err != nil || !value.Valid {
+			if err != nil {
+				slog.Warn("操作失败", "module", "billing", "operation", "normalizeResetIDs", "error", err)
+			}
 			return nil, resource.Invalid(field + " 必须包含有效的 UUID")
 		}
 		normalized = append(normalized, value.String())
@@ -372,6 +381,9 @@ func (s *Service) resetQuotas(w http.ResponseWriter, r *http.Request) {
 	}
 	var idempotencyID pgtype.UUID
 	if err = idempotencyID.Scan(in.IdempotencyKey); err != nil || !idempotencyID.Valid {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "resetQuotas", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("idempotency_key 必须是有效的 UUID"))
 		return
 	}
@@ -620,12 +632,18 @@ func pageParams(r *http.Request, maxSize int) (int, int) {
 	page, pageErr := strconv.Atoi(r.URL.Query().Get("page"))
 	size, sizeErr := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if pageErr != nil || page < 1 {
+		if pageErr != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "pageParams", "error", pageErr)
+		}
 		page = 1
 	}
 	if page > 100000 {
 		page = 100000
 	}
 	if sizeErr != nil || size < 1 || size > maxSize {
+		if sizeErr != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "pageParams", "error", sizeErr)
+		}
 		size = 20
 	}
 	return page, size
@@ -668,6 +686,9 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 	}
 	amount, err := ParseAmount(amountText)
 	if err != nil || amount <= 0 || status != "settled" {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "refund", "error", err)
+		}
 		resource.Fail(r.Context(), w, fail(409, "transaction_not_refundable", "仅已结算的非零本地扣款可退款"))
 		return
 	}
@@ -698,6 +719,9 @@ func (s *Service) refund(w http.ResponseWriter, r *http.Request) {
 
 	current, err := ParseAmount(balance)
 	if err != nil || current > maxAmount-amount {
+		if err != nil {
+			slog.WarnContext(r.Context(), "操作失败", "module", "billing", "operation", "refund", "error", err)
+		}
 		resource.Fail(r.Context(), w, resource.Invalid("退款后余额超出允许范围，请先处理账户额度"))
 		return
 	}
