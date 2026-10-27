@@ -13,6 +13,7 @@ export type AuthUser = {
   name: string
   email: string
   avatar_url?: string
+  last_login_at?: string | null
   role: "admin" | "user"
   status: "active" | "disabled"
 }

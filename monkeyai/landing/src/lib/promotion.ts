@@ -7,6 +7,6 @@ export const promotion = {
   title,
   description: "百智办公可免费使用。企业用户在线登记并安装使用后，销售将根据登记信息与您联系，确认企业身份后赠送算力补贴。",
   cloud: { label: "百智云", href: "https://baizhi.cloud/" },
-  coupon: "满 2000 元送 1000 元",
+  coupon: "满 2000 减 1000",
   link: { label: "登记领取补贴", href: "https://baizhi.cloud/consult" },
 } as const

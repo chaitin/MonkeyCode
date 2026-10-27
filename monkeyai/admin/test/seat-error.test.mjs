@@ -55,6 +55,13 @@ async function renderLoginPage(page, search, language) {
             useLocation: () => ({ search }),
             useNavigate: () => () => {},
           }
+        case "@/components/ui/alert":
+          return {
+            Alert: ({ children }) =>
+              React.createElement("div", { role: "alert" }, children),
+            AlertTitle: componentStub,
+            AlertDescription: componentStub,
+          }
         case "@/lib/api":
           return { api: () => new Promise(() => {}) }
         case "@/hooks/use-auth":
