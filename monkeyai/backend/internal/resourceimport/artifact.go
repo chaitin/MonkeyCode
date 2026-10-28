@@ -114,10 +114,9 @@ func zipSkillFiles(data []byte) (map[string][]byte, error) {
 	root, found := "", false
 	for name := range files {
 		if name == "SKILL.md" || strings.HasSuffix(name, "/SKILL.md") {
-			if found {
-				return nil, fmt.Errorf("技能包存在多个 SKILL.md")
+			if !found || len(name) < len(root)+len("SKILL.md") {
+				found, root = true, strings.TrimSuffix(name, "SKILL.md")
 			}
-			found, root = true, strings.TrimSuffix(name, "SKILL.md")
 		}
 	}
 	if !found {

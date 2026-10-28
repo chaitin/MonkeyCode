@@ -134,6 +134,39 @@ test("recognizes a skill directory and parses SKILL.md metadata", async () => {
   assert.ok(result.unpackedSize > 0)
 })
 
+for (const root of ["", "code-review/"]) {
+  test(`以 ${root || "ZIP 根目录"} 的 SKILL.md 为入口并保留嵌套文件`, async () => {
+    const files = {
+      [`${root}examples/child/SKILL.md`]: "附属文件，无需有效元信息",
+      [`${root}references/SKILL.md`]: VALID_MANIFEST.replace("code-review", "nested"),
+      [`${root}SKILL.md`]: VALID_MANIFEST,
+    }
+    const archive = await createArchive(files)
+    const analysis = await inspectSkillPackage(archive)
+    assert.equal(analysis.name, "code-review")
+    assert.equal(analysis.entryPath, `${root}SKILL.md`)
+    assert.equal(analysis.fileCount, 3)
+    assert.equal(
+      analysis.unpackedSize,
+      Object.values(files).reduce((size, content) => size + Buffer.byteLength(content), 0)
+    )
+    assert.deepEqual(await inspectSkillArchive(archive), [analysis])
+    const directory = Object.entries(files).map(([path, content]) => {
+      const file = new File([content], path.split("/").at(-1))
+      Object.defineProperty(file, "webkitRelativePath", { value: path })
+      return file
+    })
+    assert.deepEqual(await inspectSkillDirectory(directory), [analysis])
+  })
+}
+
+test("根目录入口无效时不回退到嵌套入口", async () => {
+  await expectPackageError(
+    { "SKILL.md": "无效入口", "nested/SKILL.md": VALID_MANIFEST },
+    "invalidFrontmatter"
+  )
+})
+
 test("rejects archives without SKILL.md", async () => {
   await expectPackageError({ "README.md": "not a skill" }, "missingManifest")
 })

@@ -74,10 +74,7 @@ func Parse(b []byte) (Package, error) {
 			return p, fmt.Errorf("技能包损坏或解包大小超限")
 		}
 		p.Files[name] = data
-		if path.Base(name) == "SKILL.md" {
-			if found {
-				return p, fmt.Errorf("每个技能包只能包含一个 SKILL.md")
-			}
+		if path.Base(name) == "SKILL.md" && (!found || len(name) < len(root)+len("SKILL.md")) {
 			found = true
 			root = strings.TrimSuffix(name, "SKILL.md")
 		}

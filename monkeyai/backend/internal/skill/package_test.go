@@ -139,6 +139,35 @@ func TestPackageRewrite(t *testing.T) {
 		t.Fatal("重建结果不确定")
 	}
 }
+
+func TestPackageNestedManifests(t *testing.T) {
+	for _, root := range []string{"", "root/"} {
+		t.Run(root, func(t *testing.T) {
+			nested := "示例文件，无需有效的技能元信息\n"
+			p, err := Parse(archive(map[string]string{
+				root + "SKILL.md":                manifest,
+				root + "references/SKILL.md":     nested,
+				root + "examples/child/SKILL.md": nested,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.Name != "review" || p.Content != "Original\n" || len(p.Files) != 3 {
+				t.Fatal("应使用根目录入口并保留全部文件")
+			}
+			next, err := p.Rewrite("renamed", "新描述", "新正文\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"references/SKILL.md", "examples/child/SKILL.md"} {
+				if string(next.Files[name]) != nested {
+					t.Fatalf("重写技能不应修改嵌套文件: %s", name)
+				}
+			}
+		})
+	}
+}
+
 func TestUnsafePackages(t *testing.T) {
 	for name, entries := range map[string]map[string]string{"traversal": {"SKILL.md": manifest, "../outside": "x"}, "absolute": {"SKILL.md": manifest, "/etc/file": "x"}, "backslash": {"SKILL.md": manifest, `a\b`: "x"}, "multiple": {"a/SKILL.md": manifest, "b/SKILL.md": manifest}, "outside": {"a/SKILL.md": manifest, "other": "x"}, "invalidname": {"SKILL.md": "---\nname: ../bad\ndescription: Bad\n---\nBad"}} {
 		t.Run(name, func(t *testing.T) {
