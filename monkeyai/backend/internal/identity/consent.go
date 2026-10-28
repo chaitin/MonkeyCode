@@ -16,7 +16,7 @@ import (
 func consentToken(r *http.Request, requestID string) string {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil || cookie.Value == "" {
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrNoCookie) {
 			slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "consentToken", "error", err)
 		}
 		return ""

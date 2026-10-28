@@ -22,7 +22,7 @@ SELECT jsonb_build_object(
  'resources_id',resources_snapshot_id,'acked_turn',acked_turn,'facts_version',facts_version,
  'last_stop_reason',last_stop_reason,'active_seconds',active_seconds,
  'client_deleted_at',client_deleted_at,'reporting_enabled_at',reporting_enabled_at,'host_verified',host_verified
-) AS data FROM sessions WHERE id = $1::uuid FOR UPDATE;
+) AS data FROM sessions WHERE id = $1::uuid FOR NO KEY UPDATE;
 
 -- name: GetParent :one
 SELECT jsonb_build_object('owner',owner_user_id,'parent',parent_session_id,'purged',purged_at,'deleted',deleted_at) AS data
@@ -41,7 +41,7 @@ ON CONFLICT (user_id, kind) DO UPDATE SET
 RETURNING request_count;
 
 -- name: LockReportingUser :one
-SELECT id::text FROM users WHERE id = $1::uuid FOR UPDATE;
+SELECT id::text FROM users WHERE id = $1::uuid FOR NO KEY UPDATE;
 
 -- name: CountOpenPlaceholders :one
 SELECT count(*) FROM sessions

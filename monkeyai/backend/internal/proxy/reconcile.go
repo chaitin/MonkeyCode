@@ -21,8 +21,10 @@ const (
 )
 
 type ResponseReconciliation struct {
-	State ResponseReconciliationState
-	Call  Call
+	State          ResponseReconciliationState
+	Call           Call
+	Reason         string
+	UpstreamStatus int
 }
 
 type ResponseReconciler struct {
@@ -45,9 +47,12 @@ func (r *ResponseReconciler) WithTransport(transport http.RoundTripper) *Respons
 	return r
 }
 
-func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, responseID string) (ResponseReconciliation, error) {
-	if target.Protocol != "openai_responses" || responseID == "" || responseID == "." || responseID == ".." || strings.ContainsAny(responseID, `/\\`) {
-		return ResponseReconciliation{State: ResponseReconciliationUnsupported}, nil
+func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, responseID string) (result ResponseReconciliation, err error) {
+	if target.Protocol != "openai_responses" {
+		return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "protocol_unsupported"}, nil
+	}
+	if responseID == "" || responseID == "." || responseID == ".." || strings.ContainsAny(responseID, `/\\`) {
+		return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "invalid_response_id"}, nil
 	}
 	endpoint, err := parseBaseURL(target.BaseURL)
 	if err != nil {
@@ -82,15 +87,16 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 		}
 	}()
 
+	defer func() { result.UpstreamStatus = response.StatusCode }()
 	if response.StatusCode != http.StatusOK {
 		switch response.StatusCode {
 		case http.StatusNotFound, http.StatusConflict, http.StatusTooEarly, http.StatusTooManyRequests:
-			return ResponseReconciliation{State: ResponseReconciliationPending}, nil
+			return ResponseReconciliation{State: ResponseReconciliationPending, Reason: "upstream_http_error"}, nil
 		default:
 			if response.StatusCode >= http.StatusInternalServerError {
-				return ResponseReconciliation{State: ResponseReconciliationPending}, nil
+				return ResponseReconciliation{State: ResponseReconciliationPending, Reason: "upstream_http_error"}, nil
 			}
-			return ResponseReconciliation{State: ResponseReconciliationUnsupported}, nil
+			return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "upstream_rejected"}, nil
 		}
 	}
 
@@ -107,22 +113,22 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 		return ResponseReconciliation{}, fmt.Errorf("解析上游响应对账结果: %w", err)
 	}
 	if stored.ID != "" && stored.ID != responseID {
-		return ResponseReconciliation{State: ResponseReconciliationUnsupported}, nil
+		return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "response_id_mismatch"}, nil
 	}
 	if stored.Status == "queued" || stored.Status == "in_progress" {
-		return ResponseReconciliation{State: ResponseReconciliationPending}, nil
+		return ResponseReconciliation{State: ResponseReconciliationPending, Reason: "response_pending"}, nil
 	}
 	if stored.Usage == nil || !stored.Usage.inputKnown || !stored.Usage.outputKnown {
-		return ResponseReconciliation{State: ResponseReconciliationUnsupported}, nil
+		return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "usage_missing"}, nil
 	}
 
-	result := "succeeded"
+	callResult := "succeeded"
 	switch stored.Status {
 	case "", "completed":
 	case "failed", "incomplete", "cancelled", "canceled":
-		result = "failed"
+		callResult = "failed"
 	default:
-		return ResponseReconciliation{State: ResponseReconciliationUnsupported}, nil
+		return ResponseReconciliation{State: ResponseReconciliationUnsupported, Reason: "response_status_unsupported"}, nil
 	}
 	requestID := stored.ID
 	if requestID == "" {
@@ -133,7 +139,7 @@ func (r *ResponseReconciler) Reconcile(ctx context.Context, target Target, respo
 		Call: Call{
 			RequestID:         requestID,
 			Known:             true,
-			Result:            result,
+			Result:            callResult,
 			InputTokens:       stored.Usage.InputTokens,
 			CachedInputTokens: stored.Usage.InputTokensDetails.CachedTokens,
 			OutputTokens:      stored.Usage.OutputTokens,

@@ -26,8 +26,10 @@ type ReconciliationRequest struct {
 }
 
 type ReconciliationResult struct {
-	State ReconciliationState
-	Usage Usage
+	State          ReconciliationState
+	Usage          Usage
+	Reason         string
+	UpstreamStatus int
 }
 
 type UsageReconciler interface {
@@ -45,13 +47,6 @@ func (s *Service) reconcileUnknown(ctx context.Context) error {
 		return err
 	}
 	for _, row := range rows {
-		if row.Attempts >= maxReconciliationAttempts {
-			if _, err := sqlc.New(s.pool).StopReconciliation(ctx, row.ID); err != nil {
-				return err
-			}
-			logging.Event(ctx, slog.Default(), slog.LevelWarn, "billing.operation.warn", "模型用量自动对账已停止", "module", "billing", "operation", "reconcileUnknown", "transaction_id", row.ID, "attempts", row.Attempts)
-			continue
-		}
 		attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		err := s.reconcileUsage(attemptCtx, row)
 		cancel()
@@ -97,6 +92,9 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 	if status != "unknown" {
 		return nil
 	}
+	if row.Attempts >= maxReconciliationAttempts {
+		return stopReconciliation(ctx, sqlc.New(conn), row, "attempts_exhausted", 0)
+	}
 	result, err := s.reconciler.Reconcile(ctx, ReconciliationRequest{
 		TransactionID: row.ID,
 		ResourceID:    row.ResourceID,
@@ -108,10 +106,12 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 	switch result.State {
 	case ReconciliationPending:
 		_, err = sqlc.New(conn).ScheduleRetry(ctx, row.ID)
+		if err == nil {
+			logging.Event(ctx, slog.Default(), slog.LevelInfo, "billing.reconciliation.pending", "模型用量等待再次对账", "module", "billing", "transaction_id", row.ID, "model_id", row.ResourceID, "response_id", row.RequestID, "attempts", row.Attempts+1, "reason", result.Reason, "upstream_status", result.UpstreamStatus)
+		}
 		return err
 	case ReconciliationUnsupported:
-		_, err = sqlc.New(conn).StopReconciliation(ctx, row.ID)
-		return err
+		return stopReconciliation(ctx, sqlc.New(conn), row, result.Reason, result.UpstreamStatus)
 	case ReconciliationResolved:
 		if !result.Usage.Known {
 			_, err = sqlc.New(conn).StopReconciliation(ctx, row.ID)
@@ -144,4 +144,17 @@ func (s *Service) reconcileUsage(ctx context.Context, row sqlc.TransactionsToRec
 	}
 	logging.Event(ctx, slog.Default(), slog.LevelInfo, "billing.operation.info", "模型用量自动对账已补全", "module", "billing", "operation", "reconcileUsage", "transaction_id", row.ID, "request_id", row.RequestID)
 	return nil
+}
+
+func stopReconciliation(ctx context.Context, q *sqlc.Queries, row sqlc.TransactionsToReconcileRow, reason string, status int) error {
+	if reason == "" {
+		reason = "unsupported"
+	}
+	changed, err := q.StopReconciliation(ctx, row.ID)
+	if err == nil && changed.RowsAffected() > 0 {
+		logging.Event(ctx, slog.Default(), slog.LevelWarn, "billing.reconciliation.stopped", "模型用量自动对账已停止",
+			"module", "billing", "operation", "reconcileUnknown", "transaction_id", row.ID, "model_id", row.ResourceID,
+			"response_id", row.RequestID, "attempts", row.Attempts, "reason", reason, "usage_error_code", row.ErrorCode, "upstream_status", status)
+	}
+	return err
 }

@@ -47,7 +47,7 @@ func (a *access) closeReason(reason string) {
 		cancel()
 	}
 	if conn != nil {
-		if err := conn.Close(); err != nil {
+		if err := conn.Close(); err != nil && !closedConnection(err) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "closeReason", "error", err)
 		}
 	}
@@ -341,8 +341,8 @@ func (s *Service) control(ctx context.Context, r *route) {
 			slog.Error("关闭资源失败", "module", "relay", "operation", "control", "error", err)
 		}
 	}()
-	if err := server.Serve(&controlListener{session: r.control, slots: make(chan struct{}, 16)}); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("操作失败", "module", "relay", "operation", "control", "error", err)
+	if err := server.Serve(&controlListener{session: r.control, slots: make(chan struct{}, 16)}); err != nil && !errors.Is(err, http.ErrServerClosed) && !closedConnection(err) {
+		logging.Event(ctx, s.logger, slog.LevelError, "relay.control.failed", "设备控制通道失败", "module", "relay", "operation", "control", "machine_id", r.target.machine, "user_id", r.target.user, "boot_id", r.hello.BootID, "error", err)
 	}
 }
 func (s *Service) probe(r *route, stop <-chan struct{}) {
@@ -354,7 +354,9 @@ func (s *Service) probe(r *route, stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			if _, err := r.control.Ping(); err != nil {
-				slog.Warn("操作失败", "module", "relay", "operation", "probe", "error", err)
+				if !closedConnection(err) {
+					logging.Event(context.Background(), s.logger, slog.LevelWarn, "relay.probe.failed", "设备控制通道探测失败", "module", "relay", "operation", "probe", "machine_id", r.target.machine, "user_id", r.target.user, "boot_id", r.hello.BootID, "error", err)
+				}
 				s.closeRoute(r)
 				return
 			}
@@ -554,4 +556,9 @@ func streamSession(r *route, data bool) (*yamux.Session, chan struct{}) {
 		return r.data, nil
 	}
 	return r.control, r.slotsControl
+}
+
+func closedConnection(err error) bool {
+	return errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) ||
+		errors.Is(err, yamux.ErrSessionShutdown) || errors.Is(err, context.Canceled)
 }

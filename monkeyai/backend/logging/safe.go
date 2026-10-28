@@ -17,7 +17,9 @@ var stringFields = map[string]bool{
 	"previous_level": true, "current_level": true, "origin": true,
 	"intent": true, "code": true, "kind": true, "status": true, "provider": true,
 	"usage_error_code": true, "file": true, "resource_id": true, "key_id": true,
-	"input_source": true, "output_source": true,
+	"input_source": true, "output_source": true, "protocol": true,
+	"parse_error_type": true, "parse_event": true, "incomplete_reason": true,
+	"upstream_error_code": true, "upstream_error_type": true, "upstream_error_param": true,
 }
 
 func sensitive(key string) bool {
@@ -77,7 +79,7 @@ func safeAttr(a slog.Attr) slog.Attr {
 		}
 		if a.Key == "route" {
 			if len(value) <= 256 && !strings.ContainsAny(value, "?\r\n") &&
-				(strings.ContainsAny(value, "{*") || value == "unmatched" || value == "/acp" || value == "/healthz" || value == "/readyz") {
+				(strings.ContainsAny(value, "{*") || value == "unmatched" || value == "/acp" || value == "/healthz" || value == "/readyz" || value == "/v1/responses" || value == "/v1/chat/completions" || value == "/v1/messages") {
 				return a
 			}
 			return slog.String(a.Key, "unmatched")

@@ -53,6 +53,10 @@ type usageResult struct {
 	FirstTokenDurationMs        *int32
 	ObservedResult, FailureCode string
 	ParseErrorCount             uint64
+	ReadErrorCount              uint64
+	ParseErrorType              string
+	ParseErrorOffset            int64
+	ParseEvent                  string
 	FailureAttrs                []slog.Attr
 }
 
@@ -74,13 +78,18 @@ type usageCaptureContext struct {
 }
 
 type usageCapture struct {
-	logger      *slog.Logger
-	src         io.ReadCloser
-	ctx         usageCaptureContext
-	reader      io.ReadCloser
-	writer      *io.PipeWriter
-	copyFailed  bool
-	parseErrors uint64
+	logger           *slog.Logger
+	src              io.ReadCloser
+	ctx              usageCaptureContext
+	reader           io.ReadCloser
+	writer           *io.PipeWriter
+	copyFailed       bool
+	parseErrors      uint64
+	readErrors       uint64
+	parseErrorType   string
+	parseErrorOffset int64
+	parseEvent       string
+	eventType        string
 }
 
 var _ io.ReadCloser = (*usageCapture)(nil)
@@ -114,7 +123,7 @@ func (p *Proxy) modifyResponse(response *http.Response) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		if pc, ok := response.Request.Context().Value(proxyContextKey{}).(*proxyContext); ok {
 			call := Call{Known: response.StatusCode >= 400 && response.StatusCode < 500, Stream: pc.stream, Result: "failed", ErrorCode: "upstream_http_error"}
-			p.logCall(response.Request.Context(), pc, call, nil)
+			response.Body = p.captureRejection(response, pc, call)
 			p.finish(response.Request.Context(), pc, call)
 		}
 		return nil
@@ -182,8 +191,15 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 	}
 	logCall.ErrorCode = result.FailureCode
 	p.logCall(ctx, proxyCtx, logCall, nil, result.FailureAttrs...)
-	if !call.Known || result.ParseErrorCount > 0 {
-		logging.Event(ctx, p.logger, slog.LevelWarn, "model.usage.failed", "模型用量无法确定", "parse_error_count", result.ParseErrorCount, "module", "proxy", "operation", "recordUsage", "event", "model.usage.failed", "transaction_id", proxyCtx.reservation.ID, "model_id", target.ModelID, "stream", proxyCtx.stream, "response_id", result.ResponseID, "terminal_event", result.TerminalEvent, "reason", call.ErrorCode)
+	usageAttrs := []any{"module", "proxy", "operation", "recordUsage", "transaction_id", proxyCtx.reservation.ID,
+		"model_id", target.ModelID, "protocol", target.Protocol, "stream", proxyCtx.stream, "response_id", result.ResponseID,
+		"terminal_event", result.TerminalEvent, "usage_known", call.Known, "reason", call.ErrorCode,
+		"parse_error_count", result.ParseErrorCount, "read_error_count", result.ReadErrorCount,
+		"parse_error_type", result.ParseErrorType, "parse_error_offset", result.ParseErrorOffset, "parse_event", result.ParseEvent}
+	if !call.Known {
+		logging.Event(ctx, p.logger, slog.LevelWarn, "model.usage.failed", "模型用量无法确定", usageAttrs...)
+	} else if result.ParseErrorCount > 0 {
+		logging.Event(ctx, p.logger, slog.LevelDebug, "model.usage.parse.recovered", "模型用量解析异常后已恢复", usageAttrs...)
 	}
 	if call.InputSource != "" || call.OutputSource != "" {
 		logging.Event(ctx, p.logger, slog.LevelInfo, "proxy.operation.info", "模型用量已本地估算", "module", "proxy", "operation", "recordUsage", "model_id", target.ModelID, "transaction_id", proxyCtx.reservation.ID, "input_source", call.InputSource, "output_source", call.OutputSource, "known", call.Known)
@@ -208,6 +224,8 @@ func (c *usageCapture) handleShadow() {
 	defer func() {
 		if c.ctx.proxy != nil {
 			result.ParseErrorCount = c.parseErrors
+			result.ReadErrorCount = c.readErrors
+			result.ParseErrorType, result.ParseErrorOffset, result.ParseEvent = c.parseErrorType, c.parseErrorOffset, c.parseEvent
 			c.ctx.proxy.recordUsage(c.ctx.ctx, c.ctx.proxyCtx, result)
 		}
 	}()
@@ -244,6 +262,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	for decoder.Next() {
 		event := decoder.Event()
+		c.eventType = event.Type
 		estimate.event(c.ctx.path, event)
 		if result.FirstTokenDurationMs == nil && c.ctx.proxyCtx != nil && firstOutputEvent(c.ctx.path, event) {
 			elapsed := time.Since(c.ctx.proxyCtx.startedAt).Milliseconds()
@@ -276,6 +295,9 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			if response.ID != "" {
 				result.ResponseID = response.ID
 			}
+			if response.IncompleteDetails != nil {
+				result.FailureAttrs = append(result.FailureAttrs, slog.String("incomplete_reason", response.IncompleteDetails.Reason))
+			}
 			if !isTerminal {
 				continue
 			}
@@ -288,11 +310,12 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			result.InputTokens = response.Usage.InputTokens
 			result.OutputTokens = response.Usage.OutputTokens
 			result.CachedTokens = response.Usage.InputTokensDetails.CachedTokens
-		case "", "message", "done":
-			if event.Type == "done" {
-				terminal = true
+		case "done":
+			terminal = true
+			if result.TerminalEvent == "" {
 				result.TerminalEvent = "done"
 			}
+		case "", "message":
 			response, err := parseChatCompletion(event.Data)
 			if err != nil {
 				c.parseFailure(logger, "解析 Chat Completions 流式用量失败", err)
@@ -373,8 +396,9 @@ func (c *usageCapture) handleStream() (result usageResult) {
 		result.Result = "failed"
 		result.ErrorCode = "stream_interrupted"
 		result.ObservedResult, result.FailureCode = "failed", "stream_interrupted"
-		result.FailureAttrs = logging.ErrorAttrs(err)
-		c.parseFailure(logger, "读取模型流式响应失败", err)
+		result.FailureAttrs = append(result.FailureAttrs, logging.ErrorAttrs(err)...)
+		c.readErrors++
+		logging.Event(c.ctx.ctx, logger, slog.LevelDebug, "model.usage.read.failed", "读取模型流式响应失败", "error", err)
 	}
 	if !terminal && result.ObservedResult == "" {
 		result.ObservedResult, result.FailureCode = "failed", "stream_terminal_missing"
@@ -404,11 +428,12 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 	logger := c.logger.With("path", c.ctx.path, "transaction_id", transactionID)
 	data, err := io.ReadAll(io.LimitReader(c.reader, maxEstimateBytes+1))
 	if err != nil || len(data) > maxEstimateBytes {
-		c.parseFailure(logger, "读取模型响应副本失败", err)
+		c.readErrors++
+		logging.Event(c.ctx.ctx, logger, slog.LevelDebug, "model.usage.read.failed", "读取模型响应副本失败", "error", err)
 		result.Result = "failed"
 		result.ErrorCode = "usage_read_failed"
 		result.ObservedResult, result.FailureCode = "failed", "upstream_read_failed"
-		result.FailureAttrs = logging.ErrorAttrs(err)
+		result.FailureAttrs = append(result.FailureAttrs, logging.ErrorAttrs(err)...)
 		return result
 	}
 	estimate.response(c.ctx.path, data)
@@ -422,6 +447,9 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 		}
 		result.ResponseID = response.ID
 		result.TerminalEvent = response.Status
+		if response.IncompleteDetails != nil {
+			result.FailureAttrs = append(result.FailureAttrs, slog.String("incomplete_reason", response.IncompleteDetails.Reason))
+		}
 		if response.Usage == nil {
 			result.ErrorCode = "usage_missing"
 			if response.Status == "failed" || response.Status == "incomplete" {
@@ -483,7 +511,19 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 
 func (c *usageCapture) parseFailure(logger *slog.Logger, message string, err error) {
 	c.parseErrors++
-	logging.Event(c.ctx.ctx, logger, slog.LevelDebug, "model.usage.parse.failed", message, "error", err)
+	if c.parseErrorType == "" {
+		c.parseErrorType = "invalid_json"
+		c.parseEvent = c.eventType
+		var syntax *json.SyntaxError
+		var mismatch *json.UnmarshalTypeError
+		switch {
+		case errors.As(err, &syntax):
+			c.parseErrorType, c.parseErrorOffset = "syntax_error", syntax.Offset
+		case errors.As(err, &mismatch):
+			c.parseErrorType, c.parseErrorOffset = "type_error", mismatch.Offset
+		}
+	}
+	logging.Event(c.ctx.ctx, logger, slog.LevelDebug, "model.usage.parse.failed", message, "parse_error_type", c.parseErrorType, "parse_error_offset", c.parseErrorOffset, "parse_event", c.parseEvent)
 }
 
 func (c *usageCapture) logPipeError(operation string, err error) {
@@ -535,9 +575,12 @@ type openAIResponseEvent struct {
 }
 
 type openAIResponse struct {
-	ID     string      `json:"id"`
-	Status string      `json:"status"`
-	Usage  *tokenUsage `json:"usage"`
+	ID                string      `json:"id"`
+	Status            string      `json:"status"`
+	Usage             *tokenUsage `json:"usage"`
+	IncompleteDetails *struct {
+		Reason string `json:"reason"`
+	} `json:"incomplete_details"`
 }
 
 type tokenUsage struct {
@@ -638,10 +681,9 @@ type sseEvent struct {
 }
 
 type sseDecoder struct {
-	scanner  *bufio.Scanner
-	current  sseEvent
-	lastData []byte
-	done     bool
+	scanner *bufio.Scanner
+	current sseEvent
+	done    bool
 }
 
 func newSSEDecoder(reader io.Reader) *sseDecoder {
@@ -671,7 +713,7 @@ func (d *sseDecoder) Next() bool {
 		if value, ok := strings.CutPrefix(line, "data:"); ok {
 			chunk := strings.TrimSpace(value)
 			if chunk == "[DONE]" {
-				d.current = sseEvent{Type: "done", Data: bytes.Clone(d.lastData)}
+				d.current = sseEvent{Type: "done"}
 				d.done = true
 				return true
 			}
@@ -688,7 +730,6 @@ func (d *sseDecoder) Next() bool {
 func (d *sseDecoder) setEvent(eventType string, data []byte) bool {
 	data = bytes.TrimSuffix(data, []byte("\n"))
 	d.current = sseEvent{Type: eventType, Data: bytes.Clone(data)}
-	d.lastData = bytes.Clone(data)
 	return true
 }
 

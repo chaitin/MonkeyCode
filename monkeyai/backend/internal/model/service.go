@@ -276,6 +276,9 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 	}
 	userID, err := s.keys.Authenticate(ctx, credential, "model:invoke")
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Target{}, err
+		}
 		slog.WarnContext(ctx, "操作失败", "module", "model", "operation", "Resolve", "error", err)
 		return Target{}, ErrUnauthorized
 	}

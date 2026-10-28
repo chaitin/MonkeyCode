@@ -66,7 +66,7 @@ type modelUsageReconciler struct {
 func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.ReconciliationRequest) (billing.ReconciliationResult, error) {
 	item, err := r.models.Get(ctx, request.ResourceID)
 	if errors.Is(err, model.ErrNotFound) {
-		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported, Reason: "model_not_found"}, nil
 	}
 	if err != nil {
 		return billing.ReconciliationResult{}, err
@@ -94,12 +94,12 @@ func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.Rec
 	}
 	switch result.State {
 	case proxy.ResponseReconciliationPending:
-		return billing.ReconciliationResult{State: billing.ReconciliationPending}, nil
+		return billing.ReconciliationResult{State: billing.ReconciliationPending, Reason: result.Reason, UpstreamStatus: result.UpstreamStatus}, nil
 	case proxy.ResponseReconciliationUnsupported:
-		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported, Reason: result.Reason, UpstreamStatus: result.UpstreamStatus}, nil
 	case proxy.ResponseReconciliationResolved:
 		if result.Call.InputTokens > math.MaxInt64 || result.Call.CachedInputTokens > math.MaxInt64 || result.Call.OutputTokens > math.MaxInt64 || result.Call.CachedInputTokens > result.Call.InputTokens {
-			return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+			return billing.ReconciliationResult{State: billing.ReconciliationUnsupported, Reason: "invalid_usage", UpstreamStatus: result.UpstreamStatus}, nil
 		}
 		return billing.ReconciliationResult{
 			State: billing.ReconciliationResolved,
@@ -109,7 +109,7 @@ func (r modelUsageReconciler) Reconcile(ctx context.Context, request billing.Rec
 			},
 		}, nil
 	default:
-		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported}, nil
+		return billing.ReconciliationResult{State: billing.ReconciliationUnsupported, Reason: "invalid_reconciliation_state", UpstreamStatus: result.UpstreamStatus}, nil
 	}
 }
 

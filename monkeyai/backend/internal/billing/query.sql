@@ -634,7 +634,7 @@ FROM
 WHERE
     id = $1
     AND deleted_at IS NULL
-FOR UPDATE;
+FOR NO KEY UPDATE;
 
 -- name: CreateAccount :one
 INSERT INTO credit_accounts (user_id, balance, QUOTA, group_id, period_start_at, period_end_at, last_refreshed_at)
@@ -1081,7 +1081,7 @@ SET
     updated_at = now()
 WHERE
     id = $1 AND started_at = (SELECT billing_activity_time('billing_transactions',$1::uuid))
-    AND status = 'unknown';
+    AND status = 'unknown' AND next_retry_at IS NOT NULL;
 
 -- name: ActiveUsersWithoutAccount :many
 SELECT

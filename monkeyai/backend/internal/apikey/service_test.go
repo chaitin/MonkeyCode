@@ -105,3 +105,13 @@ func TestRotateLogsFailedCompensationWithoutSecret(t *testing.T) {
 		t.Fatalf("补偿日志缺少错误或包含密钥摘要: %s", output.String())
 	}
 }
+
+func TestAuthenticatePreservesCancellation(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		service := NewService(&storeStub{authErr: fmt.Errorf("验证调用密钥: %w", cause)})
+		_, err := service.Authenticate(t.Context(), "mk_secret", ScopeModelInvoke)
+		if !errors.Is(err, cause) || errors.Is(err, ErrInvalidKey) {
+			t.Fatalf("取消被转换为无效密钥: %v", err)
+		}
+	}
+}

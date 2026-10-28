@@ -170,3 +170,13 @@ func TestResolveUsesAPIKeyIdentity(t *testing.T) {
 
 func (r *repositoryStub) UpdateUser(_ context.Context, item Model) (Model, error) { return item, nil }
 func (r *repositoryStub) DeleteUser(context.Context, string, string) error        { return nil }
+
+func TestResolvePreservesCancellation(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		service := NewService(&repositoryStub{}).WithKeyAuthenticator(keyAuthenticatorStub{err: cause})
+		_, err := service.Resolve(t.Context(), "mk_test", "model-1")
+		if !errors.Is(err, cause) {
+			t.Fatalf("取消被转换为模型无权限: %v", err)
+		}
+	}
+}
