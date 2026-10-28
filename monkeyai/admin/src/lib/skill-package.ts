@@ -151,28 +151,29 @@ function isInsideRoot(path: string, rootPath: string) {
   return rootPath ? path.startsWith(`${rootPath}/`) : true
 }
 
+function getManifestEntries(entries: SkillSourceEntry[]) {
+  const manifests = entries.filter(
+    (entry) => entry.path.split("/").at(-1) === "SKILL.md"
+  )
+  return manifests.filter(
+    (entry) =>
+      !manifests.some(
+        (other) =>
+          other !== entry && isInsideRoot(entry.path, getRootPath(other.path))
+      )
+  )
+}
+
 async function analyzeSkillEntries(
   entries: SkillSourceEntry[],
   manifestEntries: SkillSourceEntry[],
   parseDocument: ParseDocument
 ) {
-  const rootPaths = manifestEntries.map((entry) => getRootPath(entry.path))
-
   return Promise.all(
-    manifestEntries.map(async (manifestEntry, manifestIndex) => {
-      const rootPath = rootPaths[manifestIndex]
-      const nestedRootPaths = rootPaths.filter(
-        (candidateRoot) =>
-          candidateRoot !== rootPath &&
-          isInsideRoot(candidateRoot, rootPath) &&
-          candidateRoot.length > rootPath.length
-      )
-      const skillEntries = entries.filter(
-        (entry) =>
-          isInsideRoot(entry.path, rootPath) &&
-          !nestedRootPaths.some((nestedRoot) =>
-            isInsideRoot(entry.path, nestedRoot)
-          )
+    manifestEntries.map(async (manifestEntry) => {
+      const rootPath = getRootPath(manifestEntry.path)
+      const skillEntries = entries.filter((entry) =>
+        isInsideRoot(entry.path, rootPath)
       )
 
       const unpackedSize = skillEntries.reduce(
@@ -240,9 +241,7 @@ export async function inspectSkillArchive(file: File) {
     readArchiveEntries(file),
     import("yaml"),
   ])
-  const manifestEntries = entries.filter(
-    (entry) => entry.path.split("/").at(-1) === "SKILL.md"
-  )
+  const manifestEntries = getManifestEntries(entries)
 
   if (manifestEntries.length === 0) {
     throw new SkillPackageError("missingManifest")
@@ -266,9 +265,7 @@ export async function inspectSkillDirectory(files: File[]) {
     }
   }
 
-  const manifestEntries = entries.filter(
-    (entry) => entry.path.split("/").at(-1) === "SKILL.md"
-  )
+  const manifestEntries = getManifestEntries(entries)
   if (manifestEntries.length === 0) {
     throw new SkillPackageError("missingManifest")
   }
@@ -279,9 +276,7 @@ export async function inspectSkillDirectory(files: File[]) {
 
 export async function inspectSkillPackage(file: File) {
   const entries = await readArchiveEntries(file)
-  const manifestEntries = entries.filter(
-    (entry) => entry.path.split("/").at(-1) === "SKILL.md"
-  )
+  const manifestEntries = getManifestEntries(entries)
   if (manifestEntries.length === 0) {
     throw new SkillPackageError("missingManifest")
   }

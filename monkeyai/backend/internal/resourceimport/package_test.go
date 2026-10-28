@@ -479,6 +479,58 @@ func TestImportSkillManyFiles(t *testing.T) {
 	}
 }
 
+func TestImportNestedSkillManifests(t *testing.T) {
+	for _, root := range []string{"", "root/"} {
+		for _, streamed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/streamed=%t", root, streamed), func(t *testing.T) {
+				nested := []byte("附属 SKILL.md，无需有效元信息\n")
+				data := packageFixture(t, func(_ *Manifest, files map[string][]byte) {
+					archive, err := makeZIP(map[string][]byte{
+						root + "SKILL.md":                []byte("---\nname: demo-skill\ndescription: Demo skill\n---\nHello\n"),
+						root + "references/SKILL.md":     nested,
+						root + "examples/child/SKILL.md": nested,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					files["agent/skills/demo.zip"] = archive
+				})
+				var pkg Package
+				var err error
+				if streamed {
+					pkg, err = ParseReader(bytes.NewReader(data), int64(len(data)))
+				} else {
+					pkg, err = Parse(data)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				resources, err := ParseResources(pkg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				item := resources.Skills["demo-skill"]
+				if item.Package.Name != "demo-skill" || item.Package.Content != "Hello\n" || item.FileCount != 3 || item.Normalized {
+					t.Fatal("应按根目录入口导入并保留全部文件，无需修复元信息")
+				}
+				stored, err := pkg.SkillBytes(item)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files, err := zipSkillFiles(stored)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{"references/SKILL.md", "examples/child/SKILL.md"} {
+					if !bytes.Equal(files[name], nested) {
+						t.Fatalf("导入后应保留附属文件: %s", name)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestIgnoresReleaseCounts(t *testing.T) {
 	files, err := readZIP(packageFixture(t, nil), MaxPackage, MaxExpanded, MaxFile)
 	if err != nil {
