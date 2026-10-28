@@ -243,25 +243,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			billingError(r.Context(), w, err)
 			return
 		}
-		body, err = prepareRequest(body, r.URL.Path, reservation.OutputLimit, meta.Stream)
-		if err != nil {
-			pc := &proxyContext{reservation: reservation, stream: meta.Stream}
-			p.finish(r.Context(), pc, Call{Known: true, Stream: meta.Stream, Result: "failed", ErrorCode: "invalid_request"})
-			billingError(r.Context(), w, err)
-			return
-		}
 		logging.Bind(r.Context(), slog.String("phase", "billing_start"))
 		if err = p.billing.Start(r.Context(), reservation.ID); err != nil {
 			billingError(r.Context(), w, err)
 			return
 		}
 		w.Header().Set("X-Billing-Transaction-ID", reservation.ID)
-	} else if target.OwnershipType == "user" && meta.Stream && r.URL.Path == "/v1/chat/completions" {
-		body, err = prepareRequest(body, r.URL.Path, 0, true)
-		if err != nil {
-			billingError(r.Context(), w, err)
-			return
-		}
 	}
 	logging.Bind(r.Context(), slog.String("phase", "upstream"))
 	r.GetBody = func() (io.ReadCloser, error) {

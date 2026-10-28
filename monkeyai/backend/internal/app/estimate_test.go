@@ -85,7 +85,15 @@ func TestEstimatedModelBilling(t *testing.T) {
 		{"流中断保留未知状态", "data: {\"id\":\"estimated\",\"choices\":[{\"delta\":{\"content\":\"hello world\"}}]}\n\n", "unknown", "0.001700", "tokenizer:o200k_base", true, 9},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var request resource.Object
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Error(err)
+					return
+				}
+				if request.Int("max_completion_tokens") != 1000 {
+					t.Errorf("超过模型配置的输出参数被修改: %v", request)
+				}
 				if tc.stream {
 					w.Header().Set("Content-Type", "text/event-stream")
 				}
@@ -95,7 +103,7 @@ func TestEstimatedModelBilling(t *testing.T) {
 			p := proxy.NewProxy(proxy.ResolverFunc(func(context.Context, string, string) (proxy.Target, error) {
 				return proxy.Target{ModelID: model, UserID: user, UpstreamModel: "gpt-5", BaseURL: upstream.URL}, nil
 			}), slog.New(slog.NewTextHandler(io.Discard, nil))).WithBilling(modelBilling{service: service})
-			body := resource.Object{"model": model, "messages": []resource.Object{{"role": "user", "content": "hello world"}}, "stream": tc.stream}
+			body := resource.Object{"model": model, "messages": []resource.Object{{"role": "user", "content": "hello world"}}, "stream": tc.stream, "max_completion_tokens": 1000}
 			encoded, err := json.Marshal(body)
 			if err != nil {
 				t.Fatal(err)

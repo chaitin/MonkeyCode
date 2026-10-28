@@ -41,8 +41,8 @@ func (transport replayTransport) RoundTrip(r *http.Request) (*http.Response, err
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["model"] != "upstream-model" || payload["stream_options"].(map[string]any)["include_usage"] != true {
-		t.Fatal("重放必须使用最终模型和流式参数")
+	if payload["model"] != "upstream-model" || payload["stream_options"] != nil {
+		t.Fatal("重放必须使用最终模型且不补充流式参数")
 	}
 	return &http.Response{StatusCode: 400, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":"rejected"}`)), Request: r}, nil
 }
@@ -94,7 +94,7 @@ func TestUsageDiagnosticsDistinguishRecoveryAndReadFailure(t *testing.T) {
 func TestIncompleteReasonSurvivesKnownUsage(t *testing.T) {
 	c := newUsageCaptureForTest("/v1/responses", true, "event: response.incomplete\ndata: {\"response\":{\"id\":\"resp-test\",\"usage\":{\"input_tokens\":3,\"output_tokens\":2},\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n")
 	result := c.handleStream()
-	if !result.Known || result.FailureCode != "upstream_failed" {
+	if !result.Known || result.FailureCode != "output_limit_reached" {
 		t.Fatalf("终止状态丢失: %+v", result)
 	}
 	var logs bytes.Buffer

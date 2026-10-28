@@ -175,9 +175,6 @@ func TestUserModelsAreFree(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if r.OutputLimit != 0 {
-				t.Fatalf("用户模型不应强制计费输出限制: %d", r.OutputLimit)
-			}
 			reserved, err := s.Account(ctx, user)
 			if err != nil || reserved.Frozen != before.Frozen {
 				t.Fatalf("用户模型不应冻结积分: %+v, %v", reserved, err)
@@ -571,4 +568,37 @@ func amountText(s string) Amount {
 		panic(err)
 	}
 	return a
+}
+
+func TestModelOutputEstimate(t *testing.T) {
+	for _, tc := range []struct {
+		name, reserve string
+		output        int64
+	}{
+		{"未传参数使用配置估算", "14", 0},
+		{"使用较小请求值估算", "12", 5000},
+		{"请求值超过配置仍按请求估算", "18", 20000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, user, model := fixture(t)
+			r, err := s.Begin(t.Context(), Request{UserID: user, ResourceID: model, Category: "model", OutputLimit: tc.output})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reserve string
+			if err := s.pool.QueryRow(t.Context(), `SELECT reserve::text FROM billing_transactions WHERE id=$1`, r.ID).Scan(&reserve); err != nil || amountText(reserve) != amountText(tc.reserve) {
+				t.Fatalf("预估金额错误: %s %v", reserve, err)
+			}
+			if err := s.Start(t.Context(), r.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Finish(t.Context(), r.ID, Usage{Input: 100000, Output: tc.output, Known: true, Result: "failed"}); err != nil {
+				t.Fatal(err)
+			}
+			var status string
+			if err := s.pool.QueryRow(t.Context(), `SELECT status FROM billing_transactions WHERE id=$1`, r.ID).Scan(&status); err != nil || status != "settled" {
+				t.Fatalf("已知用量应正常结算: %s %v", status, err)
+			}
+		})
+	}
 }

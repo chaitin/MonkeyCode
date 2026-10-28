@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -89,11 +90,11 @@ func TestUserModelRecordsFailedCallWithoutBilling(t *testing.T) {
 	}
 }
 
-func TestUserModelStreamStillRequestsUsage(t *testing.T) {
+func TestUserModelStreamPreservesRequest(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if !strings.Contains(string(body), `"include_usage":true`) || !strings.Contains(string(body), `"max_tokens":4096`) {
-			t.Errorf("自配模型流式请求未保留参数或用量采集: %s", body)
+		if string(body) != `{"model":"gpt-5","stream":true,"max_tokens":4096}` {
+			t.Errorf("自配模型流式请求被修改: %s", body)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"id\":\"own_stream\",\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")
@@ -123,25 +124,46 @@ func TestUserModelStreamStillRequestsUsage(t *testing.T) {
 	}
 }
 
-func TestEnforcedRequestLimits(t *testing.T) {
+func TestProxyPreservesOutputParameters(t *testing.T) {
 	for _, path := range []string{"/v1/chat/completions", "/v1/responses", "/v1/messages"} {
-		out, err := prepareRequest([]byte(`{"max_tokens":99999,"max_completion_tokens":99999}`), path, 100, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var data map[string]any
-		if err = json.Unmarshal(out, &data); err != nil {
-			t.Fatal(err)
-		}
-		field := "max_tokens"
-		if path == "/v1/responses" {
-			field = "max_output_tokens"
-		}
-		if data[field] != float64(100) {
-			t.Fatalf("未强制输出限制: %s", out)
-		}
-		if path == "/v1/chat/completions" && data["stream_options"].(map[string]any)["include_usage"] != true {
-			t.Fatal("未请求流式用量")
+		for _, stream := range []bool{false, true} {
+			for _, params := range []string{"", `,"max_tokens":99999`, `,"max_completion_tokens":99999`, `,"max_output_tokens":99999`, `,"max_tokens":12000,"max_completion_tokens":99999`} {
+				t.Run(fmt.Sprintf("%s/stream=%t/%s", path, stream, params), func(t *testing.T) {
+					body := fmt.Sprintf(`{"model":"test","stream":%t%s}`, stream, params)
+					upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						var want, got map[string]json.RawMessage
+						if err := json.Unmarshal([]byte(body), &want); err != nil {
+							t.Error(err)
+							return
+						}
+						if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+							t.Error(err)
+							return
+						}
+						for _, key := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+							if string(got[key]) != string(want[key]) {
+								t.Errorf("代理修改了 %s: got=%s want=%s", key, got[key], want[key])
+							}
+						}
+						if _, ok := got["stream_options"]; ok {
+							t.Error("代理不应补充流式参数")
+						}
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = io.WriteString(w, `{"error":{"type":"invalid_request_error"}}`)
+					}))
+					t.Cleanup(upstream.Close)
+					p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+						return Target{BaseURL: upstream.URL}, nil
+					}), discardLogger()).WithBilling(estimateBilling{calls: make(chan Call, 1)})
+					r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+					r.Header.Set("Authorization", "Bearer test")
+					w := httptest.NewRecorder()
+					p.ServeHTTP(w, r)
+					if w.Code != http.StatusBadRequest || w.Body.String() != `{"error":{"type":"invalid_request_error"}}` {
+						t.Fatalf("上游响应被修改: %d %s", w.Code, w.Body.String())
+					}
+				})
+			}
 		}
 	}
 }
@@ -209,6 +231,95 @@ func TestResponsesStreamClassifiesUnknownUsage(t *testing.T) {
 			got := newUsageCaptureForTest("/v1/responses", true, test.body).handleStream()
 			if got.Known || got.ErrorCode != test.code {
 				t.Fatalf("未知用量分类错误: %+v", got)
+			}
+		})
+	}
+}
+
+type blockingBilling struct {
+	done chan struct{}
+}
+
+func (b blockingBilling) Begin(context.Context, Target, BillingRequest) (Reservation, error) {
+	return Reservation{ID: "blocking-transaction"}, nil
+}
+func (b blockingBilling) Start(context.Context, string) error { return nil }
+func (b blockingBilling) Finish(ctx context.Context, _ string, _ Call) error {
+	select {
+	case <-b.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestBillingSettlementDoesNotBlockResponse(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusBadGateway} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			const body = `{"id":"mirror-call","usage":{"prompt_tokens":3,"completion_tokens":2}}`
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = io.WriteString(w, body)
+			}))
+			t.Cleanup(upstream.Close)
+			billing := blockingBilling{done: make(chan struct{})}
+			t.Cleanup(func() { close(billing.done) })
+			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+				return Target{BaseURL: upstream.URL}, nil
+			}), discardLogger()).WithBilling(billing)
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
+			req.Header.Set("Authorization", "Bearer test")
+			response := make(chan *httptest.ResponseRecorder, 1)
+			go func() {
+				w := httptest.NewRecorder()
+				p.ServeHTTP(w, req)
+				response <- w
+			}()
+			select {
+			case w := <-response:
+				if w.Code != status || w.Body.String() != body {
+					t.Fatalf("镜像结算不应改变响应: %d %s", w.Code, w.Body.String())
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("响应被同步结算阻塞")
+			}
+			waitCtx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if err := p.Wait(waitCtx); err == nil {
+				t.Fatal("等待退出必须覆盖未完成的结算")
+			}
+			billing.done <- struct{}{}
+			if err := p.Wait(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestBillingPreservesRequestBytes(t *testing.T) {
+	for _, options := range []string{"", `, "stream_options": {"include_usage": false}`, `, "stream_options": null`} {
+		t.Run(options, func(t *testing.T) {
+			body := "{\n  \"model\": \"test\", \"stream\": true" + options + "\n}"
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got, err := io.ReadAll(r.Body)
+				if err != nil || string(got) != body {
+					t.Errorf("计费改变了原始请求: %s %v", got, err)
+				}
+				_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			}))
+			t.Cleanup(upstream.Close)
+			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+				return Target{BaseURL: upstream.URL}, nil
+			}), discardLogger()).WithBilling(estimateBilling{calls: make(chan Call, 1)})
+			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			r.Header.Set("Authorization", "Bearer test")
+			w := httptest.NewRecorder()
+			p.ServeHTTP(w, r)
+			if err := p.Wait(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != http.StatusOK || w.Body.String() != "data: [DONE]\n\n" {
+				t.Fatalf("代理改变了响应: %d %s", w.Code, w.Body.String())
 			}
 		})
 	}

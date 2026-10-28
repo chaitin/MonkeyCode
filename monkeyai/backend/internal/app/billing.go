@@ -149,7 +149,7 @@ func (b modelBilling) Begin(ctx context.Context, t proxy.Target, r proxy.Billing
 		}
 	}
 	reservation, err := b.service.Begin(ctx, billing.Request{UserID: t.UserID, ResourceID: t.ModelID, SessionID: r.SessionID, Category: "model", OutputLimit: limit, IdempotencyKey: r.IdempotencyKey, RequestHash: resource.Hash(map[string]any{"model_id": t.ModelID, "path": r.Path, "body": json.RawMessage(r.Body), "session_id": r.SessionID})})
-	return proxy.Reservation{ID: reservation.ID, OutputLimit: reservation.OutputLimit}, err
+	return proxy.Reservation{ID: reservation.ID}, err
 }
 func (b modelBilling) Start(ctx context.Context, id string) error { return b.service.Start(ctx, id) }
 func (b modelBilling) Finish(ctx context.Context, id string, c proxy.Call) error {
