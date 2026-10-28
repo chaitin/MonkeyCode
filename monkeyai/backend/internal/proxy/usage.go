@@ -215,13 +215,11 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 
 func (c *usageCapture) handleShadow() {
 	reader := c.reader
+	var result usageResult
 	defer func() {
 		if err := reader.Close(); err != nil {
 			c.logPipeError("close_usage_reader", err)
 		}
-	}()
-	var result usageResult
-	defer func() {
 		if c.ctx.proxy != nil {
 			result.ParseErrorCount = c.parseErrors
 			result.ReadErrorCount = c.readErrors
@@ -297,6 +295,9 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			}
 			if response.IncompleteDetails != nil {
 				result.FailureAttrs = append(result.FailureAttrs, slog.String("incomplete_reason", response.IncompleteDetails.Reason))
+				if event.Type == "response.incomplete" && response.IncompleteDetails.Reason == "max_output_tokens" {
+					result.FailureCode = "output_limit_reached"
+				}
 			}
 			if !isTerminal {
 				continue
@@ -449,6 +450,9 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 		result.TerminalEvent = response.Status
 		if response.IncompleteDetails != nil {
 			result.FailureAttrs = append(result.FailureAttrs, slog.String("incomplete_reason", response.IncompleteDetails.Reason))
+			if response.Status == "incomplete" && response.IncompleteDetails.Reason == "max_output_tokens" {
+				result.FailureCode = "output_limit_reached"
+			}
 		}
 		if response.Usage == nil {
 			result.ErrorCode = "usage_missing"

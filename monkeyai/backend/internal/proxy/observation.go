@@ -20,7 +20,7 @@ func (p *Proxy) logCall(ctx context.Context, pc *proxyContext, call Call, cause 
 		level := slog.LevelDebug
 		if result == "failed" {
 			level = slog.LevelError
-			if pc.upstreamStatus >= 400 && pc.upstreamStatus < 500 {
+			if call.ErrorCode == "output_limit_reached" || (pc.upstreamStatus >= 400 && pc.upstreamStatus < 500) {
 				level = slog.LevelWarn
 			}
 		}

@@ -26,8 +26,7 @@ type Request struct {
 	VideoMaxDurationMs                                   int64
 }
 type Reservation struct {
-	ID          string
-	OutputLimit int64
+	ID string
 }
 type Usage struct {
 	Input                int64  `json:"input_tokens"`
@@ -137,7 +136,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 			if limit < 0 {
 				return Reservation{}, resource.Invalid("输出上限无效")
 			}
-			if limit == 0 || limit > maxOutput {
+			if limit == 0 {
 				limit = maxOutput
 			}
 			upper := price
@@ -312,7 +311,7 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 		}
 	}
 	logging.Bind(ctx, slog.String("transaction_id", id))
-	return Reservation{ID: id, OutputLimit: limit}, nil
+	return Reservation{ID: id}, nil
 }
 func (s *Service) Start(ctx context.Context, id string) error {
 	tag, err := sqlc.New(s.pool).StartTransaction(ctx, id)

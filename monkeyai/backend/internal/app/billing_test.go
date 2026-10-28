@@ -199,8 +199,15 @@ func TestBillingIntegration(t *testing.T) {
 		requests.Add(1)
 		var body resource.Object
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.Int("max_completion_tokens") != 2000 {
-			t.Errorf("未限制输出: %v", body)
+		if value, ok := body["max_completion_tokens"]; ok && value != float64(2000) {
+			t.Errorf("客户端输出参数被修改: %v", body)
+		}
+		if requests.Load() == 1 {
+			for _, field := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+				if _, ok := body[field]; ok {
+					t.Errorf("代理不应补充输出参数 %s: %v", field, body)
+				}
+			}
 		}
 		if body.String("model") != "billing-model" {
 			t.Errorf("上游模型名错误: %v", body)

@@ -207,7 +207,7 @@ func TestEstimateUsesUpstreamModelAndPreservesNumber(t *testing.T) {
 type estimateBilling struct{ calls chan Call }
 
 func (b estimateBilling) Begin(context.Context, Target, BillingRequest) (Reservation, error) {
-	return Reservation{ID: "estimate-transaction", OutputLimit: 100}, nil
+	return Reservation{ID: "estimate-transaction"}, nil
 }
 func (b estimateBilling) Start(context.Context, string) error { return nil }
 func (b estimateBilling) Finish(_ context.Context, _ string, call Call) error {
