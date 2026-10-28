@@ -16,7 +16,7 @@
 - [已完成] 独立 PostgreSQL + RustFS 环境的 `TestBillingIntegration` 与 `TestEstimatedModelBilling`；配置 100、请求 1000 的流式/非流式请求透传和结算通过。
 - [已完成] 计费包数据库回归：本次新增的缺省、小于配置、大于配置估算及结算用例通过。完整运行中既有 `TestActivityWeeklyBackfillDeleteRace` 出现一次分区切换失败，单独复跑该用例和 `TestModelOutputEstimate` 均通过；未修改分区逻辑。
 
-交付状态：实现与验证完成，进入提交与 PR 交付阶段。临时 PostgreSQL 与 RustFS 容器已清理，尚未部署。
+交付状态：实现与验证完成，已提交并创建 PR #1463。临时 PostgreSQL 与 RustFS 容器已清理，尚未部署。
 
 后续核查：
 
@@ -40,8 +40,8 @@
 - [已完成] 独立 PostgreSQL + RustFS 的 `TestBillingIntegration` 与 `TestEstimatedModelBilling` 通过。
 - [已完成] API、迁移没有变更，迁移命名与配对测试已包含在全量测试中。
 
-本次没有移除调用前校验；异步结算仍使用脱离请求取消、最长 30 秒的上下文，结算任务由代理 Wait 统一等待。临时测试容器已清理；分支进入 PR 交付阶段，尚未部署。
+本次没有移除调用前校验；异步结算仍使用脱离请求取消、最长 30 秒的上下文，结算任务由代理 Wait 统一等待。临时测试容器已清理；分支已提交并创建 PR #1463，尚未部署。
 
 PR 交付：
 
-- [进行中] 提交 `fix-proxy-shadow-billing` 分支并向 `main` 创建 PR，说明请求透传、异步结算边界及验证记录。
+- [已完成] 已推送 `fix-proxy-shadow-billing` 分支并向 `main` 创建 [PR #1463](https://github.com/chaitin/MonkeyCode/pull/1463)，说明请求透传、异步结算边界及验证记录。
