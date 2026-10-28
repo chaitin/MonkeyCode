@@ -2,7 +2,10 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -64,6 +68,58 @@ func TestResolveModelName(t *testing.T) {
 	owner, user, admin := resource.ID(), resource.ID(), resource.ID()
 	exec(`INSERT INTO users(id,name,email,role) VALUES($1,'所有者','owner@example.com','user'),($2,'调用者','user@example.com','user'),($3,'管理员','admin@example.com','admin')`, owner, user, admin)
 	repo := NewPostgres(pool)
+	t.Run("authorization subjects return current normalized avatars", func(t *testing.T) {
+		router := chi.NewRouter()
+		NewService(repo).RegisterAdmin(router)
+		for _, tc := range []struct {
+			name   string
+			stored any
+			want   string
+		}{
+			{name: "missing", stored: nil},
+			{name: "blank", stored: "   "},
+			{name: "trimmed", stored: " https://example.com/avatar.webp ", want: "https://example.com/avatar.webp"},
+			{name: "changed", stored: "https://example.com/new-avatar.webp", want: "https://example.com/new-avatar.webp"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				exec(`UPDATE users SET avatar_url=$2 WHERE id=$1`, owner, tc.stored)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/models/authorization-subjects", nil))
+				if response.Code != http.StatusOK {
+					t.Fatalf("subjects: %d %s", response.Code, response.Body.String())
+				}
+				var subjects struct{ Groups, Users []map[string]any }
+				if err := json.Unmarshal(response.Body.Bytes(), &subjects); err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, subject := range subjects.Users {
+					if subject["id"] != owner {
+						continue
+					}
+					found = true
+					if tc.want == "" {
+						if _, present := subject["avatar_url"]; present {
+							t.Fatalf("empty avatar should be omitted: %v", subject)
+						}
+					} else if subject["avatar_url"] != tc.want {
+						t.Fatalf("avatar = %v, want %q", subject["avatar_url"], tc.want)
+					}
+					if subject["group_id"] != rootgroup.ID {
+						t.Fatalf("root membership changed: %v", subject)
+					}
+				}
+				if !found {
+					t.Fatal("owner missing from authorization subjects")
+				}
+				for _, group := range subjects.Groups {
+					if _, present := group["avatar_url"]; present {
+						t.Fatalf("group has user avatar: %v", group)
+					}
+				}
+			})
+		}
+	})
 	create := func(name, ownership string) Model {
 		t.Helper()
 		item, err := repo.Create(ctx, Model{
@@ -241,6 +297,18 @@ func TestResolveModelName(t *testing.T) {
 		stored, err = repo.Get(ctx, item.ID)
 		if err != nil || stored.ImageConfig.DefaultQuality != "1K" || stored.ImagePricing.BaseCreditsPerImage != "12.5" {
 			t.Fatalf("生图模型未保存修改: %+v, %v", stored, err)
+		}
+		input.ImagePricing = &ImagePricing{Rates: []ImageRate{
+			{Quality: "1K", CreditsPerImage: "0"},
+			{Quality: "2K", CreditsPerImage: "7.123456"},
+			{Quality: "4K", CreditsPerImage: "19"},
+		}}
+		if _, err := service.Update(ctx, item.ID, admin, input); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = repo.Get(ctx, item.ID)
+		if err != nil || len(stored.ImagePricing.Rates) != 3 || stored.ImagePricing.Rates[0].CreditsPerImage != "0" || stored.ImagePricing.Rates[1].CreditsPerImage != "7.123456" || stored.ImagePricing.BaseCreditsPerImage != "" {
+			t.Fatalf("独立单张价格未完整保存: %+v, %v", stored.ImagePricing, err)
 		}
 		target, err := service.Resolve(ctx, "invoke-key", item.ID)
 		if err != nil || target.Kind != KindImage || target.Provider != ProviderOpenAIImages {

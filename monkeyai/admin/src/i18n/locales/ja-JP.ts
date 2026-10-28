@@ -78,6 +78,11 @@ export const jaJP = {
     modelScope:
       "呼び出しは開始時刻、クレジットは課金・返金時刻で集計します。キャッシュヒット率はヒットした呼び出しの割合です。",
   },
+  groupSelect: {
+    selectedGroups: "{{count}}グループを選択済み",
+    selectedUsers: "{{count}}人を選択済み",
+    selectedBoth: "選択済み：{{groups}}グループ、{{users}}人",
+  },
   common: {
     breadcrumb: "パンくずリスト",
     close: "閉じる",
@@ -244,6 +249,24 @@ export const jaJP = {
       empty: "現在の条件に一致するタスクはありません",
     },
     models: {
+      advancedOptions: "詳細オプション",
+      networkProxy: "ネットワークプロキシ",
+      validation: {
+        requiredField: "{{field}}を入力してください。",
+        authorizationRequired:
+          "許可するグループまたはユーザーを1つ以上選択してください。",
+        userModelReadOnly: "ユーザーモデルはここでは編集できません。",
+        positiveNumber:
+          "{{field}}には0より大きい有効な数値を入力してください。",
+        videoConfigInvalid:
+          "対応する動画モデルを選び、機能の読み込み完了を待ってください。",
+        videoPriceInvalid:
+          "各動画解像度の毎秒クレジットを、小数点以下6桁以内の0以上の数値で入力してください。",
+        imageOptionsInvalid:
+          "画像プロトコルの設定を利用できません。別のプロトコルを選ぶか、再試行してください。",
+        imagePriceInvalid:
+          "各画質の画像1枚あたりのクレジットは、小数点以下6桁以内の0以上の数値を入力してください。",
+      },
       noTags: "タグなし",
       maxOutputTokens: "最大出力 Token 数",
       searchAuthorization: "名前、メールアドレス、ピンインで検索",
@@ -256,6 +279,12 @@ export const jaJP = {
       kind: "モデル種別",
       textKind: "大規模言語モデル",
       imageKind: "画像生成",
+      videoKind: "動画モデル",
+      videoCreditsPerSecond: "1秒あたりのクレジット - {{resolution}}",
+      imageCreditsPerImage: "画像1枚あたりのクレジット - {{quality}}",
+      discoverModels: "利用可能なモデルを取得",
+      discoveryCredentialsRequired: "先にBase URLとAPIキーを入力してください。",
+      noDiscoveredModels: "利用可能なモデルが返されませんでした",
       imageProvider: "画像生成プロトコル",
       imageCapabilitiesUnavailable:
         "このプロバイダーの画像設定を読み込めませんでした。",
@@ -288,7 +317,7 @@ export const jaJP = {
       editDialogTitle: "モデルを編集",
       editDialogDescription:
         "モデルの呼び出し方法と、利用を許可するグループを更新します。",
-      modelId: "モデル ID",
+      modelId: "モデル名",
       modelIdPlaceholder: "例：gpt-4o",
       modelIdDescription: "API リクエストで実際に送信されるモデル名です。",
       displayName: "表示名",
@@ -889,7 +918,7 @@ export const jaJP = {
     },
     otherSettings: {
       about: "このアプリについて",
-      proxies: { title: "システムプロキシ", description: "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。", name: "名前", url: "プロキシURL", username: "ユーザー名（任意）", password: "パスワード（空欄で維持）", newPassword: "パスワード（任意）", add: "プロキシを追加", edit: "プロキシを編集", editAction: "編集", delete: "削除", cancel: "キャンセル", save: "保存", direct: "直接接続", confirmDelete: "このプロキシを削除しますか？" },
+      proxies: { title: "システムプロキシ", description: "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。", name: "名前", url: "プロキシURL", username: "ユーザー名（任意）", password: "パスワード（空欄で維持）", newPassword: "パスワード（任意）", add: "プロキシを追加", edit: "プロキシを編集", editAction: "編集", delete: "削除", cancel: "キャンセル", save: "保存", direct: "プロキシを使用しない", confirmDelete: "このプロキシを削除しますか？" },
       title: "その他の設定",
       description:
         "ブランド情報、OAuth、その他のプラットフォーム機能を設定します。",

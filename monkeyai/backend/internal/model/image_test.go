@@ -40,7 +40,7 @@ func TestCreateImageModelAndCatalog(t *testing.T) {
 		t.Fatalf("生图模型信息错误: %+v", model)
 	}
 	items, err := service.AgentModels(t.Context(), "user-1", false)
-	if err != nil || len(items) != 1 || items[0].Kind != KindImage || items[0].ImageConfig.DefaultQuality != "2K" || items[0].ImagePricing.BaseCreditsPerImage != "10" {
+	if err != nil || len(items) != 1 || items[0].Kind != KindImage || items[0].ImageConfig.DefaultQuality != "2K" || len(items[0].ImagePricing.Rates) != 3 || items[0].ImagePricing.Rates[1].CreditsPerImage != "15" {
 		t.Fatalf("生图目录错误: %+v, %v", items, err)
 	}
 	target, err := service.Resolve(t.Context(), "invoke-key", model.ID)

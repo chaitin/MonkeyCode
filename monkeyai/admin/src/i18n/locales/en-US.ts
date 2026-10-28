@@ -17,6 +17,7 @@ export const enUS = {
       settings: "Settings",
     },
     actions: {
+      discover: "Fetch available models",
       configure_cycle: "Configure billing cycle",
       configure_mode: "Configure billing mode",
       retry: "Retry settlement",
@@ -211,6 +212,11 @@ export const enUS = {
     deleted: "Deleted",
     modelScope:
       "Calls use start time; credits use charge and refund time. Cache hit rate is the share of calls with cache hits.",
+  },
+  groupSelect: {
+    selectedGroups: "{{count}} groups selected",
+    selectedUsers: "{{count}} users selected",
+    selectedBoth: "Selected groups: {{groups}} · users: {{users}}",
   },
   common: {
     breadcrumb: "Breadcrumb",
@@ -616,6 +622,22 @@ export const enUS = {
       window: "Window",
     },
     models: {
+      advancedOptions: "Advanced options",
+      networkProxy: "Network proxy",
+      validation: {
+        requiredField: "Enter {{field}}.",
+        authorizationRequired: "Select at least one authorized group or user.",
+        userModelReadOnly: "User models cannot be edited here.",
+        positiveNumber: "Enter a valid number greater than 0 for {{field}}.",
+        videoConfigInvalid:
+          "Select a supported video model and wait for its capabilities to load.",
+        videoPriceInvalid:
+          "Enter nonnegative credits per second for every video resolution, using at most six decimal places.",
+        imageOptionsInvalid:
+          "The image protocol configuration is unavailable. Select another protocol or retry.",
+        imagePriceInvalid:
+          "Each quality's per-image credits must be nonnegative, with at most six decimal places.",
+      },
       noTags: "No tags",
       maxOutputTokens: "Maximum output tokens",
       searchAuthorization: "Search by name, email, or pinyin",
@@ -629,6 +651,12 @@ export const enUS = {
       kind: "Model type",
       textKind: "Large language model",
       imageKind: "Image generation",
+      videoKind: "Video model",
+      videoCreditsPerSecond: "Credits per second - {{resolution}}",
+      imageCreditsPerImage: "Credits per image - {{quality}}",
+      discoverModels: "Fetch available models",
+      discoveryCredentialsRequired: "Enter the Base URL and API key first.",
+      noDiscoveredModels: "No available models returned",
       imageProvider: "Image protocol",
       testGeneration: "Test image generation",
       testGenerationWarning:
@@ -661,7 +689,7 @@ export const enUS = {
       editDialogTitle: "Edit model",
       editDialogDescription:
         "Update how this model is called and which groups can use it.",
-      modelId: "Model ID",
+      modelId: "Model name",
       modelIdPlaceholder: "e.g. gpt-4o",
       modelIdDescription: "The exact model name sent in API requests.",
       displayName: "Display name",
@@ -1462,7 +1490,7 @@ export const enUS = {
         delete: "Delete",
         cancel: "Cancel",
         save: "Save",
-        direct: "Direct connection",
+        direct: "No proxy",
         confirmDelete: "Delete this proxy?",
       },
       title: "Other Settings",

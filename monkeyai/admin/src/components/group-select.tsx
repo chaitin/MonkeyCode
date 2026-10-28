@@ -1,17 +1,21 @@
 import {
+  useDeferredValue,
+  useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
 } from "react"
 import {
   Folder02Icon,
   FolderIcon,
   UnfoldMoreIcon,
-  User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -21,6 +25,13 @@ import {
   searchGroupTree,
 } from "@/lib/group-select-search"
 import {
+  buildGroupSelectTree,
+  flattenGroupSelectTree,
+  type GroupSelectOption,
+  type GroupSelectRow,
+  type GroupSelectUser,
+} from "@/lib/group-select-tree"
+import {
   Popover,
   PopoverContent,
   PopoverTitle,
@@ -28,8 +39,11 @@ import {
 } from "@/components/ui/popover"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { UserAvatar } from "@/components/user-avatar"
+import { useVirtualRows } from "@/hooks/use-virtual-rows"
 import {
   changeGroupSelection,
+  indexGroupSelection,
   inheritedGroupSelection,
   type GroupSelectionMode,
   type GroupSelectionValue,
@@ -37,27 +51,15 @@ import {
 import { cn } from "@/lib/utils"
 
 export type {
+  GroupSelectOption,
+  GroupSelectUser,
+} from "@/lib/group-select-tree"
+export type {
   GroupSelectionMode,
   GroupSelectionValue,
 } from "@/lib/group-selection"
 
-/** A disabled group can still be expanded to select its children. */
-export type GroupSelectOption = {
-  id: string
-  parentId?: string | null
-  name: string
-  disabled?: boolean
-}
-
-/** Users may appear under multiple groups; selection is shared by user ID. */
-export type GroupSelectUser = {
-  id: string
-  name: string
-  /** Search-only metadata; not displayed in the row. */
-  email?: string
-  groupIds: readonly string[]
-  disabled?: boolean
-}
+const EMPTY_USERS: readonly GroupSelectUser[] = []
 
 export type GroupSelectProps = {
   id?: string
@@ -71,7 +73,7 @@ export type GroupSelectProps = {
   locale?: string
   disabled?: boolean
   className?: string
-  /** Initial state for each folder, including leaf folders. Default: true. */
+  /** Initial state for each folder. Default: true. */
   defaultExpanded?: boolean
   /** Allows folder icons to toggle expansion. Default: true. */
   collapsible?: boolean
@@ -90,7 +92,7 @@ export type GroupSelectProps = {
 export function GroupSelect({
   id,
   options,
-  users = [],
+  users = EMPTY_USERS,
   value,
   onValueChange,
   label,
@@ -108,92 +110,99 @@ export function GroupSelect({
   searchPlaceholder = label,
   noResultsText = emptyText,
 }: GroupSelectProps) {
+  const { t } = useTranslation()
   const generatedID = useId()
   const selectID = id ?? generatedID
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const searching = searchable && query.trim().length > 0
+  const deferredQuery = useDeferredValue(query)
+  const searching = searchable && deferredQuery.trim().length > 0
   const canCollapse = collapsible && !searching
+  const [initialExpanded] = useState(defaultExpanded)
+  const [expansion, setExpansion] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map()
+  )
+  const showUsers = selectionMode !== "groups"
+  const selectGroups = selectionMode !== "users"
+  const tree = useMemo(
+    () =>
+      buildGroupSelectTree(options, showUsers ? users : EMPTY_USERS, locale),
+    [options, users, showUsers, locale]
+  )
+  const searchIndex = useMemo(
+    () =>
+      searchable
+        ? createGroupSearchIndex(tree.groups, tree.users, locale)
+        : undefined,
+    [searchable, tree, locale]
+  )
+  const hierarchy = useMemo(
+    () =>
+      cascadeGroups && multiple && selectGroups
+        ? indexGroupSelection({ groups: options, users })
+        : undefined,
+    [cascadeGroups, multiple, selectGroups, options, users]
+  )
+  const selectedGroups = useMemo(
+    () => new Set(value.groupIds),
+    [value.groupIds]
+  )
+  const selectedUsers = useMemo(() => new Set(value.userIds), [value.userIds])
+  const inherited = useMemo(
+    () =>
+      hierarchy
+        ? inheritedGroupSelection(
+            { groupIds: value.groupIds, userIds: value.userIds },
+            hierarchy
+          )
+        : undefined,
+    [hierarchy, value.groupIds, value.userIds]
+  )
+  const visible = useMemo(
+    () =>
+      searching
+        ? searchGroupTree(
+            tree.groups,
+            tree.users,
+            deferredQuery,
+            locale,
+            searchIndex
+          )
+        : undefined,
+    [searching, tree, deferredQuery, locale, searchIndex]
+  )
+  const rows = useMemo(
+    () =>
+      open
+        ? flattenGroupSelectTree(tree, expansion, initialExpanded, visible)
+        : [],
+    [open, tree, expansion, initialExpanded, visible]
+  )
+  const summary = useMemo(() => {
+    const groups = selectGroups
+      ? [...selectedGroups].flatMap((id) => tree.byID.get(id) ?? [])
+      : []
+    const members = [...selectedUsers].flatMap(
+      (id) => tree.usersByID.get(id) ?? []
+    )
+    if (groups.length + members.length > 3) {
+      if (groups.length === 0)
+        return t("groupSelect.selectedUsers", { count: members.length })
+      if (members.length === 0)
+        return t("groupSelect.selectedGroups", { count: groups.length })
+      return t("groupSelect.selectedBoth", {
+        groups: groups.length,
+        users: members.length,
+      })
+    }
+    return [...groups.sort(tree.compare), ...members.sort(tree.compare)]
+      .map((entry) => entry.name)
+      .join(", ")
+  }, [selectGroups, selectedGroups, selectedUsers, tree, t])
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) setQuery("")
   }
-  const [initialExpanded] = useState(defaultExpanded)
-  const [expansion, setExpansion] = useState<Record<string, boolean>>({})
-  const showUsers = selectionMode !== "groups"
-  const searchIndex = useMemo(
-    () =>
-      searchable
-        ? createGroupSearchIndex(options, showUsers ? users : [], locale)
-        : undefined,
-    [searchable, options, users, showUsers, locale]
-  )
-  const selectGroups = selectionMode !== "users"
-  const hierarchy =
-    cascadeGroups && multiple && selectGroups
-      ? { groups: options, users }
-      : undefined
-  const inherited = hierarchy
-    ? inheritedGroupSelection(value, hierarchy)
-    : undefined
-  const byID = new Map(options.map((group) => [group.id, group]))
-  const collator = new Intl.Collator(locale, {
-    numeric: true,
-    sensitivity: "base",
-  })
-  const compare = (
-    a: { id: string; name: string },
-    b: { id: string; name: string }
-  ) => collator.compare(a.name, b.name) || a.id.localeCompare(b.id)
-  const sorted = [...options].sort(compare)
-  const sortedUsers = showUsers ? [...users].sort(compare) : []
-  const visible = searchGroupTree(
-    sorted,
-    sortedUsers,
-    searchable ? query : "",
-    locale,
-    searchIndex
-  )
-  const children = new Map<string | null, GroupSelectOption[]>()
-  for (const group of sorted) {
-    const parentID =
-      group.parentId && byID.has(group.parentId) ? group.parentId : null
-    const siblings = children.get(parentID) ?? []
-    siblings.push(group)
-    children.set(parentID, siblings)
-  }
-  const members = new Map<string | null, GroupSelectUser[]>()
-  for (const user of sortedUsers) {
-    const groupIDs = [...new Set(user.groupIds)].filter((groupID) =>
-      byID.has(groupID)
-    )
-    for (const groupID of groupIDs.length ? groupIDs : [null]) {
-      const siblings = members.get(groupID) ?? []
-      siblings.push(user)
-      members.set(groupID, siblings)
-    }
-  }
-  const groupPath = (group: GroupSelectOption) => {
-    const names = [group.name]
-    const seen = new Set([group.id])
-    let parentID = group.parentId
-    while (parentID && !seen.has(parentID)) {
-      seen.add(parentID)
-      const parent = byID.get(parentID)
-      if (!parent) break
-      names.unshift(parent.name)
-      parentID = parent.parentId
-    }
-    return names.join(" / ")
-  }
-  const summary = [
-    ...(selectGroups
-      ? sorted.filter((group) => value.groupIds.includes(group.id))
-      : []),
-    ...sortedUsers.filter((user) => value.userIds.includes(user.id)),
-  ]
-    .map((entry) => entry.name)
-    .join(", ")
   const select = (
     kind: "group" | "user",
     entryID: string,
@@ -227,44 +236,55 @@ export function GroupSelect({
       true
     )
   }
-  const rowClass = "flex w-full min-w-0 items-center gap-1 rounded-md"
+  const unavailable = (row: GroupSelectRow) =>
+    disabled ||
+    (row.kind === "user"
+      ? !!row.user.disabled || !!inherited?.inheritedUserIds.has(row.user.id)
+      : !selectGroups ||
+        !!row.group.disabled ||
+        !!inherited?.inheritedGroupIds.has(row.group.id))
+  const focusable = (row: GroupSelectRow) =>
+    !unavailable(row) || (!disabled && row.kind === "group" && canCollapse)
+  const rowClass = "flex h-9 w-full min-w-0 items-center gap-1 rounded-md"
   const checkboxClass =
     "ms-auto shrink-0 data-disabled:!border-muted-foreground/30 data-disabled:!bg-muted data-disabled:!text-muted-foreground data-disabled:!opacity-100"
-  const labelClass = (unavailable: boolean) =>
+  const labelClass = (inactive: boolean) =>
     cn(
-      "flex h-9 min-w-0 flex-1 items-center gap-2 pe-2 text-start font-normal",
-      unavailable ? "cursor-default" : "cursor-pointer"
+      "flex h-9 min-w-0 flex-1 items-center gap-2 pe-2 text-start font-normal rtl:pl-2 rtl:pr-0",
+      inactive ? "cursor-default" : "cursor-pointer"
     )
-  const renderUser = (
-    user: GroupSelectUser,
-    parentID: string | null,
-    level: number
-  ) => {
-    if (!visible.userIds.has(user.id)) return null
-    const checkboxID = `${selectID}-user-${JSON.stringify([parentID, user.id])}`
-    const inheritedSelection = inherited?.inheritedUserIds.has(user.id) ?? false
-    const unavailable = disabled || !!user.disabled || inheritedSelection
-    return (
-      <li key={`user:${user.id}`}>
+  const renderRow = (row: GroupSelectRow) => {
+    const inactive = unavailable(row)
+    const style = { paddingInlineStart: `${row.level * 1.25 + 0.25}rem` }
+    if (row.kind === "user") {
+      const user = row.user
+      const checkboxID = `${selectID}-user-${JSON.stringify([row.parentID, user.id])}`
+      return (
         <div
-          className={cn(rowClass, !unavailable && "hover:bg-foreground/5")}
-          style={{ paddingInlineStart: `${level * 1.25 + 0.25}rem` }}
+          className={cn(rowClass, !inactive && "hover:bg-foreground/5")}
+          style={style}
         >
           <span className="flex size-6 shrink-0 items-center justify-center">
-            <HugeiconsIcon
-              icon={User02Icon}
-              className="size-4 text-blue-600 dark:text-blue-400"
+            <UserAvatar
+              src={user.avatarUrl}
+              className="data-[size=sm]:size-5"
             />
           </span>
-          <label htmlFor={checkboxID} className={labelClass(unavailable)}>
-            <span className="min-w-0 flex-1 truncate" title={user.name}>
+          <label htmlFor={checkboxID} className={labelClass(inactive)}>
+            <span
+              className="min-w-0 flex-1 truncate"
+              title={user.email ? `${user.name} (${user.email})` : user.name}
+            >
               {user.name}
             </span>
             {multiple ? (
               <Checkbox
                 id={checkboxID}
-                checked={inheritedSelection || value.userIds.includes(user.id)}
-                disabled={unavailable}
+                checked={
+                  !!inherited?.inheritedUserIds.has(user.id) ||
+                  selectedUsers.has(user.id)
+                }
+                disabled={inactive}
                 className={checkboxClass}
                 onCheckedChange={(checked) => select("user", user.id, checked)}
               />
@@ -272,133 +292,97 @@ export function GroupSelect({
               <RadioGroupItem
                 id={checkboxID}
                 value={`user:${user.id}`}
-                disabled={unavailable}
+                disabled={inactive}
                 className="ms-auto"
               />
             )}
           </label>
         </div>
-      </li>
-    )
-  }
-  const renderGroup = (
-    group: GroupSelectOption,
-    ancestors: Set<string>,
-    level = 0
-  ): ReactNode => {
-    if (ancestors.has(group.id) || !visible.groupIds.has(group.id)) return null
-    const descendants = children.get(group.id) ?? []
-    const groupUsers = members.get(group.id) ?? []
-    const expanded = searching || (expansion[group.id] ?? initialExpanded)
+      )
+    }
+    const group = row.group
     const selectable = selectGroups && !group.disabled
-    const inheritedSelection =
-      inherited?.inheritedGroupIds.has(group.id) ?? false
-    const nextAncestors = new Set([...ancestors, group.id])
     const checkboxID = `${selectID}-group-${group.id}`
     const folderIcon = (
       <HugeiconsIcon
-        icon={expanded ? Folder02Icon : FolderIcon}
+        icon={row.expanded ? Folder02Icon : FolderIcon}
         className="size-4 text-yellow-600 dark:text-yellow-400"
       />
     )
     return (
-      <li key={`group:${group.id}`}>
-        <div
-          className={cn(
-            rowClass,
-            !disabled && (canCollapse || (selectable && !inheritedSelection))
-              ? "hover:bg-foreground/5"
-              : "cursor-default"
-          )}
-          style={{ paddingInlineStart: `${level * 1.25 + 0.25}rem` }}
-        >
-          {canCollapse ? (
-            <button
-              type="button"
-              className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
-              aria-label={group.name}
-              aria-expanded={expanded}
-              aria-controls={
-                descendants.length || groupUsers.length
-                  ? `${checkboxID}-children`
-                  : undefined
-              }
-              disabled={disabled}
-              onClick={() =>
-                setExpansion((current) => ({
-                  ...current,
-                  [group.id]: !expanded,
-                }))
-              }
-            >
-              {folderIcon}
-            </button>
-          ) : !selectable ? (
-            <span className="flex size-6 shrink-0 items-center justify-center">
-              {folderIcon}
-            </span>
-          ) : null}
-          {selectable ? (
-            <label
-              htmlFor={checkboxID}
-              className={labelClass(disabled || inheritedSelection)}
-            >
-              {!canCollapse && (
-                <span className="-me-1 flex size-6 shrink-0 items-center justify-center">
-                  {folderIcon}
-                </span>
-              )}
-              <span
-                className="min-w-0 flex-1 truncate"
-                title={groupPath(group)}
-              >
-                {group.name}
-              </span>
-              {multiple ? (
-                <Checkbox
-                  id={checkboxID}
-                  checked={
-                    inheritedSelection || value.groupIds.includes(group.id)
-                  }
-                  indeterminate={
-                    inherited?.partialGroupIds.has(group.id) ?? false
-                  }
-                  disabled={disabled || group.disabled || inheritedSelection}
-                  className={checkboxClass}
-                  onCheckedChange={(checked) =>
-                    select("group", group.id, checked)
-                  }
-                />
-              ) : (
-                <RadioGroupItem
-                  id={checkboxID}
-                  value={`group:${group.id}`}
-                  disabled={disabled || group.disabled}
-                  className="ms-auto"
-                />
-              )}
-            </label>
-          ) : (
-            <span className="flex h-9 min-w-0 flex-1 cursor-default items-center pe-2 text-popover-foreground">
-              <span className="truncate" title={groupPath(group)}>
-                {group.name}
-              </span>
-            </span>
-          )}
-        </div>
-        {(descendants.length > 0 || groupUsers.length > 0) && (
-          <ul
-            id={`${checkboxID}-children`}
-            hidden={!expanded}
-            className="space-y-1"
-          >
-            {descendants.map((child) =>
-              renderGroup(child, nextAncestors, level + 1)
-            )}
-            {groupUsers.map((user) => renderUser(user, group.id, level + 1))}
-          </ul>
+      <div
+        className={cn(
+          rowClass,
+          focusable(row) ? "hover:bg-foreground/5" : "cursor-default"
         )}
-      </li>
+        style={style}
+      >
+        {canCollapse ? (
+          <button
+            type="button"
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
+            aria-label={group.name}
+            aria-expanded={row.expanded}
+            disabled={disabled}
+            onClick={() =>
+              setExpansion((current) =>
+                new Map(current).set(group.id, !row.expanded)
+              )
+            }
+          >
+            {folderIcon}
+          </button>
+        ) : !selectable ? (
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            {folderIcon}
+          </span>
+        ) : null}
+        {selectable ? (
+          <label htmlFor={checkboxID} className={labelClass(inactive)}>
+            {!canCollapse && (
+              <span className="-me-1 flex size-6 shrink-0 items-center justify-center">
+                {folderIcon}
+              </span>
+            )}
+            <span
+              className="min-w-0 flex-1 truncate"
+              title={tree.groupPath(group)}
+            >
+              {group.name}
+            </span>
+            {multiple ? (
+              <Checkbox
+                id={checkboxID}
+                checked={
+                  !!inherited?.inheritedGroupIds.has(group.id) ||
+                  selectedGroups.has(group.id)
+                }
+                indeterminate={
+                  inherited?.partialGroupIds.has(group.id) ?? false
+                }
+                disabled={inactive}
+                className={checkboxClass}
+                onCheckedChange={(checked) =>
+                  select("group", group.id, checked)
+                }
+              />
+            ) : (
+              <RadioGroupItem
+                id={checkboxID}
+                value={`group:${group.id}`}
+                disabled={inactive}
+                className="ms-auto"
+              />
+            )}
+          </label>
+        ) : (
+          <span className="flex h-9 min-w-0 flex-1 cursor-default items-center pe-2 text-popover-foreground">
+            <span className="truncate" title={tree.groupPath(group)}>
+              {group.name}
+            </span>
+          </span>
+        )}
+      </div>
     )
   }
   return (
@@ -428,11 +412,11 @@ export function GroupSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="max-h-[var(--available-height)] w-[var(--anchor-width)] gap-2 overflow-hidden py-2 ps-2 pe-0"
+        className="max-h-[var(--available-height)] w-[var(--anchor-width)] gap-2 overflow-hidden py-2 pe-0 ps-2 rtl:pl-0 rtl:pr-2"
       >
         <PopoverTitle className="sr-only">{label}</PopoverTitle>
         {searchable && (
-          <div className="pe-2">
+          <div className="pe-2 rtl:pl-2 rtl:pr-0">
             <Input
               type="search"
               value={query}
@@ -443,46 +427,208 @@ export function GroupSelect({
             />
           </div>
         )}
-        <ScrollArea
-          className="min-h-0 w-full overflow-hidden [&_[data-slot=scroll-area-viewport]]:h-auto [&_[data-slot=scroll-area-viewport]]:max-h-[min(14rem,calc(var(--available-height,100vh)-var(--group-select-chrome)))]"
-          style={
-            {
-              "--group-select-chrome": searchable ? "4rem" : "1rem",
-            } as CSSProperties
-          }
-        >
-          {multiple ? (
-            <ul className="space-y-1 pe-2" aria-label={label}>
-              {(children.get(null) ?? []).map((group) =>
-                renderGroup(group, new Set())
-              )}
-              {(members.get(null) ?? []).map((user) =>
-                renderUser(user, null, 0)
-              )}
-            </ul>
-          ) : (
-            <RadioGroup
-              value={radioValue}
-              onValueChange={handleRadioValueChange}
-              className="gap-0"
-            >
-              <ul className="space-y-1 pe-2" aria-label={label}>
-                {(children.get(null) ?? []).map((group) =>
-                  renderGroup(group, new Set())
-                )}
-                {(members.get(null) ?? []).map((user) =>
-                  renderUser(user, null, 0)
-                )}
-              </ul>
-            </RadioGroup>
-          )}
-          {visible.groupIds.size === 0 && visible.userIds.size === 0 && (
-            <p className="py-6 pe-2 text-center text-sm text-muted-foreground">
-              {searching ? noResultsText : emptyText}
-            </p>
-          )}
-        </ScrollArea>
+        <GroupSelectList
+          rows={rows}
+          label={label}
+          query={searching ? deferredQuery : ""}
+          searchable={searchable}
+          multiple={multiple}
+          radioValue={radioValue}
+          onRadioValueChange={handleRadioValueChange}
+          renderRow={renderRow}
+          focusable={focusable}
+          selectable={(row) => !unavailable(row)}
+          emptyText={searching ? noResultsText : emptyText}
+        />
       </PopoverContent>
     </Popover>
+  )
+}
+
+const ROW_CONTROLS =
+  'button:not(:disabled), [role="radio"]:not([data-disabled]), [role="checkbox"]:not([data-disabled])'
+
+function focusRow(
+  viewport: HTMLElement,
+  target: { key: string; last: boolean }
+) {
+  const row = [
+    ...viewport.querySelectorAll<HTMLElement>("[data-virtual-key]"),
+  ].find((el) => el.dataset.virtualKey === target.key)
+  const controls = row
+    ? [...row.querySelectorAll<HTMLElement>(ROW_CONTROLS)]
+    : []
+  const control = target.last ? controls[controls.length - 1] : controls[0]
+  control?.focus()
+  return !!control
+}
+
+/** Mount only visible rows; keep focused controls mounted while scrolling. */
+function GroupSelectList({
+  rows,
+  label,
+  query,
+  searchable,
+  multiple,
+  radioValue,
+  onRadioValueChange,
+  renderRow,
+  focusable,
+  selectable,
+  emptyText,
+}: {
+  rows: readonly GroupSelectRow[]
+  label: string
+  query: string
+  searchable: boolean
+  multiple: boolean
+  radioValue: string
+  onRadioValueChange: (value: string) => void
+  renderRow: (row: GroupSelectRow) => ReactNode
+  focusable: (row: GroupSelectRow) => boolean
+  selectable: (row: GroupSelectRow) => boolean
+  emptyText: string
+}) {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
+  const pendingFocus = useRef<{ key: string; last: boolean } | null>(null)
+  const lastQuery = useRef<string | undefined>(undefined)
+  const keys = useMemo(() => rows.map((row) => row.key), [rows])
+  const { items, totalSize, scrollToOffset, onFocusCapture, onBlurCapture } =
+    useVirtualRows({ keys, scrollElement: viewport, estimateSize: 36, gap: 4 })
+  useEffect(() => {
+    if (!viewport || lastQuery.current === query) return
+    lastQuery.current = query
+    const selectedIndex =
+      !multiple && !query
+        ? rows.findIndex(
+            (row) =>
+              `${row.kind}:${row.kind === "group" ? row.group.id : row.user.id}` ===
+              radioValue
+          )
+        : 0
+    scrollToOffset(Math.max(0, selectedIndex) * 40)
+  }, [viewport, query, multiple, rows, radioValue, scrollToOffset])
+  useEffect(() => {
+    if (
+      viewport &&
+      pendingFocus.current &&
+      focusRow(viewport, pendingFocus.current)
+    )
+      pendingFocus.current = null
+  }, [viewport, items])
+  const handleKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    if (
+      !["Tab", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    )
+      return
+    const element = (event.target as HTMLElement).closest<HTMLElement>(
+      "[data-virtual-key]"
+    )
+    if (!element) return
+    const current = keys.indexOf(element.dataset.virtualKey ?? "")
+    if (current < 0) return
+    if (event.key === "Tab") {
+      if (!multiple) return
+      const controls = [...element.querySelectorAll<HTMLElement>(ROW_CONTROLS)]
+      const boundary = event.shiftKey
+        ? controls[0]
+        : controls[controls.length - 1]
+      if (event.target !== boundary) return
+    }
+    const backwards =
+      event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey)
+    let next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? rows.length - 1
+          : current + (backwards ? -1 : 1)
+    const step = event.key === "End" || backwards ? -1 : 1
+    const eligible = !multiple && event.key !== "Tab" ? selectable : focusable
+    while (next >= 0 && next < rows.length && !eligible(rows[next]))
+      next += step
+    if (next < 0 || next >= rows.length) return
+    event.preventDefault()
+    event.stopPropagation()
+    const row = rows[next]
+    if (!multiple && event.key !== "Tab") {
+      onRadioValueChange(
+        `${row.kind}:${row.kind === "group" ? row.group.id : row.user.id}`
+      )
+      return
+    }
+    pendingFocus.current = {
+      key: row.key,
+      last: event.key === "Tab" && backwards,
+    }
+    scrollToOffset(Math.max(0, next * 40 - (viewport?.clientHeight ?? 0) / 2))
+    if (viewport && focusRow(viewport, pendingFocus.current))
+      pendingFocus.current = null
+  }
+  const list = (
+    <ul
+      className="relative pe-2"
+      aria-label={label}
+      style={{ height: totalSize }}
+      onFocusCapture={onFocusCapture}
+      onBlurCapture={onBlurCapture}
+      onKeyDownCapture={handleKeyDown}
+    >
+      {items.map((item) => {
+        const row = rows[item.index]
+        return (
+          <li
+            key={row.key}
+            data-virtual-key={row.key}
+            aria-level={row.level + 1}
+            aria-posinset={item.index + 1}
+            aria-setsize={rows.length}
+            style={{
+              position: "absolute",
+              // A row transform would capture Base UI's fixed hidden inputs,
+              // whose negative margin causes horizontal overflow in RTL.
+              top: item.start,
+              left: 0,
+              width: "100%",
+              paddingInlineEnd: "0.5rem",
+              height: item.size,
+            }}
+          >
+            {renderRow(row)}
+          </li>
+        )
+      })}
+    </ul>
+  )
+  return (
+    <ScrollArea
+      viewportRef={setViewport}
+      className="min-h-0 w-full overflow-hidden [&_[data-slot=scroll-area-viewport]]:h-auto [&_[data-slot=scroll-area-viewport]]:max-h-[min(14rem,calc(var(--available-height,100vh)-var(--group-select-chrome)))]"
+      style={
+        {
+          "--group-select-chrome": searchable ? "4rem" : "1rem",
+        } as CSSProperties
+      }
+    >
+      {multiple ? (
+        list
+      ) : (
+        <RadioGroup
+          value={radioValue}
+          onValueChange={onRadioValueChange}
+          className="gap-0"
+        >
+          {list}
+        </RadioGroup>
+      )}
+      {rows.length === 0 && (
+        <p className="py-6 pe-2 text-center text-sm text-muted-foreground">
+          {emptyText}
+        </p>
+      )}
+    </ScrollArea>
   )
 }

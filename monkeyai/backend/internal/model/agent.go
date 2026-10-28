@@ -139,7 +139,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			userModelError(r.Context(), w, err)
 			return
 		}
-		modelJSON(w, http.StatusOK, item)
+		modelJSON(w, http.StatusOK, presentModel(item))
 	})
 	save := func(w http.ResponseWriter, r *http.Request) {
 		var input UserInput
@@ -161,7 +161,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			userModelError(r.Context(), w, err)
 			return
 		}
-		modelJSON(w, status, item)
+		modelJSON(w, status, presentModel(item))
 	}
 	router.Post("/models", save)
 	router.Put("/models/{modelID}", save)

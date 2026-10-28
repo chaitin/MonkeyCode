@@ -114,6 +114,26 @@ func validRatio(value string) bool {
 }
 
 func validateImagePricing(config *ImageConfig, pricing *ImagePricing) error {
+	if pricing.Rates != nil {
+		if pricing.BaseCreditsPerImage != "" || len(pricing.QualityMultipliers) != 0 {
+			return errors.New("不能同时配置单张积分价格和旧版画质倍率")
+		}
+		if len(pricing.Rates) != len(config.Qualities) {
+			return errors.New("必须为每种开放画质配置单张积分价格")
+		}
+		seen := make(map[string]bool, len(pricing.Rates))
+		for _, rate := range pricing.Rates {
+			if !slices.Contains(config.Qualities, rate.Quality) || seen[rate.Quality] {
+				return errors.New("积分价格的画质无效或重复")
+			}
+			seen[rate.Quality] = true
+			value, err := billing.ParseAmount(rate.CreditsPerImage)
+			if err != nil || value < 0 {
+				return errors.New("每张图积分价格必须为非负数且最多六位小数")
+			}
+		}
+		return nil
+	}
 	base, err := billing.ParseAmount(pricing.BaseCreditsPerImage)
 	if err != nil || base < 0 {
 		if err != nil {

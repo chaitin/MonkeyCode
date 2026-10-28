@@ -44,7 +44,9 @@ export function SystemProxySelect({
   const options = [
     {
       value: "__direct__",
-      label: t("pages.otherSettings.proxies.direct", { defaultValue: "直连" }),
+      label: t("pages.otherSettings.proxies.direct", {
+        defaultValue: "不使用代理",
+      }),
     },
     ...proxies.map(({ id, name }) => ({ value: id, label: name })),
   ]

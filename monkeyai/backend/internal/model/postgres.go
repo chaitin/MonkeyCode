@@ -327,6 +327,7 @@ func (p *Postgres) Subjects(ctx context.Context) (Subjects, error) {
 	for _, row := range userRows {
 		var subject Subject
 		subject.ID, subject.Name, subject.Email, subject.GroupID = row.ID, row.Name, row.Email, memberships[row.ID]
+		subject.AvatarURL = row.AvatarUrl
 		result.Users = append(result.Users, subject)
 	}
 	return result, nil

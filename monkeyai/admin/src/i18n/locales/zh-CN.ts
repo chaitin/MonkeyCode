@@ -17,6 +17,7 @@ export const zhCN = {
       settings: "设置",
     },
     actions: {
+      discover: "获取可用模型",
       configure_cycle: "配置计费周期",
       configure_mode: "配置计费模式",
       retry: "重试结算",
@@ -198,6 +199,11 @@ export const zhCN = {
     deleted: "已删除",
     modelScope:
       "调用按开始时间统计，积分按扣费与退款发生时间统计；缓存命中率为命中缓存的调用占比。",
+  },
+  groupSelect: {
+    selectedGroups: "已选 {{count}} 个分组",
+    selectedUsers: "已选 {{count}} 位成员",
+    selectedBoth: "已选 {{groups}} 个分组、{{users}} 位成员",
   },
   common: {
     breadcrumb: "面包屑导航",
@@ -588,6 +594,19 @@ export const zhCN = {
       window: "统计窗口",
     },
     models: {
+      advancedOptions: "高级选项",
+      networkProxy: "网络代理",
+      validation: {
+        requiredField: "请填写{{field}}。",
+        authorizationRequired: "请至少选择一个授权分组或用户。",
+        userModelReadOnly: "用户模型不支持在此修改。",
+        positiveNumber: "{{field}}必须为大于 0 的有效数字。",
+        videoConfigInvalid: "请选择有效的视频型号，并确认模型能力已加载。",
+        videoPriceInvalid:
+          "请填写所有视频分辨率的每秒积分，必须为非负数且最多六位小数。",
+        imageOptionsInvalid: "当前生图协议的配置不可用，请切换协议或重试。",
+        imagePriceInvalid: "每种清晰度的单张积分必须为非负数，且最多六位小数。",
+      },
       noTags: "没有标签",
       maxOutputTokens: "最大输出 Token",
       searchAuthorization: "搜索名称、邮箱或拼音",
@@ -600,6 +619,12 @@ export const zhCN = {
       kind: "模型类型",
       textKind: "大语言模型",
       imageKind: "生图模型",
+      videoKind: "视频模型",
+      videoCreditsPerSecond: "每秒积分扣费 - {{resolution}}",
+      imageCreditsPerImage: "每张图积分扣费 - {{quality}}",
+      discoverModels: "获取可用模型",
+      discoveryCredentialsRequired: "请先填写 Base URL 和密钥。",
+      noDiscoveredModels: "未获取到可用模型",
       imageProvider: "生图协议",
       testGeneration: "测试生图",
       testGenerationWarning:
@@ -629,7 +654,7 @@ export const zhCN = {
       dialogDescription: "配置模型的调用方式，以及可以使用该模型的分组。",
       editDialogTitle: "修改大模型",
       editDialogDescription: "更新模型的调用方式，以及可以使用该模型的分组。",
-      modelId: "模型 ID",
+      modelId: "模型名称",
       modelIdPlaceholder: "例如：gpt-4o",
       modelIdDescription: "实际发送到 API 请求中的模型名称。",
       displayName: "展示名称",
@@ -1388,7 +1413,7 @@ export const zhCN = {
         delete: "删除",
         cancel: "取消",
         save: "保存",
-        direct: "直连",
+        direct: "不使用代理",
         confirmDelete: "确认删除该代理？",
       },
       title: "其他设置",

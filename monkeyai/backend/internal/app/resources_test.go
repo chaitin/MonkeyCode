@@ -1141,6 +1141,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	t.Run("个人资源创作与分享", func(t *testing.T) { testPersonalResources(t, pool, handler, users) })
 	t.Run("凭证地址与全局调用密钥", func(t *testing.T) { testMCPAddresses(t, pool, handler, users, cookie) })
 
+	t.Run("模型配置接口", func(t *testing.T) { testModelConfiguration(t, pool, handler, cookie) })
+
 	t.Run("百智云扣费限制系统资源", func(t *testing.T) {
 		must := func(method, path string, body any, token, revision string) resource.Object {
 			t.Helper()

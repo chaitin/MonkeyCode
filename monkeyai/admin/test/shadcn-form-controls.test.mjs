@@ -59,7 +59,7 @@ test("specialized admin forms use the matching shadcn control", async () => {
     sources["pages/billing-details-page.tsx"],
     /items=\{resultItems\}/
   )
-  assert.match(sources["pages/models-page.tsx"], /<ImageCapabilitySelector/)
+  assert.match(sources["pages/models-page.tsx"], /<CollapsibleTrigger/)
   assert.match(
     sources["components/image-capability-selector.tsx"],
     /<ToggleGroup/

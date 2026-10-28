@@ -82,6 +82,11 @@ export const deDE = {
     modelScope:
       "Aufrufe nach Startzeit, Credits nach Buchungs- und Erstattungszeit. Cache-Trefferquote: Anteil der Aufrufe mit Cache-Treffern.",
   },
+  groupSelect: {
+    selectedGroups: "{{count}} Gruppen ausgewählt",
+    selectedUsers: "{{count}} Mitglieder ausgewählt",
+    selectedBoth: "Ausgewählte Gruppen: {{groups}} · Mitglieder: {{users}}",
+  },
   common: {
     breadcrumb: "Brotkrümelnavigation",
     close: "Schließen",
@@ -252,6 +257,24 @@ export const deDE = {
       empty: "Keine Aufgaben entsprechen den aktuellen Filtern",
     },
     models: {
+      advancedOptions: "Erweiterte Optionen",
+      networkProxy: "Netzwerkproxy",
+      validation: {
+        requiredField: "Bitte {{field}} eingeben.",
+        authorizationRequired:
+          "Wähle mindestens eine berechtigte Gruppe oder Person aus.",
+        userModelReadOnly:
+          "Benutzermodelle können hier nicht bearbeitet werden.",
+        positiveNumber: "Gib für {{field}} eine gültige Zahl größer als 0 ein.",
+        videoConfigInvalid:
+          "Wähle ein unterstütztes Videomodell und warte, bis die Fähigkeiten geladen sind.",
+        videoPriceInvalid:
+          "Gib für jede Videoauflösung nicht negative Credits pro Sekunde mit höchstens sechs Nachkommastellen ein.",
+        imageOptionsInvalid:
+          "Die Bildprotokoll-Konfiguration ist nicht verfügbar. Wähle ein anderes Protokoll oder versuche es erneut.",
+        imagePriceInvalid:
+          "Bild-Credits je Qualitätsstufe müssen nicht negativ sein, mit höchstens sechs Nachkommastellen.",
+      },
       noTags: "Keine Tags",
       maxOutputTokens: "Maximale Ausgabe-Token",
       searchAuthorization: "Nach Name, E-Mail oder Pinyin suchen",
@@ -265,6 +288,12 @@ export const deDE = {
       kind: "Modelltyp",
       textKind: "Großes Sprachmodell",
       imageKind: "Bildgenerierung",
+      videoKind: "Videomodell",
+      videoCreditsPerSecond: "Credits pro Sekunde - {{resolution}}",
+      imageCreditsPerImage: "Credits pro Bild - {{quality}}",
+      discoverModels: "Verfügbare Modelle abrufen",
+      discoveryCredentialsRequired: "Zuerst Basis-URL und API-Schlüssel eingeben.",
+      noDiscoveredModels: "Keine verfügbaren Modelle zurückgegeben",
       imageProvider: "Bildgenerierungsprotokoll",
       imageCapabilitiesUnavailable:
         "Bildoptionen für diesen Anbieter konnten nicht geladen werden.",
@@ -297,7 +326,7 @@ export const deDE = {
       editDialogTitle: "Modell bearbeiten",
       editDialogDescription:
         "Aktualisieren Sie, wie das Modell aufgerufen wird und welche Gruppen es verwenden dürfen.",
-      modelId: "Modell-ID",
+      modelId: "Modellname",
       modelIdPlaceholder: "z. B. gpt-4o",
       modelIdDescription:
         "Der exakte Modellname, der in API-Anfragen gesendet wird.",
@@ -925,7 +954,7 @@ export const deDE = {
     },
     otherSettings: {
       about: "Über",
-      proxies: { title: "System-Proxys", description: "Ausgehende Proxys für Modelle und Konnektoren konfigurieren. Verwendete Proxys können nicht gelöscht werden.", name: "Name", url: "Proxy-URL", username: "Benutzername (optional)", password: "Passwort (leer lassen zum Beibehalten)", newPassword: "Passwort (optional)", add: "Proxy hinzufügen", edit: "Proxy bearbeiten", editAction: "Bearbeiten", delete: "Löschen", cancel: "Abbrechen", save: "Speichern", direct: "Direkte Verbindung", confirmDelete: "Diesen Proxy löschen?" },
+      proxies: { title: "System-Proxys", description: "Ausgehende Proxys für Modelle und Konnektoren konfigurieren. Verwendete Proxys können nicht gelöscht werden.", name: "Name", url: "Proxy-URL", username: "Benutzername (optional)", password: "Passwort (leer lassen zum Beibehalten)", newPassword: "Passwort (optional)", add: "Proxy hinzufügen", edit: "Proxy bearbeiten", editAction: "Bearbeiten", delete: "Löschen", cancel: "Abbrechen", save: "Speichern", direct: "Kein Proxy", confirmDelete: "Diesen Proxy löschen?" },
       title: "Weitere Einstellungen",
       description:
         "Konfigurieren Sie Branding, OAuth und weitere Plattformfunktionen.",

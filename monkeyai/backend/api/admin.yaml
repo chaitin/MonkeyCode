@@ -2395,6 +2395,60 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/admin/v1/models/discover:
+    post:
+      summary: 使用上游连接配置查询可用的大语言模型
+      description: 服务端 GET Base URL 下的 models 接口，使用对应协议鉴权；不跟随重定向、不返回密钥。支持已保存密钥和网络代理，超时 15 秒，响应不缓存。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_url, protocol]
+              anyOf:
+                - required: [api_key]
+                  properties:
+                    api_key: {minLength: 1}
+                - required: [model_resource_id]
+              properties:
+                base_url: {type: string, format: uri}
+                protocol: {type: string, enum: [openai_chat_completions, openai_responses, anthropic]}
+                api_key: {type: string, writeOnly: true, maxLength: 16384, description: 编辑已有系统文本模型时可留空，以使用其已保存密钥。}
+                model_resource_id: {type: string, format: uuid}
+                proxy_id: {type: string, description: 网络代理 ID；空字符串表示不使用代理。}
+      responses:
+        '200':
+          description: 按 ID 排序并去重的模型列表；上游分页会被合并，最多 2000 个。
+          headers:
+            Cache-Control: {schema: {type: string, enum: [no-store]}}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models]
+                properties:
+                  models:
+                    type: array
+                    maxItems: 2000
+                    items:
+                      type: object
+                      required: [id]
+                      properties:
+                        id: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '502':
+          description: 上游请求失败或模型列表响应无效。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '504':
+          description: 上游请求超时。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /api/admin/v1/models/image-capabilities:
     get:
       summary: 查询生图模型支持的画质、比例和操作
@@ -6317,13 +6371,37 @@ components:
           type: string
           pattern: '^[0-9]+(\.[0-9]{1,6})?$'
           description: 大于 0 的十进制倍率，最多 6 位小数。
+    ImageRate:
+      type: object
+      required: [quality, credits_per_image]
+      properties:
+        quality: {$ref: '#/components/schemas/ImageQuality'}
+        credits_per_image:
+          type: string
+          pattern: '^[0-9]+(\.[0-9]{1,6})?$'
+          description: 该画质每张图的最终积分价，允许 0，最多六位小数。
     ImagePricing:
       type: object
-      required: [base_credits_per_image]
+      description: 返回按画质配置的单张积分价格。写入兼容旧版基础价和倍率，但不可与 rates 混用；旧配置按原定点计算规则换算后返回，不重写历史账单。
+      oneOf:
+        - required: [rates]
+          not:
+            anyOf:
+              - required: [base_credits_per_image]
+              - required: [quality_multipliers]
+        - required: [base_credits_per_image]
+          not: {required: [rates]}
       properties:
-        base_credits_per_image: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
+        rates:
+          type: array
+          minItems: 1
+          maxItems: 3
+          description: 每个已开放画质必须恰好配置一次。
+          items: {$ref: '#/components/schemas/ImageRate'}
+        base_credits_per_image: {type: string, deprecated: true, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
         quality_multipliers:
           type: array
+          deprecated: true
           items: {$ref: '#/components/schemas/ImageMultiplier'}
     AdvancedConfig:
       type: object
@@ -6482,6 +6560,9 @@ components:
           type: string
           format: email
           description: 用户邮箱。
+        avatar_url:
+          type: string
+          description: 当前用户头像地址；未配置时省略。
         group_id:
           type: string
           format: uuid

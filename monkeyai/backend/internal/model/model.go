@@ -76,8 +76,15 @@ type ImageMultiplier struct {
 	Multiplier string `json:"multiplier"`
 }
 
+type ImageRate struct {
+	Quality         string `json:"quality"`
+	CreditsPerImage string `json:"credits_per_image"`
+}
+
 type ImagePricing struct {
-	BaseCreditsPerImage string            `json:"base_credits_per_image"`
+	Rates []ImageRate `json:"rates,omitempty"`
+	// Legacy fields are accepted for older clients and stored configurations.
+	BaseCreditsPerImage string            `json:"base_credits_per_image,omitempty"`
 	QualityMultipliers  []ImageMultiplier `json:"quality_multipliers,omitempty"`
 }
 
@@ -254,11 +261,12 @@ type Target struct {
 }
 
 type Subject struct {
-	ID       string  `json:"id"`
-	ParentID *string `json:"parent_id,omitempty"`
-	Name     string  `json:"name"`
-	Email    string  `json:"email,omitempty"`
-	GroupID  string  `json:"group_id,omitempty"`
+	ID        string  `json:"id"`
+	ParentID  *string `json:"parent_id,omitempty"`
+	Name      string  `json:"name"`
+	Email     string  `json:"email,omitempty"`
+	AvatarURL string  `json:"avatar_url,omitempty"`
+	GroupID   string  `json:"group_id,omitempty"`
 }
 
 type Subjects struct {

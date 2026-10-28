@@ -74,6 +74,11 @@ export const koKR = {
     modelScope:
       "호출은 시작 시각, 크레딧은 청구 및 환불 시각 기준입니다. 캐시 적중률은 적중한 호출의 비율입니다.",
   },
+  groupSelect: {
+    selectedGroups: "그룹 {{count}}개 선택됨",
+    selectedUsers: "멤버 {{count}}명 선택됨",
+    selectedBoth: "선택한 그룹: {{groups}}개 · 멤버: {{users}}명",
+  },
   common: {
     breadcrumb: "이동 경로",
     close: "닫기",
@@ -237,6 +242,23 @@ export const koKR = {
       empty: "현재 필터와 일치하는 작업이 없습니다",
     },
     models: {
+      advancedOptions: "고급 옵션",
+      networkProxy: "네트워크 프록시",
+      validation: {
+        requiredField: "{{field}} 항목을 입력하세요.",
+        authorizationRequired:
+          "허용할 그룹 또는 사용자를 하나 이상 선택하세요.",
+        userModelReadOnly: "사용자 모델은 여기에서 수정할 수 없습니다.",
+        positiveNumber: "{{field}}에 0보다 큰 유효한 숫자를 입력하세요.",
+        videoConfigInvalid:
+          "지원되는 동영상 모델을 선택하고 기능이 로드될 때까지 기다리세요.",
+        videoPriceInvalid:
+          "모든 동영상 해상도의 초당 크레딧을 소수점 이하 여섯 자리 이내의 음수가 아닌 값으로 입력하세요.",
+        imageOptionsInvalid:
+          "이미지 프로토콜 설정을 사용할 수 없습니다. 다른 프로토콜을 선택하거나 다시 시도하세요.",
+        imagePriceInvalid:
+          "각 화질의 이미지당 크레딧은 음수가 아니어야 하며 소수점 이하 여섯 자리까지 입력할 수 있습니다.",
+      },
       noTags: "태그 없음",
       maxOutputTokens: "최대 출력 Token",
       searchAuthorization: "이름, 이메일 또는 병음으로 검색",
@@ -249,6 +271,12 @@ export const koKR = {
       kind: "모델 유형",
       textKind: "대규모 언어 모델",
       imageKind: "이미지 생성",
+      videoKind: "동영상 모델",
+      videoCreditsPerSecond: "초당 차감 크레딧 - {{resolution}}",
+      imageCreditsPerImage: "이미지당 차감 크레딧 - {{quality}}",
+      discoverModels: "사용 가능한 모델 가져오기",
+      discoveryCredentialsRequired: "먼저 Base URL과 API 키를 입력하세요.",
+      noDiscoveredModels: "사용 가능한 모델이 반환되지 않았습니다",
       imageProvider: "이미지 생성 프로토콜",
       imageCapabilitiesUnavailable:
         "이 공급자의 이미지 옵션을 불러올 수 없습니다.",
@@ -281,7 +309,7 @@ export const koKR = {
       editDialogTitle: "모델 수정",
       editDialogDescription:
         "모델 호출 방식과 이 모델을 사용할 수 있는 그룹을 업데이트합니다.",
-      modelId: "모델 ID",
+      modelId: "모델 이름",
       modelIdPlaceholder: "예: gpt-4o",
       modelIdDescription: "API 요청에 실제로 전송되는 모델 이름입니다.",
       displayName: "표시 이름",
@@ -874,7 +902,7 @@ export const koKR = {
     },
     otherSettings: {
       about: "정보",
-      proxies: { title: "시스템 프록시", description: "모델 및 커넥터용 아웃바운드 프록시를 설정합니다. 사용 중인 프록시는 삭제할 수 없습니다.", name: "이름", url: "프록시 URL", username: "사용자 이름(선택)", password: "비밀번호(비워 두면 유지)", newPassword: "비밀번호(선택)", add: "프록시 추가", edit: "프록시 편집", editAction: "편집", delete: "삭제", cancel: "취소", save: "저장", direct: "직접 연결", confirmDelete: "이 프록시를 삭제하시겠습니까?" },
+      proxies: { title: "시스템 프록시", description: "모델 및 커넥터용 아웃바운드 프록시를 설정합니다. 사용 중인 프록시는 삭제할 수 없습니다.", name: "이름", url: "프록시 URL", username: "사용자 이름(선택)", password: "비밀번호(비워 두면 유지)", newPassword: "비밀번호(선택)", add: "프록시 추가", edit: "프록시 편집", editAction: "편집", delete: "삭제", cancel: "취소", save: "저장", direct: "프록시 사용 안 함", confirmDelete: "이 프록시를 삭제하시겠습니까?" },
       title: "기타 설정",
       description: "브랜드 정보, OAuth 및 기타 플랫폼 기능을 설정합니다.",
       brandInfo: {

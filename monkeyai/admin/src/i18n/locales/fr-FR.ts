@@ -83,6 +83,11 @@ export const frFR = {
     modelScope:
       "Appels par heure de début ; crédits par heure de débit et de remboursement. Le taux de cache est la part des appels avec un cache utilisé.",
   },
+  groupSelect: {
+    selectedGroups: "Groupes sélectionnés : {{count}}",
+    selectedUsers: "Membres sélectionnés : {{count}}",
+    selectedBoth: "Groupes sélectionnés : {{groups}} · membres : {{users}}",
+  },
   common: {
     breadcrumb: "Fil d’Ariane",
     close: "Fermer",
@@ -254,6 +259,25 @@ export const frFR = {
       empty: "Aucune tâche ne correspond aux filtres actuels",
     },
     models: {
+      advancedOptions: "Options avancées",
+      networkProxy: "Proxy réseau",
+      validation: {
+        requiredField: "Renseignez {{field}}.",
+        authorizationRequired:
+          "Sélectionnez au moins un groupe ou utilisateur autorisé.",
+        userModelReadOnly:
+          "Les modèles utilisateur ne peuvent pas être modifiés ici.",
+        positiveNumber:
+          "Saisissez un nombre valide supérieur à 0 pour {{field}}.",
+        videoConfigInvalid:
+          "Sélectionnez un modèle vidéo pris en charge et attendez le chargement de ses capacités.",
+        videoPriceInvalid:
+          "Saisissez des crédits par seconde positifs ou nuls pour chaque résolution vidéo, avec six décimales au maximum.",
+        imageOptionsInvalid:
+          "La configuration du protocole d’images est indisponible. Choisissez un autre protocole ou réessayez.",
+        imagePriceInvalid:
+          "Les crédits par image de chaque qualité doivent être positifs ou nuls, avec six décimales au maximum.",
+      },
       noTags: "Aucune étiquette",
       maxOutputTokens: "Nombre maximal de jetons de sortie",
       searchAuthorization: "Rechercher par nom, e-mail ou pinyin",
@@ -267,6 +291,12 @@ export const frFR = {
       kind: "Type de modèle",
       textKind: "Grand modèle de langage",
       imageKind: "Génération d’images",
+      videoKind: "Modèle vidéo",
+      videoCreditsPerSecond: "Crédits par seconde - {{resolution}}",
+      imageCreditsPerImage: "Crédits par image - {{quality}}",
+      discoverModels: "Récupérer les modèles disponibles",
+      discoveryCredentialsRequired: "Saisissez d’abord l’URL de base et la clé API.",
+      noDiscoveredModels: "Aucun modèle disponible renvoyé",
       imageProvider: "Protocole de génération d’images",
       imageCapabilitiesUnavailable:
         "Impossible de charger les options de ce fournisseur.",
@@ -299,7 +329,7 @@ export const frFR = {
       editDialogTitle: "Modifier le modèle",
       editDialogDescription:
         "Mettez à jour la manière dont le modèle est appelé et les groupes autorisés à l’utiliser.",
-      modelId: "ID du modèle",
+      modelId: "Nom du modèle",
       modelIdPlaceholder: "Ex. : gpt-4o",
       modelIdDescription: "Nom exact du modèle envoyé dans les requêtes API.",
       displayName: "Nom d’affichage",
@@ -919,7 +949,7 @@ export const frFR = {
     },
     otherSettings: {
       about: "À propos",
-      proxies: { title: "Proxys système", description: "Configurez les proxys sortants pour les modèles et connecteurs. Un proxy utilisé ne peut pas être supprimé.", name: "Nom", url: "URL du proxy", username: "Nom d’utilisateur (facultatif)", password: "Mot de passe (laisser vide pour conserver)", newPassword: "Mot de passe (facultatif)", add: "Ajouter un proxy", edit: "Modifier le proxy", editAction: "Modifier", delete: "Supprimer", cancel: "Annuler", save: "Enregistrer", direct: "Connexion directe", confirmDelete: "Supprimer ce proxy ?" },
+      proxies: { title: "Proxys système", description: "Configurez les proxys sortants pour les modèles et connecteurs. Un proxy utilisé ne peut pas être supprimé.", name: "Nom", url: "URL du proxy", username: "Nom d’utilisateur (facultatif)", password: "Mot de passe (laisser vide pour conserver)", newPassword: "Mot de passe (facultatif)", add: "Ajouter un proxy", edit: "Modifier le proxy", editAction: "Modifier", delete: "Supprimer", cancel: "Annuler", save: "Enregistrer", direct: "Sans proxy", confirmDelete: "Supprimer ce proxy ?" },
       title: "Autres paramètres",
       description:
         "Configurez l’identité visuelle, OAuth et les autres fonctions de la plateforme.",

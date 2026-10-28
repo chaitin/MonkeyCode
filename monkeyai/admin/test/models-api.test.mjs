@@ -132,8 +132,12 @@ test("models page uses backend models and authorization subjects", async () => {
   assert.match(source, /api_key_configured/)
   assert.match(source, /openai_responses/)
   assert.match(source, /image-capabilities/)
-  assert.match(source, /base_credits_per_image/)
-  assert.match(source, /positiveMultiplier/)
+  assert.match(source, /credits_per_image: imageRates\[quality\]/)
+  assert.match(source, /image-rate-\$\{quality\}/)
+  assert.doesNotMatch(
+    source,
+    /base_credits_per_image|quality_multipliers|IMAGE_QUALITY_MULTIPLIERS/
+  )
   assert.match(
     source,
     /id="model-multiplier"[\s\S]{0,400}?min="0\.01"[\s\S]{0,400}?step="0\.01"/
@@ -174,7 +178,7 @@ test("model kinds use text tabs and collapsible section icons", async () => {
   assert.equal(zhCN.pages.models.textKind, "大语言模型")
 })
 
-test("image capabilities use card multi-selects and supported defaults", async () => {
+test("image settings automatically enable all supported options and preserve valid defaults", async () => {
   const page = await readFile(
     new URL("../src/pages/models-page.tsx", import.meta.url),
     "utf8"
@@ -184,13 +188,29 @@ test("image capabilities use card multi-selects and supported defaults", async (
     "utf8"
   )
 
-  assert.match(page, /preserveSavedSelection/)
   assert.match(page, /api<ImageCapabilities>\(providerPath\)/)
   assert.doesNotMatch(page, /imageModelId|modelSpecific/)
-  assert.match(page, /: \[\.\.\.capability\.qualities\]/)
-  assert.match(page, /: \[\.\.\.capability\.aspect_ratios\]/)
-  assert.match(page, /if \(next\.length === 0\) return/)
-  assert.match(page, /<Separator className="my-1"/)
+  assert.match(page, /const nextQualities = \[\.\.\.capability\.qualities\]/)
+  assert.match(
+    page,
+    /const nextAspectRatios = \[\.\.\.capability\.aspect_ratios\]/
+  )
+  assert.match(page, /nextQualities\.includes\(savedConfig\.default_quality\)/)
+  assert.match(
+    page,
+    /nextAspectRatios\.includes\(savedConfig\.default_aspect_ratio\)/
+  )
+  assert.doesNotMatch(
+    page,
+    /<ImageCapabilitySelector|handleQualitySelectionChange|handleAspectRatioSelectionChange/
+  )
+  assert.doesNotMatch(
+    page,
+    /t\("pages\.models\.(defaultQuality|defaultAspectRatio)"\)/
+  )
+  assert.match(page, /setVideoModes\(\[\.\.\.cap\.modes\]\)/)
+  assert.doesNotMatch(page, /<FieldLabel>开放模式<\/FieldLabel>/)
+  assert.doesNotMatch(page, /<Separator className="my-1"/)
   assert.match(selector, /<ToggleGroup/)
   assert.match(selector, /multiple/)
   assert.match(selector, /AspectRatioGlyph/)

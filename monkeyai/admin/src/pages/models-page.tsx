@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import {
   AiChat02Icon,
   AiImageIcon,
@@ -19,8 +19,8 @@ import {
   type GroupSelectOption,
   type GroupSelectUser,
 } from "@/components/group-select"
-import { ImageCapabilitySelector } from "@/components/image-capability-selector"
 import { ImageGenerationTest } from "@/components/image-generation-test"
+import { ModelDiscovery } from "@/components/model-discovery"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
   AlertDialog,
@@ -35,7 +35,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -78,7 +77,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResourceList } from "@/components/resource-list"
@@ -142,10 +141,8 @@ type ImageConfig = {
   default_aspect_ratio: string
 }
 
-type ImageMultiplier = { name: string; multiplier: string }
 type ImagePricing = {
-  base_credits_per_image: string
-  quality_multipliers?: ImageMultiplier[]
+  rates: Array<{ quality: string; credits_per_image: string }>
 }
 
 type ImageCapabilities = {
@@ -160,7 +157,27 @@ type ImageCapabilities = {
 }
 
 const decimalCredits = /^(0|[1-9]\d*)(\.\d{1,6})?$/
-const positiveMultiplier = /^(?:[1-9]\d*(?:\.\d{1,6})?|0\.(?=\d*[1-9])\d{1,6})$/
+const DEFAULT_IMAGE_RATES = { "1K": "20", "2K": "40", "4K": "80" }
+const DEFAULT_VIDEO_RATES = {
+  "480": "20",
+  "480p": "20",
+  "480P": "20",
+  "720": "40",
+  "720p": "40",
+  "720P": "40",
+  "768": "40",
+  "768p": "40",
+  "768P": "40",
+  "1080": "80",
+  "1080p": "80",
+  "1080P": "80",
+  "1K": "80",
+  "1k": "80",
+  "2K": "160",
+  "2k": "160",
+  "4K": "320",
+  "4k": "320",
+}
 
 type ModelBase = {
   id: string
@@ -224,6 +241,7 @@ type AuthorizationSubject = {
   parent_id?: string
   name: string
   email?: string
+  avatar_url?: string | null
   group_id?: string
 }
 
@@ -290,6 +308,26 @@ function ModelTagBadges({
   )
 }
 
+function ModelPricingSkeleton() {
+  const { t } = useTranslation()
+  return (
+    <FieldGroup
+      className="grid gap-3 sm:grid-cols-2"
+      role="status"
+      aria-busy="true"
+      aria-label={t("resources.tableLoading")}
+      data-model-pricing-loading=""
+    >
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-3" aria-hidden="true">
+          <Skeleton className="h-5 w-40 max-w-full motion-reduce:animate-none" />
+          <Skeleton className="h-9 w-full motion-reduce:animate-none" />
+        </div>
+      ))}
+    </FieldGroup>
+  )
+}
+
 export function ModelsPage() {
   const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
@@ -309,6 +347,7 @@ export function ModelsPage() {
   const [saving, setSaving] = useState(false)
   const activeModelType = remote.type
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
@@ -316,29 +355,52 @@ export function ModelsPage() {
   const [protocol, setProtocol] = useState<ModelProtocol>("openai_responses")
   const [kind, setKind] = useState<ModelKind>("text")
   const [modelId, setModelId] = useState("")
+  const modelNameAnchor = useRef<HTMLDivElement>(null)
+  const [displayNameOverride, setDisplayNameOverride] = useState<string | null>(
+    null
+  )
+  const changeModelId = (next: string) => {
+    setModelId(next)
+    setDisplayNameOverride((current) => (current?.trim() ? current : null))
+  }
   const [provider, setProvider] = useState<ModelProvider>("openai_images")
   const [videoCapabilities, setVideoCapabilities] =
     useState<VideoCapabilities | null>(null)
+  const [videoCapabilitiesFailed, setVideoCapabilitiesFailed] = useState(false)
   const [videoModes, setVideoModes] = useState<VideoMode[]>([])
-  const [videoRates, setVideoRates] = useState<Record<string, string>>({})
+  const [videoRates, setVideoRates] = useState<Record<string, string>>(() => ({
+    ...DEFAULT_VIDEO_RATES,
+  }))
   const [imageCapabilities, setImageCapabilities] =
     useState<ImageCapabilities | null>(null)
+  const [imageCapabilitiesFailed, setImageCapabilitiesFailed] = useState(false)
   const [qualities, setQualities] = useState<string[]>([])
   const [aspectRatios, setAspectRatios] = useState<string[]>([])
   const [defaultQuality, setDefaultQuality] = useState("")
   const [defaultAspectRatio, setDefaultAspectRatio] = useState("")
-  const [baseCredits, setBaseCredits] = useState("10")
-  const [qualityMultipliers, setQualityMultipliers] = useState<
-    Record<string, string>
-  >({})
+  const [imageRates, setImageRates] = useState<Record<string, string>>(() => ({
+    ...DEFAULT_IMAGE_RATES,
+  }))
   const [supportsVision, setSupportsVision] = useState(true)
   const [supportsReasoning, setSupportsReasoning] = useState(true)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
-  const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [],
-    memberIds: [],
-  })
+  const [authorizationOverride, setAuthorization] =
+    useState<AuthorizationSelection | null>(null)
+  const authorization = useMemo(() => {
+    if (authorizationOverride) return authorizationOverride
+    const root = groups.find((group) => !group.parentId)
+    return { groupIds: root ? [root.id] : [], memberIds: [] }
+  }, [authorizationOverride, groups])
+  const videoModelSupported = VIDEO_MODELS.some(
+    (entry) => entry.provider === provider && entry.model === modelId
+  )
+  const capabilitiesLoading =
+    (kind === "image" && !imageCapabilities && !imageCapabilitiesFailed) ||
+    (kind === "video" &&
+      videoModelSupported &&
+      !videoCapabilities &&
+      !videoCapabilitiesFailed)
 
   useEffect(() => {
     let active = true
@@ -359,6 +421,7 @@ export function ModelsPage() {
             id: user.id,
             name: user.name,
             email: user.email ?? "",
+            avatarUrl: user.avatar_url,
             groupIds: user.group_id ? [user.group_id] : [],
           }))
         )
@@ -389,23 +452,15 @@ export function ModelsPage() {
         .then((capability) => {
           if (!active) return
 
-          const preserveSavedSelection =
+          const savedConfig =
             editingModel?.kind === "image" && editingModel.provider === provider
-          const savedConfig = preserveSavedSelection
-            ? editingModel.imageConfig
-            : undefined
-          const nextQualities = savedConfig
-            ? capability.qualities.filter((value) =>
-                savedConfig.qualities.includes(value)
-              )
-            : [...capability.qualities]
-          const nextAspectRatios = savedConfig
-            ? capability.aspect_ratios.filter((value) =>
-                savedConfig.aspect_ratios.includes(value)
-              )
-            : [...capability.aspect_ratios]
+              ? editingModel.imageConfig
+              : undefined
+          const nextQualities = [...capability.qualities]
+          const nextAspectRatios = [...capability.aspect_ratios]
 
           setImageCapabilities(capability)
+          setImageCapabilitiesFailed(false)
           setQualities(nextQualities)
           setAspectRatios(nextAspectRatios)
           setDefaultQuality(
@@ -421,7 +476,10 @@ export function ModelsPage() {
           )
         })
         .catch(() => {
-          if (active) setImageCapabilities(null)
+          if (active) {
+            setImageCapabilities(null)
+            setImageCapabilitiesFailed(true)
+          }
         })
     }, 250)
     return () => {
@@ -444,64 +502,43 @@ export function ModelsPage() {
       .then((cap) => {
         if (!active) return
         setVideoCapabilities(cap)
-        setVideoModes(
-          editingModel?.kind === "video" &&
-            editingModel.provider === provider &&
-            editingModel.modelId === modelId
-            ? (editingModel.videoConfig?.modes ?? cap.modes)
-            : cap.modes
-        )
+        setVideoCapabilitiesFailed(false)
+        setVideoModes([...cap.modes])
       })
       .catch(() => {
-        if (active) setVideoCapabilities(null)
+        if (active) {
+          setVideoCapabilities(null)
+          setVideoCapabilitiesFailed(true)
+        }
       })
     return () => {
       active = false
     }
   }, [dialogOpen, kind, provider, modelId, editingModel])
 
-  const handleQualitySelectionChange = (values: string[]) => {
-    if (!imageCapabilities) return
-    const next = imageCapabilities.qualities.filter((value) =>
-      values.includes(value)
-    )
-    if (next.length === 0) return
-    setQualities(next)
-    setDefaultQuality((current) => (next.includes(current) ? current : next[0]))
-  }
-
-  const handleAspectRatioSelectionChange = (values: string[]) => {
-    if (!imageCapabilities) return
-    const next = imageCapabilities.aspect_ratios.filter((value) =>
-      values.includes(value)
-    )
-    if (next.length === 0) return
-    setAspectRatios(next)
-    setDefaultAspectRatio((current) =>
-      next.includes(current) ? current : next[0]
-    )
-  }
-
   const resetModelOptions = () => {
+    setAdvancedOpen(false)
     setProtocol("openai_responses")
     setKind("text")
     setModelId("")
+    setDisplayNameOverride(null)
     setProvider("openai_images")
     setImageCapabilities(null)
+    setImageCapabilitiesFailed(false)
     setVideoCapabilities(null)
+    setVideoCapabilitiesFailed(false)
     setVideoModes([])
-    setVideoRates({})
+    setVideoRates({ ...DEFAULT_VIDEO_RATES })
     setQualities([])
     setAspectRatios([])
     setDefaultQuality("")
     setDefaultAspectRatio("")
-    setBaseCredits("10")
-    setQualityMultipliers({})
+    setImageRates({ ...DEFAULT_IMAGE_RATES })
     setSupportsVision(true)
     setSupportsReasoning(true)
     setTagsOpen(false)
     setTagIds([])
-    setAuthorization({ groupIds: [], memberIds: [] })
+    setAuthorization(null)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -518,9 +555,11 @@ export function ModelsPage() {
     }
 
     setEditingModel(model)
+    setAdvancedOpen(false)
     setProtocol(model.protocol)
     setKind(model.kind)
     setModelId(model.modelId)
+    setDisplayNameOverride(model.displayName?.trim() ? model.displayName : null)
     setProvider(
       model.provider === "passthrough" ? "openai_images" : model.provider
     )
@@ -528,24 +567,25 @@ export function ModelsPage() {
     setAspectRatios(model.imageConfig?.aspect_ratios ?? [])
     setDefaultQuality(model.imageConfig?.default_quality ?? "")
     setDefaultAspectRatio(model.imageConfig?.default_aspect_ratio ?? "")
-    setBaseCredits(model.imagePricing?.base_credits_per_image ?? "10")
+    setImageRates({
+      ...DEFAULT_IMAGE_RATES,
+      ...Object.fromEntries(
+        (model.imagePricing?.rates ?? []).map((rate) => [
+          rate.quality,
+          rate.credits_per_image,
+        ])
+      ),
+    })
     setVideoModes(model.videoConfig?.modes ?? [])
-    setVideoRates(
-      Object.fromEntries(
+    setVideoRates({
+      ...DEFAULT_VIDEO_RATES,
+      ...Object.fromEntries(
         (model.videoPricing?.rates ?? []).map((rate) => [
           rate.resolution,
           rate.credits_per_second,
         ])
-      )
-    )
-    setQualityMultipliers(
-      Object.fromEntries(
-        (model.imagePricing?.quality_multipliers ?? []).map((item) => [
-          item.name,
-          item.multiplier,
-        ])
-      )
-    )
+      ),
+    })
     setSupportsVision(model.supportsVision)
     setSupportsReasoning(model.supportsReasoning)
     setTagIds(model.tagIds)
@@ -582,33 +622,50 @@ export function ModelsPage() {
     const form = event.currentTarget
     const formData = new FormData(form)
     const modelId = String(formData.get("modelId") ?? "").trim()
-    const displayName = String(formData.get("displayName") ?? "").trim()
+    const displayName =
+      String(formData.get("displayName") ?? "").trim() || modelId
     const contextSizeK = Number(formData.get("contextSizeK"))
     const maxOutputTokens = Number(formData.get("maxOutputTokens"))
     const baseUrl = String(formData.get("baseUrl") ?? "").trim()
     const apiKey = String(formData.get("apiKey") ?? "").trim()
     const multiplier = Number(formData.get("multiplier"))
 
-    if (
-      !modelId ||
-      !displayName ||
-      !baseUrl ||
-      (!apiKey && !editingModel?.apiKeyConfigured) ||
-      authorization.groupIds.length + authorization.memberIds.length === 0 ||
-      editingModel?.type === "user"
-    )
-      return
+    const reject = (title: string) => {
+      showToast({ status: "error", title })
+    }
+    const missingField = !modelId
+      ? t("pages.models.modelId")
+      : !displayName
+        ? t("pages.models.displayName")
+        : !baseUrl
+          ? t("pages.models.baseUrl")
+          : !apiKey && !editingModel?.apiKeyConfigured
+            ? t("pages.models.apiKey")
+            : ""
+    if (missingField)
+      return reject(
+        t("pages.models.validation.requiredField", { field: missingField })
+      )
+    if (authorization.groupIds.length + authorization.memberIds.length === 0)
+      return reject(t("pages.models.validation.authorizationRequired"))
+    if (editingModel?.type === "user")
+      return reject(t("pages.models.validation.userModelReadOnly"))
 
     if (kind === "text") {
-      if (
-        !Number.isFinite(contextSizeK) ||
-        contextSizeK <= 0 ||
-        !Number.isFinite(maxOutputTokens) ||
-        maxOutputTokens <= 0 ||
-        !Number.isFinite(multiplier) ||
-        multiplier <= 0
-      )
-        return
+      const invalidField =
+        !Number.isFinite(contextSizeK) || contextSizeK <= 0
+          ? t("pages.models.contextSize")
+          : !Number.isFinite(maxOutputTokens) || maxOutputTokens <= 0
+            ? t("pages.models.maxOutputTokens")
+            : !Number.isFinite(multiplier) || multiplier <= 0
+              ? t("pages.models.billingMultiplier")
+              : ""
+      if (invalidField) {
+        setAdvancedOpen(true)
+        return reject(
+          t("pages.models.validation.positiveNumber", { field: invalidField })
+        )
+      }
     } else if (kind === "video") {
       const entry = VIDEO_MODELS.find(
         (candidate) =>
@@ -619,20 +676,23 @@ export function ModelsPage() {
         !entry ||
         !videoCapabilities ||
         videoModes.length === 0 ||
-        resolutions.length === 0 ||
+        resolutions.length === 0
+      )
+        return reject(t("pages.models.validation.videoConfigInvalid"))
+      if (
         resolutions.some(
           (value) => !decimalCredits.test(videoRates[value] ?? "")
         )
       )
-        return
+        return reject(t("pages.models.validation.videoPriceInvalid"))
     } else {
+      if (!imageCapabilities)
+        return reject(t("pages.models.imageCapabilitiesUnavailable"))
       if (
-        !imageCapabilities ||
         qualities.length === 0 ||
         aspectRatios.length === 0 ||
         !qualities.includes(defaultQuality) ||
         !aspectRatios.includes(defaultAspectRatio) ||
-        !decimalCredits.test(baseCredits) ||
         qualities.some(
           (quality) =>
             !imageCapabilities.qualities.includes(quality) ||
@@ -644,12 +704,15 @@ export function ModelsPage() {
                     ratio
                   ))
             )
-        ) ||
-        qualities
-          .map((value) => qualityMultipliers[value] ?? "1")
-          .some((value) => !positiveMultiplier.test(value))
+        )
       )
-        return
+        return reject(t("pages.models.validation.imageOptionsInvalid"))
+      if (
+        qualities.some(
+          (quality) => !decimalCredits.test(imageRates[quality] ?? "")
+        )
+      )
+        return reject(t("pages.models.validation.imagePriceInvalid"))
     }
 
     setSaving(true)
@@ -720,17 +783,10 @@ export function ModelsPage() {
                   default_aspect_ratio: defaultAspectRatio,
                 },
                 image_pricing: {
-                  base_credits_per_image: baseCredits,
-                  quality_multipliers: qualities
-                    .filter(
-                      (name) =>
-                        qualityMultipliers[name] &&
-                        qualityMultipliers[name] !== "1"
-                    )
-                    .map((name) => ({
-                      name,
-                      multiplier: qualityMultipliers[name],
-                    })),
+                  rates: qualities.map((quality) => ({
+                    quality,
+                    credits_per_image: imageRates[quality],
+                  })),
                 },
               }
       await api<ApiModel>(
@@ -791,6 +847,24 @@ export function ModelsPage() {
                     key={editingModel?.id ?? "new-model"}
                     className="flex min-h-0 flex-col gap-6"
                     onSubmit={handleAddModel}
+                    onInvalidCapture={(event) => {
+                      const input = event.target as HTMLInputElement
+                      if (
+                        advancedOpen ||
+                        !input.closest("#model-advanced-options")
+                      )
+                        return
+                      event.preventDefault()
+                      if (
+                        event.currentTarget.querySelector(":invalid") !== input
+                      )
+                        return
+                      setAdvancedOpen(true)
+                      requestAnimationFrame(() => {
+                        input.focus()
+                        input.reportValidity()
+                      })
+                    }}
                   >
                     <DialogHeader>
                       <DialogTitle>
@@ -799,18 +873,20 @@ export function ModelsPage() {
                           : t("pages.models.dialogTitle")}
                       </DialogTitle>
                     </DialogHeader>
-                    <ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:pe-3">
+                    <ScrollArea className="-m-1 flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-scrollbar]]:translate-x-2.5 rtl:[&_[data-slot=scroll-area-scrollbar]]:-translate-x-2.5 [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:p-1">
                       <Tabs
                         value={kind}
                         onValueChange={(value) => {
                           const next = value as ModelKind
                           setKind(next)
                           setImageCapabilities(null)
+                          setImageCapabilitiesFailed(false)
                           setVideoCapabilities(null)
+                          setVideoCapabilitiesFailed(false)
                           if (next === "text") setProtocol("openai_responses")
                           if (next === "video") {
                             setProvider(VIDEO_MODELS[0].provider)
-                            setModelId(VIDEO_MODELS[0].model)
+                            changeModelId(VIDEO_MODELS[0].model)
                           }
                         }}
                       >
@@ -825,7 +901,7 @@ export function ModelsPage() {
                             {t("pages.models.imageKind")}
                           </TabsTrigger>
                           <TabsTrigger type="button" value="video">
-                            视频
+                            {t("pages.models.videoKind")}
                           </TabsTrigger>
                         </TabsList>
                       </Tabs>
@@ -835,227 +911,38 @@ export function ModelsPage() {
                             <FieldLabel htmlFor="model-id">
                               {t("pages.models.modelId")}
                             </FieldLabel>
-                            <Input
-                              id="model-id"
-                              name="modelId"
-                              value={modelId}
-                              onChange={(event) => {
-                                setModelId(event.target.value)
-                                setVideoCapabilities(null)
-                              }}
-                              placeholder={t("pages.models.modelIdPlaceholder")}
-                              required
-                            />
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="model-display-name">
-                              {t("pages.models.displayName")}
-                            </FieldLabel>
-                            <Input
-                              id="model-display-name"
-                              name="displayName"
-                              defaultValue={editingModel?.displayName}
-                              placeholder={t(
-                                "pages.models.displayNamePlaceholder"
-                              )}
-                              required
-                            />
-                          </Field>
-                        </FieldGroup>
-
-                        {kind === "image" && (
-                          <Field>
-                            <FieldLabel htmlFor="model-provider">
-                              {t("pages.models.imageProvider")}
-                            </FieldLabel>
-                            <Select
-                              items={IMAGE_PROVIDERS}
-                              value={provider}
-                              onValueChange={(value) => {
-                                setProvider(value as ImageProvider)
-                                setImageCapabilities(null)
-                                const next = IMAGE_PROVIDERS.find(
-                                  (item) => item.value === value
-                                )
-                                const input = document.getElementById(
-                                  "model-id"
-                                ) as HTMLInputElement | null
-                                if (next?.model && input && !editingModel)
-                                  input.value = next.model
-                              }}
-                            >
-                              <SelectTrigger
-                                className="w-full"
-                                id="model-provider"
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {IMAGE_PROVIDERS.map((item) => (
-                                    <SelectItem
-                                      key={item.value}
-                                      value={item.value}
-                                    >
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        )}
-
-                        {kind === "video" && (
-                          <Field>
-                            <FieldLabel htmlFor="video-model">
-                              视频型号
-                            </FieldLabel>
-                            <Select
-                              items={VIDEO_MODELS.map((item) => ({
-                                value: item.model,
-                                label: item.label,
-                              }))}
-                              value={
-                                VIDEO_MODELS.find(
-                                  (item) =>
-                                    item.provider === provider &&
-                                    item.model === modelId
-                                )?.model ?? null
-                              }
-                              onValueChange={(value) => {
-                                const next = VIDEO_MODELS.find(
-                                  (entry) => entry.model === value
-                                )
-                                if (next) {
-                                  setProvider(next.provider)
-                                  setModelId(next.model)
-                                  setVideoCapabilities(null)
-                                  setVideoModes([])
-                                  setVideoRates({})
-                                }
-                              }}
-                            >
-                              <SelectTrigger
-                                className="w-full"
-                                id="video-model"
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {VIDEO_MODELS.map((item) => (
-                                    <SelectItem
-                                      key={item.model}
-                                      value={item.model}
-                                    >
-                                      {item.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        )}
-                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                          <Field>
-                            <FieldLabel htmlFor="model-base-url">
-                              {t("pages.models.baseUrl")}
-                            </FieldLabel>
-                            <Input
-                              id="model-base-url"
-                              name="baseUrl"
-                              defaultValue={editingModel?.baseUrl}
-                              type="url"
-                              placeholder={t("pages.models.baseUrlPlaceholder")}
-                              required
-                            />
-                          </Field>
-
-                          <Field>
-                            <FieldLabel htmlFor="model-proxy">
-                              {t("pages.otherSettings.proxies.title", {
-                                defaultValue: "系统代理",
-                              })}
-                            </FieldLabel>
-                            <SystemProxySelect
-                              id="model-proxy"
-                              selected={editingModel?.proxyId ?? ""}
-                              proxies={proxies}
-                            />
-                            {proxyError && (
-                              <p role="alert" className="text-destructive">
-                                {proxyError}
-                              </p>
-                            )}
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="model-api-key">
-                              {t("pages.models.apiKey")}
-                            </FieldLabel>
-                            <Input
-                              autoComplete="new-password"
-                              id="model-api-key"
-                              name="apiKey"
-                              defaultValue=""
-                              placeholder={t("pages.models.apiKeyPlaceholder")}
-                              type="password"
-                              required={!editingModel?.apiKeyConfigured}
-                            />
-                          </Field>
-                        </FieldGroup>
-
-                        {kind === "text" && (
-                          <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                            <Field>
-                              <FieldLabel htmlFor="model-context-size">
-                                {t("pages.models.contextSize")} (K)
-                              </FieldLabel>
+                            <div className="relative" ref={modelNameAnchor}>
                               <Input
-                                id="model-context-size"
-                                min="1"
-                                name="contextSizeK"
-                                defaultValue={editingModel?.contextSizeK}
-                                placeholder="256"
-                                step="1"
-                                type="number"
-                                required
-                              />
-                            </Field>
-                            <Field>
-                              <FieldLabel htmlFor="model-max-output-tokens">
-                                {t("pages.models.maxOutputTokens")}
-                              </FieldLabel>
-                              <Input
-                                id="model-max-output-tokens"
-                                min="1"
-                                name="maxOutputTokens"
-                                defaultValue={editingModel?.maxOutputTokens}
-                                placeholder="16384"
-                                step="1"
-                                type="number"
-                                required
-                              />
-                            </Field>
-                            <Field>
-                              <FieldLabel htmlFor="model-multiplier">
-                                {t("pages.models.billingMultiplier")}
-                              </FieldLabel>
-                              <Input
-                                id="model-multiplier"
-                                min="0.01"
-                                name="multiplier"
-                                defaultValue={
-                                  editingModel?.type === "system"
-                                    ? editingModel.multiplier
+                                id="model-id"
+                                name="modelId"
+                                value={modelId}
+                                className={
+                                  kind === "text"
+                                    ? "pr-10 rtl:pl-10 rtl:pr-2.5"
                                     : undefined
                                 }
-                                placeholder="1.0"
-                                step="0.01"
-                                type="number"
+                                onChange={(event) => {
+                                  changeModelId(event.target.value)
+                                  setVideoCapabilities(null)
+                                  setVideoCapabilitiesFailed(false)
+                                }}
+                                placeholder={t(
+                                  "pages.models.modelIdPlaceholder"
+                                )}
                                 required
                               />
-                            </Field>
+                              {kind === "text" && (
+                                <ModelDiscovery
+                                  key={`${protocol}:${editingModel?.id ?? ""}`}
+                                  anchor={modelNameAnchor}
+                                  protocol={protocol}
+                                  modelResourceId={editingModel?.id}
+                                  onSelect={changeModelId}
+                                />
+                              )}
+                            </div>
+                          </Field>
+                          {kind === "text" && (
                             <Field>
                               <FieldLabel htmlFor="model-protocol">
                                 {t("pages.models.protocol")}
@@ -1063,9 +950,9 @@ export function ModelsPage() {
                               <Select
                                 items={PROTOCOLS}
                                 value={protocol}
-                                onValueChange={(value) => {
+                                onValueChange={(value) =>
                                   setProtocol(value as ModelProtocol)
-                                }}
+                                }
                               >
                                 <SelectTrigger
                                   className="w-full"
@@ -1094,8 +981,132 @@ export function ModelsPage() {
                                 </SelectContent>
                               </Select>
                             </Field>
-                          </FieldGroup>
-                        )}
+                          )}
+
+                          {kind === "image" && (
+                            <Field>
+                              <FieldLabel htmlFor="model-provider">
+                                {t("pages.models.imageProvider")}
+                              </FieldLabel>
+                              <Select
+                                items={IMAGE_PROVIDERS}
+                                value={provider}
+                                onValueChange={(value) => {
+                                  setProvider(value as ImageProvider)
+                                  setImageCapabilities(null)
+                                  setImageCapabilitiesFailed(false)
+                                  const next = IMAGE_PROVIDERS.find(
+                                    (item) => item.value === value
+                                  )
+                                  if (next?.model && !editingModel)
+                                    changeModelId(next.model)
+                                }}
+                              >
+                                <SelectTrigger
+                                  className="w-full"
+                                  id="model-provider"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {IMAGE_PROVIDERS.map((item) => (
+                                      <SelectItem
+                                        key={item.value}
+                                        value={item.value}
+                                      >
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          )}
+
+                          {kind === "video" && (
+                            <Field>
+                              <FieldLabel htmlFor="video-model">
+                                视频型号
+                              </FieldLabel>
+                              <Select
+                                items={VIDEO_MODELS.map((item) => ({
+                                  value: item.model,
+                                  label: item.label,
+                                }))}
+                                value={
+                                  VIDEO_MODELS.find(
+                                    (item) =>
+                                      item.provider === provider &&
+                                      item.model === modelId
+                                  )?.model ?? null
+                                }
+                                onValueChange={(value) => {
+                                  const next = VIDEO_MODELS.find(
+                                    (entry) => entry.model === value
+                                  )
+                                  if (next) {
+                                    setProvider(next.provider)
+                                    changeModelId(next.model)
+                                    setVideoCapabilities(null)
+                                    setVideoCapabilitiesFailed(false)
+                                    setVideoModes([])
+                                    setVideoRates({ ...DEFAULT_VIDEO_RATES })
+                                  }
+                                }}
+                              >
+                                <SelectTrigger
+                                  className="w-full"
+                                  id="video-model"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {VIDEO_MODELS.map((item) => (
+                                      <SelectItem
+                                        key={item.model}
+                                        value={item.model}
+                                      >
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          )}
+                        </FieldGroup>
+                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                          <Field>
+                            <FieldLabel htmlFor="model-base-url">
+                              {t("pages.models.baseUrl")}
+                            </FieldLabel>
+                            <Input
+                              id="model-base-url"
+                              name="baseUrl"
+                              defaultValue={editingModel?.baseUrl}
+                              type="url"
+                              placeholder={t("pages.models.baseUrlPlaceholder")}
+                              required
+                            />
+                          </Field>
+
+                          <Field>
+                            <FieldLabel htmlFor="model-api-key">
+                              {t("pages.models.apiKey")}
+                            </FieldLabel>
+                            <Input
+                              autoComplete="new-password"
+                              id="model-api-key"
+                              name="apiKey"
+                              defaultValue=""
+                              placeholder={t("pages.models.apiKeyPlaceholder")}
+                              type="password"
+                              required={!editingModel?.apiKeyConfigured}
+                            />
+                          </Field>
+                        </FieldGroup>
 
                         {kind === "text" && (
                           <ItemGroup className="grid grid-cols-2 gap-4 has-[[data-size=sm]]:gap-4">
@@ -1145,190 +1156,66 @@ export function ModelsPage() {
                         )}
 
                         {kind === "image" && (
-                          <>
-                            <Separator className="my-1" />
-                            <FieldGroup className="gap-3">
-                              {!imageCapabilities && (
-                                <p className="text-sm text-muted-foreground">
+                          <FieldGroup className="gap-3">
+                            {!imageCapabilities ? (
+                              imageCapabilitiesFailed ? (
+                                <p
+                                  role="alert"
+                                  className="text-sm text-muted-foreground"
+                                >
                                   {t(
                                     "pages.models.imageCapabilitiesUnavailable"
                                   )}
                                 </p>
-                              )}
-                              {imageCapabilities && (
-                                <>
-                                  <ImageCapabilitySelector
-                                    aspectRatioLabel={t(
-                                      "pages.models.aspectRatio"
-                                    )}
-                                    aspectRatios={
-                                      imageCapabilities.aspect_ratios
-                                    }
-                                    onAspectRatiosChange={
-                                      handleAspectRatioSelectionChange
-                                    }
-                                    onQualitiesChange={
-                                      handleQualitySelectionChange
-                                    }
-                                    qualities={imageCapabilities.qualities}
-                                    qualityLabel={t(
-                                      "pages.models.imageQuality"
-                                    )}
-                                    selectAllLabel={t(
-                                      "pages.models.selectAllSupported"
-                                    )}
-                                    selectedAspectRatios={aspectRatios}
-                                    selectedQualities={qualities}
-                                  />
-                                  <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                    <Field>
-                                      <FieldLabel>
-                                        {t("pages.models.defaultQuality")}
-                                      </FieldLabel>
-                                      <Select
-                                        items={qualities.map((value) => ({
-                                          value,
-                                          label: value,
-                                        }))}
-                                        value={defaultQuality}
-                                        onValueChange={(value) =>
-                                          setDefaultQuality(value ?? "")
-                                        }
-                                      >
-                                        <SelectTrigger className="w-full">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectGroup>
-                                            {qualities.map((value) => (
-                                              <SelectItem
-                                                key={value}
-                                                value={value}
-                                              >
-                                                {value}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectGroup>
-                                        </SelectContent>
-                                      </Select>
-                                    </Field>
-                                    <Field>
-                                      <FieldLabel>
-                                        {t("pages.models.defaultAspectRatio")}
-                                      </FieldLabel>
-                                      <Select
-                                        items={aspectRatios.map((value) => ({
-                                          value,
-                                          label: value,
-                                        }))}
-                                        value={defaultAspectRatio}
-                                        onValueChange={(value) =>
-                                          setDefaultAspectRatio(value ?? "")
-                                        }
-                                      >
-                                        <SelectTrigger className="w-full">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectGroup>
-                                            {aspectRatios.map((value) => (
-                                              <SelectItem
-                                                key={value}
-                                                value={value}
-                                              >
-                                                {value}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectGroup>
-                                        </SelectContent>
-                                      </Select>
-                                    </Field>
-                                  </FieldGroup>
-                                  <Separator className="my-1" />
-                                  <FieldGroup className="gap-3">
-                                    <Field>
-                                      <FieldLabel htmlFor="model-base-credits">
-                                        {t("pages.models.baseCreditsPerImage")}
-                                      </FieldLabel>
-                                      <Input
-                                        id="model-base-credits"
-                                        value={baseCredits}
-                                        onChange={(event) =>
-                                          setBaseCredits(event.target.value)
-                                        }
-                                        inputMode="decimal"
-                                        required
-                                      />
-                                    </Field>
-                                    <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                      {qualities.map((value) => (
-                                        <Field key={value}>
-                                          <FieldLabel
-                                            htmlFor={`quality-price-${value}`}
-                                          >
-                                            {value}{" "}
-                                            {t(
-                                              "pages.models.qualityMultiplier"
-                                            )}
-                                          </FieldLabel>
-                                          <Input
-                                            id={`quality-price-${value}`}
-                                            value={
-                                              qualityMultipliers[value] ?? "1"
-                                            }
-                                            onChange={(event) =>
-                                              setQualityMultipliers(
-                                                (current) => ({
-                                                  ...current,
-                                                  [value]: event.target.value,
-                                                })
-                                              )
-                                            }
-                                            inputMode="decimal"
-                                          />
-                                        </Field>
-                                      ))}
-                                    </FieldGroup>
-                                  </FieldGroup>
-                                </>
-                              )}
-                            </FieldGroup>
-                          </>
+                              ) : (
+                                <ModelPricingSkeleton />
+                              )
+                            ) : (
+                              <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                {qualities.map((quality) => (
+                                  <Field key={quality}>
+                                    <FieldLabel
+                                      htmlFor={`image-rate-${quality}`}
+                                    >
+                                      {t("pages.models.imageCreditsPerImage", {
+                                        quality,
+                                      })}
+                                    </FieldLabel>
+                                    <Input
+                                      id={`image-rate-${quality}`}
+                                      inputMode="decimal"
+                                      required
+                                      value={imageRates[quality] ?? ""}
+                                      onChange={(event) =>
+                                        setImageRates((current) => ({
+                                          ...current,
+                                          [quality]: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </Field>
+                                ))}
+                              </FieldGroup>
+                            )}
+                          </FieldGroup>
                         )}
 
                         {kind === "video" && (
                           <FieldGroup className="gap-3">
-                            <Separator className="my-1" />
                             {!videoCapabilities ? (
-                              <p className="text-sm text-muted-foreground">
-                                当前型号的视频能力不可用，请检查供应商和型号
-                              </p>
+                              videoCapabilitiesFailed ||
+                              !videoModelSupported ? (
+                                <p
+                                  role="alert"
+                                  className="text-sm text-muted-foreground"
+                                >
+                                  当前型号的视频能力不可用，请检查供应商和型号
+                                </p>
+                              ) : (
+                                <ModelPricingSkeleton />
+                              )
                             ) : (
                               <>
-                                <FieldLabel>开放模式</FieldLabel>
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                  {videoCapabilities.modes.map((mode) => (
-                                    <label
-                                      key={mode}
-                                      className="flex items-center gap-2 text-sm"
-                                    >
-                                      <Checkbox
-                                        checked={videoModes.includes(mode)}
-                                        onCheckedChange={(checked) =>
-                                          setVideoModes((current) =>
-                                            checked
-                                              ? [...current, mode]
-                                              : current.filter(
-                                                  (value) => value !== mode
-                                                )
-                                          )
-                                        }
-                                      />
-                                      {mode}
-                                    </label>
-                                  ))}
-                                </div>
-                                <FieldLabel>每秒积分（按清晰度）</FieldLabel>
                                 <FieldGroup className="grid gap-3 sm:grid-cols-2">
                                   {videoResolutions(videoCapabilities).map(
                                     (resolution) => (
@@ -1336,7 +1223,10 @@ export function ModelsPage() {
                                         <FieldLabel
                                           htmlFor={`video-rate-${resolution}`}
                                         >
-                                          {resolution} / 秒
+                                          {t(
+                                            "pages.models.videoCreditsPerSecond",
+                                            { resolution }
+                                          )}
                                         </FieldLabel>
                                         <Input
                                           id={`video-rate-${resolution}`}
@@ -1354,9 +1244,6 @@ export function ModelsPage() {
                                     )
                                   )}
                                 </FieldGroup>
-                                <p className="text-xs text-muted-foreground">
-                                  每种模式使用供应商支持的默认参数；复杂参考组合首期不开放。
-                                </p>
                               </>
                             )}
                           </FieldGroup>
@@ -1416,6 +1303,122 @@ export function ModelsPage() {
                             />
                           </Field>
                         </FieldGroup>
+                        <Collapsible
+                          open={advancedOpen}
+                          onOpenChange={setAdvancedOpen}
+                          className="rounded-lg border"
+                        >
+                          <CollapsibleTrigger
+                            id="model-advanced-trigger"
+                            type="button"
+                            className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                          >
+                            <span className="font-medium">
+                              {t("pages.models.advancedOptions")}
+                            </span>
+                            <HugeiconsIcon
+                              className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+                              icon={ArrowRight01Icon}
+                              strokeWidth={2}
+                            />
+                          </CollapsibleTrigger>
+                          <CollapsibleContent
+                            id="model-advanced-options"
+                            keepMounted
+                            className="border-t p-4"
+                          >
+                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                              <Field>
+                                <FieldLabel htmlFor="model-display-name">
+                                  {t("pages.models.displayName")}
+                                </FieldLabel>
+                                <Input
+                                  id="model-display-name"
+                                  name="displayName"
+                                  value={displayNameOverride ?? modelId}
+                                  onChange={(event) =>
+                                    setDisplayNameOverride(event.target.value)
+                                  }
+                                  placeholder={t(
+                                    "pages.models.displayNamePlaceholder"
+                                  )}
+                                />
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="model-proxy">
+                                  {t("pages.models.networkProxy")}
+                                </FieldLabel>
+                                <SystemProxySelect
+                                  id="model-proxy"
+                                  selected={editingModel?.proxyId ?? ""}
+                                  proxies={proxies}
+                                />
+                                {proxyError && (
+                                  <p role="alert" className="text-destructive">
+                                    {proxyError}
+                                  </p>
+                                )}
+                              </Field>
+                              {kind === "text" && (
+                                <>
+                                  <Field>
+                                    <FieldLabel htmlFor="model-context-size">
+                                      {t("pages.models.contextSize")} (K)
+                                    </FieldLabel>
+                                    <Input
+                                      id="model-context-size"
+                                      min="1"
+                                      name="contextSizeK"
+                                      defaultValue={
+                                        editingModel?.contextSizeK ?? 256
+                                      }
+                                      placeholder="256"
+                                      step="1"
+                                      type="number"
+                                      required
+                                    />
+                                  </Field>
+                                  <Field>
+                                    <FieldLabel htmlFor="model-max-output-tokens">
+                                      {t("pages.models.maxOutputTokens")}
+                                    </FieldLabel>
+                                    <Input
+                                      id="model-max-output-tokens"
+                                      min="1"
+                                      name="maxOutputTokens"
+                                      defaultValue={
+                                        editingModel?.maxOutputTokens ?? 16384
+                                      }
+                                      placeholder="16384"
+                                      step="1"
+                                      type="number"
+                                      required
+                                    />
+                                  </Field>
+                                  <Field>
+                                    <FieldLabel htmlFor="model-multiplier">
+                                      {t("pages.models.billingMultiplier")}
+                                    </FieldLabel>
+                                    <Input
+                                      id="model-multiplier"
+                                      min="0.01"
+                                      step="0.01"
+                                      name="multiplier"
+                                      defaultValue={
+                                        editingModel?.type === "system"
+                                          ? editingModel.multiplier
+                                          : 1
+                                      }
+                                      placeholder="1.0"
+                                      type="number"
+                                      required
+                                    />
+                                  </Field>
+                                </>
+                              )}
+                            </FieldGroup>
+                          </CollapsibleContent>
+                        </Collapsible>
                       </FieldGroup>
                     </ScrollArea>
                     <DialogFooter>
@@ -1424,7 +1427,11 @@ export function ModelsPage() {
                       >
                         {t("pages.models.cancel")}
                       </DialogClose>
-                      <Button loading={saving} disabled={saving} type="submit">
+                      <Button
+                        loading={saving}
+                        disabled={saving || capabilitiesLoading}
+                        type="submit"
+                      >
                         {editingModel
                           ? t("pages.models.save")
                           : t("pages.models.create")}
@@ -1448,14 +1455,14 @@ export function ModelsPage() {
                 className="overflow-hidden rounded-lg border bg-card"
                 defaultOpen
               >
-                <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset">
+                <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50">
                   <HugeiconsIcon
                     icon={kind === "text" ? AiChat02Icon : AiImageIcon}
                     strokeWidth={2}
                   />
                   <span className="font-medium">
                     {kind === "video"
-                      ? "视频模型"
+                      ? t("pages.models.videoKind")
                       : t(
                           kind === "text"
                             ? "pages.models.textKind"
@@ -1607,17 +1614,25 @@ export function ModelsPage() {
                           </CardHeader>
                           <CardContent className="flex flex-col gap-3">
                             <dl className="flex flex-col gap-3">
-                              {model.kind === "image" && (
-                                <div className="flex min-w-0 items-center gap-4">
-                                  <dt className="w-2/5 truncate text-muted-foreground">
-                                    {t("pages.models.baseCreditsPerImage")}
-                                  </dt>
-                                  <dd className="w-3/5 truncate text-end font-medium">
-                                    {model.imagePricing
-                                      ?.base_credits_per_image ?? "0"}
-                                  </dd>
-                                </div>
-                              )}
+                              {model.kind === "image" &&
+                                (model.imagePricing?.rates ?? []).map(
+                                  (rate) => (
+                                    <div
+                                      key={rate.quality}
+                                      className="flex min-w-0 items-center gap-4"
+                                    >
+                                      <dt className="min-w-0 flex-1 text-muted-foreground">
+                                        {t(
+                                          "pages.models.imageCreditsPerImage",
+                                          { quality: rate.quality }
+                                        )}
+                                      </dt>
+                                      <dd className="shrink-0 text-end font-medium">
+                                        {rate.credits_per_image}
+                                      </dd>
+                                    </div>
+                                  )
+                                )}
                               {model.kind === "video" && (
                                 <div className="flex min-w-0 items-center gap-4">
                                   <dt className="w-2/5 text-muted-foreground">

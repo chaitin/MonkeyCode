@@ -71,6 +71,11 @@ export const zhTW = {
     modelScope:
       "呼叫按開始時間統計，積分按扣費與退款時間統計；快取命中率為命中快取的呼叫比例。",
   },
+  groupSelect: {
+    selectedGroups: "已選 {{count}} 個群組",
+    selectedUsers: "已選 {{count}} 位成員",
+    selectedBoth: "已選 {{groups}} 個群組、{{users}} 位成員",
+  },
   common: {
     breadcrumb: "麵包屑導覽",
     close: "關閉",
@@ -257,6 +262,22 @@ export const zhTW = {
       empty: "沒有符合目前篩選條件的任務",
     },
     models: {
+      advancedOptions: "進階選項",
+      networkProxy: "網路代理",
+      validation: {
+        requiredField: "請填寫{{field}}。",
+        authorizationRequired: "請至少選擇一個授權群組或使用者。",
+        userModelReadOnly: "使用者模型不支援在此修改。",
+        positiveNumber: "{{field}}必須為大於 0 的有效數字。",
+        videoConfigInvalid:
+          "請選擇有效的影片型號，並確認模型能力已載入。",
+        videoPriceInvalid:
+          "請填寫所有影片解析度的每秒積分，必須為非負數且最多六位小數。",
+        imageOptionsInvalid:
+          "目前生圖協定的設定無法使用，請切換協定或重試。",
+        imagePriceInvalid:
+          "每種清晰度的單張積分必須為非負數，且最多六位小數。",
+      },
       noTags: "沒有標籤",
       maxOutputTokens: "最大輸出 Token",
       searchAuthorization: "搜尋名稱、電子郵件或拼音",
@@ -269,6 +290,12 @@ export const zhTW = {
       kind: "模型類型",
       textKind: "大型語言模型",
       imageKind: "生圖模型",
+      videoKind: "影片模型",
+      videoCreditsPerSecond: "每秒積分扣費 - {{resolution}}",
+      imageCreditsPerImage: "每張圖積分扣費 - {{quality}}",
+      discoverModels: "取得可用模型",
+      discoveryCredentialsRequired: "請先填寫 Base URL 和金鑰。",
+      noDiscoveredModels: "未取得可用模型",
       imageProvider: "生圖協定",
       imageCapabilitiesUnavailable: "無法載入此供應商的畫質與比例選項。",
       selectAllSupported: "全選支援項目",
@@ -298,7 +325,7 @@ export const zhTW = {
       dialogDescription: "設定模型的呼叫方式，以及可以使用該模型的群組。",
       editDialogTitle: "修改大型模型",
       editDialogDescription: "更新模型的呼叫方式，以及可以使用該模型的群組。",
-      modelId: "模型 ID",
+      modelId: "模型名稱",
       modelIdPlaceholder: "例如：gpt-4o",
       modelIdDescription: "實際傳送至 API 請求中的模型名稱。",
       displayName: "顯示名稱",
@@ -871,7 +898,7 @@ export const zhTW = {
     },
     otherSettings: {
       about: "關於",
-      proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", url: "代理位址", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", newPassword: "密碼（選填）", add: "新增代理", edit: "編輯代理", editAction: "編輯", delete: "刪除", cancel: "取消", save: "儲存", direct: "直接連線", confirmDelete: "確定刪除此代理？" },
+      proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", url: "代理位址", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", newPassword: "密碼（選填）", add: "新增代理", edit: "編輯代理", editAction: "編輯", delete: "刪除", cancel: "取消", save: "儲存", direct: "不使用代理", confirmDelete: "確定刪除此代理？" },
       title: "其他設定",
       description: "設定品牌資訊、OAuth 與其他平台功能。",
       brandInfo: {

@@ -242,7 +242,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) 
 			Protocol:            item.Protocol,
 			Kind:                item.Kind,
 			ImageConfig:         imageConfig,
-			ImagePricing:        item.ImagePricing,
+			ImagePricing:        presentImagePricing(item.ImageConfig, item.ImagePricing),
 			VideoConfig:         videoConfig,
 			VideoPricing:        item.VideoPricing,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,

@@ -5048,12 +5048,19 @@ components:
           description: 大于 0 的十进制倍率，最多 6 位小数。
     AgentImagePricing:
       type: object
-      required: [base_credits_per_image]
+      required: [rates]
+      description: 每种开放画质的单张最终积分价；旧版基础价和倍率按原计价规则换算，不改变原费用。
       properties:
-        base_credits_per_image: {type: string}
-        quality_multipliers:
+        rates:
           type: array
-          items: {$ref: '#/components/schemas/AgentImageMultiplier'}
+          minItems: 1
+          maxItems: 3
+          items:
+            type: object
+            required: [quality, credits_per_image]
+            properties:
+              quality: {$ref: '#/components/schemas/ImageQuality'}
+              credits_per_image: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
     AgentModel:
       type: object
       required:

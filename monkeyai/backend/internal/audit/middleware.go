@@ -190,6 +190,9 @@ func routeEvent(r *http.Request) Event {
 	if len(parts) > 2 && !strings.Contains(parts[len(parts)-1], "{") {
 		event.Action = strings.ReplaceAll(parts[len(parts)-1], "-", "_")
 	}
+	if r.Method == http.MethodPost && path == "/models/discover" {
+		event.Action = "discover"
+	}
 	for _, key := range []string{"toolID", "modelID", "userID", "groupID", "keyID", "id"} {
 		if id := chi.URLParam(r, key); uuid(id) != nil {
 			event.TargetID = id

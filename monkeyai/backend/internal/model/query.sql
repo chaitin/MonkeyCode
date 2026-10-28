@@ -216,7 +216,8 @@ ORDER BY
 SELECT
     id,
     name,
-    email
+    email,
+    coalesce(nullif(btrim(avatar_url), ''), '')::text AS avatar_url
 FROM
     users
 WHERE

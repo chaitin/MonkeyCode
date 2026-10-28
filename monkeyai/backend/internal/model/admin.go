@@ -46,6 +46,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 			"supports_reference_image": cap.SupportsReference, "supports_mask": cap.SupportsMask,
 		})
 	})
+	router.Post("/models/discover", s.discoverModels)
 	router.Post("/models", s.createModel)
 	router.Put("/models/{modelID}", s.updateModel)
 	router.Patch("/models/{modelID}/enabled", s.setModelEnabled)
@@ -130,6 +131,7 @@ func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func presentModel(item Model) Model {
+	item.ImagePricing = presentImagePricing(item.ImageConfig, item.ImagePricing)
 	if item.Authorization.AllUsers {
 		item.Authorization.AllUsers = false
 		item.Authorization.GroupIDs = []string{rootgroup.ID}

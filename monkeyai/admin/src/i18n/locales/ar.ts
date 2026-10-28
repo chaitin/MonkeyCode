@@ -74,6 +74,11 @@ export const ar = {
     modelScope:
       "تُحسب الاستدعاءات حسب وقت البدء والأرصدة حسب وقت الخصم والاسترداد. معدل إصابة الذاكرة المؤقتة هو نسبة الاستدعاءات التي استخدمتها.",
   },
+  groupSelect: {
+    selectedGroups: "المجموعات المحددة: {{count}}",
+    selectedUsers: "الأعضاء المحددون: {{count}}",
+    selectedBoth: "المجموعات المحددة: {{groups}} · الأعضاء: {{users}}",
+  },
   common: {
     breadcrumb: "مسار التنقل",
     close: "إغلاق",
@@ -236,6 +241,23 @@ export const ar = {
       empty: "لا توجد مهام تطابق عوامل التصفية الحالية",
     },
     models: {
+      advancedOptions: "خيارات متقدمة",
+      networkProxy: "وكيل الشبكة",
+      validation: {
+        requiredField: "أدخل {{field}}.",
+        authorizationRequired:
+          "اختر مجموعة أو مستخدمًا واحدًا على الأقل لمنحه حق الوصول.",
+        userModelReadOnly: "لا يمكن تعديل نماذج المستخدمين هنا.",
+        positiveNumber: "أدخل رقمًا صالحًا أكبر من 0 للحقل {{field}}.",
+        videoConfigInvalid:
+          "اختر نموذج فيديو مدعومًا وانتظر تحميل الإمكانات.",
+        videoPriceInvalid:
+          "أدخل رصيدًا غير سالب لكل ثانية ولكل دقة فيديو، بحد أقصى ست منازل عشرية.",
+        imageOptionsInvalid:
+          "إعدادات بروتوكول الصور غير متاحة. اختر بروتوكولًا آخر أو أعد المحاولة.",
+        imagePriceInvalid:
+          "يجب أن يكون الرصيد لكل صورة ولكل جودة غير سالب، بحد أقصى ست منازل عشرية.",
+      },
       noTags: "بلا وسوم",
       maxOutputTokens: "الحد الأقصى لرموز الإخراج",
       searchAuthorization: "البحث بالاسم أو البريد الإلكتروني أو بينيين",
@@ -248,6 +270,12 @@ export const ar = {
       kind: "نوع النموذج",
       textKind: "نموذج لغوي كبير",
       imageKind: "توليد الصور",
+      videoKind: "نموذج فيديو",
+      videoCreditsPerSecond: "الرصيد لكل ثانية - {{resolution}}",
+      imageCreditsPerImage: "الرصيد لكل صورة - {{quality}}",
+      discoverModels: "جلب النماذج المتاحة",
+      discoveryCredentialsRequired: "أدخل عنوان URL الأساسي ومفتاح API أولاً.",
+      noDiscoveredModels: "لم يتم إرجاع نماذج متاحة",
       imageProvider: "بروتوكول توليد الصور",
       imageCapabilitiesUnavailable: "تعذر تحميل خيارات الصور لهذا المزوّد.",
       selectAllSupported: "تحديد كل الخيارات المدعومة",
@@ -279,7 +307,7 @@ export const ar = {
       editDialogTitle: "تعديل نموذج",
       editDialogDescription:
         "حدّث طريقة استدعاء النموذج والمجموعات المسموح لها باستخدامه.",
-      modelId: "معرّف النموذج",
+      modelId: "اسم النموذج",
       modelIdPlaceholder: "مثال: gpt-4o",
       modelIdDescription: "اسم النموذج الدقيق الذي يُرسل في طلبات API.",
       displayName: "اسم العرض",
@@ -871,7 +899,7 @@ export const ar = {
     },
     otherSettings: {
       about: "حول",
-      proxies: { title: "وكلاء النظام", description: "إعداد وكلاء الاتصال الصادر للنماذج والموصلات. لا يمكن حذف الوكلاء قيد الاستخدام.", name: "الاسم", url: "عنوان الوكيل", username: "اسم المستخدم (اختياري)", password: "كلمة المرور (اتركها فارغة للاحتفاظ بها)", newPassword: "كلمة المرور (اختياري)", add: "إضافة وكيل", edit: "تعديل الوكيل", editAction: "تعديل", delete: "حذف", cancel: "إلغاء", save: "حفظ", direct: "اتصال مباشر", confirmDelete: "هل تريد حذف هذا الوكيل؟" },
+      proxies: { title: "وكلاء النظام", description: "إعداد وكلاء الاتصال الصادر للنماذج والموصلات. لا يمكن حذف الوكلاء قيد الاستخدام.", name: "الاسم", url: "عنوان الوكيل", username: "اسم المستخدم (اختياري)", password: "كلمة المرور (اتركها فارغة للاحتفاظ بها)", newPassword: "كلمة المرور (اختياري)", add: "إضافة وكيل", edit: "تعديل الوكيل", editAction: "تعديل", delete: "حذف", cancel: "إلغاء", save: "حفظ", direct: "بدون وكيل", confirmDelete: "هل تريد حذف هذا الوكيل؟" },
       title: "إعدادات أخرى",
       description: "اضبط الهوية البصرية وOAuth وإمكانات المنصة الأخرى.",
       brandInfo: {

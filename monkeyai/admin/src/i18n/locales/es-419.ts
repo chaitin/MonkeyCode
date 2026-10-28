@@ -78,6 +78,11 @@ export const es419 = {
     modelScope:
       "Llamadas por hora de inicio; créditos por hora de cobro y reembolso. La tasa de caché es la proporción de llamadas con aciertos.",
   },
+  groupSelect: {
+    selectedGroups: "Grupos seleccionados: {{count}}",
+    selectedUsers: "Miembros seleccionados: {{count}}",
+    selectedBoth: "Grupos seleccionados: {{groups}} · miembros: {{users}}",
+  },
   common: {
     breadcrumb: "Ruta de navegación",
     close: "Cerrar",
@@ -248,6 +253,23 @@ export const es419 = {
       empty: "No hay tareas que coincidan con los filtros actuales",
     },
     models: {
+      advancedOptions: "Opciones avanzadas",
+      networkProxy: "Proxy de red",
+      validation: {
+        requiredField: "Completa {{field}}.",
+        authorizationRequired:
+          "Selecciona al menos un grupo o usuario autorizado.",
+        userModelReadOnly: "Los modelos de usuario no se pueden editar aquí.",
+        positiveNumber: "Ingresa un número válido mayor que 0 para {{field}}.",
+        videoConfigInvalid:
+          "Selecciona un modelo de video compatible y espera a que se carguen sus capacidades.",
+        videoPriceInvalid:
+          "Ingresa créditos por segundo no negativos para cada resolución de video, con un máximo de seis decimales.",
+        imageOptionsInvalid:
+          "La configuración del protocolo de imágenes no está disponible. Selecciona otro protocolo o vuelve a intentar.",
+        imagePriceInvalid:
+          "Los créditos por imagen de cada calidad deben ser no negativos, con un máximo de seis decimales.",
+      },
       noTags: "Sin etiquetas",
       maxOutputTokens: "Máximo de tokens de salida",
       searchAuthorization: "Buscar por nombre, correo o pinyin",
@@ -261,6 +283,12 @@ export const es419 = {
       kind: "Tipo de modelo",
       textKind: "Modelo de lenguaje grande",
       imageKind: "Generación de imágenes",
+      videoKind: "Modelo de video",
+      videoCreditsPerSecond: "Créditos por segundo - {{resolution}}",
+      imageCreditsPerImage: "Créditos por imagen - {{quality}}",
+      discoverModels: "Obtener modelos disponibles",
+      discoveryCredentialsRequired: "Primero ingresa la URL base y la clave API.",
+      noDiscoveredModels: "No se devolvieron modelos disponibles",
       imageProvider: "Protocolo de generación de imágenes",
       imageCapabilitiesUnavailable:
         "No se pudieron cargar las opciones de este proveedor.",
@@ -293,7 +321,7 @@ export const es419 = {
       editDialogTitle: "Editar modelo",
       editDialogDescription:
         "Actualiza cómo se invoca el modelo y qué grupos pueden utilizarlo.",
-      modelId: "ID del modelo",
+      modelId: "Nombre del modelo",
       modelIdPlaceholder: "Ej.: gpt-4o",
       modelIdDescription:
         "Es el nombre exacto del modelo enviado en las solicitudes de API.",
@@ -910,7 +938,7 @@ export const es419 = {
     },
     otherSettings: {
       about: "Acerca de",
-      proxies: { title: "Proxies del sistema", description: "Configura proxies de salida para modelos y conectores. Los proxies en uso no se pueden eliminar.", name: "Nombre", url: "URL del proxy", username: "Usuario (opcional)", password: "Contraseña (dejar en blanco para conservar)", newPassword: "Contraseña (opcional)", add: "Agregar proxy", edit: "Editar proxy", editAction: "Editar", delete: "Eliminar", cancel: "Cancelar", save: "Guardar", direct: "Conexión directa", confirmDelete: "¿Eliminar este proxy?" },
+      proxies: { title: "Proxies del sistema", description: "Configura proxies de salida para modelos y conectores. Los proxies en uso no se pueden eliminar.", name: "Nombre", url: "URL del proxy", username: "Usuario (opcional)", password: "Contraseña (dejar en blanco para conservar)", newPassword: "Contraseña (opcional)", add: "Agregar proxy", edit: "Editar proxy", editAction: "Editar", delete: "Eliminar", cancel: "Cancelar", save: "Guardar", direct: "Sin proxy", confirmDelete: "¿Eliminar este proxy?" },
       title: "Otras configuraciones",
       description:
         "Configura la marca, OAuth y otras funciones de la plataforma.",

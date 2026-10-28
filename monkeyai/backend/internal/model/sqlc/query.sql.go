@@ -542,7 +542,8 @@ const listUsers = `-- name: ListUsers :many
 SELECT
     id,
     name,
-    email
+    email,
+    coalesce(nullif(btrim(avatar_url), ''), '')::text AS avatar_url
 FROM
     users
 WHERE
@@ -554,9 +555,10 @@ ORDER BY
 `
 
 type ListUsersRow struct {
-	ID    string
-	Name  string
-	Email string
+	ID        string
+	Name      string
+	Email     string
+	AvatarUrl string
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -568,7 +570,12 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	items := []ListUsersRow{}
 	for rows.Next() {
 		var i ListUsersRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Email); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.AvatarUrl,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

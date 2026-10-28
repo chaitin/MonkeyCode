@@ -10,47 +10,85 @@ export type GroupSelectionHierarchy = {
   users: readonly { id: string; groupIds: readonly string[] }[]
 }
 
-function subtreeIDs(hierarchy: GroupSelectionHierarchy, id: string) {
+/** Build once per data change, independently of the current selection. */
+export function indexGroupSelection(hierarchy: GroupSelectionHierarchy) {
+  const parents = new Map<string, string | null>()
+  const children = new Map<string, string[]>()
+  const userGroups = new Map<string, Set<string>>()
+  for (const group of hierarchy.groups) {
+    parents.set(group.id, group.parentId ?? null)
+    if (group.parentId) {
+      const siblings = children.get(group.parentId) ?? []
+      siblings.push(group.id)
+      children.set(group.parentId, siblings)
+    }
+  }
+  for (const user of hierarchy.users) {
+    const memberships = userGroups.get(user.id) ?? new Set<string>()
+    for (const groupID of user.groupIds) memberships.add(groupID)
+    userGroups.set(user.id, memberships)
+  }
+  return { ...hierarchy, parents, children, userGroups }
+}
+
+type SelectionIndex = ReturnType<typeof indexGroupSelection>
+type Hierarchy = GroupSelectionHierarchy | SelectionIndex
+const getIndex = (hierarchy: Hierarchy) =>
+  "children" in hierarchy ? hierarchy : indexGroupSelection(hierarchy)
+
+function subtreeIDs(index: SelectionIndex, id: string) {
   const ids = new Set([id])
   for (const parent of ids) {
-    for (const group of hierarchy.groups) {
-      if (group.parentId === parent) ids.add(group.id)
-    }
+    for (const child of index.children.get(parent) ?? []) ids.add(child)
   }
   return ids
 }
 
 export function inheritedGroupSelection(
   value: GroupSelectionValue,
-  hierarchy: GroupSelectionHierarchy
+  hierarchy: Hierarchy
 ) {
+  const index = getIndex(hierarchy)
+  const selectedGroups = new Set(value.groupIds)
+  const coveredGroups = new Set<string>()
   const inheritedGroupIds = new Set<string>()
   const inheritedUserIds = new Set<string>()
   const partialGroupIds = new Set<string>()
-  for (const id of value.groupIds) {
-    const subtree = subtreeIDs(hierarchy, id)
-    for (const child of subtree) {
+  for (const id of selectedGroups) {
+    for (const child of subtreeIDs(index, id)) {
+      coveredGroups.add(child)
       if (child !== id) inheritedGroupIds.add(child)
     }
-    for (const user of hierarchy.users) {
-      if (user.groupIds.some((groupID) => subtree.has(groupID))) {
-        inheritedUserIds.add(user.id)
+  }
+  if (coveredGroups.size > 0) {
+    for (const [userID, memberships] of index.userGroups) {
+      for (const groupID of memberships) {
+        if (coveredGroups.has(groupID)) {
+          inheritedUserIds.add(userID)
+          break
+        }
       }
     }
   }
-  for (const group of hierarchy.groups) {
-    if (value.groupIds.includes(group.id) || inheritedGroupIds.has(group.id))
-      continue
-    const subtree = subtreeIDs(hierarchy, group.id)
-    if (
-      value.groupIds.some((id) => subtree.has(id)) ||
-      hierarchy.users.some(
-        (user) =>
-          value.userIds.includes(user.id) &&
-          user.groupIds.some((id) => subtree.has(id))
+  // Visit each ancestor at most once, rather than scanning all users per group.
+  const visited = new Set<string>()
+  const markAncestors = (id: string) => {
+    let current: string | null | undefined = id
+    while (current && !visited.has(current)) {
+      visited.add(current)
+      if (
+        index.parents.has(current) &&
+        !selectedGroups.has(current) &&
+        !inheritedGroupIds.has(current)
       )
-    )
-      partialGroupIds.add(group.id)
+        partialGroupIds.add(current)
+      current = index.parents.get(current)
+    }
+  }
+  for (const id of selectedGroups) markAncestors(id)
+  for (const userID of value.userIds) {
+    for (const groupID of index.userGroups.get(userID) ?? [])
+      markAncestors(groupID)
   }
   return { inheritedGroupIds, inheritedUserIds, partialGroupIds }
 }
@@ -62,7 +100,7 @@ export function changeGroupSelection(
   checked: boolean,
   multiple: boolean,
   mode: GroupSelectionMode,
-  hierarchy?: GroupSelectionHierarchy
+  hierarchy?: Hierarchy
 ): GroupSelectionValue {
   if (
     (mode === "groups" && kind === "user") ||
@@ -71,7 +109,8 @@ export function changeGroupSelection(
     return value
   }
   if (hierarchy && multiple) {
-    const inherited = inheritedGroupSelection(value, hierarchy)
+    const index = getIndex(hierarchy)
+    const inherited = inheritedGroupSelection(value, index)
     if (
       kind === "group"
         ? inherited.inheritedGroupIds.has(id)
@@ -79,20 +118,18 @@ export function changeGroupSelection(
     )
       return value
     if (kind === "group" && checked) {
-      const subtree = subtreeIDs(hierarchy, id)
-      const inheritedUsers = new Set(
-        hierarchy.users
-          .filter((user) =>
-            user.groupIds.some((groupID) => subtree.has(groupID))
-          )
-          .map((user) => user.id)
-      )
+      const subtree = subtreeIDs(index, id)
       return {
         groupIds: [
           ...value.groupIds.filter((groupID) => !subtree.has(groupID)),
           id,
         ],
-        userIds: value.userIds.filter((userID) => !inheritedUsers.has(userID)),
+        userIds: value.userIds.filter(
+          (userID) =>
+            ![...(index.userGroups.get(userID) ?? [])].some((groupID) =>
+              subtree.has(groupID)
+            )
+        ),
       }
     }
   }

@@ -156,6 +156,7 @@ export function BillingSettingsPage() {
         id: user.id,
         name: user.name,
         email: user.email,
+        avatarUrl: user.avatar_url,
         groupIds: user.group_ids,
       })),
     [quotaUsers]
