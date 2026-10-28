@@ -40,8 +40,8 @@
 - [已完成] 独立 PostgreSQL + RustFS 的 `TestBillingIntegration` 与 `TestEstimatedModelBilling` 通过。
 - [已完成] API、迁移没有变更，迁移命名与配对测试已包含在全量测试中。
 
-本次没有移除调用前校验；异步结算仍使用脱离请求取消、最长 30 秒的上下文，结算任务由代理 Wait 统一等待。临时测试容器已清理；分支已提交并创建 PR #1463，尚未部署。
+本次没有移除调用前校验；异步结算仍使用脱离请求取消、最长 30 秒的上下文，结算任务由代理 Wait 统一等待。临时测试容器已清理；PR #1463 已合入 `main`，尚未部署。
 
 PR 交付：
 
-- [已完成] 已推送 `fix-proxy-shadow-billing` 分支并向 `main` 创建 [PR #1463](https://github.com/chaitin/MonkeyCode/pull/1463)，说明请求透传、异步结算边界及验证记录。
+- [已完成] 已推送 `fix-proxy-shadow-billing` 分支并创建 [PR #1463](https://github.com/chaitin/MonkeyCode/pull/1463)，已合入 `main`；临时 worktree 与功能分支已清理。
