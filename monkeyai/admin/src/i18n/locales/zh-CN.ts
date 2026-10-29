@@ -1130,6 +1130,11 @@ export const zhCN = {
       description: "查看模型、工具及其他能力产生的每一笔积分扣费。",
       filters: {
         userPlaceholder: "用户",
+        userHint: "选中用户可快速筛选；直接输入可搜索历史姓名或邮箱。",
+        usersEmpty: "没有匹配的用户",
+        usersMore: "输入更多关键词缩小范围。",
+        deletedUser: "已删除",
+        clearUser: "清除用户筛选",
         itemPlaceholder: "搜索内容",
         category: "扣费类型",
         entryType: "流水类型",

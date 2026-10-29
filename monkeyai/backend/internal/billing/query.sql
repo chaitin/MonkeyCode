@@ -323,6 +323,36 @@ ORDER BY
     e.id DESC
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
+-- name: ListEntriesByUser :many
+SELECT
+    (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
+	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
+    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
+FROM
+    credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
+WHERE e.user_id = sqlc.arg(user_id)::uuid
+AND (sqlc.arg(user_query)::text = ''
+    OR COALESCE(e.user_name, '')
+    ILIKE '%' || sqlc.arg(user_query)::text || '%'
+    OR COALESCE(e.user_email, '')
+    ILIKE '%' || sqlc.arg(user_query)::text || '%')
+AND (sqlc.arg(content_query)::text = ''
+    OR e.item_name ILIKE '%' || sqlc.arg(content_query)::text || '%')
+AND (sqlc.arg(category)::text = ''
+    OR e.category = sqlc.arg(category)::text)
+AND (sqlc.arg(MODE)::text = ''
+    OR e.mode = sqlc.arg(MODE)::text)
+AND (sqlc.arg(entry_type)::text = ''
+    OR e.entry_type = sqlc.arg(entry_type)::text)
+AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
+AND (sqlc.arg(group_id)::text = ''
+    OR e.group_id = NULLIF (sqlc.arg(group_id)::text::text, '')::uuid)
+ORDER BY
+    e.occurred_at DESC,
+    e.id DESC
+LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
+
 -- name: CountUserEntries :one
 SELECT count(*)
 FROM credit_ledger_entries e
@@ -362,6 +392,33 @@ SELECT
 FROM
     credit_ledger_entries e
 WHERE (sqlc.arg(user_query)::text = ''
+    OR COALESCE(e.user_name, '')
+    ILIKE '%' || sqlc.arg(user_query)::text || '%'
+    OR COALESCE(e.user_email, '')
+    ILIKE '%' || sqlc.arg(user_query)::text || '%')
+AND (sqlc.arg(content_query)::text = ''
+    OR e.item_name ILIKE '%' || sqlc.arg(content_query)::text || '%')
+AND (sqlc.arg(category)::text = ''
+    OR e.category = sqlc.arg(category)::text)
+AND (sqlc.arg(MODE)::text = ''
+    OR e.mode = sqlc.arg(MODE)::text)
+AND (sqlc.arg(entry_type)::text = ''
+    OR e.entry_type = sqlc.arg(entry_type)::text)
+AND e.occurred_at >= coalesce(sqlc.narg(from_time)::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce(sqlc.narg(until_time)::timestamptz, 'infinity'::timestamptz)
+AND (sqlc.arg(group_id)::text = ''
+    OR e.group_id = NULLIF (sqlc.arg(group_id)::text::text, '')::uuid);
+
+-- name: SummarizeEntriesByUser :one
+SELECT
+    jsonb_build_object('charges', COALESCE(- sum(credit_delta) FILTER (WHERE entry_type = 'charge'),
+	0)::text, 'refunds', COALESCE(sum(credit_delta) FILTER (WHERE entry_type = 'refund'), 0)::text,
+	'net_consumption', COALESCE(- sum(credit_delta) FILTER (WHERE entry_type IN ('charge', 'refund')),
+	0)::text, 'count', count(*))
+FROM
+    credit_ledger_entries e
+WHERE e.user_id = sqlc.arg(user_id)::uuid
+AND (sqlc.arg(user_query)::text = ''
     OR COALESCE(e.user_name, '')
     ILIKE '%' || sqlc.arg(user_query)::text || '%'
     OR COALESCE(e.user_email, '')
@@ -1305,3 +1362,14 @@ CROSS JOIN LATERAL (
 ) e
 WHERE k.transaction_id=$1
 ORDER BY e.sequence;
+
+-- name: SearchBillingUsers :many
+SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
+ 'avatar_url',nullif(btrim(u.avatar_url),''),'deleted',u.deleted_at IS NOT NULL)
+FROM users u
+WHERE (sqlc.arg(user_id)::text = '' OR u.id = nullif(sqlc.arg(user_id)::text,'')::uuid)
+ AND (sqlc.arg(query)::text = '' OR strpos(lower(u.name),lower(sqlc.arg(query)::text))>0
+      OR strpos(lower(u.email),lower(sqlc.arg(query)::text))>0
+      OR strpos(u.id::text,lower(sqlc.arg(query)::text))>0)
+ORDER BY lower(u.name),lower(u.email),u.id
+LIMIT sqlc.arg(result_limit);

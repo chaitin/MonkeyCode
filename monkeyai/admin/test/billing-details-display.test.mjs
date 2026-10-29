@@ -112,7 +112,8 @@ test("billing filters match the compact operation-log interaction", async () => 
     filters,
     /flex flex-wrap items-center gap-2 px-\[var\(--card-spacing\)\]/
   )
-  assert.equal((filters.match(/className="w-32"/g) ?? []).length, 2)
+  assert.equal((filters.match(/className="w-32"/g) ?? []).length, 1)
+  assert.match(filters, /<BillingUserSearch/)
   assert.equal((filters.match(/<DatePickerField/g) ?? []).length, 2)
   assert.match(filters, /className="w-32 sm:w-32"/)
   assert.equal((filters.match(/<DropdownMenu>/g) ?? []).length, 3)

@@ -111,7 +111,7 @@ test("member account uses integer key-value balances and dedicated actions", asy
     /成员信息[\s\S]*?member\.name[\s\S]*?member\.email[\s\S]*?member\.role[\s\S]*?member\.status/
   )
   assert.match(accountDialog, /setExternal\(value\.external_user_id\)/)
-  assert.match(accountDialog, /feeSearch = member\?\.email \|\| member\?\.name/)
+  assert.match(accountDialog, /view=entries&user_id=\$\{encodeURIComponent\(userId\)\}/)
   assert.match(accountDialog, /credits\(value, i18n\.language, 0, "floor"\)/)
   assert.equal((accountDialog.match(/displayCredits\(/g) ?? []).length, 2)
   assert.match(
@@ -120,7 +120,7 @@ test("member account uses integer key-value balances and dedicated actions", asy
   )
   assert.match(
     accountDialog,
-    /调整积分[\s\S]*?CONSOLE_ROUTES\.billingDetails\}\?view=entries&user=\$\{encodeURIComponent\(feeSearch\)\}[\s\S]*?费用明细/
+    /调整积分[\s\S]*?CONSOLE_ROUTES\.billingDetails\}\?view=entries&user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?费用明细/
   )
   assert.doesNotMatch(accountDialog, /查看费用明细/)
   assert.match(accountDialog, /\["add", "增加积分"\]/)

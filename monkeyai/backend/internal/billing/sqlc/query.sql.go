@@ -1142,6 +1142,83 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([][]b
 	return items, nil
 }
 
+const listEntriesByUser = `-- name: ListEntriesByUser :many
+SELECT
+    (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
+	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
+    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
+FROM
+    credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
+WHERE e.user_id = $1::uuid
+AND ($2::text = ''
+    OR COALESCE(e.user_name, '')
+    ILIKE '%' || $2::text || '%'
+    OR COALESCE(e.user_email, '')
+    ILIKE '%' || $2::text || '%')
+AND ($3::text = ''
+    OR e.item_name ILIKE '%' || $3::text || '%')
+AND ($4::text = ''
+    OR e.category = $4::text)
+AND ($5::text = ''
+    OR e.mode = $5::text)
+AND ($6::text = ''
+    OR e.entry_type = $6::text)
+AND e.occurred_at >= coalesce($7::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($8::timestamptz, 'infinity'::timestamptz)
+AND ($9::text = ''
+    OR e.group_id = NULLIF ($9::text::text, '')::uuid)
+ORDER BY
+    e.occurred_at DESC,
+    e.id DESC
+LIMIT $11 OFFSET $10
+`
+
+type ListEntriesByUserParams struct {
+	UserID       string
+	UserQuery    string
+	ContentQuery string
+	Category     string
+	Mode         string
+	EntryType    string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+	GroupID      string
+	Offset       int32
+	Limit        int32
+}
+
+func (q *Queries) ListEntriesByUser(ctx context.Context, arg ListEntriesByUserParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listEntriesByUser,
+		arg.UserID,
+		arg.UserQuery,
+		arg.ContentQuery,
+		arg.Category,
+		arg.Mode,
+		arg.EntryType,
+		arg.FromTime,
+		arg.UntilTime,
+		arg.GroupID,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var column_1 []byte
+		if err := rows.Scan(&column_1); err != nil {
+			return nil, err
+		}
+		items = append(items, column_1)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGroupQuotas = `-- name: ListGroupQuotas :many
 SELECT
     jsonb_build_object('id', g.id, 'parent_id', COALESCE(g.parent_id::text, '00000000-0000-0000-0000-000000000000')::text,
@@ -1995,6 +2072,44 @@ func (q *Queries) ScheduleRetry(ctx context.Context, id string) (pgconn.CommandT
 	return q.db.Exec(ctx, scheduleRetry, id)
 }
 
+const searchBillingUsers = `-- name: SearchBillingUsers :many
+SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
+ 'avatar_url',nullif(btrim(u.avatar_url),''),'deleted',u.deleted_at IS NOT NULL)
+FROM users u
+WHERE ($1::text = '' OR u.id = nullif($1::text,'')::uuid)
+ AND ($2::text = '' OR strpos(lower(u.name),lower($2::text))>0
+      OR strpos(lower(u.email),lower($2::text))>0
+      OR strpos(u.id::text,lower($2::text))>0)
+ORDER BY lower(u.name),lower(u.email),u.id
+LIMIT $3
+`
+
+type SearchBillingUsersParams struct {
+	UserID      string
+	Query       string
+	ResultLimit int32
+}
+
+func (q *Queries) SearchBillingUsers(ctx context.Context, arg SearchBillingUsersParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, searchBillingUsers, arg.UserID, arg.Query, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sessionOwned = `-- name: SessionOwned :one
 SELECT
     EXISTS (
@@ -2308,6 +2423,63 @@ type SummarizeEntriesParams struct {
 
 func (q *Queries) SummarizeEntries(ctx context.Context, arg SummarizeEntriesParams) ([]byte, error) {
 	row := q.db.QueryRow(ctx, summarizeEntries,
+		arg.UserQuery,
+		arg.ContentQuery,
+		arg.Category,
+		arg.Mode,
+		arg.EntryType,
+		arg.FromTime,
+		arg.UntilTime,
+		arg.GroupID,
+	)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const summarizeEntriesByUser = `-- name: SummarizeEntriesByUser :one
+SELECT
+    jsonb_build_object('charges', COALESCE(- sum(credit_delta) FILTER (WHERE entry_type = 'charge'),
+	0)::text, 'refunds', COALESCE(sum(credit_delta) FILTER (WHERE entry_type = 'refund'), 0)::text,
+	'net_consumption', COALESCE(- sum(credit_delta) FILTER (WHERE entry_type IN ('charge', 'refund')),
+	0)::text, 'count', count(*))
+FROM
+    credit_ledger_entries e
+WHERE e.user_id = $1::uuid
+AND ($2::text = ''
+    OR COALESCE(e.user_name, '')
+    ILIKE '%' || $2::text || '%'
+    OR COALESCE(e.user_email, '')
+    ILIKE '%' || $2::text || '%')
+AND ($3::text = ''
+    OR e.item_name ILIKE '%' || $3::text || '%')
+AND ($4::text = ''
+    OR e.category = $4::text)
+AND ($5::text = ''
+    OR e.mode = $5::text)
+AND ($6::text = ''
+    OR e.entry_type = $6::text)
+AND e.occurred_at >= coalesce($7::timestamptz, '-infinity'::timestamptz)
+AND e.occurred_at < coalesce($8::timestamptz, 'infinity'::timestamptz)
+AND ($9::text = ''
+    OR e.group_id = NULLIF ($9::text::text, '')::uuid)
+`
+
+type SummarizeEntriesByUserParams struct {
+	UserID       string
+	UserQuery    string
+	ContentQuery string
+	Category     string
+	Mode         string
+	EntryType    string
+	FromTime     *time.Time
+	UntilTime    *time.Time
+	GroupID      string
+}
+
+func (q *Queries) SummarizeEntriesByUser(ctx context.Context, arg SummarizeEntriesByUserParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, summarizeEntriesByUser,
+		arg.UserID,
 		arg.UserQuery,
 		arg.ContentQuery,
 		arg.Category,

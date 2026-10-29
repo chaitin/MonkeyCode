@@ -1714,6 +1714,64 @@ paths:
                   type: string
               required:
               - external_user_id
+  /api/admin/v1/billing/users:
+    get:
+      summary: 按需搜索扣费筛选的用户候选
+      description: 搜索当前用户姓名、邮箱或 ID，包含停用和已删除用户，以便查询其历史流水。返回有界候选而非全量成员；选中后向 entries 或 summary 传 user_id。未选中时仍可通过 user 搜索历史姓名和邮箱。
+      parameters:
+      - in: query
+        name: q
+        description: 不区分大小写的字面子串，去除首尾空格后最多 200 个字符。
+        schema:
+          type: string
+          maxLength: 200
+      - in: query
+        name: id
+        description: 用于恢复 URL 中已选用户的显示信息；可与 q 同时提供，取交集。
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 50
+      responses:
+        '200':
+          description: 返回姓名、邮箱、头像和删除标记，不返回账户、角色或登录等信息。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, has_next]
+                properties:
+                  has_next:
+                    type: boolean
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, email, avatar_url, deleted]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        avatar_url:
+                          type: [string, 'null']
+                        deleted:
+                          type: boolean
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 权限不足
   /api/admin/v1/billing/entries:
     get:
       summary: 分页查询不可变积分流水
@@ -1752,7 +1810,14 @@ paths:
           description: 修订号、幂等键或交易状态冲突
       parameters:
       - in: query
+        name: user_id
+        description: 按用户 UUID 精确筛选，利用现有用户与时间索引；与其他筛选条件取交集。
+        schema:
+          type: string
+          format: uuid
+      - in: query
         name: user
+        description: 对流水固化的历史姓名或邮箱做子串搜索；与 user_id 同时提供时取交集。
         schema:
           type: string
       - in: query
@@ -1831,7 +1896,14 @@ paths:
           description: 修订号、幂等键或交易状态冲突
       parameters:
       - in: query
+        name: user_id
+        description: 按用户 UUID 精确筛选，利用现有用户与时间索引；与其他筛选条件取交集。
+        schema:
+          type: string
+          format: uuid
+      - in: query
         name: user
+        description: 对流水固化的历史姓名或邮箱做子串搜索；与 user_id 同时提供时取交集。
         schema:
           type: string
       - in: query

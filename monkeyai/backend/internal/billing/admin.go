@@ -44,6 +44,7 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		w.WriteHeader(204)
 	})
 	r.Get("/billing/entries", s.entries)
+	r.Get("/billing/users", s.searchEntryUsers)
 	r.Get("/billing/summary", s.summary)
 	r.Get("/billing/transactions/{id}", s.transaction)
 	r.Get("/billing/reconciliation", s.reconciliation)

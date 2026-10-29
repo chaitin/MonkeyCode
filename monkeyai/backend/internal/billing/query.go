@@ -61,18 +61,43 @@ func (s *Service) entries(w http.ResponseWriter, r *http.Request) {
 		filter.FromTime, filter.UntilTime = &from, &until
 	}
 	page, size := pageParams(r, 500)
-	rows, err := resource.DecodeObjects(sqlc.New(s.pool).ListEntries(r.Context(), sqlc.ListEntriesParams{
-		UserQuery:    filter.UserQuery,
-		ContentQuery: filter.ContentQuery,
-		Category:     filter.Category,
-		Mode:         filter.Mode,
-		EntryType:    filter.EntryType,
-		FromTime:     filter.FromTime,
-		UntilTime:    filter.UntilTime,
-		GroupID:      filter.GroupID,
-		Limit:        int32(size + 1),
-		Offset:       int32((page - 1) * size),
-	}))
+	userID, err := entryUserID(r.URL.Query().Get("user_id"))
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	q := sqlc.New(s.pool)
+	var data [][]byte
+	if userID == "" {
+		data, err = q.ListEntries(r.Context(), sqlc.ListEntriesParams{
+			UserQuery:    filter.UserQuery,
+			ContentQuery: filter.ContentQuery,
+			Category:     filter.Category,
+			Mode:         filter.Mode,
+			EntryType:    filter.EntryType,
+			FromTime:     filter.FromTime,
+			UntilTime:    filter.UntilTime,
+			GroupID:      filter.GroupID,
+			Limit:        int32(size + 1),
+			Offset:       int32((page - 1) * size),
+		})
+	} else {
+		// Keep the UUID predicate unconditional so prepared plans can use the user/time index.
+		data, err = q.ListEntriesByUser(r.Context(), sqlc.ListEntriesByUserParams{
+			UserID:       userID,
+			UserQuery:    filter.UserQuery,
+			ContentQuery: filter.ContentQuery,
+			Category:     filter.Category,
+			Mode:         filter.Mode,
+			EntryType:    filter.EntryType,
+			FromTime:     filter.FromTime,
+			UntilTime:    filter.UntilTime,
+			GroupID:      filter.GroupID,
+			Limit:        int32(size + 1),
+			Offset:       int32((page - 1) * size),
+		})
+	}
+	rows, err := resource.DecodeObjects(data, err)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
@@ -104,7 +129,29 @@ func (s *Service) summary(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	out, err := resource.DecodeObject(sqlc.New(s.pool).SummarizeEntries(r.Context(), sqlc.SummarizeEntriesParams(filter)))
+	userID, err := entryUserID(r.URL.Query().Get("user_id"))
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	q := sqlc.New(s.pool)
+	var data []byte
+	if userID == "" {
+		data, err = q.SummarizeEntries(r.Context(), sqlc.SummarizeEntriesParams(filter))
+	} else {
+		data, err = q.SummarizeEntriesByUser(r.Context(), sqlc.SummarizeEntriesByUserParams{
+			UserID:       userID,
+			UserQuery:    filter.UserQuery,
+			ContentQuery: filter.ContentQuery,
+			Category:     filter.Category,
+			Mode:         filter.Mode,
+			EntryType:    filter.EntryType,
+			FromTime:     filter.FromTime,
+			UntilTime:    filter.UntilTime,
+			GroupID:      filter.GroupID,
+		})
+	}
+	out, err := resource.DecodeObject(data, err)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

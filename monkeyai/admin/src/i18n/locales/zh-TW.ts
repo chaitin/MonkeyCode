@@ -689,6 +689,11 @@ export const zhTW = {
       description: "查看模型、工具及其他能力產生的每一筆點數扣費。",
       filters: {
         userPlaceholder: "使用者",
+        userHint: "選取使用者可快速篩選；直接輸入可搜尋歷史姓名或信箱。",
+        usersEmpty: "沒有符合的使用者",
+        usersMore: "輸入更多關鍵字以縮小範圍。",
+        deletedUser: "已刪除",
+        clearUser: "清除使用者篩選",
         itemPlaceholder: "搜尋內容",
         category: "扣費類型",
         entryType: "流水類型",

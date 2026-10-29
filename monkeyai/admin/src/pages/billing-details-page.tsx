@@ -13,6 +13,7 @@ import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
+import { BillingUserSearch } from "@/components/billing/user-search"
 import { UserAvatar } from "@/components/user-avatar"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Button } from "@/components/ui/button"
@@ -362,17 +363,16 @@ export function BillingDetailsPage() {
                 className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
               >
                 {visibleFields.has("user") && (
-                  <Input
-                    id="billing-user"
-                    className="w-32"
-                    placeholder={t(
-                      "pages.billingDetails.filters.userPlaceholder"
-                    )}
-                    aria-label={t(
-                      "pages.billingDetails.filters.userPlaceholder"
-                    )}
-                    value={draft.user ?? ""}
-                    onChange={(event) => field("user", event.target.value)}
+                  <BillingUserSearch
+                    userID={draft.user_id ?? ""}
+                    query={draft.user ?? ""}
+                    onChange={({ userID, query }) =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        user_id: userID,
+                        user: query,
+                      }))
+                    }
                   />
                 )}
                 {visibleFields.has("content") && (

@@ -55,6 +55,17 @@ CHROME_BIN=/path/to/chrome86 pnpm test:browser:quotas
 CHROME_BIN=/path/to/current-chrome pnpm test:browser:quotas
 ```
 
+## 扣费记录用户筛选
+
+用户输入框按需查询候选，选中后使用 `user_id` 精确筛选，并保留分页、刷新和账户详情链接中的选择。重名用户通过邮箱区分，停用或已删除用户仍可查询历史流水。直接输入后搜索则沿用流水历史姓名／邮箱的子串匹配；修改已选姓名会退出精确筛选。
+
+```sh
+CHROME_BIN=/path/to/chrome86 pnpm test:browser:billing-users
+CHROME_BIN=/path/to/current-chrome pnpm test:browser:billing-users
+```
+
+此回归使用真实构建产物与模拟 API，覆盖键盘／鼠标选择、重名、刷新、分页、清空、旧文字查询、过期请求、失败重试和已删除用户。
+
 ## 客户端登录授权
 
 `/client-login` 登录后必须明确确认当前账号、实际返回地址和附加权限，空权限列表也不会自动完成。确认提交始终携带 `X-CSRF-Token` 和 `approved_scopes` 数组。后台仅允许登记的应用回调，或桌面端固定路径的本机回环动态端口（`localhost`、`127.0.0.1`、`[::1]`）；前端还会核对最终返回地址与确认页展示的地址一致，拒绝外部网站、脚本 URL 和其他未登记目标。

@@ -133,7 +133,6 @@ export function AccountDialog({
     !/^0(?:\.0+)?$/.test(adjustmentAmount) &&
     adjustmentReason.trim().length > 0
   const userLabel = member?.name || member?.email || userId
-  const feeSearch = member?.email || member?.name
   return (
     <>
       <Dialog
@@ -253,13 +252,13 @@ export function AccountDialog({
                 >
                   调整积分
                 </Button>
-                {feeSearch && (
+                {userId && (
                   <Button
                     nativeButton={false}
                     variant="secondary"
                     render={
                       <Link
-                        to={`${CONSOLE_ROUTES.billingDetails}?view=entries&user=${encodeURIComponent(feeSearch)}`}
+                        to={`${CONSOLE_ROUTES.billingDetails}?view=entries&user_id=${encodeURIComponent(userId)}`}
                       />
                     }
                   >

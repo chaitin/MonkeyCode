@@ -707,6 +707,12 @@ export const jaJP = {
         "モデル、ツール、その他の機能によるポイント消費を確認します。",
       filters: {
         userPlaceholder: "ユーザー",
+        userHint:
+          "ユーザーを選択すると高速に絞り込めます。直接入力すると過去の名前やメールを検索します。",
+        usersEmpty: "一致するユーザーがいません",
+        usersMore: "さらに入力して絞り込んでください。",
+        deletedUser: "削除済み",
+        clearUser: "ユーザー条件をクリア",
         itemPlaceholder: "内容を検索",
         category: "課金タイプ",
         entryType: "明細タイプ",

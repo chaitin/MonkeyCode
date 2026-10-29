@@ -729,6 +729,13 @@ export const frFR = {
         "Consultez chaque débit de crédits généré par les modèles, les outils et les autres fonctions.",
       filters: {
         userPlaceholder: "Utilisateur",
+        userHint:
+          "Sélectionnez un utilisateur pour filtrer rapidement, ou recherchez les anciens noms et e-mails.",
+        usersEmpty: "Aucun utilisateur correspondant",
+        usersMore:
+          "Saisissez davantage de caractères pour affiner les résultats.",
+        deletedUser: "Supprimé",
+        clearUser: "Effacer le filtre utilisateur",
         itemPlaceholder: "Rechercher dans le contenu",
         category: "Type de frais",
         entryType: "Type d’écriture",

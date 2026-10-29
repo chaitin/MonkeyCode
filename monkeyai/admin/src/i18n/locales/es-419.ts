@@ -722,6 +722,12 @@ export const es419 = {
         "Consulta cada cargo de créditos generado por modelos, herramientas y otras funciones.",
       filters: {
         userPlaceholder: "Usuario",
+        userHint:
+          "Selecciona un usuario para filtrar rápidamente o escribe para buscar nombres y correos anteriores.",
+        usersEmpty: "No hay usuarios coincidentes",
+        usersMore: "Escribe más para reducir los resultados.",
+        deletedUser: "Eliminado",
+        clearUser: "Borrar filtro de usuario",
         itemPlaceholder: "Buscar contenido",
         category: "Tipo de cargo",
         entryType: "Tipo de movimiento",

@@ -692,6 +692,12 @@ export const koKR = {
         "모델, 도구 및 기타 기능에서 발생한 모든 포인트 차감을 확인합니다.",
       filters: {
         userPlaceholder: "사용자",
+        userHint:
+          "사용자를 선택하면 빠르게 필터링합니다. 직접 입력하면 이전 이름과 이메일을 검색합니다.",
+        usersEmpty: "일치하는 사용자가 없습니다",
+        usersMore: "더 입력하여 결과를 좁히세요.",
+        deletedUser: "삭제됨",
+        clearUser: "사용자 필터 지우기",
         itemPlaceholder: "내용 검색",
         category: "차감 유형",
         entryType: "내역 유형",

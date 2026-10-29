@@ -732,6 +732,12 @@ export const deDE = {
         "Prüfen Sie jede Punkteabbuchung durch Modelle, Tools und andere Funktionen.",
       filters: {
         userPlaceholder: "Benutzer",
+        userHint:
+          "Benutzer für schnelles Filtern auswählen oder frühere Namen und E-Mails eingeben.",
+        usersEmpty: "Keine passenden Benutzer",
+        usersMore: "Weitere Zeichen eingeben, um die Ergebnisse einzugrenzen.",
+        deletedUser: "Gelöscht",
+        clearUser: "Benutzerfilter löschen",
         itemPlaceholder: "Inhalt suchen",
         category: "Abbuchungstyp",
         entryType: "Buchungstyp",
