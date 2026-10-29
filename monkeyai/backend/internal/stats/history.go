@@ -10,7 +10,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
-	"github.com/jackc/pgx/v5"
 )
 
 func (s *Service) history(w http.ResponseWriter, r *http.Request) {
@@ -52,27 +51,12 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
-	}
-	defer func() { rollbackStats(ctx, tx, "history") }()
-	var total int64
-	total, err = sqlc.New(tx).CountHistory(ctx, sqlc.CountHistoryParams{TitleQuery: title, UserQuery: user, FromTime: from, UntilTime: until})
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
-	}
-
-	pages := max(1, (total+int64(size)-1)/int64(size))
-	page = min(page, int(pages))
-	items, err := resource.DecodeObjects(sqlc.New(tx).ListHistory(ctx, sqlc.ListHistoryParams{
+	items, err := resource.DecodeObjects(sqlc.New(s.pool).ListHistory(ctx, sqlc.ListHistoryParams{
 		TitleQuery: title,
 		UserQuery:  user,
 		FromTime:   from,
 		UntilTime:  until,
-		Limit:      int32(size),
+		Limit:      int32(size + 1),
 		Offset:     int32((page - 1) * size),
 	}))
 	if err != nil {
@@ -80,5 +64,9 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
-	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": items, "total": total, "page": page, "page_size": size})
+	hasNext := len(items) > size
+	if hasNext {
+		items = items[:size]
+	}
+	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": items, "has_next": hasNext, "page": page, "page_size": size})
 }

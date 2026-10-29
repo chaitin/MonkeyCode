@@ -103,7 +103,7 @@ func TestConversationsHistory(t *testing.T) {
 	}
 
 	out := request(t, s, "/statistics/conversations", 200)
-	number(t, out, "total", 7)
+	assertHistoryPage(t, out, false, 7)
 	items := out["items"].([]any)
 	if len(items) != 7 || items[0].(map[string]any)["session_id"] != other {
 		t.Fatalf("跨任务同一时间的排序或可见范围错误: %v", out)
@@ -134,7 +134,7 @@ func TestConversationsHistory(t *testing.T) {
 	seen := map[string]bool{}
 	for page := 1; page <= 4; page++ {
 		out := request(t, s, fmt.Sprintf("/statistics/conversations?page=%d&page_size=2", page), 200)
-		number(t, out, "total", 7)
+		assertHistoryPage(t, out, page < 4, min(2, 7-(page-1)*2))
 		number(t, out, "page", float64(page))
 		for _, raw := range out["items"].([]any) {
 			item := raw.(map[string]any)
@@ -149,7 +149,8 @@ func TestConversationsHistory(t *testing.T) {
 		t.Fatalf("分页遗漏记录: %v", seen)
 	}
 	out = request(t, s, "/statistics/conversations?page=99&page_size=2", 200)
-	number(t, out, "page", 4)
+	number(t, out, "page", 99)
+	assertHistoryPage(t, out, false, 0)
 
 	for _, filter := range []struct {
 		query string
@@ -167,7 +168,7 @@ func TestConversationsHistory(t *testing.T) {
 		{"task_id=00000000-0000-4000-8000-000000000099", 0},
 	} {
 		out := request(t, s, "/statistics/conversations?"+filter.query, 200)
-		number(t, out, "total", filter.total)
+		assertHistoryPage(t, out, false, int(filter.total))
 		if len(out["items"].([]any)) != int(filter.total) {
 			t.Fatalf("总数和列表筛选不一致: %s: %v", filter.query, out)
 		}
@@ -177,7 +178,7 @@ func TestConversationsHistory(t *testing.T) {
 	conversationTurn(t, s, root, 8, at.Add(time.Second), "complete", "右边界", 1, 1)
 	query := url.Values{"from": {at.Format(time.RFC3339)}, "until": {at.Add(time.Second).Format(time.RFC3339)}}
 	out = request(t, s, "/statistics/conversations?"+query.Encode(), 200)
-	number(t, out, "total", 7)
+	assertHistoryPage(t, out, false, 7)
 	for _, raw := range out["items"].([]any) {
 		if turn := raw.(map[string]any)["turn_index"].(float64); turn > 6 {
 			t.Fatal("日期筛选必须包含下界、排除上界")
@@ -185,7 +186,7 @@ func TestConversationsHistory(t *testing.T) {
 	}
 	out = request(t, s, "/statistics/conversations?task_id="+root, 200)
 	history := request(t, s, "/statistics/history?task="+root, 200)
-	if out["total"] != history["items"].([]any)[0].(map[string]any)["turn_count"] {
+	if float64(len(out["items"].([]any))) != history["items"].([]any)[0].(map[string]any)["turn_count"] {
 		t.Fatal("进入任务的对话总数应与任务历史轮次计数一致，包括空正文")
 	}
 }
@@ -193,10 +194,20 @@ func TestConversationsHistory(t *testing.T) {
 func TestConversationsEmpty(t *testing.T) {
 	s, _, _ := fixture(t)
 	out := request(t, s, "/statistics/conversations?page=99", 200)
-	number(t, out, "total", 0)
-	number(t, out, "page", 1)
+	assertHistoryPage(t, out, false, 0)
+	number(t, out, "page", 99)
 	items, ok := out["items"].([]any)
 	if !ok || len(items) != 0 {
 		t.Fatalf("空历史应返回空数组: %v", out)
+	}
+}
+
+func assertHistoryPage(t *testing.T, out map[string]any, next bool, count int) {
+	t.Helper()
+	if _, exists := out["total"]; exists {
+		t.Fatal("历史列表不应返回总数")
+	}
+	if out["has_next"] != next || len(out["items"].([]any)) != count {
+		t.Fatalf("分页错误: %v", out)
 	}
 }

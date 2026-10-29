@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 )
 
 type conversationFilter struct {
-	params     sqlc.CountConversationsParams
+	params     sqlc.ListConversationsParams
 	page, size int
 }
 
@@ -96,31 +97,68 @@ func (s *Service) conversations(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	q := sqlc.New(s.pool)
+	params := f.params
+	params.Limit, params.Offset = int32(f.size+1), int32((f.page-1)*f.size)
+	var rows [][]byte
+	if params.TaskID == "" {
+		rows, err = q.ListConversations(ctx, params)
+	} else {
+		rows, err = s.taskConversationRows(ctx, params)
+	}
+	items, err := resource.DecodeObjects(rows, err)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer rollbackStats(ctx, tx, "conversations")
-	q := sqlc.New(tx)
-	total, err := q.CountConversations(ctx, f.params)
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
-	}
-	pages := max(1, (total+int64(f.size)-1)/int64(f.size))
-	page := min(f.page, int(pages))
-	items, err := resource.DecodeObjects(q.ListConversations(ctx, sqlc.ListConversationsParams{
-		TaskID: f.params.TaskID, TitleQuery: f.params.TitleQuery,
-		UserQuery: f.params.UserQuery, ContentQuery: f.params.ContentQuery,
-		FromTime: f.params.FromTime, UntilTime: f.params.UntilTime,
-		Limit: int32(f.size), Offset: int32((page - 1) * f.size),
-	}))
-	if err != nil {
-		resource.Fail(r.Context(), w, err)
-		return
+	hasNext := len(items) > f.size
+	if hasNext {
+		items = items[:f.size]
 	}
 	resource.JSON(r.Context(), w, http.StatusOK, resource.Object{
-		"items": items, "total": total, "page": page, "page_size": f.size,
+		"items": items, "has_next": hasNext, "page": f.page, "page_size": f.size,
 	})
+}
+
+// Keep the indexed bounds and page in one snapshot. Taking the root lock before
+// the first snapshot also prevents a concurrent cutover from changing which
+// relation the second statement reads.
+func (s *Service) taskConversationRows(ctx context.Context, params sqlc.ListConversationsParams) ([][]byte, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer rollbackStats(ctx, tx, "task_conversations")
+	q := sqlc.New(tx)
+	if err := q.LockConversationTurns(ctx); err != nil {
+		return nil, err
+	}
+	task, err := taskConversationParams(ctx, q, params)
+	if err != nil || task == nil {
+		return nil, err
+	}
+	return q.ListTaskConversations(ctx, *task)
+}
+
+func taskConversationParams(ctx context.Context, q *sqlc.Queries, params sqlc.ListConversationsParams) (*sqlc.ListTaskConversationsParams, error) {
+	raw, err := q.TaskTurnBounds(ctx, params.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	var bounds struct {
+		Backfilling bool       `json:"backfilling"`
+		First       *time.Time `json:"first_at"`
+		Last        *time.Time `json:"last_at"`
+	}
+	if err := json.Unmarshal(raw, &bounds); err != nil {
+		return nil, err
+	}
+	if !bounds.Backfilling && bounds.First == nil {
+		return nil, nil
+	}
+	return &sqlc.ListTaskConversationsParams{
+		TaskID: params.TaskID, TitleQuery: params.TitleQuery, UserQuery: params.UserQuery, ContentQuery: params.ContentQuery,
+		FromTime: params.FromTime, UntilTime: params.UntilTime, FirstTurnTime: bounds.First, LastTurnTime: bounds.Last,
+		Limit: params.Limit, Offset: params.Offset,
+	}, nil
 }

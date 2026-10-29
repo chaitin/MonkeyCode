@@ -485,7 +485,7 @@ func TestHistory(t *testing.T) {
 		{"右边界", now, nil, nil, nil, 0},
 	} {
 		var id string
-		if err := s.pool.QueryRow(t.Context(), `INSERT INTO sessions(owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,failure_code,deleted_at,turn_count,reporting_enabled_at) VALUES($1,$2,'conversation','desktop','测试客户端',$3,$3,$4,$5,$6,$7,$3) RETURNING id::text`, user, row.title, row.start, row.ended, row.failure, row.deleted, row.turns).Scan(&id); err != nil {
+		if err := s.pool.QueryRow(t.Context(), `INSERT INTO sessions(owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,ended_at,failure_code,deleted_at,turn_count,reporting_enabled_at) VALUES($1,$2,'conversation','desktop','测试客户端',$3,$3,$4,$5,$6,$7,$3) RETURNING id::text`, user, row.title, row.start, row.ended, row.failure, row.deleted, 0).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		if row.turns > 0 && row.turns < 10 {
@@ -504,13 +504,15 @@ func TestHistory(t *testing.T) {
 		}
 	}
 	out := request(t, s, "/statistics/history?task=100%25&user=STATS&page=99&page_size=1", 200)
-	number(t, out, "total", 1)
-	number(t, out, "page", 1)
+	assertHistoryPage(t, out, false, 0)
+	number(t, out, "page", 99)
+	out = request(t, s, "/statistics/history?task=100%25&user=STATS&page=1&page_size=1", 200)
+	assertHistoryPage(t, out, false, 1)
 	if item := out["items"].([]any)[0].(map[string]any); item["title"] != "报告 100%" || item["user_id"] != user {
 		t.Fatalf("历史记录标题或用户 ID 错误: %v", item)
 	}
 	out = request(t, s, "/statistics/history?from="+from.Format(time.RFC3339)+"&until="+now.Format(time.RFC3339)+"&page_size=1&page=2", 200)
-	number(t, out, "total", 3)
+	assertHistoryPage(t, out, true, 1)
 	number(t, out, "page", 2)
 	number(t, out["items"].([]any)[0].(map[string]any), "turn_count", 3)
 }

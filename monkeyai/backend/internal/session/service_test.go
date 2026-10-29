@@ -524,7 +524,19 @@ func TestTurnTextDatabase(t *testing.T) {
 }
 
 func TestSessionReportingDatabase(t *testing.T) {
+	testSessionReportingDatabase(t, false)
+}
+
+func TestSessionReportingMonthly(t *testing.T) {
+	testSessionReportingDatabase(t, true)
+}
+
+func testSessionReportingDatabase(t *testing.T, monthly bool) {
+	t.Helper()
 	s, identities, userID, token := sessionDBFixture(t)
+	if monthly {
+		turnCutover(t, s)
+	}
 	ctx := t.Context()
 	sessionID, machineID, otherMachine := resource.ID(), resource.ID(), resource.ID()
 	groupID := resource.ID()

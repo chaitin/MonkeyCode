@@ -1702,3 +1702,43 @@ ALTER TABLE connectors
 
 ALTER TABLE experts
     ADD COLUMN admin_overrides jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(admin_overrides) = 'object');
+
+ALTER TABLE sessions ADD COLUMN turn_count_verified boolean NOT NULL DEFAULT false;
+
+ALTER TABLE sessions ALTER COLUMN turn_count_verified SET DEFAULT true;
+
+CREATE TABLE session_turns_partition_state (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    source_relation regclass NOT NULL,
+    target_relation regclass NOT NULL,
+    phase text NOT NULL DEFAULT 'backfill' CHECK (phase IN ('backfill','partitioned')),
+    end_session uuid,
+    end_turn integer,
+    cursor_session uuid,
+    cursor_turn integer,
+    checked_rows bigint NOT NULL DEFAULT 0,
+    count_end uuid,
+    count_cursor uuid,
+    counts_ready boolean NOT NULL DEFAULT false,
+    mirror_legacy boolean NOT NULL DEFAULT true,
+    switched_at timestamptz
+);
+
+CREATE TABLE session_turns_keys (
+    session_id uuid NOT NULL REFERENCES sessions(id),
+    turn_index integer NOT NULL CHECK (turn_index > 0),
+    started_at timestamptz NOT NULL CHECK (isfinite(started_at)),
+    PRIMARY KEY (session_id,turn_index),
+    UNIQUE (session_id,turn_index,started_at)
+);
+
+CREATE VIEW session_turns_original AS SELECT * FROM session_turns;
+
+CREATE TABLE session_turns_partitioned (
+    LIKE session_turns INCLUDING DEFAULTS INCLUDING CONSTRAINTS,
+    PRIMARY KEY (session_id,started_at,turn_index),
+    FOREIGN KEY (session_id,turn_index,started_at) REFERENCES session_turns_keys(session_id,turn_index,started_at),
+    CHECK (isfinite(started_at))
+) PARTITION BY RANGE (started_at);
+
+CREATE TABLE session_turns_default PARTITION OF session_turns_partitioned DEFAULT;

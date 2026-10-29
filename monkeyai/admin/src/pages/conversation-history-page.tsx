@@ -214,9 +214,16 @@ export function ConversationHistoryPage() {
   const request = useStatistics<ConversationPage>(
     `/api/admin/v1/statistics/conversations?${query}`
   )
-  const total = request.data?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = request.data?.page ?? page
+  if (
+    !request.loading &&
+    !request.error &&
+    request.data?.page === page &&
+    page > 1 &&
+    request.data.items.length === 0
+  ) {
+    setPage(1)
+  }
   const visible = request.data?.items ?? []
 
   const formatter = useMemo(
@@ -558,7 +565,7 @@ export function ConversationHistoryPage() {
             page={currentPage}
             pageSize={pageSize}
             itemCount={visible.length}
-            total={total}
+            hasNext={request.data?.has_next ?? false}
             loading={request.loading}
             error={Boolean(request.error)}
             onPageSizeChange={(size) => {
@@ -566,7 +573,7 @@ export function ConversationHistoryPage() {
               setPage(1)
             }}
             onPrevious={() => setPage(Math.max(1, currentPage - 1))}
-            onNext={() => setPage(Math.min(pages, currentPage + 1))}
+            onNext={() => setPage(currentPage + 1)}
           />
         </CardContent>
       </Card>

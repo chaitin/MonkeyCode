@@ -56,6 +56,7 @@ type App struct {
 	database        *pgxpool.Pool
 	shutdownTimeout time.Duration
 	billing         *billing.Service
+	sessions        *sessionreporting.Service
 	proxy           *proxy.Proxy
 	images          *imagegen.Service
 	videos          *videogen.Service
@@ -139,6 +140,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 			},
 		},
 		billing:         handler.(*applicationHandler).billing,
+		sessions:        handler.(*applicationHandler).sessions,
 		proxy:           handler.(*applicationHandler).proxy,
 		images:          handler.(*applicationHandler).images,
 		videos:          handler.(*applicationHandler).videos,
@@ -367,7 +369,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, resourceImports: resourceImports}, nil
+	return &applicationHandler{Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -400,6 +402,13 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
 	workerCtx, stopWorker := context.WithCancel(context.Background())
+	sessionsDone := make(chan struct{})
+	go func() {
+		defer close(sessionsDone)
+		if a.sessions != nil {
+			a.sessions.Run(workerCtx)
+		}
+	}()
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
 	relayDone := make(chan struct{})
@@ -460,6 +469,7 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		stopWorker()
 		<-workerDone
+		<-sessionsDone
 		<-relayDone
 		<-connectorsDone
 		<-observeDone

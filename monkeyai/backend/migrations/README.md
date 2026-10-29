@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=29, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=34, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -50,6 +50,11 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000027_resource_import_uploads` | 增加资源包分片上传与续传任务 |
 | `000028_stats_model_hourly` | 回填模型调用及模型账本的小时汇总，并安装事务内增量维护触发器 |
 | `000029_billing_ledger_weekly` | 准备账本周分区、全局幂等登记和镜像，由新后端分批回填、校验及切换 |
+| `000030_design_catalog_snapshots` | 增加设计模板目录快照 |
+| `000031_session_client_runtime_add` | 扩展会话客户端类型 |
+| `000032_billing_activity_weekly` | 准备交易、模型／工具／生图／视频调用周分区，由后台回填、校验和切换 |
+| `000033_resource_admin_overrides` | 增加导入资源的管理端覆盖配置 |
+| `000034_session_turns_monthly` | 准备轮次月分区、全局轮次登记、镜像和会话计数校准，由后台恢复回填并切换 |
 
 从 `backend` 目录执行：
 
@@ -59,11 +64,13 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `29` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `34` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
 版本 `29` 的结构准备仍需维护窗口；启动新后端后，账本 worker 在后台按固定水位分批搬迁，数据库迁移版本为 29 不代表账本已经切换。通过 `billing_ledger_partition_state` 查看进度。启动及每 24 小时预建当前与未来 8 周，默认分区接受意外时间。观察期保留旧表事务内镜像，可用 `billing_finish_ledger_observation()` 显式结束，历史数据不自动删除。回滚前停止后端及业务读写；down 始终从权威分区表补齐旧副本缺失记录，不能只信任观察期标志，需预留维护时间与空间。默认分区总积压超过 10000 条时暂停自动 DDL 并告警，避免 ATTACH 扫描巨大默认分区。详见 [账本周分区运行方案](../../design/billing-weekly-partitions.md)。
+
+版本 `34` 保持 `sessions` 普通表，将轮次按上海自然月分区。结构准备后由独立会话 worker 分批校准 `turn_count` 和回填事实，状态见 `session_turns_partition_state`；迁移版本为 34 不表示数据已全部切换。两个历史列表改用 `has_next`，前后端需配套发布，未校准的对话数暂为 `null`。回滚始终恢复权威数据的新增、修改和删除。发布窗口、默认分区搬迁、结束观察和回滚操作见 [轮次月分区运行方案](../../design/session-turn-monthly-partitions.md)。
 
 版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 

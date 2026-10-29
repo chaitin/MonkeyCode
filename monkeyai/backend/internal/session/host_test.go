@@ -44,7 +44,7 @@ func TestVerifiedHostCannotDowngradeToMachineHeader(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(ids.RequireAgent)
 	s.RegisterAgent(router)
-	payload := map[string]any{"state_seq": 0, "session_type": "conversation", "started_at": time.Now().UTC(), "client": map[string]any{"type": "desktop", "machine_id": machine, "version": "1"}}
+	payload := map[string]any{"state_seq": 0, "session_type": "conversation", "started_at": time.Now().UTC().Truncate(time.Microsecond), "client": map[string]any{"type": "desktop", "machine_id": machine, "version": "1"}}
 	body, _ := json.Marshal(payload)
 	call := func(token, header string, want int) {
 		t.Helper()

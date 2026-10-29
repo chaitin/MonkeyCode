@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const calibrateTurnCounts = `-- name: CalibrateTurnCounts :one
+SELECT session_calibrate_turn_counts(100)::integer
+`
+
+func (q *Queries) CalibrateTurnCounts(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, calibrateTurnCounts)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const claimSession = `-- name: ClaimSession :exec
 UPDATE sessions SET
  parent_session_id=COALESCE(parent_session_id,NULLIF($1::text,'')::uuid),
@@ -33,6 +44,17 @@ func (q *Queries) ClaimSession(ctx context.Context, arg ClaimSessionParams) erro
 		arg.ID,
 	)
 	return err
+}
+
+const copyTurnBatch = `-- name: CopyTurnBatch :one
+SELECT session_copy_turn_batch(1000)::integer
+`
+
+func (q *Queries) CopyTurnBatch(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, copyTurnBatch)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const countOpenPlaceholders = `-- name: CountOpenPlaceholders :one
@@ -95,6 +117,17 @@ func (q *Queries) CurrentSessionGroup(ctx context.Context, arg CurrentSessionGro
 	var group_id string
 	err := row.Scan(&group_id)
 	return group_id, err
+}
+
+const cutoverTurns = `-- name: CutoverTurns :one
+SELECT session_cutover_turns()::boolean
+`
+
+func (q *Queries) CutoverTurns(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, cutoverTurns)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const deleteImageCalls = `-- name: DeleteImageCalls :exec
@@ -161,12 +194,24 @@ func (q *Queries) DeleteTurnTools(ctx context.Context, dollar_1 []string) error 
 }
 
 const deleteTurns = `-- name: DeleteTurns :exec
-DELETE FROM session_turns WHERE session_id=ANY($1::uuid[])
+DELETE FROM session_turns t USING unnest($1::uuid[]) sid, LATERAL session_turn_times(sid) AS k(turn_index,started_at)
+WHERE t.session_id=sid AND t.turn_index=k.turn_index AND t.started_at=k.started_at
 `
 
 func (q *Queries) DeleteTurns(ctx context.Context, dollar_1 []string) error {
 	_, err := q.db.Exec(ctx, deleteTurns, dollar_1)
 	return err
+}
+
+const ensureTurnMonths = `-- name: EnsureTurnMonths :one
+SELECT session_ensure_turn_months($1::timestamptz)::boolean
+`
+
+func (q *Queries) EnsureTurnMonths(ctx context.Context, atTime time.Time) (bool, error) {
+	row := q.db.QueryRow(ctx, ensureTurnMonths, atTime)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const getParent = `-- name: GetParent :one
@@ -219,7 +264,7 @@ func (q *Queries) GetSnapshotItems(ctx context.Context, arg GetSnapshotItemsPara
 }
 
 const getTurnHash = `-- name: GetTurnHash :one
-SELECT report_hash FROM session_turns WHERE session_id=$1::uuid AND turn_index=$2 FOR UPDATE
+SELECT report_hash FROM session_turns WHERE session_id=$1::uuid AND turn_index=$2 AND started_at=session_turn_time($1::uuid,$2) FOR UPDATE
 `
 
 type GetTurnHashParams struct {
@@ -284,10 +329,10 @@ func (q *Queries) InsertPlaceholder(ctx context.Context, arg InsertPlaceholderPa
 
 const listTurnFacts = `-- name: ListTurnFacts :many
 SELECT jsonb_build_object(
- 'turn_index',turn_index,'started_at',started_at,'ended_at',ended_at,
+ 'turn_index',t.turn_index,'started_at',t.started_at,'ended_at',ended_at,
  'stop_reason',stop_reason,'facts_version',facts_version,
  'resources_snapshot_id',resources_snapshot_id,'error_code',error_code
-) AS data FROM session_turns WHERE session_id=$1::uuid ORDER BY turn_index
+) AS data FROM session_turn_times($1::uuid) AS k(turn_index,started_at) CROSS JOIN LATERAL (SELECT t.session_id, t.turn_index, t.facts_version, t.report_hash, t.input_seq, t.started_at, t.ended_at, t.received_at, t.stop_reason, t.error_code, t.recovered, t.model_id, t.thinking_enabled, t.thinking_effort, t.resources_snapshot_id, t.client_version, t.engine_version, t.input_tokens, t.output_tokens, t.cache_creation_input_tokens, t.cache_read_input_tokens, t.subagent_input_tokens, t.subagent_output_tokens, t.subagent_cache_creation_input_tokens, t.subagent_cache_read_input_tokens, t.context_used, t.context_window, t.input_kind, t.input_client_type, t.input_machine_id, t.command_skill_id, t.attachments, t.canvas_nodes, t.steers, t.files_created, t.files_updated, t.files_deleted, t.compactions, t.permissions_asked, t.permissions_allowed, t.permissions_denied, t.truncated, t.input_text, t.input_text_truncated, t.title, t.title_source FROM session_turns t WHERE t.session_id=$1::uuid AND t.turn_index=k.turn_index AND t.started_at=k.started_at OFFSET 0) t ORDER BY t.turn_index
 `
 
 func (q *Queries) ListTurnFacts(ctx context.Context, dollar_1 string) ([][]byte, error) {
@@ -311,7 +356,7 @@ func (q *Queries) ListTurnFacts(ctx context.Context, dollar_1 string) ([][]byte,
 }
 
 const listTurnIndexes = `-- name: ListTurnIndexes :many
-SELECT turn_index FROM session_turns WHERE session_id=$1::uuid ORDER BY turn_index
+SELECT k.turn_index::integer AS turn_index FROM session_turn_times($1::uuid) AS k(turn_index,started_at) ORDER BY k.turn_index
 `
 
 func (q *Queries) ListTurnIndexes(ctx context.Context, dollar_1 string) ([]int32, error) {
@@ -402,7 +447,7 @@ func (q *Queries) PurgeSessions(ctx context.Context, dollar_1 []string) error {
 
 const recomputeSession = `-- name: RecomputeSession :exec
 UPDATE sessions SET
- turn_count=($1::jsonb->>'turn_count')::integer,
+ turn_count=($1::jsonb->>'turn_count')::integer,turn_count_verified=true,
  acked_turn=($1::jsonb->>'acked_turn')::integer,
  active_seconds=($1::jsonb->>'active_seconds')::bigint,
  started_at=CASE WHEN started_at_provisional AND
@@ -583,7 +628,7 @@ func (q *Queries) SessionIndex(ctx context.Context, arg SessionIndexParams) ([]S
 
 const sessionStats = `-- name: SessionStats :one
 SELECT jsonb_build_object(
- 'turns',(SELECT count(*) FROM session_turns WHERE session_id=$1::uuid),
+ 'turns',(SELECT count(*) FROM session_turn_times($1::uuid)),
  'tools',(SELECT count(*) FROM session_turn_tools WHERE session_id=$1::uuid),
  'skill_events',(SELECT count(*) FROM session_skill_events WHERE session_id=$1::uuid),
  'resource_snapshots',(SELECT count(*) FROM session_resource_snapshots WHERE session_id=$1::uuid),

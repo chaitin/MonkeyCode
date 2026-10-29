@@ -45,12 +45,12 @@ type TaskHistoryEntry = {
   user_avatar_url?: string | null
   started_at: string
   last_active_at: string
-  turn_count: number
+  turn_count: number | null
 }
 
 type TaskHistory = {
   items: TaskHistoryEntry[]
-  total: number
+  has_next: boolean
   page: number
   page_size: number
 }
@@ -144,10 +144,25 @@ export function TaskHistoryPage() {
   const request = useStatistics<TaskHistory>(
     `/api/admin/v1/statistics/history?${query}`
   )
-  const total = request.data?.total ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const currentPage = request.data?.page ?? page
+  if (
+    !request.loading &&
+    !request.error &&
+    request.data?.page === page &&
+    page > 1 &&
+    request.data.items.length === 0
+  ) {
+    setPage(1)
+  }
   const visibleTasks = request.data?.items ?? []
+  const pendingCounts = visibleTasks.some((task) => task.turn_count === null)
+  useEffect(() => {
+    if (!pendingCounts || request.loading || request.error) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") request.reload()
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [pendingCounts, request.loading, request.error, request.reload])
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const relativeFormatter = useMemo(
     () => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }),
@@ -390,10 +405,12 @@ export function TaskHistoryPage() {
                         </Link>
                       </TableCell>
                       <TableCell className="truncate tabular-nums">
-                        {numberFormatter.format(task.turn_count)}
+                        {task.turn_count == null
+                          ? "—"
+                          : numberFormatter.format(task.turn_count)}
                       </TableCell>
                       <TableCell
-                        className="pe-[var(--card-spacing)] whitespace-nowrap text-muted-foreground"
+                        className="whitespace-nowrap pe-[var(--card-spacing)] text-muted-foreground"
                         title={dateFormatter.format(
                           new Date(task.last_active_at)
                         )}
@@ -432,7 +449,7 @@ export function TaskHistoryPage() {
             page={currentPage}
             pageSize={pageSize}
             itemCount={visibleTasks.length}
-            total={total}
+            hasNext={request.data?.has_next ?? false}
             loading={request.loading}
             error={Boolean(request.error)}
             onPageSizeChange={(size) => {
@@ -440,7 +457,7 @@ export function TaskHistoryPage() {
               resetPage()
             }}
             onPrevious={() => setPage((value) => Math.max(1, value - 1))}
-            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+            onNext={() => setPage((value) => value + 1)}
           />
         </CardContent>
       </Card>

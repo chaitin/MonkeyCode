@@ -29,7 +29,7 @@ export type Conversation = {
 
 export type ConversationPage = {
   items: Conversation[]
-  total: number
+  has_next: boolean
   page: number
   page_size: number
 }

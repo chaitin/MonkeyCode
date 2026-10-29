@@ -4,6 +4,12 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 每个接口必须声明请求体、成功与错误响应、响应 JSON Schema，并为字段补充类型、约束和说明；不能只记录状态码和响应描述。契约字段以实际 HTTP DTO 为准，密钥等不返回的敏感字段需要明确说明。
 
+## 历史列表分页
+
+`GET /api/admin/v1/statistics/history`（任务历史）和 `/api/admin/v1/statistics/conversations`（对话历史）返回 `{items, page, page_size, has_next}`，不再返回 `total`。每页最多读取 `page_size + 1` 条判断下一页，去掉总数及逐任务轮次 COUNT；超出末页时返回请求页码和空数组。任务行的 `turn_count` 读取已维护的缓存，存量后台校准期间为 `null`。原有筛选、时间范围和稳定排序继续生效。前后端需同步发布，深 OFFSET 与模糊搜索仍有独立成本。
+
+轮次月分区、计数校准及运行操作见 [运行方案](../../design/session-turn-monthly-partitions.md)。
+
 ## Agent 资源读取
 
 Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/config` 已移除，不提供兼容聚合入口。

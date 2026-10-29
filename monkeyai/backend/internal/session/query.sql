@@ -110,17 +110,17 @@ UPDATE sessions SET
 WHERE id=(sqlc.arg(payload)::jsonb->>'id')::uuid;
 
 -- name: GetTurnHash :one
-SELECT report_hash FROM session_turns WHERE session_id=$1::uuid AND turn_index=$2 FOR UPDATE;
+SELECT report_hash FROM session_turns WHERE session_id=$1::uuid AND turn_index=$2 AND started_at=session_turn_time($1::uuid,$2) FOR UPDATE;
 
 -- name: ListTurnIndexes :many
-SELECT turn_index FROM session_turns WHERE session_id=$1::uuid ORDER BY turn_index;
+SELECT k.turn_index::integer AS turn_index FROM session_turn_times($1::uuid) AS k(turn_index,started_at) ORDER BY k.turn_index;
 
 -- name: ListTurnFacts :many
 SELECT jsonb_build_object(
- 'turn_index',turn_index,'started_at',started_at,'ended_at',ended_at,
+ 'turn_index',t.turn_index,'started_at',t.started_at,'ended_at',ended_at,
  'stop_reason',stop_reason,'facts_version',facts_version,
  'resources_snapshot_id',resources_snapshot_id,'error_code',error_code
-) AS data FROM session_turns WHERE session_id=$1::uuid ORDER BY turn_index;
+) AS data FROM session_turn_times($1::uuid) AS k(turn_index,started_at) CROSS JOIN LATERAL (SELECT t.* FROM session_turns t WHERE t.session_id=$1::uuid AND t.turn_index=k.turn_index AND t.started_at=k.started_at OFFSET 0) t ORDER BY t.turn_index;
 
 -- name: SaveSnapshot :exec
 INSERT INTO session_resource_snapshots(session_id,snapshot_id,revision,state_version,items)
@@ -154,7 +154,7 @@ SELECT (jsonb_populate_record(NULL::session_skill_events,sqlc.arg(payload)::json
 
 -- name: RecomputeSession :exec
 UPDATE sessions SET
- turn_count=(sqlc.arg(payload)::jsonb->>'turn_count')::integer,
+ turn_count=(sqlc.arg(payload)::jsonb->>'turn_count')::integer,turn_count_verified=true,
  acked_turn=(sqlc.arg(payload)::jsonb->>'acked_turn')::integer,
  active_seconds=(sqlc.arg(payload)::jsonb->>'active_seconds')::bigint,
  started_at=CASE WHEN started_at_provisional AND
@@ -172,7 +172,7 @@ WHERE id=(sqlc.arg(payload)::jsonb->>'id')::uuid;
 
 -- name: SessionStats :one
 SELECT jsonb_build_object(
- 'turns',(SELECT count(*) FROM session_turns WHERE session_id=$1::uuid),
+ 'turns',(SELECT count(*) FROM session_turn_times($1::uuid)),
  'tools',(SELECT count(*) FROM session_turn_tools WHERE session_id=$1::uuid),
  'skill_events',(SELECT count(*) FROM session_skill_events WHERE session_id=$1::uuid),
  'resource_snapshots',(SELECT count(*) FROM session_resource_snapshots WHERE session_id=$1::uuid),
@@ -195,7 +195,8 @@ DELETE FROM session_turn_tools WHERE session_id=ANY($1::uuid[]);
 -- name: DeleteSkillEvents :exec
 DELETE FROM session_skill_events WHERE session_id=ANY($1::uuid[]);
 -- name: DeleteTurns :exec
-DELETE FROM session_turns WHERE session_id=ANY($1::uuid[]);
+DELETE FROM session_turns t USING unnest($1::uuid[]) sid, LATERAL session_turn_times(sid) AS k(turn_index,started_at)
+WHERE t.session_id=sid AND t.turn_index=k.turn_index AND t.started_at=k.started_at;
 -- name: DeleteSnapshotItems :exec
 DELETE FROM session_resource_snapshot_items WHERE session_id=ANY($1::uuid[]);
 -- name: DeleteSnapshots :exec
@@ -225,3 +226,15 @@ SELECT count(*) FROM sessions WHERE owner_user_id=$1 AND device_id IS NOT NULL A
     AND deleted_at IS NULL AND client_deleted_at IS NULL AND purged_at IS NULL
     AND (sqlc.arg(machine_id)::text='' OR device_id=sqlc.arg(machine_id)::text)
     AND (sqlc.arg(session_id)::text='' OR id=NULLIF(sqlc.arg(session_id)::text,'')::uuid);
+
+-- name: EnsureTurnMonths :one
+SELECT session_ensure_turn_months(sqlc.arg(at_time)::timestamptz)::boolean;
+
+-- name: CalibrateTurnCounts :one
+SELECT session_calibrate_turn_counts(100)::integer;
+
+-- name: CopyTurnBatch :one
+SELECT session_copy_turn_batch(1000)::integer;
+
+-- name: CutoverTurns :one
+SELECT session_cutover_turns()::boolean;

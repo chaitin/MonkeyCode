@@ -33,7 +33,7 @@ func TestHistoryUserAvatars(t *testing.T) {
 				seen := make(map[string]bool)
 				for _, page := range []string{"1", "2"} {
 					out := request(t, s, "/statistics/"+endpoint+"?page_size=1&page="+page, 200)
-					number(t, out, "total", 2)
+					assertHistoryPage(t, out, page == "1", 1)
 					items := out["items"].([]any)
 					if len(items) != 1 {
 						t.Fatalf("分页条数错误: %v", out)

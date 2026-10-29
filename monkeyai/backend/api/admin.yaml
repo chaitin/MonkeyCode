@@ -1044,7 +1044,7 @@ paths:
   /api/admin/v1/statistics/conversations:
     get:
       summary: 分页查询对话轮次历史
-      description: 仅管理员可访问。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。总数与列表在同一只读快照中查询。
+      description: 仅管理员可访问。查询已启用上报、非占位、未删除且未清理的根会话轮次，包含空正文；不包含子会话。日期筛选按轮次开始时间，而非任务开始时间，未传日期不限制历史范围。每页多查一条生成 has_next，不执行 COUNT，不返回总数。
       parameters:
         - name: task
           in: query
@@ -1098,8 +1098,8 @@ paths:
           $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/history:
     get:
-      summary: 分页查询会话历史
-      description: 仅管理员可访问。单次请求在同一 PostgreSQL 只读快照中聚合，不返回模拟数据。
+      summary: 分页查询任务历史
+      description: 仅管理员可访问。每页多查一条生成 has_next，不执行总数或逐任务轮次 COUNT。对话数读取 sessions 的已校准缓存，存量后台校准期间为 null。
       parameters:
         - name: task
           in: query
@@ -5641,15 +5641,15 @@ components:
         data_freshness_seconds: {type: number, minimum: 0, nullable: true, description: 距最新匹配轮次接收时间的秒数；没有匹配数据时为 null。}
     StatisticsConversations:
       type: object
-      required: [items, total, page, page_size]
+      required: [items, has_next, page, page_size]
       properties:
         items:
           type: array
           description: 当前页的对话轮次；没有数据时返回空数组。
           items:
             $ref: "#/components/schemas/StatisticsConversation"
-        total: {type: integer, minimum: 0, description: 符合筛选条件的轮次总数，包含空正文。}
-        page: {type: integer, minimum: 1, description: 实际页码；超过最后一页时回退到最后一页，空数据时为 1。}
+        has_next: {type: boolean, description: 每页多查一条判断是否还有下一页，不执行总数查询。}
+        page: {type: integer, minimum: 1, description: 请求页码；越界时 items 为空数组。}
         page_size: {type: integer, minimum: 1, maximum: 500, description: 每页条数。}
     StatisticsConversation:
       type: object
@@ -5680,7 +5680,7 @@ components:
       type: object
       required:
         - items
-        - total
+        - has_next
         - page
         - page_size
       properties:
@@ -5727,17 +5727,16 @@ components:
                 format: date-time
                 description: 最近活动时间。
               turn_count:
-                type: integer
+                type: [integer, 'null']
                 minimum: 0
-                description: 会话累计对话轮数；不表示筛选窗口内新增轮数。
-        total:
-          type: integer
-          minimum: 0
-          description: 符合筛选条件的总记录数。
+                description: 已维护的累计轮次数；存量后台校准期间为 null，不在列表请求中执行计数查询。
+        has_next:
+          type: boolean
+          description: 每页多查一条判断是否还有下一页，不执行总数查询。
         page:
           type: integer
           minimum: 1
-          description: 实际页码；超过最后一页时回退到最后一页。
+          description: 请求页码；越界时 items 为空数组。
         page_size:
           type: integer
           minimum: 1

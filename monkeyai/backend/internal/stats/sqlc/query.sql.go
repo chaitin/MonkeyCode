@@ -10,90 +10,6 @@ import (
 	"time"
 )
 
-const countConversations = `-- name: CountConversations :one
-SELECT count(*)
-FROM session_turns t
-JOIN sessions s ON s.id = t.session_id
-JOIN users u ON u.id = s.owner_user_id
-WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
-    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
-    AND s.parent_session_id IS NULL
-    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
-    AND ($2::text = '' OR strpos(lower(s.title), lower($2::text)) > 0)
-    AND ($3::text = ''
-        OR strpos(lower(u.name), lower($3::text)) > 0
-        OR strpos(lower(u.email), lower($3::text)) > 0)
-    AND ($4::text = '' OR strpos(lower(t.input_text), lower($4::text)) > 0)
-    AND ($5::timestamptz IS NULL OR t.started_at >= $5)
-    AND ($6::timestamptz IS NULL OR t.started_at < $6)
-`
-
-type CountConversationsParams struct {
-	TaskID       string
-	TitleQuery   string
-	UserQuery    string
-	ContentQuery string
-	FromTime     *time.Time
-	UntilTime    *time.Time
-}
-
-func (q *Queries) CountConversations(ctx context.Context, arg CountConversationsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countConversations,
-		arg.TaskID,
-		arg.TitleQuery,
-		arg.UserQuery,
-		arg.ContentQuery,
-		arg.FromTime,
-		arg.UntilTime,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countHistory = `-- name: CountHistory :one
-SELECT
-    count(*)
-FROM
-    sessions s
-    JOIN users u ON u.id = s.owner_user_id
-WHERE
-    s.deleted_at IS NULL
-    AND s.purged_at IS NULL
-    AND s.reporting_enabled_at IS NOT NULL
-    AND s.placeholder = false
-    AND s.parent_session_id IS NULL
-    AND ($1::text = ''
-        OR strpos(lower(s.title), lower($1::text)) > 0
-        OR strpos(s.id::text, lower($1::text)) > 0)
-    AND ($2::text = ''
-        OR strpos(lower(u.name), lower($2::text)) > 0
-        OR strpos(lower(u.email), lower($2::text)) > 0)
-    AND ($3::timestamptz IS NULL
-        OR s.started_at >= $3)
-    AND ($4::timestamptz IS NULL
-        OR s.started_at < $4)
-`
-
-type CountHistoryParams struct {
-	TitleQuery string
-	UserQuery  string
-	FromTime   *time.Time
-	UntilTime  *time.Time
-}
-
-func (q *Queries) CountHistory(ctx context.Context, arg CountHistoryParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countHistory,
-		arg.TitleQuery,
-		arg.UserQuery,
-		arg.FromTime,
-		arg.UntilTime,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const listConversations = `-- name: ListConversations :many
 SELECT jsonb_build_object(
     'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
@@ -167,8 +83,7 @@ const listHistory = `-- name: ListHistory :many
 SELECT
     jsonb_build_object('id', s.id, 'title', s.title, 'title_source', s.title_source, 'user_id', s.owner_user_id, 'user_name', u.name, 'user_email', u.email,
         'user_avatar_url', nullif(btrim(u.avatar_url), ''),
-        'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', (
-            SELECT count(*) FROM session_turns t WHERE t.session_id = s.id))
+        'started_at', s.started_at, 'last_active_at', s.last_active_at, 'turn_count', CASE WHEN s.turn_count_verified THEN s.turn_count ELSE NULL END)
 FROM
     sessions s
     JOIN users u ON u.id = s.owner_user_id
@@ -228,6 +143,91 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([][]b
 		return nil, err
 	}
 	return items, nil
+}
+
+const listTaskConversations = `-- name: ListTaskConversations :many
+SELECT jsonb_build_object(
+    'session_id', s.id, 'turn_index', t.turn_index, 'task_title', s.title,
+    'user_id', u.id, 'user_name', u.name, 'user_email', u.email,
+    'user_avatar_url', nullif(btrim(u.avatar_url), ''),
+    'started_at', t.started_at, 'ended_at', t.ended_at,
+    'duration_seconds', extract(epoch FROM (t.ended_at - t.started_at)),
+    'input_text', t.input_text, 'input_text_truncated', t.input_text_truncated, 'input_kind', t.input_kind,
+    'input_tokens', t.input_tokens, 'output_tokens', t.output_tokens,
+    'outcome', t.stop_reason, 'error_code', t.error_code,
+    'is_completed', CASE WHEN t.stop_reason = 'unknown' THEN NULL ELSE t.stop_reason = 'complete' END)
+FROM session_turns t
+JOIN sessions s ON s.id = t.session_id
+JOIN users u ON u.id = s.owner_user_id
+WHERE t.session_id = nullif($1::text, '')::uuid
+    AND ($2::timestamptz IS NULL OR t.started_at >= $2)
+    AND ($3::timestamptz IS NULL OR t.started_at <= $3)
+    AND s.deleted_at IS NULL AND s.purged_at IS NULL
+    AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
+    AND s.parent_session_id IS NULL
+    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
+    AND ($4::text = '' OR strpos(lower(s.title), lower($4::text)) > 0)
+    AND ($5::text = ''
+        OR strpos(lower(u.name), lower($5::text)) > 0
+        OR strpos(lower(u.email), lower($5::text)) > 0)
+    AND ($6::text = '' OR strpos(lower(t.input_text), lower($6::text)) > 0)
+    AND ($7::timestamptz IS NULL OR t.started_at >= $7)
+    AND ($8::timestamptz IS NULL OR t.started_at < $8)
+ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
+LIMIT $10 OFFSET $9
+`
+
+type ListTaskConversationsParams struct {
+	TaskID        string
+	FirstTurnTime *time.Time
+	LastTurnTime  *time.Time
+	TitleQuery    string
+	UserQuery     string
+	ContentQuery  string
+	FromTime      *time.Time
+	UntilTime     *time.Time
+	Offset        int32
+	Limit         int32
+}
+
+func (q *Queries) ListTaskConversations(ctx context.Context, arg ListTaskConversationsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listTaskConversations,
+		arg.TaskID,
+		arg.FirstTurnTime,
+		arg.LastTurnTime,
+		arg.TitleQuery,
+		arg.UserQuery,
+		arg.ContentQuery,
+		arg.FromTime,
+		arg.UntilTime,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockConversationTurns = `-- name: LockConversationTurns :exec
+LOCK TABLE ONLY session_turns IN ACCESS SHARE MODE
+`
+
+func (q *Queries) LockConversationTurns(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockConversationTurns)
+	return err
 }
 
 const reportingClients = `-- name: ReportingClients :many
@@ -335,7 +335,7 @@ func (q *Queries) ReportingClientsOverview(ctx context.Context, filters []byte) 
 const reportingDetail = `-- name: ReportingDetail :one
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source, s.host_verified, s.host_revision, s.last_live_report_at, s.live_boot_id, s.live_lease_epoch FROM sessions s CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source, s.host_verified, s.host_revision, s.last_live_report_at, s.live_boot_id, s.live_lease_epoch, s.turn_count_verified FROM sessions s CROSS JOIN opts p
     WHERE s.id = (p.f->>'session_id')::uuid AND s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND s.started_at >= (p.f->>'from')::timestamptz AND s.started_at < (p.f->>'until')::timestamptz
@@ -615,7 +615,7 @@ func (q *Queries) ReportingRealtime(ctx context.Context, arg ReportingRealtimePa
 const reportingResources = `-- name: ReportingResources :many
 WITH opts AS (SELECT $1::jsonb AS f),
 cohort AS (
-    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source, s.host_verified, s.host_revision, s.last_live_report_at, s.live_boot_id, s.live_lease_epoch FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
+    SELECT s.id, s.owner_user_id, s.expert_id, s.title, s.session_type, s.client_type, s.client_name, s.device_id, s.turn_count, s.failure_code, s.failure_message, s.started_at, s.last_active_at, s.ended_at, s.created_at, s.updated_at, s.deleted_at, s.group_id, s.model_id, s.parent_session_id, s.mode, s.workspace_kind, s.client_version, s.engine_version, s.runtime_version, s.placeholder, s.started_at_provisional, s.clock_suspect, s.state_seq, s.state_hash, s.state_received_at, s.resources_snapshot_id, s.acked_turn, s.facts_version, s.last_stop_reason, s.active_seconds, s.client_deleted_at, s.purged_at, s.reporting_enabled_at, s.title_source, s.host_verified, s.host_revision, s.last_live_report_at, s.live_boot_id, s.live_lease_epoch, s.turn_count_verified FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
@@ -823,6 +823,18 @@ SELECT jsonb_build_object(
 
 func (q *Queries) ReportingUsersOverview(ctx context.Context, at time.Time) ([]byte, error) {
 	row := q.db.QueryRow(ctx, reportingUsersOverview, at)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const taskTurnBounds = `-- name: TaskTurnBounds :one
+SELECT jsonb_build_object('backfilling',session_turns_backfilling(),'first_at',b.first_at,'last_at',b.last_at)
+FROM session_turn_bounds($1::uuid) AS b(first_at,last_at)
+`
+
+func (q *Queries) TaskTurnBounds(ctx context.Context, sessionID string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, taskTurnBounds, sessionID)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err

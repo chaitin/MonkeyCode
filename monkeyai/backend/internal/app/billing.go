@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 )
@@ -26,6 +27,7 @@ import (
 type applicationHandler struct {
 	http.Handler
 	billing         *billing.Service
+	sessions        *session.Service
 	proxy           *proxy.Proxy
 	images          *imagegen.Service
 	videos          *videogen.Service
