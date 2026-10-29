@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/user/provider"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -30,6 +33,8 @@ type AuthHandler struct {
 	authMiddleware *middleware.AuthMiddleware
 	captcha        *captcha.Captcha
 }
+
+const oidcLoginRedirectKeyPrefix = "oidc_login_redirect:"
 
 // NewAuthHandler 创建认证处理器 (samber/do 风格)
 func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
@@ -98,9 +103,25 @@ func (h *AuthHandler) OIDCLogin(c *web.Context, req domain.TeamOIDCLoginReq) err
 	if h.oidcUsecase == nil {
 		return errcode.ErrOIDCDisabled
 	}
+	redirectURL, err := provider.CleanRedirectURL(req.RedirectURL)
+	if err != nil {
+		return errcode.ErrOAuthLoginRedirectInvalid
+	}
 	authURL, err := h.oidcUsecase.StartLogin(c.Request().Context(), req.TeamID)
 	if err != nil {
 		return err
+	}
+	parsedAuthURL, err := url.Parse(authURL)
+	if err != nil || parsedAuthURL.Query().Get("state") == "" {
+		return errcode.ErrInternalServer
+	}
+	if err := h.redis.Set(
+		c.Request().Context(),
+		oidcLoginRedirectKeyPrefix+parsedAuthURL.Query().Get("state"),
+		redirectURL,
+		10*time.Minute,
+	).Err(); err != nil {
+		return errcode.ErrInternalServer
 	}
 	return c.Redirect(http.StatusFound, authURL)
 }
@@ -119,16 +140,26 @@ func (h *AuthHandler) OIDCCallback(c *web.Context, req domain.TeamOIDCCallbackRe
 	if h.oidcUsecase == nil {
 		return errcode.ErrOIDCDisabled
 	}
-	user, err := h.oidcUsecase.HandleCallback(c.Request().Context(), &req)
+	ctx := c.Request().Context()
+	redirectURL, err := h.redis.Get(ctx, oidcLoginRedirectKeyPrefix+req.State).Result()
+	if err == redis.Nil {
+		redirectURL = "/console/"
+	} else if err != nil {
+		return errcode.ErrInternalServer
+	}
+	user, err := h.oidcUsecase.HandleCallback(ctx, &req)
 	if err != nil {
 		return err
 	}
 	_, err = h.authMiddleware.Session.Save(c, consts.MonkeyCodeAISession, user.ID, user)
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "save oidc session failed", "error", err)
+		h.logger.ErrorContext(ctx, "save oidc session failed", "error", err)
 		return errcode.ErrInternalServer
 	}
-	return c.Redirect(http.StatusFound, "/console/")
+	if err := h.redis.Del(ctx, oidcLoginRedirectKeyPrefix+req.State).Err(); err != nil {
+		h.logger.WarnContext(ctx, "delete oidc login redirect failed", "error", err)
+	}
+	return c.Redirect(http.StatusFound, redirectURL)
 }
 
 // OIDCPublicConfig 获取团队公开 OIDC 登录配置
