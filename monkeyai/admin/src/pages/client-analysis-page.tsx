@@ -7,12 +7,12 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
-import { TablePagination } from "@/components/table-pagination"
-import { TableLoading } from "@/components/table-loading"
-
 import { useAppToast } from "@/components/animated-toast-provider"
 import { ClientDistributionCards } from "@/components/client-distribution-cards"
 import { DatePickerField } from "@/components/date-picker-field"
+import { TablePagination } from "@/components/table-pagination"
+import { TableLoading } from "@/components/table-loading"
+import { UserAvatar } from "@/components/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -27,13 +27,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Table,
   TableBody,
   TableCell,
@@ -42,139 +35,150 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import {
+  devicePaths,
+  devicePlatform,
+  deviceQuery,
+  type ClientDevice,
+  type DeviceFilters,
+  type DeviceOverview,
+  type DevicePage,
+} from "@/lib/client-devices"
 import { startOfLocalDay } from "@/lib/date-range"
-import {
-  defaultWindow,
-  reportPaths,
-  reportQuery,
-  type ClientOverview,
-  type ReportClient,
-  type ReportPage,
-  type ReportWindow,
-} from "@/lib/session-reporting"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { cn } from "@/lib/utils"
-import {
-  ReportNumber,
-  ReportTime,
-  ReportValue,
-} from "@/pages/session-reporting-page"
 
-type ClientColumn = Exclude<keyof ReportClient, "sort_key">
+type ClientColumn =
+  | "user"
+  | "device_name"
+  | "platform"
+  | "os_version"
+  | "client_type"
+  | "client_name"
+  | "client_version"
+  | "arch"
+  | "locale"
+  | "system_locale"
+  | "timezone"
+  | "runtime_version"
+  | "engine_version"
+  | "status"
+  | "machine_id"
+  | "created_at"
+  | "last_active_at"
 type ClientSearchField =
   | "client_type"
   | "platform"
-  | "outcome"
-  | "user_id"
-  | "group_id"
-  | "model_id"
-  | "expert_id"
-
-const key = "pages.sessionReporting"
+  | "arch"
+  | "client_version"
+  | "status"
+  | "last_active_at"
+const key = "pages.clientDevices"
 const columns: ClientColumn[] = [
-  "client_type",
+  "user",
+  "device_name",
   "platform",
   "os_version",
+  "client_type",
+  "client_name",
   "client_version",
-  "engine_version",
-  "runtime_version",
+  "arch",
   "locale",
-  "timezone",
-  "sessions",
-  "turns",
-  "interrupted",
-  "completion_rate",
-  "anomaly_rate",
-  "p95_duration_seconds",
+  "runtime_version",
+  "engine_version",
+  "created_at",
   "last_active_at",
+  "system_locale",
+  "timezone",
+  "status",
+  "machine_id",
 ]
 const defaultColumns: ClientColumn[] = [
-  "client_type",
+  "user",
+  "device_name",
   "platform",
-  "os_version",
-  "client_version",
+  "last_active_at",
 ]
 const searchFields: ClientSearchField[] = [
   "client_type",
   "platform",
-  "outcome",
-  "user_id",
-  "group_id",
-  "model_id",
-  "expert_id",
+  "arch",
+  "client_version",
+  "status",
+  "last_active_at",
 ]
-const selectValues = {
-  client_type: ["desktop", "web", "extension", "mobile", "runtime", "unknown"],
-  outcome: [
-    "complete",
-    "interrupted",
-    "error",
-    "max_turns",
-    "output_limit",
-    "unknown",
-  ],
-}
+const clientTypes = [
+  "desktop",
+  "web",
+  "extension",
+  "mobile",
+  "runtime",
+  "unknown",
+]
 
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
-  const [filters, setFilters] = useState<ReportWindow>(defaultWindow)
-  const [draft, setDraft] = useState<ReportWindow>(filters)
-  const [startDay, setStartDay] = useState<Date>()
-  const [endDay, setEndDay] = useState<Date>()
+  const [filters, setFilters] = useState<DeviceFilters>({})
+  const [draft, setDraft] = useState<DeviceFilters>({})
   const [visibleFields, setVisibleFields] = useState<Set<ClientSearchField>>(
-    () => new Set(["client_type"])
+    () => new Set(["client_type", "platform"])
   )
   const [visibleColumns, setVisibleColumns] = useState<Set<ClientColumn>>(
     () => new Set(defaultColumns)
   )
   const [invalidRange, setInvalidRange] = useState(false)
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
-  const [active, setActive] = useState(0)
+  const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
   const [listRetry, setListRetry] = useState(0)
   const [overviewRetry, setOverviewRetry] = useState(0)
   const [overviewResponse, setOverviewResponse] = useState<{
     key: string
-    data?: ClientOverview
+    data?: DeviceOverview
     error?: string
   }>()
   const searchRevisionRef = useRef<number | null>(null)
-  const [data, setData] = useState<ReportPage<ReportClient>>()
+  const [data, setData] = useState<DevicePage>()
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string>()
-  const displayedColumns = columns.filter((column) =>
-    visibleColumns.has(column)
-  )
-  const items = data?.items ?? []
-
-  const path = `${reportPaths.clients}${reportQuery(filters, cursors[active])}&limit=${pageSize}`
-  const overviewPath = `${reportPaths.clientsOverview}${reportQuery(filters)}`
+  const startDay = draft.from
+    ? startOfLocalDay(new Date(draft.from))
+    : undefined
+  const endDay = draft.until
+    ? startOfLocalDay(new Date(new Date(draft.until).getTime() - 1))
+    : undefined
+  const query = deviceQuery(filters)
+  const path = `${devicePaths.list}?${query}&page=${page}&page_size=${pageSize}`
+  const overviewPath = `${devicePaths.overview}?${query}`
   const overviewKey = `${overviewPath}:${revision}:${overviewRetry}`
   const overviewLoading = overviewResponse?.key !== overviewKey
   const overview = overviewLoading ? undefined : overviewResponse.data
   const overviewError = overviewLoading ? undefined : overviewResponse.error
   const searchBusy = searching || (revision > 0 && overviewLoading)
+  const items = data?.items ?? []
+  const displayedColumns = columns.filter((column) =>
+    visibleColumns.has(column)
+  )
+  const timeFormatter = new Intl.DateTimeFormat(
+    i18n.resolvedLanguage ?? i18n.language,
+    TABLE_DATE_TIME_OPTIONS
+  )
 
   useEffect(() => {
     const controller = new AbortController()
-    api<ClientOverview>(overviewPath, {
+    void api<DeviceOverview>(overviewPath, {
       signal: controller.signal,
       cache: "no-store",
     })
       .then((result) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted)
           setOverviewResponse({ key: overviewKey, data: result })
-        }
       })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setOverviewResponse({
-            key: overviewKey,
-            error: reason instanceof Error ? reason.message : String(reason),
-          })
-        }
+      .catch((reason: Error) => {
+        if (!controller.signal.aborted)
+          setOverviewResponse({ key: overviewKey, error: reason.message })
       })
     return () => controller.abort()
   }, [overviewPath, overviewKey])
@@ -186,29 +190,27 @@ export function ClientAnalysisPage() {
       setLoading(true)
       setError(undefined)
     }
-    api<ReportPage<ReportClient>>(path, {
-      signal: controller.signal,
-      cache: "no-store",
-    })
+    void api<DevicePage>(path, { signal: controller.signal, cache: "no-store" })
       .then((result) => {
         if (controller.signal.aborted) return
+        if (result.items.length === 0 && page > 1) {
+          setPage(1)
+          return
+        }
         setData(result)
         setError(undefined)
-        if (isSearch) {
+        if (isSearch)
           showToast({
             status: "success",
             title: t("pages.operationLogs.filters.searchSuccess"),
           })
-        }
       })
-      .catch((reason: unknown) => {
+      .catch((reason: Error) => {
         if (controller.signal.aborted) return
-        const message =
-          reason instanceof Error ? reason.message : String(reason)
-        setError(message)
+        setError(reason.message)
         showToast({
           status: "error",
-          title: message,
+          title: reason.message,
           ...(!isSearch && {
             action: {
               label: t("statistics.retry"),
@@ -226,50 +228,85 @@ export function ClientAnalysisPage() {
         }
       })
     return () => controller.abort()
-  }, [path, revision, listRetry, showToast, t])
+  }, [path, page, revision, listRetry, showToast, t])
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (loading || searchBusy || overviewLoading) return
     if (
-      Boolean(startDay) !== Boolean(endDay) ||
-      (startDay &&
-        endDay &&
-        startOfLocalDay(startDay) > startOfLocalDay(endDay))
+      draft.from &&
+      draft.until &&
+      new Date(draft.from) >= new Date(draft.until)
     ) {
       setInvalidRange(true)
       return
     }
     setInvalidRange(false)
     setError(undefined)
-    const timeWindow = defaultWindow()
-    setFilters({
-      ...draft,
-      from: startDay
-        ? startOfLocalDay(startDay).toISOString()
-        : timeWindow.from,
-      until: endDay
-        ? startOfLocalDay(addDays(endDay, 1)).toISOString()
-        : timeWindow.until,
-    })
-    setCursors([undefined])
-    setActive(0)
+    setFilters({ ...draft })
+    setPage(1)
     const nextRevision = revision + 1
     searchRevisionRef.current = nextRevision
     setSearching(true)
     setRevision(nextRevision)
   }
 
-  function renderCell(row: ReportClient, column: ClientColumn) {
-    if (column === "last_active_at")
-      return <ReportTime value={row.last_active_at} />
-    if (column === "completion_rate" || column === "anomaly_rate") {
-      return <ReportNumber value={row[column]} suffix="%" />
+  function renderCell(row: ClientDevice, column: ClientColumn) {
+    if (column === "user")
+      return (
+        <span
+          className="flex items-center gap-2"
+          title={`${row.user_name || ""} ${row.user_email || ""} ${row.user_id}`}
+        >
+          <UserAvatar src={row.user_avatar_url} />
+          <span className="min-w-0">
+            <span className="block max-w-40 truncate">
+              {row.user_name || row.user_email || row.user_id}
+              {row.user_deleted ? ` · ${t(`${key}.deletedUser`)}` : ""}
+            </span>
+            <span className="block max-w-40 truncate text-xs text-muted-foreground">
+              {row.user_email || row.user_id}
+            </span>
+          </span>
+        </span>
+      )
+    if (column === "device_name")
+      return (
+        <span
+          className="block max-w-48 truncate"
+          title={`${row.alias || row.device_name} · ${row.machine_id}`}
+        >
+          {row.alias || row.device_name}
+        </span>
+      )
+    if (column === "created_at" || column === "last_active_at") {
+      const value = row[column]
+      return (
+        <span title={value || undefined}>
+          {value && !Number.isNaN(Date.parse(value))
+            ? timeFormatter.format(new Date(value))
+            : "—"}
+        </span>
+      )
     }
-    if (column === "p95_duration_seconds") {
-      return <ReportNumber value={row[column]} suffix="s" />
-    }
-    return <ReportValue value={row[column]} />
+    if (column === "platform") return devicePlatform(row.platform)
+    if (column === "client_type")
+      return row.client_type
+        ? t(`pages.clientDevices.distribution.types.${row.client_type}`, {
+            defaultValue: row.client_type,
+          })
+        : "—"
+    if (column === "status") return t(`${key}.statuses.${row.status}`)
+    const value = row[column]
+    return (
+      <span className="block max-w-48 truncate" title={value || undefined}>
+        {!value
+          ? "—"
+          : value === "unknown"
+            ? t("pages.clientDevices.distribution.unknown")
+            : value}
+      </span>
+    )
   }
 
   return (
@@ -286,25 +323,19 @@ export function ClientAnalysisPage() {
             onSubmit={applySearch}
             className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
           >
-            <DatePickerField
-              id="client-analysis-from"
-              className="w-32 sm:w-32"
-              label={t("audit.since")}
-              placeholder={t("audit.since")}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              value={startDay}
-              onChange={setStartDay}
-              disabled={endDay ? { after: endDay } : undefined}
-            />
-            <DatePickerField
-              id="client-analysis-until"
-              className="w-32 sm:w-32"
-              label={t("audit.until")}
-              placeholder={t("audit.until")}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              value={endDay}
-              onChange={setEndDay}
-              disabled={startDay ? { before: startDay } : undefined}
+            <Input
+              id="client-device-query"
+              className="w-56"
+              maxLength={200}
+              placeholder={t(`${key}.search`)}
+              aria-label={t(`${key}.search`)}
+              value={draft.query ?? ""}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  query: event.target.value,
+                }))
+              }
             />
             {visibleFields.has("client_type") && (
               <DropdownMenu>
@@ -319,14 +350,19 @@ export function ClientAnalysisPage() {
                     />
                   }
                 >
-                  {draft.client_type || t(`${key}.fields.client_type`)}
+                  {draft.client_type
+                    ? t(
+                        `pages.clientDevices.distribution.types.${draft.client_type}`,
+                        { defaultValue: draft.client_type }
+                      )
+                    : t(`${key}.fields.client_type`)}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuGroup>
                     <DropdownMenuLabel>
                       {t(`${key}.fields.client_type`)}
                     </DropdownMenuLabel>
-                    {selectValues.client_type.map((value) => (
+                    {clientTypes.map((value) => (
                       <DropdownMenuCheckboxItem
                         key={value}
                         checked={draft.client_type === value}
@@ -337,7 +373,7 @@ export function ClientAnalysisPage() {
                           }))
                         }
                       >
-                        {value}
+                        {t(`pages.clientDevices.distribution.types.${value}`)}
                       </DropdownMenuCheckboxItem>
                     ))}
                   </DropdownMenuGroup>
@@ -346,7 +382,7 @@ export function ClientAnalysisPage() {
             )}
             {visibleFields.has("platform") && (
               <Input
-                className="w-40"
+                className="w-32"
                 maxLength={64}
                 placeholder={t(`${key}.fields.platform`)}
                 aria-label={t(`${key}.fields.platform`)}
@@ -359,52 +395,89 @@ export function ClientAnalysisPage() {
                 }
               />
             )}
-            {visibleFields.has("outcome") && (
-              <Select
-                value={draft.outcome || "__all__"}
-                onValueChange={(value) =>
-                  setDraft((current) => ({
-                    ...current,
-                    outcome: value === "__all__" ? "" : (value ?? ""),
-                  }))
-                }
-              >
-                <SelectTrigger
-                  aria-label={t(`${key}.fields.outcome`)}
-                  className="min-w-32"
-                >
-                  <SelectValue placeholder={t(`${key}.fields.outcome`)} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">
-                    {t(`${key}.fields.outcome`)}
-                  </SelectItem>
-                  {selectValues.outcome.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {t(`${key}.outcomes.${option}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {(["user_id", "group_id", "model_id", "expert_id"] as const).map(
+            {(["arch", "client_version"] as const).map(
               (field) =>
                 visibleFields.has(field) && (
                   <Input
                     key={field}
-                    className="w-40"
-                    pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                    className="w-32"
+                    maxLength={field === "arch" ? 32 : 64}
                     placeholder={t(`${key}.fields.${field}`)}
                     aria-label={t(`${key}.fields.${field}`)}
                     value={draft[field] ?? ""}
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
-                        [field]: event.target.value.trim(),
+                        [field]: event.target.value,
                       }))
                     }
                   />
                 )
+            )}
+            {visibleFields.has("status") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button type="button" variant="outline" />}
+                >
+                  {draft.status
+                    ? t(`${key}.statuses.${draft.status}`)
+                    : t(`${key}.fields.status`)}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuGroup>
+                    {["active", "revoked"].map((value) => (
+                      <DropdownMenuCheckboxItem
+                        key={value}
+                        checked={draft.status === value}
+                        onCheckedChange={(checked) =>
+                          setDraft((current) => ({
+                            ...current,
+                            status: checked ? value : "",
+                          }))
+                        }
+                      >
+                        {t(`${key}.statuses.${value}`)}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {visibleFields.has("last_active_at") && (
+              <>
+                <DatePickerField
+                  id="client-analysis-from"
+                  className="w-40 sm:w-40"
+                  label={t(`${key}.activeFrom`)}
+                  placeholder={t(`${key}.activeFrom`)}
+                  locale={i18n.resolvedLanguage ?? i18n.language}
+                  value={startDay}
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      from: value ? startOfLocalDay(value).toISOString() : "",
+                    }))
+                  }
+                  disabled={endDay ? { after: endDay } : undefined}
+                />
+                <DatePickerField
+                  id="client-analysis-until"
+                  className="w-40 sm:w-40"
+                  label={t(`${key}.activeUntil`)}
+                  placeholder={t(`${key}.activeUntil`)}
+                  locale={i18n.resolvedLanguage ?? i18n.language}
+                  value={endDay}
+                  onChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      until: value
+                        ? startOfLocalDay(addDays(value, 1)).toISOString()
+                        : "",
+                    }))
+                  }
+                  disabled={startDay ? { before: startDay } : undefined}
+                />
+              </>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -422,14 +495,20 @@ export function ClientAnalysisPage() {
                     <DropdownMenuCheckboxItem
                       key={field}
                       checked={visibleFields.has(field)}
-                      onCheckedChange={(checked) =>
+                      onCheckedChange={(checked) => {
                         setVisibleFields((current) => {
                           const next = new Set(current)
                           if (checked) next.add(field)
                           else next.delete(field)
                           return next
                         })
-                      }
+                        if (!checked)
+                          setDraft((current) =>
+                            field === "last_active_at"
+                              ? { ...current, from: "", until: "" }
+                              : { ...current, [field]: "" }
+                          )
+                      }}
                     >
                       {t(`${key}.fields.${field}`)}
                     </DropdownMenuCheckboxItem>
@@ -458,7 +537,7 @@ export function ClientAnalysisPage() {
                   <Button type="button" variant="outline" className="ms-auto" />
                 }
               >
-                {t(`${key}.clients.selectColumns`)}
+                {t("pages.clientDevices.selectColumns")}
               </DropdownMenuTrigger>
               <DropdownMenuOptionsContent align="end" className="max-h-80">
                 <DropdownMenuGroup>
@@ -484,12 +563,16 @@ export function ClientAnalysisPage() {
             </DropdownMenu>
             {invalidRange && (
               <p role="alert" className="text-sm text-destructive">
-                {t(`${key}.invalidFilter`)}
+                {t(`${key}.invalidRange`)}
               </p>
             )}
           </form>
           {error && (
-            <div className="px-[var(--card-spacing)]">
+            <div
+              role="alert"
+              className="flex items-center gap-2 px-[var(--card-spacing)]"
+            >
+              <span className="text-sm text-destructive">{error}</span>
               <Button
                 variant="outline"
                 onClick={() => setListRetry((value) => value + 1)}
@@ -507,13 +590,23 @@ export function ClientAnalysisPage() {
                 !items.length && "h-full",
                 "[&_td:first-child]:ps-[var(--card-spacing)] [&_td:last-child]:pe-[var(--card-spacing)] [&_th:first-child]:ps-[var(--card-spacing)] [&_th:last-child]:pe-[var(--card-spacing)]"
               )}
-              aria-label={t(`${key}.clients.title`)}
+              aria-label={t(`${key}.title`)}
               aria-busy={loading || searching}
             >
               <TableHeader className="sticky top-0 z-10">
                 <TableRow>
                   {displayedColumns.map((column) => (
-                    <TableHead key={column} className="whitespace-nowrap">
+                    <TableHead
+                      key={column}
+                      className="whitespace-nowrap"
+                      title={
+                        column === "created_at"
+                          ? t(`${key}.registeredHint`)
+                          : column === "last_active_at"
+                            ? t(`${key}.activityHint`)
+                            : undefined
+                      }
+                    >
                       {t(`${key}.fields.${column}`)}
                     </TableHead>
                   ))}
@@ -522,13 +615,14 @@ export function ClientAnalysisPage() {
               <TableBody>
                 {items.length ? (
                   items.map((row) => (
-                    <TableRow key={row.sort_key}>
+                    <TableRow key={row.id}>
                       {displayedColumns.map((column) => (
                         <TableCell
                           key={column}
                           className={cn(
                             "whitespace-nowrap",
-                            column === "last_active_at" &&
+                            (column === "created_at" ||
+                              column === "last_active_at") &&
                               "text-muted-foreground"
                           )}
                         >
@@ -557,23 +651,19 @@ export function ClientAnalysisPage() {
             </Table>
           </ScrollArea>
           <TablePagination
-            page={active + 1}
+            page={page}
             pageSize={pageSize}
             itemCount={items.length}
             loading={loading || searching}
             error={Boolean(error)}
-            hasNext={Boolean(data?.next_cursor)}
+            hasNext={Boolean(data?.has_next)}
             onPageSizeChange={(size) => {
               setPageSize(size)
-              setCursors([undefined])
-              setActive(0)
+              setPage(1)
             }}
-            onPrevious={() => setActive((value) => Math.max(0, value - 1))}
+            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
             onNext={() => {
-              const next = data?.next_cursor
-              if (!next) return
-              setCursors((current) => [...current.slice(0, active + 1), next])
-              setActive((value) => value + 1)
+              if (data?.has_next) setPage((value) => value + 1)
             }}
           />
         </CardContent>

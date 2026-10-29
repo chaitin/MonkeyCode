@@ -17,9 +17,9 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import type {
-  ClientDistributionDimension,
-  ClientOverview,
-} from "@/lib/session-reporting"
+  DeviceDistributionDimension,
+  DeviceOverview,
+} from "@/lib/client-devices"
 
 type DistributionItem = {
   id: string
@@ -28,7 +28,7 @@ type DistributionItem = {
   fill: string
 }
 
-const key = "pages.sessionReporting.clients.distribution"
+const key = "pages.clientDevices.distribution"
 const colors = [
   "#3b82f6",
   "#2dd4bf",
@@ -38,7 +38,7 @@ const colors = [
   "#94a3b8",
 ]
 const dimensions: {
-  field: ClientDistributionDimension
+  field: DeviceDistributionDimension
   icon: IconSvgElement
 }[] = [
   { field: "client_type", icon: ComputerIcon },
@@ -59,7 +59,7 @@ const platformLabels: Record<string, string> = {
 }
 
 function categoryColor(
-  field: ClientDistributionDimension,
+  field: DeviceDistributionDimension,
   value: string | null
 ) {
   if (value === null || value === "unknown") return colors[5]
@@ -157,7 +157,7 @@ function DistributionCard({
             <div className="legacy-aspect-square relative aspect-square w-32 max-w-40 shrink-0 group-data-[container-wide=true]/distribution:w-[42%]">
               {items.length ? (
                 <ChartContainer
-                  config={{ count: { label: t(`${key}.sessions`) } }}
+                  config={{ count: { label: t(`${key}.devices`) } }}
                   className="absolute inset-0 aspect-square h-full w-full"
                   role="img"
                   aria-label={`${title}: ${chartDescription}`}
@@ -200,7 +200,7 @@ function DistributionCard({
                   <li
                     key={item.id}
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 text-xs"
-                    title={`${item.label} · ${formatter.format(item.count)} ${t(`${key}.sessions`)}`}
+                    title={`${item.label} · ${formatter.format(item.count)} ${t(`${key}.devices`)}`}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span
@@ -234,7 +234,7 @@ export function ClientDistributionCards({
   error,
   onRetry,
 }: {
-  data?: ClientOverview
+  data?: DeviceOverview
   loading: boolean
   error?: string
   onRetry: () => void
@@ -247,7 +247,7 @@ export function ClientDistributionCards({
           ({ value, count }) => ({
             id: JSON.stringify(value),
             label:
-              value === null
+              value === null || value === "unknown"
                 ? t(`${key}.unknown`)
                 : field === "client_type"
                   ? t(`${key}.types.${value}`, { defaultValue: value })

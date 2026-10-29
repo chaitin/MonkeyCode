@@ -5059,6 +5059,189 @@ paths:
           $ref: '#/components/responses/ResourceError500'
         '502':
           $ref: '#/components/responses/ResourceError502'
+  /api/admin/v1/endpoints:
+    get:
+      summary: 查询所有用户的客户端设备登记记录
+      description: 一行对应 (user_id,machine_id) 的一条设备登记记录，字段为当前登记值。以 endpoints 为主表关联 users，不依赖会话或轮次上报。默认无时间限制，包含已撤销登记和已删除用户的记录；按最近活动降序（空值最后）、创建时间降序、ID 降序分页。最近活动为设备记录中 last_seen_at 与 last_reported_at 较新的时间，不能据此推断实时在线。每次读取 page_size+1 判断 has_next，不执行列表总数
+        COUNT。只返回展示字段，不返回执行公钥或授权信息。
+      parameters:
+      - in: query
+        name: query
+        description: 对使用者姓名、邮箱、设备名称、别名、客户端名称及设备 ID 做不区分大小写的字面子串搜索。
+        schema:
+          type: string
+          maxLength: 200
+      - in: query
+        name: user_id
+        description: 按所属用户精确筛选。
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: platform
+        description: 操作系统类型，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 64
+      - in: query
+        name: client_type
+        description: 客户端类型，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 32
+      - in: query
+        name: client_version
+        description: 客户端版本，精确匹配。
+        schema:
+          type: string
+          maxLength: 64
+      - in: query
+        name: arch
+        description: CPU 架构，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 32
+      - in: query
+        name: status
+        description: 登记状态，不代表实时在线。
+        schema:
+          type: string
+          enum:
+          - active
+          - revoked
+      - in: query
+        name: from
+        description: 最近活动时间下界，包含；不提供时不限制。
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        description: 最近活动时间上界，不包含；不提供时不限制。
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: page
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 1000000
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+      responses:
+        '200':
+          description: '登记记录页，Cache-Control: private, no-store'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - page
+                - page_size
+                - has_next
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClientDevice'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  has_next:
+                    type: boolean
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 需要管理员权限
+        '503':
+          description: 设备清单暂不可用
+  /api/admin/v1/endpoints/overview:
+    get:
+      summary: 统计客户端设备登记记录及其分布
+      description: 筛选口径与设备列表一致，默认覆盖全部登记记录。total 按 (user_id,machine_id) 记录计数，users 按 user_id 去重；三个分布均按设备登记记录计数，不是会话数，也不是按物理设备去重的安装量。不接受分页参数。
+      parameters:
+      - in: query
+        name: query
+        description: 对使用者姓名、邮箱、设备名称、别名、客户端名称及设备 ID 做不区分大小写的字面子串搜索。
+        schema:
+          type: string
+          maxLength: 200
+      - in: query
+        name: user_id
+        description: 按所属用户精确筛选。
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: platform
+        description: 操作系统类型，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 64
+      - in: query
+        name: client_type
+        description: 客户端类型，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 32
+      - in: query
+        name: client_version
+        description: 客户端版本，精确匹配。
+        schema:
+          type: string
+          maxLength: 64
+      - in: query
+        name: arch
+        description: CPU 架构，不区分大小写精确匹配。
+        schema:
+          type: string
+          maxLength: 32
+      - in: query
+        name: status
+        description: 登记状态，不代表实时在线。
+        schema:
+          type: string
+          enum:
+          - active
+          - revoked
+      - in: query
+        name: from
+        description: 最近活动时间下界，包含；不提供时不限制。
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: until
+        description: 最近活动时间上界，不包含；不提供时不限制。
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: '登记统计，Cache-Control: private, no-store'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientDeviceOverview'
+        '400':
+          description: 参数不合法
+        '401':
+          description: 未登录
+        '403':
+          description: 需要管理员权限
+        '503':
+          description: 设备清单暂不可用
 components:
   securitySchemes:
     AdminSession:
@@ -5169,6 +5352,195 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    ClientDevice:
+      type: object
+      required:
+      - id
+      - user_id
+      - machine_id
+      - user_name
+      - user_email
+      - user_avatar_url
+      - alias
+      - client_type
+      - client_name
+      - locale
+      - system_locale
+      - timezone
+      - runtime_version
+      - engine_version
+      - user_deleted
+      - device_name
+      - platform
+      - os_version
+      - arch
+      - client_version
+      - status
+      - created_at
+      - updated_at
+      - last_seen_at
+      - last_reported_at
+      - last_active_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        machine_id:
+          type: string
+          format: uuid
+        user_name:
+          type:
+          - string
+          - 'null'
+        user_email:
+          type:
+          - string
+          - 'null'
+        user_avatar_url:
+          type:
+          - string
+          - 'null'
+        alias:
+          type:
+          - string
+          - 'null'
+        client_type:
+          type:
+          - string
+          - 'null'
+        client_name:
+          type:
+          - string
+          - 'null'
+        locale:
+          type:
+          - string
+          - 'null'
+        system_locale:
+          type:
+          - string
+          - 'null'
+        timezone:
+          type:
+          - string
+          - 'null'
+        runtime_version:
+          type:
+          - string
+          - 'null'
+        engine_version:
+          type:
+          - string
+          - 'null'
+        user_deleted:
+          type: boolean
+        device_name:
+          type: string
+        platform:
+          type: string
+        os_version:
+          type: string
+        arch:
+          type: string
+        client_version:
+          type: string
+        status:
+          type: string
+          enum:
+          - active
+          - revoked
+          description: active 表示登记有效，不表示在线。
+        created_at:
+          type: string
+          format: date-time
+          description: 首次创建登记记录时间，不等同于首次连接或首次对话。
+        updated_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_reported_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_active_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: GREATEST(last_seen_at,last_reported_at)，两者均为空时为 null。
+    ClientDeviceOverview:
+      type: object
+      required:
+      - metric
+      - total
+      - users
+      - distributions
+      properties:
+        metric:
+          type: string
+          enum:
+          - devices
+        total:
+          type: integer
+        users:
+          type: integer
+        distributions:
+          type: object
+          required:
+          - client_type
+          - platform
+          - client_version
+          properties:
+            client_type:
+              type: array
+              items:
+                type: object
+                required:
+                - value
+                - count
+                properties:
+                  value:
+                    type:
+                    - string
+                    - 'null'
+                  count:
+                    type: integer
+            platform:
+              type: array
+              items:
+                type: object
+                required:
+                - value
+                - count
+                properties:
+                  value:
+                    type:
+                    - string
+                    - 'null'
+                  count:
+                    type: integer
+            client_version:
+              type: array
+              items:
+                type: object
+                required:
+                - value
+                - count
+                properties:
+                  value:
+                    type:
+                    - string
+                    - 'null'
+                  count:
+                    type: integer
     ResourceImportUploadFile:
       type: object
       required: [name, size]

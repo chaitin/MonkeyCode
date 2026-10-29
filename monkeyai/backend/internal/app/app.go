@@ -297,6 +297,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	resourceImports.WithDesignCatalog(designs)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
+	endpoints.RegisterAdmin(admin)
 	identities.RegisterAgent(agent)
 	group.NewService(pool).RegisterAgent(agent)
 	keys.RegisterAgent(agent)

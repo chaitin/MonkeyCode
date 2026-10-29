@@ -15,6 +15,7 @@
     "test:browser:groups": "node scripts/check-group-select.mjs",
     "test:browser:models": "node scripts/check-model-config.mjs",
     "test:browser:history": "node scripts/check-history-pagination.mjs",
+    "test:browser:client-devices": "node scripts/check-client-devices.mjs",
     "test:browser:billing-users": "node scripts/check-billing-user-search.mjs",
     "test:browser:auth": "node scripts/check-client-authorization.mjs",
     "test:browser:branding": "node scripts/check-public-branding.mjs",

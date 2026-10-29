@@ -69,6 +69,95 @@ func (q *Queries) Active(ctx context.Context, userID string) ([]Endpoint, error)
 	return items, nil
 }
 
+const adminDeviceOverview = `-- name: AdminDeviceOverview :one
+WITH opts AS (SELECT $1::jsonb AS f), devices AS (
+ SELECT e.id, e.user_id, e.machine_id, e.device_name, e.alias, e.platform, e.os_version, e.arch, e.client_version, e.protocol_version, e.status, e.created_at, e.updated_at, e.last_seen_at, e.revoked_at, e.client_type, e.client_name, e.channel, e.locale, e.system_locale, e.timezone, e.runtime_version, e.engine_version, e.electron_version, e.last_reported_at, e.execution_protocols, e.execution_public_key, e.key_id, e.deployment_mode, e.remote_access_state, e.active_grant_id, e.registration_version, e.grant_version, e.lease_epoch,u.name AS user_name,u.email AS user_email,nullif(btrim(u.avatar_url),'') AS user_avatar_url,
+  u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
+ FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
+ WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
+ AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
+ AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))
+ AND (p.f->>'client_version' IS NULL OR e.client_version=p.f->>'client_version')
+ AND (p.f->>'arch' IS NULL OR lower(e.arch)=lower(p.f->>'arch'))
+ AND (p.f->>'status' IS NULL OR e.status=p.f->>'status')
+ AND (p.f->>'from' IS NULL OR greatest(e.last_seen_at,e.last_reported_at)>=(p.f->>'from')::timestamptz)
+ AND (p.f->>'until' IS NULL OR greatest(e.last_seen_at,e.last_reported_at)<(p.f->>'until')::timestamptz)
+)
+, normalized AS (
+ SELECT coalesce(nullif(btrim(client_type),''),'unknown') AS client_type,
+ CASE WHEN lower(btrim(platform)) IN ('windows','macos','linux','web','android','ios') THEN lower(btrim(platform)) ELSE nullif(btrim(platform),'') END AS platform,
+ nullif(btrim(client_version),'') AS client_version FROM devices
+), counts AS (
+ SELECT 'client_type'::text AS dimension,client_type AS value,count(*) AS count FROM normalized GROUP BY client_type
+ UNION ALL SELECT 'platform',platform,count(*) FROM normalized GROUP BY platform
+ UNION ALL SELECT 'client_version',client_version,count(*) FROM normalized GROUP BY client_version
+)
+SELECT jsonb_build_object('metric','devices','total',(SELECT count(*) FROM devices),'users',(SELECT count(DISTINCT user_id) FROM devices),
+ 'distributions',jsonb_build_object(
+ 'client_type',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_type'),'[]'::jsonb),
+ 'platform',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='platform'),'[]'::jsonb),
+ 'client_version',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_version'),'[]'::jsonb)))
+`
+
+func (q *Queries) AdminDeviceOverview(ctx context.Context, filters []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, adminDeviceOverview, filters)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const adminDevices = `-- name: AdminDevices :many
+WITH opts AS (SELECT $3::jsonb AS f), devices AS (
+ SELECT e.id, e.user_id, e.machine_id, e.device_name, e.alias, e.platform, e.os_version, e.arch, e.client_version, e.protocol_version, e.status, e.created_at, e.updated_at, e.last_seen_at, e.revoked_at, e.client_type, e.client_name, e.channel, e.locale, e.system_locale, e.timezone, e.runtime_version, e.engine_version, e.electron_version, e.last_reported_at, e.execution_protocols, e.execution_public_key, e.key_id, e.deployment_mode, e.remote_access_state, e.active_grant_id, e.registration_version, e.grant_version, e.lease_epoch,u.name AS user_name,u.email AS user_email,nullif(btrim(u.avatar_url),'') AS user_avatar_url,
+  u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
+ FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
+ WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
+ AND (p.f->>'user_id' IS NULL OR e.user_id=(p.f->>'user_id')::uuid)
+ AND (p.f->>'platform' IS NULL OR lower(e.platform)=lower(p.f->>'platform'))
+ AND (p.f->>'client_type' IS NULL OR lower(coalesce(nullif(btrim(e.client_type),''),'unknown'))=lower(p.f->>'client_type'))
+ AND (p.f->>'client_version' IS NULL OR e.client_version=p.f->>'client_version')
+ AND (p.f->>'arch' IS NULL OR lower(e.arch)=lower(p.f->>'arch'))
+ AND (p.f->>'status' IS NULL OR e.status=p.f->>'status')
+ AND (p.f->>'from' IS NULL OR greatest(e.last_seen_at,e.last_reported_at)>=(p.f->>'from')::timestamptz)
+ AND (p.f->>'until' IS NULL OR greatest(e.last_seen_at,e.last_reported_at)<(p.f->>'until')::timestamptz)
+)
+SELECT jsonb_build_object(
+ 'id',id,'user_id',user_id,'machine_id',machine_id,'user_name',user_name,'user_email',user_email,'user_avatar_url',user_avatar_url,'user_deleted',user_deleted,
+ 'device_name',device_name,'alias',alias,'platform',platform,'os_version',os_version,'arch',arch,
+ 'client_type',client_type,'client_name',client_name,'client_version',client_version,
+ 'locale',locale,'system_locale',system_locale,'timezone',timezone,'runtime_version',runtime_version,'engine_version',engine_version,
+ 'status',status,'created_at',created_at,'updated_at',updated_at,'last_seen_at',last_seen_at,'last_reported_at',last_reported_at,'last_active_at',last_active_at)
+FROM devices ORDER BY last_active_at DESC NULLS LAST,created_at DESC,id DESC
+LIMIT $2::integer OFFSET $1::integer
+`
+
+type AdminDevicesParams struct {
+	PageOffset int32
+	PageLimit  int32
+	Filters    []byte
+}
+
+func (q *Queries) AdminDevices(ctx context.Context, arg AdminDevicesParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, adminDevices, arg.PageOffset, arg.PageLimit, arg.Filters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const count = `-- name: Count :one
 SELECT count(*) FROM endpoints WHERE user_id = $1
 `

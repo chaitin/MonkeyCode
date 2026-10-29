@@ -48,6 +48,7 @@ for (const page of [
   "taskHistory",
   "billingDetails",
   "billingSettings",
+  "clientDevices",
 ]) {
   test(`${page} is fully translated in every supported language`, () => {
     const expectedPaths = getLeafPaths(enUS.pages[page]).sort()
