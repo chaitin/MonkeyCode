@@ -10,16 +10,18 @@ import (
 const Audience = "monkeyai-api"
 
 var scopeNames = map[string]string{
-	"device:bind":      "确认本机设备身份",
-	"device:publish":   "发布本机远程执行服务",
-	"device:connect":   "连接自己的执行设备",
-	"device:manage":    "管理自己的远程执行登记",
-	"session:report":   "上报本机会话统计",
-	"session:read":     "读取目标设备会话",
-	"session:control":  "创建和控制目标设备会话",
-	"files:read":       "读取获准文件",
-	"files:write":      "上传文件到目标设备",
-	"resources:manage": "管理目标设备资源配置",
+	"environment:read":   "读取自己的云环境",
+	"environment:manage": "创建和管理自己的云环境",
+	"device:bind":        "确认本机设备身份",
+	"device:publish":     "发布本机远程执行服务",
+	"device:connect":     "连接自己的执行设备",
+	"device:manage":      "管理自己的远程执行登记",
+	"session:report":     "上报本机会话统计",
+	"session:read":       "读取目标设备会话",
+	"session:control":    "创建和控制目标设备会话",
+	"files:read":         "读取获准文件",
+	"files:write":        "上传文件到目标设备",
+	"resources:manage":   "管理目标设备资源配置",
 }
 
 type Principal struct {

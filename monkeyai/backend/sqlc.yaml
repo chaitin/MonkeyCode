@@ -278,6 +278,32 @@ sql:
       emit_empty_slices: true
       omit_unused_structs: true
       query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/enginehost/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/enginehost/sqlc
+      sql_package: pgx/v5
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+- engine: postgresql
+  schema: schema/schema.sql
+  queries: internal/environment/query.sql
+  gen:
+    go:
+      package: sqlc
+      out: internal/environment/sqlc
+      sql_package: pgx/v5
+      emit_json_tags: true
+      emit_pointers_for_null_types: true
+      emit_empty_slices: true
+      omit_unused_structs: true
+      query_parameter_limit: 1
+
 overrides:
   go:
     overrides:

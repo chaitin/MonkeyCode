@@ -19,6 +19,8 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/environment"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
@@ -255,6 +257,11 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}))
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
+	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
+	environments := environment.NewService(pool)
+	engineHosts.WithCommands(environments)
+	environments.RegisterAdmin(admin)
+	engineHosts.RegisterAdmin(admin)
 	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
 	groupService.RegisterAdmin(admin)
 	for _, registrar := range registrars {
@@ -281,6 +288,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
+	environments.RegisterAgent(agent)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
 	var instanceID string
 	for _, registrar := range registrars {
@@ -316,6 +324,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router := chi.NewRouter()
 	router.Use(logging.HTTP(logger))
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	engineHosts.Register(router)
 	designs.RegisterCatalog(router, identities.RequireAgent)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
@@ -334,7 +343,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
 		}
-		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions)
+		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions).WithRuntimeAccess(environments)
+		environments.WithRuntime(cfg.PublicURL, runtimeRelay.Metadata()["server_id"].(string), identities).WithDisconnect(runtimeRelay.DisconnectRuntime).WithReadiness(runtimeRelay)
 		runtimeRelay.Register(router)
 		sessions.WithRuntimeStatus(runtimeRelay)
 		identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {

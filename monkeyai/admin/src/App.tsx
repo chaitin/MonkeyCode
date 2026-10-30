@@ -1,3 +1,7 @@
+import { EnvironmentsPage } from "@/pages/environments-page"
+import { EnvironmentPresetsPage } from "@/pages/environment-presets-page"
+import { EnvironmentCapacityPage } from "@/pages/environment-capacity-page"
+import { EnvironmentQuotasPage } from "@/pages/environment-quotas-page"
 import { useEffect } from "react"
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { useTranslation } from "react-i18next"
@@ -28,6 +32,7 @@ import { ClientAnalysisPage } from "@/pages/client-analysis-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelsPage } from "@/pages/models-page"
 import { OperationLogsPage } from "@/pages/operation-logs-page"
+import { EngineHostsPage } from "@/pages/engine-hosts-page"
 import { OtherSettingsPage } from "@/pages/other-settings-page"
 import { RealtimeStatusPage } from "@/pages/realtime-status-page"
 import { RulesPage } from "@/pages/rules-page"
@@ -106,7 +111,17 @@ export function App() {
                 key={page.path}
                 path={page.path.slice(CONSOLE_PATH.length + 1)}
                 element={
-                  page.path === CONSOLE_ROUTES.realtimeStatus ? (
+                  page.path === CONSOLE_ROUTES.environments ? (
+                    <EnvironmentsPage />
+                  ) : page.path === CONSOLE_ROUTES.environmentPresets ? (
+                    <EnvironmentPresetsPage />
+                  ) : page.path === CONSOLE_ROUTES.environmentCapacity ? (
+                    <EnvironmentCapacityPage />
+                  ) : page.path === CONSOLE_ROUTES.environmentQuotas ? (
+                    <EnvironmentQuotasPage />
+                  ) : page.path === CONSOLE_ROUTES.engineHosts ? (
+                    <EngineHostsPage />
+                  ) : page.path === CONSOLE_ROUTES.realtimeStatus ? (
                     <RealtimeStatusPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />

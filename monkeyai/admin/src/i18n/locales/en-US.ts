@@ -1,4 +1,157 @@
 export const enUS = {
+  environmentAdmin: {
+    presetDetails: "Preset details",
+    presetID: "Preset ID",
+    group: "Cloud environments",
+    environmentsTitle: "Environments",
+    environmentsDescription:
+      "Inspect execution and operations, stop or delete instances. Running does not mean ready to connect.",
+    presetsTitle: "Environment presets",
+    presetsDescription:
+      "Define fixed images and resources for client environment creation.",
+    capacityTitle: "Host capacity",
+    capacityDescription: "Configure allocatable host resources and scheduling.",
+    quotasTitle: "Environment quotas",
+    quotasDescription:
+      "Set per-user environment, compute and persistent storage limits.",
+    addPreset: "Create preset",
+    loading: "Loading…",
+    retry: "Retry",
+    empty: "No records",
+    pagination: "List pagination",
+    previous: "Previous",
+    next: "Next",
+    page: "Page {{page}}",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    enable: "Enable",
+    disable: "Disable",
+    saving: "Saving…",
+    save: "Save",
+    saved: "Saved",
+    close: "Close",
+    cancel: "Cancel",
+    name: "Name",
+    image: "Image",
+    architecture: "Architecture",
+    presetHint:
+      "Configurations are immutable. Create a new preset to change the image or resources. Disabling does not affect existing environments.",
+    imageHint:
+      "Use an image reference pinned by sha256, matching the architecture with a long-running entrypoint.",
+    resourceHint:
+      "Temporary storage must not exceed half of memory. Internet access is not available. Host task limits apply only to host helper processes and threads.",
+    invalidPreset:
+      "Check the name, image digest and resources. Names allow up to 128 UTF-8 bytes; temporary storage must not exceed half of memory.",
+    volumeSummary:
+      "Workspace {{workspace}} GiB · Home {{home}} GiB · Runtime {{runtime}} GiB",
+    invalidLimits:
+      "Use valid, exactly convertible resource values. Running environments must not exceed the total limit.",
+    scheduling: "Allow new allocations",
+    capacityHint:
+      "Leave resources for the host OS and image cache. Limits cannot fall below reservations. Disabling scheduling does not stop existing environments.",
+    quotaHint:
+      "Limits cannot fall below reservations. Compute is released after stop or deletion is confirmed. Retained directories still consume storage quota. System defaults apply without an override.",
+    installHosts: "Host installation",
+    capacityStage:
+      "Hosts appear after their first command exchange, with scheduling disabled. Scheduling also requires passed preflight, matching architecture and recent communication.",
+    scheduleEnabled: "Scheduling enabled",
+    scheduleDisabled: "Scheduling disabled",
+    syncFresh: "Communication current",
+    syncStale: "Communication not ready",
+    revoked: "Revoked",
+    configure: "Configure",
+    configureCapacity: "Configure host capacity",
+    lastSync: "Last sync",
+    user: "User",
+    host: "Host",
+    selectUser: "Search and select a user to view or edit quotas.",
+    refresh: "Refresh",
+    retained: "Persistent directories retained",
+    details: "Details",
+    stop: "Stop",
+    delete: "Delete instance",
+    retryDelete: "Retry deletion",
+    observed: "Last observation",
+    notObserved: "No report received",
+    accepted:
+      "Operation accepted. Waiting for the host; status updates automatically.",
+    stopHint:
+      "Workspace, home and runtime data are retained. Compute is released only after confirmation. Offline hosts execute after reconnecting.",
+    deleteHint:
+      "Delete the instance and retain persistent directories, which continue to consume storage quota. Deleted environments cannot be started. Failed cleanup can be retried.",
+    conflictHint:
+      "This operation cannot be submitted. Close this dialog, review the refreshed state, then choose an action.",
+    submitting: "Submitting…",
+    confirm: "Confirm",
+    detailHint:
+      "This is container execution state. Runtime login and client connections are not yet integrated.",
+    environmentID: "Environment ID",
+    instanceID: "Instance ID",
+    generation: "Observed / target generation",
+    computeReserved: "Compute reserved",
+    yes: "Yes",
+    no: "No",
+    network: "Network",
+    isolated: "Isolated, no internet",
+    "public-only": "Restricted public egress",
+    networkHint:
+      "Public egress requires a configured host. Private networks and host access are denied by default; the host administrator configures DNS, TCP ports and service exceptions.",
+    volumes: "Persistent directories",
+    operations: "Operations",
+    fields: {
+      cpu: "CPU (cores)",
+      memory: "Memory (MiB)",
+      tasks: "Host task limit",
+      temporary: "Temporary storage (MiB)",
+      workspace: "Workspace (GiB)",
+      home: "Home (GiB)",
+      runtime: "Runtime data (GiB)",
+      inodes: "Inodes per volume",
+      memoryGiB: "Memory (GiB)",
+      storageGiB: "Persistent storage (GiB)",
+      environments: "Environment limit",
+      running: "Running limit",
+    },
+    states: {
+      pending_running: "Awaiting start",
+      pending_stopped: "Awaiting stop",
+      pending_deleted: "Awaiting deletion",
+      pending: "Pending",
+      preparing: "Preparing",
+      starting: "Starting",
+      running: "Running",
+      stopping: "Stopping",
+      stopped: "Stopped",
+      deleting: "Deleting",
+      deleted: "Deleted",
+      failed: "Failed",
+    },
+    operationStates: {
+      pending: "Pending",
+      succeeded: "Completed",
+      failed: "Failed",
+      superseded: "Superseded",
+    },
+    reasons: {
+      apply_failed:
+        "Execution failed. Inspect host logs and clean up before starting again.",
+      inspect_failed:
+        "Unable to inspect execution state. Inspect the host and retry cleanup.",
+      process_exited:
+        "Container process exited. It will not restart automatically.",
+      local_state_conflict: "Local instance state conflicts. Inspect the host.",
+    },
+    volumeNames: {
+      workspace: "Workspace",
+      home: "Home",
+      runtime: "Runtime data",
+    },
+    targets: {
+      running: "Start",
+      stopped: "Stop",
+      deleted: "Delete",
+    },
+  },
   audit: {
     since: "Start date",
     until: "End date",
@@ -330,7 +483,8 @@ export const enUS = {
       invalidRange: "End date must not precede start date.",
       registeredHint:
         "When the device record was created, not the first conversation or connection.",
-      activityHint: "The later of the device record’s last-seen time and information report.",
+      activityHint:
+        "The later of the device record’s last-seen time and information report.",
       selectColumns: "Select columns",
       statuses: {
         active: "Registered",
@@ -371,6 +525,55 @@ export const enUS = {
           unknown: "Unknown",
         },
       },
+    },
+    engineHosts: {
+      title: "Hosts",
+      description: "Install and connect Linux hosts for cloud computers.",
+      add: "Add host",
+      stage:
+        "After installation, configure resources and enable scheduling under Host capacity. Client connectivity is still being developed.",
+      loading: "Loading hosts…",
+      empty:
+        "No hosts yet. Add a host and run the installation command on your Linux server.",
+      loadFailed: "Failed to load hosts",
+      createFailed: "Failed to generate command",
+      copyFailed: "Copy failed. Select and copy the command manually.",
+      revokeFailed: "Revocation failed",
+      revoked: "Revoked",
+      expired: "Enrollment expired",
+      pending: "Awaiting enrollment",
+      online: "Connected",
+      offline: "Disconnected",
+      lastSeen: "Last report",
+      revoke: "Revoke access",
+      checksPassed: "Preflight passed",
+      checksFailed: "Preflight needs attention",
+      lastReport: "Previous report",
+      passed: "Passed",
+      failed: "Failed",
+      total: "Total hosts",
+      previous: "Previous",
+      next: "Next",
+      commandHint:
+        "Run this command on the target host. It binds to one host and expires in 30 minutes. The command is hidden when this dialog closes.",
+      installHint:
+        "Requires Linux amd64 / arm64, systemd and cgroup v2. Automatic system dependency installation supports Debian / Ubuntu.",
+      commandExpired: "This command expired. Close and generate a new one.",
+      expires: "Expires",
+      command: "Installation command",
+      close: "Close",
+      copied: "Copied",
+      copy: "Copy command",
+      name: "Host name",
+      architecture: "CPU architecture",
+      dataDir: "Data directory",
+      dataHint:
+        "Use a dedicated directory. XFS project quotas are required before running cloud workloads. Existing disks are never formatted.",
+      cancel: "Cancel",
+      creating: "Generating…",
+      generate: "Generate command",
+      revokeHint:
+        "Stop the host environments and wait for confirmation first. Revocation invalidates the installation command and host identity, but does not stop existing containers or delete host data.",
     },
     resourceImports: {
       title: "Resource packages",

@@ -254,3 +254,13 @@ OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 
 免认证的 `credential_id` 为空字符串。上游测试失败返回 502 和脱敏错误，凭证仍保留，最近测试状态记录为 error。查看工具仅读取已发现目录，返回 `{"items":[...]}`；每项包含 `id`、上游 `name`、`description`、`input_schema`、`enabled` 和 `credits_per_call`。
 
 MCP Inspector 等标准 MCP 客户端单独调试时，复用全局创建的 `mcp:invoke` API Key，选择 Streamable HTTP，地址填写选中凭证的 `mcp_gateway.url`，Header 配置为 `Authorization: Bearer <api_key>`。更换凭证时切换地址，Key 可以继续使用。按上面的握手流程连接后，`tools/list` 仅返回该地址下可用的工具，`tools/call` 使用列表返回的工具名称。`ping` 仅检查网关是否响应，`tools/list` 读取已发现目录；验证上游可达性和刷新目录仍使用 REST `/test`。
+
+## 宿主安装接入
+
+管理员安装命令、宿主列表和撤销接口位于 `admin.yaml`。独立宿主的注册、签名挑战、预检心跳和发行文件协议位于 `host.yaml`；不使用用户 OAuth token，不提供任意宿主命令执行。安装部署见 [说明](../../engine/INSTALL.md)。
+
+## 云端环境控制
+
+`admin.yaml` 定义环境预设、宿主可调度容量、用户额度与环境管理；`agent.yaml` 定义用户预设、本人额度与预留占用、环境列表、创建、启停和删除；`host.yaml` 定义签名 exchange 与规范化规格。用户接口显式要求 `environment:read` 或 `environment:manage`，不扩展旧 token 默认权限。环境与操作列表返回 `{items,page,page_size}`，每页最多 100 条。创建和修改返回 HTTP 202；停止／删除确认后才释放计算预留，持久存储继续保留。字段、幂等和状态判断见 [操作说明](../../design/environment-control.md)。
+
+客户端接口接入契约见 [云电脑客户端接口](../../design/environment-client-api.md)，包含权限、幂等、状态判断和现有中转连接；本仓不实现客户端界面。

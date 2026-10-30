@@ -110,6 +110,17 @@ func (s *Service) RequireAgent(next http.Handler) http.Handler {
 		if row.KeyID != nil {
 			p.KeyID = *row.KeyID
 		}
+		if p.Purpose == "runtime" {
+			allowed, err := s.runtimeAllowed(ctx, nil, p.UserID, p.MachineID)
+			if err != nil {
+				writeError(r.Context(), w, 503, "service_unavailable", "环境状态暂不可用")
+				return
+			}
+			if !allowed {
+				writeError(r.Context(), w, 503, "authorization_state_unavailable", "云环境当前不可访问")
+				return
+			}
+		}
 		ctx = context.WithValue(ctx, principalKey{}, p)
 		if p.Purpose == "runtime" && !runtimeRoute(p, r.Method, r.URL.Path) {
 			writeError(r.Context(), w, 403, "permission_denied", "独立执行授权只能访问本机执行接口")

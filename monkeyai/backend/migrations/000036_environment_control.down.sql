@@ -1,0 +1,3 @@
+BEGIN;
+DROP TABLE environment_operations,environments,environment_quotas,environment_hosts,environment_presets,environment_control;
+COMMIT;

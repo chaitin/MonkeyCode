@@ -449,6 +449,11 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, clientID, code string)
 	if revoked && !request.RestoreRevoked {
 		return finish("denied", "access_denied", "恢复设备未被明确批准")
 	}
+	if allowed, err := s.runtimeAllowed(ctx, tx, *request.OwnerUserID, request.MachineID); err != nil {
+		return Token{}, err
+	} else if !allowed {
+		return finish("denied", "access_denied", "云环境启动操作已失效")
+	}
 	access, err := randomToken(32)
 	if err != nil {
 		return Token{}, err

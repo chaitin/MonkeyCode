@@ -43,6 +43,33 @@ export function AppSidebar({
   const license = useLicenseStatus()
   const navMain = [
     {
+      title: t("environmentAdmin.group"),
+      url: CONSOLE_ROUTES.environments,
+      icon: <HugeiconsIcon icon={Settings05Icon} strokeWidth={2} />,
+      items: [
+        {
+          title: t("environmentAdmin.environmentsTitle"),
+          url: CONSOLE_ROUTES.environments,
+        },
+        {
+          title: t("environmentAdmin.presetsTitle"),
+          url: CONSOLE_ROUTES.environmentPresets,
+        },
+        {
+          title: t("pages.engineHosts.title"),
+          url: CONSOLE_ROUTES.engineHosts,
+        },
+        {
+          title: t("environmentAdmin.capacityTitle"),
+          url: CONSOLE_ROUTES.environmentCapacity,
+        },
+        {
+          title: t("environmentAdmin.quotasTitle"),
+          url: CONSOLE_ROUTES.environmentQuotas,
+        },
+      ],
+    },
+    {
       title: t("sections.statistics"),
       url: CONSOLE_ROUTES.realtimeStatus,
       icon: <HugeiconsIcon icon={ChartRingIcon} strokeWidth={2} />,
