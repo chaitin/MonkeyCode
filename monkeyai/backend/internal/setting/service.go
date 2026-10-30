@@ -55,7 +55,7 @@ func (s *Service) GetValue(ctx context.Context, key string) (json.RawMessage, er
 	record, err := s.Get(ctx, key)
 	if errors.Is(err, ErrNotFound) {
 		switch key {
-		case "authentication":
+		case "branding", "authentication":
 			return json.RawMessage(`{}`), nil
 		case "session_reporting":
 			return append(json.RawMessage(nil), defaultSessionReporting...), nil
