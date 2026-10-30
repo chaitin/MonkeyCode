@@ -7,6 +7,9 @@ BACKEND_IMAGE ?= $(REGISTRY)/monkeyai-backend:$(TAG)
 MIGRATE_IMAGE ?= $(REGISTRY)/monkeyai-migrate:$(TAG)
 NGINX_ACME_IMAGE ?= $(REGISTRY)/nginx-acme:1.31.6-acme0.4.1-r1
 PRIVATE_ROOT ?= ../..
+COMMIT ?= $(shell git -C $(PRIVATE_ROOT) rev-parse HEAD 2>/dev/null || echo unknown)
+BACKEND_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 MONKEYAI_PUBLIC_KEY_FILE ?=
 MONKEYAI_AES_KEY_FILE ?=
 
@@ -30,6 +33,9 @@ image-backend:
 	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
 	  --build-arg VERSION=$(TAG) \
+	  --build-arg COMMIT=$(COMMIT) \
+	  --build-arg BACKEND_COMMIT=$(BACKEND_COMMIT) \
+	  --build-arg BUILD_TIME=$(BUILD_TIME) \
 	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
 	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
 	  --load \
@@ -71,6 +77,9 @@ push-backend:
 	  --file $(PRIVATE_ROOT)/monkeyai/Dockerfile \
 	  --tag $(BACKEND_IMAGE) \
 	  --build-arg VERSION=$(TAG) \
+	  --build-arg COMMIT=$(COMMIT) \
+	  --build-arg BACKEND_COMMIT=$(BACKEND_COMMIT) \
+	  --build-arg BUILD_TIME=$(BUILD_TIME) \
 	  --secret "id=monkeyai_public_key,src=$(MONKEYAI_PUBLIC_KEY_FILE)" \
 	  --secret "id=monkeyai_aes_key,src=$(MONKEYAI_AES_KEY_FILE)" \
 	  --push \
