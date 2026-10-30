@@ -25,6 +25,20 @@ docker compose up --build
 
 如果 Admin 前面还有反向代理，在 `.env` 中设置 `MONKEYAI_TRUSTED_PROXY_CIDRS` 为**直接连接 Admin 的可信代理** IP/CIDR，多个地址用英文逗号分隔，例如 `192.0.2.10/32,2001:db8::/32`。仅当连接来自这些网段时，Admin Nginx 才按 X-Forwarded-For 从右向左解析来源，并将结果作为 `X-Real-IP` 转发给后端；未设置时仍记录连接方地址。前置代理应追加实际连接来源到 XFF 或覆盖客户端提交的 XFF，不要把客户端可控的整段 XFF 原样透传，也不要将所有网段或整个容器网段设为可信代理。修改后重建 Admin 镜像并运行 `docker compose up -d admin`。
 
+### Admin 访问日志
+
+Nginx access 日志以 JSON 逐行输出到 stdout，error 日志继续以 `info` 级别输出到 stderr。普通 API 全量记录，静态资源的成功响应和 304 不记录，失败响应保留；健康检查以及预览、设备授权、设计资源和远程文件代理等既有敏感入口继续关闭 access 日志。
+
+访问日志包含 `time`、`remote_addr`、`method`、`path`、`status`、`request_time`、`upstream_response_time`、`upstream_addr`、`request_id`、`user_agent`、`request_length` 和 `response_bytes`。`path` 保留内部跳转前的原始路径及查询参数，不记录 Authorization、Cookie、Referer 或请求体；所有字符串使用 JSON 转义。`request_id` 优先使用后端响应的 `X-Request-ID`，缺失时使用 Nginx 本次请求生成的 ID，仅用于日志关联。
+
+耗时单位为秒；上游耗时和地址使用字符串，保留重试时的多个值，无上游时为空字符串。大小保留原始字节数：`request_length` 包含请求行、请求头和请求体，`response_bytes` 仅统计实际发送的响应体。展示时可由日志查看工具转换为 KiB、MiB。
+
+真实 Nginx 日志验证可复用已有 Admin 镜像，无需启动数据库或业务后端；测试会创建并清理隔离容器及网络：
+
+```bash
+python3 admin/test/accesslog.py --image <admin-image>
+```
+
 ## 设计资源导入与离线分发
 
 管理台“资源管理 → 导入资源包”可选择 Agent/设计分区，预览后分别提交并展示结果。设计资源保存不可变快照，提供本地目录、媒体与 ZIP 下载，旧快照保留；设计-only 不退役 Agent。部署配置、部分成功重试、双源 Token 与 API 说明见 [设计资源操作指南](design/design-resource-import.md)。
