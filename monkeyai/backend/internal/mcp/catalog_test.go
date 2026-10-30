@@ -6,12 +6,102 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/apikey"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/go-chi/chi/v5"
 )
+
+func TestSystemToolsEnabledByDefault(t *testing.T) {
+	for _, method := range []string{"none", "http_header", "oauth"} {
+		t.Run(method, func(t *testing.T) {
+			f := setup(t)
+			var additional atomic.Bool
+			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/token" {
+					resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "oauth-secret"})
+					return
+				}
+				var in request
+				if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+					t.Error(err)
+					return
+				}
+				result := resource.Object{}
+				switch in.Method {
+				case "initialize":
+					result["protocolVersion"] = protocolVersion
+				case "notifications/initialized":
+					w.WriteHeader(202)
+					return
+				case "tools/list":
+					tools := []resource.Object{
+						{"name": "first", "inputSchema": resource.Object{"type": "object"}},
+						{"name": "second", "inputSchema": resource.Object{"type": "object"}},
+					}
+					if additional.Load() {
+						tools = append(tools, resource.Object{"name": "third", "inputSchema": resource.Object{"type": "object"}})
+					}
+					result["tools"] = tools
+				}
+				resource.JSON(r.Context(), w, 200, resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
+			}))
+			defer remote.Close()
+			input := resource.Object{
+				"name": "默认启用工具", "url": remote.URL, "authorization_mode": "none",
+				"grants": []resource.Object{{"user_id": f.users["owner"]}},
+			}
+			if method != "none" {
+				input["authorization_mode"] = "centralized"
+				input["authorization_method"] = method
+				if method == "oauth" {
+					input["oauth_config"] = resource.Object{"client_id": "client", "token_url": remote.URL + "/token", "authorization_url": remote.URL + "/authorize"}
+				}
+			}
+			c := f.call("POST", "/admin/connectors", input, "owner", "", 200)
+			path := "/admin/connectors/" + c.String("id")
+			switch method {
+			case "http_header":
+				f.call("POST", path+"/credentials", resource.Object{"name": "集中凭证", "http_headers": resource.Object{"Authorization": "header-secret"}}, "owner", "", 201)
+			case "oauth":
+				auth := f.call("POST", path+"/oauth/authorizations", resource.Object{"name": "集中凭证"}, "owner", "", 200)
+				u, _ := url.Parse(auth.String("authorization_url"))
+				f.call("GET", "/oauth/connectors/"+c.String("id")+"/callback?state="+u.Query().Get("state")+"&code=code", nil, "", "", 200)
+			}
+			f.call("POST", path+"/test", nil, "owner", "", 200)
+			items := f.call("GET", path+"/tools", nil, "owner", "", 200)["items"].([]any)
+			if len(items) != 2 {
+				t.Fatalf("发现 %d 个工具，预期 2 个", len(items))
+			}
+			for _, item := range items {
+				tool := resource.Object(item.(map[string]any))
+				if !tool.Bool("enabled") {
+					t.Fatalf("新工具 %s 未默认启用", tool.String("name"))
+				}
+			}
+			first := resource.Object(items[0].(map[string]any))
+			f.call("PATCH", path+"/tools/"+first.String("id"), resource.Object{"enabled": false, "credits_per_call": "0"}, "owner", "", 200)
+			additional.Store(true)
+			f.call("POST", path+"/test", nil, "owner", "", 200)
+			items = f.call("GET", path+"/tools", nil, "owner", "", 200)["items"].([]any)
+			if len(items) != 3 {
+				t.Fatalf("重新发现 %d 个工具，预期 3 个", len(items))
+			}
+			for _, item := range items {
+				tool := resource.Object(item.(map[string]any))
+				if tool.Bool("enabled") != (tool.String("name") != first.String("name")) {
+					t.Fatalf("重新发现后工具 %s 的启用状态错误", tool.String("name"))
+				}
+			}
+			visible := f.call("GET", "/agent/connectors/"+c.String("id")+"/tools", nil, "owner", "", 200)["items"].([]any)
+			if len(visible) != 2 {
+				t.Fatalf("客户端可见 %d 个工具，预期 2 个", len(visible))
+			}
+		})
+	}
+}
 
 func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 	for _, method := range []string{"oauth", "http_header"} {

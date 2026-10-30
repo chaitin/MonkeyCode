@@ -189,7 +189,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 				ConnectorID: c.String("id"), CredentialID: cred.String("id"),
 				Name: tool.Name, Description: tool.Description, InputSchema: schema,
 				ConfigRevision: c.Int("config_revision"),
-				Enabled:        c.String("ownership_type") == "user" || c.String("authorization_mode") == "independent",
+				Enabled:        true,
 				EnableExisting: c.String("ownership_type") == "user",
 			})
 		}
