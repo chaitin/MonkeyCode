@@ -406,10 +406,13 @@ WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_a
         SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
             AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id') AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')));
 
--- name: ReportingResources :many
-WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f),
-cohort AS (
-    SELECT s.* FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
+-- name: ReportingResources :one
+-- Inline session filters so time-bounded facts can drive the joins instead of
+-- materializing every historical session. Bind RFC3339 bounds independently
+-- of the JSON filters for partition pruning and preserve PostgreSQL rounding.
+WITH opts AS NOT MATERIALIZED (SELECT sqlc.arg(filters)::jsonb AS f),
+cohort AS NOT MATERIALIZED (
+    SELECT s.id,s.owner_user_id,s.model_id FROM sessions s JOIN users u ON u.id = s.owner_user_id CROSS JOIN opts p
     WHERE s.reporting_enabled_at IS NOT NULL AND s.deleted_at IS NULL AND s.purged_at IS NULL
         AND (s.placeholder = false OR (p.f->>'include_placeholders')::boolean)
         AND (p.f->>'group_id' IS NULL OR s.group_id = (p.f->>'group_id')::uuid)
@@ -418,97 +421,144 @@ cohort AS (
         AND (p.f->>'expert_id' IS NULL OR s.expert_id = (p.f->>'expert_id')::uuid)
         AND (p.f->>'client_type' IS NULL OR s.client_type = p.f->>'client_type')
         AND (p.f->>'platform' IS NULL OR EXISTS (SELECT 1 FROM endpoints ep WHERE ep.user_id = s.owner_user_id AND ep.machine_id::text = s.device_id AND ep.platform = p.f->>'platform'))
-        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= (p.f->>'from')::timestamptz AND mt.started_at < (p.f->>'until')::timestamptz))
-        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= (p.f->>'from')::timestamptz AND ot.started_at < (p.f->>'until')::timestamptz))
-), turns AS (
-    SELECT t.session_id,t.turn_index,t.resources_snapshot_id,t.started_at,s.owner_user_id AS user_id
+), turns AS MATERIALIZED (
+    -- Exact turn filters imply the corresponding session-level existence checks.
+    SELECT t.session_id,t.turn_index,t.resources_snapshot_id,t.started_at,t.received_at,s.owner_user_id AS user_id
     FROM session_turns t JOIN cohort s ON s.id = t.session_id CROSS JOIN opts p
-    WHERE t.started_at >= (p.f->>'from')::timestamptz AND t.started_at < (p.f->>'until')::timestamptz
+    WHERE t.started_at >= sqlc.arg(from_time)::text::timestamptz AND t.started_at < sqlc.arg(until_time)::text::timestamptz
         AND (p.f->>'model_id' IS NULL OR t.model_id = (p.f->>'model_id')::uuid)
         AND (p.f->>'outcome' IS NULL OR t.stop_reason = p.f->>'outcome')
-), enabled AS (
-    SELECT t.user_id,i.kind,i.resource_id,i.version,count(DISTINCT t.session_id) AS sessions,
-        count(DISTINCT t.session_id) FILTER (WHERE i.available) AS available_sessions
-    FROM turns t JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
-    WHERE i.enabled GROUP BY t.user_id,i.kind,i.resource_id,i.version
-), used AS (
-    SELECT t.user_id,v.category AS kind,v.resource_id,v.resource_version AS version,
-        count(DISTINCT v.session_id) AS sessions,sum(v.calls) AS calls,sum(v.failed) AS failed
-    FROM session_turn_tools v JOIN turns t ON t.session_id = v.session_id AND t.turn_index = v.turn_index
-    WHERE v.resource_id IS NOT NULL AND v.category NOT IN ('connector','skill') GROUP BY t.user_id,v.category,v.resource_id,v.resource_version
-    UNION ALL SELECT t.user_id,'skill',e.skill_id,e.version,count(DISTINCT e.session_id),count(*),count(*) FILTER (WHERE NOT e.ok)
-    FROM session_skill_events e JOIN turns t ON t.session_id = e.session_id AND t.turn_index = e.turn_index
-    WHERE e.skill_id IS NOT NULL GROUP BY t.user_id,e.skill_id,e.version
-), gateway AS (
-    SELECT s.owner_user_id AS user_id,'connector'::text AS kind,c.connector_id::text AS resource_id,NULL::text AS version,
-        count(DISTINCT c.session_id) AS sessions,count(*) AS calls,count(*) FILTER (WHERE c.status = 'failed') AS failed
+), snapshots AS MATERIALIZED (
+    -- A snapshot may be reused by thousands of turns. Expand its items once;
+    -- its latest matching turn also preserves reported-name ordering.
+    SELECT DISTINCT ON (t.session_id,t.resources_snapshot_id)
+        t.user_id,t.session_id,t.resources_snapshot_id,t.started_at,t.turn_index
+    FROM turns t
+    ORDER BY t.session_id,t.resources_snapshot_id,t.started_at DESC,t.turn_index DESC
+), facts AS MATERIALIZED (
+    SELECT t.user_id,t.session_id,i.kind,i.resource_id,i.version,
+        true AS is_enabled,i.available AS is_available,false AS is_used,0::bigint AS calls,0::bigint AS failed
+    FROM snapshots t JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
+    CROSS JOIN opts p
+    WHERE i.enabled
+        AND (p.f->>'kind' IS NULL OR i.kind = p.f->>'kind')
+        AND (p.f->>'resource_id' IS NULL OR i.resource_id = p.f->>'resource_id')
+        AND (p.f->>'resource_version' IS NULL OR i.version = p.f->>'resource_version')
+    -- Usage sources are disjoint by kind: skill and connector tool summaries
+    -- must not duplicate skill events or gateway calls.
+    UNION ALL
+    SELECT t.user_id,v.session_id,v.category,v.resource_id,v.resource_version,
+        false,false,true,v.calls::bigint,v.failed::bigint
+    FROM session_turn_tools v JOIN turns t ON t.session_id = v.session_id AND t.turn_index = v.turn_index CROSS JOIN opts p
+    WHERE v.resource_id IS NOT NULL AND v.category NOT IN ('connector','skill')
+        AND (p.f->>'kind' IS NULL OR v.category = p.f->>'kind')
+        AND (p.f->>'resource_id' IS NULL OR v.resource_id = p.f->>'resource_id')
+        AND (p.f->>'resource_version' IS NULL OR v.resource_version = p.f->>'resource_version')
+    UNION ALL
+    SELECT t.user_id,e.session_id,'skill',e.skill_id,e.version,
+        false,false,true,1::bigint,CASE WHEN e.ok THEN 0 ELSE 1 END::bigint
+    FROM session_skill_events e JOIN turns t ON t.session_id = e.session_id AND t.turn_index = e.turn_index CROSS JOIN opts p
+    WHERE e.skill_id IS NOT NULL
+        AND (p.f->>'kind' IS NULL OR p.f->>'kind' = 'skill')
+        AND (p.f->>'resource_id' IS NULL OR e.skill_id = p.f->>'resource_id')
+        AND (p.f->>'resource_version' IS NULL OR e.version = p.f->>'resource_version')
+    UNION ALL
+    SELECT s.owner_user_id,c.session_id,'connector',c.connector_id::text,NULL::text,
+        false,false,true,1::bigint,CASE WHEN c.status = 'failed' THEN 1 ELSE 0 END::bigint
     FROM mcp_tool_calls c JOIN cohort s ON s.id = c.session_id CROSS JOIN opts p
-    WHERE c.started_at >= (p.f->>'from')::timestamptz AND c.started_at < (p.f->>'until')::timestamptz
+    WHERE c.started_at >= sqlc.arg(from_time)::text::timestamptz AND c.started_at < sqlc.arg(until_time)::text::timestamptz
+        -- Gateway facts have no turn-level model/outcome. Only this branch needs
+        -- session-level checks; matching model and outcome may be different turns.
+        AND (p.f->>'model_id' IS NULL OR s.model_id = (p.f->>'model_id')::uuid OR EXISTS (SELECT 1 FROM session_turns mt WHERE mt.session_id = s.id AND mt.model_id = (p.f->>'model_id')::uuid AND mt.started_at >= sqlc.arg(from_time)::text::timestamptz AND mt.started_at < sqlc.arg(until_time)::text::timestamptz))
+        AND (p.f->>'outcome' IS NULL OR EXISTS (SELECT 1 FROM session_turns ot WHERE ot.session_id = s.id AND ot.stop_reason = p.f->>'outcome' AND ot.started_at >= sqlc.arg(from_time)::text::timestamptz AND ot.started_at < sqlc.arg(until_time)::text::timestamptz))
+        AND (p.f->>'kind' IS NULL OR p.f->>'kind' = 'connector')
         AND (p.f->>'resource_id' IS NULL OR c.connector_id::text = p.f->>'resource_id')
-        AND p.f->>'resource_version' IS NULL GROUP BY s.owner_user_id,c.connector_id
-), combined AS (
-    SELECT user_id,kind,resource_id,version,max(enabled_sessions) AS enabled_sessions,max(available_sessions) AS available_sessions,
-        sum(used_sessions) AS used_sessions,sum(calls) AS calls,sum(failed) AS failed FROM (
-        SELECT user_id,kind,resource_id,version,sessions AS enabled_sessions,available_sessions,0::bigint AS used_sessions,0::numeric AS calls,0::numeric AS failed FROM enabled
-        UNION ALL SELECT user_id,kind,resource_id,version,0,0,sessions,calls,failed FROM used
-        UNION ALL SELECT user_id,kind,resource_id,version,0,0,sessions,calls,failed FROM gateway) x CROSS JOIN opts p
-    WHERE (p.f->>'resource_id' IS NULL OR resource_id = p.f->>'resource_id')
-        AND (p.f->>'resource_version' IS NULL OR version = p.f->>'resource_version')
-        AND (p.f->>'kind' IS NULL OR kind = p.f->>'kind')
-    GROUP BY user_id,kind,resource_id,version
+        AND p.f->>'resource_version' IS NULL
+), resource_keys AS (
+    SELECT DISTINCT user_id,kind,resource_id,version FROM facts
 ), ordered AS (
-    SELECT c.*,u.name AS user_name,u.email AS user_email,u.avatar_url AS user_avatar_url,
-        jsonb_build_array(c.kind,c.resource_id,c.version,c.user_id)::text AS sort_key
-    FROM combined c JOIN users u ON u.id = c.user_id
-), paged AS (
+    SELECT k.*,jsonb_build_array(k.kind,k.resource_id,k.version,k.user_id)::text AS sort_key
+    FROM resource_keys k
+), paged AS MATERIALIZED (
     SELECT o.*,CASE WHEN o.resource_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         THEN o.resource_id::uuid END AS catalog_id
     FROM ordered o CROSS JOIN opts p
     WHERE o.sort_key > coalesce(p.f->>'cursor_key','')
     ORDER BY o.sort_key LIMIT (sqlc.arg(filters)::jsonb->>'limit')::integer + 1
+), totals AS (
+    -- Determine the page before doing distinct-session counts and call sums.
+    SELECT p.user_id,p.kind,p.resource_id,p.version,
+        count(DISTINCT f.session_id) FILTER (WHERE f.is_enabled) AS enabled_sessions,
+        count(DISTINCT f.session_id) FILTER (WHERE f.is_enabled AND f.is_available) AS available_sessions,
+        count(DISTINCT f.session_id) FILTER (WHERE f.is_used) AS used_sessions,
+        sum(f.calls) AS calls,sum(f.failed) AS failed
+    FROM paged p JOIN facts f ON f.user_id = p.user_id AND f.kind = p.kind AND f.resource_id = p.resource_id
+        AND f.version IS NOT DISTINCT FROM p.version
+    GROUP BY p.user_id,p.kind,p.resource_id,p.version
+), catalog_names AS MATERIALIZED (
+    SELECT p.*,coalesce(nullif(btrim(m.display_name),''),nullif(btrim(r.name),''),nullif(btrim(sk.name),''),
+        nullif(btrim(ex.name),''),nullif(btrim(cn.name),'')) AS catalog_name
+    FROM paged p
+    LEFT JOIN models m ON p.kind = 'model' AND m.id = p.catalog_id AND m.deleted_at IS NULL
+    LEFT JOIN rules r ON p.kind = 'rule' AND r.id = p.catalog_id AND r.deleted_at IS NULL
+    LEFT JOIN skills sk ON p.kind = 'skill' AND sk.id = p.catalog_id AND sk.deleted_at IS NULL
+    LEFT JOIN experts ex ON p.kind = 'expert' AND ex.id = p.catalog_id AND ex.deleted_at IS NULL
+    LEFT JOIN connectors cn ON p.kind = 'connector' AND cn.id = p.catalog_id AND cn.deleted_at IS NULL
+), missing_names AS MATERIALIZED (
+    SELECT user_id,kind,resource_id,version FROM catalog_names
+    WHERE kind <> 'builtin' AND catalog_name IS NULL
 ), reported_names AS (
     SELECT DISTINCT ON (n.user_id,n.kind,n.resource_id,n.version)
         n.user_id,n.kind,n.resource_id,n.version,n.name
     FROM (
         SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(i.name),'') AS name,
             t.started_at,t.session_id,t.turn_index,0 AS source_priority,0 AS ordinal
-        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        FROM missing_names p JOIN snapshots t ON t.user_id = p.user_id
         JOIN session_resource_snapshot_items i ON i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id
             AND i.kind = p.kind AND i.resource_id = p.resource_id AND i.version IS NOT DISTINCT FROM p.version
-        WHERE p.kind <> 'builtin'
+        WHERE nullif(btrim(i.name),'') IS NOT NULL
         UNION ALL
         SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(v.name),''),
             t.started_at,t.session_id,t.turn_index,2,v.ordinal
-        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        FROM missing_names p JOIN turns t ON t.user_id = p.user_id
         JOIN session_turn_tools v ON v.session_id = t.session_id AND v.turn_index = t.turn_index
             AND v.category = p.kind AND v.resource_id = p.resource_id AND v.resource_version IS NOT DISTINCT FROM p.version
-        WHERE p.kind <> 'builtin'
+        WHERE nullif(btrim(v.name),'') IS NOT NULL
         UNION ALL
         SELECT p.user_id,p.kind,p.resource_id,p.version,nullif(btrim(e.name),''),
             t.started_at,t.session_id,t.turn_index,1,e.ordinal
-        FROM paged p JOIN turns t ON t.user_id = p.user_id
+        FROM missing_names p JOIN turns t ON t.user_id = p.user_id
         JOIN session_skill_events e ON e.session_id = t.session_id AND e.turn_index = t.turn_index
             AND p.kind = 'skill' AND e.skill_id = p.resource_id AND e.version IS NOT DISTINCT FROM p.version
+        WHERE nullif(btrim(e.name),'') IS NOT NULL
     ) n
-    WHERE n.name IS NOT NULL
     ORDER BY n.user_id,n.kind,n.resource_id,n.version,n.started_at DESC,n.session_id DESC,n.turn_index DESC,n.source_priority,n.ordinal DESC
+), freshness AS (
+    -- Freshness covers the entire filtered window, independently of the page.
+    -- Its existing kind/resource semantics include disabled snapshot items.
+    SELECT max(t.received_at) AS last_received_at FROM turns t CROSS JOIN opts p
+    WHERE (p.f->>'kind' IS NULL
+        OR EXISTS (SELECT 1 FROM session_resource_snapshot_items i WHERE i.session_id = t.session_id AND i.snapshot_id = t.resources_snapshot_id AND i.kind = p.f->>'kind')
+        OR EXISTS (SELECT 1 FROM session_turn_tools v WHERE v.session_id = t.session_id AND v.turn_index = t.turn_index AND v.category = p.f->>'kind')
+        OR (p.f->>'kind' = 'skill' AND EXISTS (SELECT 1 FROM session_skill_events e WHERE e.session_id = t.session_id AND e.turn_index = t.turn_index))
+        OR (p.f->>'kind' = 'connector' AND EXISTS (SELECT 1 FROM mcp_tool_calls c WHERE c.session_id = t.session_id
+            AND c.started_at >= sqlc.arg(from_time)::text::timestamptz AND c.started_at < sqlc.arg(until_time)::text::timestamptz)))
+        AND (p.f->>'resource_id' IS NULL AND p.f->>'resource_version' IS NULL OR EXISTS (
+            SELECT 1 FROM session_resource_snapshot_items ri WHERE ri.session_id = t.session_id AND ri.snapshot_id = t.resources_snapshot_id
+                AND (p.f->>'resource_id' IS NULL OR ri.resource_id = p.f->>'resource_id')
+                AND (p.f->>'resource_version' IS NULL OR ri.version = p.f->>'resource_version')))
 )
-SELECT jsonb_build_object('kind',p.kind,'resource_id',p.resource_id,'version',p.version,'sort_key',p.sort_key,
-    'resource_name',CASE WHEN p.kind = 'builtin' THEN p.resource_id ELSE coalesce(
-        nullif(btrim(m.display_name),''),nullif(btrim(r.name),''),nullif(btrim(sk.name),''),
-        nullif(btrim(ex.name),''),nullif(btrim(cn.name),''),n.name,p.resource_id) END,
-    'user_id',p.user_id,'user_name',p.user_name,'user_email',p.user_email,
-    'user_avatar_url',nullif(btrim(p.user_avatar_url),''),
-    'enabled_sessions',p.enabled_sessions,'available_sessions',p.available_sessions,'used_sessions',p.used_sessions,
-    'calls',p.calls,'failed',p.failed,'failure_rate',100.0*p.failed/NULLIF(p.calls,0))
-FROM paged p
-LEFT JOIN models m ON p.kind = 'model' AND m.id = p.catalog_id AND m.deleted_at IS NULL
-LEFT JOIN rules r ON p.kind = 'rule' AND r.id = p.catalog_id AND r.deleted_at IS NULL
-LEFT JOIN skills sk ON p.kind = 'skill' AND sk.id = p.catalog_id AND sk.deleted_at IS NULL
-LEFT JOIN experts ex ON p.kind = 'expert' AND ex.id = p.catalog_id AND ex.deleted_at IS NULL
-LEFT JOIN connectors cn ON p.kind = 'connector' AND cn.id = p.catalog_id AND cn.deleted_at IS NULL
-LEFT JOIN reported_names n ON n.user_id = p.user_id AND n.kind = p.kind AND n.resource_id = p.resource_id AND n.version IS NOT DISTINCT FROM p.version
-ORDER BY p.sort_key;
+SELECT jsonb_build_object(
+    'items',coalesce((SELECT jsonb_agg(jsonb_build_object(
+        'kind',p.kind,'resource_id',p.resource_id,'version',p.version,'sort_key',p.sort_key,
+        'resource_name',CASE WHEN p.kind = 'builtin' THEN p.resource_id ELSE coalesce(p.catalog_name,n.name,p.resource_id) END,
+        'user_id',p.user_id,'user_name',u.name,'user_email',u.email,'user_avatar_url',nullif(btrim(u.avatar_url),''),
+        'enabled_sessions',a.enabled_sessions,'available_sessions',a.available_sessions,'used_sessions',a.used_sessions,
+        'calls',a.calls,'failed',a.failed,'failure_rate',100.0*a.failed/NULLIF(a.calls,0)) ORDER BY p.sort_key)
+        FROM catalog_names p JOIN users u ON u.id = p.user_id
+        JOIN totals a ON a.user_id = p.user_id AND a.kind = p.kind AND a.resource_id = p.resource_id AND a.version IS NOT DISTINCT FROM p.version
+        LEFT JOIN reported_names n ON n.user_id = p.user_id AND n.kind = p.kind AND n.resource_id = p.resource_id AND n.version IS NOT DISTINCT FROM p.version),'[]'::jsonb),
+    'last_received_at',(SELECT last_received_at FROM freshness));
 
 -- name: ReportingClients :many
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f), facts AS (

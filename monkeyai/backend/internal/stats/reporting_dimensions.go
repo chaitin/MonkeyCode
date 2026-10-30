@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -22,13 +23,17 @@ func groupedPage(ctx context.Context, f reportingFilter, fetch func(context.Cont
 	if err != nil {
 		return nil, err
 	}
+	return groupedItems(f, items), nil
+}
+
+func groupedItems(f reportingFilter, items []resource.Object) resource.Object {
 	out := resource.Object{"items": items, "next_cursor": nil, "pagination": "cursor"}
 	if len(items) > f.limit {
 		items = items[:f.limit]
 		out["items"] = items
 		out["next_cursor"] = f.encodeCursor(reportCursor{Key: items[len(items)-1]["sort_key"].(string)})
 	}
-	return out, nil
+	return out
 }
 
 func (s *Service) reportingFreshness(ctx context.Context, tx pgx.Tx, f reportingFilter) (any, error) {
@@ -71,12 +76,34 @@ func (s *Service) reportingResources(w http.ResponseWriter, r *http.Request) {
 		f.userQuery, f.resourceKind = userQuery, kind
 		// Reject cursors issued before resources were grouped by user.
 		f.fingerprint += ":resource-users-v1"
-		out, err := groupedPage(ctx, f, sqlc.New(tx).ReportingResources)
+		cursor, err := f.decodeCursor()
 		if err != nil {
 			return nil, err
 		}
-		out["data_freshness_seconds"], err = s.reportingFreshness(ctx, tx, f)
-		return out, err
+		data, err := sqlc.New(tx).ReportingResources(ctx, sqlc.ReportingResourcesParams{
+			Filters:   f.sqlParams(cursor, ""),
+			FromTime:  f.from.Format(time.RFC3339Nano),
+			UntilTime: f.until.Format(time.RFC3339Nano),
+		})
+		if err != nil {
+			return nil, err
+		}
+		var page struct {
+			Items          []resource.Object `json:"items"`
+			LastReceivedAt *string           `json:"last_received_at"`
+		}
+		if err := json.Unmarshal(data, &page); err != nil {
+			return nil, err
+		}
+		out := groupedItems(f, page.Items)
+		out["data_freshness_seconds"] = nil
+		if page.LastReceivedAt != nil {
+			// Keep freshness metadata optional, including PostgreSQL infinity values.
+			if at, err := time.Parse(time.RFC3339Nano, *page.LastReceivedAt); err == nil && !at.IsZero() {
+				out["data_freshness_seconds"] = max(0, s.now().Sub(at).Seconds())
+			}
+		}
+		return out, nil
 	})(w, r)
 }
 
