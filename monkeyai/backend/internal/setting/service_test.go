@@ -3,6 +3,8 @@ package setting
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -10,9 +12,13 @@ import (
 
 type memoryStore struct {
 	records map[string]Record
+	err     error
 }
 
 func (m *memoryStore) Get(_ context.Context, key string) (Record, error) {
+	if m.err != nil {
+		return Record{}, m.err
+	}
 	record, ok := m.records[key]
 	if !ok {
 		return Record{}, ErrNotFound
@@ -32,6 +38,53 @@ func (m *memoryStore) Put(_ context.Context, record Record) (Record, error) {
 	record.UpdatedAt = time.Now()
 	m.records[record.Key] = record
 	return record, nil
+}
+
+func TestBrandingValue(t *testing.T) {
+	configured := json.RawMessage(`{"workspace_name":"Team","product_name":"Product"}`)
+	readErr := errors.New("database unavailable")
+	for _, test := range []struct {
+		name    string
+		store   *memoryStore
+		want    string
+		wantErr error
+	}{
+		{
+			name:  "missing settings use defaults",
+			store: &memoryStore{},
+			want:  `{}`,
+		},
+		{
+			name:  "wrapped missing settings use defaults",
+			store: &memoryStore{err: fmt.Errorf("read branding: %w", ErrNotFound)},
+			want:  `{}`,
+		},
+		{
+			name: "configured settings are preserved",
+			store: &memoryStore{records: map[string]Record{
+				"branding": {Key: "branding", Value: configured},
+			}},
+			want: string(configured),
+		},
+		{
+			name:    "storage errors are preserved",
+			store:   &memoryStore{err: readErr},
+			wantErr: readErr,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewService(test.store)
+			value, err := service.GetValue(t.Context(), "branding")
+			if !errors.Is(err, test.wantErr) || string(value) != test.want {
+				t.Fatalf("value=%s err=%v, want=%s err=%v", value, err, test.want, test.wantErr)
+			}
+			if test.want == `{}` {
+				if _, err := service.Get(t.Context(), "branding"); !errors.Is(err, ErrNotFound) {
+					t.Fatalf("读取原始设置应保留缺失状态: %v", err)
+				}
+			}
+		})
+	}
 }
 
 func TestAgentConfigRedactsSecrets(t *testing.T) {
