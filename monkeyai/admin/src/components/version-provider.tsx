@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 
 import { api } from "@/lib/api"
 import {
+  isNewerVersion,
   secureUpgradeURL,
   VersionContext,
   type Release,
@@ -31,7 +32,7 @@ export function VersionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const upgradeURL =
-    current && release?.version && release.version !== current
+    current && release?.version && isNewerVersion(release.version, current)
       ? secureUpgradeURL(release.upgrade_url)
       : null
 
