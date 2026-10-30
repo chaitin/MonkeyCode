@@ -4160,6 +4160,9 @@ const cn = {
       copyUserInput: "复制用户输入",
       copyUserInputSuccess: "用户输入已复制到剪贴板",
       copyUserInputFailed: "复制用户输入失败",
+      copyAgentResponse: "复制回复",
+      copyAgentResponseSuccess: "回复已复制到剪贴板",
+      copyAgentResponseFailed: "复制回复失败",
     },
     plan: {
       title: "执行步骤 ({{completed}}/{{total}})",
