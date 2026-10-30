@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type outboundTransport struct{ direct http.RoundTripper }
@@ -49,7 +50,22 @@ func TransportFor(raw string) (*http.Transport, error) {
 			config.ServerName = address.Hostname()
 			// 仅跳过 HTTPS 代理的证书校验，目标服务仍使用原有 TLS 配置。
 			config.InsecureSkipVerify = true
-			return (&tls.Dialer{Config: config}).DialContext(ctx, network, target)
+			conn, err := (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, network, target)
+			if err != nil {
+				return nil, err
+			}
+			tlsConn := tls.Client(conn, config)
+			handshakeCtx := ctx
+			if transport.TLSHandshakeTimeout > 0 {
+				var cancel context.CancelFunc
+				handshakeCtx, cancel = context.WithTimeout(ctx, transport.TLSHandshakeTimeout)
+				defer cancel()
+			}
+			if err := tlsConn.HandshakeContext(handshakeCtx); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return tlsConn, nil
 		}
 	}
 	return transport, nil
@@ -64,6 +80,8 @@ func (t outboundTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if err != nil {
 		return nil, err
 	}
+	transport.DisableKeepAlives = true
+	transport.ResponseHeaderTimeout = upstreamHeaderTimeout
 	defer transport.CloseIdleConnections()
 	return transport.RoundTrip(req)
 }

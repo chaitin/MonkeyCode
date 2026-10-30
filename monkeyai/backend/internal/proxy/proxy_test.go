@@ -259,13 +259,56 @@ func TestModelTransportsIgnoreEnvironmentProxy(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
 	for _, transport := range []*http.Transport{
-		NewProxy(nil, discardLogger()).reverse.Transport.(outboundTransport).direct.(*http.Transport),
+		NewProxy(nil, discardLogger()).reverse.Transport.(timeoutTransport).base.(outboundTransport).direct.(*http.Transport),
 		NewResponseReconciler().client.Transport.(*http.Transport),
 		DirectTransport(),
 	} {
 		if transport.Proxy != nil || transport == http.DefaultTransport {
 			t.Fatal("模型和图片上游不应使用环境代理或共享默认传输层")
 		}
+	}
+}
+
+func TestProxyDoesNotReuseConnections(t *testing.T) {
+	for _, proxied := range []bool{false, true} {
+		name := "直连"
+		if proxied {
+			name = "系统代理"
+		}
+		t.Run(name, func(t *testing.T) {
+			addresses := make(chan string, 2)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				addresses <- r.RemoteAddr
+				if !r.Close {
+					t.Error("上游请求未关闭连接复用")
+				}
+				io.WriteString(w, `{"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+			}))
+			defer upstream.Close()
+			p := NewProxy(ResolverFunc(func(context.Context, string, string) (Target, error) {
+				target := testTarget(upstream.URL)
+				if proxied {
+					target.BaseURL = "http://upstream.invalid/v1"
+					target.ProxyURL = upstream.URL
+				}
+				return target, nil
+			}), discardLogger())
+			for range 2 {
+				r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"test"}`))
+				r.Header.Set("Authorization", "Bearer test")
+				w := httptest.NewRecorder()
+				p.ServeHTTP(w, r)
+				if w.Code != http.StatusOK {
+					t.Fatalf("请求失败: %d %s", w.Code, w.Body.String())
+				}
+			}
+			if err := p.Wait(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if first, second := <-addresses, <-addresses; first == second {
+				t.Fatalf("两次请求复用了连接: %s", first)
+			}
+		})
 	}
 }
 
@@ -276,7 +319,7 @@ func TestProxyChainConfiguration(t *testing.T) {
 	if got := proxy.WithUsageRecorder(recorder).WithTransport(transport); got != proxy {
 		t.Fatal("链式调用未返回原 Proxy")
 	}
-	if proxy.recorder != recorder || proxy.reverse.Transport != transport {
+	if proxy.recorder != recorder || proxy.reverse.Transport.(timeoutTransport).base != transport {
 		t.Fatal("链式配置未生效")
 	}
 }
