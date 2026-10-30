@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   FilterHorizontalIcon,
   Loading03Icon,
@@ -9,6 +9,8 @@ import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
+import { useTableQuery } from "@/hooks/use-table-query"
+import { queryDate, queryDateValue } from "@/lib/table-query"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 
 import { UserAvatar } from "@/components/user-avatar"
+import { UserSearch } from "@/components/user-search"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -90,34 +93,98 @@ const CATEGORY_FILTERS: LogCategory[] = [
 ]
 const RESULT_FILTERS: LogResult[] = ["success", "failed"]
 
+const AUDIT_QUERY_KEYS = [
+  "actor",
+  "actor_user_id",
+  "ip",
+  "category",
+  "result",
+  "since",
+  "until",
+] as const
+function activeAuditFields(filters: Record<string, string>): SearchField[] {
+  return [
+    ...(filters.actor || filters.actor_user_id ? ["operator" as const] : []),
+    ...(filters.ip ? ["ip" as const] : []),
+    ...(filters.category ? ["category" as const] : []),
+    ...(filters.result ? ["result" as const] : []),
+    ...(filters.since || filters.until ? ["dateRange" as const] : []),
+  ]
+}
+
+function auditQuery(
+  filters: Record<string, string>,
+  page: number,
+  pageSize: number
+) {
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  const actorID = filters.actor_user_id ?? ""
+  for (const [key, value] of Object.entries({
+    actor: actorID ? "" : (filters.actor ?? ""),
+    actor_user_id: actorID,
+    ip: filters.ip ?? "",
+    category: filters.category ?? "",
+    result: filters.result ?? "",
+    since: filters.since ?? "",
+    until: filters.until ?? "",
+  }))
+    if (value) query.set(key, value)
+  return query.toString()
+}
+
 export function OperationLogsPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
-  const [operatorInput, setOperatorInput] = useState("")
-  const [ipInput, setIpInput] = useState("")
-  const [categoryInput, setCategoryInput] = useState<CategoryFilter>(null)
-  const [resultInput, setResultInput] = useState<ResultFilter>(null)
-  const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
-    () => new Set(["operator", "dateRange"])
+  const tableQuery = useTableQuery(AUDIT_QUERY_KEYS, DEFAULT_PAGE_SIZE)
+  const { filters, filterQuery, page, pageSize, setPage, setPageSize } =
+    tableQuery
+  const [previousQuery, setPreviousQuery] = useState(filterQuery)
+  const formRef = useRef<HTMLFormElement>(null)
+  const [operatorInput, setOperatorInput] = useState(
+    filters.actor_user_id ? "" : (filters.actor ?? "")
   )
-  const [operatorQuery, setOperatorQuery] = useState("")
-  const [ipQuery, setIpQuery] = useState("")
-  const [category, setCategory] = useState<CategoryFilter>(null)
-  const [result, setResult] = useState<ResultFilter>(null)
+  const [operatorID, setOperatorID] = useState(filters.actor_user_id ?? "")
+  const [ipInput, setIpInput] = useState(filters.ip ?? "")
+  const [categoryInput, setCategoryInput] = useState<CategoryFilter>(
+    (filters.category as CategoryFilter) ?? null
+  )
+  const [resultInput, setResultInput] = useState<ResultFilter>(
+    (filters.result as ResultFilter) ?? null
+  )
+  const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
+    () => new Set(["operator", "dateRange", ...activeAuditFields(filters)])
+  )
   const [revision, setRevision] = useState(0)
-  const [sinceInput, setSinceInput] = useState<Date>()
-  const [untilInput, setUntilInput] = useState<Date>()
-  const [since, setSince] = useState("")
-  const [until, setUntil] = useState("")
+  const [sinceInput, setSinceInput] = useState<Date | undefined>(() =>
+    queryDate(filters.since)
+  )
+  const [untilInput, setUntilInput] = useState<Date | undefined>(() =>
+    queryDate(filters.until)
+  )
   const [invalidRange, setInvalidRange] = useState(false)
   const [data, setData] = useState<AuditPage>()
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const searchRevisionRef = useRef<number | null>(null)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
+  if (previousQuery !== filterQuery) {
+    setPreviousQuery(filterQuery)
+    setOperatorInput(filters.actor_user_id ? "" : (filters.actor ?? ""))
+    setOperatorID(filters.actor_user_id ?? "")
+    setIpInput(filters.ip ?? "")
+    setCategoryInput((filters.category as CategoryFilter) ?? null)
+    setResultInput((filters.result as ResultFilter) ?? null)
+    setSinceInput(queryDate(filters.since))
+    setUntilInput(queryDate(filters.until))
+    setInvalidRange(false)
+    setVisibleFields(
+      (current) => new Set([...current, ...activeAuditFields(filters)])
+    )
+  }
 
   const categoryLabel = (value: LogCategory) => t(`audit.categories.${value}`)
   const resultLabel = (value: LogResult) =>
@@ -133,20 +200,7 @@ export function OperationLogsPage() {
     { key: "result", label: t("pages.operationLogs.filters.result") },
   ]
 
-  const query = new URLSearchParams({
-    page: String(page),
-    page_size: String(pageSize),
-  })
-  for (const [key, value] of Object.entries({
-    actor: operatorQuery,
-    ip: ipQuery,
-    category: category ?? "",
-    result: result ?? "",
-    since,
-    until,
-  })) {
-    if (value) query.set(key, value)
-  }
+  const query = auditQuery(filters, page, pageSize)
   const path = `/api/admin/v1/audits?${query}`
   useEffect(() => {
     const controller = new AbortController()
@@ -222,6 +276,8 @@ export function OperationLogsPage() {
 
   const applySearch = () => {
     if (loading || searching) return
+    if (!formRef.current?.reportValidity()) return
+    if (operatorInput.trim() && !operatorID) return
     const start = sinceInput ? startOfLocalDay(sinceInput) : undefined
     const end = untilInput ? endOfLocalDay(untilInput) : undefined
     if (start && end && start > end) {
@@ -230,41 +286,45 @@ export function OperationLogsPage() {
     }
     setInvalidRange(false)
     setError(undefined)
-    setSince(start?.toISOString() ?? "")
-    setUntil(end?.toISOString() ?? "")
-    const nextRevision = revision + 1
-    searchRevisionRef.current = nextRevision
-    setSearching(true)
-    setRevision(nextRevision)
-    setOperatorQuery(operatorInput)
-    setIpQuery(ipInput)
-    setCategory(categoryInput)
-    setResult(resultInput)
-    setPage(1)
-  }
-
-  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault()
-      applySearch()
+    const nextFilters = {
+      actor: "",
+      actor_user_id: operatorID,
+      ip: ipInput,
+      category: categoryInput ?? "",
+      result: resultInput ?? "",
+      since: queryDateValue(sinceInput, filters.since, "from"),
+      until: queryDateValue(untilInput, filters.until, "inclusiveUntil"),
     }
+    const changed = auditQuery(nextFilters, 1, pageSize) !== query
+    tableQuery.commit(nextFilters)
+    searchRevisionRef.current = changed ? revision : revision + 1
+    setSearching(true)
+    if (!changed) setRevision((value) => value + 1)
   }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
+          <form
+            ref={formRef}
+            onSubmit={(event) => {
+              event.preventDefault()
+              applySearch()
+            }}
+            className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"
+          >
             {visibleFields.has("operator") && (
-              <Input
-                className="w-32"
-                value={operatorInput}
-                onChange={(event) => setOperatorInput(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
+              <UserSearch
+                id="audit-operator"
+                selectionOnly
+                userID={operatorID}
+                query={operatorInput}
+                onChange={({ userID, query }) => {
+                  setOperatorID(userID)
+                  setOperatorInput(query)
+                }}
                 placeholder={t(
-                  "pages.operationLogs.filters.operatorSearchPlaceholder"
-                )}
-                aria-label={t(
                   "pages.operationLogs.filters.operatorSearchPlaceholder"
                 )}
               />
@@ -274,7 +334,6 @@ export function OperationLogsPage() {
                 className="w-32"
                 value={ipInput}
                 onChange={(event) => setIpInput(event.target.value)}
-                onKeyDown={handleSearchKeyDown}
                 placeholder={t(
                   "pages.operationLogs.filters.ipSearchPlaceholder"
                 )}
@@ -391,14 +450,18 @@ export function OperationLogsPage() {
                     <DropdownMenuCheckboxItem
                       key={key}
                       checked={visibleFields.has(key)}
-                      onCheckedChange={(checked) =>
+                      onCheckedChange={(checked) => {
                         setVisibleFields((current) => {
                           const next = new Set(current)
                           if (checked) next.add(key)
                           else next.delete(key)
                           return next
                         })
-                      }
+                        if (!checked && key === "operator") {
+                          setOperatorID("")
+                          setOperatorInput("")
+                        }
+                      }}
                     >
                       {label}
                     </DropdownMenuCheckboxItem>
@@ -406,11 +469,7 @@ export function OperationLogsPage() {
                 </DropdownMenuGroup>
               </DropdownMenuOptionsContent>
             </DropdownMenu>
-            <Button
-              type="button"
-              onClick={applySearch}
-              disabled={loading || searching}
-            >
+            <Button type="submit" disabled={loading || searching}>
               <HugeiconsIcon
                 icon={searching ? Loading03Icon : Search02Icon}
                 data-icon="inline-start"
@@ -431,7 +490,7 @@ export function OperationLogsPage() {
                 {t("audit.invalidRange")}
               </p>
             )}
-          </div>
+          </form>
           {error && (
             <div className="px-[var(--card-spacing)]">
               <Button
@@ -616,10 +675,9 @@ export function OperationLogsPage() {
             error={Boolean(error)}
             onPageSizeChange={(size) => {
               setPageSize(size)
-              setPage(1)
             }}
-            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
-            onNext={() => setPage((value) => Math.min(pageCount, value + 1))}
+            onPrevious={() => setPage(Math.max(1, page - 1))}
+            onNext={() => setPage(Math.min(pageCount, page + 1))}
           />
         </CardContent>
       </Card>

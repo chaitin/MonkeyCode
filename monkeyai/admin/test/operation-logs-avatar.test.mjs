@@ -93,24 +93,24 @@ test("operation log filters use shared date pickers and local day boundaries", a
   assert.doesNotMatch(source, /requestParamsInput|requestParamsQuery/)
   assert.doesNotMatch(source, /filters\.requestParamsSearchPlaceholder/)
   assert.doesNotMatch(source, /params: requestParamsQuery/)
-  assert.equal((source.match(/className="w-32"/g) ?? []).length, 2)
+  assert.equal((source.match(/className="w-32"/g) ?? []).length, 1)
+  assert.match(source, /<UserSearch\s+id="audit-operator"\s+selectionOnly/)
   assert.equal((source.match(/className="w-32 sm:w-32"/g) ?? []).length, 2)
 
   const filterRow = source
     .split(
       'className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]"'
     )[1]
-    .split("</div>")[0]
+    .split("</form>")[0]
   assert.ok(
     filterRow.lastIndexOf("<DatePickerField") <
       filterRow.indexOf("<DropdownMenu>")
   )
   assert.ok(
-    filterRow.lastIndexOf("<DropdownMenu>") <
-      filterRow.indexOf("onClick={applySearch}")
+    filterRow.lastIndexOf("<DropdownMenu>") < filterRow.indexOf('type="submit"')
   )
-  assert.match(source, /useState<CategoryFilter>\(null\)/)
-  assert.match(source, /useState<ResultFilter>\(null\)/)
+  assert.match(source, /useState<CategoryFilter>/)
+  assert.match(source, /useState<ResultFilter>/)
   assert.match(source, /<DropdownMenuCheckboxItem/)
   assert.match(source, /setCategoryInput\(checked \? value : null\)/)
   assert.match(source, /setResultInput\(checked \? value : null\)/)

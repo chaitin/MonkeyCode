@@ -55,6 +55,7 @@ export function conversationQuery(
     taskName: string
     taskId: string
     user: string
+    userId?: string
     content: string
     from?: string
     until?: string
@@ -69,7 +70,8 @@ export function conversationQuery(
   for (const [key, value] of [
     ["task", filters.taskName],
     ["task_id", filters.taskId],
-    ["user", filters.user],
+    ["user", filters.userId ? "" : filters.user],
+    ["user_id", filters.userId ?? ""],
     ["content", filters.content],
   ]) {
     const trimmed = value.trim()

@@ -150,12 +150,12 @@ test("billing details pagination matches operation logs and defaults to 50 rows"
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
   )
-  assert.match(source, /\[page, setPage\] = useState\(1\)/)
-  assert.match(source, /\[pageSize, setPageSize\] = useState\(50\)/)
+  assert.match(source, /tableQueryState\(params\.toString\(\), \[\]\)/)
+  assert.match(source, /tableQueryParams\(params\.toString\(\), \[\], \{\}/)
   assert.match(source, /requestParams\.set\("page", String\(page\)\)/)
   assert.match(source, /requestParams\.set\("page_size", String\(pageSize\)\)/)
   assert.match(source, /next\.delete\("page"\)/)
-  assert.match(source, /next\.delete\("page_size"\)/)
+  assert.doesNotMatch(source, /if \(!params\.has\("page"\) && !params\.has\("page_size"\)\)/)
   assert.doesNotMatch(source, /navigate\(\{ page|navigate\(\{ page_size/)
   assert.match(source, /<TablePagination/)
   const pagination = await readFile(
@@ -272,7 +272,7 @@ test("billing entries omit mode and use directional integer rounding", async () 
     source,
     /<TableCell className="w-20 pe-\[var\(--card-spacing\)\] whitespace-nowrap">[\s\S]*?<Button/
   )
-  assert.match(source, /next\.delete\("mode"\)/)
+  assert.match(source, /requestParams\.delete\("mode"\)/)
   assert.doesNotMatch(
     source,
     /draft\.mode|aria-label="计费模式"|<TableHead>模式/

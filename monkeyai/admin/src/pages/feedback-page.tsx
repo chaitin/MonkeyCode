@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useTableQuery } from "@/hooks/use-table-query"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
@@ -306,12 +307,14 @@ function FeedbackDetails({
   )
 }
 
+const FEEDBACK_QUERY_KEYS = ["category", "state"] as const
+
 export function FeedbackPage() {
   const { i18n, t } = useTranslation()
-  const [category, setCategory] = useState<Category | "all">("all")
-  const [state, setState] = useState<State | "all">("all")
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const tableQuery = useTableQuery(FEEDBACK_QUERY_KEYS)
+  const { filters, page, pageSize, setPage, setPageSize } = tableQuery
+  const category = (filters.category ?? "all") as Category | "all"
+  const state = (filters.state ?? "all") as State | "all"
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
@@ -375,8 +378,10 @@ export function FeedbackPage() {
               value={category}
               onValueChange={(value) => {
                 if (value) {
-                  setCategory(value as Category | "all")
-                  setPage(1)
+                  tableQuery.commit({
+                    ...filters,
+                    category: value === "all" ? "" : value,
+                  })
                 }
               }}
             >
@@ -407,8 +412,10 @@ export function FeedbackPage() {
               value={state}
               onValueChange={(value) => {
                 if (value) {
-                  setState(value as State | "all")
-                  setPage(1)
+                  tableQuery.commit({
+                    ...filters,
+                    state: value === "all" ? "" : value,
+                  })
                 }
               }}
             >
@@ -538,10 +545,9 @@ export function FeedbackPage() {
             error={Boolean(error)}
             onPageSizeChange={(size) => {
               setPageSize(size)
-              setPage(1)
             }}
-            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
-            onNext={() => setPage((value) => Math.min(pages, value + 1))}
+            onPrevious={() => setPage(Math.max(1, page - 1))}
+            onNext={() => setPage(Math.min(pages, page + 1))}
           />
         </CardContent>
       </Card>

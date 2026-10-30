@@ -37,6 +37,13 @@ func parseConversationFilter(r *http.Request) (conversationFilter, error) {
 			return f, resource.Invalid(field.name + " 搜索条件过长")
 		}
 	}
+	if value := strings.TrimSpace(q.Get("user_id")); value != "" {
+		var id pgtype.UUID
+		if err := id.Scan(value); err != nil || !id.Valid {
+			return f, resource.Invalid("用户 ID 无效")
+		}
+		f.params.UserID = &value
+	}
 	f.params.TaskID = strings.TrimSpace(q.Get("task_id"))
 	if f.params.TaskID != "" {
 		var id pgtype.UUID
@@ -157,7 +164,7 @@ func taskConversationParams(ctx context.Context, q *sqlc.Queries, params sqlc.Li
 		return nil, nil
 	}
 	return &sqlc.ListTaskConversationsParams{
-		TaskID: params.TaskID, TitleQuery: params.TitleQuery, UserQuery: params.UserQuery, ContentQuery: params.ContentQuery,
+		TaskID: params.TaskID, TitleQuery: params.TitleQuery, UserQuery: params.UserQuery, UserID: params.UserID, ContentQuery: params.ContentQuery,
 		FromTime: params.FromTime, UntilTime: params.UntilTime, FirstTurnTime: bounds.First, LastTurnTime: bounds.Last,
 		Limit: params.Limit, Offset: params.Offset,
 	}, nil

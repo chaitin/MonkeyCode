@@ -92,6 +92,12 @@ func filters(r *http.Request) (sqlc.PageParams, int, error) {
 	q := r.URL.Query()
 	in := sqlc.PageParams{Category: q.Get("category"), Result: q.Get("result"), Actor: strings.TrimSpace(q.Get("actor")), Ip: strings.TrimSpace(q.Get("ip")), Params: strings.TrimSpace(q.Get("params"))}
 	invalid := errors.New("审计筛选参数无效")
+	if value := strings.TrimSpace(q.Get("actor_user_id")); value != "" {
+		in.ActorUserID = uuid(value)
+		if in.ActorUserID == nil {
+			return in, 0, invalid
+		}
+	}
 	if !slices.Contains([]string{"", "model", "identity", "security", "settings", "resource", "billing"}, in.Category) || !slices.Contains([]string{"", "success", "failed"}, in.Result) {
 		return in, 0, invalid
 	}

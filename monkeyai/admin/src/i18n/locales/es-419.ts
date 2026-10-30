@@ -185,6 +185,7 @@ export const es419 = {
         revoked: "Revocado",
       },
       fields: {
+        user_id: "ID de usuario",
         user: "Usuario",
         device_name: "Nombre del dispositivo",
         platform: "Sistema operativo",
@@ -289,6 +290,7 @@ export const es419 = {
       title: "Historial de tareas",
       description: "Consulta las tareas ejecutadas por todos los clientes.",
       filters: {
+        userId: "ID de usuario",
         taskName: "Nombre de la tarea",
         taskNamePlaceholder: "Ingresa el nombre de la tarea",
         userName: "Nombre de usuario",
@@ -776,6 +778,7 @@ export const es419 = {
       description:
         "Consulta cada cargo de créditos generado por modelos, herramientas y otras funciones.",
       filters: {
+        selectUserRequired: "Selecciona un usuario antes de buscar.",
         userPlaceholder: "Usuario",
         userHint:
           "Selecciona un usuario para filtrar rápidamente o escribe para buscar nombres y correos anteriores.",

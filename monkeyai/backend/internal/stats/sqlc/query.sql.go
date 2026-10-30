@@ -27,19 +27,21 @@ JOIN users u ON u.id = s.owner_user_id
 WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
-    AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
-    AND ($2::text = '' OR strpos(lower(s.title), lower($2::text)) > 0)
-    AND ($3::text = ''
-        OR strpos(lower(u.name), lower($3::text)) > 0
-        OR strpos(lower(u.email), lower($3::text)) > 0)
-    AND ($4::text = '' OR strpos(lower(t.input_text), lower($4::text)) > 0)
-    AND ($5::timestamptz IS NULL OR t.started_at >= $5)
-    AND ($6::timestamptz IS NULL OR t.started_at < $6)
+    AND ($1::uuid IS NULL OR s.owner_user_id = $1::uuid)
+    AND ($2::text = '' OR s.id = nullif($2::text, '')::uuid)
+    AND ($3::text = '' OR strpos(lower(s.title), lower($3::text)) > 0)
+    AND ($4::text = ''
+        OR strpos(lower(u.name), lower($4::text)) > 0
+        OR strpos(lower(u.email), lower($4::text)) > 0)
+    AND ($5::text = '' OR strpos(lower(t.input_text), lower($5::text)) > 0)
+    AND ($6::timestamptz IS NULL OR t.started_at >= $6)
+    AND ($7::timestamptz IS NULL OR t.started_at < $7)
 ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
-LIMIT $8 OFFSET $7
+LIMIT $9 OFFSET $8
 `
 
 type ListConversationsParams struct {
+	UserID       *string
 	TaskID       string
 	TitleQuery   string
 	UserQuery    string
@@ -52,6 +54,7 @@ type ListConversationsParams struct {
 
 func (q *Queries) ListConversations(ctx context.Context, arg ListConversationsParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listConversations,
+		arg.UserID,
 		arg.TaskID,
 		arg.TitleQuery,
 		arg.UserQuery,
@@ -99,19 +102,22 @@ WHERE
     AND ($2::text = ''
         OR strpos(lower(u.name), lower($2::text)) > 0
         OR strpos(lower(u.email), lower($2::text)) > 0)
-    AND ($3::timestamptz IS NULL
-        OR s.started_at >= $3)
+    AND ($3::uuid IS NULL
+        OR s.owner_user_id = $3::uuid)
     AND ($4::timestamptz IS NULL
-        OR s.started_at < $4)
+        OR s.started_at >= $4)
+    AND ($5::timestamptz IS NULL
+        OR s.started_at < $5)
 ORDER BY
     s.started_at DESC,
     s.id DESC
-LIMIT $6 OFFSET $5
+LIMIT $7 OFFSET $6
 `
 
 type ListHistoryParams struct {
 	TitleQuery string
 	UserQuery  string
+	UserID     *string
 	FromTime   *time.Time
 	UntilTime  *time.Time
 	Offset     int32
@@ -122,6 +128,7 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([][]b
 	rows, err := q.db.Query(ctx, listHistory,
 		arg.TitleQuery,
 		arg.UserQuery,
+		arg.UserID,
 		arg.FromTime,
 		arg.UntilTime,
 		arg.Offset,
@@ -160,25 +167,27 @@ FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
 WHERE t.session_id = nullif($1::text, '')::uuid
-    AND ($2::timestamptz IS NULL OR t.started_at >= $2)
-    AND ($3::timestamptz IS NULL OR t.started_at <= $3)
+    AND ($2::uuid IS NULL OR s.owner_user_id = $2::uuid)
+    AND ($3::timestamptz IS NULL OR t.started_at >= $3)
+    AND ($4::timestamptz IS NULL OR t.started_at <= $4)
     AND s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
     AND ($1::text = '' OR s.id = nullif($1::text, '')::uuid)
-    AND ($4::text = '' OR strpos(lower(s.title), lower($4::text)) > 0)
-    AND ($5::text = ''
-        OR strpos(lower(u.name), lower($5::text)) > 0
-        OR strpos(lower(u.email), lower($5::text)) > 0)
-    AND ($6::text = '' OR strpos(lower(t.input_text), lower($6::text)) > 0)
-    AND ($7::timestamptz IS NULL OR t.started_at >= $7)
-    AND ($8::timestamptz IS NULL OR t.started_at < $8)
+    AND ($5::text = '' OR strpos(lower(s.title), lower($5::text)) > 0)
+    AND ($6::text = ''
+        OR strpos(lower(u.name), lower($6::text)) > 0
+        OR strpos(lower(u.email), lower($6::text)) > 0)
+    AND ($7::text = '' OR strpos(lower(t.input_text), lower($7::text)) > 0)
+    AND ($8::timestamptz IS NULL OR t.started_at >= $8)
+    AND ($9::timestamptz IS NULL OR t.started_at < $9)
 ORDER BY t.started_at DESC, s.id DESC, t.turn_index DESC
-LIMIT $10 OFFSET $9
+LIMIT $11 OFFSET $10
 `
 
 type ListTaskConversationsParams struct {
 	TaskID        string
+	UserID        *string
 	FirstTurnTime *time.Time
 	LastTurnTime  *time.Time
 	TitleQuery    string
@@ -193,6 +202,7 @@ type ListTaskConversationsParams struct {
 func (q *Queries) ListTaskConversations(ctx context.Context, arg ListTaskConversationsParams) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listTaskConversations,
 		arg.TaskID,
+		arg.UserID,
 		arg.FirstTurnTime,
 		arg.LastTurnTime,
 		arg.TitleQuery,

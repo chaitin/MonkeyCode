@@ -34,6 +34,12 @@ const users = [
     deleted: true,
   },
 ]
+const scrollUsers = Array.from({ length: 20 }, (_, index) => ({
+  ...users[0],
+  id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  name: `滚动用户 ${index + 1}`,
+  email: `scroll-${index + 1}@example.test`,
+}))
 const mime = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -137,11 +143,13 @@ try {
             body = {
               items: id
                 ? users.filter((user) => user.id === id)
-                : query === "故障"
-                  ? [users[2]]
-                  : !query || query === "张"
-                    ? users.slice(0, 2)
-                    : [],
+                : query === "滚动"
+                  ? scrollUsers
+                  : query === "故障"
+                    ? [users[2]]
+                    : !query || query === "张"
+                      ? users.slice(0, 2)
+                      : [],
               has_next: !query,
             }
         } else if (url.pathname === "/api/admin/v1/billing/entries") {
@@ -191,9 +199,16 @@ try {
           document.querySelectorAll('[role="option"]').length === count,
         count
       )
+    const entriesResponse = () =>
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/admin/v1/billing/entries"
+      )
     const submit = async () => {
       await ready()
+      const response = entriesResponse()
       await click(page, 'button[type="submit"]')
+      await response
       await ready()
     }
     try {
@@ -213,13 +228,21 @@ try {
       )
       first.release()
       await options(2)
-      assert.match(
+      assert.deepEqual(
+        await page.locator('[role="option"]').allTextContents(),
+        ["张三", "张三"]
+      )
+      assert.doesNotMatch(
         await page.locator('[role="listbox"]').textContent(),
-        /first@example.test/
+        /@example\.test/
       )
       assert.match(
-        await page.locator('[role="listbox"]').textContent(),
-        /second@example.test/
+        await page.locator('[role="option"]').nth(0).getAttribute("title"),
+        /first@example\.test/
+      )
+      assert.match(
+        await page.locator('[role="option"]').nth(1).getAttribute("title"),
+        /second@example\.test/
       )
       await page.keyboard.press("ArrowDown")
       await page.keyboard.press("ArrowDown")
@@ -245,7 +268,9 @@ try {
         lookups.some((query) => query.get("id") === users[1].id),
         "selected UUID must restore after reload"
       )
+      const nextPage = entriesResponse()
       await click(page, 'button[aria-label="下一页"]')
+      await nextPage
       await ready()
       assert.equal(entries.at(-1).get("user_id"), users[1].id)
       assert.equal(entries.at(-1).get("page"), "2")
@@ -255,7 +280,9 @@ try {
       assert.equal(entries.at(-1).get("user"), null)
       await type(page, "离职旧名")
       await options(0)
+      const historicalSearch = entriesResponse()
       await page.keyboard.press("Enter")
+      await historicalSearch
       await ready()
       assert.equal(entries.at(-1).get("user"), "离职旧名")
       assert.equal(entries.at(-1).get("user_id"), null)
@@ -272,11 +299,29 @@ try {
         await page.locator('[role="listbox"]').textContent(),
         /过期结果/
       )
-      await click(page, '[role="option"]', "first@example.test")
+      const hoverState = await page.evaluate(() => {
+        const option = document.querySelector('[role="option"]')
+        const rect = option.getBoundingClientRect()
+        return {
+          background: getComputedStyle(option).backgroundColor,
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2,
+        }
+      })
+      await page.mouse.move(hoverState.x, hoverState.y)
+      await page.waitForFunction(
+        (previous) =>
+          getComputedStyle(document.querySelector('[role="option"]'))
+            .backgroundColor !== previous,
+        hoverState.background
+      )
+      await click(page, '[role="option"][title*="first@example.test"]')
       await submit()
       assert.equal(entries.at(-1).get("user_id"), users[0].id)
       await type(page, "旧名")
+      const editedSearch = entriesResponse()
       await page.keyboard.press("Enter")
+      await editedSearch
       await ready()
       assert.equal(
         entries.at(-1).get("user"),
@@ -284,6 +329,67 @@ try {
         "editing a selection must switch back to historical text search"
       )
       assert.equal(entries.at(-1).get("user_id"), null)
+      await type(page, "滚动")
+      await options(20)
+      const scrollRegion =
+        '[data-billing-user-options] [data-slot="scroll-area-viewport"]'
+      const scrollGeometry = await page.evaluate((selector) => {
+        const el = document.querySelector(selector)
+        const rect = el.getBoundingClientRect()
+        return {
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2,
+          height: rect.height,
+          scrollHeight: el.scrollHeight,
+        }
+      }, scrollRegion)
+      assert(
+        scrollGeometry.height <= 257 &&
+          scrollGeometry.scrollHeight > scrollGeometry.height
+      )
+      await page.mouse.move(scrollGeometry.x, scrollGeometry.y)
+      await page.mouse.wheel(0, 300)
+      await page.waitForFunction(
+        (selector) => document.querySelector(selector).scrollTop > 0,
+        scrollRegion
+      )
+      await page.keyboard.press("Escape")
+      await type(page, "滚动")
+      await options(20)
+      for (let index = 0; index < 20; index++)
+        await page.keyboard.press("ArrowDown")
+      await page.waitForFunction((email) => {
+        const active = document.getElementById(
+          document
+            .querySelector("#billing-user")
+            .getAttribute("aria-activedescendant")
+        )
+        return active?.getAttribute("title")?.includes(email)
+      }, scrollUsers.at(-1).email)
+      const keyboardScrolled = await page.evaluate((selector) => {
+        const el = document.querySelector(selector)
+        const option = document
+          .getElementById(
+            document
+              .querySelector("#billing-user")
+              .getAttribute("aria-activedescendant")
+          )
+          .getBoundingClientRect()
+        const viewport = el.getBoundingClientRect()
+        return (
+          el.scrollTop > 0 &&
+          option.top >= viewport.top - 1 &&
+          option.bottom <= viewport.bottom + 1
+        )
+      }, scrollRegion)
+      assert.equal(
+        keyboardScrolled,
+        true,
+        "keyboard highlight must scroll into the ScrollArea viewport"
+      )
+      await page.keyboard.press("Enter")
+      await submit()
+      assert.equal(entries.at(-1).get("user_id"), scrollUsers.at(-1).id)
       await type(page, "故障")
       await page.waitForFunction(() =>
         [...document.querySelectorAll('[role="alert"]')].some((el) =>
@@ -296,7 +402,7 @@ try {
         await page.locator('[role="option"]').textContent(),
         /已删除/
       )
-      await click(page, '[role="option"]', "deleted@example.test")
+      await click(page, '[role="option"][title*="deleted@example.test"]')
       await submit()
       assert.equal(entries.at(-1).get("user_id"), users[2].id)
       assert.equal(

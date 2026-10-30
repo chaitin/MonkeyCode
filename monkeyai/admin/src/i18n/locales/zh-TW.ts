@@ -164,6 +164,7 @@ export const zhTW = {
         revoked: "已撤銷",
       },
       fields: {
+        user_id: "使用者 ID",
         user: "使用者",
         device_name: "裝置名稱",
         platform: "作業系統",
@@ -296,6 +297,7 @@ export const zhTW = {
       title: "任務歷史",
       description: "查看所有用戶端執行過的任務記錄。",
       filters: {
+        userId: "使用者 ID",
         taskName: "任務名稱",
         taskNamePlaceholder: "輸入任務名稱",
         userName: "使用者名稱",
@@ -741,6 +743,7 @@ export const zhTW = {
       title: "扣費明細",
       description: "查看模型、工具及其他能力產生的每一筆點數扣費。",
       filters: {
+        selectUserRequired: "請先選擇使用者",
         userPlaceholder: "使用者",
         userHint: "選取使用者可快速篩選；直接輸入可搜尋歷史姓名或信箱。",
         usersEmpty: "沒有符合的使用者",

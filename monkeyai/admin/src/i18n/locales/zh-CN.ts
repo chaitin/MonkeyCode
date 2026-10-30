@@ -309,6 +309,7 @@ export const zhCN = {
         revoked: "已撤销",
       },
       fields: {
+        user_id: "用户 ID",
         user: "用户",
         device_name: "设备名称",
         platform: "操作系统",
@@ -445,6 +446,7 @@ export const zhCN = {
       title: "任务历史",
       description: "查看所有客户端执行过的任务记录。",
       filters: {
+        userId: "用户 ID",
         taskName: "任务名称",
         taskNamePlaceholder: "输入任务名称",
         userName: "用户名",
@@ -1182,6 +1184,7 @@ export const zhCN = {
       title: "扣费明细",
       description: "查看模型、工具及其他能力产生的每一笔积分扣费。",
       filters: {
+        selectUserRequired: "请先选择用户",
         userPlaceholder: "用户",
         userHint: "选中用户可快速筛选；直接输入可搜索历史姓名或邮箱。",
         usersEmpty: "没有匹配的用户",

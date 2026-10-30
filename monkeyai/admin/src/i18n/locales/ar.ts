@@ -174,6 +174,7 @@ export const ar = {
         revoked: "ملغى",
       },
       fields: {
+        user_id: "معرّف المستخدم",
         user: "المستخدم",
         device_name: "اسم الجهاز",
         platform: "نظام التشغيل",
@@ -275,6 +276,7 @@ export const ar = {
       title: "سجل المهام",
       description: "راجع المهام التي نفّذتها جميع تطبيقات العميل.",
       filters: {
+        userId: "معرّف المستخدم",
         taskName: "اسم المهمة",
         taskNamePlaceholder: "أدخل اسم المهمة",
         userName: "اسم المستخدم",
@@ -740,6 +742,7 @@ export const ar = {
       description:
         "راجع كل خصم للنقاط ناتج عن النماذج والأدوات والميزات الأخرى.",
       filters: {
+        selectUserRequired: "اختر مستخدمًا أولاً.",
         userPlaceholder: "المستخدم",
         userHint:
           "اختر مستخدمًا للتصفية السريعة، أو اكتب للبحث في الأسماء وعناوين البريد السابقة.",

@@ -190,6 +190,7 @@ export const frFR = {
         revoked: "Révoqué",
       },
       fields: {
+        user_id: "ID utilisateur",
         user: "Utilisateur",
         device_name: "Nom de l’appareil",
         platform: "Système d’exploitation",
@@ -295,6 +296,7 @@ export const frFR = {
       title: "Historique des tâches",
       description: "Consultez les tâches exécutées par tous les clients.",
       filters: {
+        userId: "ID utilisateur",
         taskName: "Nom de la tâche",
         taskNamePlaceholder: "Saisir le nom de la tâche",
         userName: "Nom d’utilisateur",
@@ -783,6 +785,7 @@ export const frFR = {
       description:
         "Consultez chaque débit de crédits généré par les modèles, les outils et les autres fonctions.",
       filters: {
+        selectUserRequired: "Sélectionnez d’abord un utilisateur.",
         userPlaceholder: "Utilisateur",
         userHint:
           "Sélectionnez un utilisateur pour filtrer rapidement, ou recherchez les anciens noms et e-mails.",

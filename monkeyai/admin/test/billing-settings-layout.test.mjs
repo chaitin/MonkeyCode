@@ -108,19 +108,22 @@ test("member account uses integer key-value balances and dedicated actions", asy
   assert.match(accountDialog, /api<AccountDetails>\(accountPath\)/)
   assert.match(
     accountDialog,
-    /成员信息[\s\S]*?member\.name[\s\S]*?member\.email[\s\S]*?member\.role[\s\S]*?member\.status/
+    /\["姓名", member\.name\][\s\S]*?member\.email[\s\S]*?member\.role[\s\S]*?member\.status/
   )
   assert.match(accountDialog, /setExternal\(value\.external_user_id\)/)
-  assert.match(accountDialog, /view=entries&user_id=\$\{encodeURIComponent\(userId\)\}/)
+  assert.match(
+    accountDialog,
+    /view=entries&user_id=\$\{encodeURIComponent\(userId\)\}/
+  )
   assert.match(accountDialog, /credits\(value, i18n\.language, 0, "floor"\)/)
   assert.equal((accountDialog.match(/displayCredits\(/g) ?? []).length, 2)
   assert.match(
     accountDialog,
-    /<dl className="divide-y rounded-lg border">[\s\S]*?\["可用", data\.account\.available\][\s\S]*?\["账面剩余", data\.account\.balance\][\s\S]*?\["满额度", data\.account\.quota\]/
+    /<dl className="divide-y rounded-lg border">[\s\S]*?\["剩余积分", data\.account\.balance\][\s\S]*?\["积分满额上限", data\.account\.quota\]/
   )
   assert.match(
     accountDialog,
-    /调整积分[\s\S]*?CONSOLE_ROUTES\.billingDetails\}\?view=entries&user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?费用明细/
+    /CONSOLE_ROUTES\.billingDetails\}\?view=entries&user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?费用明细[\s\S]*?调整积分[\s\S]*?客户端[\s\S]*?CONSOLE_ROUTES\.taskHistory\}\?user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?任务/
   )
   assert.doesNotMatch(accountDialog, /查看费用明细/)
   assert.match(accountDialog, /\["add", "增加积分"\]/)

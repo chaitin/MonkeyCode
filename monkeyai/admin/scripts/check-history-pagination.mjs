@@ -68,6 +68,7 @@ try {
       await page.addInitScript(() =>
         localStorage.setItem("monkeyai-admin-language", "zh-CN")
       )
+      const apiPath = `/api/admin/v1/statistics/${kind === "task" ? "history" : "conversations"}`
       const errors = [],
         requests = []
       page.on("pageerror", (error) => errors.push(error.message))
@@ -126,10 +127,7 @@ try {
             }
           else if (url.pathname.endsWith("/branding"))
             body = { product_name: "百智办公", workspace_name: "测试" }
-          else if (
-            url.pathname ===
-            `/api/admin/v1/statistics/${kind === "task" ? "history" : "conversations"}`
-          ) {
+          else if (url.pathname === apiPath) {
             requests.push(url.searchParams)
             await gate
             if (mode === "error")
@@ -191,7 +189,16 @@ try {
             },
             { table, count }
           )
-        const press = (text, root) => click(page, { text, root })
+        const responseFor = (predicate = () => true) =>
+          page.waitForResponse((response) => {
+            const url = new URL(response.url())
+            return url.pathname === apiPath && predicate(url.searchParams)
+          })
+        const press = async (text, root) => {
+          const response = responseFor()
+          await click(page, { text, root })
+          await response
+        }
         await page.goto(
           `http://history.test/console/statistics/${kind}-history`
         )
@@ -248,7 +255,9 @@ try {
         await press("上一页")
         await ready(50)
         mode = "vanished"
+        const recovered = responseFor((query) => query.get("page") === "1")
         await press("下一页")
+        await recovered
         await ready(50)
         assert.equal(requests.at(-1).get("page"), "1")
         mode = "empty"
@@ -284,11 +293,13 @@ try {
             (el) => el.textContent.trim() === "20 条 / 页"
           )
         )
+        const resized = responseFor((query) => query.get("page_size") === "20")
         await click(page, {
           root: "body",
           selector: '[role="option"]',
           text: "20 条 / 页",
         })
+        await resized
         await ready(20)
         assert.equal(requests.at(-1).get("page_size"), "20")
         assert.equal(requests.at(-1).get("page"), "1")

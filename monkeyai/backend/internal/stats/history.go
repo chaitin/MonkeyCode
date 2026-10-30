@@ -10,6 +10,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats/sqlc"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Service) history(w http.ResponseWriter, r *http.Request) {
@@ -18,6 +19,15 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 	if len(title) > 200 || len(user) > 200 {
 		resource.Fail(r.Context(), w, resource.Invalid("搜索条件过长"))
 		return
+	}
+	var userID *string
+	if value := strings.TrimSpace(q.Get("user_id")); value != "" {
+		var parsed pgtype.UUID
+		if err := parsed.Scan(value); err != nil || !parsed.Valid {
+			resource.Fail(r.Context(), w, resource.Invalid("用户 ID 无效"))
+			return
+		}
+		userID = &value
 	}
 	var from, until *time.Time
 	for key, target := range map[string]**time.Time{"from": &from, "until": &until} {
@@ -54,6 +64,7 @@ func (s *Service) history(w http.ResponseWriter, r *http.Request) {
 	items, err := resource.DecodeObjects(sqlc.New(s.pool).ListHistory(ctx, sqlc.ListHistoryParams{
 		TitleQuery: title,
 		UserQuery:  user,
+		UserID:     userID,
 		FromTime:   from,
 		UntilTime:  until,
 		Limit:      int32(size + 1),

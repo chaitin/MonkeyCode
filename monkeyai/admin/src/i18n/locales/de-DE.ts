@@ -190,6 +190,7 @@ export const deDE = {
         revoked: "Widerrufen",
       },
       fields: {
+        user_id: "Benutzer-ID",
         user: "Benutzer",
         device_name: "Gerätename",
         platform: "Betriebssystem",
@@ -293,6 +294,7 @@ export const deDE = {
       title: "Aufgabenverlauf",
       description: "Prüfen Sie die von allen Clients ausgeführten Aufgaben.",
       filters: {
+        userId: "Benutzer-ID",
         taskName: "Aufgabenname",
         taskNamePlaceholder: "Aufgabenname eingeben",
         userName: "Benutzername",
@@ -786,6 +788,7 @@ export const deDE = {
       description:
         "Prüfen Sie jede Punkteabbuchung durch Modelle, Tools und andere Funktionen.",
       filters: {
+        selectUserRequired: "Bitte wählen Sie zuerst einen Benutzer aus.",
         userPlaceholder: "Benutzer",
         userHint:
           "Benutzer für schnelles Filtern auswählen oder frühere Namen und E-Mails eingeben.",

@@ -188,6 +188,7 @@ export const ruRU = {
         revoked: "Отозвано",
       },
       fields: {
+        user_id: "ID пользователя",
         user: "Пользователь",
         device_name: "Имя устройства",
         platform: "Операционная система",
@@ -292,6 +293,7 @@ export const ruRU = {
       title: "История задач",
       description: "Просматривайте задачи, выполненные всеми клиентами.",
       filters: {
+        userId: "ID пользователя",
         taskName: "Название задачи",
         taskNamePlaceholder: "Введите название задачи",
         userName: "Имя пользователя",
@@ -778,6 +780,7 @@ export const ruRU = {
       description:
         "Просматривайте каждое списание баллов за модели, инструменты и другие функции.",
       filters: {
+        selectUserRequired: "Сначала выберите пользователя.",
         userPlaceholder: "Пользователь",
         userHint:
           "Выберите пользователя для быстрого поиска или введите прежнее имя либо адрес почты.",

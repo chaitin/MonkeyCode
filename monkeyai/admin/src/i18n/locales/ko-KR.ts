@@ -177,6 +177,7 @@ export const koKR = {
         revoked: "취소됨",
       },
       fields: {
+        user_id: "사용자 ID",
         user: "사용자",
         device_name: "기기 이름",
         platform: "운영 체제",
@@ -278,6 +279,7 @@ export const koKR = {
       title: "작업 기록",
       description: "모든 클라이언트에서 실행된 작업을 확인합니다.",
       filters: {
+        userId: "사용자 ID",
         taskName: "작업 이름",
         taskNamePlaceholder: "작업 이름 입력",
         userName: "사용자 이름",
@@ -746,6 +748,7 @@ export const koKR = {
       description:
         "모델, 도구 및 기타 기능에서 발생한 모든 포인트 차감을 확인합니다.",
       filters: {
+        selectUserRequired: "먼저 사용자를 선택하세요.",
         userPlaceholder: "사용자",
         userHint:
           "사용자를 선택하면 빠르게 필터링합니다. 직접 입력하면 이전 이름과 이메일을 검색합니다.",

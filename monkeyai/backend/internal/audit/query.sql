@@ -19,6 +19,7 @@ WITH filtered AS NOT MATERIALIZED (
     WHERE (sqlc.arg(category)::text = '' OR category = sqlc.arg(category))
       AND (sqlc.arg(result)::text = '' OR result = sqlc.arg(result))
       AND (sqlc.arg(actor)::text = '' OR strpos(lower(actor_name || ' ' || coalesce(actor_email, '')), lower(sqlc.arg(actor))) > 0)
+      AND (sqlc.narg(actor_user_id)::uuid IS NULL OR actor_user_id = sqlc.narg(actor_user_id)::uuid)
       AND (sqlc.arg(ip)::text = '' OR strpos(coalesce(host(source_ip), ''), sqlc.arg(ip)) > 0)
       AND (sqlc.arg(params)::text = '' OR strpos(lower(request_params::text), lower(sqlc.arg(params))) > 0)
       AND (sqlc.narg(since)::timestamptz IS NULL OR occurred_at >= sqlc.narg(since))

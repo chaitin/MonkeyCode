@@ -868,10 +868,16 @@ paths:
             default: 20
         - name: actor
           in: query
-          description: 操作者名称或邮箱的字面子串。
+          description: 兼容旧链接，按审计记录保存的操作者名称或邮箱做字面子串匹配；新界面先选择用户，再使用 actor_user_id。
           schema:
             type: string
             maxLength: 512
+        - name: actor_user_id
+          in: query
+          description: 操作者用户 UUID 精确匹配，与其他筛选条件取交集。
+          schema:
+            type: string
+            format: uuid
         - name: ip
           in: query
           description: 实际连接来源 IP 的字面子串，不信任客户端转发头。
@@ -1056,8 +1062,12 @@ paths:
           schema: {type: string, format: uuid}
         - name: user
           in: query
-          description: 按用户当前姓名或邮箱包含匹配，忽略大小写。
+          description: 兼容旧链接，按用户当前姓名或邮箱包含匹配，忽略大小写；新界面先选择用户，再使用 user_id。
           schema: {type: string, maxLength: 200}
+        - name: user_id
+          in: query
+          description: 按任务所属用户 UUID 精确匹配，同时适用于全局和指定任务的轮次列表，与其他筛选条件取交集。
+          schema: {type: string, format: uuid}
         - name: content
           in: query
           description: 按已上报的对话正文包含匹配，忽略大小写；百分号和下划线作为普通字符。
@@ -1111,10 +1121,17 @@ paths:
         - name: user
           in: query
           required: false
-          description: 按用户名或邮箱包含匹配，忽略大小写。
+          description: 兼容旧链接，按用户名或邮箱包含匹配，忽略大小写；新界面先选择用户，再使用 user_id。
           schema:
             type: string
             maxLength: 200
+        - name: user_id
+          in: query
+          required: false
+          description: 按任务所属用户 UUID 精确匹配，与用户名／邮箱、任务及日期条件取交集。
+          schema:
+            type: string
+            format: uuid
         - name: from
           in: query
           required: false

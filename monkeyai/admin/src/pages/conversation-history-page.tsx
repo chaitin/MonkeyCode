@@ -1,19 +1,18 @@
-import { useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import {
   FilterHorizontalIcon,
   Loading03Icon,
   Search02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
-import { useSearchParams } from "react-router-dom"
 
 import { AccountDialog } from "@/components/billing/account-dialog"
 import { UserAvatar } from "@/components/user-avatar"
+import { UserSearch } from "@/components/user-search"
 import { DatePickerField } from "@/components/date-picker-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,13 +35,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useStatistics } from "@/hooks/use-statistics"
+import { useTableQuery } from "@/hooks/use-table-query"
+import { queryDate, queryDateValue } from "@/lib/table-query"
 import {
   conversationQuery,
   conversationResult,
   type Conversation,
   type ConversationPage,
 } from "@/lib/conversation-history"
-import { startOfLocalDay } from "@/lib/date-range"
 import { cn } from "@/lib/utils"
 
 const columns = [
@@ -79,6 +79,7 @@ type Filters = {
   taskName: string
   taskId: string
   user: string
+  userId: string
   content: string
   from?: Date
   until?: Date
@@ -88,8 +89,42 @@ const emptyFilters = (): Filters => ({
   taskName: "",
   taskId: "",
   user: "",
+  userId: "",
   content: "",
 })
+
+const CONVERSATION_QUERY_KEYS = [
+  "task",
+  "task_id",
+  "user",
+  "user_id",
+  "content",
+  "from",
+  "until",
+] as const
+function conversationFilterInput(filters: Record<string, string>): Filters {
+  return {
+    ...emptyFilters(),
+    taskName: filters.task ?? "",
+    taskId: filters.task_id ?? "",
+    user: filters.user_id ? "" : (filters.user ?? ""),
+    userId: filters.user_id ?? "",
+    content: filters.content ?? "",
+    from: queryDate(filters.from),
+    until: queryDate(filters.until, true),
+  }
+}
+function activeConversationFields(
+  filters: Record<string, string>
+): SearchField[] {
+  return [
+    ...(filters.task ? ["taskName" as const] : []),
+    ...(filters.task_id ? ["taskId" as const] : []),
+    ...(filters.user || filters.user_id ? ["user" as const] : []),
+    ...(filters.content ? ["content" as const] : []),
+    ...(filters.from || filters.until ? ["dateRange" as const] : []),
+  ]
+}
 
 const labels = {
   zh: {
@@ -158,9 +193,11 @@ const labels = {
 
 export function ConversationHistoryPage() {
   const { i18n, t } = useTranslation()
-  const [params, setParams] = useSearchParams()
-  const selectedTaskId = params.get("task_id") ?? ""
-  const initialFilters = () => ({ ...emptyFilters(), taskId: selectedTaskId })
+  const tableQuery = useTableQuery(CONVERSATION_QUERY_KEYS)
+  const { filters, filterQuery, page, pageSize, setPage, setPageSize } =
+    tableQuery
+  const [previousQuery, setPreviousQuery] = useState(filterQuery)
+  const formRef = useRef<HTMLFormElement>(null)
   const copy = i18n.language.startsWith("zh") ? labels.zh : labels.en
   const locale = i18n.resolvedLanguage ?? i18n.language
   const numberFormatter = new Intl.NumberFormat(locale, {
@@ -170,13 +207,11 @@ export function ConversationHistoryPage() {
     notation: "compact",
     maximumFractionDigits: 1,
   })
-  const [draft, setDraft] = useState<Filters>(initialFilters)
-  const [filters, setFilters] = useState<Filters>(initialFilters)
+  const [draft, setDraft] = useState<Filters>(() =>
+    conversationFilterInput(filters)
+  )
   const [visibleFields, setVisibleFields] = useState<Set<SearchField>>(
-    () =>
-      new Set(
-        selectedTaskId ? ["taskName", "taskId", "user"] : ["taskName", "user"]
-      )
+    () => new Set(["taskName", "user", ...activeConversationFields(filters)])
   )
   const [visibleColumns, setVisibleColumns] = useState<Set<ConversationColumn>>(
     () => new Set(defaultColumns)
@@ -184,29 +219,25 @@ export function ConversationHistoryPage() {
   const displayedColumns = columns.filter((column) =>
     visibleColumns.has(column)
   )
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
 
-  const [previousTaskId, setPreviousTaskId] = useState(selectedTaskId)
-  if (previousTaskId !== selectedTaskId) {
-    setPreviousTaskId(selectedTaskId)
-    setDraft((current) => ({ ...current, taskId: selectedTaskId }))
-    setPage(1)
-    if (selectedTaskId)
-      setVisibleFields((current) => new Set(current).add("taskId"))
+  if (previousQuery !== filterQuery) {
+    setPreviousQuery(filterQuery)
+    setDraft(conversationFilterInput(filters))
+    setVisibleFields(
+      (current) => new Set([...current, ...activeConversationFields(filters)])
+    )
   }
 
   const query = conversationQuery(
     {
-      ...filters,
-      taskId: selectedTaskId,
-      from: filters.from
-        ? startOfLocalDay(filters.from).toISOString()
-        : undefined,
-      until: filters.until
-        ? startOfLocalDay(addDays(filters.until, 1)).toISOString()
-        : undefined,
+      taskName: filters.task ?? "",
+      taskId: filters.task_id ?? "",
+      user: filters.user_id ? "" : (filters.user ?? ""),
+      userId: filters.user_id ?? "",
+      content: filters.content ?? "",
+      from: filters.from,
+      until: filters.until,
     },
     page,
     pageSize
@@ -215,47 +246,53 @@ export function ConversationHistoryPage() {
     `/api/admin/v1/statistics/conversations?${query}`
   )
   const currentPage = request.data?.page ?? page
-  if (
-    !request.loading &&
-    !request.error &&
-    request.data?.page === page &&
-    page > 1 &&
-    request.data.items.length === 0
-  ) {
-    setPage(1)
-  }
+  useEffect(() => {
+    if (
+      !request.loading &&
+      !request.error &&
+      request.data?.page === page &&
+      page > 1 &&
+      request.data.items.length === 0
+    )
+      setPage(1, { replace: true })
+  }, [request.loading, request.error, request.data, page, setPage])
   const visible = request.data?.items ?? []
 
   const formatter = useMemo(
     () => new Intl.DateTimeFormat(locale, TABLE_DATE_TIME_OPTIONS),
     [locale]
   )
-  const update = (
-    key: "taskName" | "taskId" | "user" | "content",
-    value: string
-  ) => setDraft((current) => ({ ...current, [key]: value }))
-  const setTaskQuery = (taskId: string) => {
-    const next = new URLSearchParams(params)
-    if (taskId) next.set("task_id", taskId)
-    else next.delete("task_id")
-    setParams(next, { replace: true })
+  const update = (key: "taskName" | "taskId" | "content", value: string) =>
+    setDraft((current) => ({ ...current, [key]: value }))
+  const commitFilters = (next: Filters) => {
+    const bounds = {
+      from: queryDateValue(next.from, filters.from, "from"),
+      until: queryDateValue(next.until, filters.until, "exclusiveUntil"),
+    }
+    tableQuery.commit({
+      task: next.taskName.trim(),
+      task_id: next.taskId.trim(),
+      user: "",
+      user_id: next.userId,
+      content: next.content.trim(),
+      ...bounds,
+    })
+    return (
+      conversationQuery({ ...next, user: "", ...bounds }, 1, pageSize) !== query
+    )
   }
   const search = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (request.loading) return
+    if (request.loading || (draft.user.trim() && !draft.userId)) return
     const next = { ...draft, taskId: draft.taskId.trim() }
-    setFilters(next)
-    setTaskQuery(next.taskId)
-    setPage(1)
-    request.reload()
+    if (!commitFilters(next)) request.reload()
   }
   const filterByTask = (entry: Conversation) => {
+    if (!formRef.current?.reportValidity()) return
     const next = { ...draft, taskName: "", taskId: entry.session_id }
     setDraft(next)
-    setFilters(next)
     setVisibleFields((current) => new Set(current).add("taskId"))
-    setTaskQuery(entry.session_id)
-    setPage(1)
+    if (!commitFilters(next)) request.reload()
   }
   const fieldOptions: { key: SearchField; label: string }[] = [
     { key: "taskName", label: copy.task },
@@ -348,6 +385,7 @@ export function ConversationHistoryPage() {
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
+            ref={formRef}
             className="flex flex-wrap items-end gap-3 px-[var(--card-spacing)]"
             onSubmit={search}
           >
@@ -371,13 +409,18 @@ export function ConversationHistoryPage() {
               />
             )}
             {visibleFields.has("user") && (
-              <Input
-                className="w-full sm:w-44"
-                aria-label={copy.user}
-                placeholder={copy.user}
-                value={draft.user}
-                maxLength={200}
-                onChange={(event) => update("user", event.target.value)}
+              <UserSearch
+                id="conversation-history-user"
+                selectionOnly
+                userID={draft.userId}
+                query={draft.user}
+                onChange={({ userID, query }) =>
+                  setDraft((current) => ({
+                    ...current,
+                    userId: userID,
+                    user: query,
+                  }))
+                }
               />
             )}
             {visibleFields.has("content") && (
@@ -434,14 +477,20 @@ export function ConversationHistoryPage() {
                     <DropdownMenuCheckboxItem
                       key={key}
                       checked={visibleFields.has(key)}
-                      onCheckedChange={(checked) =>
+                      onCheckedChange={(checked) => {
                         setVisibleFields((current) => {
                           const next = new Set(current)
                           if (checked) next.add(key)
                           else next.delete(key)
                           return next
                         })
-                      }
+                        if (!checked && key === "user")
+                          setDraft((current) => ({
+                            ...current,
+                            userId: "",
+                            user: "",
+                          }))
+                      }}
                     >
                       {label}
                     </DropdownMenuCheckboxItem>
@@ -570,7 +619,6 @@ export function ConversationHistoryPage() {
             error={Boolean(request.error)}
             onPageSizeChange={(size) => {
               setPageSize(size)
-              setPage(1)
             }}
             onPrevious={() => setPage(Math.max(1, currentPage - 1))}
             onNext={() => setPage(currentPage + 1)}

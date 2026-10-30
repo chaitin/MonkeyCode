@@ -18,6 +18,8 @@ WHERE
     AND (sqlc.arg(user_query)::text = ''
         OR strpos(lower(u.name), lower(sqlc.arg(user_query)::text)) > 0
         OR strpos(lower(u.email), lower(sqlc.arg(user_query)::text)) > 0)
+    AND (sqlc.narg(user_id)::uuid IS NULL
+        OR s.owner_user_id = sqlc.narg(user_id)::uuid)
     AND (sqlc.narg(from_time)::timestamptz IS NULL
         OR s.started_at >= sqlc.narg(from_time))
     AND (sqlc.narg(until_time)::timestamptz IS NULL
@@ -44,6 +46,7 @@ JOIN users u ON u.id = s.owner_user_id
 WHERE s.deleted_at IS NULL AND s.purged_at IS NULL
     AND s.reporting_enabled_at IS NOT NULL AND s.placeholder = false
     AND s.parent_session_id IS NULL
+    AND (sqlc.narg(user_id)::uuid IS NULL OR s.owner_user_id = sqlc.narg(user_id)::uuid)
     AND (sqlc.arg(task_id)::text = '' OR s.id = nullif(sqlc.arg(task_id)::text, '')::uuid)
     AND (sqlc.arg(title_query)::text = '' OR strpos(lower(s.title), lower(sqlc.arg(title_query)::text)) > 0)
     AND (sqlc.arg(user_query)::text = ''
@@ -70,6 +73,7 @@ FROM session_turns t
 JOIN sessions s ON s.id = t.session_id
 JOIN users u ON u.id = s.owner_user_id
 WHERE t.session_id = nullif(sqlc.arg(task_id)::text, '')::uuid
+    AND (sqlc.narg(user_id)::uuid IS NULL OR s.owner_user_id = sqlc.narg(user_id)::uuid)
     AND (sqlc.narg(first_turn_time)::timestamptz IS NULL OR t.started_at >= sqlc.narg(first_turn_time))
     AND (sqlc.narg(last_turn_time)::timestamptz IS NULL OR t.started_at <= sqlc.narg(last_turn_time))
     AND s.deleted_at IS NULL AND s.purged_at IS NULL

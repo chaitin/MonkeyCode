@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { useSearchParams } from "react-router-dom"
 import {
   FilterHorizontalIcon,
   Loading03Icon,
@@ -8,6 +9,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { addDays } from "date-fns"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import { ClientDistributionCards } from "@/components/client-distribution-cards"
 import { DatePickerField } from "@/components/date-picker-field"
 import { TablePagination } from "@/components/table-pagination"
@@ -37,6 +39,8 @@ import {
 import { api } from "@/lib/api"
 import {
   devicePaths,
+  devicePageParams,
+  devicePageState,
   devicePlatform,
   deviceQuery,
   type ClientDevice,
@@ -67,6 +71,7 @@ type ClientColumn =
   | "created_at"
   | "last_active_at"
 type ClientSearchField =
+  | "user_id"
   | "client_type"
   | "platform"
   | "arch"
@@ -100,6 +105,7 @@ const defaultColumns: ClientColumn[] = [
   "last_active_at",
 ]
 const searchFields: ClientSearchField[] = [
+  "user_id",
   "client_type",
   "platform",
   "arch",
@@ -116,20 +122,31 @@ const clientTypes = [
   "unknown",
 ]
 
+function activeSearchFields(filters: DeviceFilters) {
+  return searchFields.filter((field) =>
+    field === "last_active_at" ? filters.from || filters.until : filters[field]
+  )
+}
+
 export function ClientAnalysisPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
-  const [filters, setFilters] = useState<DeviceFilters>({})
-  const [draft, setDraft] = useState<DeviceFilters>({})
+  const [params, setParams] = useSearchParams()
+  const rawQuery = params.toString()
+  const { filters, page, pageSize } = useMemo(
+    () => devicePageState(rawQuery),
+    [rawQuery]
+  )
+  const query = deviceQuery(filters)
+  const [draftQuery, setDraftQuery] = useState(query)
+  const [draft, setDraft] = useState<DeviceFilters>(filters)
   const [visibleFields, setVisibleFields] = useState<Set<ClientSearchField>>(
-    () => new Set(["client_type", "platform"])
+    () => new Set(["client_type", "platform", ...activeSearchFields(filters)])
   )
   const [visibleColumns, setVisibleColumns] = useState<Set<ClientColumn>>(
     () => new Set(defaultColumns)
   )
   const [invalidRange, setInvalidRange] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
   const [revision, setRevision] = useState(0)
   const [listRetry, setListRetry] = useState(0)
   const [overviewRetry, setOverviewRetry] = useState(0)
@@ -142,21 +159,32 @@ export function ClientAnalysisPage() {
   const [data, setData] = useState<DevicePage>()
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
   const [error, setError] = useState<string>()
-  const startDay = draft.from
-    ? startOfLocalDay(new Date(draft.from))
-    : undefined
-  const endDay = draft.until
-    ? startOfLocalDay(new Date(new Date(draft.until).getTime() - 1))
-    : undefined
-  const query = deviceQuery(filters)
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
+  if (draftQuery !== query) {
+    setDraftQuery(query)
+    setDraft(filters)
+    setInvalidRange(false)
+    setVisibleFields(
+      (current) => new Set([...current, ...activeSearchFields(filters)])
+    )
+  }
+  const startDay =
+    draft.from && !Number.isNaN(Date.parse(draft.from))
+      ? startOfLocalDay(new Date(draft.from))
+      : undefined
+  const endDay =
+    draft.until && !Number.isNaN(Date.parse(draft.until))
+      ? startOfLocalDay(new Date(new Date(draft.until).getTime() - 1))
+      : undefined
   const path = `${devicePaths.list}?${query}&page=${page}&page_size=${pageSize}`
   const overviewPath = `${devicePaths.overview}?${query}`
   const overviewKey = `${overviewPath}:${revision}:${overviewRetry}`
   const overviewLoading = overviewResponse?.key !== overviewKey
   const overview = overviewLoading ? undefined : overviewResponse.data
   const overviewError = overviewLoading ? undefined : overviewResponse.error
-  const searchBusy = searching || (revision > 0 && overviewLoading)
+  const searchBusy = searching || (hasSearched && overviewLoading)
   const items = data?.items ?? []
   const displayedColumns = columns.filter((column) =>
     visibleColumns.has(column)
@@ -186,6 +214,7 @@ export function ClientAnalysisPage() {
   useEffect(() => {
     const controller = new AbortController()
     const isSearch = searchRevisionRef.current === revision
+    let redirecting = false
     if (!isSearch) {
       setLoading(true)
       setError(undefined)
@@ -194,7 +223,15 @@ export function ClientAnalysisPage() {
       .then((result) => {
         if (controller.signal.aborted) return
         if (result.items.length === 0 && page > 1) {
-          setPage(1)
+          redirecting = true
+          setParams(
+            (current) => {
+              const next = new URLSearchParams(current)
+              next.delete("page")
+              return next
+            },
+            { replace: true }
+          )
           return
         }
         setData(result)
@@ -220,7 +257,7 @@ export function ClientAnalysisPage() {
         })
       })
       .finally(() => {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted || redirecting) return
         setLoading(false)
         if (isSearch) {
           setSearching(false)
@@ -228,7 +265,7 @@ export function ClientAnalysisPage() {
         }
       })
     return () => controller.abort()
-  }, [path, page, revision, listRetry, showToast, t])
+  }, [path, page, revision, listRetry, showToast, t, setParams])
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -243,32 +280,41 @@ export function ClientAnalysisPage() {
     }
     setInvalidRange(false)
     setError(undefined)
-    setFilters({ ...draft })
-    setPage(1)
-    const nextRevision = revision + 1
-    searchRevisionRef.current = nextRevision
+    const next = devicePageParams(rawQuery, draft, 1, pageSize)
+    const filtersChanged =
+      deviceQuery(devicePageState(next.toString()).filters) !== query
     setSearching(true)
-    setRevision(nextRevision)
+    setHasSearched(true)
+    if (filtersChanged || page !== 1) {
+      // The URL change starts the list request; avoid fetching the previous URL first.
+      searchRevisionRef.current = revision
+      if (!filtersChanged) setOverviewRetry((value) => value + 1)
+    } else {
+      const nextRevision = revision + 1
+      searchRevisionRef.current = nextRevision
+      setRevision(nextRevision)
+    }
+    if (next.toString() !== rawQuery) setParams(next)
   }
 
   function renderCell(row: ClientDevice, column: ClientColumn) {
     if (column === "user")
       return (
-        <span
-          className="flex items-center gap-2"
-          title={`${row.user_name || ""} ${row.user_email || ""} ${row.user_id}`}
+        <button
+          type="button"
+          className="flex max-w-52 items-center gap-2 rounded-sm text-left underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+          title={row.user_email ?? undefined}
+          disabled={!row.user_id || row.user_deleted}
+          onClick={() => {
+            if (row.user_id) setAccountUserID(row.user_id)
+          }}
         >
           <UserAvatar src={row.user_avatar_url} />
-          <span className="min-w-0">
-            <span className="block max-w-40 truncate">
-              {row.user_name || row.user_email || row.user_id}
-              {row.user_deleted ? ` · ${t(`${key}.deletedUser`)}` : ""}
-            </span>
-            <span className="block max-w-40 truncate text-xs text-muted-foreground">
-              {row.user_email || row.user_id}
-            </span>
+          <span className="truncate">
+            {row.user_name || row.user_email || row.user_id}
+            {row.user_deleted ? ` · ${t(`${key}.deletedUser`)}` : ""}
           </span>
-        </span>
+        </button>
       )
     if (column === "device_name")
       return (
@@ -391,6 +437,22 @@ export function ClientAnalysisPage() {
                   setDraft((current) => ({
                     ...current,
                     platform: event.target.value,
+                  }))
+                }
+              />
+            )}
+            {visibleFields.has("user_id") && (
+              <Input
+                id="client-device-user-id"
+                className="w-72 max-w-full"
+                maxLength={36}
+                placeholder={t(`${key}.fields.user_id`)}
+                aria-label={t(`${key}.fields.user_id`)}
+                value={draft.user_id ?? ""}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    user_id: event.target.value,
                   }))
                 }
               />
@@ -657,17 +719,35 @@ export function ClientAnalysisPage() {
             loading={loading || searching}
             error={Boolean(error)}
             hasNext={Boolean(data?.has_next)}
-            onPageSizeChange={(size) => {
-              setPageSize(size)
-              setPage(1)
-            }}
-            onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+            onPageSizeChange={(size) =>
+              setParams(devicePageParams(rawQuery, filters, 1, size))
+            }
+            onPrevious={() =>
+              setParams(
+                devicePageParams(
+                  rawQuery,
+                  filters,
+                  Math.max(1, page - 1),
+                  pageSize
+                )
+              )
+            }
             onNext={() => {
-              if (data?.has_next) setPage((value) => value + 1)
+              if (data?.has_next)
+                setParams(
+                  devicePageParams(rawQuery, filters, page + 1, pageSize)
+                )
             }}
           />
         </CardContent>
       </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
+      )}
     </section>
   )
 }

@@ -183,6 +183,7 @@ export const jaJP = {
         revoked: "失効済み",
       },
       fields: {
+        user_id: "ユーザー ID",
         user: "ユーザー",
         device_name: "端末名",
         platform: "OS",
@@ -285,6 +286,7 @@ export const jaJP = {
       title: "タスク履歴",
       description: "すべてのクライアントで実行されたタスクを確認します。",
       filters: {
+        userId: "ユーザー ID",
         taskName: "タスク名",
         taskNamePlaceholder: "タスク名を入力",
         userName: "ユーザー名",
@@ -761,6 +763,7 @@ export const jaJP = {
       description:
         "モデル、ツール、その他の機能によるポイント消費を確認します。",
       filters: {
+        selectUserRequired: "ユーザーを選択してください。",
         userPlaceholder: "ユーザー",
         userHint:
           "ユーザーを選択すると高速に絞り込めます。直接入力すると過去の名前やメールを検索します。",

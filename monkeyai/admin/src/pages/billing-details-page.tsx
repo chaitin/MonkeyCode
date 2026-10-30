@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
 import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
+import { tableQueryState, tableQueryParams } from "@/lib/table-query"
 import { billingExclusiveUntil, billingPageParams } from "@/lib/billing-range"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { AccountDialog } from "@/components/billing/account-dialog"
@@ -113,6 +114,31 @@ function filterDate(value?: string) {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
+function billingRequestQuery(
+  params: URLSearchParams,
+  page: number,
+  pageSize: number
+) {
+  const requestParams = new URLSearchParams(params)
+  requestParams.delete("page")
+  requestParams.delete("page_size")
+  requestParams.set("page", String(page))
+  requestParams.set("page_size", String(pageSize))
+  requestParams.delete("mode")
+  for (const key of ["from", "until"] as const) {
+    const value = filterDate(requestParams.get(key) ?? undefined)
+    if (value)
+      requestParams.set(
+        key,
+        (key === "from"
+          ? startOfLocalDay(value)
+          : billingExclusiveUntil(value)
+        ).toISOString()
+      )
+  }
+  return requestParams.toString()
+}
+
 const categoryNames: Record<string, string> = {
   model: "模型",
   image: "生图",
@@ -155,26 +181,27 @@ export function BillingDetailsPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const view = params.get("view") ?? "entries"
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const { page, pageSize } = tableQueryState(params.toString(), [])
+  const setPage = (nextPage: number) =>
+    setParams(tableQueryParams(params.toString(), [], {}, nextPage, pageSize))
+  const setPageSize = (size: number) =>
+    setParams(tableQueryParams(params.toString(), [], {}, 1, size))
   if (draftQuery !== filterQuery) {
     setDraftQuery(filterQuery)
     setDraft(Object.fromEntries(filterParams))
-    setPage(1)
+    setVisibleFields((current) => {
+      const next = new Set(current)
+      if (filterParams.get("content")) next.add("content")
+      if (filterParams.get("category")) next.add("category")
+      if (filterParams.get("entry_type")) next.add("entryType")
+      if (filterParams.get("user") || filterParams.get("user_id"))
+        next.add("user")
+      if (filterParams.get("from") || filterParams.get("until"))
+        next.add("dateRange")
+      return next
+    })
   }
-  const requestParams = new URLSearchParams(params)
-  requestParams.delete("page")
-  requestParams.delete("page_size")
-  requestParams.set("page", String(page))
-  requestParams.set("page_size", String(pageSize))
-  const query = requestParams.toString()
-  useEffect(() => {
-    if (!params.has("page") && !params.has("page_size")) return
-    const next = new URLSearchParams(params)
-    next.delete("page")
-    next.delete("page_size")
-    setParams(next, { replace: true })
-  }, [params, setParams])
+  const query = billingRequestQuery(params, page, pageSize)
   useEffect(() => {
     let cancelled = false
     const isSearch = searchRefreshRef.current === refresh
@@ -183,28 +210,14 @@ export function BillingDetailsPage() {
       setLoading(true)
       setLoadFailed(false)
     }
-    const next = new URLSearchParams(query)
-    next.delete("mode")
-    for (const key of ["from", "until"] as const) {
-      const value = filterDate(next.get(key) ?? undefined)
-      if (value) {
-        next.set(
-          key,
-          (key === "from"
-            ? startOfLocalDay(value)
-            : billingExclusiveUntil(value)
-          ).toISOString()
-        )
-      }
-    }
     const request =
       view === "entries"
-        ? api<Entries>(`/api/admin/v1/billing/entries?${next}`, {
+        ? api<Entries>(`/api/admin/v1/billing/entries?${query}`, {
             signal: controller.signal,
           }).then((list) => {
             if (!cancelled) setEntries(list)
           })
-        : api<Pending>(`/api/admin/v1/billing/reconciliation?${next}`, {
+        : api<Pending>(`/api/admin/v1/billing/reconciliation?${query}`, {
             signal: controller.signal,
           }).then((set) => {
             if (!cancelled) setPending(set)
@@ -247,8 +260,9 @@ export function BillingDetailsPage() {
     setLoading(true)
     setSearching(false)
     searchRefreshRef.current = null
-    setParams(next)
-    setRefresh((v) => v + 1)
+    next.delete("page")
+    if (next.toString() !== params.toString()) setParams(next)
+    else setRefresh((v) => v + 1)
   }
   const reload = () => {
     setLoadFailed(false)
@@ -261,7 +275,6 @@ export function BillingDetailsPage() {
     e.preventDefault()
     if (searching) return
     setLoadFailed(false)
-    setPage(1)
     const next = new URLSearchParams({ view: "entries" })
     for (const [key, value] of Object.entries(draft)) {
       if (
@@ -272,11 +285,12 @@ export function BillingDetailsPage() {
       }
     }
     if (!next.has("from") && !next.has("until")) next.set("range", "all")
-    const nextRefresh = refresh + 1
-    searchRefreshRef.current = nextRefresh
+    if (pageSize !== 50) next.set("page_size", String(pageSize))
+    const requestChanged = billingRequestQuery(next, 1, pageSize) !== query
+    searchRefreshRef.current = requestChanged ? refresh : refresh + 1
     setSearching(true)
-    setParams(next)
-    setRefresh(nextRefresh)
+    if (next.toString() !== params.toString()) setParams(next)
+    if (!requestChanged) setRefresh((value) => value + 1)
   }
   const total = view === "entries" ? undefined : (pending?.total ?? 0)
   const pages = Math.max(1, Math.ceil((total ?? 0) / pageSize))
@@ -323,13 +337,10 @@ export function BillingDetailsPage() {
       error={loadFailed}
       onPageSizeChange={(size) => {
         setPageSize(size)
-        setPage(1)
       }}
-      onPrevious={() => setPage((value) => Math.max(1, value - 1))}
+      onPrevious={() => setPage(Math.max(1, page - 1))}
       onNext={() =>
-        setPage((value) =>
-          view === "entries" ? value + 1 : Math.min(pages, value + 1)
-        )
+        setPage(view === "entries" ? page + 1 : Math.min(pages, page + 1))
       }
     />
   )
@@ -339,7 +350,6 @@ export function BillingDetailsPage() {
         value={view}
         onValueChange={(value) => {
           if (value !== "entries" && value !== "pending") return
-          setPage(1)
           navigate({ view: value })
         }}
         className="min-h-0 flex-1 gap-4"
