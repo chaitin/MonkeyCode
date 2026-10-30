@@ -1,0 +1,36 @@
+{
+  "environment_id": "env-demo",
+  "instance_id": "boot-1",
+  "generation": 1,
+  "desired_state": "running",
+  "driver": "gvisor",
+  "image": "registry.example.com/monkeyai/dev@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "network_policy": "isolated",
+  "resource": {
+    "cpu_millis": 2000,
+    "memory_bytes": 4294967296,
+    "host_tasks": 1024,
+    "temporary_bytes": 536870912
+  },
+  "volumes": [
+    {
+      "id": "env-demo-workspace",
+      "purpose": "workspace",
+      "bytes": 21474836480,
+      "inodes": 100000
+    },
+    {
+      "id": "env-demo-home",
+      "purpose": "home",
+      "bytes": 10737418240,
+      "inodes": 100000
+    },
+    {
+      "id": "env-demo-runtime",
+      "purpose": "runtime",
+      "bytes": 2147483648,
+      "inodes": 100000
+    }
+  ]
+}

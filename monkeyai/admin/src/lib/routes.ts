@@ -2,6 +2,10 @@ export const LOGIN_PATH = "/login"
 export const CONSOLE_PATH = "/console"
 
 export const CONSOLE_ROUTES = {
+  environments: "/console/environments/instances",
+  environmentPresets: "/console/environments/presets",
+  environmentCapacity: "/console/environments/capacity",
+  environmentQuotas: "/console/environments/quotas",
   realtimeStatus: "/console/statistics/realtime",
   taskHistory: "/console/statistics/task-history",
   conversationHistory: "/console/statistics/conversation-history",
@@ -21,11 +25,48 @@ export const CONSOLE_ROUTES = {
   feedback: "/console/settings/feedback",
   operationLogs: "/console/settings/operation-logs",
   otherSettings: "/console/settings/other",
+  engineHosts: "/console/settings/engine-hosts",
 } as const
 
 export const DEFAULT_CONSOLE_PATH = CONSOLE_ROUTES.realtimeStatus
 
 export const CONSOLE_PAGES = [
+  {
+    path: CONSOLE_ROUTES.environments,
+    sectionKey: "environmentAdmin.group",
+    sectionPath: CONSOLE_ROUTES.environments,
+    titleKey: "environmentAdmin.environmentsTitle",
+    descriptionKey: "environmentAdmin.environmentsDescription",
+  },
+  {
+    path: CONSOLE_ROUTES.environmentPresets,
+    sectionKey: "environmentAdmin.group",
+    sectionPath: CONSOLE_ROUTES.environments,
+    titleKey: "environmentAdmin.presetsTitle",
+    descriptionKey: "environmentAdmin.presetsDescription",
+  },
+  {
+    path: CONSOLE_ROUTES.environmentCapacity,
+    sectionKey: "environmentAdmin.group",
+    sectionPath: CONSOLE_ROUTES.environments,
+    titleKey: "environmentAdmin.capacityTitle",
+    descriptionKey: "environmentAdmin.capacityDescription",
+  },
+  {
+    path: CONSOLE_ROUTES.environmentQuotas,
+    sectionKey: "environmentAdmin.group",
+    sectionPath: CONSOLE_ROUTES.environments,
+    titleKey: "environmentAdmin.quotasTitle",
+    descriptionKey: "environmentAdmin.quotasDescription",
+  },
+
+  {
+    path: CONSOLE_ROUTES.engineHosts,
+    sectionKey: "environmentAdmin.group",
+    sectionPath: CONSOLE_ROUTES.environments,
+    titleKey: "pages.engineHosts.title",
+    descriptionKey: "pages.engineHosts.description",
+  },
   {
     path: CONSOLE_ROUTES.realtimeStatus,
     sectionKey: "sections.statistics",

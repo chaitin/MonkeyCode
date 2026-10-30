@@ -1,0 +1,500 @@
+openapi: 3.1.0
+info:
+  title: MonkeyAI Engine Host Protocol
+  version: 1.0.0
+servers:
+  - url: /
+security: []
+paths:
+  /api/host/v1/exchange:
+    post:
+      summary: 同步宿主环境目标并确认执行结果
+      description: 签名消息依次为 monkeyai-engine/exchange/v1、后台公开地址（去掉末尾斜杠）、host_id、challenge、payload 原始 JSON 字节的 SHA-256
+        小写十六进制摘要，以换行连接且无末尾换行。不得重新格式化参与签名的 payload。正文最多 64 KiB，payload 最多 32 KiB。每次使用 /challenges 的新挑战；与心跳顺序执行。挑战消费后即使响应丢失也不能重放，使用新挑战重传同一结果。运行时授权请求在 runtime 数组中逐项返回，拒绝不会回滚已提交的观察结果；响应丢失后携带同一请求和新挑战重试。只有
+        acknowledged 才代表结果已提交；旧代次结果确认后忽略。协议不携带任意命令、宿主路径或用户凭据。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - host_id
+              - challenge
+              - payload
+              - signature
+              properties:
+                host_id:
+                  type: string
+                  format: uuid
+                challenge:
+                  type: string
+                  minLength: 43
+                  maxLength: 43
+                payload:
+                  $ref: '#/components/schemas/EnvironmentExchange'
+                signature:
+                  type: string
+                  contentEncoding: base64
+              additionalProperties: false
+      responses:
+        '200':
+          description: 报告和目标在事务内处理；targets 按环境 ID 分页，每轮结束 cursor 为空。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentCommands'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 同步拒绝，保留结果并重试；跨宿主、未知环境、阶段不匹配或存储错误均不确认。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: 命令服务尚未配置。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/host/v1/install.sh:
+    get:
+      summary: 获取无凭据的安装引导脚本
+      responses:
+        '200':
+          description: 完整下载后再执行；仅通过可信 HTTPS 分发
+          content:
+            text/x-shellscript:
+              schema: {type: string}
+  /api/host/v1/releases/{version}/{arch}/{file}:
+    get:
+      summary: 获取固定版本发行文件
+      parameters:
+        - {name: version, in: path, required: true, schema: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'}}
+        - {name: arch, in: path, required: true, schema: {type: string, enum: [amd64, arm64]}}
+        - {name: file, in: path, required: true, schema: {type: string, enum: [manifest.json, monkeyai-engine, containerd, runsc, containerd-shim-runsc-v1, bridge, ptp, host-local, loopback, checkpointgofer, gvisor-proc-umounter, gvisor-sentry-prewarmer, gvisor_sentry, runsc-fd-parking, runsc-metric-server]}}
+      responses:
+        '200':
+          description: 安装命令固定 engine 和 manifest 的 SHA-256，其余组件摘要由 manifest 固定
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404': {description: 文件或发行版本不存在}
+  /api/host/v1/enroll:
+    post:
+      summary: 使用一次性命令和宿主公钥注册
+      description: 正文不超过 64 KiB。签名消息为 UTF-8 的 monkeyai-engine/enroll/v1、后台公开地址（去掉末尾斜杠）、token、architecture、version，以换行连接且无末尾换行。公钥和签名使用标准 Base64。令牌有效期内同公钥可重试响应丢失，其他公钥不能复用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, public_key, signature, architecture, version]
+              properties:
+                token: {type: string, minLength: 43, maxLength: 43}
+                public_key: {type: string, contentEncoding: base64}
+                signature: {type: string, contentEncoding: base64}
+                architecture: {type: string, enum: [amd64, arm64]}
+                version: {type: string}
+      responses:
+        '200':
+          description: 注册成功或同公钥重试
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [host_id]
+                properties:
+                  host_id: {type: string, format: uuid}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/host/v1/challenges:
+    post:
+      summary: 获取宿主心跳或环境同步签名挑战
+      description: 每个活动宿主只有一个 60 秒有效的挑战，未消费前重复获取返回相同值；签名不能用于其他后台、宿主、用途或正文。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [host_id]
+              properties:
+                host_id: {type: string, format: uuid}
+      responses:
+        '200':
+          description: 返回挑战
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challenge]
+                properties:
+                  challenge: {type: string, minLength: 43, maxLength: 43}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/host/v1/heartbeat:
+    post:
+      summary: 发送经宿主签名的预检报告
+      description: 签名消息为 UTF-8 的 monkeyai-engine/heartbeat/v1、后台公开地址、host_id、challenge、report 原始 JSON 字节的 SHA-256 小写十六进制摘要，以换行连接且无末尾换行。必须原样保留用于摘要的 report 字节。挑战在更新报告时原子消费，重复或过期请求返回 401。当前不是 WSS 工作负载控制通道。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [host_id, challenge, report, signature]
+              properties:
+                host_id: {type: string, format: uuid}
+                challenge: {type: string, minLength: 43, maxLength: 43}
+                signature: {type: string, contentEncoding: base64}
+                report:
+                  type: object
+                  description: JSON 字节上限 32 KiB
+                  required: [version, workload_verified, prerequisites_met, checks]
+                  properties:
+                    version: {type: integer, const: 1}
+                    workload_verified: {type: boolean, const: false}
+                    runtime_protocol: {type: integer, enum: [0, 1], description: standalone 编排能力版本，缺省为 0}
+                    prerequisites_met: {type: boolean}
+                    at: {type: string, format: date-time}
+                    os: {type: string}
+                    architecture: {type: string}
+                    network_policies:
+                      type: array
+                      maxItems: 2
+                      uniqueItems: true
+                      description: 未提供时只可分配 isolated；public-only 需宿主网络配置与工具预检通过
+                      items: {type: string, enum: [isolated, public-only]}
+                    checks:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        required: [name, passed, detail]
+                        properties:
+                          name: {type: string}
+                          passed: {type: boolean}
+                          detail: {type: string}
+      responses:
+        '200':
+          description: 接受预检上报；workload_enabled 不是环境调度开关，调度另需管理员配置宿主容量并启用
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, workload_enabled]
+                properties:
+                  accepted: {type: boolean, const: true}
+                  workload_enabled: {type: boolean, const: false}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+components:
+  responses:
+    Invalid:
+      description: 请求格式或大小无效
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unauthorized:
+      description: 凭据、签名或挑战无效、过期或撤销
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    EnvironmentResource:
+      type: object
+      required:
+      - cpu_millis
+      - memory_bytes
+      - host_tasks
+      - temporary_bytes
+      properties:
+        cpu_millis:
+          type: integer
+          format: int64
+          minimum: 100
+          maximum: 256000
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 268435456
+          maximum: 1099511627776
+        host_tasks:
+          type: integer
+          format: int64
+          minimum: 64
+          maximum: 65536
+        temporary_bytes:
+          type: integer
+          format: int64
+          minimum: 16777216
+          multipleOf: 4096
+          description: 不超过 memory_bytes 的一半。host_tasks 只限制宿主辅助进程与线程，不代表沙箱内进程硬限额。
+      additionalProperties: false
+    EnvironmentVolume:
+      type: object
+      required:
+      - id
+      - purpose
+      - bytes
+      - inodes
+      properties:
+        id:
+          type: string
+        purpose:
+          type: string
+          enum:
+          - workspace
+          - home
+          - runtime
+        bytes:
+          type: integer
+          format: int64
+          minimum: 67108864
+          maximum: 17592186044416
+          multipleOf: 1024
+        inodes:
+          type: integer
+          format: int64
+          minimum: 1024
+          maximum: 100000000
+      additionalProperties: false
+    EnvironmentSpec:
+      type: object
+      required:
+      - environment_id
+      - instance_id
+      - generation
+      - desired_state
+      - driver
+      - image
+      - image_digest
+      - resource
+      - volumes
+      - network_policy
+      properties:
+        runtime:
+          $ref: '#/components/schemas/EnvironmentRuntime'
+        environment_id:
+          type: string
+        instance_id:
+          type: string
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        desired_state:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+        driver:
+          type: string
+          const: gvisor
+        image:
+          type: string
+          maxLength: 512
+          pattern: ^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$
+        image_digest:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        resource:
+          $ref: '#/components/schemas/EnvironmentResource'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentVolume'
+          minItems: 3
+          maxItems: 3
+        network_policy:
+          type: string
+          enum: [isolated, public-only]
+      additionalProperties: false
+    EnvironmentProfile:
+      type: object
+      required:
+      - architecture
+      - image
+      - network_policy
+      - resource
+      - storage
+      properties:
+        architecture:
+          type: string
+          enum:
+          - amd64
+          - arm64
+        image:
+          type: string
+          maxLength: 512
+          pattern: ^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$
+        network_policy:
+          type: string
+          enum: [isolated, public-only]
+        resource:
+          $ref: '#/components/schemas/EnvironmentResource'
+        storage:
+          type: object
+          required:
+          - workspace_bytes
+          - home_bytes
+          - runtime_bytes
+          - inodes
+          properties:
+            workspace_bytes:
+              type: integer
+              format: int64
+              minimum: 67108864
+              maximum: 17592186044416
+              multipleOf: 1024
+            home_bytes:
+              type: integer
+              format: int64
+              minimum: 67108864
+              maximum: 17592186044416
+              multipleOf: 1024
+            runtime_bytes:
+              type: integer
+              format: int64
+              minimum: 67108864
+              maximum: 17592186044416
+              multipleOf: 1024
+            inodes:
+              type: integer
+              format: int64
+              minimum: 1024
+              maximum: 100000000
+          additionalProperties: false
+      additionalProperties: false
+    EnvironmentObservation:
+      type: object
+      required:
+      - environment_id
+      - instance_id
+      - generation
+      - phase
+      - reason
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+        instance_id:
+          type: string
+          format: uuid
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        phase:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+          - failed
+        reason:
+          type: string
+          enum:
+          - ''
+          - apply_failed
+          - inspect_failed
+          - process_exited
+          - local_state_conflict
+          - runtime_failed
+      additionalProperties: false
+    EnvironmentExchange:
+      type: object
+      required:
+      - protocol
+      - cursor
+      - results
+      properties:
+        protocol:
+          type: integer
+          const: 1
+        cursor:
+          type: string
+          description: 上一响应的 cursor；首轮和一轮结束后为空字符串。
+        runtime:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/RuntimeRequest'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentObservation'
+          maxItems: 16
+      additionalProperties: false
+    EnvironmentCommands:
+      type: object
+      required:
+      - protocol
+      - cursor
+      - targets
+      - acknowledged
+      properties:
+        protocol:
+          type: integer
+          const: 1
+        cursor:
+          type: string
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentSpec'
+          maxItems: 16
+        runtime:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/RuntimeReply'
+        acknowledged:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentObservation'
+          maxItems: 16
+    EnvironmentRuntime:
+      type: object
+      required: [server, server_id, user_id]
+      properties:
+        server: {type: string, format: uri, description: 固定的后台 HTTPS origin，无凭据}
+        server_id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+      additionalProperties: false
+    RuntimeRequest:
+      type: object
+      required: [environment_id, instance_id, generation, machine_id, public_key]
+      properties:
+        environment_id: {type: string, format: uuid}
+        instance_id: {type: string, format: uuid}
+        generation: {type: integer, minimum: 1, format: int64}
+        machine_id: {type: string, format: uuid}
+        public_key: {type: string, pattern: '^[A-Za-z0-9_-]{43}$', description: Ed25519 公钥的无填充 Base64URL}
+        user_code: {type: string, maxLength: 16, description: 首次绑定必须携带当前登录进程的设备申请码，禁止记录日志}
+      additionalProperties: false
+    RuntimeReply:
+      type: object
+      required: [request, reason]
+      properties:
+        request: {$ref: '#/components/schemas/RuntimeRequest'}
+        reason: {type: string, enum: ['', runtime_authorization_rejected]}
+      additionalProperties: false
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: {type: string}

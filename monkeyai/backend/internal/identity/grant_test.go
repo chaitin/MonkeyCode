@@ -118,6 +118,24 @@ func grantUser(t *testing.T, s *Service) User {
 	return user
 }
 
+func TestEnvironmentAuthorizationRoundTrip(t *testing.T) {
+	s := NewService(emailDatabase(t), nil, "https://ai.example.com")
+	user := grantUser(t, s)
+	token := grantToken(t, s, user.ID, "environment:read environment:manage device:connect session:read session:control files:read files:write")
+	p := tokenPrincipal(t, s, token.AccessToken, http.StatusNoContent)
+	if !p.Has("environment:read") || !p.Has("environment:manage") || !p.Has("device:connect") {
+		t.Fatal("客户端环境权限未保存", p)
+	}
+	next, err := s.Refresh(t.Context(), "monkeyai-desktop", token.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = tokenPrincipal(t, s, next.AccessToken, http.StatusNoContent)
+	if p.GrantID != token.GrantID || !p.Has("environment:manage") {
+		t.Fatal("刷新丢失环境权限或更换授权族", p)
+	}
+}
+
 func tokenPrincipal(t *testing.T, s *Service, raw string, want int) Principal {
 	t.Helper()
 	var p Principal

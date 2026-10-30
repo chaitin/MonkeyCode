@@ -148,6 +148,14 @@ func (s *Service) RevokeGrant(ctx context.Context, id, reason string) error {
 }
 
 func (s *Service) VerifyGrant(ctx context.Context, p Principal) (bool, error) {
+	if p.Purpose == "runtime" {
+		if allowed, err := s.runtimeAllowed(ctx, nil, p.UserID, p.MachineID); err != nil || !allowed {
+			if err == nil {
+				err = ErrRuntimeUnavailable
+			}
+			return false, err
+		}
+	}
 	g, err := sqlc.New(s.db).GetGrant(ctx, p.GrantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

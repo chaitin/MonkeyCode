@@ -24,6 +24,8 @@ type Database struct {
 }
 
 type Config struct {
+	EngineReleaseDir string
+	EngineVersion    string
 	HTTP
 	Database
 	Design
@@ -76,6 +78,8 @@ func Load(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
 	}
 	cfg := Config{
+		EngineReleaseDir:             os.Getenv("MONKEYAI_ENGINE_RELEASE_DIR"),
+		EngineVersion:                os.Getenv("MONKEYAI_ENGINE_VERSION"),
 		Design:                       loadDesign(),
 		RuntimeDesktopOrigins:        strings.FieldsFunc(os.Getenv("MONKEYAI_RUNTIME_DESKTOP_ORIGINS"), func(r rune) bool { return r == ',' || r == ' ' }),
 		RuntimeRelay:                 runtimeRelay,

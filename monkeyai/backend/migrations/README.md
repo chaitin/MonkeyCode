@@ -83,3 +83,17 @@ MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 `000024_remote_runtime` 的 up/down SQL 将当前工作树新增的远程执行结构作为一个版本执行，支持重复执行。重复升级保留已有授权族、刷新链、设备版本、会话摘要和密钥绑定；旧 token 只在尚未绑定授权族时回填。重复回滚会保留既有撤销时间和原因，重新升级不会恢复已撤销凭据。
 
 `TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。
+
+### 000035_engine_hosts
+
+新增 engine 宿主安装接入表，保存一次性令牌摘要、公钥、挑战与最近预检报告。令牌明文和安装命令不入库。先迁移数据库，再发布宿主管理接口和页面；回滚会删除宿主接入记录，现有宿主将无法认证，但不删除宿主磁盘数据。
+
+### 000036_environment_control
+
+新增预设、宿主可调度容量、用户额度、环境、操作记录和事务控制锁。依赖 000035；预设规格不可变，持久卷停止和删除后继续预留容量。先迁移再发布后端、engine；默认不启用新宿主调度。down 删除控制记录，但不停止宿主实例、不删除持久卷；回滚前须先完成实例停止确认并备份记录。协议、发布顺序与操作示例见 [环境控制说明](../../design/environment-control.md)。
+
+- `000037_environment_runtime`：云环境与 standalone 公开身份、设备申请及当前实例关联；down 仅删除关联，不清理宿主和授权，回滚前必须停止环境并撤销授权。
+
+### 000038_environment_scopes
+
+扩展 OAuth 授权族的权限约束，允许 environment:read/manage；必须先迁移再接入客户端申请这些权限。现有授权不自动扩权。down 撤销含环境权限的授权族与 token，移除其环境 scopes，并过期相关未完成授权请求和授权码；保留原撤销原因与时间。重新升级不恢复已撤销凭据，不影响无环境权限的其他授权。

@@ -178,3 +178,16 @@ matching; email addresses are not displayed in the tree. Pinyin supports joined 
 spaced spelling (`zhangsan` / `zhang san`) and initials (`zs`), using the library's
 contextual pronunciation for Chinese names. Search indexes are memoized so typing
 does not repeat transliteration.
+
+## 云环境管理
+
+后台“云环境”提供环境详情与操作记录、停止／删除、预设创建与启停、宿主安装与容量、用户额度。接口及状态语义见 [环境控制说明](../design/environment-control.md)。当前容器运行状态不表示 runtime 已连接，联网与客户端接入仍在开发中。
+
+只检查界面时可使用本机模拟 API：
+
+```sh
+pnpm build
+pnpm dev:environments
+```
+
+访问 `http://127.0.0.1:4187/console/environments/instances`。服务仅绑定 127.0.0.1，使用内存中的管理员与环境数据，不连接后端、宿主或生产数据库；停止服务即丢弃数据。`PORT` 可覆盖端口。`/__fixture` 为本地自动检查提供错误模式和请求记录，只存在于独立测试脚本，不属于应用 API。

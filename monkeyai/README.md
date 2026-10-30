@@ -21,6 +21,10 @@ docker compose up --build
 
 需要关闭时设置 `MONKEYAI_RUNTIME_RELAY=false`；需要独立文件域名时设置 `MONKEYAI_RUNTIME_FILES_ORIGIN`。独立服务器可使用设备码授权，在 `/device` 确认后发布同一设备；会话聚合按会话上报策略开放。HTTP 产物执行预览需额外的独立泛域名模板和泛域名证书，采用禁止存储的隔离沙箱。详细授权、预览证书挂载、身份覆盖和公钥轮换配置见[后端说明](backend/README.md#远程执行中转)。
 
+### 云端执行环境
+
+客户端通过接口选择后台预设创建云电脑，`monkeyai-engine` 管理 containerd／gVisor，并复用现有 standalone runtime。已提供宿主安装、环境控制、资源预留和持久目录；真实宿主闭环仍待统一人工验收。架构见 [设计方案](design/cloud-environment-design.md)，当前状态见 [实施记录](design/cloud-environment-implementation.md)，客户端调用流程见 [接口说明](design/environment-client-api.md)。Firecracker 和 Kubernetes 保留为后续扩展。
+
 ### 前置代理与操作记录来源 IP
 
 如果 Admin 前面还有反向代理，在 `.env` 中设置 `MONKEYAI_TRUSTED_PROXY_CIDRS` 为**直接连接 Admin 的可信代理** IP/CIDR，多个地址用英文逗号分隔，例如 `192.0.2.10/32,2001:db8::/32`。仅当连接来自这些网段时，Admin Nginx 才按 X-Forwarded-For 从右向左解析来源，并将结果作为 `X-Real-IP` 转发给后端；未设置时仍记录连接方地址。前置代理应追加实际连接来源到 XFF 或覆盖客户端提交的 XFF，不要把客户端可控的整段 XFF 原样透传，也不要将所有网段或整个容器网段设为可信代理。修改后重建 Admin 镜像并运行 `docker compose up -d admin`。
@@ -286,3 +290,9 @@ npm run build
 ```
 
 数据库测试使用随机 schema 并清理。完整方案、实施状态和验收记录见 [计费实施方案](design/billing-implementation-plan.md)。
+
+### 云电脑宿主安装
+
+管理后台「云环境 → 宿主管理」可生成一条命令安装 `monkeyai-engine`。发行物准备、HTTPS 配置、宿主要求和恢复操作见 [宿主安装说明](engine/INSTALL.md)，当前实施状态见 [安装实施计划](design/engine-installer-plan.md)。已接入注册、预检和云电脑执行驱动，真实宿主仍待统一人工验收。
+
+云环境后台控制与 engine 同步已提供 API，包含预设、配额、容量预留和启停／删除；后台已接入环境、预设、容量和额度管理页面；联网与 runtime 接入源码已完成；本仓仅交付客户端接口，真实宿主后续统一验收。接入顺序与当前边界见 [环境控制说明](design/environment-control.md) 和 [实施记录](design/cloud-environment-implementation.md)。
