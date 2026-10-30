@@ -114,9 +114,12 @@ func NewProxy(resolver Resolver, logger *slog.Logger) *Proxy {
 		resolver: resolver,
 		logger:   logger.With("module", "proxy"),
 	}
+	transport := DirectTransport()
+	transport.DisableKeepAlives = true
+	transport.ResponseHeaderTimeout = upstreamHeaderTimeout
 	p.reverse = &httputil.ReverseProxy{
 		ErrorLog:       logging.ErrorLog(p.logger),
-		Transport:      outboundTransport{direct: DirectTransport()},
+		Transport:      withUpstreamTimeouts(outboundTransport{direct: transport}),
 		Rewrite:        p.rewrite,
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.errorHandler,
@@ -137,7 +140,7 @@ func (p *Proxy) WithSessionResolver(resolver SessionResolver) *Proxy {
 
 func (p *Proxy) WithTransport(transport http.RoundTripper) *Proxy {
 	if transport != nil {
-		p.reverse.Transport = transport
+		p.reverse.Transport = withUpstreamTimeouts(transport)
 	}
 	return p
 }
@@ -334,8 +337,13 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 	modelID, transactionID := "", ""
 	if pc, ok := r.Context().Value(proxyContextKey{}).(*proxyContext); ok {
 		modelID, transactionID = pc.target.ModelID, pc.reservation.ID
-		p.logCall(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"}, err)
-		p.finish(r.Context(), pc, Call{Stream: pc.stream, Result: "failed", ErrorCode: "upstream_connection_failed"})
+		code := "upstream_connection_failed"
+		if upstreamTimedOut(r.Context(), err) {
+			code = "upstream_timeout"
+		}
+		call := Call{Stream: pc.stream, Result: "failed", ErrorCode: code}
+		p.logCall(r.Context(), pc, call, err)
+		p.finish(r.Context(), pc, call)
 	}
 	p.writeUpstreamFailure(w, r, modelID, transactionID)
 }

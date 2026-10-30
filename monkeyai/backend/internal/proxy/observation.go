@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -17,6 +18,9 @@ func (p *Proxy) logCall(ctx context.Context, pc *proxyContext, call Call, cause 
 		if result == "failed" && call.ErrorCode == "" {
 			call.ErrorCode = "upstream_failed"
 		}
+		if result == "failed" && upstreamTimedOut(ctx, cause) {
+			call.ErrorCode = "upstream_timeout"
+		}
 		level := slog.LevelDebug
 		if result == "failed" {
 			level = slog.LevelError
@@ -24,7 +28,7 @@ func (p *Proxy) logCall(ctx context.Context, pc *proxyContext, call Call, cause 
 				level = slog.LevelWarn
 			}
 		}
-		if ctx.Err() != nil && result == "failed" && (call.ErrorCode == "stream_interrupted" || call.ErrorCode == "upstream_connection_failed") {
+		if errors.Is(context.Cause(ctx), context.Canceled) && result == "failed" && (call.ErrorCode == "stream_interrupted" || call.ErrorCode == "upstream_connection_failed") {
 			result, level = "canceled", slog.LevelDebug
 		}
 		attrs := []slog.Attr{slog.String("module", "proxy"), slog.String("operation", "proxy_request"),
