@@ -4160,6 +4160,9 @@ const en = {
       copyUserInput: "Copy user input",
       copyUserInputSuccess: "User input copied to clipboard",
       copyUserInputFailed: "Failed to copy user input",
+      copyAgentResponse: "Copy response",
+      copyAgentResponseSuccess: "Response copied to clipboard",
+      copyAgentResponseFailed: "Failed to copy response",
     },
     plan: {
       title: "Steps ({{completed}}/{{total}})",
