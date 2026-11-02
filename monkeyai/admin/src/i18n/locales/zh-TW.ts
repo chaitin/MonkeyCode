@@ -347,14 +347,11 @@ export const zhTW = {
         authorizationRequired: "請至少選擇一個授權群組或使用者。",
         userModelReadOnly: "使用者模型不支援在此修改。",
         positiveNumber: "{{field}}必須為大於 0 的有效數字。",
-        videoConfigInvalid:
-          "請選擇有效的影片型號，並確認模型能力已載入。",
+        videoConfigInvalid: "請選擇有效的影片型號，並確認模型能力已載入。",
         videoPriceInvalid:
           "請填寫所有影片解析度的每秒積分，必須為非負數且最多六位小數。",
-        imageOptionsInvalid:
-          "目前生圖協定的設定無法使用，請切換協定或重試。",
-        imagePriceInvalid:
-          "每種清晰度的單張積分必須為非負數，且最多六位小數。",
+        imageOptionsInvalid: "目前生圖協定的設定無法使用，請切換協定或重試。",
+        imagePriceInvalid: "每種清晰度的單張積分必須為非負數，且最多六位小數。",
       },
       noTags: "沒有標籤",
       maxOutputTokens: "最大輸出 Token",
@@ -437,6 +434,7 @@ export const zhTW = {
       enable: "啟用",
       disable: "停用",
       edit: "修改",
+      copy: "複製",
       delete: "刪除",
       deleteDialogTitle: "刪除大型語言模型？",
       deleteDialogDescription: "確定刪除「{{model}}」嗎？此操作無法復原。",
@@ -957,8 +955,8 @@ export const zhTW = {
       },
       results: { success: "成功", failed: "失敗" },
       actions: {
-      avatar: "更新頭像",
-      change_password: "修改密碼",
+        avatar: "更新頭像",
+        change_password: "修改密碼",
         addModel: "新增大型模型",
         updateMemberRole: "修改成員角色",
         deleteKnowledgeBase: "刪除知識庫",
@@ -984,7 +982,23 @@ export const zhTW = {
     },
     otherSettings: {
       about: "關於",
-      proxies: { title: "系統代理", description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。", name: "名稱", url: "代理位址", username: "使用者名稱（選填）", password: "密碼（留空保持不變）", newPassword: "密碼（選填）", add: "新增代理", edit: "編輯代理", editAction: "編輯", delete: "刪除", cancel: "取消", save: "儲存", direct: "不使用代理", confirmDelete: "確定刪除此代理？" },
+      proxies: {
+        title: "系統代理",
+        description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。",
+        name: "名稱",
+        url: "代理位址",
+        username: "使用者名稱（選填）",
+        password: "密碼（留空保持不變）",
+        newPassword: "密碼（選填）",
+        add: "新增代理",
+        edit: "編輯代理",
+        editAction: "編輯",
+        delete: "刪除",
+        cancel: "取消",
+        save: "儲存",
+        direct: "不使用代理",
+        confirmDelete: "確定刪除此代理？",
+      },
       title: "其他設定",
       description: "設定品牌資訊、OAuth 與其他平台功能。",
       brandInfo: {

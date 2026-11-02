@@ -210,7 +210,8 @@ export const deDE = {
       invalidRange: "Das Enddatum darf nicht vor dem Startdatum liegen.",
       registeredHint:
         "Erstellung des Gerätedatensatzes, nicht das erste Gespräch oder die erste Verbindung.",
-      activityHint: "Der neuere Zeitpunkt von letzter Sichtung und Gerätebericht im Gerätedatensatz.",
+      activityHint:
+        "Der neuere Zeitpunkt von letzter Sichtung und Gerätebericht im Gerätedatensatz.",
       selectColumns: "Spalten auswählen",
       statuses: {
         active: "Registriert",
@@ -376,7 +377,8 @@ export const deDE = {
       videoCreditsPerSecond: "Credits pro Sekunde - {{resolution}}",
       imageCreditsPerImage: "Credits pro Bild - {{quality}}",
       discoverModels: "Verfügbare Modelle abrufen",
-      discoveryCredentialsRequired: "Zuerst Basis-URL und API-Schlüssel eingeben.",
+      discoveryCredentialsRequired:
+        "Zuerst Basis-URL und API-Schlüssel eingeben.",
       noDiscoveredModels: "Keine verfügbaren Modelle zurückgegeben",
       imageProvider: "Bildgenerierungsprotokoll",
       imageCapabilitiesUnavailable:
@@ -447,6 +449,7 @@ export const deDE = {
       enable: "Aktivieren",
       disable: "Deaktivieren",
       edit: "Bearbeiten",
+      copy: "Kopieren",
       delete: "Löschen",
       deleteDialogTitle: "Modell löschen?",
       deleteDialogDescription:
@@ -1020,8 +1023,8 @@ export const deDE = {
       },
       results: { success: "Erfolgreich", failed: "Fehlgeschlagen" },
       actions: {
-      avatar: "Profilbild aktualisieren",
-      change_password: "Passwort ändern",
+        avatar: "Profilbild aktualisieren",
+        change_password: "Passwort ändern",
         addModel: "Modell hinzugefügt",
         updateMemberRole: "Mitgliederrolle geändert",
         deleteKnowledgeBase: "Wissensdatenbank gelöscht",
@@ -1047,7 +1050,24 @@ export const deDE = {
     },
     otherSettings: {
       about: "Über",
-      proxies: { title: "System-Proxys", description: "Ausgehende Proxys für Modelle und Konnektoren konfigurieren. Verwendete Proxys können nicht gelöscht werden.", name: "Name", url: "Proxy-URL", username: "Benutzername (optional)", password: "Passwort (leer lassen zum Beibehalten)", newPassword: "Passwort (optional)", add: "Proxy hinzufügen", edit: "Proxy bearbeiten", editAction: "Bearbeiten", delete: "Löschen", cancel: "Abbrechen", save: "Speichern", direct: "Kein Proxy", confirmDelete: "Diesen Proxy löschen?" },
+      proxies: {
+        title: "System-Proxys",
+        description:
+          "Ausgehende Proxys für Modelle und Konnektoren konfigurieren. Verwendete Proxys können nicht gelöscht werden.",
+        name: "Name",
+        url: "Proxy-URL",
+        username: "Benutzername (optional)",
+        password: "Passwort (leer lassen zum Beibehalten)",
+        newPassword: "Passwort (optional)",
+        add: "Proxy hinzufügen",
+        edit: "Proxy bearbeiten",
+        editAction: "Bearbeiten",
+        delete: "Löschen",
+        cancel: "Abbrechen",
+        save: "Speichern",
+        direct: "Kein Proxy",
+        confirmDelete: "Diesen Proxy löschen?",
+      },
       title: "Weitere Einstellungen",
       description:
         "Konfigurieren Sie Branding, OAuth und weitere Plattformfunktionen.",

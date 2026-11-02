@@ -3,6 +3,7 @@ import {
   AiChat02Icon,
   AiImageIcon,
   ArrowRight01Icon,
+  Copy01Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -185,7 +186,7 @@ type ModelBase = {
   displayName: string
   owner: string
   contextSizeK: number
-  maxOutputTokens: number
+  maxOutputTokensK: number
   supportsVision: boolean
   supportsReasoning: boolean
   baseUrl: string
@@ -252,7 +253,7 @@ function fromApiModel(model: ApiModel): Model {
     displayName: model.display_name,
     owner: model.user.name || model.user.email || model.user.id,
     contextSizeK: (model.advanced_config?.context_window_tokens ?? 0) / 1000,
-    maxOutputTokens: model.advanced_config?.max_output_tokens ?? 0,
+    maxOutputTokensK: (model.advanced_config?.max_output_tokens ?? 0) / 1000,
     supportsVision: model.advanced_config?.supports_vision ?? false,
     supportsReasoning: model.advanced_config?.supports_reasoning ?? false,
     baseUrl: model.base_url,
@@ -349,6 +350,7 @@ export function ModelsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
+  const [formModel, setFormModel] = useState<Model | null>(null)
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
   const [modelToTest, setModelToTest] = useState<Model | null>(null)
@@ -453,8 +455,8 @@ export function ModelsPage() {
           if (!active) return
 
           const savedConfig =
-            editingModel?.kind === "image" && editingModel.provider === provider
-              ? editingModel.imageConfig
+            formModel?.kind === "image" && formModel.provider === provider
+              ? formModel.imageConfig
               : undefined
           const nextQualities = [...capability.qualities]
           const nextAspectRatios = [...capability.aspect_ratios]
@@ -486,7 +488,7 @@ export function ModelsPage() {
       active = false
       window.clearTimeout(timer)
     }
-  }, [dialogOpen, editingModel, kind, provider])
+  }, [dialogOpen, formModel, kind, provider])
 
   useEffect(() => {
     if (!dialogOpen || kind !== "video") return
@@ -514,7 +516,7 @@ export function ModelsPage() {
     return () => {
       active = false
     }
-  }, [dialogOpen, kind, provider, modelId, editingModel])
+  }, [dialogOpen, kind, provider, modelId, formModel])
 
   const resetModelOptions = () => {
     setAdvancedOpen(false)
@@ -546,15 +548,20 @@ export function ModelsPage() {
     if (!open) {
       resetModelOptions()
       setEditingModel(null)
+      setFormModel(null)
     }
   }
 
-  const handleEditModel = (model: Model) => {
-    if (model.type !== "system") {
+  const openModelForm = (model: Model | null, editing: boolean) => {
+    if (model && model.type !== "system") return
+    setEditingModel(editing ? model : null)
+    setFormModel(model)
+    if (!model) {
+      resetModelOptions()
+      setDialogOpen(true)
       return
     }
 
-    setEditingModel(model)
     setAdvancedOpen(false)
     setProtocol(model.protocol)
     setKind(model.kind)
@@ -625,7 +632,7 @@ export function ModelsPage() {
     const displayName =
       String(formData.get("displayName") ?? "").trim() || modelId
     const contextSizeK = Number(formData.get("contextSizeK"))
-    const maxOutputTokens = Number(formData.get("maxOutputTokens"))
+    const maxOutputTokensK = Number(formData.get("maxOutputTokensK"))
     const baseUrl = String(formData.get("baseUrl") ?? "").trim()
     const apiKey = String(formData.get("apiKey") ?? "").trim()
     const multiplier = Number(formData.get("multiplier"))
@@ -655,7 +662,7 @@ export function ModelsPage() {
       const invalidField =
         !Number.isFinite(contextSizeK) || contextSizeK <= 0
           ? t("pages.models.contextSize")
-          : !Number.isFinite(maxOutputTokens) || maxOutputTokens <= 0
+          : !Number.isFinite(maxOutputTokensK) || maxOutputTokensK <= 0
             ? t("pages.models.maxOutputTokens")
             : !Number.isFinite(multiplier) || multiplier <= 0
               ? t("pages.models.billingMultiplier")
@@ -740,7 +747,7 @@ export function ModelsPage() {
               protocol,
               advanced_config: {
                 context_window_tokens: contextSizeK * 1000,
-                max_output_tokens: maxOutputTokens,
+                max_output_tokens: maxOutputTokensK * 1000,
                 supports_vision: supportsVision,
                 supports_reasoning: supportsReasoning,
               },
@@ -757,8 +764,8 @@ export function ModelsPage() {
                   defaults: videoDefaults(
                     videoCapabilities,
                     videoModes,
-                    editingModel?.modelId === modelId
-                      ? editingModel.videoConfig
+                    formModel?.modelId === modelId
+                      ? formModel.videoConfig
                       : undefined
                   ),
                 },
@@ -829,10 +836,7 @@ export function ModelsPage() {
                   render={
                     <Button
                       className="ms-auto shrink-0"
-                      onClick={() => {
-                        setEditingModel(null)
-                        resetModelOptions()
-                      }}
+                      onClick={() => openModelForm(null, false)}
                     />
                   }
                 >
@@ -844,7 +848,7 @@ export function ModelsPage() {
                   closeLabel={t("common.close")}
                 >
                   <form
-                    key={editingModel?.id ?? "new-model"}
+                    key={formModel?.id ?? "new-model"}
                     className="flex min-h-0 flex-col gap-6"
                     onSubmit={handleAddModel}
                     onInvalidCapture={(event) => {
@@ -1085,7 +1089,7 @@ export function ModelsPage() {
                             <Input
                               id="model-base-url"
                               name="baseUrl"
-                              defaultValue={editingModel?.baseUrl}
+                              defaultValue={formModel?.baseUrl}
                               type="url"
                               placeholder={t("pages.models.baseUrlPlaceholder")}
                               required
@@ -1350,7 +1354,7 @@ export function ModelsPage() {
                                 </FieldLabel>
                                 <SystemProxySelect
                                   id="model-proxy"
-                                  selected={editingModel?.proxyId ?? ""}
+                                  selected={formModel?.proxyId ?? ""}
                                   proxies={proxies}
                                 />
                                 {proxyError && (
@@ -1370,7 +1374,7 @@ export function ModelsPage() {
                                       min="1"
                                       name="contextSizeK"
                                       defaultValue={
-                                        editingModel?.contextSizeK ?? 256
+                                        formModel?.contextSizeK ?? 256
                                       }
                                       placeholder="256"
                                       step="1"
@@ -1380,14 +1384,14 @@ export function ModelsPage() {
                                   </Field>
                                   <Field>
                                     <FieldLabel htmlFor="model-max-output-tokens">
-                                      {t("pages.models.maxOutputTokens")}
+                                      {t("pages.models.maxOutputTokens")} (K)
                                     </FieldLabel>
                                     <Input
                                       id="model-max-output-tokens"
                                       min="1"
-                                      name="maxOutputTokens"
+                                      name="maxOutputTokensK"
                                       defaultValue={
-                                        editingModel?.maxOutputTokens ?? 16384
+                                        formModel?.maxOutputTokensK ?? 16
                                       }
                                       placeholder="16384"
                                       step="1"
@@ -1405,8 +1409,8 @@ export function ModelsPage() {
                                       step="0.01"
                                       name="multiplier"
                                       defaultValue={
-                                        editingModel?.type === "system"
-                                          ? editingModel.multiplier
+                                        formModel?.type === "system"
+                                          ? formModel.multiplier
                                           : 1
                                       }
                                       placeholder="1.0"
@@ -1583,13 +1587,26 @@ export function ModelsPage() {
                                           </DropdownMenuItem>
                                         )}
                                       <DropdownMenuItem
-                                        onClick={() => handleEditModel(model)}
+                                        onClick={() =>
+                                          openModelForm(model, true)
+                                        }
                                       >
                                         <HugeiconsIcon
                                           icon={Edit02Icon}
                                           strokeWidth={2}
                                         />
                                         {t("pages.models.edit")}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          openModelForm(model, false)
+                                        }
+                                      >
+                                        <HugeiconsIcon
+                                          icon={Copy01Icon}
+                                          strokeWidth={2}
+                                        />
+                                        {t("pages.models.copy")}
                                       </DropdownMenuItem>
                                     </DropdownMenuGroup>
                                     <DropdownMenuSeparator />

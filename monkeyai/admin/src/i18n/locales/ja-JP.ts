@@ -202,7 +202,8 @@ export const jaJP = {
       invalidRange: "終了日は開始日以降にしてください。",
       registeredHint:
         "端末レコードの作成日時です。最初の会話や接続の日時ではありません。",
-      activityHint: "端末レコードの最終確認日時と情報報告日時のうち新しい日時です。",
+      activityHint:
+        "端末レコードの最終確認日時と情報報告日時のうち新しい日時です。",
       selectColumns: "列を選択",
       statuses: {
         active: "登録済み",
@@ -436,6 +437,7 @@ export const jaJP = {
       enable: "有効にする",
       disable: "無効にする",
       edit: "編集",
+      copy: "複製",
       delete: "削除",
       deleteDialogTitle: "モデルを削除しますか？",
       deleteDialogDescription:
@@ -983,8 +985,8 @@ export const jaJP = {
       },
       results: { success: "成功", failed: "失敗" },
       actions: {
-      avatar: "アバターを更新",
-      change_password: "パスワードを変更",
+        avatar: "アバターを更新",
+        change_password: "パスワードを変更",
         addModel: "モデルを追加",
         updateMemberRole: "メンバーの役割を変更",
         deleteKnowledgeBase: "ナレッジベースを削除",
@@ -1010,7 +1012,24 @@ export const jaJP = {
     },
     otherSettings: {
       about: "このアプリについて",
-      proxies: { title: "システムプロキシ", description: "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。", name: "名前", url: "プロキシURL", username: "ユーザー名（任意）", password: "パスワード（空欄で維持）", newPassword: "パスワード（任意）", add: "プロキシを追加", edit: "プロキシを編集", editAction: "編集", delete: "削除", cancel: "キャンセル", save: "保存", direct: "プロキシを使用しない", confirmDelete: "このプロキシを削除しますか？" },
+      proxies: {
+        title: "システムプロキシ",
+        description:
+          "モデルとコネクタ用の送信プロキシを設定します。使用中のプロキシは削除できません。",
+        name: "名前",
+        url: "プロキシURL",
+        username: "ユーザー名（任意）",
+        password: "パスワード（空欄で維持）",
+        newPassword: "パスワード（任意）",
+        add: "プロキシを追加",
+        edit: "プロキシを編集",
+        editAction: "編集",
+        delete: "削除",
+        cancel: "キャンセル",
+        save: "保存",
+        direct: "プロキシを使用しない",
+        confirmDelete: "このプロキシを削除しますか？",
+      },
       title: "その他の設定",
       description:
         "ブランド情報、OAuth、その他のプラットフォーム機能を設定します。",

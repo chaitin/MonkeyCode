@@ -357,7 +357,8 @@ export const enUS = {
       invalidRange: "End date must not precede start date.",
       registeredHint:
         "When the device record was created, not the first conversation or connection.",
-      activityHint: "The later of the device record’s last-seen time and information report.",
+      activityHint:
+        "The later of the device record’s last-seen time and information report.",
       selectColumns: "Select columns",
       statuses: {
         active: "Registered",
@@ -812,6 +813,7 @@ export const enUS = {
       enable: "Enable",
       disable: "Disable",
       edit: "Edit",
+      copy: "Copy",
       delete: "Delete",
       deleteDialogTitle: "Delete model?",
       deleteDialogDescription:

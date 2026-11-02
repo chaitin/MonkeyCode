@@ -195,7 +195,8 @@ export const koKR = {
       invalidRange: "종료일은 시작일보다 빠를 수 없습니다.",
       registeredHint:
         "기기 기록이 처음 생성된 시간이며 최초 대화나 연결 시간이 아닙니다.",
-      activityHint: "기기 기록의 마지막 확인 시간과 정보 보고 시간 중 더 최근 시간입니다.",
+      activityHint:
+        "기기 기록의 마지막 확인 시간과 정보 보고 시간 중 더 최근 시간입니다.",
       selectColumns: "열 선택",
       statuses: {
         active: "등록됨",
@@ -426,6 +427,7 @@ export const koKR = {
       enable: "활성화",
       disable: "비활성화",
       edit: "수정",
+      copy: "복사",
       delete: "삭제",
       deleteDialogTitle: "모델을 삭제하시겠습니까?",
       deleteDialogDescription:
@@ -966,8 +968,8 @@ export const koKR = {
       },
       results: { success: "성공", failed: "실패" },
       actions: {
-      avatar: "프로필 사진 업데이트",
-      change_password: "비밀번호 변경",
+        avatar: "프로필 사진 업데이트",
+        change_password: "비밀번호 변경",
         addModel: "모델 추가",
         updateMemberRole: "멤버 역할 변경",
         deleteKnowledgeBase: "지식 베이스 삭제",
@@ -993,7 +995,24 @@ export const koKR = {
     },
     otherSettings: {
       about: "정보",
-      proxies: { title: "시스템 프록시", description: "모델 및 커넥터용 아웃바운드 프록시를 설정합니다. 사용 중인 프록시는 삭제할 수 없습니다.", name: "이름", url: "프록시 URL", username: "사용자 이름(선택)", password: "비밀번호(비워 두면 유지)", newPassword: "비밀번호(선택)", add: "프록시 추가", edit: "프록시 편집", editAction: "편집", delete: "삭제", cancel: "취소", save: "저장", direct: "프록시 사용 안 함", confirmDelete: "이 프록시를 삭제하시겠습니까?" },
+      proxies: {
+        title: "시스템 프록시",
+        description:
+          "모델 및 커넥터용 아웃바운드 프록시를 설정합니다. 사용 중인 프록시는 삭제할 수 없습니다.",
+        name: "이름",
+        url: "프록시 URL",
+        username: "사용자 이름(선택)",
+        password: "비밀번호(비워 두면 유지)",
+        newPassword: "비밀번호(선택)",
+        add: "프록시 추가",
+        edit: "프록시 편집",
+        editAction: "편집",
+        delete: "삭제",
+        cancel: "취소",
+        save: "저장",
+        direct: "프록시 사용 안 함",
+        confirmDelete: "이 프록시를 삭제하시겠습니까?",
+      },
       title: "기타 설정",
       description: "브랜드 정보, OAuth 및 기타 플랫폼 기능을 설정합니다.",
       brandInfo: {

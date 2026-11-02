@@ -329,8 +329,7 @@ export const ar = {
           "اختر مجموعة أو مستخدمًا واحدًا على الأقل لمنحه حق الوصول.",
         userModelReadOnly: "لا يمكن تعديل نماذج المستخدمين هنا.",
         positiveNumber: "أدخل رقمًا صالحًا أكبر من 0 للحقل {{field}}.",
-        videoConfigInvalid:
-          "اختر نموذج فيديو مدعومًا وانتظر تحميل الإمكانات.",
+        videoConfigInvalid: "اختر نموذج فيديو مدعومًا وانتظر تحميل الإمكانات.",
         videoPriceInvalid:
           "أدخل رصيدًا غير سالب لكل ثانية ولكل دقة فيديو، بحد أقصى ست منازل عشرية.",
         imageOptionsInvalid:
@@ -422,6 +421,7 @@ export const ar = {
       enable: "تمكين",
       disable: "تعطيل",
       edit: "تعديل",
+      copy: "نسخ",
       delete: "حذف",
       deleteDialogTitle: "حذف النموذج؟",
       deleteDialogDescription:
@@ -961,8 +961,8 @@ export const ar = {
       },
       results: { success: "ناجح", failed: "فشل" },
       actions: {
-      avatar: "تحديث الصورة الرمزية",
-      change_password: "تغيير كلمة المرور",
+        avatar: "تحديث الصورة الرمزية",
+        change_password: "تغيير كلمة المرور",
         addModel: "إضافة نموذج",
         updateMemberRole: "تعديل دور عضو",
         deleteKnowledgeBase: "حذف قاعدة معرفة",
@@ -988,7 +988,24 @@ export const ar = {
     },
     otherSettings: {
       about: "حول",
-      proxies: { title: "وكلاء النظام", description: "إعداد وكلاء الاتصال الصادر للنماذج والموصلات. لا يمكن حذف الوكلاء قيد الاستخدام.", name: "الاسم", url: "عنوان الوكيل", username: "اسم المستخدم (اختياري)", password: "كلمة المرور (اتركها فارغة للاحتفاظ بها)", newPassword: "كلمة المرور (اختياري)", add: "إضافة وكيل", edit: "تعديل الوكيل", editAction: "تعديل", delete: "حذف", cancel: "إلغاء", save: "حفظ", direct: "بدون وكيل", confirmDelete: "هل تريد حذف هذا الوكيل؟" },
+      proxies: {
+        title: "وكلاء النظام",
+        description:
+          "إعداد وكلاء الاتصال الصادر للنماذج والموصلات. لا يمكن حذف الوكلاء قيد الاستخدام.",
+        name: "الاسم",
+        url: "عنوان الوكيل",
+        username: "اسم المستخدم (اختياري)",
+        password: "كلمة المرور (اتركها فارغة للاحتفاظ بها)",
+        newPassword: "كلمة المرور (اختياري)",
+        add: "إضافة وكيل",
+        edit: "تعديل الوكيل",
+        editAction: "تعديل",
+        delete: "حذف",
+        cancel: "إلغاء",
+        save: "حفظ",
+        direct: "بدون وكيل",
+        confirmDelete: "هل تريد حذف هذا الوكيل؟",
+      },
       title: "إعدادات أخرى",
       description: "اضبط الهوية البصرية وOAuth وإمكانات المنصة الأخرى.",
       brandInfo: {

@@ -211,7 +211,8 @@ export const frFR = {
       invalidRange: "La date de fin doit suivre ou égaler la date de début.",
       registeredHint:
         "Date de création de la fiche appareil, et non du premier échange ou de la première connexion.",
-      activityHint: "La plus récente entre la dernière présence et le rapport d’informations enregistrés pour l’appareil.",
+      activityHint:
+        "La plus récente entre la dernière présence et le rapport d’informations enregistrés pour l’appareil.",
       selectColumns: "Choisir les colonnes",
       statuses: {
         active: "Enregistré",
@@ -380,7 +381,8 @@ export const frFR = {
       videoCreditsPerSecond: "Crédits par seconde - {{resolution}}",
       imageCreditsPerImage: "Crédits par image - {{quality}}",
       discoverModels: "Récupérer les modèles disponibles",
-      discoveryCredentialsRequired: "Saisissez d’abord l’URL de base et la clé API.",
+      discoveryCredentialsRequired:
+        "Saisissez d’abord l’URL de base et la clé API.",
       noDiscoveredModels: "Aucun modèle disponible renvoyé",
       imageProvider: "Protocole de génération d’images",
       imageCapabilitiesUnavailable:
@@ -449,6 +451,7 @@ export const frFR = {
       enable: "Activer",
       disable: "Désactiver",
       edit: "Modifier",
+      copy: "Copier",
       delete: "Supprimer",
       deleteDialogTitle: "Supprimer le modèle ?",
       deleteDialogDescription:
@@ -648,8 +651,7 @@ export const frFR = {
       name: "Nom",
       namePlaceholder: "Saisissez le nom de la règle",
       ruleDescription: "Description",
-      ruleDescriptionPlaceholder:
-        "Décrivez brièvement l’objectif de la règle",
+      ruleDescriptionPlaceholder: "Décrivez brièvement l’objectif de la règle",
       content: "Contenu de la règle",
       contentPlaceholder: "Saisissez les règles que l’Agent doit respecter",
       type: "Type",
@@ -1017,8 +1019,8 @@ export const frFR = {
       },
       results: { success: "Réussi", failed: "Échoué" },
       actions: {
-      avatar: "Mettre à jour l’avatar",
-      change_password: "Modifier le mot de passe",
+        avatar: "Mettre à jour l’avatar",
+        change_password: "Modifier le mot de passe",
         addModel: "Ajout d’un modèle",
         updateMemberRole: "Modification du rôle d’un membre",
         deleteKnowledgeBase: "Suppression d’une base de connaissances",
@@ -1044,7 +1046,24 @@ export const frFR = {
     },
     otherSettings: {
       about: "À propos",
-      proxies: { title: "Proxys système", description: "Configurez les proxys sortants pour les modèles et connecteurs. Un proxy utilisé ne peut pas être supprimé.", name: "Nom", url: "URL du proxy", username: "Nom d’utilisateur (facultatif)", password: "Mot de passe (laisser vide pour conserver)", newPassword: "Mot de passe (facultatif)", add: "Ajouter un proxy", edit: "Modifier le proxy", editAction: "Modifier", delete: "Supprimer", cancel: "Annuler", save: "Enregistrer", direct: "Sans proxy", confirmDelete: "Supprimer ce proxy ?" },
+      proxies: {
+        title: "Proxys système",
+        description:
+          "Configurez les proxys sortants pour les modèles et connecteurs. Un proxy utilisé ne peut pas être supprimé.",
+        name: "Nom",
+        url: "URL du proxy",
+        username: "Nom d’utilisateur (facultatif)",
+        password: "Mot de passe (laisser vide pour conserver)",
+        newPassword: "Mot de passe (facultatif)",
+        add: "Ajouter un proxy",
+        edit: "Modifier le proxy",
+        editAction: "Modifier",
+        delete: "Supprimer",
+        cancel: "Annuler",
+        save: "Enregistrer",
+        direct: "Sans proxy",
+        confirmDelete: "Supprimer ce proxy ?",
+      },
       title: "Autres paramètres",
       description:
         "Configurez l’identité visuelle, OAuth et les autres fonctions de la plateforme.",

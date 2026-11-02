@@ -204,7 +204,8 @@ export const es419 = {
       invalidRange: "La fecha final no puede ser anterior a la inicial.",
       registeredHint:
         "Fecha de creación del registro del dispositivo, no de la primera conversación o conexión.",
-      activityHint: "La fecha más reciente entre la última presencia y el informe de información del dispositivo.",
+      activityHint:
+        "La fecha más reciente entre la última presencia y el informe de información del dispositivo.",
       selectColumns: "Elegir columnas",
       statuses: {
         active: "Registrado",
@@ -370,7 +371,8 @@ export const es419 = {
       videoCreditsPerSecond: "Créditos por segundo - {{resolution}}",
       imageCreditsPerImage: "Créditos por imagen - {{quality}}",
       discoverModels: "Obtener modelos disponibles",
-      discoveryCredentialsRequired: "Primero ingresa la URL base y la clave API.",
+      discoveryCredentialsRequired:
+        "Primero ingresa la URL base y la clave API.",
       noDiscoveredModels: "No se devolvieron modelos disponibles",
       imageProvider: "Protocolo de generación de imágenes",
       imageCapabilitiesUnavailable:
@@ -441,6 +443,7 @@ export const es419 = {
       enable: "Activar",
       disable: "Desactivar",
       edit: "Editar",
+      copy: "Copiar",
       delete: "Eliminar",
       deleteDialogTitle: "¿Eliminar modelo?",
       deleteDialogDescription:
@@ -562,8 +565,7 @@ export const es419 = {
         invalidZip: "No se puede leer el archivo. Sube un paquete ZIP válido.",
         unsafePath: "El paquete contiene una ruta de archivo no segura.",
         symlink: "El paquete no puede contener enlaces simbólicos.",
-        unpackedTooLarge:
-          "El paquete descomprimido no puede superar 1 GiB.",
+        unpackedTooLarge: "El paquete descomprimido no puede superar 1 GiB.",
         missingManifest:
           "No se encontró SKILL.md. Este no es un paquete de habilidad válido.",
         multipleManifests:
@@ -640,7 +642,8 @@ export const es419 = {
       name: "Nombre",
       namePlaceholder: "Ingresa el nombre de la regla",
       ruleDescription: "Descripción",
-      ruleDescriptionPlaceholder: "Describe brevemente el propósito de la regla",
+      ruleDescriptionPlaceholder:
+        "Describe brevemente el propósito de la regla",
       content: "Contenido de la regla",
       contentPlaceholder: "Ingresa las reglas que debe seguir el Agent",
       type: "Tipo",
@@ -1003,8 +1006,8 @@ export const es419 = {
       },
       results: { success: "Correcto", failed: "Fallido" },
       actions: {
-      avatar: "Actualizar avatar",
-      change_password: "Cambiar contraseña",
+        avatar: "Actualizar avatar",
+        change_password: "Cambiar contraseña",
         addModel: "Agregó un modelo",
         updateMemberRole: "Actualizó el rol de un miembro",
         deleteKnowledgeBase: "Eliminó una base de conocimiento",
@@ -1030,7 +1033,24 @@ export const es419 = {
     },
     otherSettings: {
       about: "Acerca de",
-      proxies: { title: "Proxies del sistema", description: "Configura proxies de salida para modelos y conectores. Los proxies en uso no se pueden eliminar.", name: "Nombre", url: "URL del proxy", username: "Usuario (opcional)", password: "Contraseña (dejar en blanco para conservar)", newPassword: "Contraseña (opcional)", add: "Agregar proxy", edit: "Editar proxy", editAction: "Editar", delete: "Eliminar", cancel: "Cancelar", save: "Guardar", direct: "Sin proxy", confirmDelete: "¿Eliminar este proxy?" },
+      proxies: {
+        title: "Proxies del sistema",
+        description:
+          "Configura proxies de salida para modelos y conectores. Los proxies en uso no se pueden eliminar.",
+        name: "Nombre",
+        url: "URL del proxy",
+        username: "Usuario (opcional)",
+        password: "Contraseña (dejar en blanco para conservar)",
+        newPassword: "Contraseña (opcional)",
+        add: "Agregar proxy",
+        edit: "Editar proxy",
+        editAction: "Editar",
+        delete: "Eliminar",
+        cancel: "Cancelar",
+        save: "Guardar",
+        direct: "Sin proxy",
+        confirmDelete: "¿Eliminar este proxy?",
+      },
       title: "Otras configuraciones",
       description:
         "Configura la marca, OAuth y otras funciones de la plataforma.",

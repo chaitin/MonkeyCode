@@ -768,6 +768,7 @@ export const zhCN = {
       enable: "启用",
       disable: "禁用",
       edit: "修改",
+      copy: "复制",
       delete: "删除",
       deleteDialogTitle: "删除大模型？",
       deleteDialogDescription: "确定删除“{{model}}”吗？此操作无法撤销。",
