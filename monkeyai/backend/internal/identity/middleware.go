@@ -15,6 +15,7 @@ import (
 )
 
 type userContextKey struct{}
+type browserSessionContextKey struct{}
 
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey{}).(User)
@@ -71,7 +72,10 @@ func (s *Service) RequireBrowser(next http.Handler) http.Handler {
 			return
 		}
 		logging.Bind(r.Context(), slog.String("user_id", user.ID))
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, user)))
+		cookie, _ := r.Cookie(sessionCookie)
+		ctx := context.WithValue(r.Context(), userContextKey{}, user)
+		ctx = context.WithValue(ctx, browserSessionContextKey{}, tokenHash(cookie.Value))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

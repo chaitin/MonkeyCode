@@ -4,6 +4,16 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 每个接口必须声明请求体、成功与错误响应、响应 JSON Schema，并为字段补充类型、约束和说明；不能只记录状态码和响应描述。契约字段以实际 HTTP DTO 为准，密钥等不返回的敏感字段需要明确说明。
 
+## 本人账户设置
+
+浏览器会话接口统一在 `admin.yaml` 记录。`GET /api/auth/v1/profile` 返回当前用户、`custom_avatar_url`、`synced_avatar_url`、`has_password` 和 CSRF 令牌。本人修改无需管理员角色；上传、清除和修改密码都必须携带 `X-CSRF-Token`，有 Origin 时还需匹配公开服务地址。
+
+- `PUT /api/auth/v1/profile/avatar`：直接发送 JPG/PNG/WebP 图片二进制，最多 5 MiB、2500 万像素、单边 8192 像素；服务端完整解码校验后写入现有 S3 存储，并更新自定义头像。
+- `DELETE /api/auth/v1/profile/avatar`：仅清除自定义头像，恢复最新 OAuth 同步头像或客户端默认头像。
+- `POST /api/auth/v1/profile/password`：发送 `current_password`、`new_password`。校验当前密码，新密码至少 12 个 Unicode 字符且不超过 1024 字节；每用户每 15 分钟最多 10 次校验。成功时事务内撤销旧会话、OAuth 授权/令牌、授权码、已批准但尚未兑换的设备授权和验证码，并轮换当前浏览器 Cookie。客户端保留当前登录并使用响应的新 CSRF 令牌。密码登录、授权码兑换和浏览器授权提交在用户记录加锁后复核凭据；遇到并发新增设备批准时返回 `409` 并回滚本次修改，客户端可重新提交。
+
+所有用户头像输出均优先取非空的 `users.custom_avatar_url`，再取 `users.avatar_url`。OAuth 继续只更新后者，不覆盖用户自定义头像。`/api/auth/v1/avatars/{userID}/{avatarID}` 提供带随机版本号的当前图片，不需要 Cookie，供浏览器和客户端展示；已清除或替换版本返回 404。部署前须执行迁移 `000036_user_profile_add`。未设置密码的 OAuth 账号通过现有登录页验证码重置流程设置密码，不能跳过当前密码校验直接设置。
+
 ## 历史列表分页
 
 `GET /api/admin/v1/statistics/history`（任务历史）和 `/api/admin/v1/statistics/conversations`（对话历史）返回 `{items, page, page_size, has_next}`，不再返回 `total`。每页最多读取 `page_size + 1` 条判断下一页，去掉总数及逐任务轮次 COUNT；超出末页时返回请求页码和空数组。任务行的 `turn_count` 读取已维护的缓存，存量后台校准期间为 `null`。原有筛选、时间范围和稳定排序继续生效。前后端需同步发布，深 OFFSET 与模糊搜索仍有独立成本。

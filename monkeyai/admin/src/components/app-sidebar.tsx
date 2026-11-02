@@ -205,6 +205,7 @@ export function AppSidebar({
         <VersionUpgradeButton className="w-full" variant="outline" showIcon />
         <WeChatCommunityButton />
         <NavUser
+          key={user?.id ?? "anonymous"}
           user={{
             name: user?.name ?? "MonkeyAI Admin",
             email: user?.email ?? "",

@@ -25,6 +25,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -322,6 +323,20 @@ func (s *Service) deviceDecision(w http.ResponseWriter, r *http.Request) {
 	if _, err = q.LockDeviceOwner(r.Context(), user.ID); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "identity", "operation", "deviceDecision", "error", err)
 		writeError(r.Context(), w, 403, "permission_denied", "账号不可用于设备授权")
+		return
+	}
+	cookie, cookieErr := r.Cookie(sessionCookie)
+	if cookieErr != nil {
+		writeError(r.Context(), w, 401, "unauthorized", "登录已失效，请重新登录")
+		return
+	}
+	if _, err = q.LockProfileBrowserSession(r.Context(), sqlc.LockProfileBrowserSessionParams{UserID: user.ID, TokenHash: tokenHash(cookie.Value)}); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "复核设备授权会话失败", "module", "identity", "operation", "deviceDecision", "error", err)
+			writeError(r.Context(), w, 503, "authorization_state_unavailable", "授权状态暂不可用")
+		} else {
+			writeError(r.Context(), w, 401, "unauthorized", "登录已失效，请重新登录")
+		}
 		return
 	}
 	status := "denied"

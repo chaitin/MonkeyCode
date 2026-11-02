@@ -1,6 +1,29 @@
 import { enUS } from "./en-US.ts"
 
 export const zhTW = {
+  accountSettings: {
+    loadingProfile: "正在載入",
+    profileLoadFailed: "帳戶設定載入失敗，請重試。",
+    retry: "重試",
+    avatarSaved: "頭像已更新。",
+    passwordSaved: "密碼已更新，其他登入和用戶端授權已失效。",
+    passwordNotSet: "帳戶尚未設定密碼，請透過登入頁面的忘記密碼功能設定。",
+    avatar: "頭像",
+    changeAvatar: "更換頭像",
+    chooseFile: "選擇檔案",
+    useAvatar: "使用此頭像",
+    invalidImage: "請選擇有效的 JPG、PNG 或 WebP 圖片。",
+    imageTooLarge: "圖片大小不能超過 5 MB。",
+    changePassword: "修改密碼",
+    currentPassword: "目前密碼",
+    nextPassword: "新密碼",
+    confirmPassword: "確認新密碼",
+    currentPasswordRequired: "請輸入目前密碼。",
+    passwordHint: "新密碼至少需要 12 個字元。",
+    passwordMismatch: "兩次輸入的新密碼不一致，請重新確認。",
+    cancel: "取消",
+    save: "儲存修改",
+  },
   audit: {
     ...enUS.audit,
     since: "開始日期",
@@ -934,6 +957,8 @@ export const zhTW = {
       },
       results: { success: "成功", failed: "失敗" },
       actions: {
+      avatar: "更新頭像",
+      change_password: "修改密碼",
         addModel: "新增大型模型",
         updateMemberRole: "修改成員角色",
         deleteKnowledgeBase: "刪除知識庫",

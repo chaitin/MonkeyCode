@@ -1,6 +1,32 @@
 import { enUS } from "./en-US.ts"
 
 export const es419 = {
+  accountSettings: {
+    loadingProfile: "Cargando",
+    profileLoadFailed:
+      "No se pudo cargar la configuración. Inténtalo de nuevo.",
+    retry: "Reintentar",
+    avatarSaved: "Avatar actualizado.",
+    passwordSaved:
+      "Contraseña actualizada. Se revocaron las otras sesiones y autorizaciones de clientes.",
+    passwordNotSet:
+      "Esta cuenta no tiene contraseña. Configúrala desde la recuperación de contraseña al iniciar sesión.",
+    avatar: "Avatar",
+    changeAvatar: "Cambiar avatar",
+    chooseFile: "Elegir archivo",
+    useAvatar: "Usar este avatar",
+    invalidImage: "Selecciona una imagen JPG, PNG o WebP válida.",
+    imageTooLarge: "La imagen no debe superar los 5 MB.",
+    changePassword: "Cambiar contraseña",
+    currentPassword: "Contraseña actual",
+    nextPassword: "Nueva contraseña",
+    confirmPassword: "Confirmar nueva contraseña",
+    currentPasswordRequired: "Ingresa tu contraseña actual.",
+    passwordHint: "La nueva contraseña debe tener al menos 12 caracteres.",
+    passwordMismatch: "Las nuevas contraseñas no coinciden. Revísalas.",
+    cancel: "Cancelar",
+    save: "Guardar cambios",
+  },
   audit: {
     ...enUS.audit,
     since: "Fecha de inicio",
@@ -977,6 +1003,8 @@ export const es419 = {
       },
       results: { success: "Correcto", failed: "Fallido" },
       actions: {
+      avatar: "Actualizar avatar",
+      change_password: "Cambiar contraseña",
         addModel: "Agregó un modelo",
         updateMemberRole: "Actualizó el rol de un miembro",
         deleteKnowledgeBase: "Eliminó una base de conocimiento",

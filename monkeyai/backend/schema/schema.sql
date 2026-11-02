@@ -1742,3 +1742,11 @@ CREATE TABLE session_turns_partitioned (
 ) PARTITION BY RANGE (started_at);
 
 CREATE TABLE session_turns_default PARTITION OF session_turns_partitioned DEFAULT;
+
+ALTER TABLE users ADD COLUMN custom_avatar_url text;
+
+CREATE TABLE profile_password_attempts (
+    user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    window_started_at timestamptz NOT NULL DEFAULT now(),
+    attempts integer NOT NULL DEFAULT 1 CHECK (attempts > 0)
+);

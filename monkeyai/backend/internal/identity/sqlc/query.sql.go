@@ -296,7 +296,7 @@ WHERE
             id,
             name,
             email,
-            coalesce(avatar_url, '')::text AS avatar_url,
+            coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
             ROLE,
             status,
             joined_at,
@@ -410,7 +410,7 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (name, email, ROLE, password_hash)
     VALUES ($1, $2, $3, $4)
 RETURNING
-    id, name, email, coalesce(avatar_url, '')::text AS avatar_url, ROLE, status, joined_at, last_login_at
+    id, name, email, coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url, ROLE, status, joined_at, last_login_at
 `
 
 type CreateUserParams struct {
@@ -673,7 +673,7 @@ SELECT
     u.id,
     u.name,
     u.email,
-    coalesce(u.avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''), '')::text AS avatar_url,
     u.role,
     u.status,
     u.joined_at,
@@ -775,7 +775,7 @@ SELECT
     u.id,
     u.name,
     u.email,
-    coalesce(u.avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''), '')::text AS avatar_url,
     u.role,
     u.status,
     u.joined_at,
@@ -829,7 +829,7 @@ SELECT
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,
@@ -913,7 +913,7 @@ SELECT
     u.id,
     u.name,
     u.email,
-    coalesce(u.avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''), '')::text AS avatar_url,
     u.role,
     u.status,
     u.joined_at,
@@ -990,7 +990,7 @@ SELECT
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,
@@ -1034,7 +1034,7 @@ SELECT
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,
@@ -1106,7 +1106,7 @@ SELECT
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,
@@ -1596,7 +1596,7 @@ RETURNING
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,
@@ -1657,7 +1657,7 @@ RETURNING
     id,
     name,
     email,
-    coalesce(avatar_url, '')::text AS avatar_url,
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url,
     ROLE,
     status,
     joined_at,

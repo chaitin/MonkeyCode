@@ -353,5 +353,5 @@ func (s *Service) completeEmail(w http.ResponseWriter, r *http.Request, purpose 
 		writeJSON(r.Context(), w, 200, map[string]bool{"reset": true})
 		return
 	}
-	s.loginSession(w, r, user, "email_code")
+	s.loginSession(w, r, user, "email_code", "")
 }

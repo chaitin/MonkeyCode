@@ -224,7 +224,7 @@ func (q *Queries) FeedbackByIdempotency(ctx context.Context, arg FeedbackByIdemp
 }
 
 const feedbackUsers = `-- name: FeedbackUsers :many
-SELECT id, name, email, avatar_url
+SELECT id, name, email, coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url
 FROM users
 WHERE id = ANY($1::uuid[])
 `
@@ -233,7 +233,7 @@ type FeedbackUsersRow struct {
 	ID        string
 	Name      string
 	Email     string
-	AvatarUrl *string
+	AvatarUrl string
 }
 
 func (q *Queries) FeedbackUsers(ctx context.Context, userIds []string) ([]FeedbackUsersRow, error) {

@@ -217,7 +217,7 @@ SELECT
     id,
     name,
     email,
-    coalesce(nullif(btrim(avatar_url), ''), '')::text AS avatar_url
+    coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url
 FROM
     users
 WHERE

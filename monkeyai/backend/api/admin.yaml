@@ -7,6 +7,114 @@ servers:
 security:
   - AdminSession: []
 paths:
+  /api/auth/v1/profile:
+    get:
+      summary: 读取本人账户设置
+      description: 任意有效浏览器登录会话可用。返回最终展示头像、自定义和同步头像地址、是否已设置密码，以及绑定当前 Cookie 的 CSRF 令牌。响应不缓存，不返回密码哈希。
+      security: [{BrowserSession: []}]
+      responses:
+        '200':
+          description: 本人账户设置
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountProfile'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+  /api/auth/v1/profile/avatar:
+    put:
+      summary: 上传本人自定义头像
+      description: 请求体直接发送图片二进制，不使用 multipart。支持 JPG、PNG、WebP，最多 5 MiB、2500 万像素且单边不超过 8192 像素；服务端校验完整图片。图片保存到对象存储，仅更新 custom_avatar_url，不修改 OAuth 的 avatar_url。
+      security: [{BrowserSession: []}]
+      parameters: [{$ref: '#/components/parameters/ProfileCSRF'}]
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: {type: string, format: binary}
+          image/png:
+            schema: {type: string, format: binary}
+          image/webp:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: 头像已保存
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AvatarUpdate'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ProfileError', description: CSRF 令牌或请求来源无效}
+        '413': {$ref: '#/components/responses/ProfileError', description: 图片超过 5 MiB}
+        '503': {$ref: '#/components/responses/ProfileError', description: 头像存储不可用}
+    delete:
+      summary: 清除本人自定义头像
+      description: 仅清空 custom_avatar_url，重新显示最新 OAuth 同步头像；同步头像也为空时使用默认头像。旧上传对象在事务提交后尽力清理。
+      security: [{BrowserSession: []}]
+      parameters: [{$ref: '#/components/parameters/ProfileCSRF'}]
+      responses:
+        '200':
+          description: 已恢复同步头像或默认头像
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AvatarUpdate'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ProfileError', description: CSRF 令牌或请求来源无效}
+  /api/auth/v1/profile/password:
+    post:
+      summary: 修改本人登录密码
+      description: 必须正确提供当前密码；未设置密码的 OAuth 账号应通过现有验证码重置流程设置密码。新密码至少 12 个 Unicode 字符、最多 1024 字节，且不能与当前密码相同。每个用户每 15 分钟最多 10 次有效格式的校验请求。成功时在同一事务中更新密码、撤销旧浏览器会话、OAuth 授权和令牌、未兑换授权码、已批准但尚未兑换的设备授权及登录/重置验证码，并创建当前浏览器的新会话；同时更新 Cookie 和 CSRF 令牌。原密码、明文新密码及哈希均不进入审计参数或响应。
+      security: [{BrowserSession: []}]
+      parameters: [{$ref: '#/components/parameters/ProfileCSRF'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [current_password, new_password]
+              properties:
+                current_password: {type: string, minLength: 1, maxLength: 1024}
+                new_password: {type: string, minLength: 12, maxLength: 1024}
+      responses:
+        '200':
+          description: 密码已修改，当前浏览器会话已轮换
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token]
+                properties:
+                  csrf_token: {type: string}
+        '400': {$ref: '#/components/responses/ProfileError', description: 密码格式无效、未设置密码或新旧密码相同}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ProfileError', description: 当前密码、CSRF 令牌或请求来源无效}
+        '409': {$ref: '#/components/responses/ProfileError', description: 校验期间密码或设备授权发生并发变化，需重新提交；本次事务未修改密码}
+        '429': {$ref: '#/components/responses/ProfileError', description: 密码校验次数已达上限，返回 Retry-After}
+  /api/auth/v1/avatars/{userID}/{avatarID}:
+    get:
+      summary: 读取用户当前自定义头像
+      description: 图片地址包含随机 UUID 版本，不需要登录 Cookie，以供浏览器和客户端展示头像。只提供用户当前自定义头像，已替换或清除的版本返回 404；响应支持 ETag 和缓存。
+      security: []
+      parameters:
+        - {name: userID, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: avatarID, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 头像图片
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '304': {description: 图片未改变}
+        '404': {description: 用户或头像版本不存在, content: {text/plain: {schema: {type: string}}}}
+        '503': {$ref: '#/components/responses/ProfileError', description: 头像存储不可用}
   /api/admin/v1/resource-import-uploads:
     post:
       summary: 创建资源包上传会话
@@ -5261,12 +5369,23 @@ paths:
           description: 设备清单暂不可用
 components:
   securitySchemes:
+    BrowserSession:
+      type: apiKey
+      in: cookie
+      name: monkeyai_session
+      description: 任意有效浏览器登录会话，不要求管理员角色。
     AdminSession:
       type: apiKey
       in: cookie
       name: monkeyai_session
       description: 管理后台登录后设置的 HttpOnly Session Cookie。
   parameters:
+    ProfileCSRF:
+      in: header
+      name: X-CSRF-Token
+      required: true
+      description: GET /api/auth/v1/profile 返回的令牌；修改密码后须使用响应中的新令牌。
+      schema: {type: string}
     ModelID:
       in: path
       name: modelID
@@ -5284,6 +5403,11 @@ components:
         type: string
         format: uuid
   responses:
+    ProfileError:
+      description: 本人账户设置操作失败，具体原因见 error.code 和 error.message。
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ResourceError'}
     ResourceError400:
       description: 字段或关联无效
       content:
@@ -5742,6 +5866,21 @@ components:
             properties:
               password:
                 minLength: 12
+    AccountProfile:
+      type: object
+      required: [user, custom_avatar_url, synced_avatar_url, has_password, csrf_token]
+      properties:
+        user: {$ref: '#/components/schemas/EmailAuthUser'}
+        custom_avatar_url: {type: string, description: 用户上传的头像地址，为空时使用同步头像。}
+        synced_avatar_url: {type: string, description: OAuth 自动同步的头像地址，不被手动上传修改。}
+        has_password: {type: boolean}
+        csrf_token: {type: string}
+    AvatarUpdate:
+      type: object
+      required: [user, custom_avatar_url]
+      properties:
+        user: {$ref: '#/components/schemas/EmailAuthUser'}
+        custom_avatar_url: {type: string}
     EmailAuthUser:
       type: object
       required:
@@ -5777,6 +5916,7 @@ components:
           format: date-time
         avatar_url:
           type: string
+          description: 最终展示头像，优先自定义头像，否则使用 OAuth 同步头像；均为空时省略。
         last_login_at:
           type: string
           format: date-time

@@ -1,6 +1,34 @@
 import { enUS } from "./en-US.ts"
 
 export const frFR = {
+  accountSettings: {
+    loadingProfile: "Chargement",
+    profileLoadFailed:
+      "Impossible de charger les paramètres du compte. Réessayez.",
+    retry: "Réessayer",
+    avatarSaved: "Avatar mis à jour.",
+    passwordSaved:
+      "Mot de passe mis à jour. Les autres sessions et autorisations des clients ont été révoquées.",
+    passwordNotSet:
+      "Ce compte n’a pas de mot de passe. Utilisez la récupération du mot de passe sur la page de connexion.",
+    avatar: "Avatar",
+    changeAvatar: "Changer d’avatar",
+    chooseFile: "Choisir un fichier",
+    useAvatar: "Utiliser cet avatar",
+    invalidImage: "Choisissez une image JPG, PNG ou WebP valide.",
+    imageTooLarge: "L’image ne doit pas dépasser 5 Mo.",
+    changePassword: "Modifier le mot de passe",
+    currentPassword: "Mot de passe actuel",
+    nextPassword: "Nouveau mot de passe",
+    confirmPassword: "Confirmer le nouveau mot de passe",
+    currentPasswordRequired: "Saisissez votre mot de passe actuel.",
+    passwordHint:
+      "Le nouveau mot de passe doit contenir au moins 12 caractères.",
+    passwordMismatch:
+      "Les nouveaux mots de passe ne correspondent pas. Vérifiez-les.",
+    cancel: "Annuler",
+    save: "Enregistrer",
+  },
   audit: {
     ...enUS.audit,
     since: "Date de début",
@@ -989,6 +1017,8 @@ export const frFR = {
       },
       results: { success: "Réussi", failed: "Échoué" },
       actions: {
+      avatar: "Mettre à jour l’avatar",
+      change_password: "Modifier le mot de passe",
         addModel: "Ajout d’un modèle",
         updateMemberRole: "Modification du rôle d’un membre",
         deleteKnowledgeBase: "Suppression d’une base de connaissances",

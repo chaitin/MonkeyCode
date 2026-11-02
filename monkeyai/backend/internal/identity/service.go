@@ -137,6 +137,7 @@ type Service struct {
 	email           EmailSender
 	accounts        AccountPreserver
 	writer          member.UserWriter
+	avatars         ProfileStorage
 	db              *pgxpool.Pool
 	settings        SettingReader
 	publicLicense   PublicLicenseReader
@@ -325,6 +326,9 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, redirectURI, code,
 	if err != nil {
 		if errors.Is(err, errAuthorizationCodeUsed) {
 			return Token{}, oauthError("invalid_grant", "授权码已被使用")
+		}
+		if errors.Is(err, errInvalidGrant) {
+			return Token{}, oauthError("invalid_grant", "账号不可用于此授权")
 		}
 		return Token{}, err
 	}

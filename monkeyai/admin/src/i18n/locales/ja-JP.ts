@@ -1,6 +1,32 @@
 import { enUS } from "./en-US.ts"
 
 export const jaJP = {
+  accountSettings: {
+    loadingProfile: "読み込み中",
+    profileLoadFailed:
+      "アカウント設定を読み込めませんでした。再試行してください。",
+    retry: "再試行",
+    avatarSaved: "アバターを更新しました。",
+    passwordSaved:
+      "パスワードを更新しました。他のセッションとクライアント認証は無効になりました。",
+    passwordNotSet:
+      "パスワードが未設定です。ログイン画面のパスワード再設定をご利用ください。",
+    avatar: "アバター",
+    changeAvatar: "アバターを変更",
+    chooseFile: "ファイルを選択",
+    useAvatar: "このアバターを使う",
+    invalidImage: "有効なJPG、PNG、WebP画像を選択してください。",
+    imageTooLarge: "画像は5 MB以下にしてください。",
+    changePassword: "パスワードを変更",
+    currentPassword: "現在のパスワード",
+    nextPassword: "新しいパスワード",
+    confirmPassword: "新しいパスワードの確認",
+    currentPasswordRequired: "現在のパスワードを入力してください。",
+    passwordHint: "新しいパスワードは12文字以上にしてください。",
+    passwordMismatch: "新しいパスワードが一致しません。確認してください。",
+    cancel: "キャンセル",
+    save: "変更を保存",
+  },
   audit: {
     ...enUS.audit,
     since: "開始日",
@@ -957,6 +983,8 @@ export const jaJP = {
       },
       results: { success: "成功", failed: "失敗" },
       actions: {
+      avatar: "アバターを更新",
+      change_password: "パスワードを変更",
         addModel: "モデルを追加",
         updateMemberRole: "メンバーの役割を変更",
         deleteKnowledgeBase: "ナレッジベースを削除",

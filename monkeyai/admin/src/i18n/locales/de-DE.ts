@@ -1,6 +1,33 @@
 import { enUS } from "./en-US.ts"
 
 export const deDE = {
+  accountSettings: {
+    loadingProfile: "Wird geladen",
+    profileLoadFailed:
+      "Kontoeinstellungen konnten nicht geladen werden. Bitte erneut versuchen.",
+    retry: "Erneut versuchen",
+    avatarSaved: "Avatar aktualisiert.",
+    passwordSaved:
+      "Passwort aktualisiert. Andere Sitzungen und Client-Autorisierungen wurden widerrufen.",
+    passwordNotSet:
+      "Dieses Konto hat kein Passwort. Lege eines über die Passwortwiederherstellung auf der Anmeldeseite fest.",
+    avatar: "Avatar",
+    changeAvatar: "Avatar ändern",
+    chooseFile: "Datei auswählen",
+    useAvatar: "Diesen Avatar verwenden",
+    invalidImage: "Wähle ein gültiges JPG-, PNG- oder WebP-Bild.",
+    imageTooLarge: "Das Bild darf höchstens 5 MB groß sein.",
+    changePassword: "Passwort ändern",
+    currentPassword: "Aktuelles Passwort",
+    nextPassword: "Neues Passwort",
+    confirmPassword: "Neues Passwort bestätigen",
+    currentPasswordRequired: "Gib dein aktuelles Passwort ein.",
+    passwordHint: "Das neue Passwort muss mindestens 12 Zeichen lang sein.",
+    passwordMismatch:
+      "Die neuen Passwörter stimmen nicht überein. Bitte prüfen.",
+    cancel: "Abbrechen",
+    save: "Änderungen speichern",
+  },
   audit: {
     ...enUS.audit,
     since: "Startdatum",
@@ -993,6 +1020,8 @@ export const deDE = {
       },
       results: { success: "Erfolgreich", failed: "Fehlgeschlagen" },
       actions: {
+      avatar: "Profilbild aktualisieren",
+      change_password: "Passwort ändern",
         addModel: "Modell hinzugefügt",
         updateMemberRole: "Mitgliederrolle geändert",
         deleteKnowledgeBase: "Wissensdatenbank gelöscht",

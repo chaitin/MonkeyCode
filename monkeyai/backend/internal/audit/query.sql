@@ -29,7 +29,7 @@ WITH filtered AS NOT MATERIALIZED (
         request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
     FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset)
 ), enriched AS (
-    SELECT page.*, nullif(btrim(u.avatar_url), '') AS actor_avatar_url
+    SELECT page.*, coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')) AS actor_avatar_url
     FROM page LEFT JOIN users u ON u.id = page.actor_user_id
 )
 SELECT jsonb_build_object('total', (SELECT count(*) FROM filtered), 'items',

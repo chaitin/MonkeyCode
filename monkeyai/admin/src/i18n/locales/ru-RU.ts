@@ -1,6 +1,32 @@
 import { enUS } from "./en-US.ts"
 
 export const ruRU = {
+  accountSettings: {
+    loadingProfile: "Загрузка",
+    profileLoadFailed:
+      "Не удалось загрузить настройки аккаунта. Повторите попытку.",
+    retry: "Повторить",
+    avatarSaved: "Аватар обновлён.",
+    passwordSaved:
+      "Пароль обновлён. Другие сеансы и авторизации клиентов отозваны.",
+    passwordNotSet:
+      "Пароль не задан. Задайте его через восстановление пароля на странице входа.",
+    avatar: "Аватар",
+    changeAvatar: "Изменить аватар",
+    chooseFile: "Выбрать файл",
+    useAvatar: "Использовать этот аватар",
+    invalidImage: "Выберите корректное изображение JPG, PNG или WebP.",
+    imageTooLarge: "Размер изображения не должен превышать 5 МБ.",
+    changePassword: "Изменить пароль",
+    currentPassword: "Текущий пароль",
+    nextPassword: "Новый пароль",
+    confirmPassword: "Подтвердите новый пароль",
+    currentPasswordRequired: "Введите текущий пароль.",
+    passwordHint: "Новый пароль должен содержать не менее 12 символов.",
+    passwordMismatch: "Новые пароли не совпадают. Проверьте их.",
+    cancel: "Отмена",
+    save: "Сохранить изменения",
+  },
   audit: {
     ...enUS.audit,
     since: "Дата начала",
@@ -980,6 +1006,8 @@ export const ruRU = {
       },
       results: { success: "Успешно", failed: "Ошибка" },
       actions: {
+      avatar: "Обновить аватар",
+      change_password: "Изменить пароль",
         addModel: "Добавлена модель",
         updateMemberRole: "Изменена роль участника",
         deleteKnowledgeBase: "Удалена база знаний",

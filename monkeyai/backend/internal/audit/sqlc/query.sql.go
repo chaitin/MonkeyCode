@@ -113,7 +113,7 @@ WITH filtered AS NOT MATERIALIZED (
         request_params, host(source_ip) AS source_ip, user_agent, result, error_message, occurred_at, request_id
     FROM filtered ORDER BY occurred_at DESC, id DESC LIMIT $10 OFFSET $9
 ), enriched AS (
-    SELECT page.id, page.actor_type, page.actor_user_id, page.actor_name, page.actor_email, page.action, page.category, page.target_type, page.target_id, page.request_params, page.source_ip, page.user_agent, page.result, page.error_message, page.occurred_at, page.request_id, nullif(btrim(u.avatar_url), '') AS actor_avatar_url
+    SELECT page.id, page.actor_type, page.actor_user_id, page.actor_name, page.actor_email, page.action, page.category, page.target_type, page.target_id, page.request_params, page.source_ip, page.user_agent, page.result, page.error_message, page.occurred_at, page.request_id, coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')) AS actor_avatar_url
     FROM page LEFT JOIN users u ON u.id = page.actor_user_id
 )
 SELECT jsonb_build_object('total', (SELECT count(*) FROM filtered), 'items',

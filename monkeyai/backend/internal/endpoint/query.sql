@@ -113,7 +113,7 @@ ORDER BY created_at DESC, id DESC;
 
 -- name: AdminDevices :many
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f), devices AS (
- SELECT e.*,u.name AS user_name,u.email AS user_email,nullif(btrim(u.avatar_url),'') AS user_avatar_url,
+ SELECT e.*,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
  WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)
@@ -137,7 +137,7 @@ LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: AdminDeviceOverview :one
 WITH opts AS (SELECT sqlc.arg(filters)::jsonb AS f), devices AS (
- SELECT e.*,u.name AS user_name,u.email AS user_email,nullif(btrim(u.avatar_url),'') AS user_avatar_url,
+ SELECT e.*,u.name AS user_name,u.email AS user_email,coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')) AS user_avatar_url,
   u.deleted_at IS NOT NULL AS user_deleted,greatest(e.last_seen_at,e.last_reported_at) AS last_active_at
  FROM endpoints e LEFT JOIN users u ON u.id=e.user_id CROSS JOIN opts p
  WHERE (p.f->>'query' IS NULL OR strpos(lower(concat_ws(' ',u.name,u.email,e.device_name,e.alias,e.client_name,e.machine_id::text)),lower(p.f->>'query'))>0)

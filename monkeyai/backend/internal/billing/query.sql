@@ -73,7 +73,7 @@ memberships AS (
 )
 SELECT
     jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email, 'status', u.status,
-        'avatar_url', nullif(btrim(u.avatar_url), ''),
+        'avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')),
         'group_ids', ARRAY(SELECT m.id::text FROM memberships m WHERE m.user_id = u.id ORDER BY m.created_at, m.id),
         'effective_credits', COALESCE(g.credits, sqlc.arg(root_credits)::numeric)::text,
         'balance_credits', COALESCE(a.balance,
@@ -298,7 +298,7 @@ AND (sqlc.arg(group_id)::text = ''
 SELECT
     (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
 	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
-    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
+    'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
 WHERE (sqlc.arg(user_query)::text = ''
@@ -327,7 +327,7 @@ LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 SELECT
     (to_jsonb (e) || jsonb_build_object('credit_delta', e.credit_delta::text, 'balance_after', e.balance_after::text,
 	'unit_credits', e.unit_credits::text, 'sequence', e.sequence::text,
-    'user_avatar_url', nullif(btrim(u.avatar_url), '')))::jsonb
+    'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), ''))))::jsonb
 FROM
     credit_ledger_entries e LEFT JOIN users u ON u.id = e.user_id
 WHERE e.user_id = sqlc.arg(user_id)::uuid
@@ -469,7 +469,7 @@ WHERE
 -- name: PendingTransactions :many
 SELECT
     jsonb_build_object('id', t.id, 'user_id', t.user_id, 'user_name', t.user_name, 'user_email',
-    t.user_email, 'user_avatar_url', nullif(btrim(u.avatar_url), ''),
+    t.user_email, 'user_avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')),
     'item_name', t.item_name, 'category', t.category, 'mode', t.mode, 'status',
     t.status, 'reserve', t.reserve::text, 'amount', t.amount::text, 'error_code', t.error_code,
     'attempts', t.attempts, 'started_at', t.started_at)
@@ -1365,7 +1365,7 @@ ORDER BY e.sequence;
 
 -- name: SearchBillingUsers :many
 SELECT jsonb_build_object('id',u.id,'name',u.name,'email',u.email,
- 'avatar_url',nullif(btrim(u.avatar_url),''),'deleted',u.deleted_at IS NOT NULL)
+ 'avatar_url',coalesce(nullif(btrim(u.custom_avatar_url),''), nullif(btrim(u.avatar_url),'')),'deleted',u.deleted_at IS NOT NULL)
 FROM users u
 WHERE (sqlc.arg(user_id)::text = '' OR u.id = nullif(sqlc.arg(user_id)::text,'')::uuid)
  AND (sqlc.arg(query)::text = '' OR strpos(lower(u.name),lower(sqlc.arg(query)::text))>0

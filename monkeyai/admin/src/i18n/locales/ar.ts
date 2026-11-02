@@ -1,6 +1,31 @@
 import { enUS } from "./en-US.ts"
 
 export const ar = {
+  accountSettings: {
+    loadingProfile: "جارٍ التحميل",
+    profileLoadFailed: "تعذر تحميل إعدادات الحساب. حاول مجددًا.",
+    retry: "إعادة المحاولة",
+    avatarSaved: "تم تحديث الصورة الشخصية.",
+    passwordSaved:
+      "تم تحديث كلمة المرور وإلغاء الجلسات الأخرى وتفويضات العملاء.",
+    passwordNotSet:
+      "لم تُعيّن كلمة مرور لهذا الحساب. استخدم استعادة كلمة المرور في صفحة تسجيل الدخول.",
+    avatar: "الصورة الشخصية",
+    changeAvatar: "تغيير الصورة",
+    chooseFile: "اختيار ملف",
+    useAvatar: "استخدام هذه الصورة",
+    invalidImage: "اختر صورة JPG أو PNG أو WebP صالحة.",
+    imageTooLarge: "يجب ألا يتجاوز حجم الصورة 5 ميغابايت.",
+    changePassword: "تغيير كلمة المرور",
+    currentPassword: "كلمة المرور الحالية",
+    nextPassword: "كلمة المرور الجديدة",
+    confirmPassword: "تأكيد كلمة المرور الجديدة",
+    currentPasswordRequired: "أدخل كلمة المرور الحالية.",
+    passwordHint: "يجب أن تتكون كلمة المرور الجديدة من 12 حرفًا على الأقل.",
+    passwordMismatch: "كلمتا المرور الجديدتان غير متطابقتين. يرجى التحقق.",
+    cancel: "إلغاء",
+    save: "حفظ التغييرات",
+  },
   audit: {
     ...enUS.audit,
     since: "تاريخ البدء",
@@ -936,6 +961,8 @@ export const ar = {
       },
       results: { success: "ناجح", failed: "فشل" },
       actions: {
+      avatar: "تحديث الصورة الرمزية",
+      change_password: "تغيير كلمة المرور",
         addModel: "إضافة نموذج",
         updateMemberRole: "تعديل دور عضو",
         deleteKnowledgeBase: "حذف قاعدة معرفة",

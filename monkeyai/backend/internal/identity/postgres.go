@@ -57,14 +57,23 @@ func (s *Service) storeAuthorizationCode(ctx context.Context, request Authorizat
 		}
 	}()
 
-	result, err := sqlc.New(tx).CompleteAuthorizationRequest(ctx, request.ID)
+	q := sqlc.New(tx)
+	if _, err = q.LockProfileCredentials(ctx, userID); err != nil {
+		return err
+	}
+	if hash, ok := ctx.Value(browserSessionContextKey{}).(string); ok {
+		if _, err = q.LockProfileBrowserSession(ctx, sqlc.LockProfileBrowserSessionParams{UserID: userID, TokenHash: hash}); err != nil {
+			return err
+		}
+	}
+	result, err := q.CompleteAuthorizationRequest(ctx, request.ID)
 	if err != nil {
 		return fmt.Errorf("完成授权请求 %s: %w", request.ID, err)
 	}
 	if result.RowsAffected() != 1 {
 		return errors.New("授权请求已完成或已过期")
 	}
-	_, err = sqlc.New(tx).CreateAuthorizationCode(ctx, sqlc.CreateAuthorizationCodeParams{
+	_, err = q.CreateAuthorizationCode(ctx, sqlc.CreateAuthorizationCodeParams{
 		CodeHash:               codeHash,
 		AuthorizationRequestID: request.ID,
 		UserID:                 userID,
@@ -125,6 +134,37 @@ func (s *Service) createBrowserSession(ctx context.Context, userID, hash, authen
 	return err
 }
 
+// createPasswordBrowserSession serializes credential revalidation and session
+// creation with password changes. An old password verified before a concurrent
+// change must not create a fresh session after that change revoked old sessions.
+func (s *Service) createPasswordBrowserSession(ctx context.Context, user User, expectedHash, token string, expiresAt time.Time) (User, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer rollbackProfile(ctx, tx)
+	q := sqlc.New(tx)
+	credentials, err := q.LockProfileCredentials(ctx, user.ID)
+	if err != nil {
+		return User{}, err
+	}
+	if credentials.PasswordHash == nil || *credentials.PasswordHash != expectedHash {
+		return User{}, pgx.ErrNoRows
+	}
+	current, err := readProfileUser(ctx, q, user.ID)
+	if err != nil {
+		return User{}, err
+	}
+	if current.Email != user.Email || user.Role == "admin" && current.Role != "admin" {
+		return User{}, pgx.ErrNoRows
+	}
+	_, err = q.CreateBrowserSession(ctx, sqlc.CreateBrowserSessionParams{TokenHash: token, UserID: current.ID, AuthenticationMethod: "password", ExpiresAt: expiresAt})
+	if err != nil {
+		return User{}, err
+	}
+	return current, tx.Commit(ctx)
+}
+
 func (s *Service) userByBrowserToken(ctx context.Context, hash string) (User, string, error) {
 	var user User
 	var authenticationMethod string
@@ -172,7 +212,11 @@ func (s *Service) listUsers(ctx context.Context) ([]User, error) {
 }
 
 func (s *Service) userByID(ctx context.Context, id string) (User, error) {
-	row, queryErr := sqlc.New(s.db).GetUser(ctx, id)
+	return readProfileUser(ctx, sqlc.New(s.db), id)
+}
+
+func readProfileUser(ctx context.Context, q *sqlc.Queries, id string) (User, error) {
+	row, queryErr := q.GetUser(ctx, id)
 	return User{ID: row.ID, Name: row.Name, Email: row.Email, AvatarURL: row.AvatarUrl, Role: row.Role, Status: row.Status, JoinedAt: row.JoinedAt, LastLoginAt: row.LastLoginAt}, queryErr
 }
 
@@ -192,10 +236,13 @@ func (s *Service) updateUser(ctx context.Context, id, name, role, status, passwo
 		}
 	}
 	result, err := s.writer.UpdateUser(ctx, tx, member.UpdateUser{ID: id, Name: name, Role: role, Status: status, PasswordHash: passwordHash})
-	user := userFromMember(result)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
+	if err != nil {
+		return User{}, err
+	}
+	user, err := readProfileUser(ctx, sqlc.New(tx), result.ID)
 	if err != nil {
 		return User{}, err
 	}
@@ -208,7 +255,12 @@ func (s *Service) upsertIdentity(ctx context.Context, profile upstreamProfile, a
 		Username: profile.Username, Name: profile.Name, Email: profile.Email, AvatarURL: profile.AvatarURL,
 		AdminOnly: adminOnly, AutoRegistrationEnabled: autoRegistrationEnabled,
 	})
-	return userFromMember(result), err
+	if err != nil {
+		return User{}, err
+	}
+	// The host owns OAuth synchronization; read the effective avatar here so
+	// its return value cannot bypass the local custom-avatar override.
+	return s.userByID(ctx, result.ID)
 }
 
 func validateUpstreamUser(user User, adminOnly bool) error {

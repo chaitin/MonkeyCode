@@ -105,10 +105,10 @@ func (s *Service) passwordLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(r.Context(), w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
 		return
 	}
-	s.loginSession(w, r, user, "password")
+	s.loginSession(w, r, user, "password", passwordHash)
 }
 
-func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method string) {
+func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User, method, passwordHash string) {
 	err := s.writer.TouchLogin(r.Context(), user.ID)
 	if err != nil {
 		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "更新登录时间失败", "module", "identity", "operation", "loginSession", "user_id", user.ID, "error", err)
@@ -121,7 +121,16 @@ func (s *Service) loginSession(w http.ResponseWriter, r *http.Request, user User
 		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return
 	}
-	if err := s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL)); err != nil {
+	if method == "password" {
+		user, err = s.createPasswordBrowserSession(r.Context(), user, passwordHash, tokenHash(token), s.now().Add(s.sessionTTL))
+	} else {
+		err = s.createBrowserSession(r.Context(), user.ID, tokenHash(token), method, s.now().Add(s.sessionTTL))
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(r.Context(), w, http.StatusUnauthorized, "invalid_credentials", "邮箱或密码错误")
+		return
+	}
+	if err != nil {
 		logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "创建登录会话失败", "module", "identity", "operation", "loginSession", "user_id", user.ID, "method", method, "error", err)
 		writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "登录失败")
 		return

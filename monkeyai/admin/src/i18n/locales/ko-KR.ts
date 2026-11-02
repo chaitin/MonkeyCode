@@ -1,6 +1,31 @@
 import { enUS } from "./en-US.ts"
 
 export const koKR = {
+  accountSettings: {
+    loadingProfile: "불러오는 중",
+    profileLoadFailed: "계정 설정을 불러오지 못했습니다. 다시 시도하세요.",
+    retry: "다시 시도",
+    avatarSaved: "프로필 사진을 변경했습니다.",
+    passwordSaved:
+      "비밀번호를 변경했습니다. 다른 세션과 클라이언트 인증이 해제되었습니다.",
+    passwordNotSet:
+      "비밀번호가 설정되지 않았습니다. 로그인 페이지에서 비밀번호 찾기를 이용하세요.",
+    avatar: "프로필 사진",
+    changeAvatar: "사진 변경",
+    chooseFile: "파일 선택",
+    useAvatar: "이 사진 사용",
+    invalidImage: "유효한 JPG, PNG 또는 WebP 이미지를 선택하세요.",
+    imageTooLarge: "이미지는 5 MB 이하여야 합니다.",
+    changePassword: "비밀번호 변경",
+    currentPassword: "현재 비밀번호",
+    nextPassword: "새 비밀번호",
+    confirmPassword: "새 비밀번호 확인",
+    currentPasswordRequired: "현재 비밀번호를 입력하세요.",
+    passwordHint: "새 비밀번호는 12자 이상이어야 합니다.",
+    passwordMismatch: "새 비밀번호가 일치하지 않습니다. 다시 확인하세요.",
+    cancel: "취소",
+    save: "변경 사항 저장",
+  },
   audit: {
     ...enUS.audit,
     since: "시작 날짜",
@@ -941,6 +966,8 @@ export const koKR = {
       },
       results: { success: "성공", failed: "실패" },
       actions: {
+      avatar: "프로필 사진 업데이트",
+      change_password: "비밀번호 변경",
         addModel: "모델 추가",
         updateMemberRole: "멤버 역할 변경",
         deleteKnowledgeBase: "지식 베이스 삭제",

@@ -1,7 +1,12 @@
 "use client"
 
+import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import {
+  AccountSettingsDialog,
+  type AccountSettingsUser,
+} from "@/components/account-settings-dialog"
 import { UserAvatar } from "@/components/user-avatar"
 import {
   DropdownMenu,
@@ -29,74 +34,82 @@ export function NavUser({
   user,
   onLogout,
 }: {
-  user: {
-    name: string
-    email: string
-    avatar_url?: string | null
-  }
+  user: AccountSettingsUser
   onLogout: () => void
 }) {
   const { t } = useTranslation()
   const { isMobile } = useSidebar()
+  const userButtonRef = useRef<HTMLButtonElement>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <SidebarMenuButton
-                size="lg"
-                className="border border-sidebar-border aria-expanded:bg-muted"
+    <>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              ref={userButtonRef}
+              render={
+                <SidebarMenuButton
+                  size="lg"
+                  className="border border-sidebar-border aria-expanded:bg-muted"
+                />
+              }
+            >
+              <UserAvatar src={user.avatar_url} size="default" />
+              <div className="grid flex-1 text-start text-sm leading-tight">
+                <span className="truncate font-medium">{user.name}</span>
+                <span className="truncate text-xs">{user.email}</span>
+              </div>
+              <HugeiconsIcon
+                icon={UnfoldMoreIcon}
+                strokeWidth={2}
+                className="ms-auto"
               />
-            }
-          >
-            <UserAvatar src={user.avatar_url} size="default" />
-            <div className="grid flex-1 text-start text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
-              <span className="truncate text-xs">{user.email}</span>
-            </div>
-            <HugeiconsIcon
-              icon={UnfoldMoreIcon}
-              strokeWidth={2}
-              className="ms-auto"
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "inline-end"}
-            align="end"
-            sideOffset={4}
-          >
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-                  <UserAvatar src={user.avatar_url} size="default" />
-                  <div className="grid flex-1 text-start text-sm leading-tight">
-                    <span className="truncate text-foreground">
-                      {user.name}
-                    </span>
-                    <span className="truncate text-xs">{user.email}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="min-w-56 rounded-lg"
+              side={isMobile ? "bottom" : "inline-end"}
+              align="end"
+              sideOffset={4}
+            >
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
+                    <UserAvatar src={user.avatar_url} size="default" />
+                    <div className="grid flex-1 text-start text-sm leading-tight">
+                      <span className="truncate text-foreground">
+                        {user.name}
+                      </span>
+                      <span className="truncate text-xs">{user.email}</span>
+                    </div>
                   </div>
-                </div>
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <HugeiconsIcon icon={CheckmarkBadgeIcon} strokeWidth={2} />
-                {t("navigation.accountSettings")}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={onLogout}>
-                <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />
-                {t("navigation.logout")}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                  <HugeiconsIcon icon={CheckmarkBadgeIcon} strokeWidth={2} />
+                  {t("navigation.accountSettings")}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={onLogout}>
+                  <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />
+                  {t("navigation.logout")}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      {settingsOpen && (
+        <AccountSettingsDialog
+          user={user}
+          onClose={() => setSettingsOpen(false)}
+          returnFocusRef={userButtonRef}
+        />
+      )}
+    </>
   )
 }

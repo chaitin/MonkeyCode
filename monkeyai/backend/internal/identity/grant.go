@@ -25,6 +25,14 @@ func (s *Service) redeemCodeAndStoreToken(ctx context.Context, code Authorizatio
 		}
 	}()
 	q := sqlc.New(tx)
+	// Serialize code redemption with password changes before locking the
+	// code, so revocation cannot miss the grant created by this exchange.
+	if _, err = q.LockProfileCredentials(ctx, code.UserID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return sqlc.OauthGrant{}, errInvalidGrant
+		}
+		return sqlc.OauthGrant{}, err
+	}
 	result, err := q.RedeemAuthorizationCode(ctx, code.ID)
 	if err != nil {
 		return sqlc.OauthGrant{}, err

@@ -5,6 +5,7 @@ export type AuthContextValue = {
   isLoading: boolean
   user: AuthUser | null
   refresh: () => Promise<void>
+  updateUser: (user: AuthUser) => void
   logout: () => Promise<void>
 }
 

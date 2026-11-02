@@ -4320,6 +4320,7 @@ components:
           format: date-time
         avatar_url:
           type: string
+          description: 最终展示头像，优先自定义头像，否则使用 OAuth 同步头像；均为空时省略。
         last_login_at:
           type: string
           format: date-time

@@ -29,7 +29,7 @@ ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit)::int OFFSET sqlc.arg(page_offset)::int;
 
 -- name: FeedbackUsers :many
-SELECT id, name, email, avatar_url
+SELECT id, name, email, coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), ''), '')::text AS avatar_url
 FROM users
 WHERE id = ANY(sqlc.arg(user_ids)::uuid[]);
 

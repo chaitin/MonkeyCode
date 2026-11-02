@@ -1,4 +1,29 @@
 export const enUS = {
+  accountSettings: {
+    loadingProfile: "Loading",
+    profileLoadFailed: "Could not load account settings. Please retry.",
+    retry: "Retry",
+    avatarSaved: "Avatar updated.",
+    passwordSaved:
+      "Password updated. Other sessions and client authorizations have been revoked.",
+    passwordNotSet:
+      "This account has no password. Set one using password recovery on the sign-in page.",
+    avatar: "Avatar",
+    changeAvatar: "Change avatar",
+    chooseFile: "Choose file",
+    useAvatar: "Use this avatar",
+    invalidImage: "Choose a valid JPG, PNG or WebP image.",
+    imageTooLarge: "The image must be 5 MB or smaller.",
+    changePassword: "Change password",
+    currentPassword: "Current password",
+    nextPassword: "New password",
+    confirmPassword: "Confirm new password",
+    currentPasswordRequired: "Enter your current password.",
+    passwordHint: "The new password must contain at least 12 characters.",
+    passwordMismatch: "The new passwords do not match. Please check them.",
+    cancel: "Cancel",
+    save: "Save changes",
+  },
   audit: {
     since: "Start date",
     until: "End date",
@@ -17,6 +42,8 @@ export const enUS = {
       settings: "Settings",
     },
     actions: {
+      avatar: "Update avatar",
+      change_password: "Change password",
       discover: "Fetch available models",
       configure_cycle: "Configure billing cycle",
       configure_mode: "Configure billing mode",
