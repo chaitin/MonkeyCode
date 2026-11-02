@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 
 type Props = {
   page: Omit<ReturnType<typeof useResourceList<unknown>>, "run">
@@ -19,6 +20,7 @@ type Props = {
   systemLabel: string
   userLabel: string
   searchPlaceholder?: string
+  searchClassName?: string
   error?: string
   pending?: boolean
   actions?: ReactNode
@@ -31,6 +33,7 @@ export function ResourceList({
   systemLabel,
   userLabel,
   searchPlaceholder,
+  searchClassName,
   error = "",
   pending = false,
   actions,
@@ -56,7 +59,10 @@ export function ResourceList({
             </TabsTrigger>
           </TabsList>
           <form
-            className="order-2 flex basis-full items-center gap-2 sm:order-none sm:max-w-72 sm:min-w-40 sm:flex-1 sm:basis-0"
+            className={cn(
+              "order-2 flex basis-full items-center gap-2 sm:order-none sm:min-w-40 sm:max-w-72 sm:flex-1 sm:basis-0",
+              searchClassName
+            )}
             onSubmit={page.handleSearch}
           >
             <Input
@@ -125,7 +131,10 @@ export function ResourceList({
             onClick={() => page.previousPage()}
             aria-label={t("pages.operationLogs.pagination.previous")}
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
+            <HugeiconsIcon
+              icon={ArrowLeft01Icon}
+              className="[[dir=rtl]_&]:rotate-180"
+            />
           </Button>
           <Button
             type="button"
@@ -135,7 +144,10 @@ export function ResourceList({
             onClick={page.nextPage}
             aria-label={t("pages.operationLogs.pagination.next")}
           >
-            <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
+            <HugeiconsIcon
+              icon={ArrowRight01Icon}
+              className="[[dir=rtl]_&]:rotate-180"
+            />
           </Button>
         </div>
       </div>

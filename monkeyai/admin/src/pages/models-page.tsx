@@ -3,13 +3,18 @@ import {
   AiChat02Icon,
   AiImageIcon,
   ArrowRight01Icon,
+  CheckmarkSquare02Icon,
   Copy01Icon,
   Delete02Icon,
   Edit02Icon,
+  Logout05Icon,
   MoreHorizontalIcon,
   PauseIcon,
   PlayIcon,
   PlusSignIcon,
+  SquareIcon,
+  Tag01Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
@@ -36,6 +41,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -348,6 +354,20 @@ export function ModelsPage() {
   const [saving, setSaving] = useState(false)
   const activeModelType = remote.type
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [selectionMenuOpen, setSelectionMenuOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [batchEnabled, setBatchEnabled] = useState<boolean | null>(null)
+  const [batchTagsOpen, setBatchTagsOpen] = useState(false)
+  const [batchTagsConfirm, setBatchTagsConfirm] = useState(false)
+  const [batchTagIds, setBatchTagIds] = useState<string[]>([])
+  const [batchTagsMenuOpen, setBatchTagsMenuOpen] = useState(false)
+  const [batchAuthorizationOpen, setBatchAuthorizationOpen] = useState(false)
+  const [batchAuthorizationConfirm, setBatchAuthorizationConfirm] =
+    useState(false)
+  const [batchAuthorization, setBatchAuthorization] =
+    useState<AuthorizationSelection>({ groupIds: [], memberIds: [] })
+  const [batchPending, setBatchPending] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   const [formModel, setFormModel] = useState<Model | null>(null)
@@ -517,6 +537,181 @@ export function ModelsPage() {
       active = false
     }
   }, [dialogOpen, kind, provider, modelId, formModel])
+
+  const exitSelection = () => {
+    setSelecting(false)
+    setSelectionMenuOpen(false)
+    setSelectedIds([])
+    setBatchEnabled(null)
+    setBatchTagsOpen(false)
+    setBatchTagsConfirm(false)
+    setBatchTagIds([])
+    setBatchAuthorizationOpen(false)
+    setBatchAuthorizationConfirm(false)
+    setBatchAuthorization({ groupIds: [], memberIds: [] })
+  }
+
+  const openBatchEnabled = (enabled: boolean) => {
+    if (selectedIds.length === 0) {
+      showToast({ status: "error", title: "请先选择模型" })
+      return
+    }
+    setSelectionMenuOpen(false)
+    setBatchEnabled(enabled)
+  }
+
+  const applyBatchEnabled = async () => {
+    if (batchEnabled === null || batchPending) return
+    const ids = [...selectedIds]
+    setBatchPending(true)
+    let succeeded = 0
+    let failed = 0
+    for (const id of ids) {
+      try {
+        await api<ApiModel>(`/api/admin/v1/models/${id}/enabled`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: batchEnabled }),
+        })
+        succeeded += 1
+      } catch {
+        failed += 1
+      }
+    }
+    await remote.reload()
+    setBatchPending(false)
+    setBatchEnabled(null)
+    exitSelection()
+    showToast({
+      status: failed ? "error" : "success",
+      title: `成功 ${succeeded} 个，失败 ${failed} 个`,
+    })
+  }
+
+  const applyBatchUpdate = async (
+    change: (model: Model) => Record<string, unknown>
+  ) => {
+    if (batchPending) return
+    const selected = models.filter(
+      (model) => model.type === "system" && selectedIds.includes(model.id)
+    )
+    setBatchPending(true)
+    let succeeded = 0
+    let failed = 0
+    for (const model of selected) {
+      const common = {
+        model_id: model.modelId,
+        display_name: model.displayName,
+        base_url: model.baseUrl,
+        proxy_id: model.proxyId,
+        api_key: "",
+        tag_ids: model.tagIds,
+        authorization: {
+          group_ids: model.authorization.groupIds,
+          user_ids: model.authorization.memberIds,
+        },
+        ...change(model),
+      }
+      const payload =
+        model.kind === "text"
+          ? {
+              ...common,
+              kind: "text",
+              protocol: model.protocol,
+              advanced_config: {
+                context_window_tokens: model.contextSizeK * 1000,
+                max_output_tokens: model.maxOutputTokensK * 1000,
+                supports_vision: model.supportsVision,
+                supports_reasoning: model.supportsReasoning,
+              },
+              credit_multiplier: model.multiplier,
+            }
+          : model.kind === "video"
+            ? {
+                ...common,
+                kind: "video",
+                provider: model.provider,
+                protocol: "video_generation",
+                video_config: model.videoConfig,
+                video_pricing: model.videoPricing,
+              }
+            : {
+                ...common,
+                kind: "image",
+                provider: model.provider,
+                protocol: "image_generation",
+                image_config: model.imageConfig,
+                image_pricing: model.imagePricing,
+              }
+      try {
+        await api<ApiModel>(`/api/admin/v1/models/${model.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        })
+        succeeded += 1
+      } catch {
+        failed += 1
+      }
+    }
+    await remote.reload()
+    setBatchPending(false)
+    exitSelection()
+    showToast({
+      status: failed ? "error" : "success",
+      title: `成功 ${succeeded} 个，失败 ${failed} 个`,
+    })
+  }
+
+  const openBatchTags = () => {
+    if (selectedIds.length === 0) {
+      showToast({ status: "error", title: "请先选择模型" })
+      return
+    }
+    setSelectionMenuOpen(false)
+    setBatchTagIds([])
+    setBatchTagsMenuOpen(false)
+    setBatchTagsOpen(true)
+  }
+
+  const openBatchAuthorization = () => {
+    if (selectedIds.length === 0) {
+      showToast({ status: "error", title: "请先选择模型" })
+      return
+    }
+    setSelectionMenuOpen(false)
+    setBatchAuthorization({ groupIds: [], memberIds: [] })
+    setBatchAuthorizationOpen(true)
+  }
+
+  const applyBatchTags = () =>
+    applyBatchUpdate(() => ({ tag_ids: batchTagIds }))
+
+  const applyBatchAuthorization = () => {
+    if (
+      batchAuthorization.groupIds.length +
+        batchAuthorization.memberIds.length ===
+      0
+    ) {
+      showToast({
+        status: "error",
+        title: t("pages.models.validation.authorizationRequired"),
+      })
+      return
+    }
+    return applyBatchUpdate(() => ({
+      authorization: {
+        group_ids: batchAuthorization.groupIds,
+        user_ids: batchAuthorization.memberIds,
+      },
+    }))
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id]
+    )
+  }
 
   const resetModelOptions = () => {
     setAdvancedOpen(false)
@@ -827,623 +1022,737 @@ export function ModelsPage() {
         typeLabel={t("pages.models.type")}
         systemLabel={t("pages.models.systemModel")}
         userLabel={t("pages.models.userModel")}
-        searchPlaceholder={t("resources.modelSearchPlaceholder")}
+        searchPlaceholder="搜索模型"
+        searchClassName="sm:max-w-44 sm:flex-none"
         actions={
           <>
             {activeModelType === "system" && (
-              <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-                <DialogTrigger
-                  render={
-                    <Button
-                      className="ms-auto shrink-0"
-                      onClick={() => openModelForm(null, false)}
+              <div className="ms-auto flex shrink-0 items-center gap-2">
+                {selecting && (
+                  <DropdownMenu
+                    open={selectionMenuOpen}
+                    onOpenChange={setSelectionMenuOpen}
+                  >
+                    <DropdownMenuTrigger
+                      render={
+                        <Button type="button" variant="outline">
+                          批量操作
+                          <HugeiconsIcon
+                            icon={ArrowRight01Icon}
+                            data-icon="inline-end"
+                            className="rotate-90"
+                          />
+                        </Button>
+                      }
                     />
-                  }
-                >
-                  <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-                  {t("pages.models.add")}
-                </DialogTrigger>
-                <DialogContent
-                  className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
-                  closeLabel={t("common.close")}
-                >
-                  <form
-                    key={formModel?.id ?? "new-model"}
-                    className="flex min-h-0 flex-col gap-6"
-                    onSubmit={handleAddModel}
-                    onInvalidCapture={(event) => {
-                      const input = event.target as HTMLInputElement
-                      if (
-                        advancedOpen ||
-                        !input.closest("#model-advanced-options")
-                      )
-                        return
-                      event.preventDefault()
-                      if (
-                        event.currentTarget.querySelector(":invalid") !== input
-                      )
-                        return
-                      setAdvancedOpen(true)
-                      requestAnimationFrame(() => {
-                        input.focus()
-                        input.reportValidity()
-                      })
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-40 whitespace-nowrap"
+                    >
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            setSelectedIds(
+                              models
+                                .filter((model) => model.type === "system")
+                                .map((model) => model.id)
+                            )
+                          }
+                        >
+                          <HugeiconsIcon
+                            icon={CheckmarkSquare02Icon}
+                            strokeWidth={2}
+                          />
+                          选择全部
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSelectedIds([])}>
+                          <HugeiconsIcon icon={SquareIcon} strokeWidth={2} />
+                          取消选择
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        {(
+                          [
+                            [
+                              "启用模型",
+                              PlayIcon,
+                              () => openBatchEnabled(true),
+                            ],
+                            [
+                              "禁用模型",
+                              PauseIcon,
+                              () => openBatchEnabled(false),
+                            ],
+                            ["设置标签", Tag01Icon, openBatchTags],
+                            [
+                              "设置授权范围",
+                              UserGroupIcon,
+                              openBatchAuthorization,
+                            ],
+                          ] as const
+                        ).map(([label, icon, action]) => (
+                          <DropdownMenuItem
+                            key={label}
+                            disabled={selectedIds.length === 0}
+                            onClick={action}
+                          >
+                            <HugeiconsIcon icon={icon} strokeWidth={2} />
+                            {label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem onClick={exitSelection}>
+                          <HugeiconsIcon icon={Logout05Icon} strokeWidth={2} />
+                          退出批量操作
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {!selecting && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelecting(true)
+                      setSelectionMenuOpen(true)
                     }}
                   >
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingModel
-                          ? t("pages.models.editDialogTitle")
-                          : t("pages.models.dialogTitle")}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="-m-1 flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-scrollbar]]:translate-x-2.5 rtl:[&_[data-slot=scroll-area-scrollbar]]:-translate-x-2.5 [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:p-1">
-                      <Tabs
-                        value={kind}
-                        onValueChange={(value) => {
-                          const next = value as ModelKind
-                          setKind(next)
-                          setImageCapabilities(null)
-                          setImageCapabilitiesFailed(false)
-                          setVideoCapabilities(null)
-                          setVideoCapabilitiesFailed(false)
-                          if (next === "text") setProtocol("openai_responses")
-                          if (next === "video") {
-                            setProvider(VIDEO_MODELS[0].provider)
-                            changeModelId(VIDEO_MODELS[0].model)
-                          }
-                        }}
-                      >
-                        <TabsList
-                          className="w-full"
-                          aria-label={t("pages.models.kind")}
+                    批量操作
+                  </Button>
+                )}
+                <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+                  <DialogTrigger
+                    render={
+                      <Button
+                        className="shrink-0"
+                        onClick={() => openModelForm(null, false)}
+                      />
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={PlusSignIcon}
+                      data-icon="inline-start"
+                    />
+                    {t("pages.models.add")}
+                  </DialogTrigger>
+                  <DialogContent
+                    className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
+                    closeLabel={t("common.close")}
+                  >
+                    <form
+                      key={formModel?.id ?? "new-model"}
+                      className="flex min-h-0 flex-col gap-6"
+                      onSubmit={handleAddModel}
+                      onInvalidCapture={(event) => {
+                        const input = event.target as HTMLInputElement
+                        if (
+                          advancedOpen ||
+                          !input.closest("#model-advanced-options")
+                        )
+                          return
+                        event.preventDefault()
+                        if (
+                          event.currentTarget.querySelector(":invalid") !==
+                          input
+                        )
+                          return
+                        setAdvancedOpen(true)
+                        requestAnimationFrame(() => {
+                          input.focus()
+                          input.reportValidity()
+                        })
+                      }}
+                    >
+                      <DialogHeader>
+                        <DialogTitle>
+                          {editingModel
+                            ? t("pages.models.editDialogTitle")
+                            : t("pages.models.dialogTitle")}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <ScrollArea className="-m-1 flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-scrollbar]]:translate-x-2.5 rtl:[&_[data-slot=scroll-area-scrollbar]]:-translate-x-2.5 [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:p-1">
+                        <Tabs
+                          value={kind}
+                          onValueChange={(value) => {
+                            const next = value as ModelKind
+                            setKind(next)
+                            setImageCapabilities(null)
+                            setImageCapabilitiesFailed(false)
+                            setVideoCapabilities(null)
+                            setVideoCapabilitiesFailed(false)
+                            if (next === "text") setProtocol("openai_responses")
+                            if (next === "video") {
+                              setProvider(VIDEO_MODELS[0].provider)
+                              changeModelId(VIDEO_MODELS[0].model)
+                            }
+                          }}
                         >
-                          <TabsTrigger type="button" value="text">
-                            {t("pages.models.textKind")}
-                          </TabsTrigger>
-                          <TabsTrigger type="button" value="image">
-                            {t("pages.models.imageKind")}
-                          </TabsTrigger>
-                          <TabsTrigger type="button" value="video">
-                            {t("pages.models.videoKind")}
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-                      <FieldGroup className="gap-4">
-                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                          <Field>
-                            <FieldLabel htmlFor="model-id">
-                              {t("pages.models.modelId")}
-                            </FieldLabel>
-                            <div className="relative" ref={modelNameAnchor}>
+                          <TabsList
+                            className="w-full"
+                            aria-label={t("pages.models.kind")}
+                          >
+                            <TabsTrigger type="button" value="text">
+                              {t("pages.models.textKind")}
+                            </TabsTrigger>
+                            <TabsTrigger type="button" value="image">
+                              {t("pages.models.imageKind")}
+                            </TabsTrigger>
+                            <TabsTrigger type="button" value="video">
+                              {t("pages.models.videoKind")}
+                            </TabsTrigger>
+                          </TabsList>
+                        </Tabs>
+                        <FieldGroup className="gap-4">
+                          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                            <Field>
+                              <FieldLabel htmlFor="model-id">
+                                {t("pages.models.modelId")}
+                              </FieldLabel>
+                              <div className="relative" ref={modelNameAnchor}>
+                                <Input
+                                  id="model-id"
+                                  name="modelId"
+                                  value={modelId}
+                                  className={
+                                    kind === "text"
+                                      ? "pr-10 rtl:pl-10 rtl:pr-2.5"
+                                      : undefined
+                                  }
+                                  onChange={(event) => {
+                                    changeModelId(event.target.value)
+                                    setVideoCapabilities(null)
+                                    setVideoCapabilitiesFailed(false)
+                                  }}
+                                  placeholder={t(
+                                    "pages.models.modelIdPlaceholder"
+                                  )}
+                                  required
+                                />
+                                {kind === "text" && (
+                                  <ModelDiscovery
+                                    key={`${protocol}:${editingModel?.id ?? ""}`}
+                                    anchor={modelNameAnchor}
+                                    protocol={protocol}
+                                    modelResourceId={editingModel?.id}
+                                    onSelect={changeModelId}
+                                  />
+                                )}
+                              </div>
+                            </Field>
+                            {kind === "text" && (
+                              <Field>
+                                <FieldLabel htmlFor="model-protocol">
+                                  {t("pages.models.protocol")}
+                                </FieldLabel>
+                                <Select
+                                  items={PROTOCOLS}
+                                  value={protocol}
+                                  onValueChange={(value) =>
+                                    setProtocol(value as ModelProtocol)
+                                  }
+                                >
+                                  <SelectTrigger
+                                    className="w-full"
+                                    id="model-protocol"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {PROTOCOLS.map((item) => (
+                                        <SelectItem
+                                          key={item.value}
+                                          value={item.value}
+                                          label={item.label}
+                                        >
+                                          {item.label}
+                                          {item.value ===
+                                            "openai_chat_completions" && (
+                                            <Badge variant="secondary">
+                                              {t("pages.models.notRecommended")}
+                                            </Badge>
+                                          )}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            )}
+
+                            {kind === "image" && (
+                              <Field>
+                                <FieldLabel htmlFor="model-provider">
+                                  {t("pages.models.imageProvider")}
+                                </FieldLabel>
+                                <Select
+                                  items={IMAGE_PROVIDERS}
+                                  value={provider}
+                                  onValueChange={(value) => {
+                                    setProvider(value as ImageProvider)
+                                    setImageCapabilities(null)
+                                    setImageCapabilitiesFailed(false)
+                                    const next = IMAGE_PROVIDERS.find(
+                                      (item) => item.value === value
+                                    )
+                                    if (next?.model && !editingModel)
+                                      changeModelId(next.model)
+                                  }}
+                                >
+                                  <SelectTrigger
+                                    className="w-full"
+                                    id="model-provider"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {IMAGE_PROVIDERS.map((item) => (
+                                        <SelectItem
+                                          key={item.value}
+                                          value={item.value}
+                                        >
+                                          {item.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            )}
+
+                            {kind === "video" && (
+                              <Field>
+                                <FieldLabel htmlFor="video-model">
+                                  视频型号
+                                </FieldLabel>
+                                <Select
+                                  items={VIDEO_MODELS.map((item) => ({
+                                    value: item.model,
+                                    label: item.label,
+                                  }))}
+                                  value={
+                                    VIDEO_MODELS.find(
+                                      (item) =>
+                                        item.provider === provider &&
+                                        item.model === modelId
+                                    )?.model ?? null
+                                  }
+                                  onValueChange={(value) => {
+                                    const next = VIDEO_MODELS.find(
+                                      (entry) => entry.model === value
+                                    )
+                                    if (next) {
+                                      setProvider(next.provider)
+                                      changeModelId(next.model)
+                                      setVideoCapabilities(null)
+                                      setVideoCapabilitiesFailed(false)
+                                      setVideoModes([])
+                                      setVideoRates({ ...DEFAULT_VIDEO_RATES })
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger
+                                    className="w-full"
+                                    id="video-model"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {VIDEO_MODELS.map((item) => (
+                                        <SelectItem
+                                          key={item.model}
+                                          value={item.model}
+                                        >
+                                          {item.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            )}
+                          </FieldGroup>
+                          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                            <Field>
+                              <FieldLabel htmlFor="model-base-url">
+                                {t("pages.models.baseUrl")}
+                              </FieldLabel>
                               <Input
-                                id="model-id"
-                                name="modelId"
-                                value={modelId}
-                                className={
-                                  kind === "text"
-                                    ? "pr-10 rtl:pl-10 rtl:pr-2.5"
-                                    : undefined
-                                }
-                                onChange={(event) => {
-                                  changeModelId(event.target.value)
-                                  setVideoCapabilities(null)
-                                  setVideoCapabilitiesFailed(false)
-                                }}
+                                id="model-base-url"
+                                name="baseUrl"
+                                defaultValue={formModel?.baseUrl}
+                                type="url"
                                 placeholder={t(
-                                  "pages.models.modelIdPlaceholder"
+                                  "pages.models.baseUrlPlaceholder"
                                 )}
                                 required
                               />
-                              {kind === "text" && (
-                                <ModelDiscovery
-                                  key={`${protocol}:${editingModel?.id ?? ""}`}
-                                  anchor={modelNameAnchor}
-                                  protocol={protocol}
-                                  modelResourceId={editingModel?.id}
-                                  onSelect={changeModelId}
-                                />
-                              )}
-                            </div>
-                          </Field>
-                          {kind === "text" && (
-                            <Field>
-                              <FieldLabel htmlFor="model-protocol">
-                                {t("pages.models.protocol")}
-                              </FieldLabel>
-                              <Select
-                                items={PROTOCOLS}
-                                value={protocol}
-                                onValueChange={(value) =>
-                                  setProtocol(value as ModelProtocol)
-                                }
-                              >
-                                <SelectTrigger
-                                  className="w-full"
-                                  id="model-protocol"
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {PROTOCOLS.map((item) => (
-                                      <SelectItem
-                                        key={item.value}
-                                        value={item.value}
-                                        label={item.label}
-                                      >
-                                        {item.label}
-                                        {item.value ===
-                                          "openai_chat_completions" && (
-                                          <Badge variant="secondary">
-                                            {t("pages.models.notRecommended")}
-                                          </Badge>
-                                        )}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
                             </Field>
+
+                            <Field>
+                              <FieldLabel htmlFor="model-api-key">
+                                {t("pages.models.apiKey")}
+                              </FieldLabel>
+                              <Input
+                                autoComplete="new-password"
+                                id="model-api-key"
+                                name="apiKey"
+                                defaultValue=""
+                                placeholder={t(
+                                  "pages.models.apiKeyPlaceholder"
+                                )}
+                                type="password"
+                                required={!editingModel?.apiKeyConfigured}
+                              />
+                            </Field>
+                          </FieldGroup>
+
+                          {kind === "text" && (
+                            <ItemGroup className="grid grid-cols-2 gap-4 has-[[data-size=sm]]:gap-4">
+                              <Item
+                                variant="outline"
+                                size="sm"
+                                className="min-w-0 flex-nowrap px-2"
+                              >
+                                <ItemContent className="min-w-0">
+                                  <FieldLabel
+                                    htmlFor="model-vision"
+                                    className="min-w-0 break-words"
+                                  >
+                                    {t("pages.models.supportsVision")}
+                                  </FieldLabel>
+                                </ItemContent>
+                                <ItemActions>
+                                  <Switch
+                                    checked={supportsVision}
+                                    id="model-vision"
+                                    onCheckedChange={setSupportsVision}
+                                  />
+                                </ItemActions>
+                              </Item>
+                              <Item
+                                variant="outline"
+                                size="sm"
+                                className="min-w-0 flex-nowrap px-2"
+                              >
+                                <ItemContent className="min-w-0">
+                                  <FieldLabel
+                                    htmlFor="model-reasoning"
+                                    className="min-w-0 break-words"
+                                  >
+                                    {t("pages.models.supportsReasoning")}
+                                  </FieldLabel>
+                                </ItemContent>
+                                <ItemActions>
+                                  <Switch
+                                    checked={supportsReasoning}
+                                    id="model-reasoning"
+                                    onCheckedChange={setSupportsReasoning}
+                                  />
+                                </ItemActions>
+                              </Item>
+                            </ItemGroup>
                           )}
 
                           {kind === "image" && (
-                            <Field>
-                              <FieldLabel htmlFor="model-provider">
-                                {t("pages.models.imageProvider")}
-                              </FieldLabel>
-                              <Select
-                                items={IMAGE_PROVIDERS}
-                                value={provider}
-                                onValueChange={(value) => {
-                                  setProvider(value as ImageProvider)
-                                  setImageCapabilities(null)
-                                  setImageCapabilitiesFailed(false)
-                                  const next = IMAGE_PROVIDERS.find(
-                                    (item) => item.value === value
-                                  )
-                                  if (next?.model && !editingModel)
-                                    changeModelId(next.model)
-                                }}
-                              >
-                                <SelectTrigger
-                                  className="w-full"
-                                  id="model-provider"
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {IMAGE_PROVIDERS.map((item) => (
-                                      <SelectItem
-                                        key={item.value}
-                                        value={item.value}
+                            <FieldGroup className="gap-3">
+                              {!imageCapabilities ? (
+                                imageCapabilitiesFailed ? (
+                                  <p
+                                    role="alert"
+                                    className="text-sm text-muted-foreground"
+                                  >
+                                    {t(
+                                      "pages.models.imageCapabilitiesUnavailable"
+                                    )}
+                                  </p>
+                                ) : (
+                                  <ModelPricingSkeleton />
+                                )
+                              ) : (
+                                <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                  {qualities.map((quality) => (
+                                    <Field key={quality}>
+                                      <FieldLabel
+                                        htmlFor={`image-rate-${quality}`}
                                       >
-                                        {item.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                            </Field>
+                                        {t(
+                                          "pages.models.imageCreditsPerImage",
+                                          {
+                                            quality,
+                                          }
+                                        )}
+                                      </FieldLabel>
+                                      <Input
+                                        id={`image-rate-${quality}`}
+                                        inputMode="decimal"
+                                        required
+                                        value={imageRates[quality] ?? ""}
+                                        onChange={(event) =>
+                                          setImageRates((current) => ({
+                                            ...current,
+                                            [quality]: event.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </Field>
+                                  ))}
+                                </FieldGroup>
+                              )}
+                            </FieldGroup>
                           )}
 
                           {kind === "video" && (
-                            <Field>
-                              <FieldLabel htmlFor="video-model">
-                                视频型号
-                              </FieldLabel>
-                              <Select
-                                items={VIDEO_MODELS.map((item) => ({
-                                  value: item.model,
-                                  label: item.label,
-                                }))}
-                                value={
-                                  VIDEO_MODELS.find(
-                                    (item) =>
-                                      item.provider === provider &&
-                                      item.model === modelId
-                                  )?.model ?? null
-                                }
-                                onValueChange={(value) => {
-                                  const next = VIDEO_MODELS.find(
-                                    (entry) => entry.model === value
-                                  )
-                                  if (next) {
-                                    setProvider(next.provider)
-                                    changeModelId(next.model)
-                                    setVideoCapabilities(null)
-                                    setVideoCapabilitiesFailed(false)
-                                    setVideoModes([])
-                                    setVideoRates({ ...DEFAULT_VIDEO_RATES })
-                                  }
-                                }}
-                              >
-                                <SelectTrigger
-                                  className="w-full"
-                                  id="video-model"
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {VIDEO_MODELS.map((item) => (
-                                      <SelectItem
-                                        key={item.model}
-                                        value={item.model}
-                                      >
-                                        {item.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                            </Field>
-                          )}
-                        </FieldGroup>
-                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                          <Field>
-                            <FieldLabel htmlFor="model-base-url">
-                              {t("pages.models.baseUrl")}
-                            </FieldLabel>
-                            <Input
-                              id="model-base-url"
-                              name="baseUrl"
-                              defaultValue={formModel?.baseUrl}
-                              type="url"
-                              placeholder={t("pages.models.baseUrlPlaceholder")}
-                              required
-                            />
-                          </Field>
-
-                          <Field>
-                            <FieldLabel htmlFor="model-api-key">
-                              {t("pages.models.apiKey")}
-                            </FieldLabel>
-                            <Input
-                              autoComplete="new-password"
-                              id="model-api-key"
-                              name="apiKey"
-                              defaultValue=""
-                              placeholder={t("pages.models.apiKeyPlaceholder")}
-                              type="password"
-                              required={!editingModel?.apiKeyConfigured}
-                            />
-                          </Field>
-                        </FieldGroup>
-
-                        {kind === "text" && (
-                          <ItemGroup className="grid grid-cols-2 gap-4 has-[[data-size=sm]]:gap-4">
-                            <Item
-                              variant="outline"
-                              size="sm"
-                              className="min-w-0 flex-nowrap px-2"
-                            >
-                              <ItemContent className="min-w-0">
-                                <FieldLabel
-                                  htmlFor="model-vision"
-                                  className="min-w-0 break-words"
-                                >
-                                  {t("pages.models.supportsVision")}
-                                </FieldLabel>
-                              </ItemContent>
-                              <ItemActions>
-                                <Switch
-                                  checked={supportsVision}
-                                  id="model-vision"
-                                  onCheckedChange={setSupportsVision}
-                                />
-                              </ItemActions>
-                            </Item>
-                            <Item
-                              variant="outline"
-                              size="sm"
-                              className="min-w-0 flex-nowrap px-2"
-                            >
-                              <ItemContent className="min-w-0">
-                                <FieldLabel
-                                  htmlFor="model-reasoning"
-                                  className="min-w-0 break-words"
-                                >
-                                  {t("pages.models.supportsReasoning")}
-                                </FieldLabel>
-                              </ItemContent>
-                              <ItemActions>
-                                <Switch
-                                  checked={supportsReasoning}
-                                  id="model-reasoning"
-                                  onCheckedChange={setSupportsReasoning}
-                                />
-                              </ItemActions>
-                            </Item>
-                          </ItemGroup>
-                        )}
-
-                        {kind === "image" && (
-                          <FieldGroup className="gap-3">
-                            {!imageCapabilities ? (
-                              imageCapabilitiesFailed ? (
-                                <p
-                                  role="alert"
-                                  className="text-sm text-muted-foreground"
-                                >
-                                  {t(
-                                    "pages.models.imageCapabilitiesUnavailable"
-                                  )}
-                                </p>
-                              ) : (
-                                <ModelPricingSkeleton />
-                              )
-                            ) : (
-                              <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                {qualities.map((quality) => (
-                                  <Field key={quality}>
-                                    <FieldLabel
-                                      htmlFor={`image-rate-${quality}`}
-                                    >
-                                      {t("pages.models.imageCreditsPerImage", {
-                                        quality,
-                                      })}
-                                    </FieldLabel>
-                                    <Input
-                                      id={`image-rate-${quality}`}
-                                      inputMode="decimal"
-                                      required
-                                      value={imageRates[quality] ?? ""}
-                                      onChange={(event) =>
-                                        setImageRates((current) => ({
-                                          ...current,
-                                          [quality]: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </Field>
-                                ))}
-                              </FieldGroup>
-                            )}
-                          </FieldGroup>
-                        )}
-
-                        {kind === "video" && (
-                          <FieldGroup className="gap-3">
-                            {!videoCapabilities ? (
-                              videoCapabilitiesFailed ||
-                              !videoModelSupported ? (
-                                <p
-                                  role="alert"
-                                  className="text-sm text-muted-foreground"
-                                >
-                                  当前型号的视频能力不可用，请检查供应商和型号
-                                </p>
-                              ) : (
-                                <ModelPricingSkeleton />
-                              )
-                            ) : (
-                              <>
-                                <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                                  {videoResolutions(videoCapabilities).map(
-                                    (resolution) => (
-                                      <Field key={resolution}>
-                                        <FieldLabel
-                                          htmlFor={`video-rate-${resolution}`}
-                                        >
-                                          {t(
-                                            "pages.models.videoCreditsPerSecond",
-                                            { resolution }
-                                          )}
-                                        </FieldLabel>
-                                        <Input
-                                          id={`video-rate-${resolution}`}
-                                          inputMode="decimal"
-                                          required
-                                          value={videoRates[resolution] ?? ""}
-                                          onChange={(event) =>
-                                            setVideoRates((current) => ({
-                                              ...current,
-                                              [resolution]: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                      </Field>
-                                    )
-                                  )}
-                                </FieldGroup>
-                              </>
-                            )}
-                          </FieldGroup>
-                        )}
-                        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                          <Field>
-                            <FieldLabel htmlFor="model-tags">
-                              {t("pages.skills.tags")}
-                            </FieldLabel>
-                            <SkillTagSelect
-                              id="model-tags"
-                              open={tagsOpen}
-                              options={availableTags}
-                              placeholder={t("pages.skills.tagsPlaceholder")}
-                              value={tagIds}
-                              onOpenChange={setTagsOpen}
-                              onValueChange={setTagIds}
-                            />
-                          </Field>
-
-                          <Field>
-                            <FieldLabel htmlFor="model-authorization">
-                              {t("pages.models.authorizedScope")}
-                            </FieldLabel>
-                            <GroupSelect
-                              id="model-authorization"
-                              options={groups}
-                              users={members}
-                              value={{
-                                groupIds: authorization.groupIds,
-                                userIds: authorization.memberIds,
-                              }}
-                              onValueChange={(next) =>
-                                setAuthorization({
-                                  groupIds: [...next.groupIds],
-                                  memberIds: [...next.userIds],
-                                })
-                              }
-                              label={t("pages.models.authorizedScope")}
-                              placeholder={t(
-                                "pages.models.authorizationPlaceholder"
-                              )}
-                              emptyText={t(
-                                "pages.models.noMatchingAuthorization"
-                              )}
-                              locale={i18n.resolvedLanguage ?? i18n.language}
-                              multiple
-                              selectionMode="both"
-                              cascadeGroups
-                              searchable
-                              searchPlaceholder={t(
-                                "pages.models.searchAuthorization"
-                              )}
-                              noResultsText={t(
-                                "pages.models.noMatchingAuthorization"
-                              )}
-                            />
-                          </Field>
-                        </FieldGroup>
-                        <Collapsible
-                          open={advancedOpen}
-                          onOpenChange={setAdvancedOpen}
-                          className="rounded-lg border"
-                        >
-                          <CollapsibleTrigger
-                            id="model-advanced-trigger"
-                            type="button"
-                            className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
-                          >
-                            <span className="font-medium">
-                              {t("pages.models.advancedOptions")}
-                            </span>
-                            <HugeiconsIcon
-                              className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
-                              icon={ArrowRight01Icon}
-                              strokeWidth={2}
-                            />
-                          </CollapsibleTrigger>
-                          <CollapsibleContent
-                            id="model-advanced-options"
-                            keepMounted
-                            className="border-t p-4"
-                          >
-                            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                              <Field>
-                                <FieldLabel htmlFor="model-display-name">
-                                  {t("pages.models.displayName")}
-                                </FieldLabel>
-                                <Input
-                                  id="model-display-name"
-                                  name="displayName"
-                                  value={displayNameOverride ?? modelId}
-                                  onChange={(event) =>
-                                    setDisplayNameOverride(event.target.value)
-                                  }
-                                  placeholder={t(
-                                    "pages.models.displayNamePlaceholder"
-                                  )}
-                                />
-                              </Field>
-                              <Field>
-                                <FieldLabel htmlFor="model-proxy">
-                                  {t("pages.models.networkProxy")}
-                                </FieldLabel>
-                                <SystemProxySelect
-                                  id="model-proxy"
-                                  selected={formModel?.proxyId ?? ""}
-                                  proxies={proxies}
-                                />
-                                {proxyError && (
-                                  <p role="alert" className="text-destructive">
-                                    {proxyError}
+                            <FieldGroup className="gap-3">
+                              {!videoCapabilities ? (
+                                videoCapabilitiesFailed ||
+                                !videoModelSupported ? (
+                                  <p
+                                    role="alert"
+                                    className="text-sm text-muted-foreground"
+                                  >
+                                    当前型号的视频能力不可用，请检查供应商和型号
                                   </p>
-                                )}
-                              </Field>
-                              {kind === "text" && (
+                                ) : (
+                                  <ModelPricingSkeleton />
+                                )
+                              ) : (
                                 <>
-                                  <Field>
-                                    <FieldLabel htmlFor="model-context-size">
-                                      {t("pages.models.contextSize")} (K)
-                                    </FieldLabel>
-                                    <Input
-                                      id="model-context-size"
-                                      min="1"
-                                      name="contextSizeK"
-                                      defaultValue={
-                                        formModel?.contextSizeK ?? 256
-                                      }
-                                      placeholder="256"
-                                      step="1"
-                                      type="number"
-                                      required
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <FieldLabel htmlFor="model-max-output-tokens">
-                                      {t("pages.models.maxOutputTokens")} (K)
-                                    </FieldLabel>
-                                    <Input
-                                      id="model-max-output-tokens"
-                                      min="1"
-                                      name="maxOutputTokensK"
-                                      defaultValue={
-                                        formModel?.maxOutputTokensK ?? 16
-                                      }
-                                      placeholder="16384"
-                                      step="1"
-                                      type="number"
-                                      required
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <FieldLabel htmlFor="model-multiplier">
-                                      {t("pages.models.billingMultiplier")}
-                                    </FieldLabel>
-                                    <Input
-                                      id="model-multiplier"
-                                      min="0.01"
-                                      step="0.01"
-                                      name="multiplier"
-                                      defaultValue={
-                                        formModel?.type === "system"
-                                          ? formModel.multiplier
-                                          : 1
-                                      }
-                                      placeholder="1.0"
-                                      type="number"
-                                      required
-                                    />
-                                  </Field>
+                                  <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                                    {videoResolutions(videoCapabilities).map(
+                                      (resolution) => (
+                                        <Field key={resolution}>
+                                          <FieldLabel
+                                            htmlFor={`video-rate-${resolution}`}
+                                          >
+                                            {t(
+                                              "pages.models.videoCreditsPerSecond",
+                                              { resolution }
+                                            )}
+                                          </FieldLabel>
+                                          <Input
+                                            id={`video-rate-${resolution}`}
+                                            inputMode="decimal"
+                                            required
+                                            value={videoRates[resolution] ?? ""}
+                                            onChange={(event) =>
+                                              setVideoRates((current) => ({
+                                                ...current,
+                                                [resolution]:
+                                                  event.target.value,
+                                              }))
+                                            }
+                                          />
+                                        </Field>
+                                      )
+                                    )}
+                                  </FieldGroup>
                                 </>
                               )}
                             </FieldGroup>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      </FieldGroup>
-                    </ScrollArea>
-                    <DialogFooter>
-                      <DialogClose
-                        render={<Button type="button" variant="outline" />}
-                      >
-                        {t("pages.models.cancel")}
-                      </DialogClose>
-                      <Button
-                        loading={saving}
-                        disabled={saving || capabilitiesLoading}
-                        type="submit"
-                      >
-                        {editingModel
-                          ? t("pages.models.save")
-                          : t("pages.models.create")}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                          )}
+                          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                            <Field>
+                              <FieldLabel htmlFor="model-tags">
+                                {t("pages.skills.tags")}
+                              </FieldLabel>
+                              <SkillTagSelect
+                                id="model-tags"
+                                open={tagsOpen}
+                                options={availableTags}
+                                placeholder={t("pages.skills.tagsPlaceholder")}
+                                value={tagIds}
+                                onOpenChange={setTagsOpen}
+                                onValueChange={setTagIds}
+                              />
+                            </Field>
+
+                            <Field>
+                              <FieldLabel htmlFor="model-authorization">
+                                {t("pages.models.authorizedScope")}
+                              </FieldLabel>
+                              <GroupSelect
+                                id="model-authorization"
+                                options={groups}
+                                users={members}
+                                value={{
+                                  groupIds: authorization.groupIds,
+                                  userIds: authorization.memberIds,
+                                }}
+                                onValueChange={(next) =>
+                                  setAuthorization({
+                                    groupIds: [...next.groupIds],
+                                    memberIds: [...next.userIds],
+                                  })
+                                }
+                                label={t("pages.models.authorizedScope")}
+                                placeholder={t(
+                                  "pages.models.authorizationPlaceholder"
+                                )}
+                                emptyText={t(
+                                  "pages.models.noMatchingAuthorization"
+                                )}
+                                locale={i18n.resolvedLanguage ?? i18n.language}
+                                multiple
+                                selectionMode="both"
+                                cascadeGroups
+                                searchable
+                                searchPlaceholder={t(
+                                  "pages.models.searchAuthorization"
+                                )}
+                                noResultsText={t(
+                                  "pages.models.noMatchingAuthorization"
+                                )}
+                              />
+                            </Field>
+                          </FieldGroup>
+                          <Collapsible
+                            open={advancedOpen}
+                            onOpenChange={setAdvancedOpen}
+                            className="rounded-lg border"
+                          >
+                            <CollapsibleTrigger
+                              id="model-advanced-trigger"
+                              type="button"
+                              className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                            >
+                              <span className="font-medium">
+                                {t("pages.models.advancedOptions")}
+                              </span>
+                              <HugeiconsIcon
+                                className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+                                icon={ArrowRight01Icon}
+                                strokeWidth={2}
+                              />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent
+                              id="model-advanced-options"
+                              keepMounted
+                              className="border-t p-4"
+                            >
+                              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                                <Field>
+                                  <FieldLabel htmlFor="model-display-name">
+                                    {t("pages.models.displayName")}
+                                  </FieldLabel>
+                                  <Input
+                                    id="model-display-name"
+                                    name="displayName"
+                                    value={displayNameOverride ?? modelId}
+                                    onChange={(event) =>
+                                      setDisplayNameOverride(event.target.value)
+                                    }
+                                    placeholder={t(
+                                      "pages.models.displayNamePlaceholder"
+                                    )}
+                                  />
+                                </Field>
+                                <Field>
+                                  <FieldLabel htmlFor="model-proxy">
+                                    {t("pages.models.networkProxy")}
+                                  </FieldLabel>
+                                  <SystemProxySelect
+                                    id="model-proxy"
+                                    selected={formModel?.proxyId ?? ""}
+                                    proxies={proxies}
+                                  />
+                                  {proxyError && (
+                                    <p
+                                      role="alert"
+                                      className="text-destructive"
+                                    >
+                                      {proxyError}
+                                    </p>
+                                  )}
+                                </Field>
+                                {kind === "text" && (
+                                  <>
+                                    <Field>
+                                      <FieldLabel htmlFor="model-context-size">
+                                        {t("pages.models.contextSize")} (K)
+                                      </FieldLabel>
+                                      <Input
+                                        id="model-context-size"
+                                        min="1"
+                                        name="contextSizeK"
+                                        defaultValue={
+                                          formModel?.contextSizeK ?? 256
+                                        }
+                                        placeholder="256"
+                                        step="1"
+                                        type="number"
+                                        required
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <FieldLabel htmlFor="model-max-output-tokens">
+                                        {t("pages.models.maxOutputTokens")} (K)
+                                      </FieldLabel>
+                                      <Input
+                                        id="model-max-output-tokens"
+                                        min="1"
+                                        name="maxOutputTokensK"
+                                        defaultValue={
+                                          formModel?.maxOutputTokensK ?? 16
+                                        }
+                                        placeholder="16384"
+                                        step="1"
+                                        type="number"
+                                        required
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <FieldLabel htmlFor="model-multiplier">
+                                        {t("pages.models.billingMultiplier")}
+                                      </FieldLabel>
+                                      <Input
+                                        id="model-multiplier"
+                                        min="0.01"
+                                        step="0.01"
+                                        name="multiplier"
+                                        defaultValue={
+                                          formModel?.type === "system"
+                                            ? formModel.multiplier
+                                            : 1
+                                        }
+                                        placeholder="1.0"
+                                        type="number"
+                                        required
+                                      />
+                                    </Field>
+                                  </>
+                                )}
+                              </FieldGroup>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        </FieldGroup>
+                      </ScrollArea>
+                      <DialogFooter>
+                        <DialogClose
+                          render={<Button type="button" variant="outline" />}
+                        >
+                          {t("pages.models.cancel")}
+                        </DialogClose>
+                        <Button
+                          loading={saving}
+                          disabled={saving || capabilitiesLoading}
+                          type="submit"
+                        >
+                          {editingModel
+                            ? t("pages.models.save")
+                            : t("pages.models.create")}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
             )}
           </>
         }
@@ -1485,235 +1794,252 @@ export function ModelsPage() {
                 <CollapsibleContent className="border-t p-4">
                   {kindModels.length > 0 ? (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {kindModels.map((model) => (
-                        <Card
-                          size="sm"
-                          className={cn(
-                            model.kind === "text"
-                              ? "bg-blue-50 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800"
-                              : "bg-purple-50 ring-purple-200 dark:bg-purple-950 dark:ring-purple-800",
-                            !model.enabled &&
-                              "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
-                          )}
-                          key={model.id}
-                        >
-                          <CardHeader>
-                            <div className="flex min-w-0 items-start gap-3">
-                              <Avatar size="lg">
-                                <AvatarFallback>
-                                  <Iconfont
-                                    className="size-7"
-                                    name={getModelIconName(model.modelId)}
-                                  />
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <CardTitle className="flex min-w-0 items-center gap-2">
-                                  <span
-                                    className="truncate"
-                                    title={model.displayName}
-                                  >
-                                    {model.displayName}
-                                  </span>
-                                  {!model.enabled && (
-                                    <Badge variant="outline">
-                                      {t("pages.models.disable")}
-                                    </Badge>
-                                  )}
-                                </CardTitle>
-                                <CardDescription
-                                  className="truncate"
-                                  title={model.baseUrl}
-                                >
-                                  {model.baseUrl}
-                                </CardDescription>
-                              </div>
-                              {model.type === "system" && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger
-                                    render={
-                                      <Button
-                                        aria-label={t("common.more")}
-                                        size="icon-sm"
-                                        type="button"
-                                        variant="ghost"
-                                      />
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={MoreHorizontalIcon}
-                                      strokeWidth={2}
+                      {kindModels.map((model) => {
+                        const selected = selectedIds.includes(model.id)
+                        const selectable = selecting && model.type === "system"
+                        return (
+                          <Card
+                            size="sm"
+                            className={cn(
+                              model.kind === "text"
+                                ? "bg-blue-50 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800"
+                                : "bg-purple-50 ring-purple-200 dark:bg-purple-950 dark:ring-purple-800",
+                              !model.enabled &&
+                                "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700",
+                              selectable && "cursor-pointer",
+                              selected &&
+                                (model.kind === "text"
+                                  ? "ring-2 ring-blue-500 dark:ring-blue-400"
+                                  : "ring-2 ring-purple-500 dark:ring-purple-400"),
+                              selected &&
+                                !model.enabled &&
+                                "ring-2 ring-gray-500 dark:ring-gray-400"
+                            )}
+                            key={model.id}
+                            onClick={
+                              selectable
+                                ? () => toggleSelected(model.id)
+                                : undefined
+                            }
+                            onKeyDown={
+                              selectable
+                                ? (event) => {
+                                    if (
+                                      event.key !== "Enter" &&
+                                      event.key !== " "
+                                    )
+                                      return
+                                    event.preventDefault()
+                                    toggleSelected(model.id)
+                                  }
+                                : undefined
+                            }
+                            role={selectable ? "checkbox" : undefined}
+                            aria-checked={selectable ? selected : undefined}
+                            tabIndex={selectable ? 0 : undefined}
+                          >
+                            <CardHeader>
+                              <div className="flex min-w-0 items-start gap-3">
+                                <Avatar size="lg">
+                                  <AvatarFallback>
+                                    <Iconfont
+                                      className="size-7"
+                                      name={getModelIconName(model.modelId)}
                                     />
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuGroup>
-                                      <DropdownMenuItem
-                                        disabled={model.enabled}
-                                        onClick={() =>
-                                          setModelEnabled(model.id, true)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={PlayIcon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.models.enable")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        disabled={!model.enabled}
-                                        onClick={() =>
-                                          setModelEnabled(model.id, false)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={PauseIcon}
-                                          strokeWidth={2}
-                                        />
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className="truncate"
+                                      title={model.displayName}
+                                    >
+                                      {model.displayName}
+                                    </span>
+                                    {!model.enabled && (
+                                      <Badge variant="outline">
                                         {t("pages.models.disable")}
-                                      </DropdownMenuItem>
-                                      {model.kind === "image" &&
-                                        model.enabled &&
-                                        model.imageConfig && (
+                                      </Badge>
+                                    )}
+                                  </CardTitle>
+                                  <CardDescription
+                                    className="truncate"
+                                    title={model.baseUrl}
+                                  >
+                                    {model.baseUrl}
+                                  </CardDescription>
+                                </div>
+                                {selectable ? (
+                                  <Checkbox
+                                    checked={selected}
+                                    aria-label={`选择${model.displayName}`}
+                                    className="pointer-events-none mt-1 bg-background"
+                                    tabIndex={-1}
+                                  />
+                                ) : (
+                                  model.type === "system" && (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger
+                                        render={
+                                          <Button
+                                            aria-label={t("common.more")}
+                                            className={cn(
+                                              "hover:bg-blue-100 hover:text-blue-800 aria-expanded:bg-blue-100 aria-expanded:text-blue-800 dark:hover:bg-blue-900 dark:hover:text-blue-200 dark:aria-expanded:bg-blue-900 dark:aria-expanded:text-blue-200",
+                                              model.kind !== "text" &&
+                                                "hover:bg-purple-100 hover:text-purple-800 aria-expanded:bg-purple-100 aria-expanded:text-purple-800 dark:hover:bg-purple-900 dark:hover:text-purple-200 dark:aria-expanded:bg-purple-900 dark:aria-expanded:text-purple-200",
+                                              !model.enabled &&
+                                                "hover:bg-gray-200 hover:text-gray-700 aria-expanded:bg-gray-200 aria-expanded:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300 dark:aria-expanded:bg-gray-800 dark:aria-expanded:text-gray-300"
+                                            )}
+                                            size="icon-sm"
+                                            type="button"
+                                            variant="ghost"
+                                          />
+                                        }
+                                      >
+                                        <HugeiconsIcon
+                                          icon={MoreHorizontalIcon}
+                                          strokeWidth={2}
+                                        />
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuGroup>
                                           <DropdownMenuItem
+                                            disabled={model.enabled}
                                             onClick={() =>
-                                              setModelToTest(model)
+                                              setModelEnabled(model.id, true)
                                             }
                                           >
                                             <HugeiconsIcon
                                               icon={PlayIcon}
                                               strokeWidth={2}
                                             />
-                                            {t("pages.models.testGeneration")}
+                                            {t("pages.models.enable")}
                                           </DropdownMenuItem>
-                                        )}
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          openModelForm(model, true)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={Edit02Icon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.models.edit")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          openModelForm(model, false)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={Copy01Icon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.models.copy")}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuGroup>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuGroup>
-                                      <DropdownMenuItem
-                                        variant="destructive"
-                                        onClick={() =>
-                                          setModelPendingDeletion(model)
-                                        }
-                                      >
-                                        <HugeiconsIcon
-                                          icon={Delete02Icon}
-                                          strokeWidth={2}
-                                        />
-                                        {t("pages.models.delete")}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuGroup>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                            </div>
-                          </CardHeader>
-                          <CardContent className="flex flex-col gap-3">
-                            <dl className="flex flex-col gap-3">
-                              {model.kind === "image" &&
-                                (model.imagePricing?.rates ?? []).map(
-                                  (rate) => (
-                                    <div
-                                      key={rate.quality}
-                                      className="flex min-w-0 items-center gap-4"
-                                    >
-                                      <dt className="min-w-0 flex-1 text-muted-foreground">
-                                        {t(
-                                          "pages.models.imageCreditsPerImage",
-                                          { quality: rate.quality }
-                                        )}
-                                      </dt>
-                                      <dd className="shrink-0 text-end font-medium">
-                                        {rate.credits_per_image}
-                                      </dd>
-                                    </div>
+                                          <DropdownMenuItem
+                                            disabled={!model.enabled}
+                                            onClick={() =>
+                                              setModelEnabled(model.id, false)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={PauseIcon}
+                                              strokeWidth={2}
+                                            />
+                                            {t("pages.models.disable")}
+                                          </DropdownMenuItem>
+                                          {model.kind === "image" &&
+                                            model.enabled &&
+                                            model.imageConfig && (
+                                              <DropdownMenuItem
+                                                onClick={() =>
+                                                  setModelToTest(model)
+                                                }
+                                              >
+                                                <HugeiconsIcon
+                                                  icon={PlayIcon}
+                                                  strokeWidth={2}
+                                                />
+                                                {t(
+                                                  "pages.models.testGeneration"
+                                                )}
+                                              </DropdownMenuItem>
+                                            )}
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              openModelForm(model, true)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={Edit02Icon}
+                                              strokeWidth={2}
+                                            />
+                                            {t("pages.models.edit")}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              openModelForm(model, false)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={Copy01Icon}
+                                              strokeWidth={2}
+                                            />
+                                            {t("pages.models.copy")}
+                                          </DropdownMenuItem>
+                                        </DropdownMenuGroup>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuGroup>
+                                          <DropdownMenuItem
+                                            variant="destructive"
+                                            onClick={() =>
+                                              setModelPendingDeletion(model)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={Delete02Icon}
+                                              strokeWidth={2}
+                                            />
+                                            {t("pages.models.delete")}
+                                          </DropdownMenuItem>
+                                        </DropdownMenuGroup>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   )
                                 )}
-                              {model.kind === "video" && (
-                                <div className="flex min-w-0 items-center gap-4">
-                                  <dt className="w-2/5 text-muted-foreground">
-                                    每秒积分
-                                  </dt>
-                                  <dd className="w-3/5 truncate text-end font-medium">
-                                    {(model.videoPricing?.rates ?? [])
-                                      .map(
-                                        (rate) =>
-                                          `${rate.resolution}: ${rate.credits_per_second}`
-                                      )
-                                      .join(" / ")}
-                                  </dd>
-                                </div>
-                              )}
-                              {model.kind === "text" &&
-                                model.type === "system" && (
+                              </div>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-3">
+                              <dl className="flex flex-col gap-3">
+                                {model.kind === "text" &&
+                                  model.type === "system" && (
+                                    <div className="flex min-w-0 items-center gap-4">
+                                      <dt
+                                        className="w-2/5 truncate text-muted-foreground"
+                                        title={t("pages.models.multiplier")}
+                                      >
+                                        {t("pages.models.multiplier")}
+                                      </dt>
+                                      <dd className="w-3/5 truncate text-end font-medium">
+                                        {model.multiplier.toFixed(2)}×
+                                      </dd>
+                                    </div>
+                                  )}
+                                {model.type === "user" && (
                                   <div className="flex min-w-0 items-center gap-4">
                                     <dt
                                       className="w-2/5 truncate text-muted-foreground"
-                                      title={t("pages.models.multiplier")}
+                                      title={t("pages.models.creator")}
                                     >
-                                      {t("pages.models.multiplier")}
+                                      {t("pages.models.creator")}
                                     </dt>
-                                    <dd className="w-3/5 truncate text-end font-medium">
-                                      {model.multiplier.toFixed(2)}×
+                                    <dd
+                                      className="w-3/5 truncate text-end font-medium"
+                                      title={model.owner}
+                                    >
+                                      {model.owner}
                                     </dd>
                                   </div>
                                 )}
-                              {model.type === "user" && (
-                                <div className="flex min-w-0 items-center gap-4">
-                                  <dt
-                                    className="w-2/5 truncate text-muted-foreground"
-                                    title={t("pages.models.creator")}
-                                  >
-                                    {t("pages.models.creator")}
-                                  </dt>
-                                  <dd
-                                    className="w-3/5 truncate text-end font-medium"
-                                    title={model.owner}
-                                  >
-                                    {model.owner}
-                                  </dd>
-                                </div>
+                              </dl>
+                            </CardContent>
+                            <CardFooter
+                              className={cn(
+                                "min-w-0 border-t",
+                                !model.enabled
+                                  ? "border-gray-300 dark:border-gray-700"
+                                  : model.kind === "text"
+                                    ? "border-blue-200 dark:border-blue-800"
+                                    : "border-purple-200 dark:border-purple-800"
                               )}
-                            </dl>
-                          </CardContent>
-                          <CardFooter
-                            className={cn(
-                              "min-w-0 border-t",
-                              !model.enabled
-                                ? "border-gray-300 dark:border-gray-700"
-                                : model.kind === "text"
-                                  ? "border-blue-200 dark:border-blue-800"
-                                  : "border-purple-200 dark:border-purple-800"
-                            )}
-                          >
-                            <ModelTagBadges
-                              tagIds={model.tagIds}
-                              tags={availableTags}
-                            />
-                          </CardFooter>
-                        </Card>
-                      ))}
+                            >
+                              <ModelTagBadges
+                                tagIds={model.tagIds}
+                                tags={availableTags}
+                              />
+                            </CardFooter>
+                          </Card>
+                        )
+                      })}
                     </div>
                   ) : (
                     <p className="py-6 text-center text-muted-foreground">
@@ -1769,6 +2095,166 @@ export function ModelsPage() {
               onClick={handleDeleteModel}
             >
               {t("pages.models.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={batchEnabled !== null}
+        onOpenChange={(open) => {
+          if (!open && !batchPending) setBatchEnabled(null)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {batchEnabled ? "启用所选模型？" : "禁用所选模型？"}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {batchEnabled
+              ? `确定启用已选择的 ${selectedIds.length} 个模型吗？`
+              : `确定禁用已选择的 ${selectedIds.length} 个模型吗？`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchPending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              loading={batchPending}
+              onClick={applyBatchEnabled}
+            >
+              确定
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={batchTagsOpen}
+        onOpenChange={(open) => {
+          if (!open && !batchPending) setBatchTagsOpen(false)
+        }}
+      >
+        <DialogContent className="sm:max-w-sm" showCloseButton={!batchPending}>
+          <DialogHeader>
+            <DialogTitle>设置标签</DialogTitle>
+          </DialogHeader>
+          <SkillTagSelect
+            id="batch-model-tags"
+            open={batchTagsMenuOpen}
+            options={availableTags}
+            placeholder={t("pages.skills.tagsPlaceholder")}
+            value={batchTagIds}
+            onOpenChange={setBatchTagsMenuOpen}
+            onValueChange={setBatchTagIds}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={batchPending}
+              onClick={() => setBatchTagsOpen(false)}
+            >
+              取消
+            </Button>
+            <Button type="button" onClick={() => setBatchTagsConfirm(true)}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={batchTagsConfirm}
+        onOpenChange={(open) => {
+          if (!open && !batchPending) setBatchTagsConfirm(false)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>设置所选模型的标签？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {`确定将已选择的 ${selectedIds.length} 个模型设置为所选标签吗？`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchPending}>取消</AlertDialogCancel>
+            <AlertDialogAction loading={batchPending} onClick={applyBatchTags}>
+              确定
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={batchAuthorizationOpen}
+        onOpenChange={(open) => {
+          if (!open && !batchPending) setBatchAuthorizationOpen(false)
+        }}
+      >
+        <DialogContent className="sm:max-w-sm" showCloseButton={!batchPending}>
+          <DialogHeader>
+            <DialogTitle>设置授权范围</DialogTitle>
+          </DialogHeader>
+          <GroupSelect
+            id="batch-model-authorization"
+            options={groups}
+            users={members}
+            value={{
+              groupIds: batchAuthorization.groupIds,
+              userIds: batchAuthorization.memberIds,
+            }}
+            onValueChange={(next) =>
+              setBatchAuthorization({
+                groupIds: [...next.groupIds],
+                memberIds: [...next.userIds],
+              })
+            }
+            label={t("pages.models.authorizedScope")}
+            placeholder={t("pages.models.authorizationPlaceholder")}
+            emptyText={t("pages.models.noMatchingAuthorization")}
+            locale={i18n.resolvedLanguage ?? i18n.language}
+            multiple
+            selectionMode="both"
+            cascadeGroups
+            searchable
+            searchPlaceholder={t("pages.models.searchAuthorization")}
+            noResultsText={t("pages.models.noMatchingAuthorization")}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={batchPending}
+              onClick={() => setBatchAuthorizationOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setBatchAuthorizationConfirm(true)}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={batchAuthorizationConfirm}
+        onOpenChange={(open) => {
+          if (!open && !batchPending) setBatchAuthorizationConfirm(false)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>设置所选模型的授权范围？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {`确定将已选择的 ${selectedIds.length} 个模型设置为所选授权范围吗？`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchPending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              loading={batchPending}
+              onClick={applyBatchAuthorization}
+            >
+              确定
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
