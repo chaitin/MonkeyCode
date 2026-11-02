@@ -17,7 +17,11 @@ import (
 
 func allowedIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	for s := range strings.SplitSeq(os.Getenv("MONKEYAI_MCP_ALLOWED_CIDRS"), ",") {
+	cidrs := strings.TrimSpace(os.Getenv("MONKEYAI_MCP_ALLOWED_CIDRS"))
+	if cidrs == "" {
+		cidrs = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+	}
+	for s := range strings.SplitSeq(cidrs, ",") {
 		p, err := netip.ParsePrefix(strings.TrimSpace(s))
 		if err == nil && p.Contains(ip) {
 			return true

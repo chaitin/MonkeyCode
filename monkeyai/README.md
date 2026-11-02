@@ -215,7 +215,7 @@ RustFS 镜像固定为 `chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/rustf
 
 `/healthz` 表示进程存活；`/readyz` 检查数据库和 Bucket（S3 检查超时 3 秒，缓存 5 秒）。Nginx 通用请求体上限为 100 MiB，技能上传路径允许 501 MiB（含 multipart 开销）；技能文件限 500 MiB，解包限 1 GiB，文件数量和 `SKILL.md` 大小不设独立上限，拒绝路径穿越、重复项、链接及不合法的 `SKILL.md`。
 
-MCP 默认访问公网 HTTP(S) 目标；访问内网服务时用 `MONKEYAI_MCP_ALLOWED_CIDRS` 明确配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。系统连接新发现工具默认禁用，个人连接工具自动启用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，需要登记到上游 OAuth 应用。
+MCP 默认允许访问公网及私网 HTTP(S) 目标，私网包括 `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16` 和 `fc00::/7`。`MONKEYAI_MCP_ALLOWED_CIDRS` 未设置或为空时使用上述默认网段，显式配置时覆盖默认私网网段，公网仍可访问；回环、链路本地等地址需要显式配置允许网段。连接使用真实 MCP 初始化和分页工具发现，拒绝自动重定向。系统连接新发现工具默认禁用，个人连接工具自动启用。OAuth 固定回调为 `${MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，需要登记到上游 OAuth 应用。
 
 Connector 可以直接编辑地址、认证方式与 OAuth 应用。关键配置变更会使旧凭证和目录失效；用户需更新指定 Header 凭证或对指定凭证重新授权。同一用户可以添加多份凭证，工具目录按具体凭证隔离；调用密钥绑定连接和独立凭证 ID，集中 Header/Token 仅保存在后端。
 

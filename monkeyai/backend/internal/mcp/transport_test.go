@@ -20,14 +20,29 @@ import (
 )
 
 func TestOutboundPolicy(t *testing.T) {
-	for _, addr := range []string{"127.0.0.1", "10.1.2.3", "169.254.169.254", "::1", "fc00::1", "::ffff:127.0.0.1"} {
-		if allowedIP(netip.MustParseAddr(addr)) {
-			t.Fatalf("默认放行私网地址 %s", addr)
+	for _, cidrs := range []string{"", " \t"} {
+		t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", cidrs)
+		for _, addr := range []string{"8.8.8.8", "2001:4860:4860::8888", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "fc00::1", "fd00::1", "::ffff:10.1.2.3"} {
+			if !allowedIP(netip.MustParseAddr(addr)) {
+				t.Errorf("默认未放行公网或私网地址 %s", addr)
+			}
+		}
+		for _, addr := range []string{"127.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "fe80::1", "0.0.0.0", "0.1.2.3", "::", "100.64.0.1", "198.18.0.1", "224.0.0.1", "ff02::1", "255.255.255.255"} {
+			if allowedIP(netip.MustParseAddr(addr)) {
+				t.Errorf("默认放行受限地址 %s", addr)
+			}
 		}
 	}
-	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "10.1.0.0/16")
-	if !allowedIP(netip.MustParseAddr("10.1.2.3")) || allowedIP(netip.MustParseAddr("10.2.2.3")) {
-		t.Fatal("CIDR 白名单无效")
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", " 10.1.0.0/16, 127.0.0.0/8 ")
+	for _, addr := range []string{"10.1.2.3", "127.0.0.1", "::ffff:127.0.0.1", "8.8.8.8"} {
+		if !allowedIP(netip.MustParseAddr(addr)) {
+			t.Errorf("未放行白名单或公网地址 %s", addr)
+		}
+	}
+	for _, addr := range []string{"10.2.2.3", "172.16.0.1", "192.168.1.1", "fc00::1"} {
+		if allowedIP(netip.MustParseAddr(addr)) {
+			t.Errorf("显式 CIDR 配置未覆盖默认网段 %s", addr)
+		}
 	}
 }
 func TestDiscoveryPagination(t *testing.T) {
@@ -226,6 +241,22 @@ func TestTokenProxyPinsConnectIPAndKeepsTLSIdentity(t *testing.T) {
 	}
 }
 
+func TestTokenProxyAllowsPrivateTargetsByDefault(t *testing.T) {
+	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
+	p, _ := url.Parse("http://127.0.0.1:3128")
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.com/token", nil)
+	h, target, err := tokenClient(req, func(*http.Request) (*url.URL, error) { return p, nil }, func(context.Context, string, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("10.0.0.1")}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.CloseIdleConnections()
+	if target.URL.Host != "10.0.0.1:443" || target.Host != "example.com" || h.Transport.(*http.Transport).TLSClientConfig.ServerName != "example.com" {
+		t.Fatal("私网目标未保持 IP 固定和 TLS 身份")
+	}
+}
+
 func TestTokenProxyRejectsUnsafeTargets(t *testing.T) {
 	p, _ := url.Parse("http://127.0.0.1:3128")
 	proxy := func(*http.Request) (*url.URL, error) { return p, nil }
@@ -233,7 +264,7 @@ func TestTokenProxyRejectsUnsafeTargets(t *testing.T) {
 		name, target string
 		ips          []netip.Addr
 	}{
-		{"仅内网", "https://example.com/token", []netip.Addr{netip.MustParseAddr("10.0.0.1")}},
+		{"链路本地", "https://example.com/token", []netip.Addr{netip.MustParseAddr("169.254.169.254")}},
 		{"混合解析", "https://example.com/token", []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("127.0.0.1")}},
 		{"带区域标识", "https://example.com/token", []netip.Addr{netip.MustParseAddr("2001:4860:4860::8888%lo0")}},
 		{"HTTP 目标", "http://example.com/token", []netip.Addr{netip.MustParseAddr("8.8.8.8")}},
