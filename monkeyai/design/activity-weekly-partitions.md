@@ -36,7 +36,7 @@ SELECT table_name, phase, source_end_at, source_end_id, cursor_at, cursor_id,
 FROM billing_activity_partition_state ORDER BY table_name;
 ```
 
-每 24 小时维护周分区，失败一分钟后重试。DEFAULT 的总积压以最多 10001 行检查；超过 10000 时停止自动 DDL并报警，避免长时间扫描与锁表。维护窗口可逐周迁移：
+每 24 小时维护周分区，失败按表一分钟后重试，不受回填的 10ms 循环影响。迁移 `000035_billing_activity_lock_retry` 将预建中的 `55P03` 锁竞争转换为返回 `false`，本次尝试整体回滚并释放已取得的锁，稍后重试；预建仍使用 NOWAIT。其他数据库错误继续告警。DEFAULT 的总积压以最多 10001 行检查；超过 10000 时停止自动 DDL 并报警，避免长时间扫描与锁表。维护窗口可逐周迁移：
 
 ```sql
 SELECT billing_create_activity_week('model_calls','2031-01-06 00:00:00+08',0);

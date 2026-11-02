@@ -22,6 +22,7 @@ func (s *Service) runActivityPartitions(ctx context.Context) {
 				return
 			}
 			if !s.now().Before(checks[name]) {
+				checks[name] = s.now().Add(time.Minute)
 				c, cancel := context.WithTimeout(ctx, 45*time.Second)
 				ready, err := query.EnsureActivityWeeks(c, sqlc.EnsureActivityWeeksParams{TableName: name, AtTime: s.now()})
 				cancel()
