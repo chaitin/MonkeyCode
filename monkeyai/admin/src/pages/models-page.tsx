@@ -12,6 +12,7 @@ import {
   PauseIcon,
   PlayIcon,
   PlusSignIcon,
+  Radar03Icon,
   SquareIcon,
   Tag01Icon,
   UserGroupIcon,
@@ -374,6 +375,10 @@ export function ModelsPage() {
   const [modelPendingDeletion, setModelPendingDeletion] =
     useState<Model | null>(null)
   const [modelToTest, setModelToTest] = useState<Model | null>(null)
+  const [textModelToTest, setTextModelToTest] = useState<Model | null>(null)
+  const [testMessage, setTestMessage] = useState("ping")
+  const [testResponse, setTestResponse] = useState("")
+  const [testSending, setTestSending] = useState(false)
   const [protocol, setProtocol] = useState<ModelProtocol>("openai_responses")
   const [kind, setKind] = useState<ModelKind>("text")
   const [modelId, setModelId] = useState("")
@@ -537,6 +542,45 @@ export function ModelsPage() {
       active = false
     }
   }, [dialogOpen, kind, provider, modelId, formModel])
+
+  const sendTextTest = async () => {
+    if (!textModelToTest || !testMessage.trim() || testSending) return
+    setTestSending(true)
+    setTestResponse("")
+    try {
+      const response = await fetch(
+        `/api/admin/v1/models/${textModelToTest.id}/probe`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: testMessage.trim() }),
+        }
+      )
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error?.message ?? "模型测试失败")
+      }
+      if (!response.body) throw new Error("模型没有返回响应")
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let content = ""
+      for (;;) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        content += decoder.decode(chunk.value, { stream: true })
+        setTestResponse(content)
+      }
+      content += decoder.decode()
+      setTestResponse(content || "模型返回了空响应")
+    } catch (reason) {
+      setTestResponse(
+        reason instanceof Error ? reason.message : "模型测试失败"
+      )
+    } finally {
+      setTestSending(false)
+    }
+  }
 
   const exitSelection = () => {
     setSelecting(false)
@@ -1927,6 +1971,19 @@ export function ModelsPage() {
                                             />
                                             {t("pages.models.disable")}
                                           </DropdownMenuItem>
+                                          {model.kind === "text" && (
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                setTextModelToTest(model)
+                                              }
+                                            >
+                                              <HugeiconsIcon
+                                                icon={Radar03Icon}
+                                                strokeWidth={2}
+                                              />
+                                              测试
+                                            </DropdownMenuItem>
+                                          )}
                                           {model.kind === "image" &&
                                             model.enabled &&
                                             model.imageConfig && (
@@ -2053,6 +2110,64 @@ export function ModelsPage() {
         </div>
       </ResourceList>
 
+      <Dialog
+        open={textModelToTest !== null}
+        onOpenChange={(open) => {
+          if (!open && !testSending) {
+            setTextModelToTest(null)
+            setTestMessage("ping")
+            setTestResponse("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl" showCloseButton={!testSending}>
+          <DialogHeader>
+            <DialogTitle>测试模型</DialogTitle>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="text-model-test-message">消息</FieldLabel>
+            <Input
+              id="text-model-test-message"
+              value={testMessage}
+              onChange={(event) => setTestMessage(event.target.value)}
+              disabled={testSending}
+            />
+          </Field>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">响应内容</p>
+            <div
+              className="min-h-24 whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm"
+              aria-live="polite"
+            >
+              {testResponse || (
+                <span className="text-muted-foreground">等待响应</span>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={testSending}
+              onClick={() => {
+                setTextModelToTest(null)
+                setTestMessage("ping")
+                setTestResponse("")
+              }}
+            >
+              关闭
+            </Button>
+            <Button
+              type="button"
+              loading={testSending}
+              disabled={!testMessage.trim() || testSending}
+              onClick={() => void sendTextTest()}
+            >
+              发送
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {modelToTest?.imageConfig && (
         <ImageGenerationTest
           key={modelToTest.id}

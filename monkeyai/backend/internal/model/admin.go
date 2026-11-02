@@ -47,6 +47,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		})
 	})
 	router.Post("/models/discover", s.discoverModels)
+	router.Post("/models/{modelID}/probe", s.probeModel)
 	router.Post("/models", s.createModel)
 	router.Put("/models/{modelID}", s.updateModel)
 	router.Patch("/models/{modelID}/enabled", s.setModelEnabled)

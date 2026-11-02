@@ -2646,6 +2646,42 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /api/admin/v1/models/{modelID}/probe:
+    post:
+      summary: 使用已保存配置测试系统大语言模型
+      description: 按模型协议、Base URL、已保存密钥和网络代理向上游发送 stream=true 请求。OpenAI Chat Completions 使用 /chat/completions，OpenAI Responses 使用 /responses，Anthropic 使用 /messages。响应原样流式返回，不缓存、不跟随重定向。
+      parameters:
+        - {name: modelID, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: {type: string, minLength: 1, maxLength: 4000}
+      responses:
+        '200':
+          description: 上游模型的 text/event-stream 响应。
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '502':
+          description: 连接模型失败、代理不可用或上游返回错误。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '504':
+          description: 上游模型响应超时。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /api/admin/v1/models/image-capabilities:
     get:
       summary: 查询生图模型支持的画质、比例和操作
