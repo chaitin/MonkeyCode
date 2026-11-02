@@ -29,9 +29,37 @@ test("upgrade uses only HTTPS links from the release endpoint", async () => {
     source("src/components/version-upgrade-button.tsx"),
   ])
   assert.match(context, /url\.protocol === "https:"/)
-  assert.match(provider, /release\.version !== current/)
+  assert.match(provider, /isNewerVersion\(release\.version, current\)/)
   assert.match(button, /href=\{upgradeURL\}/)
   assert.match(button, /rel="noopener noreferrer"/)
+})
+
+test("仅日期或序号更高的发布版本提示升级", async () => {
+  const { isNewerVersion } = await import("../src/lib/version-context.ts")
+  for (const [latest, current, expected] of [
+    ["v26103002", "v26103001", true],
+    ["v26103001", "v26103001", false],
+    ["v26103001", "v26103002", false],
+    ["v26103101", "v26103099", true],
+    ["v26110101", "v26103199", true],
+    ["v27010101", "v26123199", true],
+    ["v261030100", "v26103099", true],
+    ["v26103101", "v261030100", true],
+    ["v261030100", "v26103101", false],
+    ["v261030001", "v26103001", false],
+    ["v26103001", "dev", false],
+    ["v26103001", "cf3f8842", false],
+    ["dev", "v26103001", false],
+    ["v26.1030.2", "v26103001", false],
+    ["v26103002-rc1", "v26103001", false],
+    ["", "v26103001", false],
+  ]) {
+    assert.equal(
+      isNewerVersion(latest, current),
+      expected,
+      `${latest} > ${current}`
+    )
+  }
 })
 
 test("version copy exists in primary locales", async () => {
