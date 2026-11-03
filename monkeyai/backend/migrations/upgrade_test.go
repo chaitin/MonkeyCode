@@ -79,7 +79,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
-		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
+		"26/u endpoint_platform_text", "31/u session_client_runtime_add", "37/u oauth_pairing",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -115,6 +115,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	err = conn.QueryRow(t.Context(), `SELECT
 		to_regclass('oauth_device_requests') IS NOT NULL AND to_regclass('device_client_connections') IS NOT NULL
 		AND to_regclass('oauth_grants') IS NOT NULL
+		AND to_regclass('oauth_pairing_requests') IS NOT NULL
 		AND to_regclass('resource_imports') IS NOT NULL AND to_regclass('resource_import_bindings') IS NOT NULL
 		AND (SELECT count(*) = 4 FROM information_schema.columns WHERE table_schema = current_schema()
 			AND table_name IN ('skills', 'rules', 'connectors', 'experts') AND column_name = 'origin')
@@ -143,7 +144,17 @@ func TestUpgradeFrom14(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("down", "1")
+	if latest == 37 {
+		var removed bool
+		if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NULL").Scan(&removed); err != nil || !removed {
+			t.Fatalf("配对迁移回滚未删除新表: %v", err)
+		}
+	}
 	run("up")
+	var restored bool
+	if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NOT NULL").Scan(&restored); err != nil || !restored {
+		t.Fatalf("配对迁移重新升级未恢复新表: %v", err)
+	}
 	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
 		t.Fatalf("重新升级后应支持 runtime 会话: %v", err)
 	}

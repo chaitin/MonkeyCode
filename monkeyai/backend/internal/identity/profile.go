@@ -132,10 +132,13 @@ func (s *Service) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollbackProfile(ctx, tx)
 	q = sqlc.New(tx)
-	// Device decisions and token polls lock the request before its owner.
-	// Follow the same order, then detect approvals committed while acquiring
-	// the user lock. Retrying leaves the password and all revocations atomic.
+	// 授权决定先锁申请再锁用户，改密遵循同样的顺序。
+	// 拿到用户锁后复查期间新建的活动配对，避免遗漏撤销。
 	if err = q.RevokeProfileDeviceApprovals(ctx, new(user.ID)); err != nil {
+		profileFailure(ctx, w, err)
+		return
+	}
+	if err = q.RevokeProfilePairings(ctx, user.ID); err != nil {
 		profileFailure(ctx, w, err)
 		return
 	}
@@ -153,7 +156,12 @@ func (s *Service) changePassword(w http.ResponseWriter, r *http.Request) {
 		profileFailure(ctx, w, err)
 		return
 	}
-	if approved {
+	pairings, err := q.HasProfilePairings(ctx, user.ID)
+	if err != nil {
+		profileFailure(ctx, w, err)
+		return
+	}
+	if approved || pairings {
 		writeError(ctx, w, 409, "authorization_changed", "设备授权正在变化，请重新提交密码修改")
 		return
 	}

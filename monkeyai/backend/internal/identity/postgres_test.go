@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
-
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type authenticationStub struct {
@@ -23,46 +19,8 @@ func (s authenticationStub) GetValue(context.Context, string) (json.RawMessage, 
 }
 
 func TestOAuthUserRegistration(t *testing.T) {
-	dsn := os.Getenv("MONKEYAI_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("设置 MONKEYAI_TEST_DATABASE_URL 运行 OAuth 用户注册集成测试")
-	}
+	pool := emailDatabase(t)
 	ctx := t.Context()
-	root, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(root.Close)
-	suffix, err := randomToken(12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema := pgx.Identifier{"test_identity_" + suffix}.Sanitize()
-	if _, err := root.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if _, err := root.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE"); err != nil {
-			t.Error(err)
-		}
-	})
-	config, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	config.ConnConfig.RuntimeParams["search_path"] = schema
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000001_initial_create_schema.up.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, string(migration)); err != nil {
-		t.Fatal(err)
-	}
 
 	for _, test := range []struct {
 		name                    string
