@@ -167,6 +167,9 @@ UPDATE
     experts
 SET
     enabled = (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean,
+    admin_overrides = CASE WHEN sqlc.arg(DATA)::jsonb ? 'admin_overrides' THEN
+        sqlc.arg(DATA)::jsonb -> 'admin_overrides'
+    ELSE admin_overrides END,
     updated_at = now(),
     revision = revision + 1
 WHERE

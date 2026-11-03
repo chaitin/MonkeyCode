@@ -239,18 +239,19 @@ func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error
 }
 
 type Definition struct {
-	Kind, Path      string
-	Repository      func(Queryer) Repository
-	Fields          []string
-	UserFields      []string
-	Hidden          []string
-	OverrideFields  []string
-	Validate        func(context.Context, pgx.Tx, Object, Object) error
-	PrepareOverride func(context.Context, pgx.Tx, Object, Object) error
-	Persist         func(context.Context, pgx.Tx, Object) error
-	Decorate        func(context.Context, Queryer, Object) error
-	UserDecorate    func(Object)
-	References      func(context.Context, pgx.Tx, string) ([]Object, error)
+	Kind, Path           string
+	Repository           func(Queryer) Repository
+	Fields               []string
+	UserFields           []string
+	Hidden               []string
+	OverrideFields       []string
+	AllowImportedEnabled bool
+	Validate             func(context.Context, pgx.Tx, Object, Object) error
+	PrepareOverride      func(context.Context, pgx.Tx, Object, Object) error
+	Persist              func(context.Context, pgx.Tx, Object) error
+	Decorate             func(context.Context, Queryer, Object) error
+	UserDecorate         func(Object)
+	References           func(context.Context, pgx.Tx, string) ([]Object, error)
 }
 type CRUD struct {
 	Store *Store
@@ -304,7 +305,7 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 
 		o["user"] = users[owner]
 	}
-	if c.Def.Kind == "expert" || c.Def.Kind == "connector" {
+	if c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule" {
 		o["tags"], err = Tags(ctx, q, c.Def.Kind, o.String("id"))
 		if err != nil {
 			return nil, err
@@ -446,7 +447,7 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 			return nil, err
 		}
 	}
-	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector") {
+	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule") {
 		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, raw); err != nil {
 			return nil, err
 		}
@@ -767,13 +768,28 @@ func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled 
 	if o.String("ownership_type") == "user" {
 		return nil, Invalid("个人资源仅允许治理删除")
 	}
+	imported := false
 	if err = RequireEditable(ctx, tx, c.Def.Kind, id); err != nil {
-		return nil, err
+		if !c.Def.AllowImportedEnabled || !errors.Is(err, ImportedReadOnly) {
+			return nil, err
+		}
+		imported = true
 	}
 	if match != fmt.Sprintf(`"%v"`, o["revision"]) {
 		return nil, Conflict
 	}
-	data, err := json.Marshal(Object{"id": id, "enabled": enabled})
+	update := Object{"id": id, "enabled": enabled}
+	if imported {
+		overrides := Object{}
+		if current, ok := o["admin_overrides"].(map[string]any); ok {
+			for key, value := range current {
+				overrides[key] = value
+			}
+		}
+		overrides["enabled"] = true
+		update["admin_overrides"] = overrides
+	}
+	data, err := json.Marshal(update)
 	if err != nil {
 		return nil, err
 	}

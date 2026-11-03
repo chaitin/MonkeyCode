@@ -726,7 +726,7 @@ UPDATE connectors SET origin='package',name=d->>'name',description=d->>'descript
        config_revision=(d->>'config_revision')::bigint,connection_status=d->>'connection_status',
        last_checked_at=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_checked_at END,
        last_error=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_error END,
-       enabled=true,revision=revision+1,updated_at=now()
+       enabled=COALESCE((d->>'enabled')::boolean,true),revision=revision+1,updated_at=now()
 FROM (SELECT $1::jsonb AS d) input WHERE id=(d->>'id')::uuid
 `
 
@@ -737,7 +737,7 @@ func (q *Queries) UpdateImportConnector(ctx context.Context, data []byte) error 
 
 const updateImportExpert = `-- name: UpdateImportExpert :exec
 UPDATE experts SET origin='package',name=d->>'name',description=d->>'description',prompt=d->>'prompt',avatar_s3_key=d->>'avatar_s3_key',
-       name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',enabled=true,revision=revision+1,updated_at=now()
+       name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',enabled=COALESCE((d->>'enabled')::boolean,true),revision=revision+1,updated_at=now()
 FROM (SELECT $1::jsonb AS d) input WHERE id=(d->>'id')::uuid
 `
 
@@ -748,7 +748,7 @@ func (q *Queries) UpdateImportExpert(ctx context.Context, data []byte) error {
 
 const updateImportRule = `-- name: UpdateImportRule :exec
 UPDATE rules SET origin='package',name=d->>'name',description=d->>'description',content=d->>'content',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
-       enabled=true,revision=revision+1,updated_at=now()
+       enabled=COALESCE((d->>'enabled')::boolean,true),revision=revision+1,updated_at=now()
 FROM (SELECT $1::jsonb AS d) input WHERE id=(d->>'id')::uuid
 `
 
@@ -761,7 +761,7 @@ const updateImportSkill = `-- name: UpdateImportSkill :exec
 UPDATE skills SET origin='package',name=d->>'name',description=d->>'description',name_i18n=d->'name_i18n',description_i18n=d->'description_i18n',
        package_file_name=d->>'package_file_name',package_s3_key=CASE WHEN d->>'package_s3_key'='' THEN package_s3_key ELSE d->>'package_s3_key' END,
        package_size_bytes=(d->>'package_size_bytes')::bigint,package_sha256=d->>'package_sha256',file_count=(d->>'file_count')::int,
-       enabled=true,revision=revision+1,updated_at=now()
+       enabled=COALESCE((d->>'enabled')::boolean,true),revision=revision+1,updated_at=now()
 FROM (SELECT $1::jsonb AS d) input WHERE id=(d->>'id')::uuid
 `
 

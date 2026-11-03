@@ -101,6 +101,9 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResourceList } from "@/components/resource-list"
 import { useResourceList } from "@/hooks/use-resource-list"
+import { useResourceBatch } from "@/hooks/use-resource-batch"
+import { ResourceBatchActions } from "@/components/resource-batch-actions"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
@@ -240,6 +243,7 @@ export function ToolsPage() {
   const { t, i18n } = useTranslation()
   const { tags: availableTags } = useSkillTags()
   const remote = useResourceList("/connectors")
+  const batch = useResourceBatch("connector", remote)
   const servers = remote.items.map((row) => toServer(row, i18n.language))
   const reload = remote.reload
   const subjects = useSubjects()
@@ -313,7 +317,6 @@ export function ToolsPage() {
   ]
 
   const setConnectionEnabled = async (server: McpServer) => {
-    if (server.origin === "package") return
     await remote.run(async () => {
       await api(base + `/connectors/${server.id}/enabled`, {
         method: "PATCH",
@@ -574,7 +577,7 @@ export function ToolsPage() {
   return (
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
-        page={remote}
+        page={batch.page}
         error={subjects.error}
         typeLabel={t("pages.tools.type")}
         systemLabel={t("pages.tools.systemTool")}
@@ -584,14 +587,22 @@ export function ToolsPage() {
         })}
         searchClassName="sm:max-w-44 sm:flex-none"
         actions={
-          <>
+          <div className="ms-auto flex shrink-0 items-center gap-2">
+            <ResourceBatchActions
+              key={batch.key}
+              {...batch.actions}
+              groups={subjects.groups}
+              members={subjects.members}
+            />
             {activeType === "system" && (
               <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
                 <DialogTrigger
                   render={
                     <Button
-                      className="ms-auto shrink-0"
+                      className="shrink-0"
+                      disabled={remote.pending}
                       onClick={() => {
+                        batch.exit()
                         resetDraft()
                       }}
                     />
@@ -1010,7 +1021,7 @@ export function ToolsPage() {
                 </DialogContent>
               </Dialog>
             )}
-          </>
+          </div>
         }
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -1020,6 +1031,7 @@ export function ToolsPage() {
                 key={server.id}
                 origin={server.origin}
                 disabled={!server.enabled}
+                {...batch.cardProps(server.id, server.name, server.type)}
               >
                 <CardHeader>
                   <div className="flex min-w-0 items-start gap-3">
@@ -1059,7 +1071,17 @@ export function ToolsPage() {
                         {server.creator}
                       </CardDescription>
                     </div>
-                    {
+                    {batch.actions.selecting && server.type === "system" ? (
+                      <Checkbox
+                        checked={batch.isSelected(server.id)}
+                        disabled={remote.pending}
+                        aria-label={t("resources.batch.selectResource", {
+                          name: server.name,
+                        })}
+                        onClick={(event) => event.stopPropagation()}
+                        onCheckedChange={() => batch.toggle(server.id)}
+                      />
+                    ) : (
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
@@ -1080,17 +1102,15 @@ export function ToolsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuGroup hidden={server.type !== "system"}>
-                            {server.origin !== "package" && (
-                              <DropdownMenuItem
-                                onClick={() => setConnectionEnabled(server)}
-                              >
-                                {t(
-                                  server.enabled
-                                    ? "resources.disable"
-                                    : "resources.enable"
-                                )}
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem
+                              onClick={() => setConnectionEnabled(server)}
+                            >
+                              {t(
+                                server.enabled
+                                  ? "resources.disable"
+                                  : "resources.enable"
+                              )}
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleViewTools(server)}
                             >
@@ -1136,16 +1156,12 @@ export function ToolsPage() {
                             </DropdownMenuItem>
                           </DropdownMenuGroup>
                           <DropdownMenuSeparator
-                            hidden={
-                              server.type !== "system" ||
-                              server.origin === "package"
-                            }
+                            hidden={server.type !== "system"}
                           />
-                          <DropdownMenuGroup
-                            hidden={server.origin === "package"}
-                          >
+                          <DropdownMenuGroup>
                             <DropdownMenuItem
                               variant="destructive"
+                              disabled={server.origin === "package"}
                               onClick={() => setServerPendingDeletion(server)}
                             >
                               <HugeiconsIcon
@@ -1157,7 +1173,7 @@ export function ToolsPage() {
                           </DropdownMenuGroup>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    }
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1263,7 +1279,11 @@ export function ToolsPage() {
                 {remote.pending && !toolDrafts.length && (
                   <TableRow>
                     <TableCell
-                      colSpan={viewingServer?.authorizationMode === "centralized" ? 3 : 2}
+                      colSpan={
+                        viewingServer?.authorizationMode === "centralized"
+                          ? 3
+                          : 2
+                      }
                       className="h-28 text-center"
                     >
                       <TableLoading />

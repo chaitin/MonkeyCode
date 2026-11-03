@@ -1,4 +1,10 @@
 import { api } from "@/lib/api"
+import { useAppToast } from "@/components/animated-toast-provider"
+import {
+  applySkillBatch,
+  type SkillBatchChange,
+  type SkillBatchProgress,
+} from "@/lib/skill-batch"
 import {
   base,
   grants,
@@ -29,6 +35,7 @@ import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillImportWizard } from "@/components/skill-import-wizard"
+import { SkillBatchActions } from "@/components/skill-batch-actions"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import {
@@ -44,6 +51,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   CardContent,
   CardDescription,
@@ -163,11 +171,22 @@ function formatBytes(bytes: number) {
 
 export function SkillsPage() {
   const { t, i18n } = useTranslation()
+  const { showToast } = useAppToast()
   const { tags: availableTags } = useSkillTags()
   const remote = useResourceList("/skills")
   const skills = remote.items.map((row) => toSkill(row, i18n.language))
   const subjects = useSubjects()
   const activeSkillType = remote.type
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const selectedRows = remote.items.filter(
+    (skill) => skill.ownership_type === "system" && selectedIds.includes(skill.id)
+  )
+  const [batchProgress, setBatchProgress] = useState<SkillBatchProgress>({
+    completed: 0,
+    total: 0,
+  })
+  const selectionKey = `${remote.type}:${remote.search}:${remote.page}:${remote.pageSize}`
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<AgentSkill | null>(null)
   const [skillPendingDeletion, setSkillPendingDeletion] =
@@ -187,6 +206,64 @@ export function SkillsPage() {
   const [fileInputKey, setFileInputKey] = useState(0)
   const packageRequestId = useRef(0)
   const importedSkill = editingSkill?.origin === "package"
+
+  const exitSelection = () => {
+    setSelecting(false)
+    setSelectedIds([])
+  }
+
+  const handleBatchApply = async (change: SkillBatchChange) => {
+    if (remote.loading || selectedRows.length === 0) return false
+    return remote.run(async () => {
+      setBatchProgress({ completed: 0, total: selectedRows.length })
+      const result = await applySkillBatch(
+        selectedRows,
+        change,
+        api,
+        setBatchProgress
+      )
+      if (
+        change.action === "delete" &&
+        result.succeeded.length === remote.items.length &&
+        remote.page > 1
+      ) {
+        remote.previousPage(remote.type)
+      }
+      setSelectedIds(result.failed.map((failure) => failure.id))
+      setSelecting(result.failed.length > 0)
+      showToast({
+        status: result.failed.length
+          ? "error"
+          : result.skipped.length
+            ? "info"
+            : "success",
+        title: t("resources.skillBatch.result", {
+          succeeded: result.succeeded.length,
+          failed: result.failed.length,
+          skipped: result.skipped.length,
+        }),
+        description: result.failed.length
+          ? `${t("resources.skillBatch.retryFailed")} ${result.failed
+              .slice(0, 3)
+              .map((failure) => `${failure.name}: ${failure.message}`)
+              .join("；")}`
+          : result.skipped.length
+            ? t("resources.skillBatch.packageSkipped", {
+                count: result.skipped.length,
+              })
+            : undefined,
+      })
+    })
+  }
+
+  const toggleSelected = (id: string) => {
+    if (remote.pending) return
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id]
+    )
+  }
 
   const resetSkillOptions = () => {
     packageRequestId.current += 1
@@ -298,7 +375,7 @@ export function SkillsPage() {
 
   const setSkillEnabled = async (id: string, enabled: boolean) => {
     const item = skills.find((s) => s.id === id)
-    if (!item || item.origin === "package") return
+    if (!item) return
     await remote.run(async () => {
       await api(base + `/skills/${id}/enabled`, {
         method: "PATCH",
@@ -362,7 +439,29 @@ export function SkillsPage() {
   return (
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
-        page={remote}
+        page={{
+          ...remote,
+          setType: (type) => {
+            exitSelection()
+            remote.setType(type)
+          },
+          handleSearch: (event) => {
+            exitSelection()
+            remote.handleSearch(event)
+          },
+          setPageSize: (size) => {
+            exitSelection()
+            remote.setPageSize(size)
+          },
+          nextPage: () => {
+            exitSelection()
+            remote.nextPage()
+          },
+          previousPage: (type = remote.type) => {
+            exitSelection()
+            remote.previousPage(type)
+          },
+        }}
         error={subjects.error}
         typeLabel={t("pages.skills.type")}
         systemLabel={t("pages.skills.systemSkill")}
@@ -372,14 +471,44 @@ export function SkillsPage() {
         })}
         searchClassName="sm:max-w-44 sm:flex-none"
         actions={
-          <>
+          <div className="ms-auto flex shrink-0 items-center gap-2">
+            <SkillBatchActions
+              key={selectionKey}
+              selecting={selecting}
+              selectedCount={selectedRows.length}
+              pending={remote.pending}
+              progress={batchProgress}
+              onApply={handleBatchApply}
+              disabled={
+                remote.loading ||
+                remote.pending ||
+                (!selecting && skills.length === 0)
+              }
+              groups={subjects.groups}
+              members={subjects.members}
+              onEnter={() => {
+                setSelectedIds([])
+                setSelecting(true)
+              }}
+              onSelectAll={() =>
+                setSelectedIds(
+                  skills
+                    .filter((skill) => skill.type === "system")
+                    .map((skill) => skill.id)
+                )
+              }
+              onClear={() => setSelectedIds([])}
+              onExit={exitSelection}
+            />
             {activeSkillType === "system" && (
               <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
                 <DialogTrigger
                   render={
                     <Button
-                      className="ms-auto shrink-0"
+                      className="shrink-0"
+                      disabled={remote.pending}
                       onClick={() => {
+                        exitSelection()
                         setEditingSkill(null)
                         resetSkillOptions()
                       }}
@@ -631,7 +760,7 @@ export function SkillsPage() {
                 </DialogContent>
               </Dialog>
             )}
-          </>
+          </div>
         }
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -639,12 +768,36 @@ export function SkillsPage() {
             const selectedTags = availableTags.filter((tag) =>
               skill.tagIds.includes(tag.id)
             )
+            const selectable = selecting && skill.type === "system"
+            const selected = selectable && selectedIds.includes(skill.id)
 
             return (
               <ResourceCard
                 key={skill.id}
                 origin={skill.origin}
                 disabled={!skill.enabled}
+                selectable={selectable}
+                selected={selected}
+                onClick={selectable ? () => toggleSelected(skill.id) : undefined}
+                onKeyDown={
+                  selectable
+                    ? (event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        toggleSelected(skill.id)
+                      }
+                    : undefined
+                }
+                role={selectable ? "checkbox" : undefined}
+                aria-checked={selectable ? selected : undefined}
+                aria-disabled={selectable && remote.pending ? true : undefined}
+                aria-label={
+                  selectable
+                    ? t("resources.skillBatch.selectSkill", { skill: skill.name })
+                    : undefined
+                }
+                tabIndex={selectable ? 0 : undefined}
               >
                 <CardHeader>
                   <div className="flex min-w-0 items-start gap-3">
@@ -689,7 +842,14 @@ export function SkillsPage() {
                         {skill.creator}
                       </CardDescription>
                     </div>
-                    {skill.type === "system" && (
+                    {selectable ? (
+                      <Checkbox
+                        checked={selected}
+                        aria-hidden="true"
+                        className="pointer-events-none mt-1 bg-background"
+                        tabIndex={-1}
+                      />
+                    ) : skill.type === "system" ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
@@ -711,7 +871,6 @@ export function SkillsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuGroup>
                             <DropdownMenuItem
-                              hidden={skill.origin === "package"}
                               disabled={skill.enabled}
                               onClick={() => setSkillEnabled(skill.id, true)}
                             >
@@ -719,7 +878,6 @@ export function SkillsPage() {
                               {t("pages.skills.enable")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              hidden={skill.origin === "package"}
                               disabled={!skill.enabled}
                               onClick={() => setSkillEnabled(skill.id, false)}
                             >
@@ -736,14 +894,11 @@ export function SkillsPage() {
                               {t("pages.skills.edit")}
                             </DropdownMenuItem>
                           </DropdownMenuGroup>
-                          <DropdownMenuSeparator
-                            hidden={skill.origin === "package"}
-                          />
-                          <DropdownMenuGroup
-                            hidden={skill.origin === "package"}
-                          >
+                          <DropdownMenuSeparator />
+                          <DropdownMenuGroup>
                             <DropdownMenuItem
                               variant="destructive"
+                              disabled={skill.origin === "package"}
                               onClick={() => setSkillPendingDeletion(skill)}
                             >
                               <HugeiconsIcon
@@ -755,7 +910,7 @@ export function SkillsPage() {
                           </DropdownMenuGroup>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    )}
+                    ) : null}
                   </div>
                 </CardHeader>
                 <CardContent>

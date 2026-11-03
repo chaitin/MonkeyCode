@@ -3141,6 +3141,42 @@ paths:
         schema:
           type: string
           format: uuid
+  /api/admin/v1/rules/{id}/enabled:
+    patch:
+      summary: 启停规则
+      description: 支持管理员创建和资源包导入的规则。手动启停设置会保留到后续资源包更新。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: If-Match
+        in: header
+        required: true
+        description: 上次读取返回的 ETag，例如 "1"。
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: {type: boolean}
+      responses:
+        '200':
+          description: 更新后的规则
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RuleResource'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
   /api/admin/v1/skills:
     get:
       summary: 查询Skill
@@ -3367,7 +3403,8 @@ paths:
           format: uuid
   /api/admin/v1/skills/{id}/enabled:
     patch:
-      summary: 启停Skill
+      summary: 启停技能
+      description: 支持管理员创建和资源包导入的技能。手动启停设置会保留到后续资源包更新。
       responses:
         '200':
           description: 启停Skill
@@ -3634,6 +3671,7 @@ paths:
   /api/admin/v1/experts/{id}/enabled:
     patch:
       summary: 启停Expert
+      description: 支持管理员创建和资源包导入的专家。手动启停设置会保留到后续资源包更新。
       responses:
         '200':
           description: 启停Expert
@@ -3907,6 +3945,7 @@ paths:
   /api/admin/v1/connectors/{id}/enabled:
     patch:
       summary: 启停Connector
+      description: 支持管理员创建和资源包导入的连接器。手动启停设置会保留到后续资源包更新。
       responses:
         '200':
           description: 启停Connector
@@ -7699,6 +7738,11 @@ components:
     RuleResource:
       type: object
       properties:
+        description:
+          type: string
+        tags:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceTag'}
         shared_users:
           type: array
           readOnly: true
@@ -7747,6 +7791,12 @@ components:
     RuleInput:
       type: object
       properties:
+        description:
+          type: string
+        tag_ids:
+          type: array
+          items: {type: string, format: uuid}
+          description: 替换系统规则的标签；省略时保留已有标签，空数组清空标签。
         content:
           type: string
         name:

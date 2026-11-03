@@ -102,6 +102,11 @@ func target(ctx context.Context, q resource.Queryer, b binding) (resource.Object
 	return out, nil
 }
 
+func hasEnabledOverride(kind string, object resource.Object) bool {
+	overrides, _ := object["admin_overrides"].(map[string]any)
+	return slices.Contains([]string{"skill", "expert", "connector", "rule"}, kind) && overrides["enabled"] == true
+}
+
 type desired struct {
 	Kind, Slug, Name, Source, StoredSHA string
 	Fields                              resource.Object
@@ -270,7 +275,7 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 			change.ResourceID, change.Revision = b.ID, obj.Int("revision")
 			switch {
 			case b.Retired:
-				if obj.Bool("enabled") {
+				if obj.Bool("enabled") && !hasEnabledOverride(b.Type, obj) {
 					return result, fmt.Errorf("退役资源 %s 状态异常", item.Slug)
 				}
 				change.Action = "restore"
@@ -296,7 +301,7 @@ func (s *Service) Evaluate(ctx context.Context, q resource.Queryer, p Package, r
 		if err != nil {
 			return result, fmt.Errorf("将退役资源 %s 目标异常: %w", slug, err)
 		}
-		if v, ok := obj["enabled"].(bool); !ok || !v {
+		if v, ok := obj["enabled"].(bool); !ok || (!v && !hasEnabledOverride(b.Type, obj)) {
 			return result, fmt.Errorf("将退役资源 %s 启停状态异常", slug)
 		}
 		warnings, err := checkReferences(ctx, q, b, present, r, current)

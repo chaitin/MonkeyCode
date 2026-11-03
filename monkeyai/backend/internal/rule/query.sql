@@ -138,6 +138,9 @@ WHERE
 -- name: SetResourceEnabled :exec
 UPDATE rules
 SET enabled = (sqlc.arg(DATA)::jsonb ->> 'enabled')::boolean,
+    admin_overrides = CASE WHEN sqlc.arg(DATA)::jsonb ? 'admin_overrides' THEN
+        sqlc.arg(DATA)::jsonb -> 'admin_overrides'
+    ELSE admin_overrides END,
     revision = revision + 1,
     updated_at = now()
 WHERE id = (sqlc.arg(DATA)::jsonb ->> 'id')::uuid;

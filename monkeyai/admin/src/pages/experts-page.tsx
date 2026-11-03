@@ -18,6 +18,8 @@ import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { useEffect, useState, type FormEvent } from "react"
 import { ResourceList } from "@/components/resource-list"
 import { useResourceList } from "@/hooks/use-resource-list"
+import { useResourceBatch } from "@/hooks/use-resource-batch"
+import { ResourceBatchActions } from "@/components/resource-batch-actions"
 import {
   AiBrain01Icon,
   Copy02Icon,
@@ -233,7 +235,10 @@ function ExpertAssociationSelect({
         </span>
         <HugeiconsIcon icon={UnfoldMoreIcon} data-icon="inline-end" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--anchor-width)] gap-1 p-1">
+      <PopoverContent
+        align="start"
+        className="w-[var(--anchor-width)] gap-1 p-1"
+      >
         <PopoverHeader className="sr-only">
           <PopoverTitle>{label}</PopoverTitle>
         </PopoverHeader>
@@ -299,6 +304,7 @@ export function ExpertsPage() {
   const { tags: availableTags } = useSkillTags()
   const { showToast } = useAppToast()
   const remote = useResourceList("/experts")
+  const batch = useResourceBatch("expert", remote)
   const experts = remote.items.map((row) => toExpert(row, i18n.language))
   const subjects = useSubjects()
   const [options, setOptions] = useState<
@@ -360,6 +366,7 @@ export function ExpertsPage() {
   }, [editorOpen, optionRevision, showToast, t, i18n.language])
 
   const openCreateDialog = () => {
+    batch.exit()
     setEditingExpert(null)
     setForm(EMPTY_FORM)
     setAuthorizationOpen(false)
@@ -458,7 +465,7 @@ export function ExpertsPage() {
   }
   const setExpertEnabled = async (id: string, enabled: boolean) => {
     const item = experts.find((e) => e.id === id)
-    if (!item || item.origin === "package") return
+    if (!item) return
     await remote.run(async () => {
       await api(base + `/experts/${id}/enabled`, {
         method: "PATCH",
@@ -493,7 +500,7 @@ export function ExpertsPage() {
   return (
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
-        page={remote}
+        page={batch.page}
         error={subjects.error}
         typeLabel={t("pages.models.type")}
         systemLabel={t("resources.systemExpert")}
@@ -503,14 +510,23 @@ export function ExpertsPage() {
         })}
         searchClassName="sm:max-w-44 sm:flex-none"
         actions={
-          <Button
-            className="ms-auto shrink-0"
-            type="button"
-            onClick={openCreateDialog}
-          >
-            <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
-            {t("pages.experts.createExpert")}
-          </Button>
+          <div className="ms-auto flex shrink-0 items-center gap-2">
+            <ResourceBatchActions
+              key={batch.key}
+              {...batch.actions}
+              groups={subjects.groups}
+              members={subjects.members}
+            />
+            <Button
+              className="shrink-0"
+              type="button"
+              disabled={remote.pending}
+              onClick={openCreateDialog}
+            >
+              <HugeiconsIcon icon={PlusSignIcon} data-icon="inline-start" />
+              {t("pages.experts.createExpert")}
+            </Button>
+          </div>
         }
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -519,6 +535,7 @@ export function ExpertsPage() {
               key={expert.id}
               origin={expert.origin}
               disabled={!expert.enabled}
+              {...batch.cardProps(expert.id, expert.name, expert.ownership)}
             >
               <CardHeader>
                 <div className="flex min-w-0 items-start gap-3">
@@ -558,87 +575,106 @@ export function ExpertsPage() {
                         </Badge>
                       )}
                     </CardTitle>
-                    <CardDescription
-                      className="truncate"
-                      title={expert.owner}
-                    >
+                    <CardDescription className="truncate" title={expert.owner}>
                       {expert.owner}
                     </CardDescription>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <ResourceCardMenuButton
-                          aria-label={t("common.more")}
-                          tone={
-                            expert.origin !== "package" && expert.enabled
-                              ? "blue"
-                              : "neutral"
-                          }
-                        />
-                      }
-                    >
-                      <HugeiconsIcon
-                        icon={MoreHorizontalIcon}
-                        strokeWidth={2}
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {expert.ownership === "system" && (
-                        <>
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem
-                              hidden={expert.origin === "package"}
-                              disabled={expert.enabled}
-                              onClick={() => setExpertEnabled(expert.id, true)}
-                            >
-                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
-                              {t("pages.experts.enable")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              hidden={expert.origin === "package"}
-                              disabled={!expert.enabled}
-                              onClick={() => setExpertEnabled(expert.id, false)}
-                            >
-                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
-                              {t("pages.experts.disable")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => openEditDialog(expert)}
-                            >
-                              <HugeiconsIcon
-                                icon={Edit02Icon}
-                                strokeWidth={2}
-                              />
-                              {t("pages.experts.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              hidden={expert.origin === "package"}
-                              onClick={() => duplicateExpert(expert)}
-                            >
-                              <HugeiconsIcon
-                                icon={Copy02Icon}
-                                strokeWidth={2}
-                              />
-                              {t("pages.experts.duplicate")}
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                          <DropdownMenuSeparator
-                            hidden={expert.origin === "package"}
+                  {batch.actions.selecting && expert.ownership === "system" ? (
+                    <Checkbox
+                      checked={batch.isSelected(expert.id)}
+                      disabled={remote.pending}
+                      aria-label={t("resources.batch.selectResource", {
+                        name: expert.name,
+                      })}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={() => batch.toggle(expert.id)}
+                    />
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <ResourceCardMenuButton
+                            aria-label={t("common.more")}
+                            tone={
+                              expert.origin !== "package" && expert.enabled
+                                ? "blue"
+                                : "neutral"
+                            }
                           />
-                        </>
-                      )}
-                      <DropdownMenuGroup hidden={expert.origin === "package"}>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setPendingDeletion(expert)}
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-                          {t("pages.experts.delete")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={MoreHorizontalIcon}
+                          strokeWidth={2}
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {expert.ownership === "system" && (
+                          <>
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                disabled={expert.enabled}
+                                onClick={() =>
+                                  setExpertEnabled(expert.id, true)
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={PlayIcon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.enable")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!expert.enabled}
+                                onClick={() =>
+                                  setExpertEnabled(expert.id, false)
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={PauseIcon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.disable")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => openEditDialog(expert)}
+                              >
+                                <HugeiconsIcon
+                                  icon={Edit02Icon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.edit")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                hidden={expert.origin === "package"}
+                                onClick={() => duplicateExpert(expert)}
+                              >
+                                <HugeiconsIcon
+                                  icon={Copy02Icon}
+                                  strokeWidth={2}
+                                />
+                                {t("pages.experts.duplicate")}
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={expert.origin === "package"}
+                            onClick={() => setPendingDeletion(expert)}
+                          >
+                            <HugeiconsIcon
+                              icon={Delete02Icon}
+                              strokeWidth={2}
+                            />
+                            {t("pages.experts.delete")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

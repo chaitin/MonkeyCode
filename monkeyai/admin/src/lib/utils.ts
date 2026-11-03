@@ -5,11 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const creatorNameSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-})
+const creatorNameSegmenter =
+  typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null
 
 export function getCreatorInitial(creator: string) {
-  const segments = creatorNameSegmenter.segment(creator.trim().toUpperCase())
+  const name = creator.trim().toUpperCase()
+  if (!creatorNameSegmenter) return Array.from(name)[0] ?? ""
+  const segments = creatorNameSegmenter.segment(name)
   return segments[Symbol.iterator]().next().value?.segment ?? ""
 }

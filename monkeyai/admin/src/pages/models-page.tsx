@@ -93,6 +93,7 @@ import { useResourceList } from "@/hooks/use-resource-list"
 import { Iconfont } from "@/components/iconfont"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import { api } from "@/lib/api"
+import { deleteModelBatch } from "@/lib/model-batch-delete"
 import { SystemProxySelect } from "@/components/proxy-settings"
 import { loadProxies, type SystemProxy } from "@/lib/proxy-settings"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -358,6 +359,11 @@ export function ModelsPage() {
   const [selecting, setSelecting] = useState(false)
   const [selectionMenuOpen, setSelectionMenuOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const selectedModels = models.filter(
+    (model) => model.type === "system" && selectedIds.includes(model.id)
+  )
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  const [batchDeleteProgress, setBatchDeleteProgress] = useState({ completed: 0, total: 0 })
   const [batchEnabled, setBatchEnabled] = useState<boolean | null>(null)
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [batchTagsConfirm, setBatchTagsConfirm] = useState(false)
@@ -586,6 +592,7 @@ export function ModelsPage() {
     setSelecting(false)
     setSelectionMenuOpen(false)
     setSelectedIds([])
+    setBatchDeleteOpen(false)
     setBatchEnabled(null)
     setBatchTagsOpen(false)
     setBatchTagsConfirm(false)
@@ -602,6 +609,48 @@ export function ModelsPage() {
     }
     setSelectionMenuOpen(false)
     setBatchEnabled(enabled)
+  }
+
+  const openBatchDelete = () => {
+    if (selectedModels.length === 0) return
+    setSelectionMenuOpen(false)
+    setBatchDeleteOpen(true)
+  }
+
+  const applyBatchDelete = async () => {
+    if (batchPending || remote.loading || selectedModels.length === 0) return
+    await remote.run(async () => {
+      setBatchPending(true)
+      setBatchDeleteProgress({ completed: 0, total: selectedModels.length })
+      try {
+        const result = await deleteModelBatch(selectedModels, api, setBatchDeleteProgress)
+        if (result.succeeded.length === models.length && remote.page > 1) {
+          remote.previousPage(activeModelType)
+        }
+        setBatchDeleteOpen(false)
+        if (result.failed.length) {
+          setSelectedIds(result.failed.map((failure) => failure.id))
+          setSelecting(true)
+        } else {
+          exitSelection()
+        }
+        showToast({
+          status: result.failed.length ? "error" : "success",
+          title: t("resources.modelBatchDelete.result", {
+            succeeded: result.succeeded.length,
+            failed: result.failed.length,
+          }),
+          description: result.failed.length
+            ? `${t("resources.modelBatchDelete.retryFailed")} ${result.failed
+                .slice(0, 3)
+                .map((failure) => `${failure.name}: ${failure.message}`)
+                .join("；")}`
+            : undefined,
+        })
+      } finally {
+        setBatchPending(false)
+      }
+    })
   }
 
   const applyBatchEnabled = async () => {
@@ -750,6 +799,7 @@ export function ModelsPage() {
   }
 
   const toggleSelected = (id: string) => {
+    if (batchPending || remote.pending) return
     setSelectedIds((current) =>
       current.includes(id)
         ? current.filter((item) => item !== id)
@@ -1062,7 +1112,7 @@ export function ModelsPage() {
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <ResourceList
         page={remote}
-        pending={saving}
+        pending={saving || batchPending}
         typeLabel={t("pages.models.type")}
         systemLabel={t("pages.models.systemModel")}
         userLabel={t("pages.models.userModel")}
@@ -1079,7 +1129,11 @@ export function ModelsPage() {
                   >
                     <DropdownMenuTrigger
                       render={
-                        <Button type="button" variant="outline">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={batchPending || remote.pending}
+                        >
                           批量操作
                           <HugeiconsIcon
                             icon={ArrowRight01Icon}
@@ -1145,6 +1199,14 @@ export function ModelsPage() {
                             {label}
                           </DropdownMenuItem>
                         ))}
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={selectedModels.length === 0 || remote.loading}
+                          onClick={openBatchDelete}
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                          {t("resources.modelBatchDelete.action")}
+                        </DropdownMenuItem>
                       </DropdownMenuGroup>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
@@ -1160,6 +1222,7 @@ export function ModelsPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={batchPending || remote.pending}
                     onClick={() => {
                       setSelecting(true)
                       setSelectionMenuOpen(true)
@@ -1173,6 +1236,7 @@ export function ModelsPage() {
                     render={
                       <Button
                         className="shrink-0"
+                        disabled={batchPending || remote.pending}
                         onClick={() => openModelForm(null, false)}
                       />
                     }
@@ -1852,12 +1916,14 @@ export function ModelsPage() {
                                 "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700",
                               selectable && "cursor-pointer",
                               selected &&
+                                "relative ring-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border-2",
+                              selected &&
                                 (model.kind === "text"
-                                  ? "ring-2 ring-blue-500 dark:ring-blue-400"
-                                  : "ring-2 ring-purple-500 dark:ring-purple-400"),
+                                  ? "after:border-blue-500 dark:after:border-blue-400"
+                                  : "after:border-purple-500 dark:after:border-purple-400"),
                               selected &&
                                 !model.enabled &&
-                                "ring-2 ring-gray-500 dark:ring-gray-400"
+                                "after:border-gray-500 dark:after:border-gray-400"
                             )}
                             key={model.id}
                             onClick={
@@ -2210,6 +2276,39 @@ export function ModelsPage() {
               onClick={handleDeleteModel}
             >
               {t("pages.models.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={batchDeleteOpen}
+        onOpenChange={(open) => {
+          if (!batchPending && !remote.pending) setBatchDeleteOpen(open)
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("resources.modelBatchDelete.title")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("resources.modelBatchDelete.description", { count: selectedModels.length })}
+          </AlertDialogDescription>
+          {batchPending && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t("resources.modelBatchDelete.progress", batchDeleteProgress)}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchPending}>
+              {t("resources.skillBatch.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              loading={batchPending}
+              disabled={selectedModels.length === 0}
+              onClick={applyBatchDelete}
+            >
+              {t("resources.skillBatch.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

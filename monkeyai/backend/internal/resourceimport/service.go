@@ -588,6 +588,7 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 		}
 		preserveOverride(old, payloadObject, overrides, "name")
 		preserveOverride(old, payloadObject, overrides, "description")
+		preserveOverride(old, payloadObject, overrides, "enabled")
 		return sqlc.New(tx).UpdateImportSkill(ctx, payload(payloadObject))
 	case "rule":
 		item := r.Rules[change.Slug]
@@ -610,6 +611,7 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 		}
 		preserveOverride(old, payloadObject, overrides, "name")
 		preserveOverride(old, payloadObject, overrides, "description")
+		preserveOverride(old, payloadObject, overrides, "enabled")
 		return sqlc.New(tx).UpdateImportRule(ctx, payload(payloadObject))
 	case "connector":
 		return writeConnector(ctx, tx, r.Connectors[change.Slug], change, id, actor, objects, opts)
@@ -635,6 +637,7 @@ func writeResource(ctx context.Context, tx pgx.Tx, r Resources, change Change, i
 			}
 			preserveOverride(old, payloadObject, overrides, "name")
 			preserveOverride(old, payloadObject, overrides, "description")
+			preserveOverride(old, payloadObject, overrides, "enabled")
 			if err := queries.UpdateImportExpert(ctx, payload(payloadObject)); err != nil {
 				return err
 			}
@@ -800,6 +803,7 @@ func writeConnector(ctx context.Context, tx pgx.Tx, item Connector, change Chang
 		}
 	}
 	data["config_revision"], data["connection_status"], data["config_changed"] = revision, connectionStatus, changed
+	preserveOverride(old, data, overrides, "enabled")
 	return sqlc.New(tx).UpdateImportConnector(ctx, payload(data))
 }
 

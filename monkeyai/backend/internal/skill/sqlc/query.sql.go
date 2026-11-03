@@ -293,6 +293,11 @@ UPDATE
     skills
 SET
     enabled = ($1::jsonb ->> 'enabled')::boolean,
+    admin_overrides = CASE WHEN $1::jsonb ? 'admin_overrides' THEN
+        $1::jsonb -> 'admin_overrides'
+    ELSE
+        admin_overrides
+    END,
     updated_at = now(),
     revision = revision + 1
 WHERE

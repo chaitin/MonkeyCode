@@ -192,6 +192,9 @@ func (q *Queries) PageResources(ctx context.Context, filter []byte) ([][]byte, e
 const setResourceEnabled = `-- name: SetResourceEnabled :exec
 UPDATE rules
 SET enabled = ($1::jsonb ->> 'enabled')::boolean,
+    admin_overrides = CASE WHEN $1::jsonb ? 'admin_overrides' THEN
+        $1::jsonb -> 'admin_overrides'
+    ELSE admin_overrides END,
     revision = revision + 1,
     updated_at = now()
 WHERE id = ($1::jsonb ->> 'id')::uuid
