@@ -143,6 +143,8 @@ export const enUS = {
     saving: "Saving…",
     operationCompleted: "Operation completed.",
     availableScope: "Available to",
+    noDescription: "No description",
+    searchPlaceholder: "Search {{resource}}",
     ruleSearchPlaceholder: "Search name or description",
     modelSearchPlaceholder: "Search name, model ID or URL",
     systemExpert: "System experts",

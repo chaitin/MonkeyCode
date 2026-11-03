@@ -10,7 +10,10 @@ import {
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
+import { getCreatorInitial } from "@/lib/utils"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceCard } from "@/components/resource-card"
+import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -42,7 +45,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -90,7 +92,6 @@ import {
   SkillPackageError,
   type SkillPackageAnalysis,
 } from "@/lib/skill-package"
-import { cn } from "@/lib/utils"
 
 type SkillType = "system" | "user"
 
@@ -146,10 +147,6 @@ const EMPTY_SKILL_DRAFT: SkillDraft = {
   description: "",
   content: "",
   tagIds: [],
-}
-
-function getCreatorInitials(creator: string) {
-  return creator.trim().slice(0, 2).toUpperCase()
 }
 
 function formatBytes(bytes: number) {
@@ -370,6 +367,10 @@ export function SkillsPage() {
         typeLabel={t("pages.skills.type")}
         systemLabel={t("pages.skills.systemSkill")}
         userLabel={t("pages.skills.userSkill")}
+        searchPlaceholder={t("resources.searchPlaceholder", {
+          resource: t("pages.skills.title"),
+        })}
+        searchClassName="sm:max-w-44 sm:flex-none"
         actions={
           <>
             {activeSkillType === "system" && (
@@ -640,18 +641,28 @@ export function SkillsPage() {
             )
 
             return (
-              <Card className={cn(!skill.enabled && "bg-muted")} key={skill.id}>
+              <ResourceCard
+                key={skill.id}
+                origin={skill.origin}
+                disabled={!skill.enabled}
+              >
                 <CardHeader>
                   <div className="flex min-w-0 items-start gap-3">
                     <Avatar size="lg">
-                      <AvatarFallback>
+                      <AvatarFallback
+                        className={
+                          skill.type === "user"
+                            ? "text-lg font-normal"
+                            : undefined
+                        }
+                      >
                         {skill.type === "system" ? (
                           <HugeiconsIcon
                             icon={DocumentValidationIcon}
                             strokeWidth={2}
                           />
                         ) : (
-                          getCreatorInitials(skill.creator)
+                          getCreatorInitial(skill.creator)
                         )}
                       </AvatarFallback>
                     </Avatar>
@@ -661,7 +672,7 @@ export function SkillsPage() {
                           {skill.name}
                         </span>
                         {skill.origin === "package" && (
-                          <Badge variant="outline" title={skill.publisher}>
+                          <Badge variant="amber" title={skill.publisher}>
                             资源包导入
                           </Badge>
                         )}
@@ -682,11 +693,13 @@ export function SkillsPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
-                            <Button
+                            <ResourceCardMenuButton
                               aria-label={t("common.more")}
-                              size="icon-sm"
-                              type="button"
-                              variant="ghost"
+                              tone={
+                                skill.origin !== "package" && skill.enabled
+                                  ? "blue"
+                                  : "neutral"
+                              }
                             />
                           }
                         >
@@ -747,10 +760,10 @@ export function SkillsPage() {
                 </CardHeader>
                 <CardContent>
                   <p
-                    className="line-clamp-2 text-muted-foreground"
+                    className="truncate text-muted-foreground"
                     title={skill.description}
                   >
-                    {skill.description}
+                    {skill.description?.trim() || t("resources.noDescription")}
                   </p>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
@@ -773,7 +786,7 @@ export function SkillsPage() {
                     </span>
                   )}
                 </CardFooter>
-              </Card>
+              </ResourceCard>
             )
           })}
         </div>

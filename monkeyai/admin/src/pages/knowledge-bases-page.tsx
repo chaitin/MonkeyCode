@@ -84,7 +84,7 @@ import {
   getAuthorizationNames,
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
-import { cn } from "@/lib/utils"
+import { cn, getCreatorInitial } from "@/lib/utils"
 
 type KnowledgeBaseType = "system" | "user"
 type KnowledgeContentType = "text" | "file"
@@ -292,10 +292,6 @@ const INITIAL_KNOWLEDGE_BASES: KnowledgeBase[] = [
     ],
   },
 ]
-
-function getCreatorInitials(creator: string) {
-  return creator.trim().slice(0, 2).toUpperCase()
-}
 
 export function KnowledgeBasesPage() {
   const { i18n, t } = useTranslation()
@@ -721,8 +717,16 @@ export function KnowledgeBasesPage() {
           >
             <div className="flex min-w-0 items-start gap-3 pe-8">
               <Avatar size="lg">
-                <AvatarFallback>
-                  <HugeiconsIcon icon={BookOpenTextIcon} strokeWidth={2} />
+                <AvatarFallback
+                  className={
+                    isSystemKnowledgeBase ? undefined : "text-lg font-normal"
+                  }
+                >
+                  {isSystemKnowledgeBase ? (
+                    <HugeiconsIcon icon={BookOpenTextIcon} strokeWidth={2} />
+                  ) : (
+                    getCreatorInitial(selectedKnowledgeBase.creator)
+                  )}
                 </AvatarFallback>
               </Avatar>
               <DialogHeader className="min-w-0 gap-1 text-start">
@@ -1287,14 +1291,20 @@ export function KnowledgeBasesPage() {
                   <CardHeader>
                     <div className="flex min-w-0 items-start gap-3">
                       <Avatar size="lg">
-                        <AvatarFallback>
-                          {knowledgeBase.creator === ADMIN_CREATOR ? (
+                        <AvatarFallback
+                          className={
+                            knowledgeBase.type === "user"
+                              ? "text-lg font-normal"
+                              : undefined
+                          }
+                        >
+                          {knowledgeBase.type === "system" ? (
                             <HugeiconsIcon
                               icon={BookOpenTextIcon}
                               strokeWidth={2}
                             />
                           ) : (
-                            getCreatorInitials(knowledgeBase.creator)
+                            getCreatorInitial(knowledgeBase.creator)
                           )}
                         </AvatarFallback>
                       </Avatar>

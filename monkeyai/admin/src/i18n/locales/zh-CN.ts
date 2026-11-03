@@ -138,6 +138,8 @@ export const zhCN = {
     saving: "正在保存…",
     operationCompleted: "操作已完成。",
     availableScope: "可用范围",
+    noDescription: "暂无说明",
+    searchPlaceholder: "搜索{{resource}}",
     ruleSearchPlaceholder: "搜索名称或描述",
     modelSearchPlaceholder: "搜索名称、模型 ID 或地址",
     systemExpert: "系统专家",

@@ -13,6 +13,8 @@ import {
 } from "@/lib/resources"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceCard } from "@/components/resource-card"
+import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { useEffect, useState, type FormEvent } from "react"
 import { ResourceList } from "@/components/resource-list"
 import { useResourceList } from "@/hooks/use-resource-list"
@@ -49,7 +51,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -83,7 +84,7 @@ import {
 } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
-import { cn } from "@/lib/utils"
+import { cn, getCreatorInitial } from "@/lib/utils"
 
 type Expert = {
   origin?: ResourceRow["origin"]
@@ -497,6 +498,10 @@ export function ExpertsPage() {
         typeLabel={t("pages.models.type")}
         systemLabel={t("resources.systemExpert")}
         userLabel={t("resources.userExpert")}
+        searchPlaceholder={t("resources.searchPlaceholder", {
+          resource: t("pages.experts.title"),
+        })}
+        searchClassName="sm:max-w-44 sm:flex-none"
         actions={
           <Button
             className="ms-auto shrink-0"
@@ -510,12 +515,26 @@ export function ExpertsPage() {
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {experts.map((expert) => (
-            <Card key={expert.id} className={cn(!expert.enabled && "bg-muted")}>
+            <ResourceCard
+              key={expert.id}
+              origin={expert.origin}
+              disabled={!expert.enabled}
+            >
               <CardHeader>
                 <div className="flex min-w-0 items-start gap-3">
                   <Avatar size="lg">
-                    <AvatarFallback>
-                      <HugeiconsIcon icon={AiBrain01Icon} strokeWidth={2} />
+                    <AvatarFallback
+                      className={
+                        expert.ownership === "user"
+                          ? "text-lg font-normal"
+                          : undefined
+                      }
+                    >
+                      {expert.ownership === "system" ? (
+                        <HugeiconsIcon icon={AiBrain01Icon} strokeWidth={2} />
+                      ) : (
+                        getCreatorInitial(expert.owner)
+                      )}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
@@ -524,7 +543,7 @@ export function ExpertsPage() {
                         {expert.name}
                       </span>
                       {expert.origin === "package" && (
-                        <Badge variant="outline" title={expert.publisher}>
+                        <Badge variant="amber" title={expert.publisher}>
                           资源包导入
                         </Badge>
                       )}
@@ -541,27 +560,21 @@ export function ExpertsPage() {
                     </CardTitle>
                     <CardDescription
                       className="truncate"
-                      title={expert.description}
+                      title={expert.owner}
                     >
-                      {expert.description}
+                      {expert.owner}
                     </CardDescription>
-                    {expert.ownership === "user" && (
-                      <CardDescription
-                        className="truncate"
-                        title={expert.owner}
-                      >
-                        {expert.owner}
-                      </CardDescription>
-                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
+                        <ResourceCardMenuButton
                           aria-label={t("common.more")}
+                          tone={
+                            expert.origin !== "package" && expert.enabled
+                              ? "blue"
+                              : "neutral"
+                          }
                         />
                       }
                     >
@@ -630,16 +643,16 @@ export function ExpertsPage() {
               </CardHeader>
               <CardContent>
                 <p
-                  className="line-clamp-2 text-sm text-muted-foreground"
-                  title={expert.prompt}
+                  className="truncate text-muted-foreground"
+                  title={expert.description}
                 >
-                  {expert.prompt}
+                  {expert.description?.trim() || t("resources.noDescription")}
                 </p>
               </CardContent>
               <CardFooter className="min-w-0 border-t">
                 <ResourceTagSummary tagIds={expert.tagIds} />
               </CardFooter>
-            </Card>
+            </ResourceCard>
           ))}
         </div>
       </ResourceList>

@@ -158,9 +158,14 @@ WHERE
         OR t.ownership_type = $1::jsonb ->> 'ownership')
     AND (strpos(lower(name), lower($1::jsonb ->> 'search')) > 0
         OR strpos(lower(content), lower($1::jsonb ->> 'search')) > 0)
-    AND id::text > $1::jsonb ->> 'cursor'
+    AND ($1::jsonb ->> 'cursor' = ''
+        OR (t.origin = 'package', t.id) > (
+            SELECT cursor_resource.origin = 'package', cursor_resource.id
+            FROM rules cursor_resource
+            WHERE cursor_resource.id::text = $1::jsonb ->> 'cursor'))
 ORDER BY
-    id
+    (t.origin = 'package'),
+    t.id
 LIMIT ($1::jsonb ->> 'limit')::integer
 `
 

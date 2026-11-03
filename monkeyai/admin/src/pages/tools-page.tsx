@@ -14,7 +14,10 @@ import {
   type ResourceRow,
   type Credential,
 } from "@/lib/resources"
+import { getCreatorInitial } from "@/lib/utils"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceCard } from "@/components/resource-card"
+import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { TableLoading } from "@/components/table-loading"
 import { useEffect, useState, type FormEvent } from "react"
 import {
@@ -48,7 +51,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -232,10 +234,6 @@ function toServer(row: ResourceRow, language: string): McpServer {
     oauthConfig: row.oauth_config ?? {},
     callbackURL: row.callback_url ?? "",
   }
-}
-
-function getCreatorInitials(creator: string) {
-  return creator.trim().slice(0, 2).toUpperCase()
 }
 
 export function ToolsPage() {
@@ -581,6 +579,10 @@ export function ToolsPage() {
         typeLabel={t("pages.tools.type")}
         systemLabel={t("pages.tools.systemTool")}
         userLabel={t("pages.tools.userTool")}
+        searchPlaceholder={t("resources.searchPlaceholder", {
+          resource: t("pages.tools.title"),
+        })}
+        searchClassName="sm:max-w-44 sm:flex-none"
         actions={
           <>
             {activeType === "system" && (
@@ -1013,37 +1015,41 @@ export function ToolsPage() {
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {servers.map((server) => {
-            const connectionLabel = t(
-              `pages.tools.statuses.${server.connectionStatus}`
-            )
-            const connectionVariant =
-              server.connectionStatus === "connected"
-                ? "successOutline"
-                : server.connectionStatus === "error"
-                  ? "destructiveOutline"
-                  : "warningOutline"
-
             return (
-              <Card className="h-full" key={server.id}>
+              <ResourceCard
+                key={server.id}
+                origin={server.origin}
+                disabled={!server.enabled}
+              >
                 <CardHeader>
                   <div className="flex min-w-0 items-start gap-3">
                     <Avatar size="lg">
                       {server.iconPath && (
                         <AvatarImage src={server.iconPath} alt="" />
                       )}
-                      <AvatarFallback>
+                      <AvatarFallback
+                        className={
+                          server.type === "user"
+                            ? "text-lg font-normal"
+                            : undefined
+                        }
+                      >
                         {server.type === "system" ? (
                           <HugeiconsIcon icon={McpServerIcon} strokeWidth={2} />
                         ) : (
-                          getCreatorInitials(server.creator)
+                          getCreatorInitial(server.creator)
                         )}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <CardTitle className="truncate" title={server.name}>
-                        {server.name}{" "}
+                      <CardTitle className="flex min-w-0 items-center gap-2">
+                        <span className="truncate" title={server.name}>
+                          {server.name}
+                        </span>
                         {server.origin === "package" && (
-                          <span title={server.publisher}>· 资源包导入</span>
+                          <Badge variant="amber" title={server.publisher}>
+                            资源包导入
+                          </Badge>
                         )}
                       </CardTitle>
                       <CardDescription
@@ -1057,11 +1063,13 @@ export function ToolsPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
-                            <Button
+                            <ResourceCardMenuButton
                               aria-label={t("common.more")}
-                              size="icon-sm"
-                              type="button"
-                              variant="ghost"
+                              tone={
+                                server.origin !== "package" && server.enabled
+                                  ? "blue"
+                                  : "neutral"
+                              }
                             />
                           }
                         >
@@ -1152,51 +1160,18 @@ export function ToolsPage() {
                     }
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-4">
-                  <p className="line-clamp-2 min-h-10 text-muted-foreground">
-                    {server.description}
+                <CardContent>
+                  <p
+                    className="truncate text-muted-foreground"
+                    title={server.description}
+                  >
+                    {server.description?.trim() || t("resources.noDescription")}
                   </p>
-                  {server.origin === "package" && (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        {server.authHeaderName
-                          ? `凭证 Header：${server.authHeaderName} · `
-                          : ""}
-                        超时：{server.timeoutMs ?? 25000} ms
-                      </p>
-                    </>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {server.authorizationMode === "centralized" &&
-                      server.authorizationMethod === "oauth" && (
-                        <Badge
-                          variant={
-                            server.centralizedAuthorized
-                              ? "successOutline"
-                              : "warningOutline"
-                          }
-                        >
-                          {server.centralizedAuthorized
-                            ? t("pages.tools.authorized")
-                            : t("pages.tools.notAuthorized")}
-                        </Badge>
-                      )}
-                    <Badge variant={connectionVariant}>
-                      {server.authorizationMode === "independent"
-                        ? t("pages.tools.authorizationModes.independent")
-                        : connectionLabel}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("pages.tools.toolCount", {
-                        count: server.toolCount,
-                      })}
-                    </Badge>
-                  </div>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
                   <ResourceTagSummary tagIds={server.tagIds} />
                 </CardFooter>
-              </Card>
+              </ResourceCard>
             )
           })}
         </div>

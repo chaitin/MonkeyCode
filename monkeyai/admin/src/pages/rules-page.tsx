@@ -10,7 +10,11 @@ import {
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
+import { getCreatorInitial } from "@/lib/utils"
 import { ResourceNotice } from "@/components/resource-notice"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { ResourceCard } from "@/components/resource-card"
+import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import {
   RULE_PAGE_SIZE,
@@ -42,10 +46,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -79,10 +83,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { PageSizeSelect } from "@/components/page-size-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  getAuthorizationNames,
-  type AuthorizationSelection,
-} from "@/lib/authorization-groups"
+import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
 type AgentRule = {
   origin?: ResourceRow["origin"]
@@ -92,10 +93,10 @@ type AgentRule = {
   id: string
   name: string
   description: string
+  tagIds: string[]
   content: string
   type: RuleType
   creator: string
-  sharedUsers: string[]
   authorization: AuthorizationSelection
   grants: ResourceRow["grants"]
   forced: boolean
@@ -111,20 +112,14 @@ function toRule(row: ResourceRow, language: string): AgentRule {
     revision: row.revision,
     name: text.name,
     description: text.description,
+    tagIds: (row.tags ?? []).map((tag) => tag.id),
     content: row.content,
     type: row.ownership_type,
     creator: row.user.name || row.user.email || row.user.id,
-    sharedUsers: row.grants.flatMap((grant) =>
-      grant.user ? [grant.user.name || grant.user.email || grant.user.id] : []
-    ),
     authorization: selection(row.grants),
     grants: row.grants,
     forced: row.grants.some((grant) => grant.usage_requirement === "required"),
   }
-}
-
-function getCreatorInitials(creator: string) {
-  return creator.trim().slice(0, 2).toUpperCase()
 }
 
 export function RulesPage() {
@@ -269,15 +264,19 @@ export function RulesPage() {
             </TabsTrigger>
           </TabsList>
           <form
-            className="order-2 flex basis-full items-center gap-2 sm:order-none sm:max-w-72 sm:min-w-40 sm:flex-1 sm:basis-0"
+            className="order-2 flex basis-full items-center gap-2 sm:order-none sm:min-w-40 sm:max-w-44 sm:flex-none"
             onSubmit={handleSearch}
           >
             <Input
               type="search"
               value={searchDraft}
               onChange={(event) => setSearchDraft(event.target.value)}
-              placeholder={t("resources.ruleSearchPlaceholder")}
-              aria-label={t("resources.ruleSearchPlaceholder")}
+              placeholder={t("resources.searchPlaceholder", {
+                resource: t("pages.rules.title"),
+              })}
+              aria-label={t("resources.searchPlaceholder", {
+                resource: t("pages.rules.title"),
+              })}
             />
           </form>
           {activeRuleType === "system" && (
@@ -458,39 +457,37 @@ export function RulesPage() {
               )}
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {rules.map((rule) => {
-                  const scopeNames =
-                    rule.type === "system"
-                      ? getAuthorizationNames(
-                          rule.authorization,
-                          t,
-                          subjects.flatGroups,
-                          subjects.members
-                        )
-                      : rule.sharedUsers.length
-                        ? [rule.creator, ...rule.sharedUsers].join(", ")
-                        : t("pages.rules.creatorOnly")
-
                   return (
-                    <Card className="h-full" key={rule.id}>
+                    <ResourceCard key={rule.id} origin={rule.origin}>
                       <CardHeader>
                         <div className="flex min-w-0 items-start gap-3">
                           <Avatar size="lg">
-                            <AvatarFallback>
+                            <AvatarFallback
+                              className={
+                                rule.type === "user"
+                                  ? "text-lg font-normal"
+                                  : undefined
+                              }
+                            >
                               {rule.type === "system" ? (
                                 <HugeiconsIcon
                                   icon={DocumentValidationIcon}
                                   strokeWidth={2}
                                 />
                               ) : (
-                                getCreatorInitials(rule.creator)
+                                getCreatorInitial(rule.creator)
                               )}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1">
-                            <CardTitle className="truncate" title={rule.name}>
-                              {rule.name}{" "}
+                            <CardTitle className="flex min-w-0 items-center gap-2">
+                              <span className="truncate" title={rule.name}>
+                                {rule.name}
+                              </span>
                               {rule.origin === "package" && (
-                                <span title={rule.publisher}>· 资源包导入</span>
+                                <Badge variant="amber" title={rule.publisher}>
+                                  资源包导入
+                                </Badge>
                               )}
                             </CardTitle>
                             <CardDescription
@@ -503,11 +500,13 @@ export function RulesPage() {
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={
-                                <Button
+                                <ResourceCardMenuButton
                                   aria-label={t("common.more")}
-                                  size="icon-sm"
-                                  type="button"
-                                  variant="ghost"
+                                  tone={
+                                    rule.origin !== "package"
+                                      ? "blue"
+                                      : "neutral"
+                                  }
                                 />
                               }
                             >
@@ -554,40 +553,19 @@ export function RulesPage() {
                           </DropdownMenu>
                         </div>
                       </CardHeader>
-                      <CardContent className="min-h-10 flex-1">
+                      <CardContent>
                         <p
-                          className="line-clamp-2 whitespace-pre-wrap text-muted-foreground"
-                          title={rule.content}
+                          className="truncate text-muted-foreground"
+                          title={rule.description}
                         >
-                          {rule.content}
+                          {rule.description?.trim() ||
+                            t("resources.noDescription")}
                         </p>
                       </CardContent>
-                      <CardFooter className="min-w-0 flex-col items-stretch gap-2 border-t">
-                        <div className="flex gap-4">
-                          <span className="w-2/5 truncate text-muted-foreground">
-                            {t("pages.rules.usageScope")}
-                          </span>
-                          <span
-                            className="w-3/5 truncate text-end font-medium"
-                            title={scopeNames}
-                          >
-                            {scopeNames}
-                          </span>
-                        </div>
-                        {rule.type === "system" && (
-                          <div className="flex gap-4">
-                            <span className="w-2/5 truncate text-muted-foreground">
-                              {t("pages.rules.forcedScope")}
-                            </span>
-                            <span className="w-3/5 truncate text-end font-medium">
-                              {rule.forced
-                                ? t("pages.rules.forcedScope")
-                                : t("pages.rules.forcedScopePlaceholder")}
-                            </span>
-                          </div>
-                        )}
+                      <CardFooter className="min-w-0 border-t">
+                        <ResourceTagSummary tagIds={rule.tagIds} />
                       </CardFooter>
-                    </Card>
+                    </ResourceCard>
                   )
                 })}
               </div>

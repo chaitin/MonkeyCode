@@ -39,9 +39,14 @@ WHERE
         OR t.ownership_type = sqlc.arg(filter)::jsonb ->> 'ownership')
     AND (strpos(lower(name), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0
         OR strpos(lower(description), lower(sqlc.arg(filter)::jsonb ->> 'search')) > 0)
-    AND id::text > sqlc.arg(filter)::jsonb ->> 'cursor'
+    AND (sqlc.arg(filter)::jsonb ->> 'cursor' = ''
+        OR (t.origin = 'package', t.id) > (
+            SELECT cursor_resource.origin = 'package', cursor_resource.id
+            FROM connectors cursor_resource
+            WHERE cursor_resource.id::text = sqlc.arg(filter)::jsonb ->> 'cursor'))
 ORDER BY
-    id
+    (t.origin = 'package'),
+    t.id
 LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
