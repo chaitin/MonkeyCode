@@ -327,7 +327,7 @@ var ModelProviderBrandModelsList = map[consts.ModelProvider][]ProviderModelListI
 		{Model: "deepseek-r1-250528"},
 	},
 	consts.ModelProviderMiniMax: {
+		{Model: "MiniMax-M3.1-Flash"},
 		{Model: "MiniMax-M3"},
-		{Model: "MiniMax-M2.7"},
 	},
 }

@@ -1089,20 +1089,20 @@ export function deepMerge<T extends Record<string, any>>(target: T, source: Part
 
 export const modelProviderList: Record<string, DomainProviderModelListItem[]> = {
   "https://api.minimax.io/v1": [
-    {"model": "MiniMax-M3"},
-    {"model": "MiniMax-M2.7"}
+    {"model": "MiniMax-M3.1-Flash"},
+    {"model": "MiniMax-M3"}
   ],
   "https://api.minimax.io/anthropic": [
-    {"model": "MiniMax-M3"},
-    {"model": "MiniMax-M2.7"}
+    {"model": "MiniMax-M3.1-Flash"},
+    {"model": "MiniMax-M3"}
   ],
   "https://api.minimaxi.com/v1": [
-    {"model": "MiniMax-M3"},
-    {"model": "MiniMax-M2.7"}
+    {"model": "MiniMax-M3.1-Flash"},
+    {"model": "MiniMax-M3"}
   ],
   "https://api.minimaxi.com/anthropic": [
-    {"model": "MiniMax-M3"},
-    {"model": "MiniMax-M2.7"}
+    {"model": "MiniMax-M3.1-Flash"},
+    {"model": "MiniMax-M3"}
   ]
 }
 
