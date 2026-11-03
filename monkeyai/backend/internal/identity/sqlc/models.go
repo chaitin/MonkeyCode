@@ -49,6 +49,27 @@ type OauthGrant struct {
 	RestoreApproved    bool
 }
 
+type OauthPairingRequest struct {
+	ID                  string
+	CreatorUserID       string
+	SecretHash          string
+	DeviceCodeHash      *string
+	UserCodeHash        *string
+	CodeChallenge       *string
+	CodeChallengeMethod *string
+	MachineID           *string
+	DisplayName         *string
+	Platform            *string
+	OsVersion           *string
+	Arch                *string
+	Status              string
+	FailedAttempts      int32
+	IntervalMs          int64
+	NextPollAt          time.Time
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+}
+
 type OauthToken struct {
 	ID               string
 	UserID           string

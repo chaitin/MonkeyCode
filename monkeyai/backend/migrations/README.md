@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=36, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=37, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -57,6 +57,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000034_session_turns_monthly` | 准备轮次月分区、全局轮次登记、镜像和会话计数校准，由后台恢复回填并切换 |
 | `000035_billing_activity_lock_retry` | 交易／调用周分区预建遇到锁竞争时返回可重试状态 |
 | `000036_user_profile_add` | 增加独立的自定义头像字段、本人修改密码的尝试次数记录，以及待兑换设备批准的用户索引 |
+| `000037_oauth_pairing` | 新增一次性手机扫码配对，保存凭据摘要、PKCE、状态及轮询退避信息 |
 
 从 `backend` 目录执行：
 
@@ -66,7 +67,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `36` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `37` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -77,6 +78,8 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 版本 `35` 将交易／调用周分区预建中的 `55P03` 锁竞争转为返回 `false`，本次尝试整体回滚，由新后端按表一分钟后重试；成功后仍间隔 24 小时检查。默认分区积压超限、分区名称冲突等错误继续告警。只更新维护函数，不修改业务数据；down 恢复原错误行为。
 
 版本 `36` 为 `users` 增加可空的 `custom_avatar_url`，不回填或修改已有 `avatar_url`；后者继续由 OAuth 同步。身份认证、成员、授权选择器、审计、账单、反馈、客户端和历史统计统一优先显示非空的自定义头像。本人头像上传/清除和密码修改不涉及成员创建与席位写入。须先执行迁移再启动新后端；新头像保存在现有对象存储。改密会同时取消已批准但未兑换的设备申请，新增部分索引按用户查找这类申请。宿主 OAuth 写入应继续仅更新同步字段，不应写入 `custom_avatar_url`。down 会删除自定义头像覆盖信息、密码尝试记录和设备批准索引，不删除同步头像或密码，也不会遍历清理对象存储。
+
+版本 `37` 创建 `oauth_pairing_requests` 和过期、创建者状态、设备码摘要索引；手机端只取得账号级登录态，不登记执行设备。新后端修改密码时依赖该表撤销未兑换配对，因此须先迁移再启动。down 会删除全部一次性配对记录，再 up 只恢复空表；已签发的 OAuth 授权与令牌不由此表管理。
 
 版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 

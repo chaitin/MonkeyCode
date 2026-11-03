@@ -89,6 +89,7 @@ sql:
   queries:
   - internal/identity/query.sql
   - internal/identity/device.sql
+  - internal/identity/pairing.sql
   - internal/identity/profile.sql
   gen:
     go:

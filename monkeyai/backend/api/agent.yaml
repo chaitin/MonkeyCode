@@ -221,7 +221,13 @@ paths:
           description: issuer、授权、兑换、撤销地址和 scopes_supported；未实现的远程能力不声明。
           content:
             application/json:
-              schema: {type: object}
+              schema:
+                type: object
+                properties:
+                  grant_types_supported:
+                    type: array
+                    items: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code', 'urn:monkeyai:params:oauth:grant-type:pairing_code']}
+                    description: 仅在设备授权启用时包含 device_code 和 pairing_code
   /oauth/authorize:
     get:
       summary: 创建安装登录授权请求
@@ -242,8 +248,8 @@ paths:
         '503': {description: OAuth server_error；保留本地登录状态并退避}
   /oauth/token:
     post:
-      summary: 兑换授权码或轮换安装凭据
-      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。
+      summary: 兑换授权码、手机配对码或轮换安装凭据
+      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。手机配对使用 urn:monkeyai:params:oauth:grant-type:pairing_code，仅允许 monkeyai-mobile，必须提供 device_code 和 43–128 字符的 code_verifier；固定签发 device:connect、files:read、files:write、session:control、session:read 账号权限，不绑定执行设备。等待批准返回 authorization_pending；并发改密或批准占用配对锁时也返回该可重试错误。轮询遵守 join 返回的 interval，每次 slow_down 增加 5 秒。所有响应 no-store。
       security: []
       requestBody:
         required: true
@@ -253,7 +259,7 @@ paths:
               type: object
               required: [grant_type, client_id]
               properties:
-                grant_type: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code']}
+                grant_type: {type: string, enum: [authorization_code, refresh_token, 'urn:ietf:params:oauth:grant-type:device_code', 'urn:monkeyai:params:oauth:grant-type:pairing_code']}
                 client_id: {type: string, enum: [monkeyai-desktop, monkeyai-mobile, monkeyai-runtime]}
                 device_code: {type: string}
                 code: {type: string}
@@ -277,8 +283,176 @@ paths:
                   machine_id: {type: string, format: uuid, description: 独立授权冻结的目标机器}
                   server_id: {type: string, format: uuid, description: 独立授权的控制面标识}
                   scope: {type: string, description: 用户批准的规范化权限；兼容授权为空字符串}
-        '400': {description: OAuth invalid_grant、invalid_client、invalid_request、authorization_pending、slow_down、access_denied、expired_token 或 unsupported_grant_type}
-        '503': {description: OAuth server_error，不能按 invalid_grant 清理登录}
+        '400':
+          description: OAuth invalid_grant、invalid_client、invalid_request、authorization_pending、slow_down、access_denied、expired_token 或 unsupported_grant_type
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+        '503':
+          description: OAuth server_error，不能按 invalid_grant 清理登录
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+  /oauth/pairing:
+    post:
+      summary: 创建手机扫码配对
+      description: 需要 Bearer 的 device:manage 权限。二维码 60 秒有效；secret 只在本次响应出现，数据库只存摘要。server 固定取服务端公开地址。请求体最多 64 KiB，所有响应 no-store；每 IP 每分钟最多创建 60 次。配对不形成长期设备绑定。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: false, maxProperties: 0}
+      responses:
+        '200':
+          description: 一次性二维码凭据，不得记录 secret 或二维码内容
+          headers: &pairingNoStore
+            Cache-Control: {description: 禁止缓存配对响应, schema: {type: string, const: no-store}}
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [pairing_id, secret, qr_payload, expires_in]
+                properties:
+                  pairing_id: {type: string, format: uuid, description: 一次性配对标识}
+                  secret: {type: string, minLength: 43, maxLength: 43, description: 32 字节随机数的无填充 base64url，仅返回一次}
+                  qr_payload: {type: string, format: uri, description: 'monkeyai-mobile://pair/scan?v=1&server=<公开服务地址>&id=<uuid>&secret=<secret>；仅这四个参数'}
+                  expires_in: {type: integer, const: 60, description: 二维码有效秒数}
+        '400': {$ref: '#/components/responses/PairingInvalidRequest'}
+        '401': {$ref: '#/components/responses/PairingUnauthorized'}
+        '403': {$ref: '#/components/responses/PairingForbidden'}
+        '404': {$ref: '#/components/responses/PairingNotFound'}
+        '429': {$ref: '#/components/responses/PairingRateLimited'}
+        '500': {$ref: '#/components/responses/PairingServerError'}
+        '503': {$ref: '#/components/responses/PairingServiceUnavailable'}
+  /oauth/pairing/{pairingID}/join:
+    parameters:
+      - {$ref: '#/components/parameters/PairingID'}
+    post:
+      summary: 手机使用二维码 secret 加入配对
+      description: 无需登录；严格 JSON，最多 16 KiB，每 IP 每分钟最多 60 次。只允许一次加入；secret 错误、不存在、非法 ID 和过期统一返回 404 pairing_not_found。成功延长到 min(当前时间+60秒，创建时间+180秒)。所有响应 no-store，user_code/device_code 仅保存摘要。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [secret, code_challenge, code_challenge_method, machine_id, display_name, platform, os_version, arch]
+              properties:
+                secret: {type: string, description: 二维码中的原始 secret}
+                code_challenge: {type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]{43}$', description: SHA-256 verifier 的无填充 base64url}
+                code_challenge_method: {type: string, const: S256, description: 仅支持 S256 PKCE}
+                machine_id: {type: string, format: uuid, description: 规范小写 UUIDv4；仅标识手机，不登记执行设备}
+                display_name: {type: string, minLength: 1, maxLength: 128, description: UTF-8 最多 128 字节，不得全空白或含控制字符}
+                platform: {type: string, enum: [android, ios, harmonyos], description: 手机系统}
+                os_version: {type: string, minLength: 1, maxLength: 64, description: UTF-8 最多 64 字节，不得全空白或含控制字符}
+                arch: {type: string, minLength: 1, maxLength: 32, description: UTF-8 最多 32 字节，不得全空白或含控制字符}
+      responses:
+        '200':
+          description: 手机展示短码，并保留设备码及原始 verifier 用于兑换
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user_code, device_code, expires_in, interval]
+                properties:
+                  user_code: {type: string, pattern: '^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$', description: 八位配对码，展示时带连字符}
+                  device_code: {type: string, minLength: 43, maxLength: 43, description: 32 字节随机数的无填充 base64url}
+                  expires_in: {type: integer, minimum: 1, maximum: 60, description: 剩余批准与兑换窗口秒数}
+                  interval: {type: integer, const: 5, description: 初始轮询间隔秒数，slow_down 时客户端再加 5 秒}
+        '400': {$ref: '#/components/responses/PairingInvalidRequest'}
+        '404': {$ref: '#/components/responses/PairingNotFound'}
+        '409':
+          description: pairing_already_joined，二维码已被使用
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingError'}
+        '429': {$ref: '#/components/responses/PairingRateLimited'}
+        '500': {$ref: '#/components/responses/PairingServerError'}
+  /oauth/pairing/{pairingID}:
+    parameters:
+      - {$ref: '#/components/parameters/PairingID'}
+    get:
+      summary: 桌面端查询本人创建的配对
+      description: 需要有效 Bearer；非创建者与不存在统一返回 404 pairing_not_found。所有响应 no-store。只返回状态与手机公开信息，绝不返回 secret、device_code、user_code 或对应摘要。
+      responses:
+        '200':
+          description: 配对状态；已到期的活动记录显示 expired
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [pairing_id, status, expires_at]
+                properties:
+                  pairing_id: {type: string, format: uuid, description: 配对标识}
+                  status: {type: string, enum: [pending, joined, approved, consumed, denied, expired], description: 一次性配对状态}
+                  expires_at: {type: string, format: date-time, description: 当前窗口到期时间}
+                  device:
+                    type: object
+                    additionalProperties: false
+                    description: 手机已加入且状态不为 pending 时返回；未加入即过期或撤销的记录不包含此字段
+                    required: [display_name, platform, os_version]
+                    properties:
+                      display_name: {type: string, description: 手机展示名称}
+                      platform: {type: string, enum: [android, ios, harmonyos], description: 手机系统}
+                      os_version: {type: string, description: 系统版本}
+        '401': {$ref: '#/components/responses/PairingUnauthorized'}
+        '403': {$ref: '#/components/responses/PairingForbidden'}
+        '404': {$ref: '#/components/responses/PairingNotFound'}
+        '500': {$ref: '#/components/responses/PairingServerError'}
+        '503': {$ref: '#/components/responses/PairingServiceUnavailable'}
+  /oauth/pairing/{pairingID}/approve:
+    parameters:
+      - {$ref: '#/components/parameters/PairingID'}
+    post:
+      summary: 桌面端输入手机短码批准配对
+      description: 需要 Bearer 的 device:manage 权限，不使用浏览器 Cookie。请求体最多 64 KiB。大小写、空格和连字符规范化后校验；每次错码计数，累计 5 次置 denied。事务内复核 Bearer 并写 pairing.approved 审计；改密同事务撤销未兑换配对。所有响应 no-store。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [user_code]
+              properties:
+                user_code: {type: string, description: 手机显示的八位短码，允许小写、空格及连字符}
+      responses:
+        '200':
+          description: 批准已持久化，手机仍需使用 PKCE 兑换
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: {type: string, const: approved, description: 配对已批准}
+        '400':
+          description: invalid_request（JSON 无效）或 invalid_user_code（错码，本次尝试已计数）
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingError'}
+        '401': {$ref: '#/components/responses/PairingUnauthorized'}
+        '403': {$ref: '#/components/responses/PairingForbidden'}
+        '404': {$ref: '#/components/responses/PairingNotFound'}
+        '409':
+          description: pairing_expired（已过期）或 pairing_resolved（不是 joined 状态，含连错五次）
+          headers: *pairingNoStore
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingError'}
+        '500': {$ref: '#/components/responses/PairingServerError'}
+        '503': {$ref: '#/components/responses/PairingServiceUnavailable'}
   /oauth/revoke:
     post:
       summary: 撤销当前安装授权族
@@ -3774,6 +3948,12 @@ components:
       bearerFormat: OAuth 2.0 access token
       description: Agent 登录授权流程签发的短期 access token。
   parameters:
+    PairingID:
+      name: pairingID
+      in: path
+      required: true
+      description: 创建接口返回的规范小写 UUID
+      schema: {type: string, format: uuid}
     EndpointMachine:
       name: machine_id
       in: path
@@ -3855,6 +4035,50 @@ components:
         type: string
         const: private, no-cache
   responses:
+    PairingInvalidRequest:
+      description: invalid_request，请求体格式、设备信息或 PKCE challenge 无效
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingUnauthorized:
+      description: invalid_token（缺少、无效或过期的 Bearer）或 unauthorized（事务内复核发现登录已失效）
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingForbidden:
+      description: permission_denied，缺少 device:manage 或使用执行设备授权访问控制端接口
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingNotFound:
+      description: pairing_not_found（不存在、非法 ID、非创建者、join secret 不符或 join 已过期）或 pairing_unavailable（设备授权未启用）
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingRateLimited:
+      description: rate_limited，每 IP 每分钟最多 60 次，遵守 Retry-After
+      headers:
+        <<: *pairingNoStore
+        Retry-After: {description: 重试等待秒数, schema: {type: string, const: '60'}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingServerError:
+      description: server_error，数据库或事务失败，操作未确认成功
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
+    PairingServiceUnavailable:
+      description: service_unavailable，入口认证服务暂不可用
+      headers: *pairingNoStore
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PairingError'}
     EndpointResult:
       description: 当前端点资料，时间为 Unix 毫秒
       headers:
@@ -3953,6 +4177,25 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    PairingError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {type: string, enum: [invalid_request, invalid_token, unauthorized, permission_denied, pairing_not_found, pairing_unavailable, pairing_already_joined, pairing_expired, pairing_resolved, invalid_user_code, rate_limited, server_error, service_unavailable], description: 具体错误码，以各端点响应说明为准}
+            message: {type: string, description: 面向用户的错误说明，不含敏感凭据}
+    OAuthError:
+      type: object
+      additionalProperties: false
+      required: [error, error_description]
+      properties:
+        error: {type: string, enum: [invalid_grant, invalid_client, invalid_request, authorization_pending, slow_down, access_denied, expired_token, unsupported_grant_type, server_error], description: OAuth 标准或配对授权错误码}
+        error_description: {type: string, description: 不含敏感凭据的错误说明}
     DesignSnapshot:
       type: object
       required: [publisher_id, release_id, schema_version, digest_schema]

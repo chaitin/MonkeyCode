@@ -19,6 +19,20 @@ FROM approvals WHERE d.id=approvals.id;
 -- name: HasProfileDeviceApprovals :one
 SELECT EXISTS(SELECT 1 FROM oauth_device_requests WHERE owner_user_id=$1 AND status='approved')::boolean;
 
+-- name: RevokeProfilePairings :exec
+WITH requests AS (
+    SELECT r.id FROM oauth_pairing_requests AS r
+    WHERE r.creator_user_id=$1 AND r.status IN ('pending','joined','approved') ORDER BY r.id FOR UPDATE
+)
+UPDATE oauth_pairing_requests AS p SET status='denied'
+FROM requests WHERE p.id=requests.id;
+
+-- name: HasProfilePairings :one
+SELECT EXISTS(
+    SELECT 1 FROM oauth_pairing_requests
+    WHERE creator_user_id=$1 AND status IN ('pending','joined','approved')
+)::boolean;
+
 -- name: LockProfileCredentials :one
 SELECT password_hash,email FROM users
 WHERE id=$1 AND deleted_at IS NULL AND status='active' FOR NO KEY UPDATE;
