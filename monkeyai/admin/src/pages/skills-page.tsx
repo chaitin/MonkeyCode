@@ -180,7 +180,8 @@ export function SkillsPage() {
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const selectedRows = remote.items.filter(
-    (skill) => skill.ownership_type === "system" && selectedIds.includes(skill.id)
+    (skill) =>
+      skill.ownership_type === "system" && selectedIds.includes(skill.id)
   )
   const [batchProgress, setBatchProgress] = useState<SkillBatchProgress>({
     completed: 0,
@@ -191,7 +192,6 @@ export function SkillsPage() {
   const [editingSkill, setEditingSkill] = useState<AgentSkill | null>(null)
   const [skillPendingDeletion, setSkillPendingDeletion] =
     useState<AgentSkill | null>(null)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
@@ -267,7 +267,6 @@ export function SkillsPage() {
 
   const resetSkillOptions = () => {
     packageRequestId.current += 1
-    setAuthorizationOpen(false)
     setTagsOpen(false)
     setAuthorization({ groupIds: [], memberIds: [] })
     setDraft(EMPTY_SKILL_DRAFT)
@@ -310,7 +309,6 @@ export function SkillsPage() {
     setPackageAnalysis(null)
     setPackageFile(null)
     setPackageError("")
-    setAuthorizationOpen(false)
     setTagsOpen(false)
     setDialogOpen(true)
   }
@@ -541,19 +539,14 @@ export function SkillsPage() {
                       <FieldGroup className="gap-4">
                         <Field>
                           <FieldLabel htmlFor="skill-authorized-users">
-                            {t("resources.availableScope")}
+                            {t("pages.models.authorizedScope")}
                           </FieldLabel>
                           <AuthorizationSelect
                             groups={subjects.groups}
                             members={subjects.members}
                             id="skill-authorized-users"
-                            open={authorizationOpen}
-                            placeholder={t(
-                              "pages.skills.authorizationPlaceholder"
-                            )}
-                            title={t("resources.availableScope")}
+                            disabled={remote.pending}
                             value={authorization}
-                            onOpenChange={setAuthorizationOpen}
                             onValueChange={setAuthorization}
                           />
                           {importedSkill && editingSkill.retired && (
@@ -778,7 +771,9 @@ export function SkillsPage() {
                 disabled={!skill.enabled}
                 selectable={selectable}
                 selected={selected}
-                onClick={selectable ? () => toggleSelected(skill.id) : undefined}
+                onClick={
+                  selectable ? () => toggleSelected(skill.id) : undefined
+                }
                 onKeyDown={
                   selectable
                     ? (event) => {
@@ -794,7 +789,9 @@ export function SkillsPage() {
                 aria-disabled={selectable && remote.pending ? true : undefined}
                 aria-label={
                   selectable
-                    ? t("resources.skillBatch.selectSkill", { skill: skill.name })
+                    ? t("resources.skillBatch.selectSkill", {
+                        skill: skill.name,
+                      })
                     : undefined
                 }
                 tabIndex={selectable ? 0 : undefined}

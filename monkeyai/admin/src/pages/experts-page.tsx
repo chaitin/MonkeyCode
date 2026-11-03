@@ -315,7 +315,6 @@ export function ExpertsPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [form, setForm] = useState<ExpertForm>(EMPTY_FORM)
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const importedExpert = editingExpert?.origin === "package"
   const [tagsOpen, setTagsOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
@@ -369,7 +368,6 @@ export function ExpertsPage() {
     batch.exit()
     setEditingExpert(null)
     setForm(EMPTY_FORM)
-    setAuthorizationOpen(false)
     setTagsOpen(false)
     setEditorOpen(true)
   }
@@ -699,7 +697,6 @@ export function ExpertsPage() {
           setEditorOpen(open)
           if (!open) {
             setEditingExpert(null)
-            setAuthorizationOpen(false)
           }
         }}
       >
@@ -725,17 +722,14 @@ export function ExpertsPage() {
             <FieldGroup className="max-h-[calc(100vh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
               <Field>
                 <FieldLabel htmlFor="expert-authorization">
-                  {t("resources.availableScope")}
+                  {t("pages.models.authorizedScope")}
                 </FieldLabel>
                 <AuthorizationSelect
                   groups={subjects.groups}
                   members={subjects.members}
                   id="expert-authorization"
-                  open={authorizationOpen}
-                  placeholder={t("pages.experts.authorizationPlaceholder")}
-                  title={t("resources.availableScope")}
+                  disabled={remote.pending}
                   value={form.authorization}
-                  onOpenChange={setAuthorizationOpen}
                   onValueChange={(value) => updateForm("authorization", value)}
                 />
                 {importedExpert && editingExpert.retired && (

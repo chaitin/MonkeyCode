@@ -117,7 +117,6 @@ export function SkillImportWizard({
   const [scanning, setScanning] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
     memberIds: [],
@@ -627,17 +626,14 @@ export function SkillImportWizard({
             </Field>
             <Field>
               <FieldLabel htmlFor="batch-skill-authorized-users">
-                {t("pages.skills.authorizedUsers")}
+                {t("pages.models.authorizedScope")}
               </FieldLabel>
               <AuthorizationSelect
                 groups={subjects.groups}
                 members={subjects.members}
                 id="batch-skill-authorized-users"
-                open={authorizationOpen}
-                placeholder={t("pages.skills.authorizationPlaceholder")}
-                title={t("pages.skills.authorizedUsers")}
+                disabled={importing}
                 value={authorization}
-                onOpenChange={setAuthorizationOpen}
                 onValueChange={setAuthorization}
               />
             </Field>

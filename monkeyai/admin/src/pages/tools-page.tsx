@@ -25,6 +25,8 @@ import {
   Edit02Icon,
   McpServerIcon,
   MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
   PlusSignIcon,
   TestTube01Icon,
   ToolboxIcon,
@@ -265,7 +267,6 @@ export function ToolsPage() {
     useState<McpAuthorizationMethod>("oauth")
   const [oauthClientMode, setOAuthClientMode] =
     useState<OAuthClientMode>("dynamic")
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
@@ -316,12 +317,13 @@ export function ToolsPage() {
     })),
   ]
 
-  const setConnectionEnabled = async (server: McpServer) => {
+  const setConnectorEnabled = async (server: McpServer, enabled: boolean) => {
+    if (server.type !== "system" || server.enabled === enabled) return
     await remote.run(async () => {
       await api(base + `/connectors/${server.id}/enabled`, {
         method: "PATCH",
         headers: match(server.revision),
-        body: JSON.stringify({ enabled: !server.enabled }),
+        body: JSON.stringify({ enabled }),
       })
     }, t("resources.operationCompleted"))
   }
@@ -330,7 +332,6 @@ export function ToolsPage() {
     setAuthorizationMode("independent")
     setAuthorizationMethod("oauth")
     setOAuthClientMode("dynamic")
-    setAuthorizationOpen(false)
     setTagsOpen(false)
     setTagIds([])
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -353,7 +354,6 @@ export function ToolsPage() {
     setAuthorization(server.authorization)
     setTagIds(server.tagIds)
     setTagsOpen(false)
-    setAuthorizationOpen(false)
     setDialogOpen(true)
   }
 
@@ -637,19 +637,14 @@ export function ToolsPage() {
                     <FieldGroup className="gap-4">
                       <Field>
                         <FieldLabel htmlFor="mcp-authorization">
-                          {t("resources.availableScope")}
+                          {t("pages.models.authorizedScope")}
                         </FieldLabel>
                         <AuthorizationSelect
                           groups={subjects.groups}
                           members={subjects.members}
                           id="mcp-authorization"
-                          open={authorizationOpen}
-                          placeholder={t(
-                            "pages.tools.authorizationPlaceholder"
-                          )}
-                          title={t("resources.availableScope")}
+                          disabled={remote.pending}
                           value={authorization}
-                          onOpenChange={setAuthorizationOpen}
                           onValueChange={setAuthorization}
                         />
                         <FieldDescription>
@@ -1103,13 +1098,18 @@ export function ToolsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuGroup hidden={server.type !== "system"}>
                             <DropdownMenuItem
-                              onClick={() => setConnectionEnabled(server)}
+                              disabled={server.enabled || remote.pending}
+                              onClick={() => setConnectorEnabled(server, true)}
                             >
-                              {t(
-                                server.enabled
-                                  ? "resources.disable"
-                                  : "resources.enable"
-                              )}
+                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
+                              {t("resources.enable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!server.enabled || remote.pending}
+                              onClick={() => setConnectorEnabled(server, false)}
+                            >
+                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
+                              {t("resources.disable")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleViewTools(server)}

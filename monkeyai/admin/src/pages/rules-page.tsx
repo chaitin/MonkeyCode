@@ -23,10 +23,13 @@ import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import type { RuleType } from "@/hooks/use-rule-page"
 import { useState, type FormEvent } from "react"
 import {
+  Copy02Icon,
   Delete02Icon,
   DocumentValidationIcon,
   Edit02Icon,
   MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -70,13 +73,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
@@ -128,15 +128,16 @@ export function RulesPage() {
   const subjects = useSubjects()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
+  const [copiedRule, setCopiedRule] = useState<AgentRule | null>(null)
   const [rulePendingDeletion, setRulePendingDeletion] =
     useState<AgentRule | null>(null)
   const [authorization, setAuthorization] = useState<AuthorizationSelection>({
     groupIds: [],
     memberIds: [],
   })
-  const [authorizationOpen, setAuthorizationOpen] = useState(false)
   const [forced, setForced] = useState(false)
   const importedRule = editingRule?.origin === "package"
+  const ruleDraft = editingRule ?? copiedRule
 
   const resetRuleOptions = () => {
     setAuthorization({ groupIds: [], memberIds: [] })
@@ -147,6 +148,7 @@ export function RulesPage() {
     setDialogOpen(open)
     if (!open) {
       setEditingRule(null)
+      setCopiedRule(null)
       resetRuleOptions()
     }
   }
@@ -156,8 +158,22 @@ export function RulesPage() {
       return
     }
 
+    setCopiedRule(null)
     setAuthorization(rule.authorization)
     setEditingRule(rule)
+    setForced(rule.forced)
+    setDialogOpen(true)
+  }
+
+  const handleCopyRule = (rule: AgentRule) => {
+    if (rule.type !== "system" || remote.pending) return
+    batch.exit()
+    setEditingRule(null)
+    setCopiedRule(rule)
+    setAuthorization({
+      groupIds: [...rule.authorization.groupIds],
+      memberIds: [...rule.authorization.memberIds],
+    })
     setForced(rule.forced)
     setDialogOpen(true)
   }
@@ -188,13 +204,25 @@ export function RulesPage() {
           editingRule.forced
         )
       } else {
+        const ruleGrants = grants(authorization, forced)
+        if (copiedRule && forced === copiedRule.forced) {
+          for (const grant of ruleGrants) {
+            const original = copiedRule.grants.find((entry) =>
+              entry.group_id
+                ? entry.group_id === grant.group_id
+                : entry.user_id === grant.user_id
+            )
+            if (original) grant.usage_requirement = original.usage_requirement
+          }
+        }
         await saveResource(
           editingRule ? `/rules/${editingRule.id}` : "/rules",
           {
             name,
             description,
             content: String(data.get("content") ?? ""),
-            grants: grants(authorization, forced),
+            ...(copiedRule ? { tag_ids: [...copiedRule.tagIds] } : {}),
+            grants: ruleGrants,
           },
           editingRule?.revision
         )
@@ -202,6 +230,17 @@ export function RulesPage() {
       handleDialogOpenChange(false)
     }, t("resources.operationCompleted"))
   }
+  const setRuleEnabled = async (rule: AgentRule, enabled: boolean) => {
+    if (rule.type !== "system" || rule.enabled === enabled) return
+    await remote.run(async () => {
+      await api(base + `/rules/${rule.id}/enabled`, {
+        method: "PATCH",
+        headers: match(rule.revision),
+        body: JSON.stringify({ enabled }),
+      })
+    }, t("resources.operationCompleted"))
+  }
+
   const handleDeleteRule = async () => {
     if (!rulePendingDeletion || rulePendingDeletion.origin === "package") return
     await remote.run(async () => {
@@ -244,6 +283,7 @@ export function RulesPage() {
                       onClick={() => {
                         batch.exit()
                         setEditingRule(null)
+                        setCopiedRule(null)
                         resetRuleOptions()
                       }}
                     />
@@ -260,7 +300,13 @@ export function RulesPage() {
                   }
                 >
                   <form
-                    key={editingRule?.id ?? "new-rule"}
+                    key={
+                      editingRule
+                        ? `edit-${editingRule.id}`
+                        : copiedRule
+                          ? `copy-${copiedRule.id}`
+                          : "new-rule"
+                    }
                     className="flex flex-col gap-6"
                     onSubmit={handleSubmitRule}
                   >
@@ -273,32 +319,13 @@ export function RulesPage() {
                     </DialogHeader>
                     <FieldGroup className="gap-4">
                       <Field>
-                        <FieldLabel>{t("resources.availableScope")}</FieldLabel>
-                        <AuthorizationSelect
-                          groups={subjects.groups}
-                          members={subjects.members}
-                          id="rule-available"
-                          open={authorizationOpen}
-                          onOpenChange={setAuthorizationOpen}
-                          value={authorization}
-                          onValueChange={setAuthorization}
-                          title={t("resources.availableScope")}
-                          placeholder={t("resources.selectScope")}
-                        />
-                        {importedRule && editingRule?.retired && (
-                          <p className="text-sm text-amber-700">
-                            {t("resources.retiredGrantsOnly")}
-                          </p>
-                        )}
-                      </Field>
-                      <Field>
                         <FieldLabel htmlFor="rule-name">
                           {t("pages.rules.name")}
                         </FieldLabel>
                         <Input
                           id="rule-name"
                           name="name"
-                          defaultValue={editingRule?.name}
+                          defaultValue={ruleDraft?.name}
                           placeholder={t("pages.rules.namePlaceholder")}
                           required
                         />
@@ -311,7 +338,7 @@ export function RulesPage() {
                           className="max-h-32 min-h-20 resize-none overflow-y-auto"
                           id="rule-description"
                           name="description"
-                          defaultValue={editingRule?.description}
+                          defaultValue={ruleDraft?.description}
                           placeholder={t(
                             "pages.rules.ruleDescriptionPlaceholder"
                           )}
@@ -325,27 +352,48 @@ export function RulesPage() {
                           className="max-h-64 min-h-40 resize-y overflow-y-auto"
                           id="rule-content"
                           name="content"
-                          defaultValue={editingRule?.content}
+                          defaultValue={ruleDraft?.content}
                           disabled={importedRule}
                           placeholder={t("pages.rules.contentPlaceholder")}
                           required
                         />
                       </Field>
-                      <Field orientation="horizontal">
-                        <Checkbox
-                          id="rule-forced"
-                          checked={forced}
-                          disabled={importedRule}
-                          onCheckedChange={setForced}
+                      <Field>
+                        <Item variant="outline">
+                          <ItemContent>
+                            <ItemTitle>
+                              {t("pages.rules.forcedScope")}
+                            </ItemTitle>
+                          </ItemContent>
+                          <ItemActions>
+                            <Switch
+                              id="rule-forced"
+                              checked={forced}
+                              disabled={importedRule || remote.pending}
+                              onCheckedChange={setForced}
+                              aria-label={t("pages.rules.forcedScope")}
+                            />
+                          </ItemActions>
+                        </Item>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="rule-available">
+                          {t("pages.rules.usageScope")}
+                        </FieldLabel>
+                        <AuthorizationSelect
+                          id="rule-available"
+                          groups={subjects.groups}
+                          members={subjects.members}
+                          value={authorization}
+                          onValueChange={setAuthorization}
+                          disabled={remote.pending}
+                          title={t("pages.rules.usageScope")}
                         />
-                        <div className="flex flex-col gap-1">
-                          <FieldLabel htmlFor="rule-forced">
-                            {t("pages.rules.forcedScope")}
-                          </FieldLabel>
-                          <FieldDescription>
-                            {t("pages.rules.forcedScopeDescription")}
-                          </FieldDescription>
-                        </div>
+                        {importedRule && editingRule?.retired && (
+                          <p className="text-sm text-amber-700">
+                            {t("resources.retiredGrantsOnly")}
+                          </p>
+                        )}
                       </Field>
                     </FieldGroup>
                     <ResourceNotice
@@ -467,6 +515,20 @@ export function RulesPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuGroup hidden={rule.type !== "system"}>
                             <DropdownMenuItem
+                              disabled={rule.enabled || remote.pending}
+                              onClick={() => setRuleEnabled(rule, true)}
+                            >
+                              <HugeiconsIcon icon={PlayIcon} strokeWidth={2} />
+                              {t("resources.enable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!rule.enabled || remote.pending}
+                              onClick={() => setRuleEnabled(rule, false)}
+                            >
+                              <HugeiconsIcon icon={PauseIcon} strokeWidth={2} />
+                              {t("resources.disable")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => handleEditRule(rule)}
                             >
                               <HugeiconsIcon
@@ -474,6 +536,16 @@ export function RulesPage() {
                                 strokeWidth={2}
                               />
                               {t("pages.rules.edit")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={remote.pending}
+                              onClick={() => handleCopyRule(rule)}
+                            >
+                              <HugeiconsIcon
+                                icon={Copy02Icon}
+                                strokeWidth={2}
+                              />
+                              {t("pages.models.copy")}
                             </DropdownMenuItem>
                           </DropdownMenuGroup>
                           <DropdownMenuSeparator
