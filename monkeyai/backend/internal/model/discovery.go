@@ -33,7 +33,7 @@ func (s *Service) discoverModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	var input DiscoverInput
 	if err := decodeModelRequest(w, r, &input); err != nil {
-		modelError(w, http.StatusBadRequest, "请求格式无效")
+		modelError(r.Context(), w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	models, err := s.DiscoverModels(r.Context(), input)
@@ -46,7 +46,7 @@ func (s *Service) discoverModels(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, context.Canceled) {
 			return
 		}
-		modelError(w, status, message)
+		modelError(r.Context(), w, status, message)
 		return
 	}
 	modelJSON(w, http.StatusOK, map[string]any{"models": models})

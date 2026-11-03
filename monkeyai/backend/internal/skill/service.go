@@ -64,10 +64,10 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 	} else if old.String("id") != "" {
 		p, err = s.read(ctx, old)
 	} else {
-		return resource.Invalid("请上传技能 ZIP")
+		return resource.InvalidCode("skill_package_required", "请上传技能 ZIP")
 	}
 	if err != nil {
-		return resource.Invalid(err.Error())
+		return resource.InvalidCode("skill_package_invalid", err.Error())
 	}
 	if !uploaded {
 		if _, ok := in["description"]; !ok {
@@ -80,7 +80,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		if in.String("name") != p.Name || in.String("description") != p.Description || content != p.Content {
 			p, err = p.Rewrite(in.String("name"), in.String("description"), content)
 			if err != nil {
-				return resource.Invalid(err.Error())
+				return resource.InvalidCode("skill_package_invalid", err.Error())
 			}
 		}
 	}
@@ -123,7 +123,7 @@ func (s *Service) tags(ctx context.Context, tx pgx.Tx, in resource.Object) error
 		}
 
 		if !exists {
-			return resource.Invalid("标签不存在")
+			return resource.InvalidCode("tags_invalid", "标签不存在")
 		}
 		if _, err := sqlc.New(tx).CreateTagLink(ctx, sqlc.CreateTagLinkParams{ResourceID: in.String("id"), TagID: id, AssignedByUserID: in.String("actor_id")}); err != nil {
 			return err
@@ -163,7 +163,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	r.Body = http.MaxBytesReader(w, r.Body, MaxPackage+(1<<20))
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
-		resource.Fail(r.Context(), w, resource.Invalid("技能包上传无效或超限"))
+		resource.Fail(r.Context(), w, resource.InvalidCode("skill_package_invalid", "技能包上传无效或超限"))
 		return
 	}
 	defer func() {
@@ -174,7 +174,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	f, _, err := r.FormFile("package")
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
-		resource.Fail(r.Context(), w, resource.Invalid("缺少 package"))
+		resource.Fail(r.Context(), w, resource.InvalidCode("skill_package_required", "缺少 package"))
 		return
 	}
 	defer func() {
@@ -189,7 +189,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 	}
 	p, err := Parse(b)
 	if err != nil {
-		resource.Fail(r.Context(), w, resource.Invalid(err.Error()))
+		resource.Fail(r.Context(), w, resource.InvalidCode("skill_package_invalid", err.Error()))
 		return
 	}
 	in := resource.Object{}
@@ -198,7 +198,7 @@ func (s *Service) upload(w http.ResponseWriter, r *http.Request, personal bool) 
 			if err != nil {
 				slog.WarnContext(r.Context(), "操作失败", "module", "skill", "operation", "upload", "error", err)
 			}
-			resource.Fail(r.Context(), w, resource.Invalid("元数据格式无效"))
+			resource.Fail(r.Context(), w, resource.InvalidCode("skill_metadata_invalid", "元数据格式无效"))
 			return
 		}
 	}

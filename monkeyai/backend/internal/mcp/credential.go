@@ -144,7 +144,7 @@ func (s *Service) Credential(ctx context.Context, q resource.Queryer, c resource
 func manageCredential(c resource.Object, admin bool) error {
 	mode := c.String("authorization_mode")
 	if (admin && mode != "centralized") || (!admin && mode != "independent") {
-		return resource.Invalid("当前调用方不能管理此认证上下文")
+		return resource.InvalidCode("credential_management_denied", "当前调用方不能管理此认证上下文")
 	}
 	return nil
 }
@@ -160,12 +160,12 @@ func matchCredential(r *http.Request, cred resource.Object) error {
 func credentialName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 1 || n > 128 {
-		return "", resource.Invalid("凭证名称须为 1—128 个字符")
+		return "", resource.InvalidCode("credential_name_invalid", "凭证名称须为 1—128 个字符")
 	}
 	return name, nil
 }
 func decodeHeaders(raw []byte) (map[string]string, error) {
-	invalid := resource.Invalid("认证 Header 无效，请检查名称、数量和保留字段")
+	invalid := resource.InvalidCode("credential_headers_invalid", "认证 Header 无效，请检查名称、数量和保留字段")
 	d := json.NewDecoder(bytes.NewReader(raw))
 	first, err := d.Token()
 	if err != nil || first != json.Delim('{') {
@@ -333,7 +333,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	}
 	if in.Headers != nil {
 		if c.String("authorization_method") != "http_header" {
-			resource.Fail(r.Context(), w, resource.Invalid("OAuth 凭证通过授权流程更新"))
+			resource.Fail(r.Context(), w, resource.InvalidCode("oauth_reauthorization_required", "OAuth 凭证通过授权流程更新"))
 			return
 		}
 		data["http_headers"], err = decodeHeaders(in.Headers)
@@ -346,7 +346,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	}
 	if id == "" {
 		if in.Name == nil || in.Headers == nil {
-			resource.Fail(r.Context(), w, resource.Invalid("新增 Header 凭证需要名称和认证 Header"))
+			resource.Fail(r.Context(), w, resource.InvalidCode("credential_input_required", "新增 Header 凭证需要名称和认证 Header"))
 			return
 		}
 		id = resource.ID()
@@ -355,7 +355,7 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 			data["user_id"] = ""
 		}
 	} else if in.Name == nil && in.Headers == nil {
-		resource.Fail(r.Context(), w, resource.Invalid("请提供凭证名称或认证 Header"))
+		resource.Fail(r.Context(), w, resource.InvalidCode("credential_input_required", "请提供凭证名称或认证 Header"))
 		return
 	}
 	b, err := json.Marshal(data)

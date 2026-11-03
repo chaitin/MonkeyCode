@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -187,7 +188,7 @@ func (s *Service) avatar(w http.ResponseWriter, r *http.Request) {
 	for _, value := range []string{userID, id} {
 		var uuid pgtype.UUID
 		if uuid.Scan(value) != nil || !uuid.Valid {
-			http.NotFound(w, r)
+			web.NotFound(w, r)
 			return
 		}
 	}
@@ -199,7 +200,7 @@ func (s *Service) avatar(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	current, err := sqlc.New(s.db).ReadProfileAvatar(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && s.avatarObject(userID, current) != "user-avatars/"+userID+"/"+id {
-		http.NotFound(w, r)
+		web.NotFound(w, r)
 		return
 	}
 	if err != nil {

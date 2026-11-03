@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"io"
 	"log/slog"
 	"net/http"
@@ -145,11 +146,11 @@ func (p *Proxy) Register(router chi.Router) {
 func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	if p.keys == nil || p.inputs == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
@@ -157,7 +158,7 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 		if err != nil && r.Context().Err() == nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "upload", "operation", "authenticate_upload", "error", credentialError(err, credential))
 		}
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 17<<20)
@@ -198,11 +199,11 @@ func (p *Proxy) upload(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	if p.keys == nil || p.outputs == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
@@ -210,7 +211,7 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 		if err != nil && r.Context().Err() == nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "output", "operation", "authenticate_output", "error", credentialError(err, credential))
 		}
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	data, mime, err := p.outputs.Open(r.Context(), userID, chi.URLParam(r, "id"))
@@ -233,7 +234,7 @@ func (p *Proxy) output(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	var input GenerateRequest
@@ -257,7 +258,7 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.generator == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	task, err := p.generator.Generate(r.Context(), target, input)
@@ -267,7 +268,7 @@ func (p *Proxy) generate(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	var input EditRequest
@@ -299,7 +300,7 @@ func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.editor == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	task, err := p.editor.Edit(r.Context(), target, input)
@@ -309,11 +310,11 @@ func (p *Proxy) edit(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 	credential, ok := proxy.Credential(r)
 	if !ok {
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	if p.keys == nil || p.tasks == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	userID, err := p.keys.Authenticate(r.Context(), credential, "model:invoke")
@@ -321,7 +322,7 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 		if err != nil && r.Context().Err() == nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图鉴权失败", "module", "imageproxy", "operation", "task", "operation", "authenticate_task", "error", credentialError(err, credential))
 		}
-		unauthorized(w)
+		unauthorized(w, r)
 		return
 	}
 	taskID := chi.URLParam(r, "id")
@@ -339,7 +340,7 @@ func (p *Proxy) task(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, model string) (proxy.Target, bool) {
 	if p.resolver == nil {
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return proxy.Target{}, false
 	}
 	target, err := p.resolver.Resolve(r.Context(), credential, model)
@@ -347,7 +348,7 @@ func (p *Proxy) resolve(w http.ResponseWriter, r *http.Request, credential, mode
 		if err != nil && r.Context().Err() == nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelWarn, "imageproxy.operation.warn", "生图模型解析失败", "module", "imageproxy", "operation", "resolve", "operation", "resolve", "error", credentialError(err, credential))
 		}
-		unauthorized(w)
+		unauthorized(w, r)
 		return proxy.Target{}, false
 	}
 	if target.Protocol != imageProtocol {
@@ -422,6 +423,6 @@ func credentialError(err error, credential string) string {
 	return strings.ReplaceAll(err.Error(), credential, "[redacted]")
 }
 
-func unauthorized(w http.ResponseWriter) {
-	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+func unauthorized(w http.ResponseWriter, r *http.Request) {
+	web.HTTPError(w, r, http.StatusUnauthorized)
 }

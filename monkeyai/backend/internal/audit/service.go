@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -184,7 +185,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 func failure(ctx context.Context, w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"error": web.Body(ctx, code, message)}); err != nil {
 		logging.Event(ctx, slog.Default(), slog.LevelError, "audit.operation.error", "操作审计错误响应写入失败", "module", "audit", "operation", "failure", "request_id", logging.RequestID(ctx), "status", status, "code", code, "error", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"io"
 	"log/slog"
 	"net"
@@ -370,7 +371,7 @@ func (s *Service) probe(r *route, stop <-chan struct{}) {
 }
 func (s *Service) controlHTTP(w http.ResponseWriter, req *http.Request, r *route) {
 	if req.Host != "relay.internal" {
-		http.Error(w, "invalid host", 400)
+		http.Error(w, web.Message(req.Context(), "invalid_host", "invalid host"), 400)
 		return
 	}
 	rc := http.NewResponseController(w)

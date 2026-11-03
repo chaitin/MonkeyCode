@@ -1,0 +1,751 @@
+API Key 无效	The API key is invalid.
+BAIZHIYUN_APP_ID 必须为整数	BAIZHIYUN_APP_ID must be an integer.
+CA 证书不在有效期内	The CA certificate is outside its validity period.
+CA 证书不能为空	A CA certificate is required.
+CA 证书必须为 PEM 格式	The CA certificate must use PEM format.
+CA 证书无效或不具备 CA 签发用途	The CA certificate is invalid or cannot issue certificates.
+JSON 格式无效	The JSON format is invalid.
+JSON-RPC 请求无效	The JSON-RPC request is invalid.
+MCP URL 无效	The MCP URL is invalid.
+MCP 协议版本不支持	The MCP protocol version is not supported.
+MCP 请求处理失败	The MCP request could not be processed.
+MCP 调用密钥无效或权限不足	The MCP invocation key is invalid or lacks the required permissions.
+OAuth Registration URL 无效	The OAuth registration URL is invalid.
+OAuth Token 端点认证方式无效	The OAuth token endpoint authentication method is invalid.
+OAuth 凭证通过授权流程更新	Update OAuth credentials through the authorization flow.
+OAuth 客户端配置模式无效	The OAuth client configuration mode is invalid.
+OAuth 应用配置不完整，请填写 Client ID 或 Registration URL	The OAuth configuration is incomplete. Enter a Client ID or Registration URL.
+OAuth 授权地址无效	The OAuth authorization URL is invalid.
+PKCE 校验失败	PKCE verification failed.
+Range 全部不可满足	None of the requested ranges can be satisfied.
+Range 区间过多	Too many ranges were requested.
+Range 后缀无效	The range suffix is invalid.
+Range 格式无效	The range format is invalid.
+Range 终点无效	The range end is invalid.
+Range 起点无效	The range start is invalid.
+SKILL.md 元信息无效	The SKILL.md metadata is invalid.
+SKILL.md 元信息未闭合	The SKILL.md metadata block is not closed.
+SKILL.md 必须是 UTF-8 文本	SKILL.md must be UTF-8 text.
+SKILL.md 缺少 YAML 元信息	SKILL.md is missing YAML metadata.
+Token target 不支持	The token target is not supported.
+Token 用量无效	The token usage is invalid.
+Token 请求无效	The token request is invalid.
+ZIP 展开大小超限	The expanded ZIP exceeds the size limit.
+access token 无效或已过期	The access token is invalid or has expired.
+after_turn 与服务端确认位置不一致	after_turn does not match the server's acknowledged position.
+api_key 不能为空	api_key is required.
+api_key 不能为空且必须有效	api_key must be present and valid.
+base_credits_per_image 必须是非负积分	base_credits_per_image must be a nonnegative credit amount.
+base_url 必须是有效的 HTTP(S) 地址	base_url must be a valid HTTP(S) URL.
+base_url 无效	base_url is invalid.
+category 无效	category is invalid.
+client.machine_id 与请求宿主不一致	client.machine_id does not match the request host.
+client_deleted_at 不能早于 started_at	client_deleted_at must not be earlier than started_at.
+client_id 无效	client_id is invalid.
+client_type 无效	client_type is invalid.
+code_verifier 无效	code_verifier is invalid.
+count 必须大于 0	count must be greater than zero.
+credit_multiplier 必须大于 0	credit_multiplier must be greater than zero.
+cursor 无效	cursor is invalid.
+cursor 无效或筛选条件已变化	The cursor is invalid or the filter conditions have changed.
+cursor 时间无效	The cursor timestamp is invalid.
+enabled 必须为布尔值	enabled must be a boolean.
+enabled 必须是布尔值	enabled must be a boolean.
+gzip 请求格式无效	The gzip request format is invalid.
+idempotency_key 必须是有效的 UUID	idempotency_key must be a valid UUID.
+kind 无效	kind is invalid.
+kind 过长	kind is too long.
+limit 必须为 1 至 500	limit must be between 1 and 500.
+limit 必须为 1—100	limit must be between 1 and 100.
+limit 必须在 1—500 之间	limit must be between 1 and 500.
+manifest JSON 无效	The manifest JSON is invalid.
+member_ids 必须是数组，最多包含 10000 个成员	member_ids must be an array containing at most 10000 users.
+model 和 prompt 不能为空	model and prompt are required.
+model_id、display_name 和 base_url 不能为空	model_id, display_name, and base_url are required.
+name、role 或 status 无效	name, role, or status is invalid.
+outcome 无效	outcome is invalid.
+owner 必须为 all、team、mine 或 shared	owner must be all, team, mine, or shared.
+ownership_type 无效	ownership_type is invalid.
+parent_id 必须是分组 ID 或 null	parent_id must be a group ID or null.
+platform 过长	platform is too long.
+provider_options 必须是 JSON 对象	provider_options must be a JSON object.
+q 必须为 1—200 字节，limit 必须为 1—100	q must contain 1–200 bytes and limit must be between 1 and 100.
+quality 倍率名称无效或重复	A quality multiplier name is invalid or duplicated.
+quality 倍率必须大于 0	The quality multiplier must be greater than zero.
+range 仅支持 all	range only supports all.
+recommended 必须为 true/false	recommended must be true or false.
+redirect_uri 未匹配客户端登记的回调地址	redirect_uri does not match the callback URL registered for this client.
+refresh_token 无效或已过期	The refresh token is invalid or has expired.
+resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项	resources must contain 1–100 items; user_ids and group_ids must contain 1–100 items in total.
+snapshot_id 必须是规范化 items 的 sha256	snapshot_id must be the SHA-256 hash of the normalized items.
+started_at 不能早于已记录时间	started_at must not be earlier than the recorded time.
+started_at 不能晚于已有轮次	started_at must not be later than an existing turn.
+state 不能为空	state is required.
+state 无效	state is invalid.
+state_seq 已过期	state_seq is stale.
+tag_ids 必须是标签 ID 数组	tag_ids must be an array of tag IDs.
+task_id 无效	task_id is invalid.
+template_kind 无效	template_kind is invalid.
+turn 引用的资源快照不存在	The resource snapshot referenced by the turn does not exist.
+turn 时间顺序无效	The turn timestamps are not in a valid order.
+turn_index 必须连续上报	turn_index must be reported sequentially without gaps.
+user 搜索条件过长	The user search query is too long.
+上下文和最大输出 Token 必须大于 0	The context and maximum output token limits must be greater than zero.
+上传内容已封存，不能再修改	The upload has been sealed and can no longer be modified.
+上游地址不在公网范围	The upstream address is not in the public network range.
+上游地址无法解析	The upstream address could not be resolved.
+不安全ZIP路径	The ZIP contains an unsafe path.
+不支持分享此资源类型	Sharing this resource type is not supported.
+不支持此方法	This method is not supported.
+不支持的 Content-Encoding	The Content-Encoding is not supported.
+不支持的 grant_type	The grant_type is not supported.
+不支持的会话目录参数	The session directory parameter is not supported.
+不支持设计分区版本	This design section version is not supported.
+不支持请求的受众	The requested audience is not supported.
+不支持请求的权限	The requested scopes are not supported.
+不能停用自己或移除自己的管理员角色	You cannot disable yourself or remove your own administrator role.
+不能分享给自己	You cannot share a resource with yourself.
+不能同时移动父分组和子分组；移动父分组会保留其子分组	Parent and child groups cannot be moved together. Moving a parent preserves its children.
+不能同时配置单张积分价格和旧版画质倍率	Per-image prices and legacy quality multipliers cannot be configured together.
+不能移动到自身或子分组中	A group cannot be moved into itself or one of its descendants.
+专家 Prompt 不能为空	An expert prompt is required.
+专家依赖请使用 connectors	Use connectors to configure expert dependencies.
+专家关联资源不存在或不可用	An expert dependency does not exist or is unavailable.
+专家关联重复	The expert contains duplicate dependencies.
+专家头像读取失败	The expert avatar could not be read.
+个人模型不能由管理员修改	Administrators cannot modify personal models.
+个人设置操作失败，请重试	The personal settings operation failed. Please try again.
+个人资源不支持在管理端调整授权	Personal resource permissions cannot be changed from the administration interface.
+个人资源仅允许治理删除	Only administrative deletion is allowed for personal resources.
+个人连接不能使用系统代理	Personal connections cannot use a system proxy.
+个人连接仅支持无认证或独立认证	Personal connections only support no authentication or independent authentication.
+中转资源达到上限	The relay resource limit has been reached.
+交易不可执行	The transaction cannot be executed in its current state.
+交易尚未完成预留	The transaction reservation has not been completed.
+仅已结算的非零本地扣款可退款	Only settled, nonzero local charges can be refunded.
+仅支持 authorization code	Only the authorization code response type is supported.
+仅支持查询大语言模型协议	Only language model protocols can be queried.
+仅支持测试大语言模型协议	Only language model protocols can be tested.
+仅支持测试系统大语言模型	Only system language models can be tested.
+仅支持配置分组额度，且额度对象不能无效或重复	Only group quotas can be configured, and quota targets must be valid and unique.
+仅独立 runtime 使用设备授权	Only standalone runtimes can use device authorization.
+仅直接计费模式支持立即重置额度	Quotas can only be reset immediately in direct billing mode.
+仅系统规则可以强制应用	Only system rules can be mandatory.
+仅集中认证工具可以设置非零积分	Only tools using centralized authentication can have a nonzero credit price.
+从成员列表或根分组移动到根分组不会改变成员关系	Moving users from the user list or root group into the root group does not change membership.
+任务恢复数量无效	The task recovery count is invalid.
+任务结果无效	The task result is invalid.
+任务统计不支持查询参数	Task statistics do not support query parameters.
+会话 ID 无效	The session ID is invalid.
+会话上报已关闭	Session reporting is disabled.
+会话上报接口仅支持 cursor 分页，不支持 page	Session reporting only supports cursor pagination, not page pagination.
+会话不属于当前用户	The session does not belong to the current user.
+会话尚未注册	The session has not been registered.
+会话尚未由宿主注册	The session has not yet been registered by its host.
+会话属于其他用户	The session belongs to another user.
+会话已删除	The session has been deleted.
+会话已清除	The session has been purged.
+会话服务不可用	The session service is unavailable.
+会话由其他主机认领	The session is claimed by another host.
+会话统计数据已清除	The session statistics have been purged.
+传输块大小或校验值不匹配，请重试	The transfer chunk size or checksum does not match. Please try again.
+传输块编号无效	The transfer chunk index is invalid.
+候选数量必须为 1 至 50	The candidate count must be between 1 and 50.
+元数据格式无效	The metadata format is invalid.
+入口不存在	The entry point does not exist.
+全员授权仅用于系统资源，且不能同时指定用户或分组	All-user permissions are only available for system resources and cannot also specify a user or group.
+凭据失效	The credentials have expired or been revoked.
+凭据无效	The credentials are invalid.
+凭证名称须为 1—128 个字符	The credential name must contain 1–128 characters.
+凭证绑定必须为连接 ID 到凭证 ID 的对象	Credential bindings must map connection IDs to credential IDs.
+凭证绑定无效，必须先选择连接	The credential binding is invalid. Select the connection first.
+分区发现结果不能用于确认导入	Section discovery results cannot be used to confirm an import.
+分区计划已变化，请重新预览	The section plan has changed. Preview it again.
+分区计划无效	The section plan is invalid.
+分卷编号必须从 001 连续递增，且属于同一资源包	Volume numbers must increase sequentially from 001 and belong to the same resource package.
+分组 ID 必须是 UUID	The group ID must be a UUID.
+分组名称须为 1—100 个字符	The group name must contain 1–100 characters.
+分组已位于目标分组下	The group is already under the target group.
+分页参数无效	The pagination parameters are invalid.
+分页游标无效	The pagination cursor is invalid.
+列表不接受 content_digest	List requests do not accept content_digest.
+创建分组需要名称	A name is required to create a group.
+创建用户失败	The user could not be created.
+创建账号失败	The account could not be created.
+创建配对过于频繁	Pairing requests are being created too frequently.
+删除需要 If-Match	Deletion requires If-Match.
+刷新周期无效	The refresh period is invalid.
+功能策略暂不可用	The capability policy is temporarily unavailable.
+加入配对过于频繁	Pairing join requests are too frequent.
+协议版本不兼容	The protocol version is incompatible.
+单价须为 0 到 1000000 的积分值，最多六位小数	The unit price must be between 0 and 1000000 credits, with at most six decimal places.
+单张图片不能超过 5 MiB	Each image must not exceed 5 MiB.
+单轮 tools 超过 500 组，请截断并标记 truncated	A turn cannot contain more than 500 tool groups. Truncate the list and mark it as truncated.
+原交易的钱包配置不可用	The wallet configuration for the original transaction is unavailable.
+原图 file_id 不能为空	The original image file_id is required.
+参数 %s 不受支持	Parameter %s is not supported.
+参数 %s 不属于开放选项	Parameter %s is not among the available options.
+参数 %s 不满足模式范围	Parameter %s is outside the mode range.
+参数 %s 不满足模式限制	Parameter %s does not meet the mode restrictions.
+参数 %s 超出开放范围	Parameter %s is outside the permitted range.
+参数必须为 JSON 对象	Parameters must be a JSON object.
+参数限制包含未开放模式	The parameter restrictions contain unavailable modes.
+参考图 file_id 不能为空	The reference image file_id is required.
+参考图 file_id 无效	The reference image file_id is invalid.
+参考图上传格式无效	The reference image upload format is invalid.
+参考图大小无效	The reference image size is invalid.
+参考图宽高比超出模型能力	The reference image aspect ratio is not supported by the model.
+参考图尺寸或格式不符合模型能力	The reference image dimensions or format are not supported by the model.
+参考图或编辑参数不受支持	The reference image or editing parameters are not supported.
+参考图数量超出模型限制	The reference image count exceeds the model limit.
+参考图无效、过期或重复	A reference image is invalid, expired, or duplicated.
+参考图格式或像素数无效	The reference image format or pixel count is invalid.
+参考图模式不受支持	The reference image mode is not supported.
+参考图角色不属于当前模式	The reference image role does not belong to the current mode.
+参考图超过大小限制	The reference image exceeds the size limit.
+反馈仍在处理中，请稍后重试	The feedback is still being processed. Please try again later.
+反馈内容不能超过 5000 个字符	Feedback content must not exceed 5000 characters.
+反馈内容和图片不能同时为空	Provide feedback text or an image.
+反馈分类或平台无效	The feedback category or platform is invalid.
+反馈处理失败，请稍后重试	The feedback could not be processed. Please try again later.
+反馈状态无效	The feedback state is invalid.
+反馈请求无效或超过 16 MiB	The feedback request is invalid or exceeds 16 MiB.
+发布者与快照不匹配	The publisher does not match the snapshot.
+发送过于频繁，请稍后重试	Requests are being sent too frequently. Please try again later.
+发送验证码失败	The verification code could not be sent.
+只支持 PNG 或 JPEG 参考图	Reference images must use PNG or JPEG format.
+只支持 PNG、JPEG 或 WebP 参考图	Reference images must use PNG, JPEG, or WebP format.
+只有已确定用量的待结算交易可重试；未知结果需先核查	Only pending transactions with confirmed usage can be retried. Review unknown outcomes first.
+只有结果未知的交易可以核查处理	Only transactions with an unknown outcome can be reviewed.
+只能绑定用户通过百智云登录的身份	Only an identity used by this user to sign in through Baizhiyun can be bound.
+同一 turn_index 的上报内容冲突	Reported contents conflict for the same turn_index.
+同一上级分组下已存在该名称	This name already exists under the same parent group.
+同一资源快照 ID 的内容不一致	The same resource snapshot ID has different contents.
+名称不能为空且不能超过 200 字节	The name is required and must not exceed 200 bytes.
+名称必须为字符串	The name must be a string.
+名称或关联已存在	The name or association already exists.
+团队必须设置额度	A workspace quota must be configured.
+图标仅支持不超过 4096 × 4096 的 PNG/JPEG	The icon must be PNG or JPEG and no larger than 4096 × 4096 pixels.
+图标必须小于 1 MiB	The icon must be smaller than 1 MiB.
+图标超限	The icon exceeds the size limit.
+图片仅支持 PNG、JPEG 或 WebP	Images must use PNG, JPEG, or WebP format.
+图片内容无效	The image content is invalid.
+图片内容校验失败	Image content verification failed.
+图片大小不能超过 5 MB	The image must not exceed 5 MB.
+图片大小或格式无效	The image size or format is invalid.
+图片尺寸或像素数无效	The image dimensions or pixel count are invalid.
+图片总大小不能超过 15 MiB	The combined image size must not exceed 15 MiB.
+图片格式、尺寸或像素数无效	The image format, dimensions, or pixel count are invalid.
+在线摘要需要当前执行身份	Online summaries require the current execution identity.
+头像内容无效	The avatar content is invalid.
+头像存储暂不可用	Avatar storage is temporarily unavailable.
+如果该邮箱符合条件，验证码将发送至邮箱	If this email address is eligible, a verification code will be sent to it.
+姓名、邮箱或角色无效	The name, email address, or role is invalid.
+媒体不存在	The media was not found.
+媒体凭据无效或已过期	The media credentials are invalid or have expired.
+媒体路径无效	The media path is invalid.
+字段或关联对象无效	A field or referenced object is invalid.
+存储对象摘要或大小不符	The stored object's checksum or size does not match.
+存在已归档图片时不能按失败退费	A failed-task refund cannot be issued while archived images exist.
+存在未完成的远程交易，请处理后再切换服务 URL 或应用 ID；同一应用可以更新证书	Resolve pending remote transactions before changing the service URL or application ID. Certificates can be updated for the same application.
+客户端信息无效	The client information is invalid.
+客户端分布概览不支持分页参数	The client distribution overview does not support pagination parameters.
+客户端授权需要用户明确批准	The user must explicitly approve client authorization.
+客户端版本不能超过 64 个字符	The client version must not exceed 64 characters.
+客户端证书不在有效期内	The client certificate is outside its validity period.
+客户端证书或私钥格式无效，或证书与私钥不匹配	The client certificate or private key format is invalid, or the certificate does not match the private key.
+客户端证书格式无效	The client certificate format is invalid.
+宿主认证暂不可用	Host authentication is temporarily unavailable.
+密码已发生变化，请重新输入当前密码	The password has changed. Enter the current password again.
+密码校验过于频繁，请 15 分钟后重试	Too many password verification attempts. Try again in 15 minutes.
+密码登录未启用	Password sign-in is disabled.
+密码至少需要 12 个字符	The password must contain at least 12 characters.
+密码重置失败	The password could not be reset.
+密码重置失败，请重新获取验证码	The password could not be reset. Request a new verification code.
+对应签发配置缺失	The required token issuing configuration is missing.
+导入分区无效	The import section is invalid.
+导入分区无效或重复	An import section is invalid or duplicated.
+导入期间资源状态已变化，请重新预览	The resource state changed during import. Preview it again.
+导入选项无效	The import options are invalid.
+尚未导入设计快照	No design snapshot has been imported.
+尚未认证	Authentication is required.
+工具上游连接失败	The upstream tool connection failed.
+工具不存在或未启用	The tool does not exist or is disabled.
+工具参数无效	The tool parameters are invalid.
+工具目录游标无效	The tool catalog cursor is invalid.
+工具调用失败，可凭交易 ID 查询状态	The tool call failed. Use the transaction ID to check its status.
+工具配置无效	The tool configuration is invalid.
+已存在集中凭证，请选择该凭证重新授权	A shared credential already exists. Select it to authorize again.
+已确认的轮次报告不存在	The acknowledged turn report does not exist.
+已验证设备不能使用自报身份上报	Verified devices cannot report with a self-declared identity.
+幂等键不能超过 128 个字符	The idempotency key must not exceed 128 characters.
+幂等键对应不同的视频请求	The idempotency key belongs to a different video request.
+幂等键已用于其他反馈请求	The idempotency key was used for another feedback request.
+幂等键已用于其他生图请求	The idempotency key was used for another image generation request.
+幂等键过长	The idempotency key is too long.
+应用 ID 必须在 1 到 999 之间	The application ID must be between 1 and 999.
+当前密码不正确	The current password is incorrect.
+当前模型不是可调用的视频模型	The current model is not an invokable video model.
+当前调用方不能管理此认证上下文	The current caller cannot manage this authentication context.
+当期可用积分不足	There are not enough credits in the current period.
+必须为每种开放画质配置单张积分价格	Configure a per-image credit price for every available quality.
+必须使用有效的 PKCE S256	Valid PKCE S256 is required.
+必须先预览并确认所选分区	Preview and confirm the selected sections first.
+必须先预览并确认本包是最终 Agent 资源集合	Preview and confirm that this package is the final Agent resource set first.
+快照指纹损坏	The snapshot fingerprint is corrupted.
+快照标识无效	The snapshot identifier is invalid.
+快照资源元数据损坏	The snapshot resource metadata is corrupted.
+成员 ID 无效	The user ID is invalid.
+成员与来源分组不能重复	Users and source groups must not be duplicated.
+成员写入能力不可用	User account write operations are unavailable.
+所有权类型无效	The ownership type is invalid.
+所选凭证需要认证	The selected credential requires authentication.
+所选分区不存在	The selected section does not exist.
+所选分区导入失败，请检查分区结果	A selected section could not be imported. Check the section results.
+所选分组和成员中没有可重置的成员	There are no users whose quotas can be reset in the selected users and groups.
+所选分组无效或重复	A selected group is invalid or duplicated.
+所选成员不存在或已删除	A selected user does not exist or has been deleted.
+所选成员已不在来源分组中，请刷新后重试	A selected user is no longer in the source group. Refresh and try again.
+所选成员已不在根分组直属成员中，请刷新后重试	A selected user is no longer a direct member of the root group. Refresh and try again.
+手机配对客户端无效	The mobile pairing client is invalid.
+手机配对当前不可用	Mobile pairing is temporarily unavailable.
+执行服务正在停止	The execution service is shutting down.
+执行进程或连接代次已变化	The execution process or connection generation has changed.
+批准权限不能超过申请范围	Approved scopes must not exceed the requested scopes.
+技能事件数量超限	The number of skill events exceeds the limit.
+技能包上传无效或超限	The skill package upload is invalid or exceeds the size limit.
+技能包包含根目录外文件	The skill package contains files outside its root directory.
+技能包大小或摘要不一致，请重新上传	The skill package size or checksum does not match. Please upload it again.
+技能包存在不安全路径或链接	The skill package contains an unsafe path or link.
+技能包存在重复路径	The skill package contains duplicate paths.
+技能包损坏或解包大小超限	The skill package is corrupted or exceeds the unpacked size limit.
+技能包超过 %d MiB	The skill package exceeds %d MiB.
+技能名称必须为安全目录名，description 不能为空	The skill name must be a safe directory name and description is required.
+技能名称或描述无效	The skill name or description is invalid.
+指定快照不存在	The specified snapshot does not exist.
+授时参考不可用	The clock synchronization reference is unavailable.
+授权不包含所需权限	The authorization does not include the required scopes.
+授权事务无效或已使用	The authorization request is invalid or has already been used.
+授权回调地址无效	The authorization callback URL is invalid.
+授权对象不存在	The permission target does not exist.
+授权核验暂不可用	Authorization verification is temporarily unavailable.
+授权格式无效	The permission format is invalid.
+授权状态暂不可用	Authorization state is temporarily unavailable.
+授权码已被使用	The authorization code has already been used.
+授权码无效或已过期	The authorization code is invalid or has expired.
+授权请求不存在	The authorization request does not exist.
+授权请求不存在、已完成或已过期	The authorization request does not exist, has been completed, or has expired.
+授权请求无效	The authorization request is invalid.
+接收分组不存在或已删除	The recipient group does not exist or has been deleted.
+接收用户不存在或已停用	The recipient user does not exist or is disabled.
+描述必须为字符串	The description must be a string.
+搜索条件过长	The search query is too long.
+摘要策略暂不可用	The summary policy is temporarily unavailable.
+操作已失效，请刷新页面后重试	This operation has expired. Refresh the page and try again.
+收件邮箱无效	The recipient email address is invalid.
+数据通道不能附着当前执行连接	The data channel cannot attach to the current execution connection.
+文件名或大小无效，资源包总大小不得超过 2 GiB	The file name or size is invalid. The resource package must not exceed 2 GiB in total.
+文件授权无效	The file authorization is invalid.
+文本模型配置无效	The text model configuration is invalid.
+新增 Header 凭证需要名称和认证 Header	A new header credential requires a name and authentication headers.
+新密码不能与当前密码相同	The new password must differ from the current password.
+新设计包必须显式选择导入分区	Import sections must be explicitly selected for a new design package.
+无效 ZIP	The ZIP file is invalid.
+无权使用该模型	You do not have permission to use this model.
+无法保存授权决定	The authorization decision could not be saved.
+无法发起登录	Sign-in could not be started.
+无法核实百智云用户	The Baizhiyun user identity could not be verified.
+无法读取该系统大语言模型的已保存密钥	The saved key for this system language model could not be read.
+时间需使用 RFC3339 格式	The timestamp must use RFC3339 format.
+更新用户失败	The user could not be updated.
+更新需要 If-Match	Updating requires If-Match.
+最多上传 3 张图片	At most 3 images can be uploaded.
+最多保留 5 个未完成上传任务，请先继续或放弃已有任务	At most 5 unfinished uploads can be kept. Resume or discard an existing upload first.
+服务暂不可用	The service is temporarily unavailable.
+服务暂时不可用	The service is temporarily unavailable.
+未登记的会话数量已达上限	The number of unregistered sessions has reached the limit.
+未配置百智云计费连接	The Baizhiyun billing connection is not configured.
+本地媒体签发尚未配置	Local media token issuing is not configured.
+本地存储尚未配置	Local storage is not configured.
+权限列表不能仅包含空白字符	The scope list must not contain only whitespace.
+权限列表过长	The scope list is too long.
+来源分组 ID 无效	The source group ID is invalid.
+来源分组和目标分组不能相同	The source and target groups must differ.
+查找用户失败	The user search failed.
+查询编码无效	The query encoding is invalid.
+标签不存在	The tag does not exist.
+标签不存在或已删除	The tag does not exist or has been deleted.
+标签名称无效	The tag name is invalid.
+标签格式无效	The tag format is invalid.
+核查需填写证据和处理原因	Evidence and a reason are required for review.
+模型不存在	The model does not exist.
+模型不支持此生图操作	The model does not support this image generation operation.
+模型不支持此画质与比例组合	The model does not support this quality and aspect ratio combination.
+模型不支持生图	The model does not support image generation.
+模型地址无效	The model URL is invalid.
+模型密钥无效	The model key is invalid.
+模型总览不支持查询参数	The model overview does not support query parameters.
+模型解析器未配置	The model resolver is not configured.
+模型请求无效	The model request is invalid.
+此会话需要认证宿主上报	This session must be reported by an authenticated host.
+此客户端不能发布执行设备	This client cannot publish an execution device.
+此接口不支持 cursor；仅资源和客户端列表支持游标分页	This endpoint does not support cursor pagination. Only resource and client lists support cursors.
+此接口不支持 include_purged	This endpoint does not support include_purged.
+此设备已有活动执行进程	This device already has an active execution process.
+此连接不使用独立凭证绑定	This connection does not use independent credential bindings.
+此连接不支持 OAuth 授权	This connection does not support OAuth authorization.
+每张图积分价格必须为非负数且最多六位小数	The per-image credit price must be nonnegative with at most six decimal places.
+每条授权必须指定一个用户、分组或全体用户	Each permission must specify one user, one group, or all users.
+每次只能上传一张参考图	Only one reference image can be uploaded at a time.
+每次需提交 1 到 1000 项额度变更	Each request must contain 1–1000 quota changes.
+比例配置无效或重复	An aspect ratio is invalid or duplicated.
+没有所需权限	The required permission is missing.
+没有清除会话的权限	You do not have permission to purge sessions.
+测试消息不能为空且不超过 4000 个字符	The test message is required and must not exceed 4000 characters.
+消息格式无效	The message format is invalid.
+消耗历史仅支持扣费和退款类型	Usage history only supports charges and refunds.
+清晰度未配置积分	No credit price is configured for this resolution.
+清理批次大小无效	The cleanup batch size is invalid.
+父会话属于其他用户	The parent session belongs to another user.
+父会话已删除	The parent session has been deleted.
+独立执行授权仅限本设备执行和上报	Standalone execution authorization is limited to execution and reporting on this device.
+独立执行授权只能访问本机执行接口	Standalone execution authorization can only access this device's execution endpoints.
+独立认证连接由凭证所有者测试	Connections with independent authentication must be tested by the credential owner.
+生图任务参数无效	The image generation task parameters are invalid.
+生图任务状态已变化，请重新核查	The image task state has changed. Please review it again.
+生图任务繁忙，请稍后重试	Image generation is busy. Please try again later.
+生图供应商未配置	The image provider is not configured.
+生图供应商默认能力未配置	Default capabilities for the image provider are not configured.
+生图单张积分价格无效	The per-image credit price is invalid.
+生图基础积分无效	The base image credit price is invalid.
+生图数量或积分无效	The image count or credit amount is invalid.
+生图数量超出模型上限	The image count exceeds the model limit.
+生图核查的张数必须与已归档图片一致	The reviewed image count must match the archived images.
+生图模型 protocol 或配置无效	The image model protocol or configuration is invalid.
+生图模型 provider 无效	The image model provider is invalid.
+生图模型不能设置文本 Token 配置	Image models cannot specify text token settings.
+生图模型不能设置文本积分倍率	Image models cannot specify text credit multipliers.
+生图模型必须配置画质、比例和积分	Image models must configure quality, aspect ratios, and credit prices.
+生图模型能力不可用	The image model capabilities are unavailable.
+生图模型至少需要一种画质和比例	Image models require at least one quality and aspect ratio.
+生图积分倍率无效	The image credit multiplier is invalid.
+生图积分超出可结算范围	The image credit amount exceeds the settlement range.
+生图积分超出范围	The image credit amount is out of range.
+生图积分配置不能混用单张价格和倍率	Per-image prices and multipliers cannot be mixed in image pricing.
+生图请求只能包含一个 JSON 对象	An image generation request must contain exactly one JSON object.
+生图请求格式无效	The image generation request format is invalid.
+生图适配器未配置	The image generation adapter is not configured.
+生成图片像素数无效	The generated image pixel count is invalid.
+生成图片大小无效	The generated image size is invalid.
+生成图片尺寸与响应不一致	The generated image dimensions do not match the response.
+生成图片无法解析	The generated image could not be decoded.
+生成图片格式无效	The generated image format is invalid.
+生成密码失败	A password could not be generated.
+生成数量无效	The generation count is invalid.
+生成视频下载不完整	The generated video download is incomplete.
+生成视频内容为空	The generated video is empty.
+生成视频响应状态异常	The generated video response has an unexpected status.
+生成视频地址无效	The generated video URL is invalid.
+生成视频超出大小限制	The generated video exceeds the size limit.
+生成验证码失败	A verification code could not be generated.
+用户 ID 必须是 UUID	The user ID must be a UUID.
+用户 ID 无效	The user ID is invalid.
+用户不存在	The user does not exist.
+用户已停用	The user account is disabled.
+用户有未完成的远程交易，暂不能变更绑定	The user has unfinished remote transactions. The binding cannot be changed yet.
+用户统计不支持查询参数	User statistics do not support query parameters.
+申请权限无效	The requested scopes are invalid.
+画质与比例组合不被上游模型支持	The upstream model does not support this quality and aspect ratio combination.
+画质仅支持 1K、2K、4K 且不能重复	Quality must be 1K, 2K, or 4K and must not be duplicated.
+画质档位不被上游模型支持	The upstream model does not support this quality level.
+登录失败	Sign-in failed.
+登录已失效，请重新登录	Your sign-in has expired. Please sign in again.
+登录方式不存在	The sign-in provider does not exist.
+登录方式暂不可用	The sign-in provider is temporarily unavailable.
+百智云扣费模式下，请通过百智云登录后使用系统资源	Sign in through Baizhiyun to use system resources in this billing mode.
+百智云用户 ID 不匹配	The Baizhiyun user ID does not match.
+百智云用户 ID 无效	The Baizhiyun user ID is invalid.
+百智云确认待重试	Baizhiyun confirmation is pending retry.
+百智云私钥必须为 PKCS#8 格式的 ECDSA 私钥（BEGIN PRIVATE KEY）	The Baizhiyun private key must be a PKCS#8 ECDSA key (BEGIN PRIVATE KEY).
+百智云预扣未完成，请查看交易状态	The Baizhiyun reservation is incomplete. Please check the transaction status.
+目标不可用	The target is unavailable.
+目标分组下不能有重名分组	Group names must be unique under the target group.
+目标执行端离线	The target execution device is offline.
+目标离线	The target is offline.
+目标繁忙	The target is busy.
+相同 state_seq 的 state_hash 不一致	The same state_seq has different state_hash values.
+相同 turn_index 的报告内容不一致	Reports for the same turn_index contain different data.
+私钥格式无效	The private key format is invalid.
+积分价格的画质无效或重复	The pricing quality is invalid or duplicated.
+端点不存在	The endpoint does not exist.
+端点已停用	The endpoint is disabled.
+端点数量达到上限	The endpoint limit has been reached.
+筛选时间需使用带时区的 ISO 格式	Filter timestamps must use ISO format with a time zone.
+筛选条件过长	The filter is too long.
+管理员密码不能少于 12 个字符	The administrator password must contain at least 12 characters.
+系统代理不可用	The system proxy is unavailable.
+系统代理不存在	The system proxy does not exist.
+终端或数据流名额已满	The terminal or data stream limit has been reached.
+结束时间必须晚于开始时间	The end time must be later than the start time.
+结算恢复数量无效	The settlement recovery count is invalid.
+统计周期无效	The statistics period is invalid.
+编辑至少需要一张原图	Editing requires at least one original image.
+缺少 API Key	An API key is required.
+缺少 Bearer access token	A Bearer access token is required.
+缺少 MCP 协议版本	The MCP protocol version is required.
+缺少 MCP 调用密钥	An MCP invocation key is required.
+缺少 SKILL.md	SKILL.md is missing.
+缺少 icon 文件	The icon file is missing.
+缺少 manifest.json	manifest.json is missing.
+缺少 package	The package file is missing.
+缺少传输块 SHA-256	The transfer chunk SHA-256 checksum is missing.
+缺少参考图 file 字段	The reference image file field is missing.
+缺少客户端授权请求	A client authorization request is required.
+缺少必需的参考图	A required reference image is missing.
+缺少授权身份	An authorized identity is required.
+缺少请求观测上下文	The request observation context is missing.
+缺少资源包文件	The resource package file is missing.
+缺少逐分区计划	The per-section plan is missing.
+缺少配置修订号	The configuration revision is missing.
+网络代理不可用	The network proxy is unavailable.
+网络代理地址无效	The network proxy URL is invalid.
+至少选择一个导入分区	Select at least one import section.
+至少需要一个资源访问授权	At least one resource access permission is required.
+获取上游模型列表失败	The upstream model list could not be retrieved.
+蒙版 file_id 不能为空	The mask file_id is required.
+规则正文不能为空	Rule content is required.
+视频上游地址必须是无查询参数的 HTTP(S) URL	The upstream video URL must be HTTP(S) without query parameters.
+视频上游接口地址无效	The upstream video endpoint URL is invalid.
+视频凭据、模型或幂等键无效	The video credentials, model, or idempotency key are invalid.
+视频参数缺失或未声明	A video parameter is missing or undeclared.
+视频参数范围超出供应商能力	The video parameter range exceeds the provider capabilities.
+视频参数选项超出供应商能力	The video parameter options exceed the provider capabilities.
+视频参数限制无效	The video parameter restrictions are invalid.
+视频参考图像素无效	The video reference image pixel count is invalid.
+视频参考图大小无效	The video reference image size is invalid.
+视频参考图总大小超过 24 MiB	The combined video reference image size exceeds 24 MiB.
+视频参考图超过大小限制	The video reference image exceeds the size limit.
+视频对象存储未配置流式写入	Streaming writes are not configured for video object storage.
+视频接口未就绪	The video endpoint is not ready.
+视频提示词无效	The video prompt is invalid.
+视频时长上限无效	The maximum video duration is invalid.
+视频时长无效	The video duration is invalid.
+视频模型 base_url 必须是无查询参数的 HTTP(S) 地址	The video model base_url must be HTTP(S) without query parameters.
+视频模型供应商或型号不受支持	The video model provider or model ID is not supported.
+视频模型协议或配置无效	The video model protocol or configuration is invalid.
+视频模型未就绪	The video model is not ready.
+视频模型能力不可用	The video model capabilities are unavailable.
+视频模型能力配置无效	The video model capability configuration is invalid.
+视频模型配置无效	The video model configuration is invalid.
+视频模式不受支持或重复	A video mode is unsupported or duplicated.
+视频模式不可用	The video mode is unavailable.
+视频模式缺少默认参数	The video mode has no default parameters.
+视频清晰度或每秒积分无效	The video resolution or per-second credit price is invalid.
+视频生成请求格式无效	The video generation request format is invalid.
+视频积分必须覆盖全部开放清晰度	Video pricing must cover every available resolution.
+视频积分或时长上限无效	The video credit amount or maximum duration is invalid.
+视频积分未配置	Video pricing is not configured.
+视频默认值包含未开放模式	The video defaults contain unavailable modes.
+解包大小超限	The unpacked size exceeds the limit.
+计费代理仅支持单结果模型调用	The billing proxy only supports single-result model calls.
+计费代理暂不支持后台异步生成	The billing proxy does not support background asynchronous generation.
+计费方式或启用状态无效	The billing mode or enabled state is invalid.
+计费模型需要有效的上下文与最大输出限制	Billed models require valid context and maximum output limits.
+计费类型无效	The billing type is invalid.
+认证 Header 无效，请检查名称、数量和保留字段	The authentication headers are invalid. Check their names, count, and reserved fields.
+认证失败	Authentication failed.
+认证服务暂不可用	The authentication service is temporarily unavailable.
+认证组合无效	The authentication combination is invalid.
+认证配置不可用	The authentication configuration is unavailable.
+设备不存在	The device does not exist.
+设备不属于当前用户	The device does not belong to the current user.
+设备信息或公钥无效	The device information or public key is invalid.
+设备公钥不匹配	The device public key does not match.
+设备公钥与已登记身份冲突	The device public key conflicts with the registered identity.
+设备公钥或授权绑定冲突	The device public key or authorization binding conflicts with its registration.
+设备已有活动执行进程	The device already has an active execution process.
+设备已移除	The device has been removed.
+设备或会话标识无效	The device or session identifier is invalid.
+设备授权不包含所需权限	The device authorization does not include the required scopes.
+设备授权不可用	Device authorization is unavailable.
+设备授权决定无效	The device authorization decision is invalid.
+设备授权客户端无效	The device authorization client is invalid.
+设备授权已失效	Device authorization has expired or been revoked.
+设备授权当前不可用	Device authorization is temporarily unavailable.
+设备授权正在变化，请重新提交密码修改	Device authorization is changing. Submit the password change again.
+设备授权申请过于频繁	Device authorization requests are too frequent.
+设备授权码无效	The device authorization code is invalid.
+设备授权缺少账号	The device authorization has no account.
+设备标识无效	The device identifier is invalid.
+设备概览不支持分页参数	The device overview does not support pagination parameters.
+设备清单暂不可用	The device list is temporarily unavailable.
+设备状态无效	The device state is invalid.
+设备状态暂不可用	The device state is temporarily unavailable.
+设备申请不可用	The device request is unavailable.
+设备申请不存在	The device request does not exist.
+设备申请不存在或已处理	The device request does not exist or has already been processed.
+设备申请已完成或过期	The device request has been completed or expired.
+设备申请已经处理	The device request has already been processed.
+设备申请已被其他操作处理	The device request was processed by another operation.
+设备申请已过期	The device request has expired.
+设备申请无效	The device request is invalid.
+设备申请暂不可用	The device request is temporarily unavailable.
+设备登记已变化	The device registration has changed.
+设备登记暂不可用	Device registration is temporarily unavailable.
+设备登记版本已变化，请重新证明	The device registration version has changed. Verify the device again.
+设备码无效或已过期	The device code is invalid or has expired.
+设备码查询过于频繁	Device code queries are too frequent.
+设备证明参数无效	The device proof parameters are invalid.
+设备证明无效	The device identity proof is invalid.
+设备轮询过于频繁	Device polling is too frequent.
+设备连接数达到上限	The device connection limit has been reached.
+设置不存在	The setting does not exist.
+设置已保存，但响应脱敏失败	The settings were saved, but the response could not be redacted.
+设计资源导入尚未配置	Design resource import is not configured.
+证书和私钥必须为 PEM 文本	Certificates and private keys must be PEM text.
+评分必须为 1 至 5	The rating must be between 1 and 5.
+该任务已完成导入	This task has already completed its import.
+该传输块已有不同内容，请重新选择资源包创建任务	This chunk already contains different data. Select the resource package again to create a new task.
+该幂等键已受理，请查看原交易	This idempotency key has already been accepted. Check the original transaction.
+该幂等键已用于不同的额度重置请求	This idempotency key was used for a different quota reset request.
+该画质未配置单张积分价格	No per-image credit price is configured for this quality.
+该认证方式未启用	This authentication method is disabled.
+该账户版本已提交过不同的调整，请刷新后重试	A different adjustment was submitted for this account version. Refresh and try again.
+该邮箱已存在	An account with this email address already exists.
+请上传技能 ZIP	Please upload a skill ZIP package.
+请先在计费设置中配置有效的百智云应用和证书	Configure a valid Baizhiyun application and certificates in billing settings first.
+请先完成所选凭证的认证	Authenticate the selected credential first.
+请先完成资源包上传和完整性检查	Complete the resource package upload and integrity checks first.
+请先登录	Please sign in first.
+请先移动或删除子分组	Move or delete the child groups first.
+请指定分组名称或上级分组	Specify a group name or parent group.
+请提供凭证名称或认证 Header	Provide a credential name or authentication headers.
+请提供客户端证书、私钥和 CA 证书，每项不能超过 64 KiB	Provide the client certificate, private key, and CA certificate. Each must not exceed 64 KiB.
+请提供百智云服务 URL 和应用 ID	Provide the Baizhiyun service URL and application ID.
+请明确批准恢复已撤销设备	Explicitly approve restoring the revoked device.
+请明确批准权限	Explicitly approve the requested scopes.
+请求 JSON 字段重复或格式无效	The request JSON contains duplicate fields or has an invalid format.
+请求体必须为空 JSON 对象	The request body must be an empty JSON object.
+请求体超过大小限制	The request body exceeds the size limit.
+请求参数无效	The request parameters are invalid.
+请求只能包含一个 JSON 对象	The request must contain exactly one JSON object.
+请求字段或格式无效	The request fields or format are invalid.
+请求必须为 JSON 对象	The request must be a JSON object.
+请求机器与认证宿主不一致	The requesting machine does not match the authenticated host.
+请求来源不受信任	The request origin is not trusted.
+请求来源不被允许	The request origin is not allowed.
+请求格式或邮箱无效	The request format or email address is invalid.
+请求格式无效	The request format is invalid.
+请求超限或不完整	The request exceeds the limit or is incomplete.
+请求过于频繁	Requests are too frequent.
+请求须使用 application/json	The request must use application/json.
+请确认技能 frontmatter 的规范化变更	Confirm the normalized changes to the skill frontmatter.
+请输入六位数字验证码	Enter the six-digit verification code.
+请输入当前密码，新密码需为 12 个字符以上且不超过 1024 字节	Enter the current password. The new password must contain at least 12 characters and no more than 1024 bytes.
+请选择 1 到 1000 个分组或成员，并提供有效的幂等键	Select 1–1000 groups or users and provide a valid idempotency key.
+请选择 ZIP 或全部分卷，最多 256 卷	Select a ZIP file or all of its volumes, up to 256 volumes.
+请选择同一类型的分组或成员并指定目标分组	Select groups or users of the same type and specify the target group.
+请选择普通 ZIP，或按字节拆分的 .zip.001、.002 等全部分卷；不支持 .z01 或 7z 分卷	Select a regular ZIP or all byte-split volumes such as .zip.001 and .002. .z01 and 7z volumes are not supported.
+请选择此连接使用的凭证	Select a credential for this connection.
+请通过百智云登录；多个百智云身份需绑定扣费账户	Sign in through Baizhiyun. If multiple identities are present, bind the billing account.
+请配置百智云服务 URL	Configure the Baizhiyun service URL.
+读取图片失败	The image could not be read.
+读取授权对象失败	The permission targets could not be read.
+读取操作审计失败	The operation audit could not be read.
+读取模型列表失败	The model list could not be read.
+读取用户失败	The users could not be read.
+读取设置失败	The settings could not be read.
+读取调用密钥失败	The invocation keys could not be read.
+调整需填写非零积分、原因和账户版本	An adjustment requires a nonzero credit amount, a reason, and an account version.
+调用密钥不存在	The invocation key does not exist.
+调用结果无效	The invocation result is invalid.
+账号不可用于此授权	This account cannot be used for this authorization.
+账号不可用于此登录入口	This account cannot be used at this sign-in entry point.
+账号不可用于设备授权	This account cannot be used for device authorization.
+账号不可用于配对	This account cannot be used for pairing.
+账号尚未设置密码，请通过登录页的找回密码设置	This account has no password. Use password recovery on the sign-in page to set one.
+账户余额超出允许范围	The account balance is outside the allowed range.
+资源 ID 必须是 UUID	The resource ID must be a UUID.
+资源不可下载	The resource cannot be downloaded.
+资源不存在	The resource does not exist.
+资源不存在或无权访问	The resource does not exist or you do not have access.
+资源不支持启停	This resource cannot be enabled or disabled.
+资源仍被引用	The resource is still referenced.
+资源包上传格式或大小无效	The resource package upload format or size is invalid.
+资源包传输块不完整，请重新上传	The resource package chunks are incomplete. Upload them again.
+资源包内容已变化，请重新上传	The resource package contents have changed. Upload it again.
+资源包大小超限	The resource package exceeds the size limit.
+资源包尚未上传完整，请继续上传缺失部分	The resource package upload is incomplete. Upload the missing parts.
+资源包或预览结果已变化，请重新预览	The resource package or preview results have changed. Preview it again.
+资源包超过大小限制	The resource package exceeds the size limit.
+资源已更新，请刷新后重试	The resource has changed. Refresh and try again.
+资源摘要与所选快照不匹配	The resource checksum does not match the selected snapshot.
+资源操作失败	The resource operation failed.
+资源标识无效	The resource identifier is invalid.
+资源由发布包管理，不允许人工修改	The resource is managed by a release package and cannot be edited manually.
+资源类型不存在	The resource type does not exist.
+转发消息过大	The forwarded message is too large.
+轮换调用密钥失败	The invocation key could not be rotated.
+输出上限无效	The output limit is invalid.
+输出限制须为正整数	The output limit must be a positive integer.
+过滤参数不适用于资源类型	The filter parameters do not apply to this resource type.
+远程访问已撤销	Remote access has been revoked.
+远程退款需经百智云退款或对账渠道处理	Remote refunds must be handled through Baizhiyun refund or reconciliation channels.
+连接不再使用 Provider，请直接配置连接地址和认证方式	Connections no longer use a Provider. Configure the connection URL and authentication method directly.
+连接依赖必须包含 connector_id	Connection dependencies must contain connector_id.
+连接依赖格式无效	The connection dependency format is invalid.
+连接授权已过期或撤销	Connection authorization has expired or been revoked.
+退役资源只能撤销现有授权	Only existing permissions can be revoked for retired resources.
+退款后余额超出允许范围，请先处理账户额度	The balance after refund would exceed the allowed range. Adjust the account quota first.
+退款需填写原因	A refund reason is required.
+通知不能包含请求 ID	Notifications must not contain a request ID.
+邮件发送失败，请检查已保存的 SMTP 配置和服务连接	The email could not be sent. Check the saved SMTP settings and service connection.
+邮件发送失败，请稍后重试或联系管理员	The email could not be sent. Try again later or contact your administrator.
+邮件服务未配置	The email service is not configured.
+邮箱或密码错误	The email address or password is incorrect.
+配对不存在或已过期	The pairing does not exist or has expired.
+配对已处理或尚未加入	The pairing has already been resolved or has not been joined.
+配对已被使用	The pairing has already been used.
+配对已被拒绝	The pairing was denied.
+配对授权码已失效	The pairing authorization code is no longer valid.
+配对授权码已消费	The pairing authorization code has already been consumed.
+配对授权码已过期	The pairing authorization code has expired.
+配对授权码无效	The pairing authorization code is invalid.
+配对状态正在变化，请稍后重试	The pairing state is changing. Please try again later.
+配对码请求格式无效	The pairing code request format is invalid.
+配对设备信息或 PKCE 无效	The pairing device information or PKCE is invalid.
+配对轮询过于频繁	Pairing polling is too frequent.
+配置块包含未知字段	The configuration block contains unknown fields.
+配置已更新，请重新加载后保存	The configuration has changed. Reload it before saving.
+重置密码失败	The password could not be reset.
+钱包归属已改变，需核查原交易	The wallet owner has changed. Review the original transaction.
+集中认证连接由管理员测试	Connections with centralized authentication must be tested by an administrator.
+需先通过百智云核实预扣状态，不能仅在本地解除冻结	Verify the reservation status with Baizhiyun first. It cannot be released only locally.
+需要 OAuth 用户上下文	An OAuth user context is required.
+需要会话清除审计权限	Session purge audit permission is required.
+需要先证明本机身份	Verify this device's identity first.
+需要升级协议版本	A protocol upgrade is required.
+需要管理员权限	Administrator permission is required.
+额度需为非负整数积分或 null	The quota must be a nonnegative integer credit amount or null.
+验证码用途无效	The verification code purpose is invalid.
+默认比例必须属于可选比例	The default aspect ratio must be among the available aspect ratios.
+默认画质必须属于可选画质	The default quality must be among the available qualities.
+%w，请检查 Base URL 和网络代理	%w. Check the Base URL and network proxy.
+%w：上游返回 HTTP %d，请检查协议和密钥	%w: the upstream returned HTTP %d. Check the protocol and key.
+%w：分页响应无效	%w: the pagination response is invalid.
+%w：分页超过限制	%w: pagination exceeds the limit.
+%w：响应无法读取或超过大小限制	%w: the response could not be read or exceeds the size limit.
+%w：响应格式无效	%w: the response format is invalid.
+%w：模型列表超过大小限制	%w: the model list exceeds the size limit.
+保存分组授权: %w	Could not save group permissions: %w
+保存用户授权: %w	Could not save user permissions: %w
+创建模型: %w	Could not create the model: %w
+更新模型: %w	Could not update the model: %w
+查询可用模型: %w	Could not query available models: %w
+查询模型: %w	Could not query models: %w
+视频模式默认参数无效: %w	The video mode defaults are invalid: %w
+解析模型高级配置: %w	Could not parse the advanced model settings: %w
+解析生图积分: %w	Could not parse image pricing: %w
+解析生图配置: %w	Could not parse image settings: %w
+解析视频积分: %w	Could not parse video pricing: %w
+解析视频配置: %w	Could not parse video settings: %w

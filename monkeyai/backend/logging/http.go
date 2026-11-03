@@ -17,9 +17,24 @@ import (
 
 // HTTP observes the whole application before preview and authentication guards.
 func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
+	return httpObserver(logger, func(_ context.Context, w http.ResponseWriter) error {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err := io.WriteString(w, "{\"error\":{\"code\":\"internal_error\",\"message\":\"服务内部错误\"}}\n")
+		return err
+	}, false)
+}
+
+// HTTPWithErrorResponder lets the application localize its uncommitted panic response.
+func HTTPWithErrorResponder(logger *slog.Logger, respond func(context.Context, http.ResponseWriter) error) func(http.Handler) http.Handler {
+	return httpObserver(logger, respond, true)
+}
+
+func httpObserver(logger *slog.Logger, respond func(context.Context, http.ResponseWriter) error, report bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			state := newObservation()
+			state.logger = logger
 			ctx := context.WithValue(r.Context(), contextKey{}, state)
 			Bind(ctx, slog.String("method", r.Method))
 			r = r.WithContext(ctx)
@@ -46,9 +61,7 @@ func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
 						Diagnostic(ctx, logger, slog.LevelError, "http.request.panicked", nil,
 							slog.String("error_type", fmt.Sprintf("%T", fault)), slog.String("error_message", fmt.Sprint(fault)), slog.Attr{Key: "stack", Value: slog.GroupValue(stack...)})
 						if writer.status == 0 && !writer.hijacked {
-							writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-							writer.WriteHeader(http.StatusInternalServerError)
-							if _, err := io.WriteString(writer, "{\"error\":{\"code\":\"internal_error\",\"message\":\"服务内部错误\"}}\n"); err != nil {
+							if err := respond(ctx, writer); err != nil {
 								Diagnostic(ctx, logger, slog.LevelError, "http.response.failed", err)
 							}
 						} else {
@@ -87,6 +100,9 @@ func HTTP(logger *slog.Logger) func(http.Handler) http.Handler {
 					Diagnostic(ctx, logger, slog.LevelError, "http.request.failed", nil, attrs[1:]...)
 				} else if route != "/healthz" && route != "/readyz" {
 					logger.LogAttrs(ctx, slog.LevelDebug, "HTTP 请求完成", attrs...)
+				}
+				if report {
+					responseSummary(ctx, logger, writer.status)
 				}
 				if abort {
 					panic(http.ErrAbortHandler)

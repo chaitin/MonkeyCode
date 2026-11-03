@@ -571,12 +571,12 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 	if raw, exists := in["connector_bindings"]; exists {
 		values, ok := raw.(map[string]any)
 		if !ok {
-			return nil, resource.Invalid("凭证绑定必须为连接 ID 到凭证 ID 的对象")
+			return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定必须为连接 ID 到凭证 ID 的对象")
 		}
 		for id, value := range values {
 			credential, ok := value.(string)
 			if !ok || credential == "" || !seenConnectors[id] {
-				return nil, resource.Invalid("凭证绑定无效，必须先选择连接")
+				return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定无效，必须先选择连接")
 			}
 			bindings[id] = credential
 		}
@@ -602,7 +602,7 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 		selected := bindings[id]
 		if conn.String("authorization_mode") != "independent" {
 			if selected != "" {
-				return nil, resource.Invalid("此连接不使用独立凭证绑定")
+				return nil, resource.InvalidCode("credential_binding_unsupported", "此连接不使用独立凭证绑定")
 			}
 			if !connectorReady(conn) {
 				issue("authorization_required", conn)

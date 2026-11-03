@@ -79,7 +79,7 @@ func (c *connection) reject(code, id string) {
 	if !validID(id) {
 		id = ""
 	}
-	data, err := errorFrame(code, id)
+	data, err := errorFrame(c.ctx, code, id)
 	if err != nil {
 		logging.Event(context.Background(), c.service.logger, slog.LevelError, "endpoint.operation.error", "序列化端点错误帧失败", "module", "endpoint", "operation", "reject", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "reject", "error", err)
 		c.stop(1011)
@@ -131,7 +131,7 @@ func (c *connection) expected(err error) bool {
 		errors.Is(err, syscall.ECONNRESET) || websocket.CloseStatus(err) != -1
 }
 func (c *connection) sendError(code, reply string) {
-	data, err := errorFrame(code, reply)
+	data, err := errorFrame(c.ctx, code, reply)
 	if err != nil {
 		logging.Event(context.Background(), c.service.logger, slog.LevelError, "endpoint.operation.error", "序列化端点错误帧失败", "module", "endpoint", "operation", "sendError", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "send_error", "error", err)
 		c.stop(1011)

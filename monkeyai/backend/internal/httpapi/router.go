@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 )
@@ -14,6 +15,8 @@ type Pinger interface{ Ping(context.Context) error }
 
 func New(logger *slog.Logger, database Pinger, admin, agent, auth http.Handler) http.Handler {
 	router := chi.NewRouter()
+	router.NotFound(web.NotFound)
+	router.MethodNotAllowed(web.MethodNotAllowed)
 	write := func(w http.ResponseWriter, r *http.Request, body string) {
 		if _, err := io.WriteString(w, body); err != nil && r.Context().Err() == nil {
 			logging.Diagnostic(r.Context(), logger, slog.LevelWarn, "http.response.failed", err)
