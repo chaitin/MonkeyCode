@@ -4,13 +4,23 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 每个接口必须声明请求体、成功与错误响应、响应 JSON Schema，并为字段补充类型、约束和说明；不能只记录状态码和响应描述。契约字段以实际 HTTP DTO 为准，密钥等不返回的敏感字段需要明确说明。
 
+## 手机扫码配对
+
+手机首次登录可用扫码配对替代浏览器授权：桌面端使用带 `device:manage` 的 Bearer 调用 `POST /oauth/pairing`，生成 60 秒有效的二维码；手机调用 `POST /oauth/pairing/{pairingID}/join` 换取八位配对码，用户在桌面端输入后调用 `POST /oauth/pairing/{pairingID}/approve` 批准，手机再以 `grant_type=urn:monkeyai:params:oauth:grant-type:pairing_code`、`client_id=monkeyai-mobile`、`device_code` 和原始 `code_verifier` 兑换账号级 token。桌面端可通过 `GET /oauth/pairing/{pairingID}` 查询状态并展示手机信息。
+
+二维码固定为 `monkeyai-mobile://pair/scan`，只包含 `v=1`、`server`、`id`、`secret` 四个参数，server 来自服务端公开地址。join 严格校验 JSON，最多 16 KiB；二维码过期、secret 错误与不存在统一返回 `404 pairing_not_found`。join 后窗口延长到当前时间后 60 秒，硬上限为创建后 180 秒。手机每 5 秒轮询，遇到 `slow_down` 再增加 5 秒；状态并发变更占用配对锁时返回可重试的 `authorization_pending`。所有配对响应均为 `Cache-Control: no-store`。
+
+四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect files:read files:write session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
+
+创建与批准在用户锁下复核 Bearer。兑换先锁用户，再以 `NOWAIT` 锁配对，并条件消费，避免与改密的「配对 → 用户」锁序互相等待；改密拿到用户锁后仍复查期间新建的活动配对（pending、joined、approved），必要时返回 `409 authorization_changed` 并回滚。上线前执行迁移 `000037_oauth_pairing`。
+
 ## 本人账户设置
 
 浏览器会话接口统一在 `admin.yaml` 记录。`GET /api/auth/v1/profile` 返回当前用户、`custom_avatar_url`、`synced_avatar_url`、`has_password` 和 CSRF 令牌。本人修改无需管理员角色；上传、清除和修改密码都必须携带 `X-CSRF-Token`，有 Origin 时还需匹配公开服务地址。
 
 - `PUT /api/auth/v1/profile/avatar`：直接发送 JPG/PNG/WebP 图片二进制，最多 5 MiB、2500 万像素、单边 8192 像素；服务端完整解码校验后写入现有 S3 存储，并更新自定义头像。
 - `DELETE /api/auth/v1/profile/avatar`：仅清除自定义头像，恢复最新 OAuth 同步头像或客户端默认头像。
-- `POST /api/auth/v1/profile/password`：发送 `current_password`、`new_password`。校验当前密码，新密码至少 12 个 Unicode 字符且不超过 1024 字节；每用户每 15 分钟最多 10 次校验。成功时事务内撤销旧会话、OAuth 授权/令牌、授权码、已批准但尚未兑换的设备授权和验证码，并轮换当前浏览器 Cookie。客户端保留当前登录并使用响应的新 CSRF 令牌。密码登录、授权码兑换和浏览器授权提交在用户记录加锁后复核凭据；遇到并发新增设备批准时返回 `409` 并回滚本次修改，客户端可重新提交。
+- `POST /api/auth/v1/profile/password`：发送 `current_password`、`new_password`。校验当前密码，新密码至少 12 个 Unicode 字符且不超过 1024 字节；每用户每 15 分钟最多 10 次校验。成功时事务内撤销旧会话、OAuth 授权/令牌、授权码、已批准但尚未兑换的设备授权、未兑换的手机配对和验证码，并轮换当前浏览器 Cookie。客户端保留当前登录并使用响应的新 CSRF 令牌。密码登录、授权码兑换和浏览器授权提交在用户记录加锁后复核凭据；遇到并发新增设备批准时返回 `409` 并回滚本次修改，客户端可重新提交。
 
 所有用户头像输出均优先取非空的 `users.custom_avatar_url`，再取 `users.avatar_url`。OAuth 继续只更新后者，不覆盖用户自定义头像。`/api/auth/v1/avatars/{userID}/{avatarID}` 提供带随机版本号的当前图片，不需要 Cookie，供浏览器和客户端展示；已清除或替换版本返回 404。部署前须执行迁移 `000036_user_profile_add`。未设置密码的 OAuth 账号通过现有登录页验证码重置流程设置密码，不能跳过当前密码校验直接设置。
 

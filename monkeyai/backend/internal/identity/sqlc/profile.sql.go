@@ -66,6 +66,20 @@ func (q *Queries) HasProfileDeviceApprovals(ctx context.Context, ownerUserID *st
 	return column_1, err
 }
 
+const hasProfilePairings = `-- name: HasProfilePairings :one
+SELECT EXISTS(
+    SELECT 1 FROM oauth_pairing_requests
+    WHERE creator_user_id=$1 AND status IN ('pending','joined','approved')
+)::boolean
+`
+
+func (q *Queries) HasProfilePairings(ctx context.Context, creatorUserID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasProfilePairings, creatorUserID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const lockProfileAvatar = `-- name: LockProfileAvatar :one
 SELECT coalesce(custom_avatar_url,'')::text AS custom_avatar_url FROM users
 WHERE id=$1 AND deleted_at IS NULL AND status='active' FOR NO KEY UPDATE
@@ -164,6 +178,20 @@ FROM approvals WHERE d.id=approvals.id
 
 func (q *Queries) RevokeProfileDeviceApprovals(ctx context.Context, ownerUserID *string) error {
 	_, err := q.db.Exec(ctx, revokeProfileDeviceApprovals, ownerUserID)
+	return err
+}
+
+const revokeProfilePairings = `-- name: RevokeProfilePairings :exec
+WITH requests AS (
+    SELECT r.id FROM oauth_pairing_requests AS r
+    WHERE r.creator_user_id=$1 AND r.status IN ('pending','joined','approved') ORDER BY r.id FOR UPDATE
+)
+UPDATE oauth_pairing_requests AS p SET status='denied'
+FROM requests WHERE p.id=requests.id
+`
+
+func (q *Queries) RevokeProfilePairings(ctx context.Context, creatorUserID string) error {
+	_, err := q.db.Exec(ctx, revokeProfilePairings, creatorUserID)
 	return err
 }
 

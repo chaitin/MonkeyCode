@@ -20,6 +20,18 @@ func (s *Service) OAuthRouter() http.Handler {
 	router := chi.NewRouter()
 	router.Get("/authorize", s.authorize)
 	router.Post("/device/authorization", s.deviceAuthorization)
+	router.Route("/pairing", func(router chi.Router) {
+		router.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Cache-Control", "no-store")
+				next.ServeHTTP(w, r)
+			})
+		})
+		router.With(s.RequireAgent, RequireScope("device:manage")).Post("/", s.createPairing)
+		router.Post("/{pairingID}/join", s.joinPairing)
+		router.With(s.RequireAgent).Get("/{pairingID}", s.pairingStatus)
+		router.With(s.RequireAgent, RequireScope("device:manage")).Post("/{pairingID}/approve", s.approvePairing)
+	})
 	router.Post("/token", s.token)
 	router.Post("/revoke", s.revoke)
 	return router
@@ -79,7 +91,7 @@ func (s *Service) OAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.deviceEnabled() {
 		metadata["device_authorization_endpoint"] = s.publicURL + "/oauth/device/authorization"
-		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType}
+		metadata["grant_types_supported"] = []string{"authorization_code", "refresh_token", DeviceGrantType, PairingGrantType}
 	}
 	if s.runtimeMetadata != nil {
 		runtime := make(map[string]any, len(s.runtimeMetadata))
@@ -145,6 +157,13 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		token, err = s.ExchangeDeviceCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("device_code"))
+	case PairingGrantType:
+		if !s.deviceLimit(r, "pairing-poll", 300) {
+			w.Header().Set("Retry-After", "60")
+			s.writeOAuthError(r.Context(), w, oauthError("slow_down", "配对轮询过于频繁"))
+			return
+		}
+		token, err = s.ExchangePairingCode(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("device_code"), r.PostForm.Get("code_verifier"))
 	case "refresh_token":
 		token, err = s.Refresh(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("refresh_token"))
 	default:
