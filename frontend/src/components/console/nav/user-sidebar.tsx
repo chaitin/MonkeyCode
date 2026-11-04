@@ -2,7 +2,6 @@ import * as React from "react"
 import NavBalance from "./nav-balance"
 import NavCheckin from "./nav-checkin"
 import NavCommunity from "./nav-community"
-import NavEssay from "./nav-essay"
 import NavInvite from "./nav-invite"
 import NavProject from "./nav-project"
 import {
@@ -61,12 +60,7 @@ export default function UserSidebar({
         {IS_ONLINE_EDITION && (
           <>
             <NavCheckin />
-            {isCnRegion && (
-              <>
-                <NavInvite />
-                <NavEssay />
-              </>
-            )}
+            {isCnRegion && <NavInvite />}
           </>
         )}
         {IS_OFFLINE_EDITION && (

@@ -2,7 +2,6 @@ const POINTS_ACTIVITY_HIDE_DURATION_MS = 7 * 24 * 60 * 60 * 1000
 
 export const POINTS_ACTIVITY_STORAGE_KEYS = {
   invite: "monkeycode.pointsActivity.invite.openedAt",
-  essay: "monkeycode.pointsActivity.essay.openedAt",
 } as const
 
 export function shouldHidePointsActivity(storageKey: string, now = Date.now()): boolean {

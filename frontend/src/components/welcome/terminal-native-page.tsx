@@ -241,7 +241,6 @@ type BillingPeriod = (typeof billingOptions)[number]["value"];
 const earnWays = [
   { icon: "↗", key: "invite" },
   { icon: "✓", key: "checkin" },
-  { icon: "✎", key: "article" },
   { icon: "#", key: "community", valueTo: "#community" },
 ] as const;
 
