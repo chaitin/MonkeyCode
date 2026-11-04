@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 )
 
 type BrandingLogoReader interface {
@@ -19,12 +21,12 @@ func (s *Service) WithBrandingLogo(reader BrandingLogoReader) *Service {
 
 func (s *Service) logo(w http.ResponseWriter, r *http.Request) {
 	if s.brandingLogo == nil {
-		http.NotFound(w, r)
+		web.NotFound(w, r)
 		return
 	}
 	body, version, err := s.brandingLogo.OpenBrandingLogo(r.Context())
 	if err != nil {
-		http.NotFound(w, r)
+		web.NotFound(w, r)
 		return
 	}
 	defer body.Close()
