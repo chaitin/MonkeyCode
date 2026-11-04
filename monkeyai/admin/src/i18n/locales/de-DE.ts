@@ -1072,6 +1072,13 @@ export const deDE = {
       description:
         "Konfigurieren Sie Branding, OAuth und weitere Plattformfunktionen.",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "Logo hochladen",
+        replaceLogo: "Logo ersetzen",
+        resetLogo: "Standard wiederherstellen",
+        logoHint:
+          "PNG, JPG/JPEG, WebP, GIF, BMP oder TIFF, maximal 1 MiB, ohne Begrenzung der Pixelabmessungen. Uploads gelten sofort; ohne Upload wird das Standardlogo verwendet.",
+        logoInvalid: "Wählen Sie ein Bild mit maximal 1 MiB.",
         title: "Markeninformationen",
         description: "Dient zum Ändern der Markeninformationen des Produkts.",
         teamName: "Teamname",

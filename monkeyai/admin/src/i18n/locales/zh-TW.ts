@@ -1002,6 +1002,13 @@ export const zhTW = {
       title: "其他設定",
       description: "設定品牌資訊、OAuth 與其他平台功能。",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "上傳 Logo",
+        replaceLogo: "更換 Logo",
+        resetLogo: "還原預設",
+        logoHint:
+          "支援 PNG、JPG/JPEG、WebP、GIF、BMP、TIFF，最大 1 MiB，不限制像素尺寸。上傳後立即生效，未設定時使用預設 Logo。",
+        logoInvalid: "請選擇 1 MiB 以內的圖片。",
         title: "品牌資訊",
         description: "用於修改產品的品牌資訊。",
         teamName: "團隊名稱",

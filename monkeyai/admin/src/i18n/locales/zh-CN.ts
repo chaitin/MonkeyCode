@@ -148,7 +148,12 @@ export const zhCN = {
       retryFailed: "失败项已保留勾选，可重试。",
     },
     batch: {
-      resourceNames: { skill: "技能", expert: "专家", connector: "连接器", rule: "规则" },
+      resourceNames: {
+        skill: "技能",
+        expert: "专家",
+        connector: "连接器",
+        rule: "规则",
+      },
       actions: "批量操作",
       selectAll: "选择全部",
       clear: "取消选择",
@@ -178,7 +183,8 @@ export const zhCN = {
         disable: "确定禁用已选择的 {{count}} 个{{resource}}吗？",
         delete: "确定删除已选择的 {{count}} 个{{resource}}吗？此操作无法撤销。",
         tags: "确定将已选择的 {{count}} 个{{resource}}设置为所选标签吗？",
-        authorization: "确定将已选择的 {{count}} 个{{resource}}设置为所选授权范围吗？",
+        authorization:
+          "确定将已选择的 {{count}} 个{{resource}}设置为所选授权范围吗？",
       },
       packageSkipped: "已跳过 {{count}} 个由资源包管理的{{resource}}。",
       progress: "已处理 {{completed}} / {{total}} 个{{resource}}",
@@ -1587,6 +1593,13 @@ export const zhCN = {
       title: "其他设置",
       description: "配置品牌信息、OAuth 及其他平台级能力。",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "上传 Logo",
+        replaceLogo: "更换 Logo",
+        resetLogo: "恢复默认",
+        logoHint:
+          "支持 PNG、JPG/JPEG、WebP、GIF、BMP、TIFF，最大 1 MiB，不限制像素尺寸。上传后立即生效，未设置时使用默认 Logo。",
+        logoInvalid: "请选择 1 MiB 以内的图片。",
         title: "品牌信息",
         description: "用于修改产品的品牌信息。",
         teamName: "团队名称",

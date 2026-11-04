@@ -106,12 +106,101 @@ func (q *Queries) ProxyInUse(ctx context.Context, proxyID string) (bool, error) 
 	return exists, err
 }
 
+const putBranding = `-- name: PutBranding :one
+INSERT INTO settings (key, value, schema_version, updated_by_user_id)
+VALUES ('branding', jsonb_build_object('workspace_name', $1::text, 'product_name', $2::text) ||
+    CASE WHEN $3::text = '' THEN '{}'::jsonb ELSE jsonb_build_object('logo_s3_key', $3::text) END,
+    1, $4::uuid)
+ON CONFLICT (key) DO UPDATE SET
+    value = (settings.value - 'workspace_name' - 'product_name' - 'logo_s3_key' - 'logo_url') || EXCLUDED.value,
+    updated_by_user_id = EXCLUDED.updated_by_user_id,
+    updated_at = now(),
+    revision = settings.revision + 1
+RETURNING key, value, schema_version, updated_by_user_id, updated_at
+`
+
+type PutBrandingParams struct {
+	WorkspaceName string
+	ProductName   string
+	LogoKey       string
+	UserID        string
+}
+
+type PutBrandingRow struct {
+	Key             string
+	Value           []byte
+	SchemaVersion   int32
+	UpdatedByUserID string
+	UpdatedAt       time.Time
+}
+
+func (q *Queries) PutBranding(ctx context.Context, arg PutBrandingParams) (PutBrandingRow, error) {
+	row := q.db.QueryRow(ctx, putBranding,
+		arg.WorkspaceName,
+		arg.ProductName,
+		arg.LogoKey,
+		arg.UserID,
+	)
+	var i PutBrandingRow
+	err := row.Scan(
+		&i.Key,
+		&i.Value,
+		&i.SchemaVersion,
+		&i.UpdatedByUserID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const putBrandingLogo = `-- name: PutBrandingLogo :one
+INSERT INTO settings (key, value, schema_version, updated_by_user_id)
+VALUES ('branding', jsonb_build_object('workspace_name', 'Monkey AI', 'product_name', 'MonkeyAI') ||
+    CASE WHEN $1::text = '' THEN '{}'::jsonb ELSE jsonb_build_object('logo_s3_key', $1::text) END,
+    1, $2::uuid)
+ON CONFLICT (key) DO UPDATE SET
+    value = (settings.value - 'logo_s3_key' - 'logo_url') ||
+        CASE WHEN $1::text = '' THEN '{}'::jsonb ELSE jsonb_build_object('logo_s3_key', $1::text) END,
+    updated_by_user_id = EXCLUDED.updated_by_user_id,
+    updated_at = now(),
+    revision = settings.revision + 1
+RETURNING key, value, schema_version, updated_by_user_id, updated_at
+`
+
+type PutBrandingLogoParams struct {
+	LogoKey string
+	UserID  string
+}
+
+type PutBrandingLogoRow struct {
+	Key             string
+	Value           []byte
+	SchemaVersion   int32
+	UpdatedByUserID string
+	UpdatedAt       time.Time
+}
+
+func (q *Queries) PutBrandingLogo(ctx context.Context, arg PutBrandingLogoParams) (PutBrandingLogoRow, error) {
+	row := q.db.QueryRow(ctx, putBrandingLogo, arg.LogoKey, arg.UserID)
+	var i PutBrandingLogoRow
+	err := row.Scan(
+		&i.Key,
+		&i.Value,
+		&i.SchemaVersion,
+		&i.UpdatedByUserID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const putSetting = `-- name: PutSetting :one
 INSERT INTO settings (KEY, value, schema_version, updated_by_user_id)
     VALUES ($1, $2, $3, $4)
 ON CONFLICT (KEY)
     DO UPDATE SET
-        value = EXCLUDED.value,
+        value = CASE WHEN settings.key = 'branding' THEN
+            (EXCLUDED.value - 'logo_s3_key' - 'logo_url') ||
+            CASE WHEN settings.value ? 'logo_s3_key' THEN jsonb_build_object('logo_s3_key', settings.value -> 'logo_s3_key') ELSE '{}'::jsonb END
+            ELSE EXCLUDED.value END,
         schema_version = EXCLUDED.schema_version,
         updated_by_user_id = EXCLUDED.updated_by_user_id,
         updated_at = now()

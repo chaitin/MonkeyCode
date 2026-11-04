@@ -46,6 +46,7 @@ func (s *Service) AuthRouter() http.Handler {
 		})
 	})
 	router.Get("/branding", s.branding)
+	router.Get("/branding/logo", s.logo)
 	router.Get("/clients", s.clients)
 	router.Get("/providers", s.providers)
 	router.Post("/admin/login", s.passwordLogin)

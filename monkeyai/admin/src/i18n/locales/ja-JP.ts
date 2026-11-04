@@ -1034,6 +1034,13 @@ export const jaJP = {
       description:
         "ブランド情報、OAuth、その他のプラットフォーム機能を設定します。",
       brandInfo: {
+        logo: "ロゴ",
+        uploadLogo: "ロゴをアップロード",
+        replaceLogo: "ロゴを変更",
+        resetLogo: "既定に戻す",
+        logoHint:
+          "PNG、JPG/JPEG、WebP、GIF、BMP、TIFF、最大 1 MiB。ピクセル寸法の制限はありません。アップロード後すぐに反映され、未設定の場合は既定のロゴを使用します。",
+        logoInvalid: "1 MiB 以下の画像を選択してください。",
         title: "ブランド情報",
         description: "製品のブランド情報を変更するために使用します。",
         teamName: "チーム名",

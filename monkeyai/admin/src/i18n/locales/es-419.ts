@@ -1055,6 +1055,13 @@ export const es419 = {
       description:
         "Configura la marca, OAuth y otras funciones de la plataforma.",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "Subir logo",
+        replaceLogo: "Cambiar logo",
+        resetLogo: "Restaurar predeterminado",
+        logoHint:
+          "PNG, JPG/JPEG, WebP, GIF, BMP o TIFF, hasta 1 MiB, sin límite de dimensiones. Se aplica de inmediato; si no se configura, se usa el logo predeterminado.",
+        logoInvalid: "Elige una imagen de hasta 1 MiB.",
         title: "Información de marca",
         description:
           "Se utiliza para modificar la identidad de marca del producto.",

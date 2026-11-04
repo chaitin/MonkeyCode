@@ -222,6 +222,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		return nil, fmt.Errorf("初始化资源 Bucket: %w", err)
 	}
 	identities.WithProfileStorage(storage)
+	settings.WithLogoStorage(storage, cfg.PublicURL)
+	identities.WithBrandingLogo(settings)
 	feedbacks := feedback.NewService(pool, storage)
 	imageRepo := imagegen.NewPostgres(pool)
 	imageInputs := imagegen.NewInputs(imageRepo, storage)

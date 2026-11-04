@@ -92,7 +92,7 @@ func TestPublicBrandingLicenseWhitelist(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)
 			}
-			if len(got) != 4 || got["workspace_name"] != "Team" || got["product_name"] != "Product" || got["machine_code"] != test.code || got["has_commercial_license"] != test.valid {
+			if len(got) != 5 || got["logo_url"] != "" || got["workspace_name"] != "Team" || got["product_name"] != "Product" || got["machine_code"] != test.code || got["has_commercial_license"] != test.valid {
 				t.Fatalf("unexpected public fields: %+v", got)
 			}
 		})

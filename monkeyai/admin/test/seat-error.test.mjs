@@ -64,6 +64,16 @@ async function renderLoginPage(page, search, language) {
           }
         case "@/lib/api":
           return { api: () => new Promise(() => {}) }
+        case "@/hooks/use-branding":
+          return {
+            useBranding: () => ({
+              branding: {
+                workspace_name: "Monkey AI",
+                product_name: "MonkeyAI",
+                logo_url: "",
+              },
+            }),
+          }
         case "@/hooks/use-auth":
           return { useAuth: () => ({ isLoading: false, user: null }) }
         case "@/components/animated-toast-provider":

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import {
   ArrowUpRight01Icon,
   Briefcase01Icon,
@@ -15,15 +15,9 @@ import { EnterpriseFeatures } from "@/components/enterprise-features"
 import { LanguageToggle } from "@/components/language-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
-import { api } from "@/lib/api"
+import { useBranding } from "@/hooks/use-branding"
+import { BrandLogo } from "@/components/brand-logo"
 import { LOGIN_PATH } from "@/lib/routes"
-
-type PublicBranding = {
-  product_name: string
-  workspace_name: string
-  machine_code?: string
-  has_commercial_license?: boolean
-}
 
 const modes = [
   {
@@ -57,24 +51,10 @@ const modes = [
 
 export function LandingPage() {
   const { t } = useTranslation()
-  const [productName, setProductName] = useState("MonkeyAI")
-  const [workspaceName, setWorkspaceName] = useState("Monkey AI")
-  const [hasCommercialLicense, setHasCommercialLicense] = useState(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    api<PublicBranding>("/api/auth/v1/branding", {
-      signal: controller.signal,
-    })
-      .then((branding) => {
-        if (controller.signal.aborted) return
-        setHasCommercialLicense(branding.has_commercial_license === true)
-        setProductName(branding.product_name.trim() || "MonkeyAI")
-        setWorkspaceName(branding.workspace_name.trim() || "Monkey AI")
-      })
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [])
+  const { branding } = useBranding()
+  const productName = branding.product_name
+  const workspaceName = branding.workspace_name
+  const hasCommercialLicense = branding.has_commercial_license
 
   useEffect(() => {
     document.title = t("landing.title", { productName })
@@ -90,15 +70,23 @@ export function LandingPage() {
             className="flex min-w-0 items-center gap-2.5"
           >
             <span className="size-9 overflow-hidden">
-              <img
-                src="/logo-light.png"
+              <BrandLogo
                 alt=""
-                className="size-full object-cover dark:hidden"
-              />
-              <img
-                src="/logo-dark.png"
-                alt=""
-                className="hidden size-full object-cover dark:block"
+                className="size-full object-contain"
+                fallback={
+                  <>
+                    <img
+                      src="/logo-light.png"
+                      alt=""
+                      className="size-full object-cover dark:hidden"
+                    />
+                    <img
+                      src="/logo-dark.png"
+                      alt=""
+                      className="hidden size-full object-cover dark:block"
+                    />
+                  </>
+                }
               />
             </span>
             <span className="hidden max-w-32 truncate font-heading text-base font-semibold tracking-tight min-[420px]:inline sm:max-w-48">

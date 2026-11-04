@@ -3,6 +3,7 @@ import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
+import { BrandLogo } from "@/components/brand-logo"
 import { LoginMarquees } from "@/components/login-marquees"
 import { ShaderBackground } from "@/components/motion/shader-background"
 import { Button } from "@/components/ui/button"
@@ -48,10 +49,9 @@ export function LoginForm({
           <div className="p-6 md:flex md:items-center md:p-8">
             <FieldGroup className="w-full">
               <div className="flex flex-col items-center gap-2 text-center">
-                <img
-                  src="/monkeyai-logo.webp"
+                <BrandLogo
                   alt=""
-                  className="mb-1 size-16 rounded-2xl object-cover shadow-sm"
+                  className="mb-1 size-16 rounded-2xl object-contain shadow-sm"
                 />
                 <h1 className="text-2xl font-bold">{toolName}</h1>
                 <p className="text-balance text-muted-foreground">

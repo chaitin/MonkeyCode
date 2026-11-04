@@ -37,7 +37,9 @@ type Store interface {
 }
 
 type Service struct {
-	store Store
+	store       Store
+	logoStorage resource.Storage
+	publicURL   string
 }
 
 func NewService(store Store) *Service {
@@ -84,6 +86,15 @@ func (s *Service) Put(ctx context.Context, key string, value json.RawMessage, sc
 			slog.WarnContext(ctx, "操作失败", "module", "setting", "operation", "Put", "error", err)
 		}
 		return Record{}, errors.New("value 必须是 JSON 对象")
+	}
+	if key == "branding" {
+		delete(object, "logo_s3_key")
+		delete(object, "logo_url")
+		var err error
+		value, err = json.Marshal(object)
+		if err != nil {
+			return Record{}, err
+		}
 	}
 	if key == "authentication" {
 		if raw, ok := object["oauth_connections"]; ok {
@@ -184,8 +195,7 @@ func (s *Service) AdminGet(ctx context.Context, key string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	record.Value, err = redact(record.Key, record.Value)
-	return record, err
+	return s.adminRecord(record)
 }
 
 func (s *Service) AdminList(ctx context.Context) ([]Record, error) {
@@ -194,7 +204,7 @@ func (s *Service) AdminList(ctx context.Context) ([]Record, error) {
 		return nil, err
 	}
 	for index := range records {
-		records[index].Value, err = redact(records[index].Key, records[index].Value)
+		records[index], err = s.adminRecord(records[index])
 		if err != nil {
 			return nil, err
 		}
@@ -268,6 +278,9 @@ func redact(key string, value json.RawMessage) (json.RawMessage, error) {
 		return nil, err
 	}
 	switch key {
+	case "branding":
+		delete(object, "logo_s3_key")
+		delete(object, "logo_url")
 	case "authentication":
 		connections, _ := object["oauth_connections"].([]any)
 		for _, item := range connections {
@@ -307,6 +320,10 @@ func (s *Service) mergeSecrets(ctx context.Context, key string, value json.RawMe
 		return nil, fmt.Errorf("解析已有 %s 设置: %w", key, err)
 	}
 	switch key {
+	case "branding":
+		if logo, ok := previous["logo_s3_key"]; ok {
+			next["logo_s3_key"] = logo
+		}
 	case "authentication":
 		previousByID := make(map[string]map[string]any)
 		for _, item := range anySlice(previous["oauth_connections"]) {

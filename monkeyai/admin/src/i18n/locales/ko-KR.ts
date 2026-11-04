@@ -1016,6 +1016,13 @@ export const koKR = {
       title: "기타 설정",
       description: "브랜드 정보, OAuth 및 기타 플랫폼 기능을 설정합니다.",
       brandInfo: {
+        logo: "로고",
+        uploadLogo: "로고 업로드",
+        replaceLogo: "로고 변경",
+        resetLogo: "기본값 복원",
+        logoHint:
+          "PNG, JPG/JPEG, WebP, GIF, BMP, TIFF, 최대 1 MiB. 픽셀 크기 제한이 없습니다. 업로드 즉시 적용되며 설정하지 않으면 기본 로고를 사용합니다.",
+        logoInvalid: "1 MiB 이하의 이미지를 선택하세요.",
         title: "브랜드 정보",
         description: "제품의 브랜드 정보를 수정하는 데 사용합니다.",
         teamName: "팀 이름",

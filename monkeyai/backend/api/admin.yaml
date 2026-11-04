@@ -459,6 +459,7 @@ paths:
                 required:
                   - workspace_name
                   - product_name
+                  - logo_url
                   - machine_code
                   - has_commercial_license
                 additionalProperties: false
@@ -469,12 +470,38 @@ paths:
                   product_name:
                     type: string
                     description: 工具名称。
+                  logo_url:
+                    type: string
+                    description: 自定义 Logo 的绝对 URL，带版本参数；未设置时为空字符串，页面使用内置默认 Logo。
                   machine_code:
                     type: string
                     description: 与管理员付费授权页面相同的授权机器码；宿主未提供时为空字符串，不是统计实例 ID。
                   has_commercial_license:
                     type: boolean
                     description: 是否已导入通过现有付费授权校验且当前有效的商业授权。缺失、无效、过期或无法确认时为 false。
+  /api/auth/v1/branding/logo:
+    get:
+      summary: 读取公开品牌 Logo
+      description: 无需登录，返回当前 Logo，统一为 PNG；支持 ETag 条件请求。未设置或存储不可用时返回 404，页面回退默认图片。
+      security: []
+      parameters:
+        - in: query
+          name: v
+          schema:
+            type: string
+          description: branding.logo_url 中的图片版本。
+      responses:
+        "200":
+          description: 当前品牌 Logo
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Logo 未变化
+        "404":
+          description: 没有可用的自定义 Logo
   /api/auth/v1/email/code:
     post:
       summary: 发送邮箱验证码
@@ -835,6 +862,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmailAuthError"
+  /api/admin/v1/settings:
+    get:
+      summary: 读取管理员设置
+      description: branding 记录的 value 包含 logo_url；所有响应隐藏 logo_s3_key。
+      responses:
+        "200":
+          description: 设置列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          description: 未登录
+        "403":
+          description: 非管理员
+  /api/admin/v1/settings/branding:
+    get:
+      summary: 读取品牌设置
+      responses:
+        "200":
+          description: 品牌设置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandingSettingRecord"
+        "404":
+          description: 尚未保存品牌设置
+    put:
+      summary: 更新品牌名称
+      description: JSON 请求只更新名称并保留当前 Logo。multipart 请求在管理员点击保存后原子更新名称和 Logo；logo_action 为 replace 时上传文件，为 reset 时恢复默认。忽略客户端传入的 logo_url 和 logo_s3_key。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, schema_version]
+              properties:
+                schema_version:
+                  type: integer
+                  minimum: 1
+                value:
+                  type: object
+                  required: [workspace_name, product_name]
+                  properties:
+                    workspace_name:
+                      type: string
+                      minLength: 1
+                    product_name:
+                      type: string
+                      minLength: 1
+          multipart/form-data:
+            schema:
+              type: object
+              required: [workspace_name, product_name, logo_action]
+              properties:
+                workspace_name:
+                  type: string
+                  minLength: 1
+                product_name:
+                  type: string
+                  minLength: 1
+                logo_action:
+                  type: string
+                  enum: [replace, reset]
+                logo:
+                  type: string
+                  format: binary
+                  description: replace 时必需；支持 PNG、JPG/JPEG、WebP、GIF、BMP、TIFF，最大 1 MiB，不限制像素尺寸。
+      responses:
+        "200":
+          description: 已保存，包含当前 logo_url
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandingSettingRecord"
+        "400":
+          description: 品牌名称或请求无效
+  /api/admin/v1/settings/branding/logo:
+    put:
+      summary: 上传或替换品牌 Logo
+      description: 管理员上传 PNG、JPG/JPEG、WebP、GIF、BMP 或 TIFF，文件最大 1 MiB，不限制像素尺寸；服务端转成 PNG，GIF/TIFF 使用首帧。成功后立即生效并保留当前品牌名称。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: 已保存，logo_url 包含新的版本
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandingSettingRecord"
+        "400":
+          description: 文件无效或超过限制
+        "401":
+          description: 未登录
+        "403":
+          description: 非管理员
+        "500":
+          description: 保存失败，保留原配置
+        "503":
+          description: 图片存储不可用
+    delete:
+      summary: 恢复默认品牌 Logo
+      description: 清除自定义 Logo 引用，保留品牌名称。客户端收到空 logo_url 后使用默认图片。
+      responses:
+        "200":
+          description: 已恢复默认
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandingSettingRecord"
+        "401":
+          description: 未登录
+        "403":
+          description: 非管理员
+        "500":
+          description: 保存失败
   /api/admin/v1/settings/proxies:
     get:
       summary: 读取系统代理资源
@@ -5568,6 +5726,32 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    BrandingSettingRecord:
+      type: object
+      required: [key, value, schema_version, updated_by_user_id, updated_at]
+      properties:
+        key:
+          type: string
+          enum: [branding]
+        value:
+          type: object
+          required: [workspace_name, product_name, logo_url]
+          properties:
+            workspace_name:
+              type: string
+            product_name:
+              type: string
+            logo_url:
+              type: string
+              description: 自定义 Logo 的绝对 URL；未设置时为空字符串。
+        schema_version:
+          type: integer
+        updated_by_user_id:
+          type: string
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time
     ClientDevice:
       type: object
       required:

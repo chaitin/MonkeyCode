@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
@@ -14,6 +15,7 @@ import (
 )
 
 func (s *Service) RegisterAdmin(router chi.Router) {
+	s.logoRoutes(router)
 	router.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
 		records, err := s.AdminList(r.Context())
 		if err != nil {
@@ -42,6 +44,10 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 }
 
 func (s *Service) putSetting(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "key") == "branding" && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.saveBrandingForm(w, r)
+		return
+	}
 	var input struct {
 		Value         json.RawMessage `json:"value"`
 		SchemaVersion int             `json:"schema_version"`
@@ -57,7 +63,7 @@ func (s *Service) putSetting(w http.ResponseWriter, r *http.Request) {
 		settingError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
-	record.Value, err = redact(record.Key, record.Value)
+	record, err = s.adminRecord(record)
 	if err != nil {
 		logging.Event(r.Context(), slog.Default(), slog.LevelError, "setting.operation.error", "设置响应脱敏失败", "module", "setting", "operation", "putSetting", "key", record.Key, "error", err)
 		settingError(r.Context(), w, http.StatusInternalServerError, "设置已保存，但响应脱敏失败")

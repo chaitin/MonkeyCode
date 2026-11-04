@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
@@ -22,7 +21,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/use-auth"
-import { api } from "@/lib/api"
+import { useBranding } from "@/hooks/use-branding"
 import {
   CONSOLE_PAGES,
   DEFAULT_CONSOLE_PATH,
@@ -45,19 +44,8 @@ function DashboardContent() {
   const location = useLocation()
   const navigate = useNavigate()
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
-  const [productName, setProductName] = useState("MonkeyAI")
-
-  useEffect(() => {
-    const controller = new AbortController()
-    api<{ product_name: string }>("/api/auth/v1/branding", {
-      signal: controller.signal,
-    })
-      .then((branding) => {
-        setProductName(branding.product_name.trim() || "MonkeyAI")
-      })
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [])
+  const { branding } = useBranding()
+  const productName = branding.product_name
 
   const handleLogout = async () => {
     try {

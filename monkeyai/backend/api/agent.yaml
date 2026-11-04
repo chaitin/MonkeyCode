@@ -1238,6 +1238,7 @@ paths:
                 required:
                   - workspace_name
                   - product_name
+                  - logo_url
                   - machine_code
                   - has_commercial_license
                 additionalProperties: false
@@ -1248,12 +1249,38 @@ paths:
                   product_name:
                     type: string
                     description: 工具名称。
+                  logo_url:
+                    type: string
+                    description: admin 页面使用的自定义 Logo 绝对 URL，未设置时为空字符串；不下发至 Agent settings。
                   machine_code:
                     type: string
                     description: 与管理员付费授权页面相同的授权机器码；宿主未提供时为空字符串，不是统计实例 ID。
                   has_commercial_license:
                     type: boolean
                     description: 是否已导入通过现有付费授权校验且当前有效的商业授权。缺失、无效、过期或无法确认时为 false。
+  /api/auth/v1/branding/logo:
+    get:
+      summary: 读取公开品牌 Logo
+      description: 无需登录，返回当前 Logo，统一为 PNG；支持 ETag 条件请求。未设置或存储不可用时返回 404，页面回退默认图片。
+      security: []
+      parameters:
+        - in: query
+          name: v
+          schema:
+            type: string
+          description: branding.logo_url 中的图片版本。
+      responses:
+        "200":
+          description: 当前品牌 Logo
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Logo 未变化
+        "404":
+          description: 没有可用的自定义 Logo
   /api/auth/v1/email/code:
     post:
       summary: 发送邮箱验证码

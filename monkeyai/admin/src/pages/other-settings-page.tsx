@@ -87,6 +87,11 @@ import { api } from "@/lib/api"
 import { ProxySettings } from "@/components/proxy-settings"
 import { PaidLicenseCard } from "@/components/paid-license-card"
 import { AboutCard } from "@/components/about-card"
+import {
+  BrandLogoSettings,
+  type BrandLogoDraft,
+} from "@/components/brand-logo-settings"
+import { useBranding } from "@/hooks/use-branding"
 
 const OAUTH_PROVIDERS = [
   { value: "github", labelKey: "pages.otherSettings.oauth.providers.github" },
@@ -279,11 +284,14 @@ const INITIAL_KNOWLEDGE_BASE_SETTINGS: KnowledgeBaseSettings = {
 export function OtherSettingsPage() {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
+  const { refreshBranding } = useBranding()
   const { tags: skillTags, addTag, deleteTag, renameTag } = useSkillTags()
   const [teamName, setTeamName] = useState("Monkey AI")
   const [savedTeamName, setSavedTeamName] = useState("Monkey AI")
   const [toolName, setToolName] = useState("MonkeyAI")
   const [savedToolName, setSavedToolName] = useState("MonkeyAI")
+  const [logoDraft, setLogoDraft] = useState<BrandLogoDraft>(null)
+  const [brandSaving, setBrandSaving] = useState(false)
   const [oauthConnections, setOauthConnections] = useState(
     INITIAL_OAUTH_CONNECTIONS
   )
@@ -340,7 +348,9 @@ export function OtherSettingsPage() {
     string | null
   >(null)
   const brandInfoDirty =
-    teamName !== savedTeamName || toolName !== savedToolName
+    teamName !== savedTeamName ||
+    toolName !== savedToolName ||
+    logoDraft !== null
   const emailSettingsDirty =
     JSON.stringify(emailSettings) !== JSON.stringify(savedEmailSettings)
   const emailConfigurationVisible = emailConfigured
@@ -902,19 +912,49 @@ export function OtherSettingsPage() {
             <CardAction>
               <Button
                 type="button"
-                disabled={!teamName.trim() || !toolName.trim()}
+                disabled={brandSaving || !teamName.trim() || !toolName.trim()}
+                loading={brandSaving}
                 onClick={async () => {
-                  const saved = await saveSetting("branding", {
-                    workspace_name: teamName.trim(),
-                    product_name: toolName.trim(),
-                  })
-                  if (saved) {
-                    setSavedTeamName(teamName)
-                    setSavedToolName(toolName)
+                  if (brandSaving) return
+                  setBrandSaving(true)
+                  try {
+                    if (logoDraft !== null) {
+                      const body = new FormData()
+                      body.set("workspace_name", teamName.trim())
+                      body.set("product_name", toolName.trim())
+                      body.set("logo_action", "replace")
+                      body.set("logo", logoDraft.file)
+                      await api("/api/admin/v1/settings/branding", {
+                        method: "PUT",
+                        body,
+                      })
+                    } else {
+                      const saved = await saveSetting("branding", {
+                        workspace_name: teamName.trim(),
+                        product_name: toolName.trim(),
+                      })
+                      if (!saved) return
+                    }
+                    await refreshBranding()
+                    setLogoDraft(null)
+                    setTeamName(teamName.trim())
+                    setToolName(toolName.trim())
+                    setSavedTeamName(teamName.trim())
+                    setSavedToolName(toolName.trim())
                     showToast({
                       status: "success",
                       title: t("pages.otherSettings.brandInfo.saved"),
                     })
+                  } catch (reason) {
+                    showToast({
+                      status: "error",
+                      title:
+                        reason instanceof Error
+                          ? reason.message
+                          : String(reason),
+                    })
+                  } finally {
+                    setBrandSaving(false)
                   }
                 }}
               >
@@ -931,6 +971,7 @@ export function OtherSettingsPage() {
               </FieldLabel>
               <Input
                 id="team-name"
+                disabled={brandSaving}
                 value={teamName}
                 onChange={(event) => setTeamName(event.target.value)}
               />
@@ -941,10 +982,19 @@ export function OtherSettingsPage() {
               </FieldLabel>
               <Input
                 id="tool-name"
+                disabled={brandSaving}
                 value={toolName}
                 onChange={(event) => setToolName(event.target.value)}
               />
             </Field>
+            <div className="min-w-0 md:col-span-2">
+              <BrandLogoSettings
+                value={logoDraft}
+                onValueChange={setLogoDraft}
+                disabled={brandSaving}
+                loading={brandSaving && logoDraft !== null}
+              />
+            </div>
           </FieldGroup>
         </CardContent>
       </Card>

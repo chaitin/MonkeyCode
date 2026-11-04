@@ -1068,6 +1068,13 @@ export const frFR = {
       description:
         "Configurez l’identité visuelle, OAuth et les autres fonctions de la plateforme.",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "Importer un logo",
+        replaceLogo: "Remplacer le logo",
+        resetLogo: "Rétablir par défaut",
+        logoHint:
+          "PNG, JPG/JPEG, WebP, GIF, BMP ou TIFF, 1 Mio maximum, sans limite de dimensions. Le logo est appliqué immédiatement ; le logo par défaut est utilisé si aucun n’est défini.",
+        logoInvalid: "Choisissez une image de 1 Mio maximum.",
         title: "Informations de marque",
         description: "Permet de modifier l’identité de marque du produit.",
         teamName: "Nom de l’équipe",

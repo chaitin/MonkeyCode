@@ -147,13 +147,19 @@ export const enUS = {
     modelBatchDelete: {
       action: "Delete models",
       title: "Delete selected models?",
-      description: "Delete the {{count}} selected models? This cannot be undone.",
+      description:
+        "Delete the {{count}} selected models? This cannot be undone.",
       progress: "Processed {{completed}} / {{total}} models",
       result: "Succeeded: {{succeeded}}, failed: {{failed}}",
       retryFailed: "Failed models remain selected for retry.",
     },
     batch: {
-      resourceNames: { skill: "skills", expert: "experts", connector: "connectors", rule: "rules" },
+      resourceNames: {
+        skill: "skills",
+        expert: "experts",
+        connector: "connectors",
+        rule: "rules",
+      },
       actions: "Batch actions",
       selectAll: "Select all",
       clear: "Clear selection",
@@ -181,13 +187,17 @@ export const enUS = {
       confirmDescriptions: {
         enable: "Enable the {{count}} selected {{resource}}?",
         disable: "Disable the {{count}} selected {{resource}}?",
-        delete: "Delete the {{count}} selected {{resource}}? This cannot be undone.",
+        delete:
+          "Delete the {{count}} selected {{resource}}? This cannot be undone.",
         tags: "Replace tags on the {{count}} selected {{resource}}?",
-        authorization: "Replace authorization on the {{count}} selected {{resource}}?",
+        authorization:
+          "Replace authorization on the {{count}} selected {{resource}}?",
       },
-      packageSkipped: "Skipped {{count}} {{resource}} managed by resource packages.",
+      packageSkipped:
+        "Skipped {{count}} {{resource}} managed by resource packages.",
       progress: "Processed {{completed}} / {{total}} {{resource}}",
-      result: "Succeeded: {{succeeded}}, failed: {{failed}}, skipped: {{skipped}}",
+      result:
+        "Succeeded: {{succeeded}}, failed: {{failed}}, skipped: {{skipped}}",
       retryFailed: "Failed items remain selected for retry.",
     },
     skillBatch: {
@@ -216,11 +226,13 @@ export const enUS = {
         disable: "Disable the {{count}} selected skills?",
         delete: "Delete the {{count}} selected skills? This cannot be undone.",
         tags: "Replace the tags of the {{count}} selected skills with the selected tags?",
-        authorization: "Replace the access scope of the {{count}} selected skills with the selected scope?",
+        authorization:
+          "Replace the access scope of the {{count}} selected skills with the selected scope?",
       },
       packageSkipped: "Skipped {{count}} package-managed skills.",
       progress: "Processed {{completed}} / {{total}} skills",
-      result: "Succeeded: {{succeeded}}, failed: {{failed}}, skipped: {{skipped}}",
+      result:
+        "Succeeded: {{succeeded}}, failed: {{failed}}, skipped: {{skipped}}",
       retryFailed: "Failed skills remain selected for retry.",
     },
     searchPlaceholder: "Search {{resource}}",
@@ -1674,6 +1686,13 @@ export const enUS = {
       description:
         "Configure branding, OAuth, and other platform capabilities.",
       brandInfo: {
+        logo: "Logo",
+        uploadLogo: "Upload logo",
+        replaceLogo: "Replace logo",
+        resetLogo: "Restore default",
+        logoHint:
+          "PNG, JPG/JPEG, WebP, GIF, BMP or TIFF, up to 1 MiB, with no pixel dimension limit. Uploads apply immediately; the default logo is used when none is set.",
+        logoInvalid: "Choose an image no larger than 1 MiB.",
         title: "Brand information",
         description: "Used to modify the product's branding.",
         teamName: "Team name",

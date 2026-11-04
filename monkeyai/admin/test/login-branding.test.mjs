@@ -26,10 +26,18 @@ test("login page loads public branding with safe defaults", async () => {
     "utf8"
   )
 
-  assert.match(source, /workspace_name: "Monkey AI"/)
-  assert.match(source, /product_name: "MonkeyAI"/)
-  assert.match(source, /api<LoginBranding>\("\/api\/auth\/v1\/branding"/)
-  assert.match(source, /\.catch\(\(\) => undefined\)/)
+  const defaults = await readFile(
+    new URL("../src/lib/branding.ts", import.meta.url),
+    "utf8"
+  )
+  const provider = await readFile(
+    new URL("../src/components/branding-provider.tsx", import.meta.url),
+    "utf8"
+  )
+  assert.match(defaults, /workspace_name: "Monkey AI"/)
+  assert.match(defaults, /product_name: "MonkeyAI"/)
+  assert.match(provider, /"\/api\/auth\/v1\/branding"/)
+  assert.match(source, /const \{ branding \} = useBranding\(\)/)
   assert.match(source, /teamName=\{branding\.workspace_name\}/)
   assert.match(source, /toolName=\{branding\.product_name\}/)
   assert.match(
@@ -87,10 +95,10 @@ test("the public root has its own page and the admin link opens login", async ()
     app,
     /if \(location\.pathname !== LOGIN_PATH && location\.pathname !== "\/"\) \{\s*document\.title = t\("app\.documentTitle"\)/
   )
-  assert.match(landing, /api<PublicBranding>\(/)
-  assert.match(landing, /"\/api\/auth\/v1\/branding"/)
-  assert.match(landing, /branding\.product_name\.trim\(\) \|\| "MonkeyAI"/)
-  assert.match(landing, /branding\.workspace_name\.trim\(\) \|\| "Monkey AI"/)
+  assert.match(landing, /const \{ branding \} = useBranding\(\)/)
+  assert.match(landing, /const productName = branding\.product_name/)
+  assert.match(landing, /const workspaceName = branding\.workspace_name/)
+  assert.match(landing, /<BrandLogo/)
   assert.match(
     landing,
     /document\.title = t\("landing\.title", \{ productName \}\)/

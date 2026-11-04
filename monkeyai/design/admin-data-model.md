@@ -234,6 +234,9 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `value.workspace_name` | `string` | 是 | 无 | 工作空间显示名称。 |
 | `value.product_name` | `string` | 是 | 无 | 面向用户展示的产品名称。 |
+| `value.logo_s3_key` | `string` | 否 | 不设置 | 自定义 Logo 的内部对象存储引用，仅由 Logo 专用接口更新，不对外返回。 |
+
+管理员设置响应在 `value` 中派生 `logo_url`，公开品牌接口在顶层返回 `logo_url`；它不是数据库持久化字段。未设置时为空字符串，Admin 页面使用内置默认 Logo。Agent settings 不下发这两个 Logo 字段。
 
 ### 6.3 `authentication` 配置域
 

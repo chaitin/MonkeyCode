@@ -30,6 +30,7 @@ func (s *Service) WithPublicLicense(reader PublicLicenseReader) *Service {
 type publicBranding struct {
 	WorkspaceName        string `json:"workspace_name"`
 	ProductName          string `json:"product_name"`
+	LogoURL              string `json:"logo_url"`
 	MachineCode          string `json:"machine_code"`
 	HasCommercialLicense bool   `json:"has_commercial_license"`
 }
@@ -58,6 +59,14 @@ func (s *Service) branding(w http.ResponseWriter, r *http.Request) {
 					branding.ProductName = productName
 				}
 			}
+		}
+	}
+	if s.brandingLogo != nil {
+		logoURL, err := s.brandingLogo.BrandingLogoURL(r.Context())
+		if err != nil {
+			slog.ErrorContext(r.Context(), "读取品牌 Logo 失败", "error", err)
+		} else {
+			branding.LogoURL = logoURL
 		}
 	}
 	if s.publicLicense != nil {

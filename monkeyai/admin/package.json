@@ -21,6 +21,7 @@
     "test:browser:billing-users": "node scripts/check-billing-user-search.mjs",
     "test:browser:auth": "node scripts/check-client-authorization.mjs",
     "test:browser:branding": "node scripts/check-public-branding.mjs",
+    "test:browser:brand-logo": "node scripts/check-brand-logo.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },

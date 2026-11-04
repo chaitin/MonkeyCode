@@ -141,6 +141,7 @@ type Service struct {
 	db              *pgxpool.Pool
 	settings        SettingReader
 	publicLicense   PublicLicenseReader
+	brandingLogo    BrandingLogoReader
 	client          *http.Client
 	publicURL       string
 	secureCookie    bool
