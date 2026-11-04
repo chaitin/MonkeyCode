@@ -720,24 +720,6 @@ export function ExpertsPage() {
             onSubmit={saveExpert}
           >
             <FieldGroup className="max-h-[calc(100vh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
-              <Field>
-                <FieldLabel htmlFor="expert-authorization">
-                  {t("pages.models.authorizedScope")}
-                </FieldLabel>
-                <AuthorizationSelect
-                  groups={subjects.groups}
-                  members={subjects.members}
-                  id="expert-authorization"
-                  disabled={remote.pending}
-                  value={form.authorization}
-                  onValueChange={(value) => updateForm("authorization", value)}
-                />
-                {importedExpert && editingExpert.retired && (
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    {t("resources.retiredGrantsOnly")}
-                  </p>
-                )}
-              </Field>
               <fieldset className="contents">
                 <Field>
                   <FieldLabel htmlFor="expert-name">
@@ -774,27 +756,13 @@ export function ExpertsPage() {
                   </FieldLabel>
                   <Textarea
                     id="expert-prompt"
-                    className="min-h-48 resize-none"
+                    className="max-h-48 min-h-32 resize-y overflow-y-auto"
                     value={form.prompt}
                     onChange={(event) =>
                       updateForm("prompt", event.target.value)
                     }
                     placeholder={t("pages.experts.promptPlaceholder")}
                     required
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="expert-tags">
-                    {t("pages.skills.tags")}
-                  </FieldLabel>
-                  <SkillTagSelect
-                    id="expert-tags"
-                    open={tagsOpen}
-                    options={availableTags}
-                    placeholder={t("pages.skills.tagsPlaceholder")}
-                    value={form.tagIds}
-                    onOpenChange={setTagsOpen}
-                    onValueChange={(value) => updateForm("tagIds", value)}
                   />
                 </Field>
                 {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
@@ -859,7 +827,39 @@ export function ExpertsPage() {
                     </Field>
                   )
                 })}
+                <Field>
+                  <FieldLabel htmlFor="expert-tags">
+                    {t("pages.skills.tags")}
+                  </FieldLabel>
+                  <SkillTagSelect
+                    id="expert-tags"
+                    open={tagsOpen}
+                    options={availableTags}
+                    placeholder={t("pages.skills.tagsPlaceholder")}
+                    value={form.tagIds}
+                    onOpenChange={setTagsOpen}
+                    onValueChange={(value) => updateForm("tagIds", value)}
+                  />
+                </Field>
               </fieldset>
+              <Field>
+                <FieldLabel htmlFor="expert-authorization">
+                  {t("pages.models.authorizedScope")}
+                </FieldLabel>
+                <AuthorizationSelect
+                  groups={subjects.groups}
+                  members={subjects.members}
+                  id="expert-authorization"
+                  disabled={remote.pending}
+                  value={form.authorization}
+                  onValueChange={(value) => updateForm("authorization", value)}
+                />
+                {importedExpert && editingExpert.retired && (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    {t("resources.retiredGrantsOnly")}
+                  </p>
+                )}
+              </Field>
             </FieldGroup>
             <ResourceNotice
               error={remote.error || subjects.error}

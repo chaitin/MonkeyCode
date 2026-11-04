@@ -17,6 +17,8 @@ import { ResourceBatchActions } from "@/components/resource-batch-actions"
 import { useResourceList } from "@/hooks/use-resource-list"
 import { useResourceBatch } from "@/hooks/use-resource-batch"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { SkillTagSelect } from "@/components/skill-tag-select"
+import { useSkillTags } from "@/hooks/use-skill-tags"
 import { ResourceCard } from "@/components/resource-card"
 import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
@@ -126,6 +128,9 @@ export function RulesPage() {
   const activeRuleType = remote.type
   const rules = remote.items.map((row) => toRule(row, i18n.language))
   const subjects = useSubjects()
+  const { tags: availableTags } = useSkillTags()
+  const [tagIds, setTagIds] = useState<string[]>([])
+  const [tagsOpen, setTagsOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AgentRule | null>(null)
   const [copiedRule, setCopiedRule] = useState<AgentRule | null>(null)
@@ -142,6 +147,8 @@ export function RulesPage() {
   const resetRuleOptions = () => {
     setAuthorization({ groupIds: [], memberIds: [] })
     setForced(false)
+    setTagIds([])
+    setTagsOpen(false)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -159,6 +166,8 @@ export function RulesPage() {
     }
 
     setCopiedRule(null)
+    setTagIds([...rule.tagIds])
+    setTagsOpen(false)
     setAuthorization(rule.authorization)
     setEditingRule(rule)
     setForced(rule.forced)
@@ -170,6 +179,8 @@ export function RulesPage() {
     batch.exit()
     setEditingRule(null)
     setCopiedRule(rule)
+    setTagIds([...rule.tagIds])
+    setTagsOpen(false)
     setAuthorization({
       groupIds: [...rule.authorization.groupIds],
       memberIds: [...rule.authorization.memberIds],
@@ -221,7 +232,7 @@ export function RulesPage() {
             name,
             description,
             content: String(data.get("content") ?? ""),
-            ...(copiedRule ? { tag_ids: [...copiedRule.tagIds] } : {}),
+            tag_ids: [...tagIds],
             grants: ruleGrants,
           },
           editingRule?.revision
@@ -376,6 +387,25 @@ export function RulesPage() {
                           </ItemActions>
                         </Item>
                       </Field>
+                      <fieldset
+                        disabled={importedRule || remote.pending}
+                        className="contents"
+                      >
+                        <Field>
+                          <FieldLabel htmlFor="rule-tags">
+                            {t("pages.skills.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="rule-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t("pages.skills.tagsPlaceholder")}
+                            value={tagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setTagIds}
+                          />
+                        </Field>
+                      </fieldset>
                       <Field>
                         <FieldLabel htmlFor="rule-available">
                           {t("pages.rules.usageScope")}

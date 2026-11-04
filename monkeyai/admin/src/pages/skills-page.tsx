@@ -517,7 +517,7 @@ export function SkillsPage() {
                   {t("pages.skills.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  className="max-h-[calc(100vh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-2xl"
                   closeLabel={t("common.close")}
                   aria-describedby={
                     importedSkill ? "imported-skill-readonly" : undefined
@@ -537,24 +537,6 @@ export function SkillsPage() {
                         </DialogTitle>
                       </DialogHeader>
                       <FieldGroup className="gap-4">
-                        <Field>
-                          <FieldLabel htmlFor="skill-authorized-users">
-                            {t("pages.models.authorizedScope")}
-                          </FieldLabel>
-                          <AuthorizationSelect
-                            groups={subjects.groups}
-                            members={subjects.members}
-                            id="skill-authorized-users"
-                            disabled={remote.pending}
-                            value={authorization}
-                            onValueChange={setAuthorization}
-                          />
-                          {importedSkill && editingSkill.retired && (
-                            <p className="text-sm text-amber-700 dark:text-amber-400">
-                              {t("resources.retiredGrantsOnly")}
-                            </p>
-                          )}
-                        </Field>
                         <fieldset disabled={importedSkill} className="contents">
                           <Field data-invalid={Boolean(packageError)}>
                             <FieldLabel htmlFor="skill-package">
@@ -691,6 +673,24 @@ export function SkillsPage() {
                             />
                           </Field>
                         </fieldset>
+                        <Field>
+                          <FieldLabel htmlFor="skill-authorized-users">
+                            {t("pages.models.authorizedScope")}
+                          </FieldLabel>
+                          <AuthorizationSelect
+                            groups={subjects.groups}
+                            members={subjects.members}
+                            id="skill-authorized-users"
+                            disabled={remote.pending}
+                            value={authorization}
+                            onValueChange={setAuthorization}
+                          />
+                          {importedSkill && editingSkill.retired && (
+                            <p className="text-sm text-amber-700 dark:text-amber-400">
+                              {t("resources.retiredGrantsOnly")}
+                            </p>
+                          )}
+                        </Field>
                       </FieldGroup>
                       <ResourceNotice
                         error={remote.error || subjects.error}

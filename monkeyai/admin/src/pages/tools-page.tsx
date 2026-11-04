@@ -635,27 +635,6 @@ export function ToolsPage() {
                     </DialogHeader>
 
                     <FieldGroup className="gap-4">
-                      <Field>
-                        <FieldLabel htmlFor="mcp-authorization">
-                          {t("pages.models.authorizedScope")}
-                        </FieldLabel>
-                        <AuthorizationSelect
-                          groups={subjects.groups}
-                          members={subjects.members}
-                          id="mcp-authorization"
-                          disabled={remote.pending}
-                          value={authorization}
-                          onValueChange={setAuthorization}
-                        />
-                        <FieldDescription>
-                          {t("pages.tools.availabilityScopeDescription")}
-                        </FieldDescription>
-                        {importedServer && editingServer.retired && (
-                          <p className="text-sm text-amber-700 dark:text-amber-400">
-                            {t("resources.retiredGrantsOnly")}
-                          </p>
-                        )}
-                      </Field>
                       <fieldset className="contents">
                         <Field>
                           <FieldLabel htmlFor="mcp-name">
@@ -694,20 +673,6 @@ export function ToolsPage() {
                               "pages.tools.descriptionPlaceholder"
                             )}
                             required={!importedServer}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="mcp-tags">
-                            {t("pages.skills.tags")}
-                          </FieldLabel>
-                          <SkillTagSelect
-                            id="mcp-tags"
-                            open={tagsOpen}
-                            options={availableTags}
-                            placeholder={t("pages.skills.tagsPlaceholder")}
-                            value={tagIds}
-                            onOpenChange={setTagsOpen}
-                            onValueChange={setTagIds}
                           />
                         </Field>
                         <Field>
@@ -981,7 +946,42 @@ export function ToolsPage() {
                               </>
                             )}
                         </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-tags">
+                            {t("pages.skills.tags")}
+                          </FieldLabel>
+                          <SkillTagSelect
+                            id="mcp-tags"
+                            open={tagsOpen}
+                            options={availableTags}
+                            placeholder={t("pages.skills.tagsPlaceholder")}
+                            value={tagIds}
+                            onOpenChange={setTagsOpen}
+                            onValueChange={setTagIds}
+                          />
+                        </Field>
                       </fieldset>
+                      <Field>
+                        <FieldLabel htmlFor="mcp-authorization">
+                          {t("pages.models.authorizedScope")}
+                        </FieldLabel>
+                        <AuthorizationSelect
+                          groups={subjects.groups}
+                          members={subjects.members}
+                          id="mcp-authorization"
+                          disabled={remote.pending}
+                          value={authorization}
+                          onValueChange={setAuthorization}
+                        />
+                        <FieldDescription>
+                          {t("pages.tools.availabilityScopeDescription")}
+                        </FieldDescription>
+                        {importedServer && editingServer.retired && (
+                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                            {t("resources.retiredGrantsOnly")}
+                          </p>
+                        )}
+                      </Field>
                     </FieldGroup>
 
                     <ResourceNotice
