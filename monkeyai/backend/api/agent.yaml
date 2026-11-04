@@ -1,6 +1,7 @@
 openapi: 3.1.0
 info:
   title: MonkeyAI Agent API
+  description: 错误使用稳定 code 和本地化 message，不含 reason。Accept-Language 支持 zh-CN 和 en-US，缺省或未知语言回退 zh-CN；响应返回 Content-Language、Vary 和 X-Request-ID。错误文案追加 [trace_id] 链路编号，与日志 trace_id 对应，使用当前 OTel Trace ID。
   version: 1.0.0
 servers:
   - url: /
@@ -4959,7 +4960,9 @@ components:
           examples: [api_key_error]
         message:
           type: string
-          description: 面向用户或开发者的错误说明。
+          description: 服务端按 Accept-Language 返回的本地化错误说明，末尾附 [trace_id] 链路编号，可直接展示；业务判断使用 code，不匹配 message 文本。
+        references:
+          description: 原有业务恢复字段，仅按接口契约读取。
     ResourceVersion:
       type: string
       pattern: ^sha256:[0-9a-f]{64}$

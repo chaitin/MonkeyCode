@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -201,6 +202,7 @@ func (s *Service) writeOAuthError(ctx context.Context, w http.ResponseWriter, er
 		protocol = protocolError{Code: "server_error", Description: "服务暂时不可用"}
 		status = http.StatusServiceUnavailable
 	}
+	protocol.Description = web.Message(ctx, protocol.Code, protocol.Description)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(ctx, w, status, protocol)
 }

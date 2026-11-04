@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"io"
 	"log/slog"
 	"net/http"
@@ -154,35 +155,35 @@ func (p *Proxy) Register(router chi.Router) {
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		web.HTTPError(w, r, http.StatusMethodNotAllowed)
 		return
 	}
 	upstreamPath, ok := upstreamPath(r.URL.Path)
 	if !ok {
-		http.NotFound(w, r)
+		web.NotFound(w, r)
 		return
 	}
 	logging.Bind(r.Context(), slog.String("route", r.URL.Path))
 	credential, ok := Credential(r)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		web.HTTPError(w, r, http.StatusUnauthorized)
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		web.HTTPError(w, r, http.StatusBadRequest)
 		return
 	}
 	meta, err := readRequestMeta(body)
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		web.HTTPError(w, r, http.StatusBadRequest)
 		return
 	}
 	encoding, ok := negotiateEncoding(r.Header.Values("Accept-Encoding"))
 	if !ok {
-		http.Error(w, "客户端不接受代理支持的响应编码", http.StatusNotAcceptable)
+		http.Error(w, web.Message(r.Context(), "not_acceptable", "客户端不接受代理支持的响应编码"), http.StatusNotAcceptable)
 		return
 	}
 	if encoding != "" {
@@ -190,7 +191,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.resolver == nil {
 		logging.Event(r.Context(), p.logger, slog.LevelError, "proxy.operation.error", "模型代理未配置凭据解析器", "module", "proxy", "operation", "ServeHTTP")
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		web.HTTPError(w, r, http.StatusServiceUnavailable)
 		return
 	}
 	logging.Bind(r.Context(), slog.String("phase", "resolve_model"))
@@ -201,11 +202,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.operation.warn", "解析模型失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		web.HTTPError(w, r, http.StatusUnauthorized)
 		return
 	}
 	if target.Protocol != "" && target.Protocol != protocolForPath(r.URL.Path) {
-		http.Error(w, "模型协议与请求端点不匹配", http.StatusBadRequest)
+		http.Error(w, web.Message(r.Context(), "model_protocol_mismatch", "模型协议与请求端点不匹配"), http.StatusBadRequest)
 		return
 	}
 	logging.Bind(r.Context(), slog.String("model_id", target.ModelID), slog.String("user_id", target.UserID), slog.String("operation", "proxy_request"))
@@ -219,7 +220,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, err = rewriteModel(body, target.UpstreamModel)
 		if err != nil {
 			slog.WarnContext(r.Context(), "操作失败", "module", "proxy", "operation", "ServeHTTP", "error", err)
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			web.HTTPError(w, r, http.StatusBadRequest)
 			return
 		}
 	}
@@ -351,7 +352,7 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 func (p *Proxy) writeUpstreamFailure(w http.ResponseWriter, r *http.Request, modelID, transactionID string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
-	if _, writeErr := io.WriteString(w, upstreamFailureMessage); writeErr != nil && r.Context().Err() == nil && !errors.Is(writeErr, io.ErrClosedPipe) {
+	if _, writeErr := io.WriteString(w, web.Message(r.Context(), "upstream_connection_failed", upstreamFailureMessage)); writeErr != nil && r.Context().Err() == nil && !errors.Is(writeErr, io.ErrClosedPipe) {
 		logging.Event(r.Context(), p.logger, slog.LevelWarn, "proxy.operation.warn", "写入代理错误响应失败", "module", "proxy", "operation", "writeUpstreamFailure", "model_id", modelID, "transaction_id", transactionID, "operation", "write_error_response", "error", writeErr)
 	}
 }

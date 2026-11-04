@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,14 +66,17 @@ func readOAuthMetadata(ctx context.Context, h *http.Client, target string, out a
 		return metadataUnavailable
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OAuth 元数据请求失败")
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return upstreamFailure(remoteStatus(resp.StatusCode), "oauth_metadata_rejected")
+		}
+		return failure("oauth_metadata_rejected", remoteStatus(resp.StatusCode))
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 || json.Unmarshal(data, out) != nil {
 		if err != nil {
-			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "readOAuthMetadata", "error", err)
+			return upstreamFailure(err, "oauth_metadata_invalid")
 		}
-		return fmt.Errorf("OAuth 元数据响应无效")
+		return failure("oauth_metadata_invalid", nil)
 	}
 	return nil
 }
@@ -108,7 +110,7 @@ func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
 
 func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client) (oauthConfig, error) {
 	fail := func() (oauthConfig, error) {
-		return oauthConfig{}, fmt.Errorf("OAuth 自动发现元数据无效或不支持动态注册")
+		return oauthConfig{}, failure("oauth_metadata_invalid", nil)
 	}
 	if !validURL(target) {
 		return fail()
@@ -126,8 +128,7 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	resp, err := h.Do(req)
 	if err != nil {
-		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
-		return fail()
+		return oauthConfig{}, upstreamFailure(err, "oauth_discovery_failed")
 	}
 	if err := resp.Body.Close(); err != nil {
 		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverOAuthWithClient", "error", err)
@@ -161,7 +162,10 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 			break
 		}
 		if !errors.Is(err, metadataUnavailable) || metadataURL != "" {
-			return fail()
+			if errors.Is(err, metadataUnavailable) {
+				return oauthConfig{}, failure("oauth_metadata_not_found", err)
+			}
+			return oauthConfig{}, upstreamFailure(err, "oauth_discovery_failed")
 		}
 	}
 
@@ -207,14 +211,23 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 			break
 		}
 		if !errors.Is(err, metadataUnavailable) {
-			return fail()
+			return oauthConfig{}, upstreamFailure(err, "oauth_discovery_failed")
 		}
 	}
-	if !found || metadata.Issuer != issuer || !discoveryURL(metadata.AuthorizationURL, issuer) || !discoveryURL(metadata.TokenURL, issuer) || !discoveryURL(metadata.RegistrationURL, issuer) {
+	if !found {
+		return oauthConfig{}, failure("oauth_metadata_not_found", err)
+	}
+	if metadata.Issuer != issuer || !discoveryURL(metadata.AuthorizationURL, issuer) || !discoveryURL(metadata.TokenURL, issuer) {
+		return fail()
+	}
+	if metadata.RegistrationURL == "" {
+		return oauthConfig{}, failure("oauth_registration_unsupported", nil)
+	}
+	if !discoveryURL(metadata.RegistrationURL, issuer) {
 		return fail()
 	}
 	if metadata.PKCEMethods != nil && !slices.Contains(metadata.PKCEMethods, "S256") {
-		return fail()
+		return oauthConfig{}, failure("oauth_pkce_unsupported", nil)
 	}
 	o.AuthorizationURL, o.TokenURL, o.RegistrationURL = metadata.AuthorizationURL, metadata.TokenURL, metadata.RegistrationURL
 	methods := metadata.AuthMethods
@@ -227,5 +240,5 @@ func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client)
 			return o, nil
 		}
 	}
-	return fail()
+	return oauthConfig{}, failure("oauth_auth_method_unsupported", nil)
 }

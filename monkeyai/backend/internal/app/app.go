@@ -44,6 +44,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/stats"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videogen"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/videoproxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/member"
 
@@ -176,7 +177,9 @@ func newHandler(logger *slog.Logger, database httpapi.Pinger) http.Handler {
 	agent := chi.NewRouter()
 	auth := chi.NewRouter()
 	router := chi.NewRouter()
-	router.Use(logging.HTTP(logger))
+	router.Use(web.New(logger).Middleware)
+	router.NotFound(web.NotFound)
+	router.MethodNotAllowed(web.MethodNotAllowed)
 	proxy.NewProxy(nil, logger).Register(router)
 	imageproxy.NewProxy(nil, nil, nil, nil, nil).Register(router)
 	videoproxy.New(nil, nil, nil, nil).Register(router)
@@ -317,8 +320,10 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
-	router.Use(logging.HTTP(logger))
+	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	router.NotFound(web.NotFound)
+	router.MethodNotAllowed(web.MethodNotAllowed)
 	designs.RegisterCatalog(router, identities.RequireAgent)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).

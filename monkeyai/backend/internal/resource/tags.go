@@ -82,11 +82,11 @@ func SaveTags(ctx context.Context, q Queryer, kind, id, actor string, raw any) e
 	data, err := json.Marshal(raw)
 	if err != nil {
 		slog.WarnContext(ctx, "操作失败", "module", "resource", "operation", "SaveTags", "error", err)
-		return Invalid("标签格式无效")
+		return InvalidCode("tags_invalid", "标签格式无效")
 	}
 	var ids []string
 	if string(data) == "null" || json.Unmarshal(data, &ids) != nil {
-		return Invalid("tag_ids 必须是标签 ID 数组")
+		return InvalidCode("tags_invalid", "tag_ids 必须是标签 ID 数组")
 	}
 	queries := sqlc.New(q)
 	if err := queries.RemoveResourceTags(ctx, sqlc.RemoveResourceTagsParams{ResourceType: kind, ResourceID: id}); err != nil {
@@ -103,7 +103,7 @@ func SaveTags(ctx context.Context, q Queryer, kind, id, actor string, raw any) e
 			return err
 		}
 		if result.RowsAffected() != 1 {
-			return Invalid("标签不存在或已删除")
+			return InvalidCode("tags_invalid", "标签不存在或已删除")
 		}
 	}
 	return nil

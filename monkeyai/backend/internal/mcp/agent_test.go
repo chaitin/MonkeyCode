@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -90,6 +93,8 @@ func setup(t *testing.T) *fixture {
 	}
 	s := NewService(resource.NewStore(pool), "http://localhost").WithStorage(iconStorage{})
 	router := chi.NewRouter()
+	router.Use(logging.HTTP(slog.Default()))
+	router.Use(web.Middleware)
 	router.Get("/oauth/connectors/{id}/callback", s.Callback)
 	router.Group(func(r chi.Router) {
 		r.Use(identity.NewService(pool, nil, "http://localhost").RequireAgent)

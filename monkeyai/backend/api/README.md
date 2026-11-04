@@ -24,6 +24,24 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 所有用户头像输出均优先取非空的 `users.custom_avatar_url`，再取 `users.avatar_url`。OAuth 继续只更新后者，不覆盖用户自定义头像。`/api/auth/v1/avatars/{userID}/{avatarID}` 提供带随机版本号的当前图片，不需要 Cookie，供浏览器和客户端展示；已清除或替换版本返回 404。部署前须执行迁移 `000036_user_profile_add`。未设置密码的 OAuth 账号通过现有登录页验证码重置流程设置密码，不能跳过当前密码校验直接设置。
 
+## 错误与国际化
+
+Agent 与管理资源 API 沿用 `{error: {code, message, references}}`，不新增 `reason`。`code` 是稳定的业务错误分类，供调用方做业务判断；`message` 由服务端完成国际化，可直接展示，不需要客户端再次翻译，也不能匹配其文本判断业务。细分 OAuth 元数据缺失/无效、不支持动态注册、注册被拒绝、Token 响应异常，以及 MCP 超时、DNS、TLS、地址限制、上游认证/权限/限流/服务故障。未识别的内部错误由服务端转换为通用的本地化提示，不透传请求 URL 或上游正文。
+
+`Accept-Language` 支持简体中文和英文（同语种变体归并），缺省或不支持的语言回退 `zh-CN`；响应提供 `Content-Language` 和 `Vary: Accept-Language`。错误文案末尾追加 `[trace_id: <Trace ID>]`，客户端仅展示 message 也能提供链路编号。编号直接采用当前 OTel Trace ID；日志记录同一 `trace_id` 和对应的 `span_id`，并保留既有的 `request_id` 和 `X-Request-ID`。现有 `references` 继续承载各接口约定的恢复字段。
+
+服务端生成的业务错误统一通过 `internal/web` 构造和渲染，i18n 词表与语言协商位于其内部；普通资源、认证、设备、设计资源、模型、设置、审计、计费及统计共用该运行时。OAuth 的 `error_description`、MCP JSON-RPC 和设备消息帧保留原协议结构。服务生成的模型/媒体网关错误及 404、405、未提交响应前的 500 错误也统一接入。
+
+`web.Error` 提供稳定 code、HTTP 状态、受控文案及错误链，`WithCause` 保留原始错误供内部诊断，不将 cause 输出到客户端。框架的 Go 1.27 泛型路由适配器统一解码、校验、序列化和错误输出；API Key Agent 接口已迁移到该适配器。HTTP 错误摘要与底层诊断分别记录：默认 WARN 级别可查询 4xx 和 HTTP 200 内的受控协议错误，5xx 使用 ERROR；设备消息错误逐条记录，不等待连接关闭。
+
+HTTP 入口按 W3C Trace Context 接续或创建 OTel server span。默认使用不采样、无导出器的 Provider，仅提供合法的链路编号；宿主可通过 `WithTracerProvider` 注入采样和导出配置。未采样不会影响错误日志和排查编号。
+
+公共词表同时按稳定错误码和已知具体文案提供翻译，避免同一 `invalid_request` 下的不同校验原因被折叠。未识别的内部错误使用安全的本地化兜底，不回显内部原文。上游透明代理内容、用户内容、机器状态和仅含错误码的协议帧保持原样，不进行响应正文后处理。
+
+授权状态轮询和连接状态沿用既有数据结构，不新增错误码或请求编号的持久化字段。OAuth 回调和连接测试当次 HTTP 错误响应返回具体 `code` 和本地化 `message`；后续轮询保留原有状态语义，历史 `last_error` 文本保持原有行为。本次无需数据库迁移。
+
+模型网关和 MCP JSON-RPC 保留各自的错误协议。
+
 ## 历史列表分页
 
 `GET /api/admin/v1/statistics/history`（任务历史）和 `/api/admin/v1/statistics/conversations`（对话历史）返回 `{items, page, page_size, has_next}`，不再返回 `total`。每页最多读取 `page_size + 1` 条判断下一页，去掉总数及逐任务轮次 COUNT；超出末页时返回请求页码和空数组。任务行的 `turn_count` 读取已维护的缓存，存量后台校准期间为 `null`。原有筛选、时间范围和稳定排序继续生效。前后端需同步发布，深 OFFSET 与模糊搜索仍有独立成本。

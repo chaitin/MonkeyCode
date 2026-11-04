@@ -19,13 +19,13 @@ func (s *Service) CreateUser(ctx context.Context, userID string, input UserInput
 		return Model{}, err
 	}
 	if item.APIKey == "" {
-		return Model{}, resource.Invalid("api_key 不能为空")
+		return Model{}, resource.InvalidCode("model_key_required", "api_key 不能为空")
 	}
 	if err := s.validateImageCapability(item); err != nil {
-		return Model{}, resource.Invalid(err.Error())
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
 	if err := s.validateVideoCapability(item); err != nil {
-		return Model{}, resource.Invalid(err.Error())
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
 	item.OwnershipType = "user"
 	item.OwnerUserID = userID
@@ -54,10 +54,10 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 		return Model{}, err
 	}
 	if err := s.validateImageCapability(item); err != nil {
-		return Model{}, resource.Invalid(err.Error())
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
 	if err := s.validateVideoCapability(item); err != nil {
-		return Model{}, resource.Invalid(err.Error())
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
 	item.ID = id
 	item.OwnershipType = "user"
@@ -84,7 +84,7 @@ func userModelFromInput(input UserInput) (Model, error) {
 		CreditMultiplier: 1, TagIDs: input.TagIDs,
 	})
 	if err != nil {
-		return Model{}, resource.Invalid(err.Error())
+		return Model{}, resource.InvalidCode("model_config_invalid", err.Error())
 	}
 	return item, nil
 }

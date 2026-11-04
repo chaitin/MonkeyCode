@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -81,5 +82,5 @@ func settingJSON(ctx context.Context, w http.ResponseWriter, status int, value a
 }
 
 func settingError(ctx context.Context, w http.ResponseWriter, status int, message string) {
-	settingJSON(ctx, w, status, map[string]any{"error": map[string]string{"code": "setting_error", "message": message}})
+	settingJSON(ctx, w, status, map[string]any{"error": web.Body(ctx, "setting_error", message)})
 }

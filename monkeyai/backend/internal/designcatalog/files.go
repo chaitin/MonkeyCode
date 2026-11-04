@@ -100,7 +100,7 @@ func (s *Service) serveObject(w http.ResponseWriter, r *http.Request, object Obj
 	}
 	etag := `"` + strings.TrimPrefix(object.SHA256, "sha256:") + `"`
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Vary", "Authorization")
+	w.Header().Add("Vary", "Authorization")
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")

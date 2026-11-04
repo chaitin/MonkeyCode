@@ -62,7 +62,7 @@ func NewService(store *resource.Store, publicURL string) *Service {
 
 func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 	if _, exists := in["provider_id"]; exists {
-		return resource.Invalid("连接不再使用 Provider，请直接配置连接地址和认证方式")
+		return resource.InvalidCode("mcp_auth_config_invalid", "连接不再使用 Provider，请直接配置连接地址和认证方式")
 	}
 	fields := []string{"url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config"}
 	for _, key := range fields {
@@ -71,34 +71,34 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 		}
 	}
 	if !validURL(in.String("url")) {
-		return resource.Invalid("MCP URL 无效")
+		return resource.InvalidCode("mcp_url_invalid", "MCP URL 无效")
 	}
 	if id := in.String("proxy_id"); id != "" {
 		if in.String("ownership_type") == "user" {
-			return resource.Invalid("个人连接不能使用系统代理")
+			return resource.InvalidCode("mcp_proxy_not_allowed", "个人连接不能使用系统代理")
 		}
 		if s.proxies == nil {
-			return resource.Invalid("系统代理不可用")
+			return resource.InvalidCode("mcp_proxy_unavailable", "系统代理不可用")
 		}
 		if _, err := s.proxies.ProxyURL(ctx, id); err != nil {
 			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "validateConnector", "error", err)
-			return resource.Invalid("系统代理不存在")
+			return resource.InvalidCode("mcp_proxy_unavailable", "系统代理不存在")
 		}
 	}
 	mode, method := in.String("authorization_mode"), in.String("authorization_method")
 	if in.String("ownership_type") == "user" && mode != "none" && mode != "independent" {
-		return resource.Invalid("个人连接仅支持无认证或独立认证")
+		return resource.InvalidCode("mcp_auth_config_invalid", "个人连接仅支持无认证或独立认证")
 	}
 	if mode == "none" {
 		in["authorization_method"], method = nil, ""
 	} else if (mode != "centralized" && mode != "independent") || (method != "http_header" && method != "oauth") {
-		return resource.Invalid("认证组合无效")
+		return resource.InvalidCode("mcp_auth_config_invalid", "认证组合无效")
 	}
 	if method == "oauth" {
 		o := oauthSettings(in)
 		prev := oauthSettings(old)
 		if o.Mode != "" && o.Mode != "manual" && o.Mode != "dynamic" {
-			return resource.Invalid("OAuth 客户端配置模式无效")
+			return resource.InvalidCode("mcp_auth_config_invalid", "OAuth 客户端配置模式无效")
 		}
 		if o.Mode == "dynamic" {
 			// 自动发现结果和注册凭证由后端维护，普通编辑不能覆盖或清除。
@@ -111,13 +111,13 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 		}
 		o.ClientID = strings.TrimSpace(o.ClientID)
 		if o.Mode != "dynamic" && (!validURL(o.AuthorizationURL) || !validURL(o.TokenURL) || (o.ClientID == "" && o.RegistrationURL == "")) {
-			return resource.Invalid("OAuth 应用配置不完整，请填写 Client ID 或 Registration URL")
+			return resource.InvalidCode("mcp_auth_config_invalid", "OAuth 应用配置不完整，请填写 Client ID 或 Registration URL")
 		}
 		if o.RegistrationURL != "" && !validURL(o.RegistrationURL) {
-			return resource.Invalid("OAuth Registration URL 无效")
+			return resource.InvalidCode("mcp_auth_config_invalid", "OAuth Registration URL 无效")
 		}
 		if o.TokenAuthMethod != "" && o.TokenAuthMethod != "none" && o.TokenAuthMethod != "client_secret_post" && o.TokenAuthMethod != "client_secret_basic" {
-			return resource.Invalid("OAuth Token 端点认证方式无效")
+			return resource.InvalidCode("oauth_auth_method_unsupported", "OAuth Token 端点认证方式无效")
 		}
 		o.Scopes = strings.Join(strings.Fields(o.Scopes), " ")
 		config := resource.Object{"authorization_url": o.AuthorizationURL, "token_url": o.TokenURL, "client_id": o.ClientID, "scopes": o.Scopes}

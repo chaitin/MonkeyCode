@@ -36,7 +36,7 @@ func allowedIP(ip netip.Addr) bool {
 }
 
 func client() *http.Client {
-	return &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return fmt.Errorf("不允许自动重定向") }, Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return failure("mcp_redirect_denied", nil) }, Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
@@ -47,16 +47,18 @@ func client() *http.Client {
 		}
 		for _, ip := range ips {
 			if !allowedIP(ip) {
-				return nil, fmt.Errorf("目标地址不在允许范围内")
+				return nil, failure("mcp_address_denied", nil)
 			}
 		}
+		var dialErr error
 		for _, ip := range ips {
 			c, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 			if err == nil {
 				return c, nil
 			}
+			dialErr = err
 		}
-		return nil, fmt.Errorf("无法连接目标")
+		return nil, upstreamFailure(dialErr, "mcp_connect_failed")
 	}}}
 }
 func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error), lookup func(context.Context, string, string) ([]netip.Addr, error)) (*http.Client, *http.Request, error) {
@@ -78,7 +80,7 @@ func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error),
 	}
 	for _, ip := range ips {
 		if ip.Zone() != "" || !allowedIP(ip) {
-			return nil, nil, fmt.Errorf("目标地址不在允许范围内")
+			return nil, nil, failure("mcp_address_denied", nil)
 		}
 	}
 	target := req.Clone(req.Context())
@@ -156,26 +158,26 @@ func discoverWithClient(ctx context.Context, target string, headers map[string]s
 		}
 		if err = json.Unmarshal(data, &list); err != nil {
 			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "discoverWithClient", "error", err)
-			return nil, fmt.Errorf("工具目录格式无效")
+			return nil, failure("mcp_tools_invalid", err)
 		}
 		for _, t := range list.Tools {
 			if t.Name == "" || len(t.Name) > 256 || names[t.Name] || t.InputSchema == nil {
-				return nil, fmt.Errorf("工具目录包含无效名称或 Schema")
+				return nil, failure("mcp_tools_invalid", nil)
 			}
 			names[t.Name] = true
 			out = append(out, t)
 		}
 		if len(out) > 5000 {
-			return nil, fmt.Errorf("工具数量超限")
+			return nil, failure("mcp_tools_invalid", nil)
 		}
 		cursor = list.NextCursor
 		if cursor == "" {
 			return out, nil
 		}
 		if cursors[cursor] {
-			return nil, fmt.Errorf("工具目录分页循环")
+			return nil, failure("mcp_tools_invalid", nil)
 		}
 		cursors[cursor] = true
 	}
-	return nil, fmt.Errorf("工具目录分页超限")
+	return nil, failure("mcp_tools_invalid", nil)
 }

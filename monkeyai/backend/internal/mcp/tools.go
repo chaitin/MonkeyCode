@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -111,11 +110,11 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 		return
 	}
 	if admin && c.String("authorization_mode") == "independent" {
-		resource.Fail(r.Context(), w, resource.Invalid("独立认证连接由凭证所有者测试"))
+		resource.Fail(r.Context(), w, resource.InvalidCode("mcp_test_denied", "独立认证连接由凭证所有者测试"))
 		return
 	}
 	if !admin && c.String("authorization_mode") == "centralized" {
-		resource.Fail(r.Context(), w, resource.Invalid("集中认证连接由管理员测试"))
+		resource.Fail(r.Context(), w, resource.InvalidCode("mcp_test_denied", "集中认证连接由管理员测试"))
 		return
 	}
 	cred, err := s.Credential(ctx, s.Store.Pool, c, u.ID, chi.URLParam(r, "credentialID"))
@@ -164,16 +163,10 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	}
 	queries := sqlc.New(tx)
 	status, message := "connected", ""
+	var fault *resource.Error
 	if discoveryErr != nil {
-		status, message = "error", "MCP 连接或工具发现失败，请检查地址和网络"
-		if upstreamStatus, ok := errors.AsType[remoteStatus](discoveryErr); ok {
-			if upstreamStatus == http.StatusUnauthorized {
-				message = "上游认证失败，请更新 Header 或重新授权"
-			}
-			if upstreamStatus == http.StatusForbidden {
-				message = "上游拒绝访问，请检查所选凭证的权限"
-			}
-		}
+		fault = upstreamFailure(discoveryErr, "mcp_protocol_invalid")
+		status, message = "error", fault.Message
 	} else {
 		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: cred.String("id")})
 		for _, tool := range tools {
@@ -209,7 +202,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	}
 	if discoveryErr != nil {
 		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "testConnection", "error", discoveryErr)
-		return nil, &resource.Error{Status: 502, Code: "upstream_error", Message: message}
+		return nil, fault
 	}
 	return resource.Object{"credential_id": cred.String("id"), "connection_status": status, "tool_count": len(tools)}, nil
 }

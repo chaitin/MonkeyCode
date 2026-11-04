@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 )
 
@@ -89,7 +90,7 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 	media, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil {
 		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
-		return nil, fmt.Errorf("MCP 响应类型无效")
+		return nil, failure("mcp_protocol_invalid", err)
 	}
 	var data []byte
 	switch media {
@@ -116,19 +117,22 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 			}
 			event.Reset()
 		}
-		if scanner.Err() != nil || data == nil {
-			return nil, fmt.Errorf("MCP 事件流超限或未返回完整响应")
+		if err := scanner.Err(); err != nil {
+			return nil, upstreamFailure(err, "mcp_protocol_invalid")
+		}
+		if data == nil {
+			return nil, failure("mcp_protocol_invalid", nil)
 		}
 	case "application/json":
 		data, err = io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
 		if err != nil || len(data) > 4<<20 {
 			if err != nil {
-				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
+				return nil, upstreamFailure(err, "mcp_protocol_invalid")
 			}
-			return nil, fmt.Errorf("MCP 响应超限或不完整")
+			return nil, failure("mcp_protocol_invalid", nil)
 		}
 	default:
-		return nil, fmt.Errorf("MCP 响应类型不支持")
+		return nil, failure("mcp_protocol_invalid", nil)
 	}
 	var reply struct {
 		Version string          `json:"jsonrpc"`
@@ -140,18 +144,18 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 		if err != nil {
 			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "call", "error", err)
 		}
-		return nil, fmt.Errorf("MCP 协议响应无效")
+		return nil, failure("mcp_protocol_invalid", err)
 	}
 	if len(reply.Error) > 0 {
-		var failure struct {
+		var fault struct {
 			Code    *int            `json:"code"`
 			Message *string         `json:"message"`
 			Data    json.RawMessage `json:"data"`
 		}
-		if json.Unmarshal(reply.Error, &failure) != nil || failure.Code == nil || failure.Message == nil {
-			return nil, fmt.Errorf("MCP 错误响应无效")
+		if json.Unmarshal(reply.Error, &fault) != nil || fault.Code == nil || fault.Message == nil {
+			return nil, failure("mcp_protocol_invalid", nil)
 		}
-		return nil, &rpcError{Code: *failure.Code, Message: *failure.Message, Data: failure.Data}
+		return nil, &rpcError{Code: *fault.Code, Message: *fault.Message, Data: fault.Data}
 	}
 	return reply.Result, nil
 }
@@ -166,7 +170,7 @@ func openRemote(ctx context.Context, target string, headers map[string]string, t
 
 func openRemoteWithClient(ctx context.Context, target string, headers map[string]string, httpClient *http.Client) (*remoteClient, error) {
 	if !validURL(target) {
-		return nil, fmt.Errorf("MCP URL 无效")
+		return nil, resource.InvalidCode("mcp_url_invalid", "MCP URL 无效")
 	}
 	c := &remoteClient{http: httpClient, target: target, version: protocolVersion, headers: headers}
 	initialized := false
@@ -183,7 +187,7 @@ func openRemoteWithClient(ctx context.Context, target string, headers map[string
 		Version string `json:"protocolVersion"`
 	}
 	if json.Unmarshal(result, &h) != nil || !supportedVersion(h.Version) {
-		return nil, fmt.Errorf("MCP 握手版本不支持")
+		return nil, failure("mcp_protocol_unsupported", nil)
 	}
 	c.version = h.Version
 	response, err := c.request(ctx, http.MethodPost, []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))

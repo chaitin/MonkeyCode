@@ -300,6 +300,7 @@ func (s *Service) wsError(ctx context.Context, ws *websocket.Conn, err error) {
 	} else if errors.Is(err, errProtocol) {
 		code = "invalid_tunnel_message"
 	}
+	logging.MessageError(ctx, code, "")
 	if err := writeWS(ctx, ws, map[string]any{"type": "error", "code": code}); err != nil {
 		slog.Error("操作失败", "module", "relay", "operation", "wsError", "error", err)
 	}

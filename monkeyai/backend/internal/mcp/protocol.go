@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"io"
 	"log/slog"
@@ -79,7 +80,16 @@ func validID(id json.RawMessage) bool {
 func rpcReply(ctx context.Context, w http.ResponseWriter, status int, id json.RawMessage, result any, err *rpcError) {
 	out := map[string]any{"jsonrpc": "2.0", "id": id}
 	if err != nil {
-		out["error"] = err
+		reply := *err
+		code := "mcp_internal_error"
+		var data struct {
+			Code string `json:"code"`
+		}
+		if json.Unmarshal(err.Data, &data) == nil && data.Code != "" {
+			code = data.Code
+		}
+		reply.Message = web.Message(ctx, code, err.Message)
+		out["error"] = &reply
 	} else {
 		out["result"] = result
 	}
