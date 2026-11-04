@@ -143,6 +143,14 @@ func reportOutput(err error) {
 }
 
 func handle(ctx context.Context, logger *slog.Logger, record slog.Record) {
+	if _, ok := logger.Handler().(*safeHandler); !ok {
+		var attrs []slog.Attr
+		record.Attrs(func(a slog.Attr) bool { attrs = append(attrs, a); return true })
+		attrs = append(attrs, contextAttrs(ctx)...)
+		clean := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+		clean.AddAttrs(mergeAttrs(attrs)...)
+		record = clean
+	}
 	err := logger.Handler().Handle(ctx, record)
 	if _, ok := logger.Handler().(*safeHandler); !ok {
 		reportOutput(err)

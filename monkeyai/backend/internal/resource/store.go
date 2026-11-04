@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
 	"github.com/go-chi/chi/v5"
@@ -61,15 +62,13 @@ func Strings(v any) []string {
 	return result
 }
 
-type Error struct {
-	Status        int
-	Code, Message string
-	References    any
-}
+type Error = web.Error
 
-func (e *Error) Error() string { return e.Message }
 func Invalid(message string) error {
-	return &Error{Status: 400, Code: "invalid_request", Message: message}
+	return InvalidCode("invalid_request", message)
+}
+func InvalidCode(code, message string) error {
+	return &Error{Status: 400, Code: code, Message: message}
 }
 
 var NotFound = &Error{Status: 404, Code: "not_found", Message: "资源不存在或无权访问"}
@@ -115,24 +114,26 @@ func Fail(ctx context.Context, w http.ResponseWriter, err error) {
 	} else if e.Status < 500 {
 		logging.Expected(ctx)
 	}
-	JSON(ctx, w, e.Status, Object{"error": Object{"code": e.Code, "message": e.Message, "references": e.References}})
+	body := web.Body(ctx, e.Code, e.Message)
+	body["references"] = e.References
+	JSON(ctx, w, e.Status, Object{"error": body})
 }
 func Decode(w http.ResponseWriter, r *http.Request, v any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	var body json.RawMessage
 	if err := d.Decode(&body); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "resource", "operation", "Decode", "error", err)
-		return Invalid("请求格式无效")
+		return InvalidCode("invalid_json", "请求格式无效")
 	}
 	if data := bytes.TrimSpace(body); len(data) == 0 || data[0] != '{' {
-		return Invalid("请求必须为 JSON 对象")
+		return InvalidCode("invalid_json", "请求必须为 JSON 对象")
 	}
 	if err := d.Decode(new(json.RawMessage)); err != io.EOF {
-		return Invalid("请求只能包含一个 JSON 对象")
+		return InvalidCode("invalid_json", "请求只能包含一个 JSON 对象")
 	}
 	if err := json.Unmarshal(body, v); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "resource", "operation", "Decode", "error", err)
-		return Invalid("请求格式无效")
+		return InvalidCode("invalid_json", "请求格式无效")
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"io"
 	"log/slog"
 	"net"
@@ -40,7 +41,7 @@ func respond(ctx context.Context, w http.ResponseWriter, code int, data any) {
 	body, err := json.Marshal(data)
 	if err != nil {
 		logging.Event(ctx, slog.Default(), slog.LevelError, "endpoint.operation.error", "序列化端点响应失败", "module", "endpoint", "operation", "respond", "operation", "respond", "status", code, "error", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, web.Message(ctx, "http_500", http.StatusText(http.StatusInternalServerError)), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(code)
@@ -53,7 +54,7 @@ func respond(ctx context.Context, w http.ResponseWriter, code int, data any) {
 	}
 }
 func failure(ctx context.Context, w http.ResponseWriter, code int, name string) {
-	respond(ctx, w, code, map[string]any{"error": map[string]string{"code": name, "message": map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁", "permission_denied": "没有所需权限"}[name]}})
+	respond(ctx, w, code, map[string]any{"error": web.Body(ctx, name, map[string]string{"invalid_request": "请求参数无效", "invalid_token": "凭据无效", "endpoint_not_found": "端点不存在", "endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "service_unavailable": "服务暂不可用", "forbidden": "请求来源不受信任", "rate_limited": "请求过于频繁", "permission_denied": "没有所需权限"}[name])})
 }
 func (s *Service) credential(w http.ResponseWriter, r *http.Request) (Credential, bool) {
 	w.Header().Set("Cache-Control", "private, no-store")

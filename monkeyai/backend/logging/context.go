@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type contextKey struct{}
@@ -20,6 +21,8 @@ type observation struct {
 	fields                       map[string]slog.Attr
 	diagnosed, expected, aborted bool
 	finished                     bool
+	responseCode                 string
+	logger                       *slog.Logger
 }
 
 func newObservation() *observation {
@@ -43,7 +46,7 @@ func Bind(ctx context.Context, attrs ...slog.Attr) {
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		for _, a := range attrs {
-			if a.Key == "request_id" {
+			if a.Key == "request_id" || a.Key == "trace_id" || a.Key == "span_id" {
 				continue
 			}
 			if a = safeAttr(a); !a.Equal(slog.Attr{}) {
@@ -173,5 +176,9 @@ func contextAttrs(ctx context.Context) []slog.Attr {
 	for _, a := range state.fields {
 		attrs = append(attrs, a)
 	}
-	return append(attrs, slog.String("request_id", state.id))
+	attrs = append(attrs, slog.String("request_id", state.id))
+	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+		attrs = append(attrs, slog.String("trace_id", span.TraceID().String()), slog.String("span_id", span.SpanID().String()))
+	}
+	return attrs
 }

@@ -139,7 +139,7 @@ func TestClientDirectTransport(t *testing.T) {
 	c := client()
 	defer c.CloseIdleConnections()
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
-	if _, err := c.Get(s.URL); err == nil || !strings.Contains(err.Error(), "目标地址不在允许范围内") {
+	if _, err := c.Get(s.URL); err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
 		t.Fatalf("直连地址限制失效: %v", err)
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
@@ -151,7 +151,7 @@ func TestClientDirectTransport(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("直连返回状态错误: %d", resp.StatusCode)
 	}
-	if _, err := c.Get(s.URL + "/redirect"); err == nil || !strings.Contains(err.Error(), "不允许自动重定向") {
+	if _, err := c.Get(s.URL + "/redirect"); err == nil || upstreamFailure(err, "").Code != "mcp_redirect_denied" {
 		t.Fatalf("重定向未拦截: %v", err)
 	}
 }
@@ -299,7 +299,7 @@ func TestTokenEnvironmentNoProxy(t *testing.T) {
 		_, _, err = tokenClient(req, http.ProxyFromEnvironment, func(context.Context, string, string) ([]netip.Addr, error) {
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 		})
-		if err == nil || !strings.Contains(err.Error(), "目标地址不在允许范围内") {
+		if err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
 			t.Fatalf("环境代理未对非 NO_PROXY 域名执行目标 IP 校验: %v", err)
 		}
 		return

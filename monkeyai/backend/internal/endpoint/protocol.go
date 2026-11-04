@@ -2,8 +2,10 @@ package endpoint
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"io"
 	"log/slog"
 	"regexp"
@@ -241,14 +243,14 @@ func message(data []byte) (Message, error) {
 	return m, nil
 }
 
-func errorFrame(code, reply string) ([]byte, error) {
+func errorFrame(ctx context.Context, code, reply string) ([]byte, error) {
 	descriptions := map[string]string{
 		"invalid_message": "消息格式无效", "unsupported_protocol": "协议版本不兼容", "unauthorized": "凭据失效",
 		"endpoint_revoked": "端点已停用", "endpoint_limit_exceeded": "端点数量达到上限", "target_unavailable": "目标不可用",
 		"target_offline": "目标离线", "target_busy": "目标繁忙", "rate_limited": "请求过于频繁",
 		"payload_too_large": "转发消息过大", "service_unavailable": "服务暂不可用",
 	}
-	e := wireError{Code: code, Message: descriptions[code], Retryable: slices.Contains([]string{"target_offline", "target_busy", "rate_limited", "service_unavailable"}, code)}
+	e := wireError{Code: code, Message: web.FrameMessage(ctx, code, descriptions[code], reply), Retryable: slices.Contains([]string{"target_offline", "target_busy", "rate_limited", "service_unavailable"}, code)}
 	if code == "rate_limited" {
 		e.RetryAfter = 1000
 	}

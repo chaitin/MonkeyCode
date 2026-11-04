@@ -12,6 +12,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -49,7 +50,7 @@ func pathParam(r *http.Request, name string) string {
 func controlHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Vary", "Authorization")
+		w.Header().Add("Vary", "Authorization")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -110,13 +111,15 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Vary", "Authorization")
+	w.Header().Add("Vary", "Authorization")
 	w.Header().Del("ETag")
 	w.Header().Del("Content-Length")
 	w.Header().Del("Content-Disposition")
 	w.WriteHeader(f.Status)
 	if r.Method != "HEAD" {
-		if err := json.NewEncoder(w).Encode(map[string]any{"code": f.Code, "message": f.Message, "data": nil}); err != nil {
+		body := web.Body(r.Context(), f.Code, f.Message)
+		body["data"] = nil
+		if err := json.NewEncoder(w).Encode(body); err != nil {
 			slog.Error("写入输出失败", "module", "designcatalog", "operation", "writeAPIError", "error", err)
 		}
 	}
@@ -124,7 +127,7 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, err error) {
 func apiJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
-	w.Header().Set("Vary", "Authorization")
+	w.Header().Add("Vary", "Authorization")
 	w.WriteHeader(200)
 	if err := json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "", "data": data}); err != nil {
 		slog.Error("写入输出失败", "module", "designcatalog", "operation", "apiJSON", "error", err)
@@ -196,7 +199,7 @@ func controlError(w http.ResponseWriter, r *http.Request, err error) {
 		f = &Fault{503, "unavailable", "设计资源控制面暂不可用"}
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	resource.JSON(r.Context(), w, f.Status, map[string]any{"error": map[string]string{"code": f.Code, "message": f.Message}})
+	resource.JSON(r.Context(), w, f.Status, map[string]any{"error": web.Body(r.Context(), f.Code, f.Message)})
 }
 func (s *Service) configuration(w http.ResponseWriter, r *http.Request) {
 	current, _, err := s.Current(r.Context())

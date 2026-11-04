@@ -11,6 +11,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,7 +21,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 		subjects, err := s.Subjects(r.Context())
 		if err != nil {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "读取模型授权对象失败", "module", "model", "operation", "RegisterAdmin", "error", err)
-			modelError(w, http.StatusInternalServerError, "读取授权对象失败")
+			modelError(r.Context(), w, http.StatusInternalServerError, "读取授权对象失败")
 			return
 		}
 		modelJSON(w, http.StatusOK, subjects)
@@ -28,7 +29,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/models/video-capabilities", func(w http.ResponseWriter, r *http.Request) {
 		cap, err := VideoCapabilitiesFor(Provider(r.URL.Query().Get("provider")), r.URL.Query().Get("model_id"))
 		if err != nil {
-			modelError(w, http.StatusBadRequest, err.Error())
+			modelError(r.Context(), w, http.StatusBadRequest, err.Error())
 			return
 		}
 		modelJSON(w, http.StatusOK, cap)
@@ -36,7 +37,7 @@ func (s *Service) RegisterAdmin(router chi.Router) {
 	router.Get("/models/image-capabilities", func(w http.ResponseWriter, r *http.Request) {
 		cap, err := s.DescribeImage(Provider(r.URL.Query().Get("provider")), "")
 		if err != nil {
-			modelError(w, http.StatusBadRequest, err.Error())
+			modelError(r.Context(), w, http.StatusBadRequest, err.Error())
 			return
 		}
 		modelJSON(w, http.StatusOK, map[string]any{
@@ -58,13 +59,13 @@ func (s *Service) createModel(w http.ResponseWriter, r *http.Request) {
 	var input SaveInput
 	if err := decodeModelRequest(w, r, &input); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "createModel", "error", err)
-		modelError(w, http.StatusBadRequest, "请求格式无效")
+		modelError(r.Context(), w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	user, _ := identity.UserFromContext(r.Context())
 	item, err := s.Create(r.Context(), user.ID, input)
 	if err != nil {
-		modelError(w, http.StatusBadRequest, err.Error())
+		modelError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
 	modelJSON(w, http.StatusCreated, presentModel(item))
@@ -74,7 +75,7 @@ func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 	var input SaveInput
 	if err := decodeModelRequest(w, r, &input); err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "updateModel", "error", err)
-		modelError(w, http.StatusBadRequest, "请求格式无效")
+		modelError(r.Context(), w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
 	user, _ := identity.UserFromContext(r.Context())
@@ -86,7 +87,7 @@ func (s *Service) updateModel(w http.ResponseWriter, r *http.Request) {
 		} else {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "updateModel", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
-		modelError(w, status, err.Error())
+		modelError(r.Context(), w, status, err.Error())
 		return
 	}
 	modelJSON(w, http.StatusOK, presentModel(item))
@@ -100,7 +101,7 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "setModelEnabled", "error", err)
 		}
-		modelError(w, http.StatusBadRequest, "enabled 必须是布尔值")
+		modelError(r.Context(), w, http.StatusBadRequest, "enabled 必须是布尔值")
 		return
 	}
 	item, err := s.SetEnabled(r.Context(), chi.URLParam(r, "modelID"), *input.Enabled)
@@ -111,7 +112,7 @@ func (s *Service) setModelEnabled(w http.ResponseWriter, r *http.Request) {
 		} else {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "setModelEnabled", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
-		modelError(w, status, err.Error())
+		modelError(r.Context(), w, status, err.Error())
 		return
 	}
 	modelJSON(w, http.StatusOK, presentModel(item))
@@ -125,7 +126,7 @@ func (s *Service) deleteModel(w http.ResponseWriter, r *http.Request) {
 		} else {
 			logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "操作模型失败", "module", "model", "operation", "deleteModel", "model_id", chi.URLParam(r, "modelID"), "error", err)
 		}
-		modelError(w, status, err.Error())
+		modelError(r.Context(), w, status, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -153,8 +154,8 @@ func modelJSON(w http.ResponseWriter, status int, value any) {
 	}
 }
 
-func modelError(w http.ResponseWriter, status int, message string) {
+func modelError(ctx context.Context, w http.ResponseWriter, status int, message string) {
 	modelJSON(w, status, map[string]any{
-		"error": map[string]string{"code": "model_error", "message": message},
+		"error": web.Body(ctx, "model_error", message),
 	})
 }

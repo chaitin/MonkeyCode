@@ -35,7 +35,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 		o, err = discoverOAuthWithClient(ctx, c.String("url"), h)
 		if err != nil {
 			logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth 自动发现失败", "module", "mcp", "operation", "ensureOAuthClient", "connector_id", c.String("id"), "operation", "discovery", "error", err)
-			return &resource.Error{Status: 502, Code: "oauth_discovery_failed", Message: "OAuth 自动发现失败，请确认 MCP 服务支持元数据发现和动态客户端注册，或切换为手动配置"}
+			return upstreamFailure(err, "oauth_discovery_failed")
 		}
 		if requestedScopes != "" {
 			o.Scopes = requestedScopes
@@ -44,7 +44,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	registered, err := registerOAuthClientWithClient(ctx, o, redirect, h)
 	if err != nil {
 		logging.Event(ctx, slog.Default(), slog.LevelWarn, "mcp.operation.warn", "OAuth 客户端注册失败", "module", "mcp", "operation", "ensureOAuthClient", "connector_id", c.String("id"), "operation", "registration", "error", err)
-		return &resource.Error{Status: 502, Code: "oauth_registration_failed", Message: "OAuth 动态客户端注册失败，请检查注册端点或手动配置 Client ID"}
+		return upstreamFailure(err, "oauth_registration_failed")
 	}
 	revision := c.Int("config_revision")
 	if o.ClientID != "" {
@@ -85,7 +85,7 @@ func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (o
 
 func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect string, h *http.Client) (oauthRegistration, error) {
 	fail := func() (oauthRegistration, error) {
-		return oauthRegistration{}, fmt.Errorf("OAuth 动态客户端注册响应无效")
+		return oauthRegistration{}, failure("oauth_registration_response_invalid", nil)
 	}
 	if !validURL(o.RegistrationURL) || !validURL(redirect) {
 		return fail()
@@ -116,8 +116,7 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
 	if err != nil {
-		slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "error", err)
-		return fail()
+		return oauthRegistration{}, upstreamFailure(err, "oauth_registration_failed")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -125,12 +124,18 @@ func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect 
 		}
 	}()
 	if resp.StatusCode != http.StatusCreated {
-		return fail()
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+			return oauthRegistration{}, failure("oauth_registration_unsupported", remoteStatus(resp.StatusCode))
+		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 || resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			return oauthRegistration{}, upstreamFailure(remoteStatus(resp.StatusCode), "oauth_registration_failed")
+		}
+		return oauthRegistration{}, failure("oauth_registration_rejected", remoteStatus(resp.StatusCode))
 	}
 	data, err = io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	if err != nil || len(data) > 1<<20 {
 		if err != nil {
-			slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "registerOAuthClientWithClient", "error", err)
+			return oauthRegistration{}, upstreamFailure(err, "oauth_registration_response_invalid")
 		}
 		return fail()
 	}

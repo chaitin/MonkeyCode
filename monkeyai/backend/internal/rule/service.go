@@ -13,7 +13,7 @@ import (
 func NewService(s *resource.Store) *resource.CRUD {
 	return resource.NewCRUD(s, resource.Definition{Kind: "rule", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/rules", Fields: []string{"name", "description", "content", "enabled"}, UserFields: []string{"name", "description", "content"}, OverrideFields: []string{"name", "description"}, AllowImportedEnabled: true, Validate: func(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 		if strings.TrimSpace(in.String("content")) == "" {
-			return resource.Invalid("规则正文不能为空")
+			return resource.InvalidCode("rule_content_required", "规则正文不能为空")
 		}
 		return nil
 	}, References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {

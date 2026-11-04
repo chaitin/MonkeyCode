@@ -36,7 +36,7 @@ func NewService(store *resource.Store) *Service {
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
 	if _, exists := in["providers"]; exists {
-		return resource.Invalid("专家依赖请使用 connectors")
+		return resource.InvalidCode("expert_dependencies_invalid", "专家依赖请使用 connectors")
 	}
 	if raw, exists := in["connectors"]; exists {
 		b, err := json.Marshal(raw)
@@ -50,11 +50,11 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 			if err != nil {
 				slog.WarnContext(ctx, "操作失败", "module", "expert", "operation", "validate", "error", err)
 			}
-			return resource.Invalid("连接依赖格式无效")
+			return resource.InvalidCode("expert_dependencies_invalid", "连接依赖格式无效")
 		}
 		for _, link := range links {
 			if link.ConnectorID == "" {
-				return resource.Invalid("连接依赖必须包含 connector_id")
+				return resource.InvalidCode("expert_dependencies_invalid", "连接依赖必须包含 connector_id")
 			}
 		}
 	}
@@ -67,7 +67,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		}
 	}
 	if strings.TrimSpace(in.String("prompt")) == "" {
-		return resource.Invalid("专家 Prompt 不能为空")
+		return resource.InvalidCode("expert_prompt_required", "专家 Prompt 不能为空")
 	}
 	queries := sqlc.New(tx)
 	for _, link := range []struct {
@@ -84,13 +84,13 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 		seen := map[string]bool{}
 		for _, id := range ids {
 			if seen[id] {
-				return resource.Invalid("专家关联重复")
+				return resource.InvalidCode("expert_dependency_duplicate", "专家关联重复")
 			}
 			seen[id] = true
 			o, err := resource.DecodeObject(link.lock(ctx, id))
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					return resource.Invalid("专家关联资源不存在或不可用")
+					return resource.InvalidCode("expert_dependency_unavailable", "专家关联资源不存在或不可用")
 				}
 				return err
 			}
@@ -102,7 +102,7 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 				}
 			}
 			if !ok {
-				return resource.Invalid("专家关联资源不存在或不可用")
+				return resource.InvalidCode("expert_dependency_unavailable", "专家关联资源不存在或不可用")
 			}
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
 	"slices"
@@ -47,7 +48,7 @@ func NewService(store Store) *Service {
 func (s *Service) Create(ctx context.Context, userID string, input CreateInput) (CreatedKey, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
-		return CreatedKey{}, errors.New("name 不能为空")
+		return CreatedKey{}, web.BadRequest("api_key_name_required")
 	}
 	if len(input.Scopes) == 0 {
 		input.Scopes = []string{ScopeModelInvoke}

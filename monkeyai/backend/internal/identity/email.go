@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"log/slog"
 	"math/big"
 	"net"
@@ -160,7 +161,7 @@ func (s *Service) sendCode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(r.Context(), w, 200, map[string]any{"message": "如果该邮箱符合条件，验证码将发送至邮箱", "retry_after": 30})
+	writeJSON(r.Context(), w, 200, map[string]any{"message": web.Notice(r.Context(), "email_code_sent"), "retry_after": 30})
 }
 
 var errCodeLimited = errors.New("验证码发送过于频繁")

@@ -6893,7 +6893,9 @@ components:
           examples: [model_error]
         message:
           type: string
-          description: 面向用户或开发者的错误说明。
+          description: 服务端按 Accept-Language 返回的本地化错误说明，末尾附 [trace_id] 链路编号，与服务日志 trace_id 对应；可直接展示，支持 zh-CN、en-US，缺省为 zh-CN。
+        references:
+          description: 原有业务恢复字段，仅按接口契约读取。
     ModelsResponse:
       type: object
       required: [models]

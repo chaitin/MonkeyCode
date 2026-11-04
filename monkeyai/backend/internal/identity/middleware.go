@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/web"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/jackc/pgx/v5"
 )
@@ -165,6 +166,6 @@ func writeError(ctx context.Context, w http.ResponseWriter, status int, code, me
 		logging.Expected(ctx)
 	}
 	writeJSON(ctx, w, status, map[string]any{
-		"error": map[string]string{"code": code, "message": message},
+		"error": web.Body(ctx, code, message),
 	})
 }

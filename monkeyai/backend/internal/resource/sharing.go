@@ -90,30 +90,30 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 
 func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revoke bool, kinds map[string]Shareable) error {
 	if len(input.Resources) == 0 || len(input.Resources) > 100 || len(input.UserIDs)+len(input.GroupIDs) == 0 || len(input.UserIDs)+len(input.GroupIDs) > 100 {
-		return Invalid("resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项")
+		return InvalidCode("sharing_invalid", "resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项")
 	}
 	input.Resources = slices.Clone(input.Resources)
 	input.UserIDs = slices.Clone(input.UserIDs)
 	input.GroupIDs = slices.Clone(input.GroupIDs)
 	for _, item := range input.Resources {
 		if kinds[item.Type] == nil {
-			return Invalid("不支持分享此资源类型")
+			return InvalidCode("sharing_invalid", "不支持分享此资源类型")
 		}
 		if !validUUID(item.ID) {
-			return Invalid("资源 ID 必须是 UUID")
+			return InvalidCode("sharing_invalid", "资源 ID 必须是 UUID")
 		}
 	}
 	for _, id := range input.UserIDs {
 		if !validUUID(id) {
-			return Invalid("用户 ID 必须是 UUID")
+			return InvalidCode("sharing_invalid", "用户 ID 必须是 UUID")
 		}
 		if strings.EqualFold(id, actor) {
-			return Invalid("不能分享给自己")
+			return InvalidCode("sharing_self_denied", "不能分享给自己")
 		}
 	}
 	for _, id := range input.GroupIDs {
 		if !validUUID(id) {
-			return Invalid("分组 ID 必须是 UUID")
+			return InvalidCode("sharing_invalid", "分组 ID 必须是 UUID")
 		}
 	}
 	for i := range input.Resources {
@@ -149,7 +149,7 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 			return err
 		}
 		if len(groups) != len(input.GroupIDs) {
-			return Invalid("接收分组不存在或已删除")
+			return InvalidCode("sharing_recipient_invalid", "接收分组不存在或已删除")
 		}
 	}
 	// 固定加锁顺序，批量授权和删除共享资源行锁。
@@ -165,7 +165,7 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 		count := len(rows)
 		if count != len(input.UserIDs) {
-			return Invalid("接收用户不存在或已停用")
+			return InvalidCode("sharing_recipient_invalid", "接收用户不存在或已停用")
 		}
 	}
 	for _, item := range input.Resources {

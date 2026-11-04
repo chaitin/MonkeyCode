@@ -26,7 +26,7 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	var input ProbeInput
 	if err := decodeModelRequest(w, r, &input); err != nil || strings.TrimSpace(input.Message) == "" || utf8.RuneCountInString(input.Message) > 4000 {
-		modelError(w, http.StatusBadRequest, "测试消息不能为空且不超过 4000 个字符")
+		modelError(r.Context(), w, http.StatusBadRequest, "测试消息不能为空且不超过 4000 个字符")
 		return
 	}
 	item, err := s.repository.Get(r.Context(), chi.URLParam(r, "modelID"))
@@ -35,16 +35,16 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrNotFound) {
 			status = http.StatusNotFound
 		}
-		modelError(w, status, "模型不存在")
+		modelError(r.Context(), w, status, "模型不存在")
 		return
 	}
 	if item.OwnershipType != "system" || item.Kind != KindText {
-		modelError(w, http.StatusBadRequest, "仅支持测试系统大语言模型")
+		modelError(r.Context(), w, http.StatusBadRequest, "仅支持测试系统大语言模型")
 		return
 	}
 	upstream, err := probeRequest(item, input.Message)
 	if err != nil {
-		modelError(w, http.StatusBadRequest, err.Error())
+		modelError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -57,24 +57,24 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 	defer transport.CloseIdleConnections()
 	if item.ProxyID != "" {
 		if s.proxies == nil {
-			modelError(w, http.StatusBadGateway, "网络代理不可用")
+			modelError(r.Context(), w, http.StatusBadGateway, "网络代理不可用")
 			return
 		}
 		raw, err := s.proxies.ProxyURL(ctx, item.ProxyID)
 		if err != nil {
-			modelError(w, http.StatusBadGateway, "网络代理不可用")
+			modelError(r.Context(), w, http.StatusBadGateway, "网络代理不可用")
 			return
 		}
 		proxyURL, err := url.Parse(raw)
 		if err != nil || proxyURL.Hostname() == "" || !slices.Contains([]string{"http", "https", "socks5", "socks5h"}, proxyURL.Scheme) {
-			modelError(w, http.StatusBadGateway, "网络代理地址无效")
+			modelError(r.Context(), w, http.StatusBadGateway, "网络代理地址无效")
 			return
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.URL, bytes.NewReader(upstream.Body))
 	if err != nil {
-		modelError(w, http.StatusBadRequest, "模型地址无效")
+		modelError(r.Context(), w, http.StatusBadRequest, "模型地址无效")
 		return
 	}
 	req.Header = upstream.Header
@@ -86,12 +86,12 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			return
 		}
-		modelError(w, status, message)
+		modelError(r.Context(), w, status, message)
 		return
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		modelError(w, http.StatusBadGateway, fmt.Sprintf("模型返回 HTTP %d，请检查协议和密钥", response.StatusCode))
+		modelError(r.Context(), w, http.StatusBadGateway, fmt.Sprintf("模型返回 HTTP %d，请检查协议和密钥", response.StatusCode))
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")

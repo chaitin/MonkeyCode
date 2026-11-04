@@ -68,7 +68,7 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	ownership := query.Get("ownership_type")
 	if ownership != "" && ownership != "system" && ownership != "user" {
-		modelError(w, http.StatusBadRequest, "ownership_type 无效")
+		modelError(r.Context(), w, http.StatusBadRequest, "ownership_type 无效")
 		return
 	}
 	var items []Model
@@ -82,7 +82,7 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					slog.WarnContext(r.Context(), "操作失败", "module", "model", "operation", "listModels", "error", err)
 				}
-				modelError(w, http.StatusBadRequest, "limit 必须在 1—500 之间")
+				modelError(r.Context(), w, http.StatusBadRequest, "limit 必须在 1—500 之间")
 				return
 			}
 		}
@@ -92,7 +92,7 @@ func (s *Service) listModels(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		logging.Event(r.Context(), slog.Default(), slog.LevelError, "model.operation.error", "读取模型列表失败", "module", "model", "operation", "listModels", "error", err)
-		modelError(w, http.StatusInternalServerError, "读取模型列表失败")
+		modelError(r.Context(), w, http.StatusInternalServerError, "读取模型列表失败")
 		return
 	}
 	for i := range items {
