@@ -21,9 +21,9 @@ import (
 )
 
 const avatarUploadLimit = 1 << 20
-const avatarChangeKey = "_expert_avatar"
+const avatarChangeKey = "avatar"
 
-// Only the multipart parser can supply this value; JSON cannot choose an object key.
+// 仅保存处理器可构造此类型，JSON 中的对象不能指定存储键。
 type avatarChange struct {
 	data []byte
 	mime string
@@ -100,9 +100,18 @@ func (s *Service) saveExpert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) saveWithAvatar(ctx context.Context, actor, id, match string, in resource.Object, avatar *avatarChange) (resource.Object, error) {
+	return s.saveAvatar(ctx, actor, id, match, in, avatar, false)
+}
+
+func (s *Service) saveAvatar(ctx context.Context, actor, id, match string, in resource.Object, avatar *avatarChange, personal bool) (resource.Object, error) {
 	delete(in, avatarChangeKey)
 	if avatar != nil {
 		if id != "" {
+			if personal {
+				if _, err := s.CRUD.GetUser(ctx, s.Store.Pool, id, actor); err != nil {
+					return nil, err
+				}
+			}
 			imported, err := resource.Imported(ctx, s.Store.Pool, "expert", id)
 			if err != nil {
 				return nil, err
@@ -112,20 +121,29 @@ func (s *Service) saveWithAvatar(ctx context.Context, actor, id, match string, i
 			}
 		}
 		if s.storage == nil {
+			if personal {
+				return nil, &resource.Error{Status: 503, Code: "expert_avatar_unavailable", Message: "头像存储不可用"}
+			}
 			return nil, &resource.Error{Status: 503, Code: "storage_unavailable", Message: "头像存储不可用"}
 		}
-		avatar.key = "experts/avatars/" + resource.ID()
-		if err := s.storage.Put(ctx, avatar.key, avatar.data, avatar.mime); err != nil {
-			s.discardUnusedAvatar(ctx, avatar.key)
-			return nil, err
+		if len(avatar.data) > 0 {
+			avatar.key = "experts/avatars/" + resource.ID()
+			if err := s.storage.Put(ctx, avatar.key, avatar.data, avatar.mime); err != nil {
+				s.discardUnusedAvatar(ctx, avatar.key)
+				return nil, err
+			}
 		}
 		in[avatarChangeKey] = avatar
 	}
-	out, err := s.CRUD.Save(ctx, actor, id, match, in)
+	save := s.CRUD.Save
+	if personal {
+		save = s.CRUD.SaveUser
+	}
+	out, err := save(ctx, actor, id, match, in)
 	if avatar != nil {
-		if err != nil {
+		if err != nil && avatar.key != "" {
 			s.discardUnusedAvatar(ctx, avatar.key)
-		} else if avatar.old != "" {
+		} else if err == nil && avatar.old != "" {
 			s.discardUnusedAvatar(ctx, avatar.old)
 		}
 	}
