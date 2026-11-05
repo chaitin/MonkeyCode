@@ -1,3 +1,4 @@
+import { EnvironmentsPage } from "@/pages/environments-page"
 import { useEffect } from "react"
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { useTranslation } from "react-i18next"
@@ -28,6 +29,7 @@ import { ClientAnalysisPage } from "@/pages/client-analysis-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelsPage } from "@/pages/models-page"
 import { OperationLogsPage } from "@/pages/operation-logs-page"
+import { EngineHostsPage } from "@/pages/engine-hosts-page"
 import { OtherSettingsPage } from "@/pages/other-settings-page"
 import { RealtimeStatusPage } from "@/pages/realtime-status-page"
 import { RulesPage } from "@/pages/rules-page"
@@ -101,12 +103,28 @@ export function App() {
               path="statistics/models"
               element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
             />
+            <Route
+              path="environments/presets"
+              element={<Navigate to={CONSOLE_ROUTES.environments} replace />}
+            />
+            <Route
+              path="environments/quotas"
+              element={<Navigate to={CONSOLE_ROUTES.environments} replace />}
+            />
+            <Route
+              path="environments/capacity"
+              element={<Navigate to={CONSOLE_ROUTES.engineHosts} replace />}
+            />
             {CONSOLE_PAGES.map((page) => (
               <Route
                 key={page.path}
                 path={page.path.slice(CONSOLE_PATH.length + 1)}
                 element={
-                  page.path === CONSOLE_ROUTES.realtimeStatus ? (
+                  page.path === CONSOLE_ROUTES.environments ? (
+                    <EnvironmentsPage />
+                  ) : page.path === CONSOLE_ROUTES.engineHosts ? (
+                    <EngineHostsPage />
+                  ) : page.path === CONSOLE_ROUTES.realtimeStatus ? (
                     <RealtimeStatusPage />
                   ) : page.path === CONSOLE_ROUTES.taskHistory ? (
                     <TaskHistoryPage />

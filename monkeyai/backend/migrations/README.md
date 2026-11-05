@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=37, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=41, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -58,6 +58,10 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000035_billing_activity_lock_retry` | 交易／调用周分区预建遇到锁竞争时返回可重试状态 |
 | `000036_user_profile_add` | 增加独立的自定义头像字段、本人修改密码的尝试次数记录，以及待兑换设备批准的用户索引 |
 | `000037_oauth_pairing` | 新增一次性手机扫码配对，保存凭据摘要、PKCE、状态及轮询退避信息 |
+| `000038_cloud_environments` | 云环境、宿主接入、执行授权与调度 |
+| `000039_environment_directory_storage` | 普通目录预设允许零存储额度 |
+| `000040_engine_host_deletion` | 宿主软删除与调度保护 |
+| `000041_environment_defaults` | 全局环境预设引用与统一默认用户配额 |
 
 从 `backend` 目录执行：
 
@@ -67,7 +71,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `37` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `41` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -92,3 +96,23 @@ MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 `000024_remote_runtime` 的 up/down SQL 将当前工作树新增的远程执行结构作为一个版本执行，支持重复执行。重复升级保留已有授权族、刷新链、设备版本、会话摘要和密钥绑定；旧 token 只在尚未绑定授权族时回填。重复回滚会保留既有撤销时间和原因，重新升级不会恢复已撤销凭据。
 
 `TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。
+
+### 000038_cloud_environments
+
+云电脑能力统一使用一个迁移版本，包含宿主安装接入、环境预设、宿主容量、用户额度、环境及操作记录、runtime 身份绑定，以及 environment:read/manage 的 OAuth 授权约束。up 在同一事务中创建全部结构，down 在同一事务中按依赖逆序回滚；历史 1～37 版本不变。
+
+先执行 38、39，再发布后端、engine 和兼容镜像；默认不启用新宿主调度，旧 token 不自动扩权。回滚前停止并确认所有实例、撤销云环境执行授权并备份控制记录。down 撤销含环境权限的客户端授权族与 token，过期相关未完成授权请求和授权码，再删除云环境及宿主控制记录；不会清理宿主容器或持久数据。重新升级不恢复已撤销凭据，无环境权限的其他客户端授权不受影响。
+
+本分支迁移随主线顺延为 38、39，主线 36、37 分别为账户资料和扫码配对。已应用旧编号云环境迁移的测试库不能直接使用新版迁移包，也不能通过 force 跳过版本；可丢弃测试库需使用原迁移包回滚或重建，需保留数据时先备份并单独制定迁移。
+
+### 000039_environment_directory_storage
+
+普通目录模式允许预设的 storage_bytes 为零，不设置磁盘硬配额。回滚至 38 前必须处理零容量预设，否则约束恢复会拒绝回滚，不会伪造限额。
+
+### 云环境迁移幂等性
+
+`000038_cloud_environments` 和 `000039_environment_directory_storage` 的 up/down SQL 支持按顺序重复执行。重复 up 保留已有宿主、预设、环境、运行身份和普通目录的零容量配置；重复 down 不重复增加授权撤销版本，也不会恢复已撤销的凭据。39 的 down 在存在零容量预设时仍拒绝回滚，并在事务中保留原数据与约束。
+
+幂等执行以已有对象结构与本迁移兼容为前提，不替代数据库版本历史修复，也不自动修复任意结构差异。旧编号测试库仍按上文处理。真实 PostgreSQL 回归覆盖 SQL 重放、数据保留、约束生效、回滚失败保护和重新升级。
+
+版本 `41` 幂等创建默认配置，初始配额保持原有值（3 个环境、2 个同时运行、8 核、16 GiB）。管理端在宿主管理的「配置环境」中一次保存共享预设、默认配额和当前宿主容量。已有个人配额与环境规格不变；重复执行 up 保留管理员配置。down 删除全局配置，不删除预设或环境；重新 up 会恢复初始默认配额。升级需同步发布前后端。

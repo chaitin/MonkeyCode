@@ -425,3 +425,15 @@ func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	s.closeRoute(old)
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Service) DisconnectRuntime(user, machine string) {
+	s.mu.Lock()
+	r := s.routes[target{user, machine}]
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := sqlc.New(s.pool).RevokeTargetConnections(ctx, sqlc.RevokeTargetConnectionsParams{UserID: user, MachineID: machine}); err != nil {
+		s.logger.ErrorContext(ctx, "撤销云环境连接票据失败", "error", err)
+	}
+	s.closeRoute(r)
+}

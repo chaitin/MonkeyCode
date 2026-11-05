@@ -1,0 +1,597 @@
+openapi: 3.1.0
+info:
+  title: MonkeyAI Engine Host Protocol
+  version: 1.0.0
+servers:
+  - url: /
+security: []
+paths:
+  /api/host/v1/exchange:
+    post:
+      summary: 同步宿主环境目标并确认执行结果
+      description: 签名消息依次为 monkeyai-engine/exchange/v1、后台公开地址（去掉末尾斜杠）、host_id、challenge、payload 原始 JSON 字节的 SHA-256
+        小写十六进制摘要，以换行连接且无末尾换行。不得重新格式化参与签名的 payload。正文最多 64 KiB，payload 最多 32 KiB。每次使用 /challenges 的新挑战；与心跳顺序执行。挑战消费后即使响应丢失也不能重放，使用新挑战重传同一结果。运行时授权请求在 runtime 数组中逐项返回，拒绝不会回滚已提交的观察结果；响应丢失后携带同一请求和新挑战重试。只有
+        acknowledged 才代表结果已提交；旧代次结果确认后忽略。协议不携带任意命令、宿主路径或用户凭据。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - host_id
+              - challenge
+              - payload
+              - signature
+              properties:
+                host_id:
+                  type: string
+                  format: uuid
+                challenge:
+                  type: string
+                  minLength: 43
+                  maxLength: 43
+                payload:
+                  $ref: '#/components/schemas/EnvironmentExchange'
+                signature:
+                  type: string
+                  contentEncoding: base64
+              additionalProperties: false
+      responses:
+        '200':
+          description: 报告和目标在事务内处理；targets 按环境 ID 分页，每轮结束 cursor 为空。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentCommands'
+        '400':
+          $ref: '#/components/responses/Invalid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 同步拒绝，保留结果并重试；跨宿主、未知环境、阶段不匹配或存储错误均不确认。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: 命令服务尚未配置。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/host/v1/install.sh:
+    get:
+      summary: 获取统一安装／升级脚本
+      description: 首次安装使用短期 token；已有宿主可不带 token，使用 version 或 server 当前版本，由 installer 读取现有配置并提供升级／修复选项。提供 token 时仍须有效。
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema: {type: string, minLength: 43, maxLength: 43}
+        - name: version
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: 完整下载后再执行；通过 HTTPS 分发，生成命令支持跳过证书校验
+          content:
+            text/x-shellscript:
+              schema: {type: string}
+  /api/host/v1/releases/{version}/{arch}/{file}:
+    get:
+      summary: 获取固定版本发行文件
+      parameters:
+        - {name: version, in: path, required: true, schema: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'}}
+        - {name: arch, in: path, required: true, schema: {type: string, enum: [amd64, arm64]}}
+        - {name: file, in: path, required: true, schema: {type: string, enum: [manifest.json, resources.tgz, installer, dockerd, docker, docker-init, docker-proxy, runc, ctr, containerd-shim-runc-v2, monkeyai-engine, containerd, runsc, containerd-shim-runsc-v1, bridge, ptp, host-local, loopback, checkpointgofer, gvisor-proc-umounter, gvisor-sentry-prewarmer, gvisor_sentry, runsc-fd-parking, runsc-metric-server]}}
+      responses:
+        '200':
+          description: 安装命令固定 engine 和 manifest 的 SHA-256，其余组件摘要由 manifest 固定
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404': {description: 文件或发行版本不存在}
+  /api/host/v1/enroll:
+    post:
+      summary: 使用一次性命令和宿主公钥注册
+      description: 正文不超过 64 KiB。签名消息为 UTF-8 的 monkeyai-engine/enroll/v1、后台公开地址（去掉末尾斜杠）、token、architecture、version，以及提供时的 name，以换行连接且无末尾换行。公钥和签名使用标准 Base64。令牌有效期内同公钥可重试响应丢失，其他公钥不能复用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, public_key, signature, architecture, version]
+              properties:
+                name: {type: string, maxLength: 128, description: 自动获取的宿主名称，首次注册保存}
+                token: {type: string, minLength: 43, maxLength: 43}
+                public_key: {type: string, contentEncoding: base64}
+                signature: {type: string, contentEncoding: base64}
+                architecture: {type: string, enum: [amd64, arm64]}
+                version: {type: string}
+      responses:
+        '200':
+          description: 注册成功或同公钥重试
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [host_id]
+                properties:
+                  host_id: {type: string, format: uuid}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/host/v1/challenges:
+    post:
+      summary: 获取宿主心跳或环境同步签名挑战
+      description: 每个活动宿主只有一个 60 秒有效的挑战，未消费前重复获取返回相同值；签名不能用于其他后台、宿主、用途或正文。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [host_id]
+              properties:
+                host_id: {type: string, format: uuid}
+      responses:
+        '200':
+          description: 返回挑战
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challenge]
+                properties:
+                  challenge: {type: string, minLength: 43, maxLength: 43}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/host/v1/heartbeat:
+    post:
+      summary: 发送经宿主签名的预检报告
+      description: 签名消息为 UTF-8 的 monkeyai-engine/heartbeat/v1、后台公开地址、host_id、challenge、report 原始 JSON 字节的 SHA-256 小写十六进制摘要，以换行连接且无末尾换行。必须原样保留用于摘要的 report 字节。挑战在更新报告时原子消费，重复或过期请求返回 401。当前不是 WSS 工作负载控制通道。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [host_id, challenge, report, signature]
+              properties:
+                host_id: {type: string, format: uuid}
+                challenge: {type: string, minLength: 43, maxLength: 43}
+                signature: {type: string, contentEncoding: base64}
+                report:
+                  type: object
+                  description: JSON 字节上限 32 KiB
+                  required: [version, workload_verified, prerequisites_met, checks]
+                  properties:
+                    version: {type: integer, const: 1}
+                    workload_verified: {type: boolean, const: false}
+                    engine_version: {type: string, description: 实际运行的二进制版本}
+                    upgrade_protocol: {type: integer, enum: [0, 1], description: 远程升级能力，缺省为 0}
+                    upgrade:
+                      type: object
+                      required: [id, version, status, reason]
+                      properties:
+                        id: {type: string, format: uuid}
+                        version: {type: string}
+                        status: {type: string, enum: [running, succeeded, failed]}
+                        reason: {type: string, enum: ['', launch_failed, upgrade_failed, upgrade_interrupted]}
+                    runtime_protocol: {type: integer, enum: [0, 1], description: standalone 编排能力版本，缺省为 0}
+                    prerequisites_met: {type: boolean}
+                    at: {type: string, format: date-time}
+                    system: {$ref: '#/components/schemas/HostSystem'}
+                    os: {type: string}
+                    architecture: {type: string}
+                    network_policies:
+                      type: array
+                      maxItems: 2
+                      uniqueItems: true
+                      description: 未提供时只可分配 isolated；public-only 需宿主网络配置与工具预检通过
+                      items: {type: string, enum: [isolated, public-only]}
+                    checks:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        required: [name, passed, detail]
+                        properties:
+                          name: {type: string}
+                          passed: {type: boolean}
+                          detail: {type: string}
+      responses:
+        '200':
+          description: 接受预检上报；workload_enabled 不是环境调度开关，调度另需管理员配置宿主容量并启用
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, workload_enabled]
+                properties:
+                  upgrade:
+                    oneOf:
+                    - type: 'null'
+                    - type: object
+                      required: [id, version, installer_sha256, manifest_sha256]
+                      properties:
+                        id: {type: string, format: uuid}
+                        version: {type: string}
+                        installer_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+                        manifest_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+                    description: 同一任务可能重复下发，宿主按 id 幂等执行。成功报告只有实际运行版本匹配时才被接受。
+                  accepted: {type: boolean, const: true}
+                  workload_enabled: {type: boolean, const: false}
+        '400': {$ref: '#/components/responses/Invalid'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+components:
+  responses:
+    Invalid:
+      description: 请求格式或大小无效
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unauthorized:
+      description: 凭据、签名或挑战无效、过期或撤销
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    HostSystem:
+      type: object
+      description: 宿主整机信息；CPU 为相邻心跳采样间使用率，首次或计数失效时省略。内存使用量为总量减 MemAvailable；磁盘为 data_dir 所在文件系统，已用量不含保留块，可用量扣除保留块。采集失败的分组省略，不代表零占用。
+      properties:
+        private_ips:
+          type: array
+          maxItems: 64
+          description: 活跃宿主网卡的内网 IPv4/IPv6 地址，排除容器虚拟接口；包括 CGNAT 地址。
+          items: {type: string}
+        public_ips:
+          type: array
+          maxItems: 64
+          description: 活跃宿主网卡的公网地址；管理端额外合并后台观察到的公网连接来源，不代表可入站访问。
+          items: {type: string}
+        network:
+          type: object
+          description: 宿主非容器网卡的区间平均收发速率，排除回环及 bridge/bond 从接口。首次采样、计数回退或网卡集合变化时省略。
+          required: [receive_bytes_per_second, transmit_bytes_per_second]
+          properties:
+            receive_bytes_per_second: {type: number, minimum: 0}
+            transmit_bytes_per_second: {type: number, minimum: 0}
+        disk_io:
+          type: object
+          description: 数据目录所在块设备的区间平均读写速率，包含该设备上其他进程的 I/O。首次采样、计数回退、设备变化或非块设备文件系统时省略。
+          required: [read_bytes_per_second, write_bytes_per_second]
+          properties:
+            read_bytes_per_second: {type: number, minimum: 0}
+            write_bytes_per_second: {type: number, minimum: 0}
+        hostname: {type: string, maxLength: 255}
+        os_name: {type: string, maxLength: 256}
+        kernel_version: {type: string, maxLength: 256}
+        cpu:
+          type: object
+          required: [model, logical_cores]
+          properties:
+            model: {type: string, maxLength: 512}
+            logical_cores: {type: integer, minimum: 1, maximum: 1048576}
+            usage_percent: {type: number, minimum: 0, maximum: 100}
+        memory:
+          $ref: '#/components/schemas/HostMemory'
+        disk:
+          allOf:
+          - $ref: '#/components/schemas/HostMemory'
+          - type: object
+            required: [path]
+            properties:
+              path: {type: string, maxLength: 4096, pattern: '^/'}
+    HostMemory:
+      type: object
+      required: [total_bytes, used_bytes, available_bytes]
+      properties:
+        total_bytes: {type: integer, format: int64, minimum: 1}
+        used_bytes: {type: integer, format: int64, minimum: 0}
+        available_bytes: {type: integer, format: int64, minimum: 0}
+    EnvironmentResource:
+      type: object
+      required:
+      - cpu_millis
+      - memory_bytes
+      - host_tasks
+      - temporary_bytes
+      properties:
+        cpu_millis:
+          type: integer
+          format: int64
+          minimum: 100
+          maximum: 256000
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 268435456
+          maximum: 1099511627776
+        host_tasks:
+          type: integer
+          format: int64
+          minimum: 64
+          maximum: 65536
+        temporary_bytes:
+          type: integer
+          format: int64
+          minimum: 16777216
+          multipleOf: 4096
+          description: 不超过 memory_bytes 的一半。host_tasks 只限制宿主辅助进程与线程，不代表沙箱内进程硬限额。
+      additionalProperties: false
+    EnvironmentVolume:
+      type: object
+      required:
+      - id
+      - purpose
+      properties:
+        id:
+          type: string
+        purpose:
+          type: string
+          enum:
+          - workspace
+          - home
+          - runtime
+        bytes:
+          deprecated: true
+          description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+          type: integer
+          format: int64
+        inodes:
+          deprecated: true
+          description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+          type: integer
+          format: int64
+      additionalProperties: false
+    EnvironmentSpec:
+      type: object
+      required:
+      - environment_id
+      - instance_id
+      - generation
+      - desired_state
+      - driver
+      - image
+      - image_digest
+      - resource
+      - volumes
+      - network_policy
+      properties:
+        runtime:
+          $ref: '#/components/schemas/EnvironmentRuntime'
+        environment_id:
+          type: string
+        instance_id:
+          type: string
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        desired_state:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+        driver:
+          type: string
+          const: gvisor
+        image:
+          type: string
+          maxLength: 512
+          pattern: ^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$
+        image_digest:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+        resource:
+          $ref: '#/components/schemas/EnvironmentResource'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentVolume'
+          minItems: 3
+          maxItems: 3
+        network_policy:
+          type: string
+          enum: [isolated, public-only]
+      additionalProperties: false
+    EnvironmentProfile:
+      type: object
+      required:
+      - architecture
+      - image
+      - network_policy
+      - resource
+      properties:
+        architecture:
+          type: string
+          enum:
+          - amd64
+          - arm64
+        image:
+          type: string
+          maxLength: 512
+          pattern: ^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$
+        network_policy:
+          type: string
+          enum: [isolated, public-only]
+        resource:
+          $ref: '#/components/schemas/EnvironmentResource'
+        storage:
+          deprecated: true
+          description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+          type: object
+          properties:
+            workspace_bytes:
+              deprecated: true
+              description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+              type: integer
+              format: int64
+            home_bytes:
+              deprecated: true
+              description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+              type: integer
+              format: int64
+            runtime_bytes:
+              deprecated: true
+              description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+              type: integer
+              format: int64
+            inodes:
+              deprecated: true
+              description: 兼容旧协议；当前使用普通持久目录，不实施容量或 inode 配额。
+              type: integer
+              format: int64
+          additionalProperties: false
+      additionalProperties: false
+    EnvironmentUsage:
+      type: object
+      description: 当前实例最近一次 Docker CPU/内存采样；只存最新值，不保存历史。采集失败或旧 engine 可省略，不能将缺失视为零。超过 90 秒的样本应标记过期。
+      required: [at]
+      properties:
+        at: {type: string, format: date-time}
+        cpu_cores:
+          type: number
+          minimum: 0
+          maximum: 1048576
+          description: CPU 使用核数，1 表示占满一个逻辑核；展示百分比时除以配置核数。
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Docker 内存使用量，排除 inactive file 缓存；包含 gVisor 沙箱开销。
+      additionalProperties: false
+    EnvironmentObservation:
+      type: object
+      required:
+      - environment_id
+      - instance_id
+      - generation
+      - phase
+      - reason
+      properties:
+        usage:
+          $ref: '#/components/schemas/EnvironmentUsage'
+        environment_id:
+          type: string
+          format: uuid
+        instance_id:
+          type: string
+          format: uuid
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        phase:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+          - failed
+        reason:
+          type: string
+          enum:
+          - ''
+          - apply_failed
+          - inspect_failed
+          - process_exited
+          - local_state_conflict
+          - runtime_failed
+      additionalProperties: false
+    EnvironmentExchange:
+      type: object
+      required:
+      - protocol
+      - cursor
+      - results
+      properties:
+        protocol:
+          type: integer
+          const: 1
+        cursor:
+          type: string
+          description: 上一响应的 cursor；首轮和一轮结束后为空字符串。
+        runtime:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/RuntimeRequest'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentObservation'
+          maxItems: 16
+      additionalProperties: false
+    EnvironmentCommands:
+      type: object
+      required:
+      - protocol
+      - cursor
+      - targets
+      - acknowledged
+      properties:
+        usage_protocol: {type: integer, enum: [1], description: 支持环境占用上报；旧服务端省略时 engine 不发送 usage。}
+        protocol:
+          type: integer
+          const: 1
+        cursor:
+          type: string
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentSpec'
+          maxItems: 16
+        runtime:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/RuntimeReply'
+        acknowledged:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentObservation'
+          maxItems: 16
+    EnvironmentRuntime:
+      type: object
+      required: [server, server_id, user_id]
+      properties:
+        server: {type: string, format: uri, description: 固定的后台 HTTPS origin，无凭据}
+        server_id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+      additionalProperties: false
+    RuntimeRequest:
+      type: object
+      required: [environment_id, instance_id, generation, machine_id, public_key]
+      properties:
+        environment_id: {type: string, format: uuid}
+        instance_id: {type: string, format: uuid}
+        generation: {type: integer, minimum: 1, format: int64}
+        machine_id: {type: string, format: uuid}
+        public_key: {type: string, pattern: '^[A-Za-z0-9_-]{43}$', description: Ed25519 公钥的无填充 Base64URL}
+        user_code: {type: string, maxLength: 16, description: 首次绑定必须携带当前登录进程的设备申请码，禁止记录日志}
+      additionalProperties: false
+    RuntimeReply:
+      type: object
+      required: [request, reason]
+      properties:
+        request: {$ref: '#/components/schemas/RuntimeRequest'}
+        reason: {type: string, enum: ['', runtime_authorization_rejected]}
+      additionalProperties: false
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: {type: string}

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react"
 
+import { clearHostCommands } from "@/lib/host-command"
 import { api } from "@/lib/api"
 import { AuthContext, type AuthUser } from "@/lib/auth-context"
 
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await api<void>("/api/auth/v1/logout", { method: "POST" })
+    clearHostCommands()
     setUser(null)
   }, [])
 
