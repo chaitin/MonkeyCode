@@ -6,6 +6,7 @@ import { ImageUploadIcon, Loading03Icon } from "@hugeicons/core-free-icons"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { uploadAvatar, type AvatarUpdate } from "@/lib/profile"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -175,7 +176,7 @@ export function AvatarPickerDialog({
                 </span>
               </span>
             </button>
-            <input
+            <Input
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/webp"

@@ -12,6 +12,19 @@ FROM
 WHERE
     connector_id = $1
     AND deleted_at IS NULL;
+-- name: CountCentralTools :one
+SELECT count(*) FILTER (WHERE t.enabled) AS enabled_count, count(*) AS total_count
+FROM mcp_tools t
+JOIN connectors c ON c.id = t.connector_id
+JOIN connector_credentials cr ON cr.id = t.credential_id AND cr.connector_id = c.id
+WHERE c.id = $1
+    AND c.authorization_mode = 'centralized'
+    AND t.deleted_at IS NULL
+    AND t.config_revision = c.config_revision
+    AND cr.user_id IS NULL
+    AND cr.revoked_at IS NULL
+    AND cr.config_revision = c.config_revision;
+
 -- name: UserActive :one
 SELECT
     EXISTS (

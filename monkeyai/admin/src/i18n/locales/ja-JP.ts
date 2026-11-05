@@ -634,6 +634,8 @@ export const jaJP = {
       description: "クライアントが接続して利用する MCP サーバーを設定します。",
     },
     rules: {
+      forcedEnabled: "必須",
+      notForcedEnabled: "任意",
       title: "ルール",
       description: "組織のプロンプト、行動ポリシー、安全制約を管理します。",
       add: "ルールを追加",

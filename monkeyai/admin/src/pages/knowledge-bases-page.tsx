@@ -23,6 +23,7 @@ import { ResourceList } from "@/components/resource-list"
 import { ResourceCard } from "@/components/resource-card"
 import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import { RESOURCE_PAGE_SIZE } from "@/hooks/use-resource-list"
 import {
   AlertDialog,
@@ -85,6 +86,8 @@ import { useSkillTags } from "@/hooks/use-skill-tags"
 import { useAppToast } from "@/components/animated-toast-provider"
 import {
   getAuthorizationNames,
+  AUTHORIZATION_GROUPS,
+  AUTHORIZATION_MEMBERS,
   type AuthorizationSelection,
 } from "@/lib/authorization-groups"
 import { getCreatorInitial } from "@/lib/utils"
@@ -300,6 +303,15 @@ export function KnowledgeBasesPage() {
   const { i18n, t } = useTranslation()
   const { showToast } = useAppToast()
   const { tags: availableTags } = useSkillTags()
+  const authorizationGroupNames = new Map(
+    AUTHORIZATION_GROUPS.map((group) => [
+      group.value,
+      t(group.labelKey, { defaultValue: group.labelKey }),
+    ])
+  )
+  const authorizationMemberNames = new Map(
+    AUTHORIZATION_MEMBERS.map((member) => [member.id, member.name || member.email])
+  )
   const [knowledgeBases, setKnowledgeBases] = useState(INITIAL_KNOWLEDGE_BASES)
   const [activeType, setActiveType] = useState<KnowledgeBaseType>("system")
   const [searchDraft, setSearchDraft] = useState("")
@@ -1345,7 +1357,6 @@ export function KnowledgeBasesPage() {
                         render={
                           <ResourceCardMenuButton
                             aria-label={t("common.more")}
-                            tone={knowledgeBase.enabled ? "blue" : "neutral"}
                           />
                         }
                       >
@@ -1445,7 +1456,25 @@ export function KnowledgeBasesPage() {
                   </p>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
-                  <ResourceTagSummary tagIds={knowledgeBase.tagIds} />
+                  <ResourceTagSummary
+                    tagIds={knowledgeBase.tagIds}
+                    leading={
+                      <ResourceAuthorizationBadge
+                        authorization={knowledgeBase.type === "user" ? {
+                          groupIds: [...new Set([
+                            ...knowledgeBase.readAuthorization.groupIds,
+                            ...knowledgeBase.writeAuthorization.groupIds,
+                          ])],
+                          memberIds: [...new Set([
+                            ...knowledgeBase.readAuthorization.memberIds,
+                            ...knowledgeBase.writeAuthorization.memberIds,
+                          ])],
+                        } : undefined}
+                        groupNames={authorizationGroupNames}
+                        memberNames={authorizationMemberNames}
+                      />
+                    }
+                  />
                 </CardFooter>
               </ResourceCard>
             ))}

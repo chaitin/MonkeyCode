@@ -300,7 +300,7 @@ export function ResourceBatchActions({
           else setAction(null)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {action && text(`confirmTitles.${action}`)}

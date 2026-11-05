@@ -643,6 +643,8 @@ export const es419 = {
         "Configura servidores MCP que los clientes pueden conectar y usar.",
     },
     rules: {
+      forcedEnabled: "Obligatoria",
+      notForcedEnabled: "Opcional",
       title: "Reglas",
       description:
         "Administra instrucciones, políticas de comportamiento y restricciones de seguridad de la organización.",

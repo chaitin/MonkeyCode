@@ -640,6 +640,8 @@ export const zhTW = {
       description: "設定客戶端可連線和呼叫的 MCP 服務。",
     },
     rules: {
+      forcedEnabled: "強制啟用",
+      notForcedEnabled: "未強制啟用",
       title: "規則",
       description: "管理組織級提示詞、行為規範與安全限制。",
       add: "新增規則",

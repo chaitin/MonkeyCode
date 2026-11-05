@@ -652,6 +652,8 @@ export const frFR = {
         "Configurez les serveurs MCP auxquels les clients peuvent se connecter.",
     },
     rules: {
+      forcedEnabled: "Obligatoire",
+      notForcedEnabled: "Facultative",
       title: "Règles",
       description:
         "Gérez les instructions, les politiques de comportement et les contraintes de sécurité de l’organisation.",

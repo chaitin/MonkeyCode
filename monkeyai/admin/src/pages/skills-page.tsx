@@ -20,6 +20,9 @@ import { getCreatorInitial } from "@/lib/utils"
 import { ResourceNotice } from "@/components/resource-notice"
 import { ResourceCard } from "@/components/resource-card"
 import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
+import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { ResourcePackageBadge } from "@/components/resource-package-badge"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import {
   Delete02Icon,
@@ -175,6 +178,12 @@ export function SkillsPage() {
   const remote = useResourceList("/skills")
   const skills = remote.items.map((row) => toSkill(row, i18n.language))
   const subjects = useSubjects()
+  const authorizationGroupNames = new Map(
+    subjects.flatGroups.map((group) => [group.value, group.labelKey])
+  )
+  const authorizationMemberNames = new Map(
+    subjects.members.map((member) => [member.id, member.name || member.email])
+  )
   const activeSkillType = remote.type
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -774,16 +783,12 @@ export function SkillsPage() {
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {skills.map((skill) => {
-            const selectedTags = availableTags.filter((tag) =>
-              skill.tagIds.includes(tag.id)
-            )
             const selectable = selecting && skill.type === "system"
             const selected = selectable && selectedIds.includes(skill.id)
 
             return (
               <ResourceCard
                 key={skill.id}
-                origin={skill.origin}
                 disabled={!skill.enabled}
                 selectable={selectable}
                 selected={selected}
@@ -837,11 +842,6 @@ export function SkillsPage() {
                         <span className="truncate" title={skill.name}>
                           {skill.name}
                         </span>
-                        {skill.origin === "package" && (
-                          <Badge variant="amber" title={skill.publisher}>
-                            资源包导入
-                          </Badge>
-                        )}
                         {!skill.enabled && (
                           <Badge variant="outline">
                             {t("pages.skills.disable")}
@@ -868,11 +868,6 @@ export function SkillsPage() {
                           render={
                             <ResourceCardMenuButton
                               aria-label={t("common.more")}
-                              tone={
-                                skill.origin !== "package" && skill.enabled
-                                  ? "blue"
-                                  : "neutral"
-                              }
                             />
                           }
                         >
@@ -935,24 +930,24 @@ export function SkillsPage() {
                   </p>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
-                  {selectedTags.length ? (
-                    <div className="flex min-w-0 flex-wrap gap-2">
-                      {selectedTags.map((tag) => (
-                        <Badge
-                          key={tag.id}
-                          variant="outline"
-                          className="max-w-full truncate"
-                          title={tag.name}
-                        >
-                          {tag.name}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {t("pages.skills.noTags")}
-                    </span>
-                  )}
+                  <ResourceTagSummary
+                    tagIds={skill.tagIds}
+                    leading={
+                      <>
+                        <ResourceAuthorizationBadge
+                          grants={skill.grants}
+                          groupNames={authorizationGroupNames}
+                          memberNames={authorizationMemberNames}
+                          fallback={
+                            skill.type === "user" ? skill.creator : undefined
+                          }
+                        />
+                        {skill.origin === "package" && (
+                          <ResourcePackageBadge kind="skill" />
+                        )}
+                      </>
+                    }
+                  />
                 </CardFooter>
               </ResourceCard>
             )

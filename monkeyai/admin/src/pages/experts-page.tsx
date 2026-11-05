@@ -42,6 +42,8 @@ import {
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { ResourcePackageBadge } from "@/components/resource-package-badge"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import {
   AlertDialog,
@@ -320,6 +322,12 @@ export function ExpertsPage() {
   const batch = useResourceBatch("expert", remote)
   const experts = remote.items.map((row) => toExpert(row, i18n.language))
   const subjects = useSubjects()
+  const authorizationGroupNames = new Map(
+    subjects.flatGroups.map((group) => [group.value, group.labelKey])
+  )
+  const authorizationMemberNames = new Map(
+    subjects.members.map((member) => [member.id, member.name || member.email])
+  )
   const [options, setOptions] = useState<
     Record<AssociationKey, AssociationOption[]>
   >({ knowledgeBaseIds: [], toolIds: [], ruleIds: [], skillIds: [] })
@@ -568,7 +576,6 @@ export function ExpertsPage() {
           {experts.map((expert) => (
             <ResourceCard
               key={expert.id}
-              origin={expert.origin}
               disabled={!expert.enabled}
               {...batch.cardProps(expert.id, expert.name, expert.ownership)}
             >
@@ -604,11 +611,6 @@ export function ExpertsPage() {
                       <span className="truncate" title={expert.name}>
                         {expert.name}
                       </span>
-                      {expert.origin === "package" && (
-                        <Badge variant="amber" title={expert.publisher}>
-                          资源包导入
-                        </Badge>
-                      )}
                       {expert.ownership === "user" && (
                         <Badge variant="outline">
                           {t("pages.experts.personalExpert")}
@@ -640,11 +642,6 @@ export function ExpertsPage() {
                         render={
                           <ResourceCardMenuButton
                             aria-label={t("common.more")}
-                            tone={
-                              expert.origin !== "package" && expert.enabled
-                                ? "blue"
-                                : "neutral"
-                            }
                           />
                         }
                       >
@@ -731,7 +728,54 @@ export function ExpertsPage() {
                 </p>
               </CardContent>
               <CardFooter className="min-w-0 border-t">
-                <ResourceTagSummary tagIds={expert.tagIds} />
+                <ResourceTagSummary
+                  tagIds={expert.tagIds}
+                  leading={
+                    <>
+                      <ResourceAuthorizationBadge
+                        grants={expert.grants}
+                        groupNames={authorizationGroupNames}
+                        memberNames={authorizationMemberNames}
+                        fallback={
+                          expert.ownership === "user" ? expert.owner : undefined
+                        }
+                      />
+                      {expert.origin === "package" && (
+                        <ResourcePackageBadge kind="expert" />
+                      )}
+                      {expert.skillIds.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                        >
+                          {t("pages.experts.skillCount", {
+                            count: expert.skillIds.length,
+                          })}
+                        </Badge>
+                      )}
+                      {expert.toolIds.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-200"
+                        >
+                          {t("pages.experts.connectorCount", {
+                            count: expert.toolIds.length,
+                          })}
+                        </Badge>
+                      )}
+                      {expert.ruleIds.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-800 dark:bg-lime-950 dark:text-lime-200"
+                        >
+                          {t("pages.experts.ruleCount", {
+                            count: expert.ruleIds.length,
+                          })}
+                        </Badge>
+                      )}
+                    </>
+                  }
+                />
               </CardFooter>
             </ResourceCard>
           ))}

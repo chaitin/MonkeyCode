@@ -6461,6 +6461,12 @@ components:
           type: string
         tool_count:
           type: integer
+          description: 集中认证统计当前有效凭证及配置版本下未删除的全部工具，包含未启用项。
+        enabled_tool_count:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: 集中认证当前有效凭证及配置版本下已启用且未删除的工具数量；其他认证方式为 0。
         credentials:
           type: array
           items:

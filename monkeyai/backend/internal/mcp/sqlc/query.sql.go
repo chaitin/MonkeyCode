@@ -45,6 +45,32 @@ func (q *Queries) ConsumeOAuthRequest(ctx context.Context, arg ConsumeOAuthReque
 	return to_jsonb, err
 }
 
+const countCentralTools = `-- name: CountCentralTools :one
+SELECT count(*) FILTER (WHERE t.enabled) AS enabled_count, count(*) AS total_count
+FROM mcp_tools t
+JOIN connectors c ON c.id = t.connector_id
+JOIN connector_credentials cr ON cr.id = t.credential_id AND cr.connector_id = c.id
+WHERE c.id = $1
+    AND c.authorization_mode = 'centralized'
+    AND t.deleted_at IS NULL
+    AND t.config_revision = c.config_revision
+    AND cr.user_id IS NULL
+    AND cr.revoked_at IS NULL
+    AND cr.config_revision = c.config_revision
+`
+
+type CountCentralToolsRow struct {
+	EnabledCount int64
+	TotalCount   int64
+}
+
+func (q *Queries) CountCentralTools(ctx context.Context, id string) (CountCentralToolsRow, error) {
+	row := q.db.QueryRow(ctx, countCentralTools, id)
+	var i CountCentralToolsRow
+	err := row.Scan(&i.EnabledCount, &i.TotalCount)
+	return i, err
+}
+
 const countTools = `-- name: CountTools :one
 SELECT
     count(*)

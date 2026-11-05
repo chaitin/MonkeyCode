@@ -621,6 +621,8 @@ export const koKR = {
       description: "클라이언트가 연결하여 사용할 MCP 서버를 설정합니다.",
     },
     rules: {
+      forcedEnabled: "필수 적용",
+      notForcedEnabled: "선택 적용",
       title: "규칙",
       description: "조직 프롬프트, 행동 정책 및 안전 제약을 관리합니다.",
       add: "규칙 추가",

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react"
 import {
   AiChat02Icon,
   AiImageIcon,
@@ -29,6 +36,7 @@ import {
 import { ImageGenerationTest } from "@/components/image-generation-test"
 import { ModelDiscovery } from "@/components/model-discovery"
 import { SkillTagSelect } from "@/components/skill-tag-select"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -288,21 +296,24 @@ function fromApiModel(model: ApiModel): Model {
 function ModelTagBadges({
   tagIds,
   tags,
+  leading,
 }: {
   tagIds: string[]
   tags: SkillTag[]
+  leading?: ReactNode
 }) {
   const { t } = useTranslation()
   const selectedTags = tags.filter((tag) => tagIds.includes(tag.id))
 
-  if (!selectedTags.length) {
+  if (!selectedTags.length && !leading) {
     return (
       <span className="text-muted-foreground">{t("pages.models.noTags")}</span>
     )
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {leading}
       {selectedTags.map((tag) => (
         <Badge
           key={tag.id}
@@ -352,6 +363,12 @@ export function ModelsPage() {
   }, [])
   const [groups, setGroups] = useState<GroupSelectOption[]>([])
   const [members, setMembers] = useState<GroupSelectUser[]>([])
+  const authorizationGroupNames = new Map(
+    groups.map((group) => [group.id, group.name])
+  )
+  const authorizationMemberNames = new Map(
+    members.map((member) => [member.id, member.name || member.email || member.id])
+  )
   const [loadRevision, setLoadRevision] = useState(0)
   const [saving, setSaving] = useState(false)
   const activeModelType = remote.type
@@ -1436,7 +1453,7 @@ export function ModelsPage() {
                             {kind === "video" && (
                               <Field>
                                 <FieldLabel htmlFor="video-model">
-                                  视频型号
+                                  {t("pages.models.videoProtocol")}
                                 </FieldLabel>
                                 <Select
                                   items={VIDEO_MODELS.map((item) => ({
@@ -1903,27 +1920,30 @@ export function ModelsPage() {
                   {kindModels.length > 0 ? (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {kindModels.map((model) => {
+                        const generationProtocol =
+                          model.kind === "image"
+                            ? (IMAGE_PROVIDERS.find(
+                                (entry) => entry.value === model.provider
+                              )?.label ?? model.provider)
+                            : model.kind === "video"
+                              ? (VIDEO_MODELS.find(
+                                  (entry) =>
+                                    entry.provider === model.provider &&
+                                    entry.model === model.modelId
+                                )?.label ?? model.modelId)
+                              : null
                         const selected = selectedIds.includes(model.id)
                         const selectable = selecting && model.type === "system"
                         return (
                           <Card
                             size="sm"
                             className={cn(
-                              model.kind === "text"
-                                ? "bg-blue-50 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800"
-                                : "bg-purple-50 ring-purple-200 dark:bg-purple-950 dark:ring-purple-800",
                               !model.enabled &&
                                 "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700",
                               selectable && "cursor-pointer",
                               selected &&
                                 "relative ring-0 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border-2",
-                              selected &&
-                                (model.kind === "text"
-                                  ? "after:border-blue-500 dark:after:border-blue-400"
-                                  : "after:border-purple-500 dark:after:border-purple-400"),
-                              selected &&
-                                !model.enabled &&
-                                "after:border-gray-500 dark:after:border-gray-400"
+                              selected && "after:border-primary"
                             )}
                             key={model.id}
                             onClick={
@@ -1934,6 +1954,7 @@ export function ModelsPage() {
                             onKeyDown={
                               selectable
                                 ? (event) => {
+                                    if (event.target !== event.currentTarget) return
                                     if (
                                       event.key !== "Enter" &&
                                       event.key !== " "
@@ -1993,13 +2014,6 @@ export function ModelsPage() {
                                         render={
                                           <Button
                                             aria-label={t("common.more")}
-                                            className={cn(
-                                              "hover:bg-blue-100 hover:text-blue-800 aria-expanded:bg-blue-100 aria-expanded:text-blue-800 dark:hover:bg-blue-900 dark:hover:text-blue-200 dark:aria-expanded:bg-blue-900 dark:aria-expanded:text-blue-200",
-                                              model.kind !== "text" &&
-                                                "hover:bg-purple-100 hover:text-purple-800 aria-expanded:bg-purple-100 aria-expanded:text-purple-800 dark:hover:bg-purple-900 dark:hover:text-purple-200 dark:aria-expanded:bg-purple-900 dark:aria-expanded:text-purple-200",
-                                              !model.enabled &&
-                                                "hover:bg-gray-200 hover:text-gray-700 aria-expanded:bg-gray-200 aria-expanded:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300 dark:aria-expanded:bg-gray-800 dark:aria-expanded:text-gray-300"
-                                            )}
                                             size="icon-sm"
                                             type="button"
                                             variant="ghost"
@@ -2148,16 +2162,58 @@ export function ModelsPage() {
                             <CardFooter
                               className={cn(
                                 "min-w-0 border-t",
-                                !model.enabled
-                                  ? "border-gray-300 dark:border-gray-700"
-                                  : model.kind === "text"
-                                    ? "border-blue-200 dark:border-blue-800"
-                                    : "border-purple-200 dark:border-purple-800"
+                                !model.enabled && "border-gray-300 dark:border-gray-700"
                               )}
                             >
                               <ModelTagBadges
                                 tagIds={model.tagIds}
                                 tags={availableTags}
+                                leading={
+                                  <>
+                                    <ResourceAuthorizationBadge
+                                      authorization={model.authorization}
+                                      groupNames={authorizationGroupNames}
+                                      memberNames={authorizationMemberNames}
+                                      fallback={
+                                        model.type === "user" ? model.owner : undefined
+                                      }
+                                    />
+                                    {model.kind === "text" &&
+                                      model.supportsVision && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                                        >
+                                          {t("pages.models.supportsVision")}
+                                        </Badge>
+                                      )}
+                                    {model.kind === "text" &&
+                                      model.supportsReasoning && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200"
+                                        >
+                                          {t("pages.models.supportsReasoning")}
+                                        </Badge>
+                                      )}
+                                    {generationProtocol && (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "max-w-full",
+                                          model.kind === "image"
+                                            ? "border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-200"
+                                            : "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-200"
+                                        )}
+                                        title={generationProtocol}
+                                      >
+                                        <span className="min-w-0 truncate">
+                                          {generationProtocol}
+                                        </span>
+                                      </Badge>
+                                    )}
+                                  </>
+                                }
                               />
                             </CardFooter>
                           </Card>
@@ -2286,7 +2342,7 @@ export function ModelsPage() {
           if (!batchPending && !remote.pending) setBatchDeleteOpen(open)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("resources.modelBatchDelete.title")}</AlertDialogTitle>
           </AlertDialogHeader>
@@ -2319,7 +2375,7 @@ export function ModelsPage() {
           if (!open && !batchPending) setBatchEnabled(null)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {batchEnabled ? "启用所选模型？" : "禁用所选模型？"}
@@ -2381,7 +2437,7 @@ export function ModelsPage() {
           if (!open && !batchPending) setBatchTagsConfirm(false)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>设置所选模型的标签？</AlertDialogTitle>
           </AlertDialogHeader>
@@ -2455,7 +2511,7 @@ export function ModelsPage() {
           if (!open && !batchPending) setBatchAuthorizationConfirm(false)
         }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>设置所选模型的授权范围？</AlertDialogTitle>
           </AlertDialogHeader>

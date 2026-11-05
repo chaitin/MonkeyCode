@@ -190,12 +190,22 @@ func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o r
 	if key := o.String("icon_s3_key"); key != "" {
 		o["icon_path"] = "/api/admin/v1/connectors/" + o.String("id") + "/icon?v=" + resource.Hash(key)
 	}
-	count, err := sqlc.New(q).CountTools(ctx, o.String("id"))
-	if err != nil {
-		return err
+	o["enabled_tool_count"] = int64(0)
+	if o.String("authorization_mode") == "centralized" {
+		counts, err := sqlc.New(q).CountCentralTools(ctx, o.String("id"))
+		if err != nil {
+			return err
+		}
+		o["tool_count"], o["enabled_tool_count"] = counts.TotalCount, counts.EnabledCount
+	} else {
+		count, err := sqlc.New(q).CountTools(ctx, o.String("id"))
+		if err != nil {
+			return err
+		}
+		o["tool_count"] = count
 	}
-	o["tool_count"] = count
 	creds := []resource.Object{}
+	var err error
 	if o.String("authorization_mode") == "centralized" || o.String("ownership_type") == "user" {
 		user := ""
 		if o.String("authorization_mode") == "independent" {

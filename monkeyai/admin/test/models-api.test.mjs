@@ -97,7 +97,7 @@ test("resource cards show configured tag names", async () => {
     assert.match(
       source,
       new RegExp(
-        `<CardFooter[^>]*>\\s*<ResourceTagSummary tagIds=\\{${item}\\.tagIds\\}`
+        `<CardFooter[^>]*>\\s*<ResourceTagSummary\\s+tagIds=\\{${item}\\.tagIds\\}`
       )
     )
   }

@@ -38,6 +38,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
+import { ResourcePackageBadge } from "@/components/resource-package-badge"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
@@ -212,6 +214,7 @@ type McpServer = {
   connectionStatus: ConnectionStatus
   enabled: boolean
   toolCount: number
+  enabledToolCount: number
 }
 
 function toServer(row: ResourceRow, language: string): McpServer {
@@ -248,6 +251,7 @@ function toServer(row: ResourceRow, language: string): McpServer {
     creator: row.user.name || row.user.email || row.user.id,
     enabled: row.enabled,
     toolCount: row.tool_count ?? 0,
+    enabledToolCount: row.enabled_tool_count ?? 0,
     oauthConfig: row.oauth_config ?? {},
     callbackURL: row.callback_url ?? "",
   }
@@ -262,6 +266,12 @@ export function ToolsPage() {
   const servers = remote.items.map((row) => toServer(row, i18n.language))
   const reload = remote.reload
   const subjects = useSubjects()
+  const authorizationGroupNames = new Map(
+    subjects.flatGroups.map((group) => [group.value, group.labelKey])
+  )
+  const authorizationMemberNames = new Map(
+    subjects.members.map((member) => [member.id, member.name || member.email])
+  )
   const activeType = remote.type
   const [proxies, setProxies] = useState<SystemProxy[]>([])
   const [proxyError, setProxyError] = useState("")
@@ -1352,7 +1362,6 @@ export function ToolsPage() {
             return (
               <ResourceCard
                 key={server.id}
-                origin={server.origin}
                 disabled={!server.enabled}
                 {...batch.cardProps(server.id, server.name, server.type)}
               >
@@ -1385,9 +1394,9 @@ export function ToolsPage() {
                         <span className="truncate" title={server.name}>
                           {server.name}
                         </span>
-                        {server.origin === "package" && (
-                          <Badge variant="amber" title={server.publisher}>
-                            资源包导入
+                        {!server.enabled && (
+                          <Badge variant="outline">
+                            {t("resources.batch.disabled")}
                           </Badge>
                         )}
                       </CardTitle>
@@ -1414,11 +1423,6 @@ export function ToolsPage() {
                           render={
                             <ResourceCardMenuButton
                               aria-label={t("common.more")}
-                              tone={
-                                server.origin !== "package" && server.enabled
-                                  ? "blue"
-                                  : "neutral"
-                              }
                             />
                           }
                         >
@@ -1496,7 +1500,53 @@ export function ToolsPage() {
                   </p>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
-                  <ResourceTagSummary tagIds={server.tagIds} />
+                  <ResourceTagSummary
+                    tagIds={server.tagIds}
+                    leading={
+                      <>
+                        <ResourceAuthorizationBadge
+                          grants={server.grants}
+                          groupNames={authorizationGroupNames}
+                          memberNames={authorizationMemberNames}
+                          fallback={
+                            server.type === "user" ? server.creator : undefined
+                          }
+                        />
+                        {server.origin === "package" && (
+                          <ResourcePackageBadge kind="connector" />
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={
+                            server.authorizationMode === "centralized"
+                              ? "border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-800 dark:bg-lime-950 dark:text-lime-200"
+                              : server.authorizationMode === "none"
+                                ? "border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-200"
+                                : "border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-200"
+                          }
+                        >
+                          {t(
+                            `pages.tools.authorizationModes.${server.authorizationMode}`
+                          )}
+                        </Badge>
+                        {server.authorizationMode === "centralized" && (
+                          <Badge
+                            variant="outline"
+                            className={
+                              server.enabledToolCount > 0
+                                ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-200"
+                                : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200"
+                            }
+                          >
+                            {t("pages.tools.toolCountSummary", {
+                              enabled: server.enabledToolCount,
+                              total: server.toolCount,
+                            })}
+                          </Badge>
+                        )}
+                      </>
+                    }
+                  />
                 </CardFooter>
               </ResourceCard>
             )

@@ -651,6 +651,8 @@ export const deDE = {
         "Konfigurieren Sie MCP-Server, die Clients verbinden und verwenden können.",
     },
     rules: {
+      forcedEnabled: "Verpflichtend",
+      notForcedEnabled: "Optional",
       title: "Regeln",
       description:
         "Verwalten Sie Anweisungen, Verhaltensrichtlinien und Sicherheitsvorgaben der Organisation.",

@@ -10,6 +10,7 @@ import type {
 export type Grant = {
   user_id?: string | null
   group_id?: string | null
+  group?: { id: string; name: string; parent_id?: string | null } | null
   user?: { id: string; name: string; email: string } | null
   usage_requirement: "optional" | "required"
 }
@@ -64,6 +65,7 @@ export type ResourceRow = {
   credential_configured: boolean
   icon_path: string
   tool_count: number
+  enabled_tool_count?: number
   connection_status: "connected" | "error" | "unknown"
   oauth_config: Record<string, string>
   callback_url: string

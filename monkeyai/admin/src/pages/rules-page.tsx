@@ -17,6 +17,8 @@ import { ResourceBatchActions } from "@/components/resource-batch-actions"
 import { useResourceList } from "@/hooks/use-resource-list"
 import { useResourceBatch } from "@/hooks/use-resource-batch"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
+import { ResourcePackageBadge } from "@/components/resource-package-badge"
+import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { ResourceCard } from "@/components/resource-card"
@@ -128,6 +130,12 @@ export function RulesPage() {
   const activeRuleType = remote.type
   const rules = remote.items.map((row) => toRule(row, i18n.language))
   const subjects = useSubjects()
+  const authorizationGroupNames = new Map(
+    subjects.flatGroups.map((group) => [group.value, group.labelKey])
+  )
+  const authorizationMemberNames = new Map(
+    subjects.members.map((member) => [member.id, member.name || member.email])
+  )
   const { tags: availableTags } = useSkillTags()
   const [tagIds, setTagIds] = useState<string[]>([])
   const [tagsOpen, setTagsOpen] = useState(false)
@@ -467,7 +475,6 @@ export function RulesPage() {
             return (
               <ResourceCard
                 key={rule.id}
-                origin={rule.origin}
                 disabled={!rule.enabled}
                 {...batch.cardProps(rule.id, rule.name, rule.type)}
               >
@@ -496,11 +503,6 @@ export function RulesPage() {
                         <span className="truncate" title={rule.name}>
                           {rule.name}
                         </span>
-                        {rule.origin === "package" && (
-                          <Badge variant="amber" title={rule.publisher}>
-                            资源包导入
-                          </Badge>
-                        )}
                         {!rule.enabled && (
                           <Badge variant="outline">
                             {t("resources.batch.disabled")}
@@ -530,11 +532,6 @@ export function RulesPage() {
                           render={
                             <ResourceCardMenuButton
                               aria-label={t("common.more")}
-                              tone={
-                                rule.origin !== "package" && rule.enabled
-                                  ? "blue"
-                                  : "neutral"
-                              }
                             />
                           }
                         >
@@ -609,7 +606,38 @@ export function RulesPage() {
                   </p>
                 </CardContent>
                 <CardFooter className="min-w-0 border-t">
-                  <ResourceTagSummary tagIds={rule.tagIds} />
+                  <ResourceTagSummary
+                    tagIds={rule.tagIds}
+                    leading={
+                      <>
+                        <ResourceAuthorizationBadge
+                          grants={rule.grants}
+                          groupNames={authorizationGroupNames}
+                          memberNames={authorizationMemberNames}
+                          fallback={
+                            rule.type === "user" ? rule.creator : undefined
+                          }
+                        />
+                        {rule.origin === "package" && (
+                          <ResourcePackageBadge kind="rule" />
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={
+                            rule.forced
+                              ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-200"
+                              : "border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-800 dark:bg-lime-950 dark:text-lime-200"
+                          }
+                        >
+                          {t(
+                            rule.forced
+                              ? "pages.rules.forcedEnabled"
+                              : "pages.rules.notForcedEnabled"
+                          )}
+                        </Badge>
+                      </>
+                    }
+                  />
                 </CardFooter>
               </ResourceCard>
             )
