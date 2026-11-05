@@ -22,7 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestExpertAvatarAtomicSave(t *testing.T) {
+func avatarPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
 	dsn := os.Getenv("MONKEYAI_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("set MONKEYAI_TEST_DATABASE_URL to test expert avatar persistence")
@@ -32,12 +33,12 @@ func TestExpertAvatarAtomicSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	t.Cleanup(root.Close)
 	schema := "test_expert_avatars_" + strings.ReplaceAll(resource.ID(), "-", "")
 	if _, err := root.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 		t.Fatal(err)
 	}
-	defer root.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+	t.Cleanup(func() { _, _ = root.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE") })
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +48,7 @@ func TestExpertAvatarAtomicSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, query, args...); err != nil {
@@ -64,6 +65,18 @@ func TestExpertAvatarAtomicSave(t *testing.T) {
 			t.Fatal(err)
 		}
 		exec(string(data))
+	}
+	return pool
+}
+
+func TestExpertAvatarAtomicSave(t *testing.T) {
+	pool := avatarPool(t)
+	ctx := t.Context()
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
 	}
 	adminID, memberID := resource.ID(), resource.ID()
 	exec(`INSERT INTO users(id,name,email,role) VALUES($1,'Admin','avatar-admin@example.test','admin'),($2,'Member','avatar-member@example.test','user')`, adminID, memberID)
@@ -156,7 +169,7 @@ func TestExpertAvatarAtomicSave(t *testing.T) {
 		t.Fatalf("PNG avatar read failed: %d %s %s", read.Code, read.Header().Get("Content-Type"), read.Body.String())
 	}
 	// A JSON-only edit preserves the image. Supplying an arbitrary key cannot change it.
-	jsonBody := strings.TrimSuffix(metadata("Renamed", "Prompt"), "}") + `,"avatar_s3_key":"attacker-object","_expert_avatar":{"key":"attacker-object"}}`
+	jsonBody := strings.TrimSuffix(metadata("Renamed", "Prompt"), "}") + `,"avatar_s3_key":"attacker-object","avatar":{"key":"attacker-object"},"_expert_avatar":{"key":"attacker-object"}}`
 	jsonEdit := request("PUT", "/experts/"+id, created.Header().Get("ETag"), strings.NewReader(jsonBody), "application/json", adminCookie)
 	decode(jsonEdit)
 	assertState(id, "Renamed", firstKey, 2)

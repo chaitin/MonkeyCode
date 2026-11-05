@@ -2432,6 +2432,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentTagsResponse'
+  /api/v1/experts/avatar-support:
+    get:
+      summary: 查询个人专家头像写入能力
+      description: 客户端在提交 avatar 字段前查询；version 为 1 表示支持 JSON data URL 与 null 移除，available 表示已配置头像存储。响应不可缓存。
+      responses:
+        '200':
+          description: 当前头像写入能力。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, available]
+                properties:
+                  version:
+                    type: integer
+                    enum: [1]
+                  available:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/ResourceError401'
   /api/v1/experts:
     get:
       summary: 读取 Agent 专家
@@ -2495,7 +2515,13 @@ paths:
           $ref: '#/components/responses/ResourceError409'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接。分享通过 /resources/shares 管理。
+        '503':
+          description: 头像存储不可用，错误码 expert_avatar_unavailable。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceError'
+      description: 归属固定为当前用户，默认启用；仅允许关联自己可用的模型、规则、技能和连接。分享通过 /resources/shares 管理。avatar 随专家正文原子保存，头像无效或存储失败时不创建资源。
   /api/v1/connectors/tags:
     get:
       summary: 列出当前用户可用连接器配置的标签
@@ -3099,6 +3125,26 @@ paths:
       parameters:
       - $ref: '#/components/parameters/ResourceID'
       - $ref: '#/components/parameters/IfMatch'
+  /api/v1/experts/{id}/avatar:
+    get:
+      summary: 读取有权访问的专家头像
+      description: 专家所有者或获授权用户可读取；无头像或无访问权限时返回 404。
+      parameters:
+      - $ref: '#/components/parameters/ResourceID'
+      responses:
+        '200':
+          description: 专家头像；按真实图片内容返回类型，使用私有缓存。
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '401':
+          $ref: '#/components/responses/ResourceError401'
+        '404':
+          $ref: '#/components/responses/ResourceError404'
   /api/v1/experts/{id}:
     get:
       summary: 读取自己的个人专家
@@ -3161,7 +3207,13 @@ paths:
           $ref: '#/components/responses/ResourceError428'
         '500':
           $ref: '#/components/responses/ResourceError500'
-      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。
+        '503':
+          description: 头像存储不可用，错误码 expert_avatar_unavailable。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceError'
+      description: name 必填。仅更新输入声明的业务字段；不能修改归属、启用状态或分享关系。avatar 省略保留原图、null 移除、data URL 替换，与正文使用同一次事务和 revision。必须携带最近详情响应的 ETag 作为 If-Match，分享变更也会递增 revision。
     delete:
       summary: 删除自己的个人专家
       parameters:
@@ -4445,6 +4497,11 @@ components:
     UserExpertInput:
       type: object
       properties:
+        avatar:
+          type: [string, 'null']
+          writeOnly: true
+          maxLength: 349551
+          description: 省略保留原头像，null 移除；字符串必须为 PNG、JPEG 或 WebP 的 base64 data URL，解码后不超过 256 KiB，宽高均不超过 512 像素。与客户端图片准备器保持一致；存储不可用返回 503 expert_avatar_unavailable，图片无效返回 400 expert_avatar_invalid，超限返回 400 expert_avatar_too_large。
         tag_ids:
           type: array
           items: {type: string, format: uuid}
@@ -6214,6 +6271,10 @@ components:
     ExpertResource:
       type: object
       properties:
+        avatar_path:
+          type: string
+          readOnly: true
+          description: 头像读取路径，包含图片版本；个人接口返回 /api/v1/experts/{id}/avatar?v=...，无头像时省略。
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}

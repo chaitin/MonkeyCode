@@ -31,7 +31,11 @@ func (s *Service) WithStorage(storage resource.Storage) *Service {
 
 func NewService(store *resource.Store) *Service {
 	s := &Service{Store: store}
-	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors", "tag_ids"}, OverrideFields: []string{"name", "description"}, AllowImportedEnabled: true, Hidden: []string{"avatar_s3_key"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
+	s.CRUD = resource.NewCRUD(store, resource.Definition{Kind: "expert", Repository: func(q resource.Queryer) resource.Repository { return sqlc.New(q) }, Path: "/experts", Fields: []string{"name", "description", "prompt", "enabled"}, UserFields: []string{"name", "description", "prompt", "rule_ids", "skill_ids", "connectors", "tag_ids", avatarChangeKey}, UserDecorate: func(o resource.Object) {
+		if path := o.String("avatar_path"); path != "" {
+			o["avatar_path"] = strings.Replace(path, "/api/admin/v1/", "/api/v1/", 1)
+		}
+	}, OverrideFields: []string{"name", "description"}, AllowImportedEnabled: true, Hidden: []string{"avatar_s3_key"}, Validate: s.validate, Persist: s.links, Decorate: s.decorate})
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
@@ -114,6 +118,12 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 
 func (s *Service) RegisterAgent(r chi.Router) {
 	s.CRUD.RegisterAgent(r)
+	r.Get("/experts/avatar-support", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		resource.JSON(req.Context(), w, http.StatusOK, resource.Object{"version": 1, "available": s.storage != nil})
+	})
+	r.Post("/experts", s.saveUserExpert)
+	r.Put("/experts/{id}", s.saveUserExpert)
 	if s.storage != nil {
 		r.Get("/experts/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, false) })
 	}
