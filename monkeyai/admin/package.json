@@ -22,6 +22,8 @@
     "test:browser:auth": "node scripts/check-client-authorization.mjs",
     "test:browser:branding": "node scripts/check-public-branding.mjs",
     "test:browser:brand-logo": "node scripts/check-brand-logo.mjs",
+    "test:browser:expert-avatar": "node scripts/check-expert-avatar.mjs",
+    "test:browser:connector-credentials": "node scripts/check-connector-credentials.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },

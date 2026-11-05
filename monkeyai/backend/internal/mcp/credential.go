@@ -227,9 +227,11 @@ func (s *Service) credentialRoutes(r chi.Router, admin bool) {
 	for _, path := range []string{"/connectors/{id}/credentials", "/connectors/{id}/credentials/{credentialID}"} {
 		r.Get(path, func(w http.ResponseWriter, r *http.Request) { s.readCredentials(w, r, admin) })
 	}
-	r.Post("/connectors/{id}/credentials", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, admin) })
-	r.Patch("/connectors/{id}/credentials/{credentialID}", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, admin) })
-	r.Delete("/connectors/{id}/credentials/{credentialID}", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, admin) })
+	if !admin {
+		r.Post("/connectors/{id}/credentials", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, false) })
+		r.Patch("/connectors/{id}/credentials/{credentialID}", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, false) })
+		r.Delete("/connectors/{id}/credentials/{credentialID}", func(w http.ResponseWriter, r *http.Request) { s.saveCredential(w, r, false) })
+	}
 }
 func (s *Service) readCredentials(w http.ResponseWriter, r *http.Request, admin bool) {
 	u, _ := identity.UserFromContext(r.Context())

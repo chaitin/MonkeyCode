@@ -475,6 +475,8 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 
 认证方式以 Connector 实际 Connector Provider 为准，本表不重复保存 method。集中认证使用每个 Connector 唯一的 `user_id IS NULL` 有效凭证；独立认证 `user_id` 必填；`none` 不允许凭证。重新授权覆盖原记录。
 
+管理后台通过现有 `POST /api/admin/v1/connectors`、`PUT /api/admin/v1/connectors/{id}` 的可选 `credential` 对象维护集中凭证，连接器信息与凭证写入同一个数据库事务。修改凭证须携带 `credential.id`、`credential.revision`，并保留连接器的 `If-Match`；省略 `credential` 不变更凭证，省略 `http_headers` 保留原 Header，`revoke: true` 撤销指定凭证。Header 为整组替换，提交成功后自动测试连接，远端测试失败不回滚已保存的数据。OAuth 可先保存凭证名称，Token 仍仅由授权流程写入。资源包连接器的凭证独立保存，不记录到 `admin_overrides`；仅修改凭证同样递增连接器版本。后台原有凭证 POST/PATCH/DELETE 路由已移除，元数据查询、OAuth 授权、检测和客户端独立凭证接口保留。
+
 ### 8.9 `mcp_tools`：MCP 工具
 
 工具目录按 Connector Provider 保存，同一 Connector Provider 的全部 Connector 共享目录、启停和计费配置。
@@ -504,12 +506,15 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 | `name` | `text` | 是 | 无 | 专家名称。 |
 | `description` | `text` | 是 | 无 | 专家用途说明。 |
 | `prompt` | `text` | 是 | 无 | 专家角色、目标和工作方式提示词。 |
+| `avatar_s3_key` | `text` | 是 | `''` | 头像对象存储键，空字符串表示未设置；对外只返回带版本参数的 `avatar_path`。 |
 | `resource_manifest_hash` | `text` | 是 | 无 | 当前专家资源清单 SHA-256。 |
 | `enabled` | `boolean` | 是 | `true` | 是否允许新会话使用。 |
 | `created_by_user_id` | `uuid` | 是 | 无 | 创建管理员。 |
 | `created_at` | `timestamptz` | 是 | 当前时间 | 创建时间。 |
 | `updated_at` | `timestamptz` | 是 | 当前时间 | 最近更新时间。 |
 | `deleted_at` | `timestamptz` | 否 | `NULL` | 软删除时间。 |
+
+管理后台新建、修改普通系统专家时可选头像：预览区点击选图，仅在保存时提交。头像预览为圆角正方形，并与名称、简介输入框的上下边沿对齐。技能在左、规则在右，连接器独占下一行，标签与授权范围并排。新建默认授权根分组（从接口加载真实 ID），手动改选或清空后保留用户选择；编辑保留原有授权。现有专家 POST/PUT 接口兼容 JSON（保留原头像）和 multipart（`metadata` JSON 字符串 + `avatar` 文件）；PNG、JPG/JPEG、WebP 最多 1 MiB，校验真实格式并保留原图。专家字段、关联、标签、授权和头像引用在同一数据库事务中保存，更新沿用 `If-Match`。失败时清理未引用的新对象，成功替换后清理未引用的旧对象；资源包原专家头像仍只读。卡片头像图片为 36×36，外框为 40×40。
 
 专家不关联模型，会话模型由用户独立选择。模型的启停、删除和授权变化不影响专家资源清单。
 

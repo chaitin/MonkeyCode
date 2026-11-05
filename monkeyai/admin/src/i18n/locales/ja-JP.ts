@@ -545,6 +545,7 @@ export const jaJP = {
       content: "スキル内容（SKILL.md）",
       contentPlaceholder: "スキルの指示を入力",
       skillPackage: "スキルパッケージ",
+      uploadPackage: "スキルパッケージをアップロード",
       packageHint:
         "スキルディレクトリを ZIP 形式（最大 500 MiB）でアップロードします。",
       packageOptionalHint:
@@ -572,6 +573,7 @@ export const jaJP = {
           "SKILL.md の frontmatter に description がありません。",
       },
       batchImport: {
+        choosePackage: "スキルパッケージファイルを選択",
         upload: "アップロード",
         sourceStep: "ソースを選択",
         selectStep: "スキルを選択",
@@ -614,6 +616,11 @@ export const jaJP = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "アバター",
+      uploadAvatar: "アバターをアップロード",
+      replaceAvatar: "アバターを変更",
+      avatarTooLarge: "アバターは 1 MiB 以下にしてください",
+      avatarInvalid: "有効な PNG、JPG/JPEG、WebP 画像を選択してください",
       personalExpert: "個人エキスパート",
       title: "エキスパート",
       description: "分野別エキスパートと専門能力の設定を管理します。",

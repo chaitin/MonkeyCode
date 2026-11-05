@@ -534,6 +534,7 @@ export const koKR = {
       content: "스킬 내용(SKILL.md)",
       contentPlaceholder: "스킬 지침을 입력하세요",
       skillPackage: "스킬 패키지",
+      uploadPackage: "스킬 패키지 업로드",
       packageHint:
         "스킬 디렉터리를 ZIP 형식으로 업로드하세요. 최대 500 MiB입니다.",
       packageOptionalHint:
@@ -560,6 +561,7 @@ export const koKR = {
         missingDescription: "SKILL.md frontmatter에 description이 없습니다.",
       },
       batchImport: {
+        choosePackage: "스킬 패키지 파일 선택",
         upload: "업로드",
         sourceStep: "소스 선택",
         selectStep: "스킬 선택",
@@ -601,6 +603,11 @@ export const koKR = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "아바타",
+      uploadAvatar: "아바타 업로드",
+      replaceAvatar: "아바타 변경",
+      avatarTooLarge: "아바타는 1 MiB 이하여야 합니다",
+      avatarInvalid: "유효한 PNG, JPG/JPEG 또는 WebP 이미지를 선택하세요",
       personalExpert: "개인 전문가",
       title: "전문가",
       description: "분야별 전문가와 전문 역량 설정을 관리합니다.",

@@ -561,6 +561,7 @@ export const frFR = {
       content: "Contenu de la compétence (SKILL.md)",
       contentPlaceholder: "Saisissez les instructions de la compétence",
       skillPackage: "Paquet de compétence",
+      uploadPackage: "Importer un paquet de compétence",
       packageHint:
         "Chargez le dossier de compétence au format ZIP, jusqu’à 500 MiB.",
       packageOptionalHint:
@@ -588,6 +589,7 @@ export const frFR = {
           "Le champ description manque dans le frontmatter de SKILL.md.",
       },
       batchImport: {
+        choosePackage: "Choisir des fichiers de compétences",
         upload: "Téléverser",
         sourceStep: "Choisir la source",
         selectStep: "Sélectionner",
@@ -630,6 +632,11 @@ export const frFR = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "Avatar",
+      uploadAvatar: "Importer un avatar",
+      replaceAvatar: "Remplacer l’avatar",
+      avatarTooLarge: "L’avatar ne doit pas dépasser 1 MiB",
+      avatarInvalid: "Choisissez une image PNG, JPG/JPEG ou WebP valide",
       personalExpert: "Expert personnel",
       title: "Experts",
       description:

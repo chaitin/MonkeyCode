@@ -1,4 +1,9 @@
-import { ConnectorCredentials } from "@/components/connector-credentials"
+import {
+  ConnectorCredentials,
+  type ConnectorCredentialsHandle,
+  type ConnectorCredentialInput,
+} from "@/components/connector-credentials"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
 import { SystemProxySelect } from "@/components/proxy-settings"
 import { loadProxies, type SystemProxy } from "@/lib/proxy-settings"
@@ -19,8 +24,9 @@ import { ResourceNotice } from "@/components/resource-notice"
 import { ResourceCard } from "@/components/resource-card"
 import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { TableLoading } from "@/components/table-loading"
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
+  ArrowRight01Icon,
   Delete02Icon,
   Edit02Icon,
   McpServerIcon,
@@ -36,6 +42,10 @@ import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
+import {
+  ResourceAvatarField,
+  type ResourceAvatarDraft,
+} from "@/components/resource-avatar-field"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { useSkillTags } from "@/hooks/use-skill-tags"
@@ -63,7 +73,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -93,6 +102,13 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from "@/components/ui/item"
+import {
   Table,
   TableBody,
   TableCell,
@@ -106,7 +122,11 @@ import { useResourceList } from "@/hooks/use-resource-list"
 import { useResourceBatch } from "@/hooks/use-resource-batch"
 import { ResourceBatchActions } from "@/components/resource-batch-actions"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 
 type McpServerType = "system" | "user"
@@ -243,6 +263,7 @@ function toServer(row: ResourceRow, language: string): McpServer {
 
 export function ToolsPage() {
   const { t, i18n } = useTranslation()
+  const { showToast } = useAppToast()
   const { tags: availableTags } = useSkillTags()
   const remote = useResourceList("/connectors")
   const batch = useResourceBatch("connector", remote)
@@ -258,27 +279,44 @@ export function ToolsPage() {
       .catch((reason: Error) => setProxyError(reason.message))
   }, [])
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [editingServer, setEditingServer] = useState<McpServer | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
     useState<McpServer | null>(null)
   const [authorizationMode, setAuthorizationMode] =
-    useState<McpAuthorizationMode>("independent")
+    useState<McpAuthorizationMode>("none")
   const [authorizationMethod, setAuthorizationMethod] =
-    useState<McpAuthorizationMethod>("oauth")
+    useState<McpAuthorizationMethod>("httpHeader")
   const [oauthClientMode, setOAuthClientMode] =
     useState<OAuthClientMode>("dynamic")
   const [tagsOpen, setTagsOpen] = useState(false)
+  const [avatarDraft, setAvatarDraft] = useState<ResourceAvatarDraft>(null)
   const [tagIds, setTagIds] = useState<string[]>([])
-  const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [],
+  const [authorizationOverride, setAuthorization] =
+    useState<AuthorizationSelection | null>(null)
+  const authorization: AuthorizationSelection = authorizationOverride ?? {
+    groupIds: subjects.groups.slice(0, 1).map((group) => group.value),
     memberIds: [],
-  })
+  }
   const [testingServerId, setTestingServerId] = useState<string | null>(null)
   const [viewingServer, setViewingServer] = useState<McpServer | null>(null)
   const [contexts, setContexts] = useState<Credential[]>([])
   const [contextID, setContextID] = useState("")
-  const [credentialServer, setCredentialServer] = useState<McpServer | null>(
-    null
+  const formRef = useRef<HTMLFormElement>(null)
+  const credentialsRef = useRef<ConnectorCredentialsHandle>(null)
+  const [credentialBusy, setCredentialBusy] = useState(false)
+  const editorPending = remote.pending || credentialBusy
+  const refreshConnector = useCallback(
+    async (id: string) => {
+      const saved = toServer(
+        await api<ResourceRow>(base + `/connectors/${id}`),
+        i18n.language
+      )
+      setEditingServer(saved)
+      await reload()
+      return saved
+    },
+    [i18n.language, reload]
   )
   const [toolDrafts, setToolDrafts] = useState<McpToolConfig[]>([])
   const importedServer = editingServer?.origin === "package"
@@ -287,6 +325,24 @@ export function ToolsPage() {
     editingServer?.oauthConfig.mode === "dynamic"
       ? {}
       : (editingServer?.oauthConfig ?? {})
+  const authenticationModeItems = [
+    { value: "none", label: t("pages.tools.authorizationModes.none") },
+    {
+      value: "independent",
+      label: t("pages.tools.authorizationModes.independent"),
+    },
+    {
+      value: "centralized",
+      label: t("pages.tools.authorizationModes.centralized"),
+    },
+  ]
+  const authenticationProtocolItems = [
+    {
+      value: "httpHeader",
+      label: t("pages.tools.authorizationMethods.httpHeader"),
+    },
+    { value: "oauth", label: t("pages.tools.authorizationMethods.oauth") },
+  ]
   const oauthTokenAuthItems = [
     {
       value: DEFAULT_TOKEN_AUTH_METHOD,
@@ -329,15 +385,18 @@ export function ToolsPage() {
   }
   const resetDraft = () => {
     setEditingServer(null)
-    setAuthorizationMode("independent")
-    setAuthorizationMethod("oauth")
+    setAdvancedOpen(false)
+    setAuthorizationMode("none")
+    setAuthorizationMethod("httpHeader")
     setOAuthClientMode("dynamic")
     setTagsOpen(false)
     setTagIds([])
-    setAuthorization({ groupIds: [], memberIds: [] })
+    setAvatarDraft(null)
+    setAuthorization(null)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
+    if (editorPending) return
     setDialogOpen(open)
     if (!open) resetDraft()
   }
@@ -346,8 +405,10 @@ export function ToolsPage() {
     if (server.type !== "system") return
 
     setEditingServer(server)
+    setAdvancedOpen(false)
+    setAvatarDraft(null)
     setAuthorizationMode(server.authorizationMode)
-    setAuthorizationMethod(server.authorizationMethod ?? "oauth")
+    setAuthorizationMethod(server.authorizationMethod ?? "httpHeader")
     setOAuthClientMode(
       server.oauthConfig.mode === "dynamic" ? "dynamic" : "manual"
     )
@@ -357,10 +418,12 @@ export function ToolsPage() {
     setDialogOpen(true)
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const persistConnector = async (formData: FormData): Promise<McpServer> => {
+    const credential =
+      authorizationMode === "centralized"
+        ? credentialsRef.current?.getValue()
+        : undefined
     if (editingServer?.origin === "package") {
-      const formData = new FormData(event.currentTarget)
       const name = String(formData.get("name") ?? "").trim()
       const description = String(formData.get("description") ?? "").trim()
       const url = String(formData.get("url") ?? "").trim()
@@ -381,7 +444,9 @@ export function ToolsPage() {
         formData,
         editingServer.oauthConfig
       )
-      const overrides: Record<string, unknown> = {}
+      const overrides: Record<string, unknown> = credential
+        ? { credential }
+        : {}
       if (name !== editingServer.name) overrides.name = name
       if (description !== editingServer.description) {
         overrides.description = description
@@ -417,79 +482,127 @@ export function ToolsPage() {
       ) {
         overrides.tag_ids = tagIds
       }
-      await remote.run(async () => {
-        const saved = Object.keys(overrides).length
-          ? await saveResource(
+      let saved = Object.keys(overrides).length
+        ? toServer(
+            await saveResource(
               `/connectors/${editingServer.id}`,
               overrides,
               editingServer.revision
-            )
-          : editingServer
-        await savePackageGrants("connector", saved, authorization)
-        handleDialogOpenChange(false)
-      }, t("resources.operationCompleted"))
-      return
+            ),
+            i18n.language
+          )
+        : editingServer
+      setEditingServer(saved)
+      credentialsRef.current?.accept(saved, credential)
+      const scope = await savePackageGrants("connector", saved, authorization)
+      saved = {
+        ...saved,
+        grants: scope.grants,
+        revision: scope.revision,
+        authorization: selection(scope.grants),
+      }
+      setEditingServer(saved)
+      return saved
     }
-    const form = event.currentTarget
-    const formData = new FormData(form)
     const name = String(formData.get("name") ?? "").trim()
     const description = String(formData.get("description") ?? "").trim()
     const url = String(formData.get("url") ?? "").trim()
-    if (!name || !url || editingServer?.type === "user") return
-    await remote.run(async () => {
-      const secret = String(formData.get("oauthClientSecret") ?? "")
-      const saved = await saveResource(
-        editingServer ? `/connectors/${editingServer.id}` : "/connectors",
-        {
-          name,
-          description,
-          url,
-          proxy_id: String(formData.get("proxyId") ?? "").replace(
-            /^__direct__$/,
-            ""
-          ),
-          tag_ids: tagIds,
-          grants: grants(authorization),
-          authorization_mode: authorizationMode,
-          authorization_method:
-            authorizationMode === "none"
-              ? null
-              : authorizationMethod === "httpHeader"
-                ? "http_header"
-                : "oauth",
-          auth_header_name: String(formData.get("authHeaderName") ?? "").trim(),
-          oauth_config: oauthFormConfig(
-            oauthClientMode,
-            formData,
-            editingServer?.oauthConfig
-          ),
-          ...(oauthClientMode === "manual" && (secret || !editingServer)
-            ? { oauth_client_secret: secret }
-            : {}),
-        },
-        editingServer?.revision
-      )
+    if (!name || !url || editingServer?.type === "user")
+      throw new Error(t("resources.credentialConnectorRequired"))
+    const secret = String(formData.get("oauthClientSecret") ?? "")
+    let saved = await saveResource(
+      editingServer ? `/connectors/${editingServer.id}` : "/connectors",
+      {
+        name,
+        description,
+        url,
+        ...(credential ? { credential } : {}),
+        proxy_id: String(formData.get("proxyId") ?? "").replace(
+          /^__direct__$/,
+          ""
+        ),
+        tag_ids: tagIds,
+        grants: grants(authorization),
+        authorization_mode: authorizationMode,
+        authorization_method:
+          authorizationMode === "none"
+            ? null
+            : authorizationMethod === "httpHeader"
+              ? "http_header"
+              : "oauth",
+        auth_header_name: String(formData.get("authHeaderName") ?? "").trim(),
+        oauth_config: oauthFormConfig(
+          oauthClientMode,
+          formData,
+          editingServer?.oauthConfig
+        ),
+        ...(oauthClientMode === "manual" && (secret || !editingServer)
+          ? { oauth_client_secret: secret }
+          : {}),
+      },
+      editingServer?.revision
+    )
+    setEditingServer(toServer(saved, i18n.language))
+    credentialsRef.current?.accept(toServer(saved, i18n.language), credential)
+    const icon = avatarDraft?.file
+    if (icon instanceof File && icon.size > 0) {
+      const data = new FormData()
+      data.set("icon", icon)
+      saved = await api<ResourceRow>(base + `/connectors/${saved.id}/icon`, {
+        method: "PUT",
+        headers: match(saved.revision),
+        body: data,
+      })
       setEditingServer(toServer(saved, i18n.language))
-      const icon = formData.get("icon")
-      if (icon instanceof File && icon.size > 0) {
-        const data = new FormData()
-        data.set("icon", icon)
-        await api(base + `/connectors/${saved.id}/icon`, {
-          method: "PUT",
-          headers: match(saved.revision),
-          body: data,
-        })
-      }
-      if (saved.authorization_mode === "centralized") {
-        handleDialogOpenChange(false)
-        setCredentialServer(toServer(saved, i18n.language))
-      } else if (
-        !saved.callback_url ||
-        editingServer ||
-        oauthClientMode === "dynamic"
+      setAvatarDraft(null)
+    }
+    return toServer(saved, i18n.language)
+  }
+  const prepareConnector = async () => {
+    if (!formRef.current?.reportValidity()) return null
+    const formData = new FormData(formRef.current)
+    let saved: McpServer | null = null
+    await remote.run(async () => {
+      saved = await persistConnector(formData)
+    })
+    return saved
+  }
+  const revokeCredential = async (credential: ConnectorCredentialInput) => {
+    if (!editingServer) return null
+    let saved: McpServer | null = null
+    await remote.run(async () => {
+      saved = toServer(
+        await saveResource(
+          `/connectors/${editingServer.id}`,
+          { credential },
+          editingServer.revision
+        ),
+        i18n.language
       )
-        handleDialogOpenChange(false)
-    }, t("resources.operationCompleted"))
+      setEditingServer(saved)
+    })
+    return saved
+  }
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editorPending) return
+    const formData = new FormData(event.currentTarget)
+    await remote.run(async () => {
+      if (authorizationMode === "centralized")
+        credentialsRef.current?.validate()
+      const saved = await persistConnector(formData)
+      if (saved.authorizationMode === "centralized") {
+        const credential = saved.credentials[0]
+        if (
+          credential?.authorization_status !== "authorized" ||
+          credential.connection_status === "error"
+        )
+          return
+      }
+      setDialogOpen(false)
+      resetDraft()
+      showToast({ status: "success", title: t("resources.operationCompleted") })
+    })
   }
   const handleDeleteServer = async () => {
     if (!serverPendingDeletion || serverPendingDeletion.origin === "package")
@@ -612,15 +725,15 @@ export function ToolsPage() {
                   {t("pages.tools.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  className="max-h-[calc(100vh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-2xl"
                   closeLabel={t("common.close")}
                   aria-describedby={
                     importedServer ? "imported-connector-readonly" : undefined
                   }
                 >
                   <form
-                    className="flex flex-col gap-6"
-                    key={editingServer?.id ?? "new-mcp-server"}
+                    ref={formRef}
+                    className="flex min-w-0 flex-col gap-6"
                     onSubmit={handleSubmit}
                   >
                     <DialogHeader>
@@ -629,52 +742,63 @@ export function ToolsPage() {
                           ? t("pages.tools.editDialogTitle")
                           : t("pages.tools.dialogTitle")}
                       </DialogTitle>
-                      <DialogDescription>
-                        {t("pages.tools.dialogDescription")}
-                      </DialogDescription>
                     </DialogHeader>
 
                     <FieldGroup className="gap-4">
-                      <fieldset className="contents">
-                        <Field>
-                          <FieldLabel htmlFor="mcp-name">
-                            {t("pages.tools.name")}
-                          </FieldLabel>
-                          <Input
-                            defaultValue={editingServer?.name}
-                            id="mcp-name"
-                            name="name"
-                            placeholder={t("pages.tools.namePlaceholder")}
-                            required
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="mcp-icon">
-                            {t("resources.connectorIcon")}
-                          </FieldLabel>
-                          <Input
-                            disabled={importedServer}
-                            id="mcp-icon"
-                            name="icon"
-                            type="file"
-                            accept="image/png,image/jpeg"
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="mcp-description">
-                            {t("pages.tools.toolDescription")}
-                          </FieldLabel>
-                          <Textarea
-                            className="max-h-40 min-h-24 resize-y overflow-y-auto"
-                            defaultValue={editingServer?.description}
-                            id="mcp-description"
-                            name="description"
-                            placeholder={t(
-                              "pages.tools.descriptionPlaceholder"
-                            )}
-                            required={!importedServer}
-                          />
-                        </Field>
+                      <div
+                        data-resource-basics=""
+                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_var(--resource-avatar-size,7.5rem)] items-start !gap-x-3 !gap-y-1 sm:!gap-x-4 sm:!gap-y-3"
+                      >
+                        <fieldset disabled={editorPending} className="contents">
+                          <Field className="contents">
+                            <FieldLabel htmlFor="mcp-name">
+                              {t("pages.tools.name")}
+                            </FieldLabel>
+                            <Input
+                              defaultValue={editingServer?.name}
+                              id="mcp-name"
+                              className="sm:mb-1"
+                              name="name"
+                              placeholder={t("pages.tools.namePlaceholder")}
+                              required
+                            />
+                          </Field>
+                          <Field className="contents">
+                            <FieldLabel htmlFor="mcp-description">
+                              {t("pages.tools.toolDescription")}
+                            </FieldLabel>
+                            <Input
+                              defaultValue={editingServer?.description}
+                              id="mcp-description"
+                              name="description"
+                              placeholder={t(
+                                "pages.tools.descriptionPlaceholder"
+                              )}
+                              required={!importedServer}
+                            />
+                          </Field>
+                        </fieldset>
+                        <ResourceAvatarField
+                          id="mcp-avatar"
+                          src={editingServer?.iconPath || ""}
+                          value={avatarDraft}
+                          onValueChange={setAvatarDraft}
+                          disabled={importedServer || editorPending}
+                          loading={editorPending && !!avatarDraft}
+                          acceptedTypes={["image/png", "image/jpeg"]}
+                          invalidImageMessage={t(
+                            "resources.connectorAvatarInvalid"
+                          )}
+                          fallback={
+                            <HugeiconsIcon
+                              icon={McpServerIcon}
+                              className="size-8"
+                              strokeWidth={2}
+                            />
+                          }
+                        />
+                      </div>
+                      <fieldset disabled={editorPending} className="contents">
                         <Field>
                           <FieldLabel htmlFor="mcp-url">
                             {t("pages.tools.url")}
@@ -688,82 +812,132 @@ export function ToolsPage() {
                             type="url"
                           />
                         </Field>
-                        <Field>
-                          <FieldLabel htmlFor="mcp-proxy">
-                            {t("pages.otherSettings.proxies.title", {
-                              defaultValue: "系统代理",
-                            })}
-                          </FieldLabel>
-                          <SystemProxySelect
-                            id="mcp-proxy"
-                            selected={editingServer?.proxyId ?? ""}
-                            proxies={proxies}
-                          />
-                          {proxyError && (
-                            <p role="alert" className="text-destructive">
-                              {proxyError}
-                            </p>
-                          )}
-                        </Field>
-                        <Field>
+                        <Field className="min-w-0 rounded-lg border p-4">
                           <FieldLabel>
                             {t("pages.tools.authorization")}
                           </FieldLabel>
                           <div className="flex flex-wrap gap-3">
-                            <Tabs
-                              value={authorizationMode}
-                              onValueChange={(value) => {
-                                setAuthorizationMode(
-                                  value as McpAuthorizationMode
-                                )
-                              }}
+                            <Item
+                              variant="outline"
+                              size="sm"
+                              className="flex-nowrap"
                             >
-                              <TabsList
-                                aria-label={t("pages.tools.authorizationMode")}
-                                className="w-full"
-                              >
-                                <TabsTrigger value="none">
-                                  {t("pages.tools.authorizationModes.none")}
-                                </TabsTrigger>
-                                <TabsTrigger value="independent">
-                                  {t(
-                                    "pages.tools.authorizationModes.independent"
-                                  )}
-                                </TabsTrigger>
-                                <TabsTrigger value="centralized">
-                                  {t(
-                                    "pages.tools.authorizationModes.centralized"
-                                  )}
-                                </TabsTrigger>
-                              </TabsList>
-                            </Tabs>
-                            {authorizationMode !== "none" && (
-                              <Tabs
-                                value={authorizationMethod}
-                                onValueChange={(value) => {
-                                  setAuthorizationMethod(
-                                    value as McpAuthorizationMethod
-                                  )
-                                }}
-                              >
-                                <TabsList
-                                  aria-label={t(
-                                    "pages.tools.authorizationMethod"
-                                  )}
-                                  className="w-full"
+                              <ItemContent className="min-w-0">
+                                <ItemTitle>
+                                  <label htmlFor="mcp-authentication-mode">
+                                    {t("pages.tools.authorizationMethod")}
+                                  </label>
+                                </ItemTitle>
+                                <ItemDescription
+                                  id="mcp-authentication-mode-description"
+                                  className="line-clamp-none"
                                 >
-                                  <TabsTrigger value="oauth">
+                                  {t(
+                                    authorizationMode === "none"
+                                      ? "pages.tools.noAuthorizationDescription"
+                                      : authorizationMode === "independent"
+                                        ? "pages.tools.independentAuthorizationDescription"
+                                        : "pages.tools.centralizedAuthorizationDescription"
+                                  )}
+                                </ItemDescription>
+                              </ItemContent>
+                              <ItemActions>
+                                <Select
+                                  items={authenticationModeItems}
+                                  value={authorizationMode}
+                                  disabled={remote.pending}
+                                  onValueChange={(value) => {
+                                    if (value)
+                                      setAuthorizationMode(
+                                        value as McpAuthorizationMode
+                                      )
+                                  }}
+                                >
+                                  <SelectTrigger
+                                    id="mcp-authentication-mode"
+                                    aria-describedby="mcp-authentication-mode-description"
+                                    className="w-28 sm:w-36"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent
+                                    align="end"
+                                    alignItemWithTrigger={false}
+                                  >
+                                    <SelectGroup>
+                                      {authenticationModeItems.map((item) => (
+                                        <SelectItem
+                                          key={item.value}
+                                          value={item.value}
+                                        >
+                                          {item.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </ItemActions>
+                            </Item>
+                            {authorizationMode !== "none" && (
+                              <Item
+                                variant="outline"
+                                size="sm"
+                                className="flex-nowrap"
+                              >
+                                <ItemContent className="min-w-0">
+                                  <ItemTitle>
+                                    <label htmlFor="mcp-authentication-protocol">
+                                      {t("pages.tools.authenticationProtocol")}
+                                    </label>
+                                  </ItemTitle>
+                                  <ItemDescription
+                                    id="mcp-authentication-protocol-description"
+                                    className="line-clamp-none"
+                                  >
                                     {t(
-                                      "pages.tools.authorizationMethods.oauth"
+                                      `pages.tools.authenticationProtocolDescriptions.${authorizationMethod}`
                                     )}
-                                  </TabsTrigger>
-                                  <TabsTrigger value="httpHeader">
-                                    {t(
-                                      "pages.tools.authorizationMethods.httpHeader"
-                                    )}
-                                  </TabsTrigger>
-                                </TabsList>
-                              </Tabs>
+                                  </ItemDescription>
+                                </ItemContent>
+                                <ItemActions>
+                                  <Select
+                                    items={authenticationProtocolItems}
+                                    value={authorizationMethod}
+                                    disabled={remote.pending}
+                                    onValueChange={(value) => {
+                                      if (value)
+                                        setAuthorizationMethod(
+                                          value as McpAuthorizationMethod
+                                        )
+                                    }}
+                                  >
+                                    <SelectTrigger
+                                      id="mcp-authentication-protocol"
+                                      aria-describedby="mcp-authentication-protocol-description"
+                                      className="w-28 sm:w-36"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent
+                                      align="end"
+                                      alignItemWithTrigger={false}
+                                    >
+                                      <SelectGroup>
+                                        {authenticationProtocolItems.map(
+                                          (item) => (
+                                            <SelectItem
+                                              key={item.value}
+                                              value={item.value}
+                                            >
+                                              {item.label}
+                                            </SelectItem>
+                                          )
+                                        )}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
+                                </ItemActions>
+                              </Item>
                             )}
                           </div>
                           {authorizationMode !== "none" &&
@@ -782,19 +956,11 @@ export function ToolsPage() {
                                 />
                               </Field>
                             )}
-                          <FieldDescription>
-                            {t(
-                              authorizationMode === "none"
-                                ? "pages.tools.noAuthorizationDescription"
-                                : authorizationMode === "independent"
-                                  ? "pages.tools.independentAuthorizationDescription"
-                                  : "pages.tools.centralizedAuthorizationDescription"
-                            )}
-                          </FieldDescription>
                           {authorizationMode !== "none" &&
                             authorizationMethod === "oauth" && (
                               <>
                                 <Tabs
+                                  className="min-w-0"
                                   value={oauthClientMode}
                                   onValueChange={(value) =>
                                     setOAuthClientMode(value as OAuthClientMode)
@@ -802,11 +968,18 @@ export function ToolsPage() {
                                 >
                                   <TabsList
                                     aria-label={t("resources.oauthClientMode")}
+                                    className="!h-auto w-full max-w-full"
                                   >
-                                    <TabsTrigger value="dynamic">
+                                    <TabsTrigger
+                                      value="dynamic"
+                                      className="h-auto min-h-8 whitespace-normal text-center"
+                                    >
                                       {t("resources.oauthClientDynamic")}
                                     </TabsTrigger>
-                                    <TabsTrigger value="manual">
+                                    <TabsTrigger
+                                      value="manual"
+                                      className="h-auto min-h-8 whitespace-normal text-center"
+                                    >
                                       {t("resources.oauthClientManual")}
                                     </TabsTrigger>
                                   </TabsList>
@@ -945,49 +1118,108 @@ export function ToolsPage() {
                                 )}
                               </>
                             )}
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="mcp-tags">
-                            {t("pages.skills.tags")}
-                          </FieldLabel>
-                          <SkillTagSelect
-                            id="mcp-tags"
-                            open={tagsOpen}
-                            options={availableTags}
-                            placeholder={t("pages.skills.tagsPlaceholder")}
-                            value={tagIds}
-                            onOpenChange={setTagsOpen}
-                            onValueChange={setTagIds}
+                          <ConnectorCredentials
+                            ref={credentialsRef}
+                            connector={editingServer}
+                            method={authorizationMethod}
+                            active={authorizationMode === "centralized"}
+                            disabled={editorPending}
+                            onPrepare={prepareConnector}
+                            onChange={refreshConnector}
+                            onRevoke={revokeCredential}
+                            onBusyChange={setCredentialBusy}
                           />
                         </Field>
                       </fieldset>
-                      <Field>
-                        <FieldLabel htmlFor="mcp-authorization">
-                          {t("pages.models.authorizedScope")}
-                        </FieldLabel>
-                        <AuthorizationSelect
-                          groups={subjects.groups}
-                          members={subjects.members}
-                          id="mcp-authorization"
-                          disabled={remote.pending}
-                          value={authorization}
-                          onValueChange={setAuthorization}
-                        />
-                        <FieldDescription>
-                          {t("pages.tools.availabilityScopeDescription")}
-                        </FieldDescription>
-                        {importedServer && editingServer.retired && (
-                          <p className="text-sm text-amber-700 dark:text-amber-400">
-                            {t("resources.retiredGrantsOnly")}
-                          </p>
-                        )}
-                      </Field>
+                      <div className="grid min-w-0 grid-cols-2 gap-4">
+                        <fieldset disabled={editorPending} className="min-w-0">
+                          <Field>
+                            <FieldLabel htmlFor="mcp-tags">
+                              {t("pages.skills.tags")}
+                            </FieldLabel>
+                            <SkillTagSelect
+                              id="mcp-tags"
+                              open={tagsOpen}
+                              options={availableTags}
+                              placeholder={t("pages.skills.tagsPlaceholder")}
+                              value={tagIds}
+                              onOpenChange={setTagsOpen}
+                              onValueChange={setTagIds}
+                            />
+                          </Field>
+                        </fieldset>
+                        <Field className="min-w-0">
+                          <FieldLabel htmlFor="mcp-authorization">
+                            {t("pages.models.authorizedScope")}
+                          </FieldLabel>
+                          <AuthorizationSelect
+                            groups={subjects.groups}
+                            members={subjects.members}
+                            id="mcp-authorization"
+                            disabled={editorPending}
+                            value={authorization}
+                            onValueChange={setAuthorization}
+                          />
+                          {importedServer && editingServer.retired && (
+                            <p className="text-sm text-amber-700 dark:text-amber-400">
+                              {t("resources.retiredGrantsOnly")}
+                            </p>
+                          )}
+                        </Field>
+                      </div>
+                      <Collapsible
+                        open={advancedOpen}
+                        onOpenChange={setAdvancedOpen}
+                        className="rounded-lg border"
+                      >
+                        <CollapsibleTrigger
+                          id="mcp-advanced-trigger"
+                          type="button"
+                          disabled={editorPending}
+                          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                        >
+                          <span className="font-medium">
+                            {t("pages.models.advancedOptions")}
+                          </span>
+                          <HugeiconsIcon
+                            className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+                            icon={ArrowRight01Icon}
+                            strokeWidth={2}
+                          />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent
+                          id="mcp-advanced-options"
+                          keepMounted
+                          className="border-t p-4"
+                        >
+                          <fieldset
+                            disabled={editorPending}
+                            className="min-w-0"
+                          >
+                            <Field>
+                              <FieldLabel htmlFor="mcp-proxy">
+                                {t("pages.models.networkProxy")}
+                              </FieldLabel>
+                              <SystemProxySelect
+                                id="mcp-proxy"
+                                selected={editingServer?.proxyId ?? ""}
+                                proxies={proxies}
+                              />
+                              {proxyError && (
+                                <p role="alert" className="text-destructive">
+                                  {proxyError}
+                                </p>
+                              )}
+                            </Field>
+                          </fieldset>
+                        </CollapsibleContent>
+                      </Collapsible>
                     </FieldGroup>
 
                     <ResourceNotice
                       error={remote.error || subjects.error}
                       loading={false}
-                      pending={remote.pending}
+                      pending={editorPending}
                     />
                     <ResourceEditorFooter
                       id="imported-connector-readonly"
@@ -998,14 +1230,20 @@ export function ToolsPage() {
                       }
                     >
                       <DialogClose
-                        render={<Button type="button" variant="outline" />}
+                        render={
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={editorPending}
+                          />
+                        }
                       >
                         {t("pages.tools.cancel")}
                       </DialogClose>
                       <Button
                         type="submit"
-                        loading={remote.pending}
-                        disabled={remote.pending}
+                        loading={editorPending}
+                        disabled={editorPending}
                       >
                         {editingServer
                           ? t("pages.tools.save")
@@ -1032,7 +1270,11 @@ export function ToolsPage() {
                   <div className="flex min-w-0 items-start gap-3">
                     <Avatar size="lg">
                       {server.iconPath && (
-                        <AvatarImage src={server.iconPath} alt="" />
+                        <AvatarImage
+                          src={server.iconPath}
+                          alt=""
+                          className="m-0.5 size-9 self-center"
+                        />
                       )}
                       <AvatarFallback
                         className={
@@ -1120,15 +1362,6 @@ export function ToolsPage() {
                               />
                               {t("pages.tools.viewTools")}
                             </DropdownMenuItem>
-                            {server.authorizationMode === "centralized" && (
-                              <DropdownMenuItem
-                                onClick={() => setCredentialServer(server)}
-                              >
-                                {t("resources.credentials", {
-                                  defaultValue: "管理凭证",
-                                })}
-                              </DropdownMenuItem>
-                            )}
                             <DropdownMenuItem
                               onClick={() => handleEditServer(server)}
                             >
@@ -1193,13 +1426,6 @@ export function ToolsPage() {
         </div>
       </ResourceList>
 
-      {credentialServer && (
-        <ConnectorCredentials
-          connector={credentialServer}
-          onClose={() => setCredentialServer(null)}
-          onChange={reload}
-        />
-      )}
       <Dialog
         open={viewingServer !== null}
         onOpenChange={(open) => {

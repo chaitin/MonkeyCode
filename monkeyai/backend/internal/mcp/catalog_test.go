@@ -60,11 +60,12 @@ func TestSystemToolsEnabledByDefault(t *testing.T) {
 					input["oauth_config"] = resource.Object{"client_id": "client", "token_url": remote.URL + "/token", "authorization_url": remote.URL + "/authorize"}
 				}
 			}
+			if method == "http_header" {
+				input["credential"] = resource.Object{"name": "集中凭证", "http_headers": resource.Object{"Authorization": "header-secret"}}
+			}
 			c := f.call("POST", "/admin/connectors", input, "owner", "", 200)
 			path := "/admin/connectors/" + c.String("id")
 			switch method {
-			case "http_header":
-				f.call("POST", path+"/credentials", resource.Object{"name": "集中凭证", "http_headers": resource.Object{"Authorization": "header-secret"}}, "owner", "", 201)
 			case "oauth":
 				auth := f.call("POST", path+"/oauth/authorizations", resource.Object{"name": "集中凭证"}, "owner", "", 200)
 				u, _ := url.Parse(auth.String("authorization_url"))

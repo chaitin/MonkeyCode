@@ -77,7 +77,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -205,6 +204,7 @@ export function SkillsPage() {
   const [packageParsing, setPackageParsing] = useState(false)
   const [fileInputKey, setFileInputKey] = useState(0)
   const packageRequestId = useRef(0)
+  const packageInputRef = useRef<HTMLInputElement>(null)
   const importedSkill = editingSkill?.origin === "package"
 
   const exitSelection = () => {
@@ -517,7 +517,7 @@ export function SkillsPage() {
                   {t("pages.skills.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="max-h-[calc(100vh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-2xl"
+                  className="max-h-[calc(100vh-2rem)] grid-cols-1 overflow-y-auto sm:max-w-xl"
                   closeLabel={t("common.close")}
                   aria-describedby={
                     importedSkill ? "imported-skill-readonly" : undefined
@@ -537,58 +537,6 @@ export function SkillsPage() {
                         </DialogTitle>
                       </DialogHeader>
                       <FieldGroup className="gap-4">
-                        <fieldset disabled={importedSkill} className="contents">
-                          <Field data-invalid={Boolean(packageError)}>
-                            <FieldLabel htmlFor="skill-package">
-                              {t("pages.skills.skillPackage")}
-                            </FieldLabel>
-                            <Input
-                              accept=".zip,application/zip"
-                              aria-invalid={Boolean(packageError)}
-                              disabled={packageParsing}
-                              id="skill-package"
-                              key={fileInputKey}
-                              name="package"
-                              type="file"
-                              onChange={handlePackageChange}
-                            />
-                            <FieldDescription>
-                              {packageParsing
-                                ? t("pages.skills.packageParsing")
-                                : editingSkill
-                                  ? t("pages.skills.packageOptionalHint")
-                                  : t("pages.skills.packageHint")}
-                            </FieldDescription>
-                            <FieldError>{packageError}</FieldError>
-                            {packageAnalysis && packageFile && (
-                              <Item size="sm" variant="outline">
-                                <ItemMedia variant="icon">
-                                  <HugeiconsIcon
-                                    icon={DocumentValidationIcon}
-                                    strokeWidth={2}
-                                  />
-                                </ItemMedia>
-                                <ItemContent className="min-w-0">
-                                  <ItemTitle>{packageAnalysis.name}</ItemTitle>
-                                  <ItemDescription
-                                    title={packageAnalysis.entryPath}
-                                  >
-                                    {packageFile.name} ·{" "}
-                                    {packageAnalysis.entryPath}
-                                  </ItemDescription>
-                                  <ItemDescription>
-                                    {t("pages.skills.packageSummary", {
-                                      count: packageAnalysis.fileCount,
-                                      size: formatBytes(
-                                        packageAnalysis.unpackedSize
-                                      ),
-                                    })}
-                                  </ItemDescription>
-                                </ItemContent>
-                              </Item>
-                            )}
-                          </Field>
-                        </fieldset>
                         <Field>
                           <FieldLabel htmlFor="skill-name">
                             {t("pages.skills.name")}
@@ -612,9 +560,8 @@ export function SkillsPage() {
                           <FieldLabel htmlFor="skill-description">
                             {t("pages.skills.skillDescription")}
                           </FieldLabel>
-                          <Textarea
+                          <Input
                             aria-readonly={!importedSkill}
-                            className="max-h-32 min-h-20 resize-none overflow-y-auto"
                             id="skill-description"
                             placeholder={t(
                               "pages.skills.skillDescriptionPlaceholder"
@@ -637,7 +584,7 @@ export function SkillsPage() {
                             </FieldLabel>
                             <Textarea
                               id="skill-content"
-                              className="max-h-64 min-h-48 resize-y overflow-y-auto font-mono"
+                              className="max-h-32 min-h-24 resize-y overflow-y-auto font-mono"
                               value={draft.content}
                               onChange={(e) =>
                                 setDraft((current) => ({
@@ -646,59 +593,128 @@ export function SkillsPage() {
                                 }))
                               }
                             />
-                            <a
-                              className="text-sm text-primary underline"
-                              href={base + `/skills/${editingSkill.id}/package`}
-                            >
-                              {t("resources.downloadPackage")}
-                            </a>
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="skill-tags">
-                              {t("pages.skills.tags")}
-                            </FieldLabel>
-                            <SkillTagSelect
-                              id="skill-tags"
-                              open={tagsOpen}
-                              options={availableTags}
-                              placeholder={t("pages.skills.tagsPlaceholder")}
-                              value={draft.tagIds}
-                              onOpenChange={setTagsOpen}
-                              onValueChange={(tagIds) => {
-                                setDraft((currentDraft) => ({
-                                  ...currentDraft,
-                                  tagIds,
-                                }))
-                              }}
-                            />
                           </Field>
                         </fieldset>
-                        <Field>
-                          <FieldLabel htmlFor="skill-authorized-users">
-                            {t("pages.models.authorizedScope")}
-                          </FieldLabel>
-                          <AuthorizationSelect
-                            groups={subjects.groups}
-                            members={subjects.members}
-                            id="skill-authorized-users"
-                            disabled={remote.pending}
-                            value={authorization}
-                            onValueChange={setAuthorization}
-                          />
-                          {importedSkill && editingSkill.retired && (
-                            <p className="text-sm text-amber-700 dark:text-amber-400">
-                              {t("resources.retiredGrantsOnly")}
-                            </p>
-                          )}
-                        </Field>
+                        <div className="grid min-w-0 grid-cols-2 gap-4">
+                          <fieldset
+                            disabled={importedSkill || remote.pending}
+                            className="min-w-0"
+                          >
+                            <Field>
+                              <FieldLabel htmlFor="skill-tags">
+                                {t("pages.skills.tags")}
+                              </FieldLabel>
+                              <SkillTagSelect
+                                id="skill-tags"
+                                open={tagsOpen}
+                                options={availableTags}
+                                placeholder={t("pages.skills.tagsPlaceholder")}
+                                value={draft.tagIds}
+                                onOpenChange={setTagsOpen}
+                                onValueChange={(tagIds) => {
+                                  setDraft((currentDraft) => ({
+                                    ...currentDraft,
+                                    tagIds,
+                                  }))
+                                }}
+                              />
+                            </Field>
+                          </fieldset>
+                          <Field className="min-w-0">
+                            <FieldLabel htmlFor="skill-authorized-users">
+                              {t("pages.models.authorizedScope")}
+                            </FieldLabel>
+                            <AuthorizationSelect
+                              groups={subjects.groups}
+                              members={subjects.members}
+                              id="skill-authorized-users"
+                              disabled={remote.pending}
+                              value={authorization}
+                              onValueChange={setAuthorization}
+                            />
+                            {importedSkill && editingSkill.retired && (
+                              <p className="text-sm text-amber-700 dark:text-amber-400">
+                                {t("resources.retiredGrantsOnly")}
+                              </p>
+                            )}
+                          </Field>
+                        </div>
                       </FieldGroup>
                       <ResourceNotice
                         error={remote.error || subjects.error}
                         loading={false}
                         pending={remote.pending}
                       />
+                      <Input
+                        ref={packageInputRef}
+                        accept=".zip,application/zip"
+                        aria-label={t("pages.skills.uploadPackage")}
+                        aria-invalid={Boolean(packageError)}
+                        disabled={
+                          importedSkill || packageParsing || remote.pending
+                        }
+                        id="skill-package"
+                        key={fileInputKey}
+                        name="package"
+                        type="file"
+                        className="hidden"
+                        onChange={handlePackageChange}
+                      />
+                      <FieldError>{packageError}</FieldError>
+                      {packageAnalysis && packageFile && (
+                        <Item size="sm" variant="outline">
+                          <ItemMedia variant="icon">
+                            <HugeiconsIcon
+                              icon={DocumentValidationIcon}
+                              strokeWidth={2}
+                            />
+                          </ItemMedia>
+                          <ItemContent className="min-w-0">
+                            <ItemTitle>{packageAnalysis.name}</ItemTitle>
+                            <ItemDescription title={packageAnalysis.entryPath}>
+                              {packageFile.name} · {packageAnalysis.entryPath}
+                            </ItemDescription>
+                            <ItemDescription>
+                              {t("pages.skills.packageSummary", {
+                                count: packageAnalysis.fileCount,
+                                size: formatBytes(packageAnalysis.unpackedSize),
+                              })}
+                            </ItemDescription>
+                          </ItemContent>
+                        </Item>
+                      )}
                       <ResourceEditorFooter
                         id="imported-skill-readonly"
+                        leading={
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              loading={packageParsing}
+                              disabled={
+                                importedSkill ||
+                                remote.pending ||
+                                packageParsing
+                              }
+                              onClick={() => packageInputRef.current?.click()}
+                            >
+                              {t("pages.skills.uploadPackage")}
+                            </Button>
+                            <Button
+                              nativeButton={false}
+                              variant="outline"
+                              render={
+                                <a
+                                  href={
+                                    base + `/skills/${editingSkill.id}/package`
+                                  }
+                                />
+                              }
+                            >
+                              {t("resources.downloadPackage")}
+                            </Button>
+                          </div>
+                        }
                         reason={
                           importedSkill
                             ? t("resources.importedSkillReadOnly")

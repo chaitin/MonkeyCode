@@ -561,6 +561,7 @@ export const deDE = {
       content: "Fähigkeitsinhalt (SKILL.md)",
       contentPlaceholder: "Anweisungen für die Fähigkeit eingeben",
       skillPackage: "Fähigkeitspaket",
+      uploadPackage: "Fähigkeitspaket hochladen",
       packageHint: "Fähigkeitsordner als ZIP-Datei hochladen, maximal 500 MiB.",
       packageOptionalHint:
         "Laden Sie nur zum Ersetzen des Inhalts ein neues ZIP-Paket hoch.",
@@ -587,6 +588,7 @@ export const deDE = {
         missingDescription: "Im Frontmatter von SKILL.md fehlt description.",
       },
       batchImport: {
+        choosePackage: "Fähigkeitspaketdateien auswählen",
         upload: "Hochladen",
         sourceStep: "Quelle wählen",
         selectStep: "Skills auswählen",
@@ -629,6 +631,11 @@ export const deDE = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "Avatar",
+      uploadAvatar: "Avatar hochladen",
+      replaceAvatar: "Avatar ersetzen",
+      avatarTooLarge: "Der Avatar darf höchstens 1 MiB groß sein",
+      avatarInvalid: "Wählen Sie ein gültiges PNG-, JPG/JPEG- oder WebP-Bild",
       personalExpert: "Persönlicher Experte",
       title: "Experten",
       description:

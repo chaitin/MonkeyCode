@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const avatarReferenced = `-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM experts WHERE avatar_s3_key = $1)
+`
+
+func (q *Queries) AvatarReferenced(ctx context.Context, avatarS3Key string) (bool, error) {
+	row := q.db.QueryRow(ctx, avatarReferenced, avatarS3Key)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createConnectorLink = `-- name: CreateConnectorLink :execresult
 INSERT INTO expert_connectors (expert_id, connector_id, required, tool_allowlist, tool_denylist)
     VALUES ($1, $2, $3, $4, $5)
@@ -389,6 +400,20 @@ func (q *Queries) PageResources(ctx context.Context, filter []byte) ([][]byte, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAvatar = `-- name: SetAvatar :exec
+UPDATE experts SET avatar_s3_key = $2 WHERE id = $1
+`
+
+type SetAvatarParams struct {
+	ID          string
+	AvatarS3Key string
+}
+
+func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) error {
+	_, err := q.db.Exec(ctx, setAvatar, arg.ID, arg.AvatarS3Key)
+	return err
 }
 
 const setResourceEnabled = `-- name: SetResourceEnabled :exec

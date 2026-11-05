@@ -557,6 +557,7 @@ export const ruRU = {
       content: "Содержимое навыка (SKILL.md)",
       contentPlaceholder: "Введите инструкции навыка",
       skillPackage: "Пакет навыка",
+      uploadPackage: "Загрузить пакет навыка",
       packageHint: "Загрузите каталог навыка в ZIP-файле размером до 500 MiB.",
       packageOptionalHint:
         "Загрузите новый ZIP-пакет только для замены содержимого навыка.",
@@ -581,6 +582,7 @@ export const ruRU = {
         missingDescription: "В frontmatter SKILL.md отсутствует description.",
       },
       batchImport: {
+        choosePackage: "Выбрать файлы пакетов навыков",
         upload: "Загрузить",
         sourceStep: "Выбор источника",
         selectStep: "Выбор навыков",
@@ -623,6 +625,11 @@ export const ruRU = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "Аватар",
+      uploadAvatar: "Загрузить аватар",
+      replaceAvatar: "Заменить аватар",
+      avatarTooLarge: "Размер аватара не должен превышать 1 МиБ",
+      avatarInvalid: "Выберите корректное изображение PNG, JPG/JPEG или WebP",
       personalExpert: "Личный эксперт",
       title: "Эксперты",
       description:

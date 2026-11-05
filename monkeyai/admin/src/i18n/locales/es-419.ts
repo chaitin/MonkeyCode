@@ -554,6 +554,7 @@ export const es419 = {
       content: "Contenido de la habilidad (SKILL.md)",
       contentPlaceholder: "Ingresa las instrucciones de la habilidad",
       skillPackage: "Paquete de habilidad",
+      uploadPackage: "Subir paquete de habilidad",
       packageHint:
         "Sube el directorio de la habilidad como archivo ZIP, de hasta 500 MiB.",
       packageOptionalHint:
@@ -579,6 +580,7 @@ export const es419 = {
         missingDescription: "Falta description en el frontmatter de SKILL.md.",
       },
       batchImport: {
+        choosePackage: "Elegir archivos de paquetes de habilidades",
         upload: "Subir",
         sourceStep: "Elegir origen",
         selectStep: "Seleccionar habilidades",
@@ -621,6 +623,11 @@ export const es419 = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "Avatar",
+      uploadAvatar: "Subir avatar",
+      replaceAvatar: "Cambiar avatar",
+      avatarTooLarge: "El avatar no debe superar 1 MiB",
+      avatarInvalid: "Elige una imagen PNG, JPG/JPEG o WebP válida",
       personalExpert: "Experto personal",
       title: "Expertos",
       description:

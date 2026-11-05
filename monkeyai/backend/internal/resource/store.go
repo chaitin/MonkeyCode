@@ -250,9 +250,12 @@ type Definition struct {
 	Validate             func(context.Context, pgx.Tx, Object, Object) error
 	PrepareOverride      func(context.Context, pgx.Tx, Object, Object) error
 	Persist              func(context.Context, pgx.Tx, Object) error
-	Decorate             func(context.Context, Queryer, Object) error
-	UserDecorate         func(Object)
-	References           func(context.Context, pgx.Tx, string) ([]Object, error)
+	// PersistOverride saves associated local data for imported resources in the
+	// same transaction. Returning true also versions an otherwise unchanged resource.
+	PersistOverride func(context.Context, pgx.Tx, Object) (bool, error)
+	Decorate        func(context.Context, Queryer, Object) error
+	UserDecorate    func(Object)
+	References      func(context.Context, pgx.Tx, string) ([]Object, error)
 }
 type CRUD struct {
 	Store *Store
@@ -546,6 +549,20 @@ func (c *CRUD) override(ctx context.Context, tx pgx.Tx, actor, id string, in, ol
 		}
 	}
 	if len(changed) == 0 && !tagsChanged {
+		if c.Def.PersistOverride != nil {
+			persisted, err := c.Def.PersistOverride(ctx, tx, data)
+			if err != nil {
+				return nil, err
+			}
+			if persisted {
+				if err = c.Def.Repository(tx).TouchResource(ctx, id); err != nil {
+					return nil, err
+				}
+				if err = Audit(ctx, tx, actor, c.Def.Kind, id, "override"); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return nil, err
 		}
@@ -563,6 +580,11 @@ func (c *CRUD) override(ctx context.Context, tx pgx.Tx, actor, id string, in, ol
 	}
 	if err = c.Def.Repository(tx).UpdateResource(ctx, payload); err != nil {
 		return nil, err
+	}
+	if c.Def.PersistOverride != nil {
+		if _, err = c.Def.PersistOverride(ctx, tx, data); err != nil {
+			return nil, err
+		}
 	}
 	if tagsChanged {
 		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, data["tag_ids"]); err != nil {

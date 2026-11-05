@@ -52,7 +52,13 @@ func NewService(store *resource.Store, publicURL string) *Service {
 		Hidden:               []string{"oauth_client_secret", "icon_s3_key"},
 		AllowImportedEnabled: true,
 		PrepareOverride:      s.validateConnector,
-		Validate:             s.validateConnector, Decorate: s.decorateConnector, UserDecorate: userIcon,
+		Validate:             s.validateConnector,
+		Persist: func(ctx context.Context, tx pgx.Tx, in resource.Object) error {
+			_, err := s.persistCredential(ctx, tx, in)
+			return err
+		},
+		PersistOverride: s.persistCredential,
+		Decorate:        s.decorateConnector, UserDecorate: userIcon,
 		References: func(ctx context.Context, tx pgx.Tx, id string) ([]resource.Object, error) {
 			return resource.DecodeObjects(sqlc.New(tx).ListConnectorReferences(ctx, id))
 		},
@@ -256,6 +262,8 @@ func (s *Service) lockConnector(ctx context.Context, tx pgx.Tx, id, user string,
 
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.Connectors.Register(r)
+	r.Post("/connectors", s.saveConnector)
+	r.Put("/connectors/{id}", s.saveConnector)
 	s.routes(r, true)
 	s.iconRoutes(r, true)
 }

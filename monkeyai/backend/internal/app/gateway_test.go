@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,13 +48,16 @@ func testMCPAddresses(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 		resource.JSON(r.Context(), w, 200, resource.Object{"jsonrpc": "2.0", "id": in.ID, "result": result})
 	}))
 	defer remote.Close()
-	call := func(method, path, token string, body any, status int) resource.Object {
+	call := func(method, path, token string, body any, status int, match ...string) resource.Object {
 		t.Helper()
 		data, _ := json.Marshal(body)
 		r := httptest.NewRequest(method, path, bytes.NewReader(data))
 		r.Header.Set("Authorization", "Bearer "+token)
 		r.Header.Set("Content-Type", "application/json")
 		r.AddCookie(cookie)
+		if len(match) > 0 {
+			r.Header.Set("If-Match", match[0])
+		}
 		if method == "DELETE" && strings.Contains(path, "/credentials/") {
 			r.Header.Set("If-Match", `"1"`)
 		}
@@ -77,13 +81,13 @@ func testMCPAddresses(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 		return call("POST", "/api/v1/connectors", "a", resource.Object{"name": name, "url": remote.URL, "authorization_mode": mode, "authorization_method": "http_header"}, 201)
 	}
 	c1, c2 := createConnector("地址独立连接", "independent"), createConnector("地址免认证连接", "none")
-	central := call("POST", "/api/admin/v1/connectors", "", resource.Object{"name": "地址集中连接", "url": remote.URL, "authorization_mode": "centralized", "authorization_method": "http_header", "grants": []resource.Object{{"user_id": users[0]}, {"user_id": users[1]}}}, 200)
+	central := call("POST", "/api/admin/v1/connectors", "", resource.Object{"name": "地址集中连接", "url": remote.URL, "authorization_mode": "centralized", "authorization_method": "http_header", "credential": resource.Object{"name": "集中凭证", "http_headers": resource.Object{"X-Account": "central"}}, "grants": []resource.Object{{"user_id": users[0]}, {"user_id": users[1]}}}, 200)
 	cp := "/api/v1/connectors/" + c1.String("id")
 	p2 := "/api/v1/connectors/" + c2.String("id")
 	p3 := "/api/admin/v1/connectors/" + central.String("id")
 	a := call("POST", cp+"/credentials", "a", resource.Object{"name": "工作", "http_headers": resource.Object{"X-Account": "A"}}, 201)
 	b := call("POST", cp+"/credentials", "a", resource.Object{"name": "私人", "http_headers": resource.Object{"X-Account": "B"}}, 201)
-	shared := call("POST", p3+"/credentials", "", resource.Object{"name": "集中凭证", "http_headers": resource.Object{"X-Account": "central"}}, 201)
+	shared := resource.Object(central["credentials"].([]any)[0].(map[string]any))
 	if shared["user"] != nil {
 		t.Fatal("集中凭证不应属于创建它的管理员")
 	}
@@ -159,8 +163,10 @@ func testMCPAddresses(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	call("POST", paths[0], key, list, 404)
 	call("POST", paths[1], key, list, 200)
 
-	call("DELETE", p3+"/credentials/"+shared.String("id"), "", nil, 204)
-	replacement := call("POST", p3+"/credentials", "", resource.Object{"name": "新集中凭证", "http_headers": resource.Object{"X-Account": "new-central"}}, 201)
+	current := call("GET", p3, "", nil, 200)
+	current = call("PUT", p3, "", resource.Object{"credential": resource.Object{"id": shared["id"], "revision": shared["revision"], "revoke": true}}, 200, fmt.Sprintf(`"%d"`, current.Int("revision")))
+	current = call("PUT", p3, "", resource.Object{"credential": resource.Object{"name": "新集中凭证", "http_headers": resource.Object{"X-Account": "new-central"}}}, 200, fmt.Sprintf(`"%d"`, current.Int("revision")))
+	replacement := resource.Object(current["credentials"].([]any)[0].(map[string]any))
 	call("POST", p3+"/test", "", nil, 200)
 	enableCentral()
 	call("POST", paths[3], key, list, 404)

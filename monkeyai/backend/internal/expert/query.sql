@@ -175,6 +175,12 @@ SET
 WHERE
     id = (sqlc.arg(DATA)::jsonb ->> 'id')::uuid;
 
+-- name: SetAvatar :exec
+UPDATE experts SET avatar_s3_key = $2 WHERE id = $1;
+
+-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM experts WHERE avatar_s3_key = $1);
+
 -- name: LockRule :one
 SELECT
     to_jsonb(t)

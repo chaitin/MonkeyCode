@@ -58,7 +58,8 @@ func (s *Service) serveAvatar(w http.ResponseWriter, req *http.Request, admin bo
 		resource.Fail(req.Context(), w, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "专家头像读取失败"})
 		return
 	}
-	w.Header().Set("Content-Type", "image/webp")
+	w.Header().Set("Content-Type", http.DetectContentType(data))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	if _, err := w.Write(data); err != nil {
 		slog.Error("写入输出失败", "module", "expert", "operation", "serveAvatar", "error", err)

@@ -150,6 +150,7 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
     "弹窗被阻止",
     "刷新列表失败",
     "注册失败",
+    "连接保存失败",
   ]) {
     await t.test(scenario, async () => {
       const events = []
@@ -164,7 +165,10 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
         name: "凭证",
         lock: { current: false },
         credential: null,
-        path: "/connectors/test",
+        base: "",
+        onPrepare: async () =>
+          scenario === "连接保存失败" ? null : { id: "test", credentials: [] },
+        currentCredential: () => null,
         window: { open: () => (scenario === "弹窗被阻止" ? null : popup) },
         run: (action) => {
           pending = action()
@@ -186,7 +190,11 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
         },
       })
       authorize()
-      if (scenario === "注册失败") {
+      if (scenario === "连接保存失败") {
+        await pending
+        assert.deepEqual(events, ["close"])
+        assert.equal(request, undefined)
+      } else if (scenario === "注册失败") {
         await assert.rejects(pending, /注册失败/)
         assert.deepEqual(events, ["register", "close"])
         assert.equal(request, undefined)

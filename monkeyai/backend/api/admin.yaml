@@ -3709,6 +3709,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExpertInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpertAvatarForm'
   /api/admin/v1/experts/{id}:
     get:
       summary: 读取Expert
@@ -3777,6 +3780,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ExpertInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExpertAvatarForm'
       parameters:
       - name: If-Match
         in: header
@@ -3826,6 +3832,24 @@ paths:
         schema:
           type: string
           format: uuid
+  /api/admin/v1/experts/{id}/avatar:
+    get:
+      summary: 读取专家头像
+      description: 需要管理员登录。avatar_path 包含头像版本参数；支持已有资源包 WebP 头像及管理员上传的 PNG、JPEG、WebP。
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 专家头像图片
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {$ref: '#/components/responses/ResourceError403'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '500': {$ref: '#/components/responses/ResourceError500'}
+        '502': {$ref: '#/components/responses/ResourceError502'}
   /api/admin/v1/experts/{id}/enabled:
     patch:
       summary: 启停Expert
@@ -3981,7 +4005,7 @@ paths:
               - name
               - url
               - authorization_mode
-      description: 直接配置 Connector 地址、认证方式和 OAuth 应用，不使用 Provider。个人连接仅支持 none / independent，凭证通过独立接口管理。
+      description: 创建 Connector，可在 credential 中同时配置集中认证凭证。连接器、凭证、标签和授权在同一事务中保存；Header 凭证保存后自动测试连接，测试失败保留配置。OAuth 可先保存凭证名称，再通过授权接口完成认证。不返回凭证秘密。
   /api/admin/v1/connectors/{id}:
     get:
       summary: 读取Connector
@@ -4063,7 +4087,7 @@ paths:
         schema:
           type: string
           format: uuid
-      description: 直接编辑连接，携带连接 If-Match。关键配置变更递增 config_revision 并使旧凭证、目录和授权事务失效；Client Secret 轮换不使既有 Token 失效。
+      description: 编辑连接及集中认证凭证，携带连接 If-Match；修改既有凭证还需 credential.id 和 credential.revision。省略 credential 保留凭证，省略 http_headers 保留 Header；revoke=true 撤销指定凭证。支持仅提交 credential，资源包连接器同样支持，凭证不写入资源包覆盖字段。连接器与凭证保存失败时一起回滚。关键配置变更使旧凭证、目录和授权事务失效；Client Secret 轮换不使既有 Token 失效。
     delete:
       summary: 删除Connector
       responses:
@@ -4980,45 +5004,7 @@ paths:
           $ref: '#/components/responses/ResourceError500'
         '502':
           $ref: '#/components/responses/ResourceError502'
-    post:
-      summary: 新增 HTTP Header 凭证并自动测试连接
-      description: 保存后由服务端自动发现工具并返回最新测试状态；测试失败仍保留凭证，可通过测试接口重试。
-      responses:
-        '201':
-          description: 成功；不返回凭证秘密。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ConnectorCredential'
-          headers:
-            ETag:
-              description: 凭证编辑版本。
-              schema:
-                type: string
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '403':
-          $ref: '#/components/responses/ResourceError403'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-        '502':
-          $ref: '#/components/responses/ResourceError502'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CredentialInput'
+
   /api/admin/v1/connectors/{id}/credentials/{credential_id}:
     parameters:
     - name: id
@@ -5065,82 +5051,7 @@ paths:
           $ref: '#/components/responses/ResourceError500'
         '502':
           $ref: '#/components/responses/ResourceError502'
-    patch:
-      summary: 改名或整组替换 Header
-      description: 替换 Header 后自动测试连接并更新工具目录；仅改名不触发测试。
-      responses:
-        '200':
-          description: 成功；不返回凭证秘密。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ConnectorCredential'
-          headers:
-            ETag:
-              description: 凭证编辑版本。
-              schema:
-                type: string
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '403':
-          $ref: '#/components/responses/ResourceError403'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-        '502':
-          $ref: '#/components/responses/ResourceError502'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CredentialPatch'
-      parameters:
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-        description: 当前凭证 revision 的带双引号 ETag；冲突返回 412 revision_conflict。
-    delete:
-      summary: 本地撤销指定凭证并失效其工具目录
-      responses:
-        '204':
-          description: 操作成功。
-        '400':
-          $ref: '#/components/responses/ResourceError400'
-        '401':
-          $ref: '#/components/responses/ResourceError401'
-        '403':
-          $ref: '#/components/responses/ResourceError403'
-        '404':
-          $ref: '#/components/responses/ResourceError404'
-        '409':
-          $ref: '#/components/responses/ResourceError409'
-        '412':
-          $ref: '#/components/responses/ResourceError412'
-        '428':
-          $ref: '#/components/responses/ResourceError428'
-        '500':
-          $ref: '#/components/responses/ResourceError500'
-        '502':
-          $ref: '#/components/responses/ResourceError502'
-      parameters:
-      - name: If-Match
-        in: header
-        required: true
-        schema:
-          type: string
-        description: 当前凭证 revision 的带双引号 ETag；冲突返回 412 revision_conflict。
+
   /api/admin/v1/connectors/{id}/credentials/{credential_id}/oauth/authorizations:
     parameters:
     - name: id
@@ -8078,6 +7989,10 @@ components:
     ExpertResource:
       type: object
       properties:
+        avatar_path:
+          type: string
+          readOnly: true
+          description: 带版本参数的专家头像相对地址，未设置时省略；对象存储键不会对外返回。
         tags:
           type: array
           items: {$ref: '#/components/schemas/ResourceTag'}
@@ -8141,6 +8056,18 @@ components:
       - name
       - revision
       - grants
+    ExpertAvatarForm:
+      type: object
+      description: 头像与专家字段在同一事务内保存。metadata 为 ExpertInput 的 JSON 字符串，avatar 为图片文件。未更换头像时继续发送 application/json，保留原头像。资源包原专家不允许修改头像；更新仍需 If-Match。
+      required: [metadata, avatar]
+      properties:
+        metadata:
+          type: string
+          description: ExpertInput 对象的 JSON 字符串，最多 1 MiB。
+        avatar:
+          type: string
+          format: binary
+          description: PNG、JPG/JPEG 或 WebP 图片，最多 1 MiB；服务端验证真实格式及完整图片内容。
     ExpertInput:
       type: object
       properties:
@@ -8270,6 +8197,8 @@ components:
     ConnectorInput:
       type: object
       properties:
+        credential:
+          $ref: '#/components/schemas/ConnectorCredentialInput'
         tag_ids:
           type: array
           items: {type: string, format: uuid}
@@ -8306,8 +8235,45 @@ components:
           type: string
           writeOnly: true
           description: 省略保留，空字符串清空；应用或端点变更时省略会清除旧 Secret。
-      required:
-      - name
+      anyOf:
+      - required: [name]
+      - required: [credential]
+    ConnectorCredentialInput:
+      type: object
+      additionalProperties: false
+      writeOnly: true
+      description: 仅集中认证支持。新增时提供 name，Header 凭证还需 http_headers；OAuth 可先创建待认证凭证。修改既有凭证必须同时提供 id、revision。省略字段保留原值；http_headers 为整组替换。撤销只接受 id、revision、revoke=true。实际 OAuth Token 只能通过授权流程写入。
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        http_headers:
+          type: object
+          writeOnly: true
+          minProperties: 1
+          maxProperties: 30
+          additionalProperties:
+            type: string
+        revoke:
+          type: boolean
+          default: false
+      dependentRequired:
+        id: [revision]
+        revision: [id]
+      anyOf:
+      - required: [name]
+      - required: [http_headers]
+      - required: [id, revision, revoke]
+        properties:
+          revoke:
+            const: true
     AgentCredential:
       allOf:
       - $ref: '#/components/schemas/ConnectorCredential'

@@ -1,13 +1,6 @@
 import { useSubjects } from "@/lib/resources"
 import { useRef, useState, type ChangeEvent } from "react"
-import {
-  ArrowDown01Icon,
-  DocumentValidationIcon,
-  FileArchiveIcon,
-  FolderOpenIcon,
-  Tick02Icon,
-  Upload04Icon,
-} from "@hugeicons/core-free-icons"
+import { Upload04Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
@@ -15,7 +8,6 @@ import { useAppToast } from "@/components/animated-toast-provider"
 import { AuthorizationSelect } from "@/components/authorization-select"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import type { SkillTag } from "@/lib/skill-tags"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -24,13 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Field,
   FieldError,
@@ -47,27 +32,18 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
-import { Separator } from "@/components/ui/separator"
 import type { AuthorizationSelection } from "@/lib/authorization-groups"
 import {
   inspectSkillArchive,
-  inspectSkillDirectory,
   SkillPackageError,
   type SkillPackageAnalysis,
 } from "@/lib/skill-package"
-import { cn } from "@/lib/utils"
 
 type WizardStep = "source" | "select"
 
-type ImportSource =
-  | {
-      type: "archives"
-      files: File[]
-    }
-  | {
-      type: "directory"
-      files: File[]
-    }
+type ImportSource = {
+  files: File[]
+}
 
 type ImportCandidate = {
   id: string
@@ -81,18 +57,6 @@ type SkillImportValue = {
   sourceName: string
   tagIds: string[]
   authorization: AuthorizationSelection
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export function SkillImportWizard({
@@ -117,13 +81,14 @@ export function SkillImportWizard({
   const [scanning, setScanning] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [],
+  const [authorizationOverride, setAuthorization] =
+    useState<AuthorizationSelection | null>(null)
+  const authorization: AuthorizationSelection = authorizationOverride ?? {
+    groupIds: subjects.groups.slice(0, 1).map((group) => group.value),
     memberIds: [],
-  })
+  }
   const requestId = useRef(0)
   const archiveInputRef = useRef<HTMLInputElement | null>(null)
-  const directoryInputRef = useRef<HTMLInputElement | null>(null)
 
   const getErrorMessage = (error: unknown) => {
     const errorKey =
@@ -171,25 +136,7 @@ export function SkillImportWizard({
     }
 
     resetScanResults()
-    setSource({ type: "archives", files })
-    if (directoryInputRef.current) {
-      directoryInputRef.current.value = ""
-    }
-  }
-
-  const handleDirectoryChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.currentTarget.files ?? [])
-    if (files.length === 0) {
-      resetScanResults()
-      setSource(null)
-      return
-    }
-
-    resetScanResults()
-    setSource({ type: "directory", files })
-    if (archiveInputRef.current) {
-      archiveInputRef.current.value = ""
-    }
+    setSource({ files })
   }
 
   const handleNext = async () => {
@@ -201,31 +148,6 @@ export function SkillImportWizard({
     requestId.current = currentRequestId
     setScanning(true)
     setSourceError("")
-
-    if (source.type === "directory") {
-      try {
-        const analyses = await inspectSkillDirectory(source.files)
-        if (currentRequestId !== requestId.current) {
-          return
-        }
-        const firstPath =
-          source.files[0].webkitRelativePath || source.files[0].name
-        const sourceName = firstPath.split("/")[0]
-        applyScanResults(
-          analyses.map((analysis) => ({ sourceName, analysis })),
-          []
-        )
-      } catch (error) {
-        if (currentRequestId === requestId.current) {
-          setSourceError(getErrorMessage(error))
-        }
-      } finally {
-        if (currentRequestId === requestId.current) {
-          setScanning(false)
-        }
-      }
-      return
-    }
 
     const validFiles = source.files.filter((file) =>
       file.name.toLocaleLowerCase().endsWith(".zip")
@@ -274,16 +196,7 @@ export function SkillImportWizard({
   const selectedCandidates = candidates.filter((candidate) =>
     selectedIds.includes(candidate.id)
   )
-  const allSelected =
-    candidates.length > 0 && selectedIds.length === candidates.length
-  const sourceName =
-    source?.type === "archives"
-      ? source.files.map((file) => file.name).join(", ")
-      : source?.type === "directory"
-        ? (source.files[0].webkitRelativePath || source.files[0].name).split(
-            "/"
-          )[0]
-        : ""
+  const sourceName = source?.files.map((file) => file.name).join(", ") ?? ""
 
   const setCandidateChecked = (candidateId: string, checked: boolean) => {
     setSelectedIds((currentIds) =>
@@ -314,23 +227,12 @@ export function SkillImportWizard({
         const inside = (path: string) =>
           path.startsWith(prefix) &&
           !otherRoots.some((root) => path.startsWith(root))
-        if (source.type === "directory") {
-          for (const file of source.files) {
-            const path = file.webkitRelativePath || file.name
-            if (inside(path))
-              zip.file(path.slice(prefix.length), await file.arrayBuffer())
-          }
-        } else {
-          const file = source.files.find((f) => f.name === candidate.sourceName)
-          if (!file) throw new Error("源文件不存在")
-          const archive = await JSZip.loadAsync(await file.arrayBuffer())
-          for (const [path, entry] of Object.entries(archive.files)) {
-            if (!entry.dir && inside(path))
-              zip.file(
-                path.slice(prefix.length),
-                await entry.async("uint8array")
-              )
-          }
+        const file = source.files.find((f) => f.name === candidate.sourceName)
+        if (!file) throw new Error("源文件不存在")
+        const archive = await JSZip.loadAsync(await file.arrayBuffer())
+        for (const [path, entry] of Object.entries(archive.files)) {
+          if (!entry.dir && inside(path))
+            zip.file(path.slice(prefix.length), await entry.async("uint8array"))
         }
         const blob = await zip.generateAsync({
           type: "blob",
@@ -378,56 +280,10 @@ export function SkillImportWizard({
         <DialogTitle>{t("pages.skills.dialogTitle")}</DialogTitle>
       </DialogHeader>
 
-      <ol aria-label={t("pages.skills.dialogTitle")} className="flex w-full">
-        <li
-          aria-current={step === "source" ? "step" : undefined}
-          className="flex flex-1 flex-col items-center gap-2"
-        >
-          <div className="flex w-full items-center">
-            <span aria-hidden="true" className="flex-1" />
-            <Badge className="size-6 p-0" variant="default">
-              {step === "select" ? (
-                <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} />
-              ) : (
-                "1"
-              )}
-            </Badge>
-            <Separator className="w-auto flex-1" />
-          </div>
-          <span className="text-xs">
-            {t("pages.skills.batchImport.sourceStep")}
-          </span>
-        </li>
-        <li
-          aria-current={step === "select" ? "step" : undefined}
-          className="flex flex-1 flex-col items-center gap-2"
-        >
-          <div className="flex w-full items-center">
-            <Separator className="w-auto flex-1" />
-            <Badge
-              className="size-6 p-0"
-              variant={step === "select" ? "default" : "outline"}
-            >
-              2
-            </Badge>
-            <span aria-hidden="true" className="flex-1" />
-          </div>
-          <span
-            className={cn(
-              "text-xs",
-              step === "source" && "text-muted-foreground"
-            )}
-          >
-            {t("pages.skills.batchImport.selectStep")}
-          </span>
-        </li>
-      </ol>
-
       {step === "source" ? (
         <div>
           <FieldGroup className="gap-4">
             <Field data-invalid={Boolean(sourceError)}>
-              <FieldLabel>{t("pages.skills.skillPackage")}</FieldLabel>
               <Input
                 accept=".zip,application/zip"
                 aria-invalid={Boolean(sourceError)}
@@ -439,80 +295,32 @@ export function SkillImportWizard({
                 type="file"
                 onChange={handleArchiveChange}
               />
-              <Input
-                aria-invalid={Boolean(sourceError)}
-                className="hidden"
-                disabled={scanning}
-                id="skill-directory"
-                multiple
-                ref={(input) => {
-                  if (input) {
-                    input.setAttribute("webkitdirectory", "")
-                    input.setAttribute("directory", "")
-                  }
-                  directoryInputRef.current = input
-                }}
-                type="file"
-                onChange={handleDirectoryChange}
-              />
               <Item variant="outline">
                 <ItemContent className="min-w-0">
-                  <ItemTitle title={sourceName || undefined}>
-                    {sourceName ||
-                      `${t("pages.skills.batchImport.archives")} / ${t(
-                        "pages.skills.batchImport.directory"
-                      )}`}
+                  <ItemTitle>
+                    {t("pages.skills.batchImport.choosePackage")}
                   </ItemTitle>
                   <ItemDescription>
-                    {source?.type === "archives"
-                      ? t("pages.skills.batchImport.archivesHint")
-                      : source?.type === "directory"
-                        ? t("pages.skills.batchImport.directoryHint")
-                        : `${t("pages.skills.batchImport.archivesHint")} ${t(
-                            "pages.skills.batchImport.directoryHint"
-                          )}`}
+                    {t("pages.skills.batchImport.archivesHint")}
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          disabled={scanning}
-                          type="button"
-                          variant="outline"
-                        />
-                      }
-                    >
-                      <HugeiconsIcon
-                        data-icon="inline-start"
-                        icon={Upload04Icon}
-                      />
-                      {t("pages.skills.batchImport.upload")}
-                      <HugeiconsIcon
-                        data-icon="inline-end"
-                        icon={ArrowDown01Icon}
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          closeOnClick
-                          onClick={() => archiveInputRef.current?.click()}
-                        >
-                          <HugeiconsIcon icon={FileArchiveIcon} />
-                          {t("pages.skills.batchImport.archives")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          closeOnClick
-                          onClick={() => directoryInputRef.current?.click()}
-                        >
-                          <HugeiconsIcon icon={FolderOpenIcon} />
-                          {t("pages.skills.batchImport.directory")}
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button
+                    className="max-w-32 sm:max-w-48"
+                    disabled={scanning}
+                    title={sourceName || undefined}
+                    type="button"
+                    variant="outline"
+                    onClick={() => archiveInputRef.current?.click()}
+                  >
+                    <HugeiconsIcon
+                      data-icon="inline-start"
+                      icon={Upload04Icon}
+                    />
+                    <span className="min-w-0 truncate">
+                      {sourceName || t("pages.skills.batchImport.sourceStep")}
+                    </span>
+                  </Button>
                 </ItemActions>
               </Item>
               <FieldError>{sourceError}</FieldError>
@@ -536,31 +344,6 @@ export function SkillImportWizard({
         <div>
           <FieldGroup className="gap-4">
             <Field data-invalid={scanWarnings.length > 0}>
-              <div className="flex items-center justify-between gap-3">
-                <FieldLabel htmlFor="select-all-skills">
-                  {t("pages.skills.batchImport.found", {
-                    count: candidates.length,
-                  })}
-                </FieldLabel>
-                <label
-                  className="flex cursor-pointer items-center gap-2"
-                  htmlFor="select-all-skills"
-                >
-                  <Checkbox
-                    checked={allSelected}
-                    id="select-all-skills"
-                    indeterminate={selectedIds.length > 0 && !allSelected}
-                    onCheckedChange={(checked) => {
-                      setSelectedIds(
-                        checked
-                          ? candidates.map((candidate) => candidate.id)
-                          : []
-                      )
-                    }}
-                  />
-                  <span>{t("pages.skills.batchImport.selectAll")}</span>
-                </label>
-              </div>
               <ItemGroup className="max-h-80 overflow-y-auto">
                 {candidates.map((candidate) => {
                   const checkboxId = `import-${candidate.id}`
@@ -591,52 +374,42 @@ export function SkillImportWizard({
                           {candidate.sourceName} ·{" "}
                           {candidate.analysis.entryPath}
                         </ItemDescription>
-                        <ItemDescription>
-                          {t("pages.skills.packageSummary", {
-                            count: candidate.analysis.fileCount,
-                            size: formatBytes(candidate.analysis.unpackedSize),
-                          })}
-                        </ItemDescription>
                       </ItemContent>
-                      <ItemMedia variant="icon">
-                        <HugeiconsIcon
-                          icon={DocumentValidationIcon}
-                          strokeWidth={2}
-                        />
-                      </ItemMedia>
                     </Item>
                   )
                 })}
               </ItemGroup>
               <FieldError>{scanWarnings.join("\n")}</FieldError>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="batch-skill-tags">
-                {t("pages.skills.tags")}
-              </FieldLabel>
-              <SkillTagSelect
-                id="batch-skill-tags"
-                open={tagsOpen}
-                options={availableTags}
-                placeholder={t("pages.skills.tagsPlaceholder")}
-                value={selectedTagIds}
-                onOpenChange={setTagsOpen}
-                onValueChange={setSelectedTagIds}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="batch-skill-authorized-users">
-                {t("pages.models.authorizedScope")}
-              </FieldLabel>
-              <AuthorizationSelect
-                groups={subjects.groups}
-                members={subjects.members}
-                id="batch-skill-authorized-users"
-                disabled={importing}
-                value={authorization}
-                onValueChange={setAuthorization}
-              />
-            </Field>
+            <div className="grid min-w-0 grid-cols-2 gap-4">
+              <Field className="min-w-0">
+                <FieldLabel htmlFor="batch-skill-tags">
+                  {t("pages.skills.tags")}
+                </FieldLabel>
+                <SkillTagSelect
+                  id="batch-skill-tags"
+                  open={tagsOpen}
+                  options={availableTags}
+                  placeholder={t("pages.skills.tagsPlaceholder")}
+                  value={selectedTagIds}
+                  onOpenChange={setTagsOpen}
+                  onValueChange={setSelectedTagIds}
+                />
+              </Field>
+              <Field className="min-w-0">
+                <FieldLabel htmlFor="batch-skill-authorized-users">
+                  {t("pages.models.authorizedScope")}
+                </FieldLabel>
+                <AuthorizationSelect
+                  groups={subjects.groups}
+                  members={subjects.members}
+                  id="batch-skill-authorized-users"
+                  disabled={importing}
+                  value={authorization}
+                  onValueChange={setAuthorization}
+                />
+              </Field>
+            </div>
           </FieldGroup>
           <DialogFooter className="mt-6">
             <Button

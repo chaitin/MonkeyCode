@@ -21,8 +21,8 @@ import { useResourceList } from "@/hooks/use-resource-list"
 import { useResourceBatch } from "@/hooks/use-resource-batch"
 import { ResourceBatchActions } from "@/components/resource-batch-actions"
 import {
-  AiBrain01Icon,
-  Copy02Icon,
+  GraduationCapIcon,
+  Copy01Icon,
   Delete02Icon,
   Edit02Icon,
   MoreHorizontalIcon,
@@ -35,6 +35,10 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { AuthorizationSelect } from "@/components/authorization-select"
+import {
+  ExpertAvatarField,
+  type ExpertAvatarDraft,
+} from "@/components/expert-avatar-field"
 import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
@@ -49,7 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -95,6 +99,7 @@ type Expert = {
   ownership: ResourceRow["ownership_type"]
   grants: ResourceRow["grants"]
   owner: string
+  avatarPath: string
   revision: number
   id: string
   name: string
@@ -113,7 +118,14 @@ type Expert = {
 
 type ExpertForm = Omit<
   Expert,
-  "id" | "updatedAt" | "enabled" | "revision" | "ownership" | "owner" | "grants"
+  | "id"
+  | "updatedAt"
+  | "enabled"
+  | "revision"
+  | "ownership"
+  | "owner"
+  | "grants"
+  | "avatarPath"
 >
 type AssociationKey = "knowledgeBaseIds" | "toolIds" | "ruleIds" | "skillIds"
 
@@ -133,6 +145,7 @@ function toExpert(row: ResourceRow, language: string): Expert {
     ownership: row.ownership_type,
     grants: row.grants,
     owner: row.user.name || row.user.email || row.user.id,
+    avatarPath: row.avatar_path?.trim() || "",
     revision: row.revision,
     name: text.name,
     description: text.description,
@@ -168,9 +181,9 @@ const ASSOCIATION_SECTIONS: Array<{
   key: AssociationKey
   labelKey: string
 }> = [
-  { key: "toolIds", labelKey: "tools" },
-  { key: "ruleIds", labelKey: "rules" },
-  { key: "skillIds", labelKey: "skills" },
+  { key: "skillIds", labelKey: "pages.experts.skills" },
+  { key: "ruleIds", labelKey: "pages.experts.rules" },
+  { key: "toolIds", labelKey: "pages.tools.title" },
 ]
 
 function ExpertAssociationSelect({
@@ -315,6 +328,15 @@ export function ExpertsPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingExpert, setEditingExpert] = useState<Expert | null>(null)
   const [form, setForm] = useState<ExpertForm>(EMPTY_FORM)
+  const [avatarDraft, setAvatarDraft] = useState<ExpertAvatarDraft>(null)
+  const [authorizationChanged, setAuthorizationChanged] = useState(false)
+  const authorization: AuthorizationSelection =
+    !editingExpert && !authorizationChanged
+      ? {
+          groupIds: subjects.groups.slice(0, 1).map((group) => group.value),
+          memberIds: [],
+        }
+      : form.authorization
   const importedExpert = editingExpert?.origin === "package"
   const [tagsOpen, setTagsOpen] = useState(false)
   const [pendingDeletion, setPendingDeletion] = useState<Expert | null>(null)
@@ -368,6 +390,8 @@ export function ExpertsPage() {
     batch.exit()
     setEditingExpert(null)
     setForm(EMPTY_FORM)
+    setAuthorizationChanged(false)
+    setAvatarDraft(null)
     setTagsOpen(false)
     setEditorOpen(true)
   }
@@ -375,6 +399,7 @@ export function ExpertsPage() {
   const openEditDialog = (expert: Expert) => {
     if (expert.ownership !== "system") return
     setEditingExpert(expert)
+    setAvatarDraft(null)
     setForm({
       name: expert.name,
       description: expert.description,
@@ -395,6 +420,7 @@ export function ExpertsPage() {
     key: Key,
     value: ExpertForm[Key]
   ) => {
+    if (key === "authorization") setAuthorizationChanged(true)
     setForm((current) => ({ ...current, [key]: value }))
   }
 
@@ -417,6 +443,7 @@ export function ExpertsPage() {
   }
   const saveExpert = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (remote.pending) return
     await remote.run(async () => {
       if (editingExpert?.origin === "package") {
         const overrides: Record<string, string> = {}
@@ -431,33 +458,43 @@ export function ExpertsPage() {
               editingExpert.revision
             )
           : editingExpert
-        await savePackageGrants("expert", resource, form.authorization)
+        await savePackageGrants("expert", resource, authorization)
       } else {
-        await saveResource(
-          editingExpert ? `/experts/${editingExpert.id}` : "/experts",
-          {
-            name: form.name,
-            description: form.description,
-            prompt: form.prompt,
-            tag_ids: form.tagIds,
-            rule_ids: form.ruleIds,
-            skill_ids: form.skillIds,
-            connectors: form.toolIds.map(
-              (connector_id) =>
-                form.connectorSettings.find(
-                  (p) => p.connector_id === connector_id
-                ) ?? {
-                  connector_id,
-                  required: true,
-                  tool_allowlist: [],
-                  tool_denylist: [],
-                }
-            ),
-            grants: grants(form.authorization),
-          },
-          editingExpert?.revision
-        )
+        const metadata = {
+          name: form.name,
+          description: form.description,
+          prompt: form.prompt,
+          tag_ids: form.tagIds,
+          rule_ids: form.ruleIds,
+          skill_ids: form.skillIds,
+          connectors: form.toolIds.map(
+            (connector_id) =>
+              form.connectorSettings.find(
+                (p) => p.connector_id === connector_id
+              ) ?? {
+                connector_id,
+                required: true,
+                tool_allowlist: [],
+                tool_denylist: [],
+              }
+          ),
+          grants: grants(authorization),
+        }
+        const path = editingExpert ? `/experts/${editingExpert.id}` : "/experts"
+        if (avatarDraft) {
+          const body = new FormData()
+          body.set("metadata", JSON.stringify(metadata))
+          body.set("avatar", avatarDraft.file)
+          await api(base + path, {
+            method: editingExpert ? "PUT" : "POST",
+            headers: editingExpert ? match(editingExpert.revision) : {},
+            body,
+          })
+        } else {
+          await saveResource(path, metadata, editingExpert?.revision)
+        }
       }
+      setAvatarDraft(null)
       setEditorOpen(false)
     }, t("resources.operationCompleted"))
   }
@@ -538,6 +575,13 @@ export function ExpertsPage() {
               <CardHeader>
                 <div className="flex min-w-0 items-start gap-3">
                   <Avatar size="lg">
+                    {expert.avatarPath && (
+                      <AvatarImage
+                        src={expert.avatarPath}
+                        alt=""
+                        className="m-0.5 size-9 self-center"
+                      />
+                    )}
                     <AvatarFallback
                       className={
                         expert.ownership === "user"
@@ -546,7 +590,10 @@ export function ExpertsPage() {
                       }
                     >
                       {expert.ownership === "system" ? (
-                        <HugeiconsIcon icon={AiBrain01Icon} strokeWidth={2} />
+                        <HugeiconsIcon
+                          icon={GraduationCapIcon}
+                          strokeWidth={2}
+                        />
                       ) : (
                         getCreatorInitial(expert.owner)
                       )}
@@ -648,7 +695,7 @@ export function ExpertsPage() {
                                 onClick={() => duplicateExpert(expert)}
                               >
                                 <HugeiconsIcon
-                                  icon={Copy02Icon}
+                                  icon={Copy01Icon}
                                   strokeWidth={2}
                                 />
                                 {t("pages.experts.duplicate")}
@@ -694,14 +741,16 @@ export function ExpertsPage() {
       <Dialog
         open={editorOpen}
         onOpenChange={(open) => {
+          if (remote.pending) return
           setEditorOpen(open)
           if (!open) {
             setEditingExpert(null)
+            setAvatarDraft(null)
           }
         }}
       >
         <DialogContent
-          className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-3xl"
+          className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-xl"
           closeLabel={t("common.close")}
           aria-describedby={
             importedExpert ? "imported-expert-readonly" : undefined
@@ -719,44 +768,62 @@ export function ExpertsPage() {
             className="flex min-h-0 flex-1 flex-col gap-6"
             onSubmit={saveExpert}
           >
-            <FieldGroup className="max-h-[calc(100vh-12rem)] min-h-0 flex-1 gap-4 overflow-y-auto pe-1">
-              <fieldset className="contents">
-                <Field>
-                  <FieldLabel htmlFor="expert-name">
-                    {t("pages.experts.name")}
-                  </FieldLabel>
-                  <Input
-                    id="expert-name"
-                    value={form.name}
-                    onChange={(event) => updateForm("name", event.target.value)}
-                    placeholder={t("pages.experts.namePlaceholder")}
-                    required
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="expert-description">
-                    {t("pages.experts.expertDescription")}
-                  </FieldLabel>
-                  <Textarea
-                    id="expert-description"
-                    value={form.description}
-                    onChange={(event) =>
-                      updateForm("description", event.target.value)
-                    }
-                    placeholder={t("pages.experts.descriptionPlaceholder")}
-                    rows={3}
-                    required={!importedExpert}
-                  />
-                </Field>
-              </fieldset>
-              <fieldset disabled={importedExpert} className="contents">
+            <FieldGroup className="-mx-1 max-h-[calc(100vh-12rem)] min-h-0 w-[calc(100%+0.5rem)] flex-1 gap-4 overflow-y-auto px-1">
+              <div
+                data-expert-basics=""
+                data-resource-basics=""
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_var(--resource-avatar-size,7.5rem)] items-start !gap-x-3 !gap-y-1 sm:!gap-x-4 sm:!gap-y-3"
+              >
+                <fieldset disabled={remote.pending} className="contents">
+                  <Field className="contents">
+                    <FieldLabel htmlFor="expert-name">
+                      {t("pages.experts.name")}
+                    </FieldLabel>
+                    <Input
+                      id="expert-name"
+                      className="sm:mb-1"
+                      value={form.name}
+                      onChange={(event) =>
+                        updateForm("name", event.target.value)
+                      }
+                      placeholder={t("pages.experts.namePlaceholder")}
+                      required
+                    />
+                  </Field>
+                  <Field className="contents">
+                    <FieldLabel htmlFor="expert-description">
+                      {t("pages.experts.expertDescription")}
+                    </FieldLabel>
+                    <Input
+                      id="expert-description"
+                      value={form.description}
+                      onChange={(event) =>
+                        updateForm("description", event.target.value)
+                      }
+                      placeholder={t("pages.experts.descriptionPlaceholder")}
+                      required={!importedExpert}
+                    />
+                  </Field>
+                </fieldset>
+                <ExpertAvatarField
+                  src={editingExpert?.avatarPath || ""}
+                  value={avatarDraft}
+                  onValueChange={setAvatarDraft}
+                  disabled={importedExpert || remote.pending}
+                  loading={remote.pending && !!avatarDraft}
+                />
+              </div>
+              <fieldset
+                disabled={importedExpert || remote.pending}
+                className="contents"
+              >
                 <Field>
                   <FieldLabel htmlFor="expert-prompt">
                     {t("pages.experts.prompt")}
                   </FieldLabel>
                   <Textarea
                     id="expert-prompt"
-                    className="max-h-48 min-h-32 resize-y overflow-y-auto"
+                    className="max-h-32 min-h-24 resize-y overflow-y-auto"
                     value={form.prompt}
                     onChange={(event) =>
                       updateForm("prompt", event.target.value)
@@ -765,20 +832,28 @@ export function ExpertsPage() {
                     required
                   />
                 </Field>
-                {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
-                  <Field key={key}>
-                    <FieldLabel htmlFor={`expert-${key}`}>
-                      {t(`pages.experts.${labelKey}`)}
-                    </FieldLabel>
-                    <ExpertAssociationSelect
-                      id={`expert-${key}`}
-                      label={t(`pages.experts.${labelKey}`)}
-                      options={options[key]}
-                      value={form[key]}
-                      onValueChange={(value) => updateForm(key, value)}
-                    />
-                  </Field>
-                ))}
+                <div className="grid min-w-0 grid-cols-2 gap-4">
+                  {ASSOCIATION_SECTIONS.map(({ key, labelKey }) => (
+                    <Field
+                      key={key}
+                      className={cn(
+                        "min-w-0",
+                        key === "toolIds" && "col-span-2"
+                      )}
+                    >
+                      <FieldLabel htmlFor={`expert-${key}`}>
+                        {t(labelKey)}
+                      </FieldLabel>
+                      <ExpertAssociationSelect
+                        id={`expert-${key}`}
+                        label={t(labelKey)}
+                        options={options[key]}
+                        value={form[key]}
+                        onValueChange={(value) => updateForm(key, value)}
+                      />
+                    </Field>
+                  ))}
+                </div>
                 {form.toolIds.map((id) => {
                   const settings = form.connectorSettings.find(
                     (p) => p.connector_id === id
@@ -827,39 +902,48 @@ export function ExpertsPage() {
                     </Field>
                   )
                 })}
-                <Field>
-                  <FieldLabel htmlFor="expert-tags">
-                    {t("pages.skills.tags")}
-                  </FieldLabel>
-                  <SkillTagSelect
-                    id="expert-tags"
-                    open={tagsOpen}
-                    options={availableTags}
-                    placeholder={t("pages.skills.tagsPlaceholder")}
-                    value={form.tagIds}
-                    onOpenChange={setTagsOpen}
-                    onValueChange={(value) => updateForm("tagIds", value)}
-                  />
-                </Field>
               </fieldset>
-              <Field>
-                <FieldLabel htmlFor="expert-authorization">
-                  {t("pages.models.authorizedScope")}
-                </FieldLabel>
-                <AuthorizationSelect
-                  groups={subjects.groups}
-                  members={subjects.members}
-                  id="expert-authorization"
-                  disabled={remote.pending}
-                  value={form.authorization}
-                  onValueChange={(value) => updateForm("authorization", value)}
-                />
-                {importedExpert && editingExpert.retired && (
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    {t("resources.retiredGrantsOnly")}
-                  </p>
-                )}
-              </Field>
+              <div className="grid min-w-0 grid-cols-2 gap-4">
+                <fieldset
+                  disabled={importedExpert || remote.pending}
+                  className="min-w-0"
+                >
+                  <Field>
+                    <FieldLabel htmlFor="expert-tags">
+                      {t("pages.skills.tags")}
+                    </FieldLabel>
+                    <SkillTagSelect
+                      id="expert-tags"
+                      open={tagsOpen}
+                      options={availableTags}
+                      placeholder={t("pages.skills.tagsPlaceholder")}
+                      value={form.tagIds}
+                      onOpenChange={setTagsOpen}
+                      onValueChange={(value) => updateForm("tagIds", value)}
+                    />
+                  </Field>
+                </fieldset>
+                <Field>
+                  <FieldLabel htmlFor="expert-authorization">
+                    {t("pages.models.authorizedScope")}
+                  </FieldLabel>
+                  <AuthorizationSelect
+                    groups={subjects.groups}
+                    members={subjects.members}
+                    id="expert-authorization"
+                    disabled={remote.pending}
+                    value={authorization}
+                    onValueChange={(value) =>
+                      updateForm("authorization", value)
+                    }
+                  />
+                  {importedExpert && editingExpert.retired && (
+                    <p className="text-sm text-amber-700 dark:text-amber-400">
+                      {t("resources.retiredGrantsOnly")}
+                    </p>
+                  )}
+                </Field>
+              </div>
             </FieldGroup>
             <ResourceNotice
               error={remote.error || subjects.error}
@@ -874,7 +958,15 @@ export function ExpertsPage() {
                   : undefined
               }
             >
-              <DialogClose render={<Button type="button" variant="outline" />}>
+              <DialogClose
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={remote.pending}
+                  />
+                }
+              >
                 {t("pages.experts.cancel")}
               </DialogClose>
               <Button

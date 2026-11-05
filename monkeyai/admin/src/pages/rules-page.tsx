@@ -25,7 +25,7 @@ import { ResourceEditorFooter } from "@/components/resource-editor-footer"
 import type { RuleType } from "@/hooks/use-rule-page"
 import { useState, type FormEvent } from "react"
 import {
-  Copy02Icon,
+  Copy01Icon,
   Delete02Icon,
   DocumentValidationIcon,
   Edit02Icon,
@@ -304,7 +304,7 @@ export function RulesPage() {
                   {t("pages.rules.add")}
                 </DialogTrigger>
                 <DialogContent
-                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+                  className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl"
                   closeLabel={t("common.close")}
                   aria-describedby={
                     importedRule ? "imported-rule-readonly" : undefined
@@ -345,8 +345,7 @@ export function RulesPage() {
                         <FieldLabel htmlFor="rule-description">
                           {t("pages.rules.ruleDescription")}
                         </FieldLabel>
-                        <Textarea
-                          className="max-h-32 min-h-20 resize-none overflow-y-auto"
+                        <Input
                           id="rule-description"
                           name="description"
                           defaultValue={ruleDraft?.description}
@@ -360,7 +359,7 @@ export function RulesPage() {
                           {t("pages.rules.content")}
                         </FieldLabel>
                         <Textarea
-                          className="max-h-64 min-h-40 resize-y overflow-y-auto"
+                          className="max-h-40 min-h-24 resize-y overflow-y-auto"
                           id="rule-content"
                           name="content"
                           defaultValue={ruleDraft?.content}
@@ -387,44 +386,46 @@ export function RulesPage() {
                           </ItemActions>
                         </Item>
                       </Field>
-                      <fieldset
-                        disabled={importedRule || remote.pending}
-                        className="contents"
-                      >
-                        <Field>
-                          <FieldLabel htmlFor="rule-tags">
-                            {t("pages.skills.tags")}
+                      <div className="grid min-w-0 grid-cols-2 gap-4">
+                        <fieldset
+                          disabled={importedRule || remote.pending}
+                          className="min-w-0"
+                        >
+                          <Field>
+                            <FieldLabel htmlFor="rule-tags">
+                              {t("pages.skills.tags")}
+                            </FieldLabel>
+                            <SkillTagSelect
+                              id="rule-tags"
+                              open={tagsOpen}
+                              options={availableTags}
+                              placeholder={t("pages.skills.tagsPlaceholder")}
+                              value={tagIds}
+                              onOpenChange={setTagsOpen}
+                              onValueChange={setTagIds}
+                            />
+                          </Field>
+                        </fieldset>
+                        <Field className="min-w-0">
+                          <FieldLabel htmlFor="rule-available">
+                            {t("pages.rules.usageScope")}
                           </FieldLabel>
-                          <SkillTagSelect
-                            id="rule-tags"
-                            open={tagsOpen}
-                            options={availableTags}
-                            placeholder={t("pages.skills.tagsPlaceholder")}
-                            value={tagIds}
-                            onOpenChange={setTagsOpen}
-                            onValueChange={setTagIds}
+                          <AuthorizationSelect
+                            id="rule-available"
+                            groups={subjects.groups}
+                            members={subjects.members}
+                            value={authorization}
+                            onValueChange={setAuthorization}
+                            disabled={remote.pending}
+                            title={t("pages.rules.usageScope")}
                           />
+                          {importedRule && editingRule?.retired && (
+                            <p className="text-sm text-amber-700">
+                              {t("resources.retiredGrantsOnly")}
+                            </p>
+                          )}
                         </Field>
-                      </fieldset>
-                      <Field>
-                        <FieldLabel htmlFor="rule-available">
-                          {t("pages.rules.usageScope")}
-                        </FieldLabel>
-                        <AuthorizationSelect
-                          id="rule-available"
-                          groups={subjects.groups}
-                          members={subjects.members}
-                          value={authorization}
-                          onValueChange={setAuthorization}
-                          disabled={remote.pending}
-                          title={t("pages.rules.usageScope")}
-                        />
-                        {importedRule && editingRule?.retired && (
-                          <p className="text-sm text-amber-700">
-                            {t("resources.retiredGrantsOnly")}
-                          </p>
-                        )}
-                      </Field>
+                      </div>
                     </FieldGroup>
                     <ResourceNotice
                       error={remote.error || subjects.error}
@@ -572,7 +573,7 @@ export function RulesPage() {
                               onClick={() => handleCopyRule(rule)}
                             >
                               <HugeiconsIcon
-                                icon={Copy02Icon}
+                                icon={Copy01Icon}
                                 strokeWidth={2}
                               />
                               {t("pages.models.copy")}

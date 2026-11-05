@@ -35,6 +35,9 @@ func NewService(store *resource.Store) *Service {
 	return s
 }
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	if avatar, ok := in[avatarChangeKey].(*avatarChange); ok {
+		avatar.old = old.String("avatar_s3_key")
+	}
 	if _, exists := in["providers"]; exists {
 		return resource.InvalidCode("expert_dependencies_invalid", "专家依赖请使用 connectors")
 	}
@@ -132,6 +135,11 @@ func connectorLinks(v any) []resource.Object {
 
 func (s *Service) links(ctx context.Context, tx pgx.Tx, in resource.Object) error {
 	queries := sqlc.New(tx)
+	if avatar, ok := in[avatarChangeKey].(*avatarChange); ok {
+		if err := queries.SetAvatar(ctx, sqlc.SetAvatarParams{ID: in.String("id"), AvatarS3Key: avatar.key}); err != nil {
+			return err
+		}
+	}
 	if raw, ok := in["rule_ids"]; ok {
 		if err := queries.DeleteRuleLinks(ctx, in.String("id")); err != nil {
 			return err
@@ -194,6 +202,9 @@ func (s *Service) decorate(ctx context.Context, q resource.Queryer, o resource.O
 }
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.CRUD.Register(r)
+	// Replace only the save handlers; JSON clients retain the same contract.
+	r.Post("/experts", s.saveExpert)
+	r.Put("/experts/{id}", s.saveExpert)
 	if s.storage != nil {
 		r.Get("/experts/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, true) })
 	}

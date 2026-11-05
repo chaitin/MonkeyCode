@@ -469,8 +469,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		t.Fatalf("工具发现失败: %v", tools)
 	}
 	tool := resource.Object(list[0].(map[string]any))
-	if tool.Bool("enabled") {
-		t.Fatal("新工具必须默认禁用")
+	if !tool.Bool("enabled") {
+		t.Fatal("新工具必须默认启用")
 	}
 	must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
 	agentTools := must("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "a", "")

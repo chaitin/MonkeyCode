@@ -1,136 +1,185 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
-import { ApiError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { base, match, type Credential } from "@/lib/resources"
-import { ResourceNotice } from "@/components/resource-notice"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Field, FieldLabel } from "@/components/ui/field"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 
-type Connector = {
+export type CredentialConnector = {
   id: string
   name: string
   callbackURL: string
   authorizationMethod: "oauth" | "httpHeader" | null
+  credentials: Credential[]
+}
+
+export type ConnectorCredentialInput = {
+  id?: string
+  revision?: number
+  name?: string
+  http_headers?: Record<string, string>
+  revoke?: true
+}
+
+export type ConnectorCredentialsHandle = {
+  validate: () => void
+  getValue: () => ConnectorCredentialInput | undefined
+  accept: (
+    connector: CredentialConnector,
+    written?: ConnectorCredentialInput
+  ) => void
 }
 
 export function ConnectorCredentials({
+  ref,
   connector,
-  onClose,
+  method,
+  active,
+  disabled,
+  onPrepare,
   onChange,
+  onRevoke,
+  onBusyChange,
 }: {
-  connector: Connector
-  onClose: () => void
-  onChange: () => Promise<void>
+  ref: Ref<ConnectorCredentialsHandle>
+  connector: CredentialConnector | null
+  method: "oauth" | "httpHeader"
+  active: boolean
+  disabled: boolean
+  onPrepare: () => Promise<CredentialConnector | null>
+  onChange: (id: string) => Promise<CredentialConnector>
+  onRevoke: (
+    change: ConnectorCredentialInput
+  ) => Promise<CredentialConnector | null>
+  onBusyChange: (busy: boolean) => void
 }) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
-  const [credentials, setCredentials] = useState<Credential[]>([])
-  const [name, setName] = useState("")
+  const [credential, setCredential] = useState<Credential | null>(
+    () => connector?.credentials[0] ?? null
+  )
+  const credentialRef = useRef(credential)
+  const [credentialMethod, setCredentialMethod] = useState(
+    connector?.authorizationMethod ?? null
+  )
+  const [name, setName] = useState(credential?.name ?? "")
   const [replaceHeaders, setReplaceHeaders] = useState(false)
   const [headers, setHeaders] = useState([{ key: "Authorization", value: "" }])
-  const [request, setRequest] = useState<{ id: string; url: string } | null>(
-    null
-  )
-  const [error, setError] = useState("")
+  const [request, setRequest] = useState<{
+    id: string
+    url: string
+    connectorID: string
+  } | null>(null)
   const [operation, setOperation] = useState<
-    "save" | "authorize" | "test" | "revoke" | null
+    "authorize" | "test" | "revoke" | null
   >(null)
   const pending = operation !== null
-  const [loading, setLoading] = useState(true)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [loadRevision, setLoadRevision] = useState(0)
   const lock = useRef(false)
-  const path = base + `/connectors/${connector.id}`
-  const credential = credentials[0]
-  const credentialPath = credential
-    ? path + `/credentials/${credential.id}`
-    : path + "/credentials"
-  useEffect(() => {
-    let cancelled = false
-    api<{ items: Credential[] }>(path + "/credentials")
-      .then((result) => {
-        if (!cancelled) {
-          setCredentials(result.items)
-          setName(result.items[0]?.name ?? "")
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setLoadFailed(true)
-          showToast({
-            status: "error",
-            title: e instanceof Error ? e.message : String(e),
-            action: {
-              label: t("statistics.retry"),
-              onClick: () => {
-                setLoading(true)
-                setLoadFailed(false)
-                setLoadRevision((value) => value + 1)
-              },
-            },
-          })
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [loadRevision, path, showToast, t])
-  const reload = async () => {
-    const result = await api<{ items: Credential[] }>(path + "/credentials")
-    setCredentials(result.items)
-    setName(result.items[0]?.name ?? "")
-    setLoadFailed(false)
-    await onChange()
+  const writeHeaders =
+    !credential || replaceHeaders || credentialMethod === "oauth"
+
+  const acceptCredential = useCallback((saved: Credential | null) => {
+    credentialRef.current = saved
+    setCredential(saved)
+  }, [])
+
+  const currentCredential = (target: CredentialConnector) => {
+    const stored = target.credentials[0]
+    const cached = credentialRef.current
+    if (cached?.connector_id !== target.id) return stored ?? null
+    return stored &&
+      (stored.id !== cached.id || stored.revision >= cached.revision)
+      ? stored
+      : cached
   }
+
+  const validate = () => {
+    if (!name.trim()) throw new Error(t("resources.credentialNameRequired"))
+    if (method === "httpHeader" && writeHeaders) {
+      const seen = new Set<string>()
+      for (const header of headers) {
+        const key = header.key.trim().toLowerCase()
+        if (!key || seen.has(key))
+          throw new Error(t("resources.headerDuplicate"))
+        seen.add(key)
+      }
+    }
+  }
+
+  const getValue = (): ConnectorCredentialInput | undefined => {
+    validate()
+    const data: ConnectorCredentialInput = { name: name.trim() }
+    if (credential) {
+      data.id = credential.id
+      data.revision = credential.revision
+    }
+    if (method === "httpHeader" && writeHeaders) {
+      data.http_headers = Object.fromEntries(
+        headers.map((header) => [header.key.trim(), header.value])
+      )
+    }
+    if (credential && !data.http_headers && data.name === credential.name)
+      return undefined
+    return data
+  }
+
+  const accept = (
+    target: CredentialConnector,
+    written?: ConnectorCredentialInput
+  ) => {
+    const saved = target.credentials[0] ?? null
+    acceptCredential(saved)
+    if (saved) setCredentialMethod(target.authorizationMethod)
+    if (written?.name && saved) setName(saved.name)
+    if (written?.http_headers || written?.revoke) {
+      setReplaceHeaders(false)
+      setHeaders([{ key: "Authorization", value: "" }])
+    }
+    if (written && saved?.connection_status === "error") {
+      showToast({
+        status: "error",
+        title: saved.last_error ?? t("resources.credentialConnectionFailed"),
+        description: t("resources.credentialSaved"),
+      })
+    }
+  }
+
+  useImperativeHandle(ref, () => ({ validate, getValue, accept }))
+
   const run = async (
     action: () => Promise<void>,
-    kind: "save" | "authorize" | "test" | "revoke" = "save"
+    kind: "authorize" | "test" | "revoke"
   ) => {
     if (lock.current) return
     lock.current = true
     setOperation(kind)
-    setError("")
+    onBusyChange(true)
     try {
       await action()
-    } catch (e) {
-      if (e instanceof ApiError) {
-        showToast({ status: "error", title: e.message })
-      } else {
-        setError(e instanceof Error ? e.message : "操作失败")
-      }
+    } catch (error) {
+      showToast({
+        status: "error",
+        title: error instanceof Error ? error.message : String(error),
+      })
     } finally {
       lock.current = false
       setOperation(null)
+      onBusyChange(false)
     }
   }
-  const test = async (id: string) => {
-    try {
-      await api(path + `/credentials/${id}/test`, { method: "POST" })
-      showToast({
-        status: "success",
-        title: t("resources.credentialTestPassed", {
-          defaultValue: "凭证已保存，连接测试成功。",
-        }),
-      })
-    } finally {
-      await reload()
-    }
-  }
+
   useEffect(() => {
-    if (!request) return
+    if (!request || !active || method !== "oauth") return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
@@ -144,48 +193,55 @@ export function ConnectorCredentials({
           timer = setTimeout(poll, 2000)
           return
         }
-        setRequest(null)
         if (result.status !== "succeeded" || !result.credential_id) {
+          setRequest(null)
           showToast({
             status: "error",
-            title: t("resources.authorizationFailed", {
-              defaultValue: "授权未完成或已过期，请重新发起。",
-            }),
+            title: t("resources.authorizationFailed"),
           })
           return
         }
         const updated = await api<{ items: Credential[] }>(
-          path + "/credentials"
+          base + `/connectors/${request.connectorID}/credentials`
         )
-        if (!cancelled) {
-          setCredentials(updated.items)
-          setName(updated.items[0]?.name ?? "")
-          const saved = updated.items.find(
-            (item) => item.id === result.credential_id
-          )
-          if (saved?.connection_status === "error") {
-            showToast({
-              status: "error",
-              title: saved.last_error ?? "连接测试失败",
-              description: t("resources.credentialSaved"),
-            })
-          } else {
-            showToast({
-              status: "success",
-              title: t(
-                saved?.connection_status === "connected"
-                  ? "resources.credentialTestPassed"
-                  : "resources.credentialSaved"
-              ),
-            })
-          }
+        if (cancelled) return
+        const saved =
+          updated.items.find((item) => item.id === result.credential_id) ?? null
+        acceptCredential(saved)
+        setCredentialMethod("oauth")
+        setRequest(null)
+        if (!saved) {
+          showToast({
+            status: "error",
+            title: t("resources.authorizationFailed"),
+          })
+          await onChange(request.connectorID)
+          return
         }
-        await onChange()
-      } catch (e) {
+        setName(saved.name)
+        if (saved?.connection_status === "error") {
+          showToast({
+            status: "error",
+            title:
+              saved.last_error ?? t("resources.credentialConnectionFailed"),
+            description: t("resources.credentialSaved"),
+          })
+        } else {
+          showToast({
+            status: "success",
+            title: t(
+              saved?.connection_status === "connected"
+                ? "resources.credentialTestPassed"
+                : "resources.credentialSaved"
+            ),
+          })
+        }
+        await onChange(request.connectorID)
+      } catch (error) {
         if (!cancelled) {
           showToast({
             status: "error",
-            title: e instanceof Error ? e.message : "查询授权失败",
+            title: error instanceof Error ? error.message : String(error),
           })
           setRequest(null)
         }
@@ -196,66 +252,25 @@ export function ConnectorCredentials({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [request, path, onChange, showToast, t])
-  const save = (event: FormEvent) => {
-    event.preventDefault()
-    void run(async () => {
-      const data: { name: string; http_headers?: Record<string, string> } = {
-        name: name.trim(),
-      }
-      if (
-        connector.authorizationMethod === "httpHeader" &&
-        (!credential || replaceHeaders)
-      ) {
-        const seen = new Set<string>()
-        data.http_headers = {}
-        for (const header of headers) {
-          const key = header.key.trim()
-          if (!key || seen.has(key.toLowerCase()))
-            throw new Error(
-              t("resources.headerDuplicate", {
-                defaultValue: "Header 名称不能为空或重复。",
-              })
-            )
-          seen.add(key.toLowerCase())
-          data.http_headers[key] = header.value
-        }
-      }
-      const saved = await api<Credential>(credentialPath, {
-        method: credential ? "PATCH" : "POST",
-        headers: credential ? match(credential.revision) : {},
-        body: JSON.stringify(data),
-      })
-      setCredentials([saved])
-      setReplaceHeaders(false)
-      setHeaders([{ key: "Authorization", value: "" }])
-      if (data.http_headers && saved.connection_status === "error") {
-        showToast({
-          status: "error",
-          title: saved.last_error ?? "连接测试失败",
-          description: t("resources.credentialSaved"),
-        })
-      } else {
-        showToast({
-          status: "success",
-          title: t(
-            data.http_headers && saved.connection_status === "connected"
-              ? "resources.credentialTestPassed"
-              : "resources.credentialSaved"
-          ),
-        })
-      }
-      await reload()
-    })
-  }
+  }, [request, active, method, onChange, showToast, t, acceptCredential])
+
   const authorize = () => {
     if (!name.trim() || lock.current) return
     const popup = window.open("about:blank", "_blank")
     if (popup) popup.opener = null
     void run(async () => {
+      let target: CredentialConnector | null
       try {
+        target = await onPrepare()
+        if (!target) {
+          popup?.close()
+          return
+        }
+        const path = base + `/connectors/${target.id}`
+        const credential = currentCredential(target)
         const result = await api<{ id: string; authorization_url: string }>(
-          (credential ? credentialPath : path) + "/oauth/authorizations",
+          (credential ? path + `/credentials/${credential.id}` : path) +
+            "/oauth/authorizations",
           {
             method: "POST",
             headers: credential ? match(credential.revision) : {},
@@ -264,177 +279,148 @@ export function ConnectorCredentials({
               : { body: JSON.stringify({ name: name.trim() }) }),
           }
         )
-        setRequest({ id: result.id, url: result.authorization_url })
+        setRequest({
+          id: result.id,
+          url: result.authorization_url,
+          connectorID: target.id,
+        })
         if (popup) popup.location.href = result.authorization_url
-      } catch (e) {
+      } catch (error) {
         popup?.close()
-        throw e
+        throw error
       }
-      // 动态注册可能已更新连接版本，不能等用户完成授权后再同步。
-      await onChange()
+      // DCR may update the connector revision before the OAuth flow completes.
+      await onChange(target.id)
     }, "authorize")
   }
+
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
+    <fieldset
+      disabled={disabled || pending || !active}
+      className={
+        active ? "flex min-w-0 flex-col gap-4 border-t pt-4" : "hidden"
+      }
     >
-      <DialogContent
-        closeLabel={t("common.close")}
-        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {connector.name} ·{" "}
-            {t("resources.credentials", { defaultValue: "管理凭证" })}
-          </DialogTitle>
-          <DialogDescription>
-            {t("resources.credentialNameHint", {
-              defaultValue:
-                "名称由你填写，用于区分凭证，不代表第三方账户身份。",
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <ResourceNotice error={error} pending={pending} loading={loading} />
-        {loadFailed && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setLoading(true)
-              setLoadFailed(false)
-              setLoadRevision((value) => value + 1)
-            }}
-          >
-            {t("statistics.retry")}
-          </Button>
-        )}
-        {connector.callbackURL && (
-          <Field>
-            <FieldLabel htmlFor="credential-callback">
-              {t("resources.callbackURL")}
-            </FieldLabel>
-            <Input
-              id="credential-callback"
-              readOnly
-              value={connector.callbackURL}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-          </Field>
-        )}
-        <form className="flex flex-col gap-4" onSubmit={save}>
-          <Field>
-            <FieldLabel htmlFor="credential-name">
-              {t("resources.credentialName", { defaultValue: "凭证名称" })}
-            </FieldLabel>
-            <Input
-              id="credential-name"
-              required
-              maxLength={128}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </Field>
-          {credential && (
-            <p className="text-sm text-muted-foreground">
-              {t(
-                credential.authorization_status === "authorized"
-                  ? "pages.tools.authorized"
-                  : "pages.tools.notAuthorized"
-              )}{" "}
-              · {t(`pages.tools.statuses.${credential.connection_status}`)}
-            </p>
+      <Field>
+        <FieldLabel htmlFor="credential-name">
+          {t("resources.credentialName")}
+        </FieldLabel>
+        <Input
+          id="credential-name"
+          required
+          maxLength={128}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <FieldDescription>{t("resources.credentialNameHint")}</FieldDescription>
+      </Field>
+      {credential && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {t(
+            credential.authorization_status === "authorized"
+              ? "pages.tools.authorized"
+              : "pages.tools.notAuthorized"
+          )}{" "}
+          · {t(`pages.tools.statuses.${credential.connection_status}`)}
+          {credential.last_error && (
+            <span className="mt-1 block text-destructive">
+              {credential.last_error}
+            </span>
           )}
-          {connector.authorizationMethod === "httpHeader" && (
-            <>
-              {credential && (
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id="replace-credential-headers"
-                    checked={replaceHeaders}
-                    onCheckedChange={setReplaceHeaders}
-                  />
-                  <FieldLabel htmlFor="replace-credential-headers">
-                    {t("resources.replaceHeaders", {
-                      defaultValue: "替换全部 Header（未勾选时保留原值）",
-                    })}
-                  </FieldLabel>
-                </Field>
-              )}
-              {(!credential || replaceHeaders) && (
-                <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-2 text-sm">
-                    {t("pages.tools.httpHeaders")}
-                  </legend>
-                  {headers.map((header, index) => (
-                    <div className="flex flex-wrap gap-2" key={index}>
-                      <Input
-                        aria-label={t("resources.headerName", {
-                          index: index + 1,
-                        })}
-                        className="min-w-32 flex-1"
-                        required
-                        value={header.key}
-                        onChange={(e) =>
-                          setHeaders(
-                            headers.map((h, i) =>
-                              i === index ? { ...h, key: e.target.value } : h
-                            )
+        </p>
+      )}
+      {method === "httpHeader" && (
+        <>
+          {credential && credentialMethod !== "oauth" && (
+            <Field orientation="horizontal">
+              <Checkbox
+                id="replace-credential-headers"
+                checked={replaceHeaders}
+                onCheckedChange={setReplaceHeaders}
+              />
+              <FieldLabel htmlFor="replace-credential-headers">
+                {t("resources.replaceHeaders")}
+              </FieldLabel>
+            </Field>
+          )}
+          {writeHeaders && (
+            <Field>
+              <FieldLabel>{t("pages.tools.httpHeaders")}</FieldLabel>
+              <div className="flex min-w-0 flex-col gap-2">
+                {headers.map((header, index) => (
+                  <div className="flex min-w-0 flex-wrap gap-2" key={index}>
+                    <Input
+                      aria-label={t("resources.headerName", {
+                        index: index + 1,
+                      })}
+                      className="min-w-24 flex-1"
+                      required
+                      value={header.key}
+                      onChange={(event) =>
+                        setHeaders(
+                          headers.map((item, i) =>
+                            i === index
+                              ? { ...item, key: event.target.value }
+                              : item
                           )
-                        }
-                      />
-                      <Input
-                        aria-label={t("resources.headerValue", {
-                          index: index + 1,
-                        })}
-                        className="min-w-32 flex-1"
-                        type="password"
-                        autoComplete="new-password"
-                        value={header.value}
-                        onChange={(e) =>
-                          setHeaders(
-                            headers.map((h, i) =>
-                              i === index ? { ...h, value: e.target.value } : h
-                            )
+                        )
+                      }
+                    />
+                    <Input
+                      aria-label={t("resources.headerValue", {
+                        index: index + 1,
+                      })}
+                      className="min-w-24 flex-1"
+                      type="password"
+                      autoComplete="new-password"
+                      value={header.value}
+                      onChange={(event) =>
+                        setHeaders(
+                          headers.map((item, i) =>
+                            i === index
+                              ? { ...item, value: event.target.value }
+                              : item
                           )
-                        }
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={headers.length === 1}
-                        onClick={() =>
-                          setHeaders(headers.filter((_, i) => i !== index))
-                        }
-                      >
-                        {t("pages.tools.delete")}
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={headers.length >= 30}
-                    onClick={() =>
-                      setHeaders([...headers, { key: "", value: "" }])
-                    }
-                  >
-                    {t("resources.addHeader", { defaultValue: "添加 Header" })}
-                  </Button>
-                </fieldset>
-              )}
-            </>
+                        )
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={headers.length === 1}
+                      onClick={() =>
+                        setHeaders(headers.filter((_, i) => i !== index))
+                      }
+                    >
+                      {t("pages.tools.delete")}
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  className="self-start"
+                  type="button"
+                  variant="outline"
+                  disabled={headers.length >= 30}
+                  onClick={() =>
+                    setHeaders([...headers, { key: "", value: "" }])
+                  }
+                >
+                  {t("resources.addHeader")}
+                </Button>
+              </div>
+            </Field>
           )}
-          {connector.authorizationMethod === "oauth" && credential && (
-            <p className="text-sm text-muted-foreground">
-              {t("resources.reauthorizeHint", {
-                defaultValue:
-                  "重新授权会替换这份凭证的授权内容，并重新同步工具目录。",
-              })}
-            </p>
-          )}
+        </>
+      )}
+      {method === "oauth" && (
+        <>
+          <FieldDescription>
+            {t(
+              credential?.authorization_status === "authorized"
+                ? "resources.reauthorizeHint"
+                : "resources.credentialOAuthHint"
+            )}
+          </FieldDescription>
           {request && (
             <p role="status" className="text-sm">
               <a
@@ -443,80 +429,89 @@ export function ConnectorCredentials({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {t("resources.continueAuthorization", {
-                  defaultValue: "继续授权",
-                })}
+                {t("resources.continueAuthorization")}
               </a>{" "}
-              ·{" "}
-              {t("resources.waitAuthorization", {
-                defaultValue: "正在等待授权结果…",
-              })}
+              · {t("resources.waitAuthorization")}
             </p>
           )}
-          <div className="flex flex-wrap gap-2">
-            {(credential || connector.authorizationMethod === "httpHeader") && (
-              <Button
-                type="submit"
-                loading={operation === "save"}
-                disabled={loading || pending || !!request || !name.trim()}
-              >
-                {t("pages.tools.save")}
-              </Button>
-            )}
-            {connector.authorizationMethod === "oauth" && (
+        </>
+      )}
+      {(method === "oauth" || credential) && (
+        <div className="flex flex-wrap gap-2">
+          {method === "oauth" && (
+            <Button
+              type="button"
+              onClick={authorize}
+              loading={operation === "authorize" || !!request}
+              disabled={pending || !!request || !name.trim()}
+            >
+              {t(
+                credential?.authorization_status === "authorized"
+                  ? "pages.tools.reauthorize"
+                  : "pages.tools.connectAndAuthorize"
+              )}
+            </Button>
+          )}
+          {credential && (
+            <>
               <Button
                 type="button"
-                onClick={authorize}
-                loading={operation === "authorize" || !!request}
-                disabled={loading || pending || !!request || !name.trim()}
-              >
-                {t(
-                  credential
-                    ? "pages.tools.reauthorize"
-                    : "pages.tools.connectAndAuthorize"
-                )}
-              </Button>
-            )}
-            {credential && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={pending || !!request}
-                  loading={operation === "test"}
-                  onClick={() => void run(() => test(credential.id), "test")}
-                >
-                  {t("pages.tools.testConnection")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={pending || !!request}
-                  loading={operation === "revoke"}
-                  onClick={() =>
-                    void run(async () => {
-                      await api(credentialPath, {
-                        method: "DELETE",
-                        headers: match(credential.revision),
-                      })
-                      setReplaceHeaders(false)
-                      await reload()
+                variant="outline"
+                disabled={pending || !!request}
+                loading={operation === "test"}
+                onClick={() =>
+                  void run(async () => {
+                    validate()
+                    const target = await onPrepare()
+                    if (!target) return
+                    const current = currentCredential(target)
+                    if (!current) return
+                    try {
+                      await api(
+                        base +
+                          `/connectors/${target.id}/credentials/${current.id}/test`,
+                        { method: "POST" }
+                      )
                       showToast({
                         status: "success",
-                        title: t("resources.operationCompleted"),
+                        title: t("resources.credentialTestPassed"),
                       })
-                    }, "revoke")
-                  }
-                >
-                  {t("resources.revokeCredential", {
-                    defaultValue: "撤销凭证",
-                  })}
-                </Button>
-              </>
-            )}
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+                    } finally {
+                      const updated = await onChange(target.id)
+                      acceptCredential(updated.credentials[0] ?? null)
+                    }
+                  }, "test")
+                }
+              >
+                {t("pages.tools.testConnection")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || !!request}
+                loading={operation === "revoke"}
+                onClick={() =>
+                  void run(async () => {
+                    const updated = await onRevoke({
+                      id: credential.id,
+                      revision: credential.revision,
+                      revoke: true,
+                    })
+                    if (!updated) return
+                    accept(updated, { revoke: true })
+                    showToast({
+                      status: "success",
+                      title: t("resources.operationCompleted"),
+                    })
+                  }, "revoke")
+                }
+              >
+                {t("resources.revokeCredential")}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+    </fieldset>
   )
 }

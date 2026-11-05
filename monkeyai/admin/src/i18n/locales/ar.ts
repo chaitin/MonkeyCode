@@ -529,6 +529,7 @@ export const ar = {
       content: "محتوى المهارة (SKILL.md)",
       contentPlaceholder: "أدخل تعليمات المهارة",
       skillPackage: "حزمة المهارة",
+      uploadPackage: "رفع حزمة المهارة",
       packageHint: "ارفع مجلد المهارة كملف ZIP بحجم أقصى 500 MiB.",
       packageOptionalHint: "ارفع حزمة ZIP جديدة فقط عند استبدال محتوى المهارة.",
       packageParsing: "جارٍ فحص حزمة المهارة…",
@@ -551,6 +552,7 @@ export const ar = {
         missingDescription: "يفتقد frontmatter في SKILL.md إلى description.",
       },
       batchImport: {
+        choosePackage: "اختيار ملفات حزم المهارات",
         upload: "رفع",
         sourceStep: "اختيار المصدر",
         selectStep: "اختيار المهارات",
@@ -593,6 +595,11 @@ export const ar = {
     },
     experts: {
       ...enUS.pages.experts,
+      avatar: "الصورة الرمزية",
+      uploadAvatar: "رفع صورة رمزية",
+      replaceAvatar: "تغيير الصورة الرمزية",
+      avatarTooLarge: "يجب ألا يتجاوز حجم الصورة 1 MiB",
+      avatarInvalid: "اختر صورة صالحة بتنسيق PNG أو JPG/JPEG أو WebP",
       personalExpert: "خبير شخصي",
       title: "الخبراء",
       description: "أدِر خبراء المجالات وإعدادات قدراتهم.",

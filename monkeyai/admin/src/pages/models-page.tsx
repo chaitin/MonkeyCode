@@ -1248,7 +1248,7 @@ export function ModelsPage() {
                     {t("pages.models.add")}
                   </DialogTrigger>
                   <DialogContent
-                    className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl"
+                    className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-xl"
                     closeLabel={t("common.close")}
                   >
                     <form

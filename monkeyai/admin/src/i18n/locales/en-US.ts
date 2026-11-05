@@ -114,6 +114,12 @@ export const enUS = {
     selectCredential: "Select a credential",
     credentialTestPassed: "Credential saved. Connection test passed.",
     credentialSaved: "Credential saved.",
+    credentialNameRequired: "Enter a credential name.",
+    credentialConnectionFailed: "Connection test failed.",
+    credentialConnectorRequired:
+      "Enter the connector name and server URL first.",
+    credentialOAuthHint:
+      "Click Connect and authorize to authenticate. The current connector configuration will be saved first.",
     authorizationFailed: "Authorization failed or expired. Start again.",
     headerDuplicate: "Header names must be nonempty and unique.",
     credentialNameHint:
@@ -131,7 +137,8 @@ export const enUS = {
     headerValue: "Header {{index}} value",
 
     connectorIcon: "Connection icon (PNG/JPEG, up to 1 MiB)",
-    skillContent: "Skill instructions",
+    connectorAvatarInvalid: "Choose a valid PNG or JPG/JPEG avatar image.",
+    skillContent: "Prompt",
     downloadPackage: "Download skill package",
     enable: "Enable",
     disable: "Disable",
@@ -241,13 +248,13 @@ export const enUS = {
     systemExpert: "System experts",
     userExpert: "User experts",
     importedRuleReadOnly:
-      "Rule content is managed by the resource package. Only the name and description can be modified.",
+      "This rule was imported from a resource package. Some information cannot be modified.",
     importedSkillReadOnly:
-      "Skill content is managed by the resource package. Only the name and description can be modified.",
+      "This skill was imported from a resource package. Some information cannot be modified.",
     importedExpertReadOnly:
-      "Expert prompts and links are managed by the resource package. Only the name and description can be modified.",
+      "This expert was imported from a resource package. Some information cannot be modified.",
     importedConnectorReadOnly:
-      "Connector icons and tools are managed by the resource package. The name, description, and connection settings can be modified.",
+      "This connector was imported from a resource package. Some information cannot be modified.",
     retiredGrantsOnly:
       "This resource is retired. Existing access can only be revoked; new access cannot be granted.",
     selectScope: "Select users or groups",
@@ -1018,6 +1025,7 @@ export const enUS = {
       content: "Skill content (SKILL.md)",
       contentPlaceholder: "Enter the skill instructions",
       skillPackage: "Skill package",
+      uploadPackage: "Upload skill package",
       packageHint: "Upload the skill directory as a ZIP file, up to 500 MiB.",
       packageOptionalHint:
         "Upload a new ZIP skill package only when replacing its contents.",
@@ -1043,6 +1051,7 @@ export const enUS = {
         missingDescription: "The SKILL.md frontmatter is missing description.",
       },
       batchImport: {
+        choosePackage: "Choose skill package files",
         upload: "Upload",
         sourceStep: "Choose files",
         selectStep: "Select skills",
@@ -1084,6 +1093,11 @@ export const enUS = {
         'Delete "{{skill}}"? This action cannot be undone.',
     },
     experts: {
+      avatar: "Avatar",
+      uploadAvatar: "Upload avatar",
+      replaceAvatar: "Replace avatar",
+      avatarTooLarge: "Avatar must be no larger than 1 MiB",
+      avatarInvalid: "Choose a valid PNG, JPG/JPEG or WebP image",
       personalExpert: "Personal expert",
       title: "Experts",
       description: "Manage domain experts and their capability settings.",
@@ -1132,11 +1146,11 @@ export const enUS = {
       title: "Connectors",
       description: "Configure MCP servers that clients can connect to and use.",
       type: "MCP type",
-      systemTool: "System MCP",
-      userTool: "User MCP",
-      add: "Add MCP",
-      dialogTitle: "Add MCP server",
-      editDialogTitle: "Edit MCP server",
+      systemTool: "System connectors",
+      userTool: "User connectors",
+      add: "Add connector",
+      dialogTitle: "Add connector",
+      editDialogTitle: "Edit connector",
       dialogDescription:
         "Configure the remote MCP server, authorization, and authorization scope.",
       name: "Name",
@@ -1145,24 +1159,29 @@ export const enUS = {
       descriptionPlaceholder: "Describe the capabilities this MCP provides",
       url: "Server URL",
       urlPlaceholder: "https://mcp.example.com/mcp",
-      authorization: "Authorization",
-      authorizationMode: "Authorization mode",
+      authorization: "Authentication",
+      authorizationMode: "Authentication mode",
       authorizationModes: {
-        none: "No authorization",
-        independent: "Independent authorization",
-        centralized: "Centralized authorization",
+        none: "No authentication",
+        independent: "Independent authentication",
+        centralized: "Centralized authentication",
       },
       independentAuthorizationDescription:
-        "Each client completes authorization independently and receives its own permissions.",
+        "Each user configures their own authentication information.",
       centralizedAuthorizationDescription:
-        "Authorization is completed here and shared by every available client.",
-      authorizationMethod: "Authorization method",
+        "An administrator configures authentication information centrally.",
+      authorizationMethod: "Authentication method",
+      authenticationProtocol: "Authentication protocol",
+      authenticationProtocolDescriptions: {
+        httpHeader: "Send authentication information in HTTP request headers.",
+        oauth: "Authenticate through the MCP OAuth flow.",
+      },
       authorizationMethods: {
         oauth: "MCP OAuth",
         httpHeader: "HTTP Header",
       },
       noAuthorizationDescription:
-        "Clients can call this MCP without providing authorization information.",
+        "No authentication configuration is needed; access is available directly.",
       independentMethodDescriptions: {
         oauth:
           "Each client completes MCP OAuth the first time it uses the server.",
@@ -1190,7 +1209,7 @@ export const enUS = {
       cancel: "Cancel",
       create: "Add MCP",
       save: "Save changes",
-      viewTools: "View tools",
+      viewTools: "Tools",
       toolListTitle: "Tools in {{server}}",
       toolName: "Tool",
       toolEnabled: "Enabled",

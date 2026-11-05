@@ -166,7 +166,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	var fault *resource.Error
 	if discoveryErr != nil {
 		fault = upstreamFailure(discoveryErr, "mcp_protocol_invalid")
-		status, message = "error", fault.Message
+		status, message = "error", fault.Error()
 	} else {
 		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: cred.String("id")})
 		for _, tool := range tools {

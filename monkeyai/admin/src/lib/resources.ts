@@ -44,6 +44,7 @@ export type ResourceRow = {
   package_file_name: string
   file_count: number
   prompt: string
+  avatar_path?: string | null
   rule_ids: string[]
   skill_ids: string[]
   connectors: {

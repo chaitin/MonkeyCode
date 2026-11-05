@@ -392,16 +392,21 @@ func TestBillingIntegration(t *testing.T) {
 	defer mcpUpstream.Close()
 	for _, mode := range []string{"centralized", "independent", "none"} {
 		provider := resource.Object{"name": "计费工具-" + mode, "url": mcpUpstream.URL, "authorization_mode": mode, "authorization_method": "http_header"}
-		connector := must("POST", "/api/admin/v1/connectors", resource.Object{"name": "连接-" + mode, "description": "测试", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"], "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}, "")
+		input := resource.Object{"name": "连接-" + mode, "description": "测试", "url": provider["url"], "authorization_mode": provider["authorization_mode"], "authorization_method": provider["authorization_method"], "oauth_config": provider["oauth_config"], "oauth_client_secret": provider["oauth_client_secret"], "grants": []resource.Object{{"user_id": user, "usage_requirement": "optional"}}}
+		if mode == "centralized" {
+			input["credential"] = resource.Object{"name": "计费凭证", "http_headers": resource.Object{"X-Test": "billing"}}
+		}
+		connector := must("POST", "/api/admin/v1/connectors", input, "")
 		path := "/api/admin/v1/connectors/" + connector.String("id")
 		credentialID := ""
 		gateway := "/mcp/connectors/" + connector.String("id")
 		if mode != "none" {
-			credentialPath := path + "/credentials"
+			var credential resource.Object
 			if mode == "independent" {
-				credentialPath = "/api/v1/connectors/" + connector.String("id") + "/credentials"
+				credential = must("POST", "/api/v1/connectors/"+connector.String("id")+"/credentials", resource.Object{"name": "计费凭证", "http_headers": resource.Object{"X-Test": "billing"}}, "")
+			} else {
+				credential = resource.Object(connector["credentials"].([]any)[0].(map[string]any))
 			}
-			credential := must("POST", credentialPath, resource.Object{"name": "计费凭证", "http_headers": resource.Object{"X-Test": "billing"}}, "")
 			credentialID = credential.String("id")
 			gateway += "/credentials/" + credentialID
 		}
