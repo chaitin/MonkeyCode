@@ -26,6 +26,10 @@ const modelKeys = [
   "kind",
   "textKind",
   "imageKind",
+  "videoKind",
+  "embeddingKind",
+  "embeddingDimension",
+  "embeddingDimensionAuto",
   "imageProvider",
   "imageCapabilitiesUnavailable",
   "selectAllSupported",
@@ -171,11 +175,38 @@ test("model kinds use text tabs and collapsible section icons", async () => {
     source,
     /<TabsTrigger type="button" value="image">\s*\{t\("pages\.models\.imageKind"\)\}/
   )
+  assert.match(
+    source,
+    /<TabsTrigger type="button" value="video">\s*\{t\("pages\.models\.videoKind"\)\}/
+  )
+  assert.match(
+    source,
+    /<TabsTrigger type="button" value="embedding">\s*\{t\("pages\.models\.embeddingKind"\)\}/
+  )
+  assert.match(source, /protocol: "openai_embeddings"/)
+  assert.doesNotMatch(source, /embedding_config:/)
+  assert.doesNotMatch(source, /setEmbeddingDimension|name="embeddingDimension"/)
   assert.match(source, /AiChat02Icon/)
   assert.match(source, /AiImageIcon/)
   assert.doesNotMatch(source, /id="model-kind"/)
   assert.equal(zhCN.pages.models.dialogTitle, "添加大模型")
   assert.equal(zhCN.pages.models.textKind, "大语言模型")
+  assert.equal(zhCN.pages.models.embeddingKind, "向量模型")
+})
+
+test("embedding models expose the same probe dialog with vector results", async () => {
+  const source = await readFile(
+    new URL("../src/pages/models-page.tsx", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(
+    source,
+    /model\.kind === "text" \|\|\s*model\.kind === "embedding"/
+  )
+  assert.match(source, /target\.kind === "embedding"/)
+  assert.match(source, /dimension_matches/)
+  assert.match(source, /vector_preview/)
 })
 
 test("image settings automatically enable all supported options and preserve valid defaults", async () => {

@@ -4833,9 +4833,10 @@ components:
           - anthropic
           - image_generation
           - video_generation
+          - openai_embeddings
         kind:
           type: string
-          enum: [text, image, video]
+          enum: [text, image, video, embedding]
           default: text
         provider:
           type: string
@@ -4908,7 +4909,7 @@ components:
         protocol: *id003
         kind:
           type: string
-          enum: [text, image, video]
+          enum: [text, image, video, embedding]
         provider:
           type: string
           enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
@@ -4916,6 +4917,8 @@ components:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:
           $ref: '#/components/schemas/AgentImagePricing'
+        embedding_config:
+          $ref: '#/components/schemas/EmbeddingConfig'
         base_url: *id004
         advanced_config: *id005
         id: *id006
@@ -5387,6 +5390,15 @@ components:
             properties:
               quality: {$ref: '#/components/schemas/ImageQuality'}
               credits_per_image: {type: string, pattern: '^[0-9]+(\.[0-9]{1,6})?$'}
+    EmbeddingConfig:
+      type: object
+      required: [dimension]
+      properties:
+        dimension:
+          type: integer
+          minimum: 1
+          maximum: 16000
+          description: 服务端保存时自动探测的向量维度，1–16000；客户端不可配置。
     AgentModel:
       type: object
       required:
@@ -5434,15 +5446,17 @@ components:
           description: Agent 向用户展示的模型名称。
         protocol:
           type: string
-          enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
+          enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation, openai_embeddings]
           description: MonkeyAI 与上游服务通信时使用的协议。
         kind:
           type: string
-          enum: [text, image, video]
+          enum: [text, image, video, embedding]
         image_config:
           $ref: '#/components/schemas/AgentImageConfig'
         image_pricing:
           $ref: '#/components/schemas/AgentImagePricing'
+        embedding_config:
+          $ref: '#/components/schemas/EmbeddingConfig'
         context_window_tokens:
           type: integer
           format: int64

@@ -2849,8 +2849,8 @@ paths:
               schema: {$ref: '#/components/schemas/ErrorResponse'}
   /api/admin/v1/models/{modelID}/probe:
     post:
-      summary: 使用已保存配置测试系统大语言模型
-      description: 按模型协议、Base URL、已保存密钥和网络代理向上游发送非流式请求。OpenAI Chat Completions 使用 /chat/completions，OpenAI Responses 使用 /responses，Anthropic 使用 /messages。服务端提取文本并判断响应是否合法，不缓存、不跟随重定向。
+      summary: 使用已保存配置测试系统大语言模型或向量模型
+      description: 按模型协议、Base URL、已保存密钥和网络代理向上游发送非流式请求，不缓存、不跟随重定向。大语言模型使用对应协议接口，返回提取的文本和响应有效性；向量模型将 message 作为 embedding 输入，返回维度、配置一致性、向量预览和 Token 用量。
       parameters:
         - {name: modelID, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -2862,18 +2862,20 @@ paths:
               additionalProperties: false
               required: [message]
               properties:
-                message: {type: string, minLength: 1, maxLength: 4000}
+                message: {type: string, minLength: 1, maxLength: 4000, description: 大语言模型的测试消息或向量模型的 embedding 输入。}
       responses:
         '200':
-          description: 模型测试结果。
+          description: 大语言模型或向量模型的 JSON 测试结果。
           content:
             application/json:
               schema:
-                type: object
-                required: [content, valid]
-                properties:
-                  content: {type: string}
-                  valid: {type: boolean, description: 上游响应是否包含对应协议的合法文本内容。}
+                oneOf:
+                  - type: object
+                    required: [content, valid]
+                    properties:
+                      content: {type: string}
+                      valid: {type: boolean, description: 上游响应是否包含对应协议的合法文本内容。}
+                  - $ref: '#/components/schemas/EmbeddingProbeResult'
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -7278,6 +7280,8 @@ components:
           $ref: "#/components/schemas/ImageConfig"
         image_pricing:
           $ref: "#/components/schemas/ImagePricing"
+        embedding_config:
+          $ref: "#/components/schemas/EmbeddingConfig"
         base_url:
           type: string
           format: uri
@@ -7312,16 +7316,39 @@ components:
           description: 模型最后更新时间。
     ModelProtocol:
       type: string
-      enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation]
+      enum: [openai_chat_completions, openai_responses, anthropic, image_generation, video_generation, openai_embeddings]
       description: MonkeyAI 与上游服务通信时使用的协议。
     ModelKind:
       type: string
-      enum: [text, image, video]
+      enum: [text, image, video, embedding]
       description: 模型对外提供的能力；省略时兼容为 text。
     ModelProvider:
       type: string
       enum: [passthrough, openai_images, openai_responses_image, volcengine, xai, agnes]
-      description: 上游调用路径；text 模型只允许 passthrough。
+      description: 上游调用路径；text 和 embedding 模型只允许 passthrough。
+    EmbeddingConfig:
+      type: object
+      required: [dimension]
+      properties:
+        dimension:
+          type: integer
+          minimum: 1
+          maximum: 16000
+          description: 服务端保存时自动探测的向量维度，1–16000，用于知识库 pgvector 列类型校验；客户端不可配置。
+    EmbeddingProbeResult:
+      type: object
+      required: [dimension, configured_dimension, dimension_matches, vector_preview, prompt_tokens, total_tokens]
+      properties:
+        dimension: {type: integer, minimum: 1, maximum: 16000, description: 本次 embedding 响应返回的实际向量维度。}
+        configured_dimension: {type: integer, minimum: 1, maximum: 16000, description: 模型保存时探测并记录的向量维度。}
+        dimension_matches: {type: boolean, description: 实际维度是否与已保存配置一致。}
+        vector_preview:
+          type: array
+          maxItems: 8
+          items: {type: number}
+          description: 返回向量的前 8 个元素，便于确认响应内容有效。
+        prompt_tokens: {type: integer, minimum: 0, description: 上游返回的输入 Token 数；未提供时为 0。}
+        total_tokens: {type: integer, minimum: 0, description: 上游返回的总 Token 数；未提供时为 0。}
     ImageQuality:
       type: string
       enum: [1K, 2K, 4K]

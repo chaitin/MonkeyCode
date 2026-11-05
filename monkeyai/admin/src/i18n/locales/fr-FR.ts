@@ -379,6 +379,10 @@ export const frFR = {
       textKind: "Grand modèle de langage",
       imageKind: "Génération d’images",
       videoKind: "Modèle vidéo",
+      embeddingKind: "Modèle d’embedding",
+      embeddingDimension: "Dimensions vectorielles",
+      embeddingDimensionAuto:
+        "Les dimensions vectorielles sont détectées automatiquement lors de l’enregistrement.",
       videoCreditsPerSecond: "Crédits par seconde - {{resolution}}",
       imageCreditsPerImage: "Crédits par image - {{quality}}",
       discoverModels: "Récupérer les modèles disponibles",

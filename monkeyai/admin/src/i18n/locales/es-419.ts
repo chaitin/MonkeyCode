@@ -369,6 +369,10 @@ export const es419 = {
       textKind: "Modelo de lenguaje grande",
       imageKind: "Generación de imágenes",
       videoKind: "Modelo de video",
+      embeddingKind: "Modelo de embeddings",
+      embeddingDimension: "Dimensiones del vector",
+      embeddingDimensionAuto:
+        "Las dimensiones del vector se detectan automáticamente al guardar.",
       videoCreditsPerSecond: "Créditos por segundo - {{resolution}}",
       imageCreditsPerImage: "Créditos por imagen - {{quality}}",
       discoverModels: "Obtener modelos disponibles",

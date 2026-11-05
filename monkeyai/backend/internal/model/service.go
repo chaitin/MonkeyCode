@@ -42,11 +42,12 @@ type ProxyResolver interface {
 }
 
 type Service struct {
-	proxies           ProxyResolver
-	repository        Repository
-	keys              KeyAuthenticator
-	gatewayURL        string
-	imageCapabilities func(Provider, string) (ImageCapabilities, error)
+	proxies                 ProxyResolver
+	repository              Repository
+	keys                    KeyAuthenticator
+	gatewayURL              string
+	imageCapabilities       func(Provider, string) (ImageCapabilities, error)
+	embeddingDimensionProbe func(context.Context, Model) (int, error)
 }
 
 func NewService(repository Repository) *Service {
@@ -81,6 +82,11 @@ func (s *Service) WithGatewayURL(url string) *Service {
 
 func (s *Service) WithImageCapabilities(describe func(Provider, string) (ImageCapabilities, error)) *Service {
 	s.imageCapabilities = describe
+	return s
+}
+
+func (s *Service) WithEmbeddingDimensionProbe(probe func(context.Context, Model) (int, error)) *Service {
+	s.embeddingDimensionProbe = probe
 	return s
 }
 
@@ -134,6 +140,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	if err := s.validateProxy(ctx, item.ProxyID); err != nil {
 		return Model{}, err
 	}
+	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+		return Model{}, err
+	}
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, err
 	}
@@ -178,6 +187,9 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	}
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
+	}
+	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+		return Model{}, err
 	}
 	if len(input.ProviderOptions) == 0 {
 		item.ProviderOptions = existing.ProviderOptions
@@ -245,6 +257,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string) ([]AgentModel,
 			ImagePricing:        presentImagePricing(item.ImageConfig, item.ImagePricing),
 			VideoConfig:         videoConfig,
 			VideoPricing:        item.VideoPricing,
+			EmbeddingConfig:     item.EmbeddingConfig,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
@@ -306,6 +319,7 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 		Kind:            item.Kind,
 		Provider:        item.Provider,
 		ProviderOptions: item.ProviderOptions,
+		EmbeddingConfig: item.EmbeddingConfig,
 		BaseURL:         item.BaseURL,
 		APIKey:          item.APIKey,
 	}, nil
@@ -317,7 +331,7 @@ func modelFromInput(input SaveInput) (Model, error) {
 		kind = KindText
 	}
 	provider := input.Provider
-	if provider == "" && kind == KindText {
+	if provider == "" && (kind == KindText || kind == KindEmbedding) {
 		provider = ProviderPassthrough
 	}
 	item := Model{
@@ -355,6 +369,10 @@ func modelFromInput(input SaveInput) (Model, error) {
 		}
 	} else if kind == KindVideo {
 		if err := validateVideoModel(&item); err != nil {
+			return Model{}, err
+		}
+	} else if kind == KindEmbedding {
+		if err := validateEmbeddingModel(&item); err != nil {
 			return Model{}, err
 		}
 	} else {

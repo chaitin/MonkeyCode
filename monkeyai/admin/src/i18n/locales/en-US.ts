@@ -1025,6 +1025,10 @@ export const enUS = {
       textKind: "Large language model",
       imageKind: "Image generation",
       videoKind: "Video model",
+      embeddingKind: "Embedding model",
+      embeddingDimension: "Vector dimensions",
+      embeddingDimensionAuto:
+        "Vector dimensions are detected automatically when saved.",
       videoCreditsPerSecond: "Credits per second - {{resolution}}",
       imageCreditsPerImage: "Credits per image - {{quality}}",
       discoverModels: "Fetch available models",

@@ -374,6 +374,10 @@ export const deDE = {
       textKind: "Großes Sprachmodell",
       imageKind: "Bildgenerierung",
       videoKind: "Videomodell",
+      embeddingKind: "Embedding-Modell",
+      embeddingDimension: "Vektordimension",
+      embeddingDimensionAuto:
+        "Die Vektordimension wird beim Speichern automatisch erkannt.",
       videoCreditsPerSecond: "Credits pro Sekunde - {{resolution}}",
       imageCreditsPerImage: "Credits pro Bild - {{quality}}",
       discoverModels: "Verfügbare Modelle abrufen",

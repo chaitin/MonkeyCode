@@ -373,6 +373,10 @@ export const ruRU = {
       textKind: "Большая языковая модель",
       imageKind: "Генерация изображений",
       videoKind: "Видеомодель",
+      embeddingKind: "Модель эмбеддингов",
+      embeddingDimension: "Размерность вектора",
+      embeddingDimensionAuto:
+        "Размерность вектора определяется автоматически при сохранении.",
       videoCreditsPerSecond: "Кредиты в секунду - {{resolution}}",
       imageCreditsPerImage: "Кредиты за изображение - {{quality}}",
       discoverModels: "Получить доступные модели",

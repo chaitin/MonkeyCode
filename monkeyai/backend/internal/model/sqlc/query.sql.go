@@ -15,10 +15,10 @@ import (
 const createModel = `-- name: CreateModel :one
 INSERT INTO models (ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key,
     advanced_config, credit_multiplier, kind, provider, provider_options, image_config, image_pricing,
-    video_config, video_pricing, proxy_id, enabled)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, TRUE)
+    video_config, video_pricing, embedding_config, proxy_id, enabled)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, TRUE)
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 `
 
 type CreateModelParams struct {
@@ -38,6 +38,7 @@ type CreateModelParams struct {
 	ImagePricing     []byte
 	VideoConfig      []byte
 	VideoPricing     []byte
+	EmbeddingConfig  []byte
 	ProxyID          string
 }
 
@@ -59,6 +60,7 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		arg.ImagePricing,
 		arg.VideoConfig,
 		arg.VideoPricing,
+		arg.EmbeddingConfig,
 		arg.ProxyID,
 	)
 	var i Model
@@ -85,6 +87,7 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		&i.VideoConfig,
 		&i.VideoPricing,
 		&i.ProxyID,
+		&i.EmbeddingConfig,
 	)
 	return i, err
 }
@@ -126,7 +129,7 @@ func (q *Queries) DeleteModel(ctx context.Context, arg DeleteModelParams) (pgcon
 
 const getModel = `-- name: GetModel :one
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 FROM
     models
 WHERE
@@ -160,6 +163,7 @@ func (q *Queries) GetModel(ctx context.Context, id string) (Model, error) {
 		&i.VideoConfig,
 		&i.VideoPricing,
 		&i.ProxyID,
+		&i.EmbeddingConfig,
 	)
 	return i, err
 }
@@ -238,7 +242,7 @@ WITH RECURSIVE user_groups (
             AND g.deleted_at IS NULL
 )
 SELECT
-    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing, m.proxy_id
+    m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing, m.proxy_id, m.embedding_config
 FROM
     models m
 WHERE
@@ -305,6 +309,7 @@ func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([
 			&i.VideoConfig,
 			&i.VideoPricing,
 			&i.ProxyID,
+			&i.EmbeddingConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -406,7 +411,7 @@ func (q *Queries) ListGroups(ctx context.Context) ([]ListGroupsRow, error) {
 
 const listModels = `-- name: ListModels :many
 SELECT
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 FROM
     models
 WHERE
@@ -449,6 +454,7 @@ func (q *Queries) ListModels(ctx context.Context, dollar_1 string) ([]Model, err
 			&i.VideoConfig,
 			&i.VideoPricing,
 			&i.ProxyID,
+			&i.EmbeddingConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -609,7 +615,7 @@ func (q *Queries) LockOwned(ctx context.Context, arg LockOwnedParams) (string, e
 }
 
 const pageModels = `-- name: PageModels :many
-SELECT id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+SELECT id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 FROM models
 WHERE deleted_at IS NULL
     AND ($1::jsonb ->> 'ownership' = ''
@@ -654,6 +660,7 @@ func (q *Queries) PageModels(ctx context.Context, filter []byte) ([]Model, error
 			&i.VideoConfig,
 			&i.VideoPricing,
 			&i.ProxyID,
+			&i.EmbeddingConfig,
 		); err != nil {
 			return nil, err
 		}
@@ -725,7 +732,7 @@ WITH RECURSIVE user_groups(group_id) AS (
     JOIN groups parent ON parent.id = g.parent_id
     WHERE parent.deleted_at IS NULL AND g.deleted_at IS NULL
 )
-SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing, m.proxy_id
+SELECT m.id, m.ownership_type, m.owner_user_id, m.model_id, m.display_name, m.protocol, m.base_url, m.api_key, m.advanced_config, m.credit_multiplier, m.enabled, m.created_at, m.updated_at, m.deleted_at, m.kind, m.provider, m.provider_options, m.image_config, m.image_pricing, m.video_config, m.video_pricing, m.proxy_id, m.embedding_config
 FROM models m
 JOIN users u ON u.id = $1
 WHERE (m.model_id || '@' || m.id::text = $2::text
@@ -779,6 +786,7 @@ func (q *Queries) ResolveModel(ctx context.Context, arg ResolveModelParams) (Mod
 		&i.VideoConfig,
 		&i.VideoPricing,
 		&i.ProxyID,
+		&i.EmbeddingConfig,
 	)
 	return i, err
 }
@@ -794,7 +802,7 @@ WHERE
     AND ownership_type = 'system'
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 `
 
 type SetEnabledParams struct {
@@ -828,6 +836,7 @@ func (q *Queries) SetEnabled(ctx context.Context, arg SetEnabledParams) (Model, 
 		&i.VideoConfig,
 		&i.VideoPricing,
 		&i.ProxyID,
+		&i.EmbeddingConfig,
 	)
 	return i, err
 }
@@ -863,7 +872,8 @@ SET
     image_pricing = $15,
     video_config = $16,
     video_pricing = $17,
-    proxy_id = $18,
+    embedding_config = $18,
+    proxy_id = $19,
     updated_at = now()
 WHERE
     id = $1
@@ -871,7 +881,7 @@ WHERE
     AND owner_user_id = $10
     AND deleted_at IS NULL
 RETURNING
-    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id
+    id, ownership_type, owner_user_id, model_id, display_name, protocol, base_url, api_key, advanced_config, credit_multiplier, enabled, created_at, updated_at, deleted_at, kind, provider, provider_options, image_config, image_pricing, video_config, video_pricing, proxy_id, embedding_config
 `
 
 type UpdateModelParams struct {
@@ -892,6 +902,7 @@ type UpdateModelParams struct {
 	ImagePricing     []byte
 	VideoConfig      []byte
 	VideoPricing     []byte
+	EmbeddingConfig  []byte
 	ProxyID          string
 }
 
@@ -914,6 +925,7 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		arg.ImagePricing,
 		arg.VideoConfig,
 		arg.VideoPricing,
+		arg.EmbeddingConfig,
 		arg.ProxyID,
 	)
 	var i Model
@@ -940,6 +952,7 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		&i.VideoConfig,
 		&i.VideoPricing,
 		&i.ProxyID,
+		&i.EmbeddingConfig,
 	)
 	return i, err
 }
