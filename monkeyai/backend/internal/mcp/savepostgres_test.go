@@ -70,6 +70,86 @@ func TestCombinedConnectorCredentials(t *testing.T) {
 		f.call("PATCH", path+"/credentials/"+centralCredential(c).String("id"), resource.Object{"name": "legacy"}, "owner", "", 405)
 		f.call("DELETE", path+"/credentials/"+centralCredential(c).String("id"), nil, "owner", "", 405)
 	})
+	t.Run("blank header values preserve secrets and removals persist", func(t *testing.T) {
+		c := create("preserve-header-values", "centralized", "http_header", resource.Object{"name": "team", "http_headers": resource.Object{"Authorization": "header-secret", "X-Key": "second-secret"}})
+		cred := centralCredential(c)
+		c = save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{"authorization": "", "X-Key": "updated-secret", "X-New": "new-secret"}}}, 200)
+		readHeaders := func() map[string]string {
+			t.Helper()
+			var raw []byte
+			if err := f.pool.QueryRow(t.Context(), `SELECT http_headers FROM connector_credentials WHERE id=$1`, cred.String("id")).Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			var headers map[string]string
+			if err := json.Unmarshal(raw, &headers); err != nil {
+				t.Fatal(err)
+			}
+			return headers
+		}
+		headers := readHeaders()
+		if len(headers) != 3 || headers["authorization"] != "header-secret" || headers["X-Key"] != "updated-secret" || headers["X-New"] != "new-secret" {
+			t.Fatal("blank value lost secret or explicit value not updated")
+		}
+		cred = centralCredential(c)
+		save(c, resource.Object{"name": "must-rollback", "credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{"X-Unknown": ""}}}, 400)
+		current := f.call("GET", "/admin/connectors/"+c.String("id"), nil, "owner", "", 200)
+		if current.String("name") != c.String("name") || current.Int("revision") != c.Int("revision") || centralCredential(current).Int("revision") != cred.Int("revision") {
+			t.Fatal("invalid blank header did not roll back")
+		}
+		c = save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{"authorization": ""}}}, 200)
+		if headers = readHeaders(); len(headers) != 1 || headers["authorization"] != "header-secret" {
+			t.Fatal("removed header was retained or retained header lost secret")
+		}
+		encoded, _ := json.Marshal(c)
+		if bytes.Contains(encoded, []byte("header-secret")) || bytes.Contains(encoded, []byte("updated-secret")) {
+			t.Fatal("credential response exposed secrets")
+		}
+		f.call("POST", "/admin/connectors", resource.Object{"name": "new-blank", "url": remote.URL, "authorization_mode": "centralized", "authorization_method": "http_header", "credential": resource.Object{"name": "team", "http_headers": resource.Object{"Authorization": ""}}}, "owner", "", 400)
+	})
+	t.Run("empty header set revokes only on a successful versioned save", func(t *testing.T) {
+		c := create("clear-headers", "centralized", "http_header", resource.Object{"name": "team", "http_headers": resource.Object{"Authorization": "header-secret", "X-Key": "second-secret"}})
+		cred := centralCredential(c)
+		path := "/admin/connectors/" + c.String("id")
+		metadata := f.call("GET", path+"/credentials/"+cred.String("id"), nil, "owner", "", 200)
+		if fmt.Sprint(metadata["header_names"]) != "[Authorization X-Key]" || metadata["http_headers"] != nil {
+			t.Fatal("credential metadata must include every key without secret values")
+		}
+		empty := func(revision any) resource.Object {
+			return resource.Object{"id": cred["id"], "revision": revision, "http_headers": resource.Object{}}
+		}
+		save(c, resource.Object{"credential": empty(cred.Int("revision") + 1)}, 412)
+		f.call("PUT", path, resource.Object{"credential": empty(cred["revision"])}, "owner", `"0"`, 412)
+		save(c, resource.Object{"name": "must-rollback", "tag_ids": []string{resource.ID()}, "credential": empty(cred["revision"])}, 400)
+		current := f.call("GET", path, nil, "owner", "", 200)
+		if current.Int("revision") != c.Int("revision") || centralCredential(current).String("id") != cred.String("id") {
+			t.Fatal("failed clear changed the saved credential")
+		}
+		c = save(c, resource.Object{"credential": empty(cred["revision"])}, 200)
+		if centralCredential(c) != nil || c.Int("revision") != current.Int("revision")+1 {
+			t.Fatal("empty header set did not clear the credential")
+		}
+		f.call("GET", path+"/credentials/"+cred.String("id"), nil, "owner", "", 404)
+		f.call("POST", path+"/test", nil, "owner", "", 403)
+		var tools int
+		if err := f.pool.QueryRow(t.Context(), `SELECT count(*) FROM mcp_tools WHERE credential_id=$1 AND deleted_at IS NULL`, cred.String("id")).Scan(&tools); err != nil {
+			t.Fatal(err)
+		}
+		if tools != 0 {
+			t.Fatal("cleared credential kept tools available")
+		}
+		c = save(c, resource.Object{"credential": resource.Object{"http_headers": resource.Object{}}}, 200)
+		if centralCredential(c) != nil {
+			t.Fatal("repeated empty save created a credential")
+		}
+		c = save(c, resource.Object{"credential": resource.Object{"name": "restored", "http_headers": resource.Object{"X-Key": "new-secret"}}}, 200)
+		if centralCredential(c) == nil || centralCredential(c).String("id") == cred.String("id") {
+			t.Fatal("new header set did not recreate a distinct credential")
+		}
+		emptyConnector := create("new-empty-header-set", "centralized", "http_header", resource.Object{"name": "team", "http_headers": resource.Object{}})
+		if centralCredential(emptyConnector) != nil {
+			t.Fatal("empty set created an authorized credential")
+		}
+	})
 	t.Run("atomic rollback after credential persistence", func(t *testing.T) {
 		c := create("rollback", "centralized", "http_header", resource.Object{"name": "original", "http_headers": resource.Object{"Authorization": "header-secret"}})
 		cred := centralCredential(c)
@@ -141,6 +221,7 @@ func TestCombinedConnectorCredentials(t *testing.T) {
 			t.Fatal("OAuth placeholder missing")
 		}
 		save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{"Authorization": "header-secret"}}}, 400)
+		save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{}}}, 400)
 		// Configuration writes cannot forge OAuth tokens.
 		save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "oauth_access_token": "oauth-secret"}}, 400)
 	})
@@ -177,6 +258,18 @@ func TestCombinedConnectorCredentials(t *testing.T) {
 		c = save(c, resource.Object{"name": "package-local", "credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "name": "local-renamed"}}, 200)
 		if c.String("name") != "package-local" || centralCredential(c).String("name") != "local-renamed" {
 			t.Fatal("package metadata plus credential update failed")
+		}
+		cred = centralCredential(c)
+		before = c.Int("revision")
+		c = save(c, resource.Object{"credential": resource.Object{"id": cred["id"], "revision": cred["revision"], "http_headers": resource.Object{}}}, 200)
+		if centralCredential(c) != nil || c.Int("revision") != before+1 {
+			t.Fatal("package credential clear did not revoke or bump version")
+		}
+		if err := f.pool.QueryRow(t.Context(), `SELECT admin_overrides::text FROM connectors WHERE id=$1`, c.String("id")).Scan(&overrides); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(overrides, "credential") || strings.Contains(overrides, "http_headers") {
+			t.Fatal("package credential clear leaked into overrides")
 		}
 	})
 }

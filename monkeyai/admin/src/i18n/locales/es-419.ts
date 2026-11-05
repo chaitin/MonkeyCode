@@ -635,6 +635,9 @@ export const es419 = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "Guardar",
+      enableAllTools: "Activar todo",
+      disableAllTools: "Desactivar todo",
       title: "Conectores",
       description:
         "Configura servidores MCP que los clientes pueden conectar y usar.",

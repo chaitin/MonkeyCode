@@ -475,7 +475,7 @@ Skill 以 `SKILL.md` 所在目录为根打包为 ZIP，ZIP 根目录必须直接
 
 认证方式以 Connector 实际 Connector Provider 为准，本表不重复保存 method。集中认证使用每个 Connector 唯一的 `user_id IS NULL` 有效凭证；独立认证 `user_id` 必填；`none` 不允许凭证。重新授权覆盖原记录。
 
-管理后台通过现有 `POST /api/admin/v1/connectors`、`PUT /api/admin/v1/connectors/{id}` 的可选 `credential` 对象维护集中凭证，连接器信息与凭证写入同一个数据库事务。修改凭证须携带 `credential.id`、`credential.revision`，并保留连接器的 `If-Match`；省略 `credential` 不变更凭证，省略 `http_headers` 保留原 Header，`revoke: true` 撤销指定凭证。Header 为整组替换，提交成功后自动测试连接，远端测试失败不回滚已保存的数据。OAuth 可先保存凭证名称，Token 仍仅由授权流程写入。资源包连接器的凭证独立保存，不记录到 `admin_overrides`；仅修改凭证同样递增连接器版本。后台原有凭证 POST/PATCH/DELETE 路由已移除，元数据查询、OAuth 授权、检测和客户端独立凭证接口保留。
+管理后台通过现有 `POST /api/admin/v1/connectors`、`PUT /api/admin/v1/connectors/{id}` 的可选 `credential` 对象维护集中凭证，连接器信息与凭证写入同一个数据库事务。修改凭证须携带 `credential.id`、`credential.revision`，并保留连接器的 `If-Match`；省略 `credential` 不变更凭证，省略 `http_headers` 保留原 Header，`revoke: true` 撤销指定凭证。Header 直接显示名称和空白值输入框，不回显密钥；提交时已有名称的空字符串值保留旧值（名称忽略大小写），填写值则更新，新增名称必须提供非空值，删除行则删除对应 Header。允许删除全部行，保存空对象时撤销当前 Header 凭证、使其工具目录失效，无凭证时不创建空凭证。Header 界面不再显示单独的撤销按钮，取消或保存失败均保留原凭证；OAuth 撤销流程不变。非空 Header 提交成功后自动测试连接，远端测试失败不回滚已保存的数据。OAuth 可先保存凭证名称，Token 仍仅由授权流程写入。资源包连接器的凭证独立保存，不记录到 `admin_overrides`；仅修改凭证同样递增连接器版本。后台原有凭证 POST/PATCH/DELETE 路由已移除，元数据查询、OAuth 授权、检测和客户端独立凭证接口保留。
 
 ### 8.9 `mcp_tools`：MCP 工具
 

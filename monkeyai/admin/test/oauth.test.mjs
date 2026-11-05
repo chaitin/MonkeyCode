@@ -162,12 +162,14 @@ test("DCR 发起授权后立即同步连接，取消或关闭弹窗不影响版�
         close: () => events.push("close"),
       }
       const authorize = runInNewContext(compiled, {
-        name: "凭证",
+        credentialNameFor: (value) => value,
         lock: { current: false },
         credential: null,
         base: "",
         onPrepare: async () =>
-          scenario === "连接保存失败" ? null : { id: "test", credentials: [] },
+          scenario === "连接保存失败"
+            ? null
+            : { id: "test", name: "连接器", credentials: [] },
         currentCredential: () => null,
         window: { open: () => (scenario === "弹窗被阻止" ? null : popup) },
         run: (action) => {
@@ -260,22 +262,20 @@ test("动态 Client 仅提交模式，传统配置不混入自动发现字段", 
   let branch
   const visit = (node) => {
     if (
-      ts.isConditionalExpression(node) &&
-      node.condition.getText(tree) === 'oauthClientMode === "dynamic"'
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+      node.left.getText(tree) === 'oauthClientMode === "manual"'
     )
       branch = node
     ts.forEachChild(node, visit)
   }
   visit(tree)
   assert.ok(branch)
-  assert.match(branch.whenTrue.getText(tree), /resources\.oauthDiscoveryHint/)
-  assert.doesNotMatch(
-    branch.whenTrue.getText(tree),
-    /<Input|<select|saveBeforeAuthorize/
-  )
-  assert.match(branch.whenFalse.getText(tree), /oauthAuthorizationURL/)
-  assert.match(branch.whenFalse.getText(tree), /oauthClientID/)
-  assert.match(branch.whenFalse.getText(tree), /oauthClientSecret/)
+  assert.match(branch.right.getText(tree), /oauthAuthorizationURL/)
+  assert.match(branch.right.getText(tree), /oauthClientID/)
+  assert.match(branch.right.getText(tree), /oauthClientSecret/)
+  assert.match(source, /description: t\("resources\.oauthDiscoveryHint"\)/)
+  assert.match(source, /description: t\("resources\.oauthManualHint"\)/)
   assert.match(source, /useState<OAuthClientMode>\("dynamic"\)/)
 })
 

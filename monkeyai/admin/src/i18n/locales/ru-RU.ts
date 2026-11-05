@@ -637,6 +637,9 @@ export const ruRU = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "Сохранить",
+      enableAllTools: "Включить все",
+      disableAllTools: "Отключить все",
       title: "Коннекторы",
       description:
         "Настройте серверы MCP, к которым могут подключаться клиенты.",

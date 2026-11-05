@@ -611,6 +611,9 @@ export const zhTW = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "儲存",
+      enableAllTools: "全部啟用",
+      disableAllTools: "全部停用",
       title: "連接器",
       systemTool: "系統連接器",
       userTool: "使用者連接器",

@@ -643,6 +643,9 @@ export const deDE = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "Speichern",
+      enableAllTools: "Alle aktivieren",
+      disableAllTools: "Alle deaktivieren",
       title: "Konnektoren",
       description:
         "Konfigurieren Sie MCP-Server, die Clients verbinden und verwenden können.",

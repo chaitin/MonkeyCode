@@ -122,6 +122,8 @@ export const enUS = {
       "Click Connect and authorize to authenticate. The current connector configuration will be saved first.",
     authorizationFailed: "Authorization failed or expired. Start again.",
     headerDuplicate: "Header names must be nonempty and unique.",
+    headerKeepValue: "Leave blank to keep current value",
+    headerValueRequired: "Enter a value for each new header.",
     credentialNameHint:
       "Choose a name to identify this credential. It does not verify the upstream account.",
     credentialName: "Credential name",
@@ -263,8 +265,10 @@ export const enUS = {
     authHeaderNamePlaceholder: "For example, Authorization",
     oauthClientDynamic: "Dynamic client (auto-discovery)",
     oauthClientManual: "Manual configuration",
+    oauthManualHint:
+      "Enter the OAuth URLs and client details provided by the service.",
     oauthDiscoveryHint:
-      "Only the MCP URL above is needed. OAuth settings, the client, and its callback URL are discovered or registered on first authorization. No Client ID or Secret is required. The server must support discovery and dynamic registration.",
+      "Discover OAuth settings automatically for services that support dynamic registration.",
     oauthTokenAuthMethod: "Token endpoint authentication",
     oauthTokenAuthDefault: "Default (client_secret_post)",
     oauthTokenAuthLegacyDefault:
@@ -1216,7 +1220,9 @@ export const enUS = {
       toggleTool: "Enable or disable {{tool}}",
       pointsPerCall: "Points per call",
       pointsFor: "Points charged for each call to {{tool}}",
-      saveToolSettings: "Save tool settings",
+      saveToolSettings: "Save",
+      enableAllTools: "Enable all",
+      disableAllTools: "Disable all",
       edit: "Edit",
       delete: "Delete",
       testConnection: "Test connection",

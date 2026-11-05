@@ -8242,7 +8242,7 @@ components:
       type: object
       additionalProperties: false
       writeOnly: true
-      description: 仅集中认证支持。新增时提供 name，Header 凭证还需 http_headers；OAuth 可先创建待认证凭证。修改既有凭证必须同时提供 id、revision。省略字段保留原值；http_headers 为整组替换。撤销只接受 id、revision、revoke=true。实际 OAuth Token 只能通过授权流程写入。
+      description: 仅集中认证支持。新增时提供 name，Header 凭证还需 http_headers；OAuth 可先创建待认证凭证。修改既有凭证必须同时提供 id、revision。省略字段保留原值；http_headers 中已有名称的空字符串值保留对应旧值，名称忽略大小写，新增名称必须提供非空值，未提交的旧名称会删除；空对象表示清空 Header 并撤销当前 Header 凭证，无凭证时为空操作。撤销只接受 id、revision、revoke=true。实际 OAuth Token 只能通过授权流程写入。
       properties:
         id:
           type: string
@@ -8257,7 +8257,7 @@ components:
         http_headers:
           type: object
           writeOnly: true
-          minProperties: 1
+          minProperties: 0
           maxProperties: 30
           additionalProperties:
             type: string

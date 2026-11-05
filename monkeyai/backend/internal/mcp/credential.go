@@ -165,6 +165,9 @@ func credentialName(name string) (string, error) {
 	return name, nil
 }
 func decodeHeaders(raw []byte) (map[string]string, error) {
+	return decodeHeaderFields(raw, false)
+}
+func decodeHeaderFields(raw []byte, allowEmpty bool) (map[string]string, error) {
 	invalid := resource.InvalidCode("credential_headers_invalid", "认证 Header 无效，请检查名称、数量和保留字段")
 	d := json.NewDecoder(bytes.NewReader(raw))
 	first, err := d.Token()
@@ -212,7 +215,7 @@ func decodeHeaders(raw []byte) (map[string]string, error) {
 			return nil, invalid
 		}
 	}
-	if _, err := d.Token(); err != nil || len(out) == 0 {
+	if _, err := d.Token(); err != nil || (!allowEmpty && len(out) == 0) {
 		if err != nil {
 			slog.Warn("操作失败", "module", "mcp", "operation", "decodeHeaders", "error", err)
 		}

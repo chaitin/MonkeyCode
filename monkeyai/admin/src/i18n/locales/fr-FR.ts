@@ -644,6 +644,9 @@ export const frFR = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "Enregistrer",
+      enableAllTools: "Tout activer",
+      disableAllTools: "Tout désactiver",
       title: "Connecteurs",
       description:
         "Configurez les serveurs MCP auxquels les clients peuvent se connecter.",

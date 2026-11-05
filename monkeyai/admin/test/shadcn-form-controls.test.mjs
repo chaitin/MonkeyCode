@@ -65,5 +65,5 @@ test("specialized admin forms use the matching shadcn control", async () => {
     /<ToggleGroup/
   )
   assert.match(sources["pages/experts-page.tsx"], /<Checkbox/)
-  assert.match(sources["components/connector-credentials.tsx"], /<Checkbox/)
+  assert.match(sources["components/connector-credentials.tsx"], /<Input/)
 })

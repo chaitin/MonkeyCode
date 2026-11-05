@@ -2,9 +2,37 @@ package mcp
 
 import (
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
+
+func TestResolveCredentialHeaders(t *testing.T) {
+	old := resource.Object{"http_headers": map[string]any{"Authorization": "secret", "X-Key": "second"}}
+	for _, tc := range []struct {
+		name  string
+		input map[string]string
+		old   resource.Object
+		want  map[string]string
+	}{
+		{"preserve and update", map[string]string{"authorization": "", "X-Key": "updated"}, old, map[string]string{"authorization": "secret", "X-Key": "updated"}},
+		{"remove omitted header", map[string]string{"Authorization": ""}, old, map[string]string{"Authorization": "secret"}},
+		{"add header", map[string]string{"Authorization": "", "X-New": "new"}, old, map[string]string{"Authorization": "secret", "X-New": "new"}},
+		{"new credential", map[string]string{"Authorization": "new"}, nil, map[string]string{"Authorization": "new"}},
+		{"new blank rejected", map[string]string{"Authorization": ""}, nil, nil},
+		{"renamed blank rejected", map[string]string{"X-New": ""}, old, nil},
+		{"oauth blank rejected", map[string]string{"Authorization": ""}, resource.Object{"http_headers": nil}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveCredentialHeaders(tc.input, tc.old)
+			if (err != nil) != (tc.want == nil) || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("incorrect header preservation: err=%v", err)
+			}
+		})
+	}
+}
 
 func TestParseConnectorCredential(t *testing.T) {
 	for _, tc := range []struct {
@@ -13,6 +41,10 @@ func TestParseConnectorCredential(t *testing.T) {
 	}{
 		{"omitted", `{"name":"connector"}`, true},
 		{"header", `{"credential":{"name":"team","http_headers":{"Authorization":"header-secret"}}}`, true},
+		{"clear headers", `{"credential":{"id":"11111111-1111-4111-8111-111111111111","revision":1,"http_headers":{ }}}`, true},
+		{"new empty header set", `{"credential":{"name":"team","http_headers":{}}}`, true},
+		{"clear missing revision", `{"credential":{"id":"11111111-1111-4111-8111-111111111111","http_headers":{}}}`, false},
+		{"headers array", `{"credential":{"name":"team","http_headers":[]}}`, false},
 		{"oauth placeholder", `{"credential":{"name":"team"}}`, true},
 		{"null", `{"credential":null}`, false},
 		{"empty", `{"credential":{}}`, false},

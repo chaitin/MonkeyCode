@@ -606,6 +606,9 @@ export const ar = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "حفظ",
+      enableAllTools: "تمكين الكل",
+      disableAllTools: "تعطيل الكل",
       title: "الموصلات",
       description:
         "قم بإعداد خوادم MCP التي يمكن للعملاء الاتصال بها واستخدامها.",

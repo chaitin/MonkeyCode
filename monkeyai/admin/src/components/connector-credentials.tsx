@@ -6,12 +6,12 @@ import {
   useState,
   type Ref,
 } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { useAppToast } from "@/components/animated-toast-provider"
 import { api } from "@/lib/api"
 import { base, match, type Credential } from "@/lib/resources"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 
@@ -33,11 +33,19 @@ export type ConnectorCredentialInput = {
 
 export type ConnectorCredentialsHandle = {
   validate: () => void
-  getValue: () => ConnectorCredentialInput | undefined
+  getValue: (connectorName: string) => ConnectorCredentialInput | undefined
   accept: (
     connector: CredentialConnector,
     written?: ConnectorCredentialInput
   ) => void
+}
+
+function credentialHeaders(credential: Credential | null) {
+  return (credential?.header_names ?? []).map((key) => ({ key, value: "" }))
+}
+
+function credentialNameFor(connectorName: string) {
+  return Array.from(connectorName.trim()).slice(0, 128).join("")
 }
 
 export function ConnectorCredentials({
@@ -50,6 +58,7 @@ export function ConnectorCredentials({
   onChange,
   onRevoke,
   onBusyChange,
+  actionContainer,
 }: {
   ref: Ref<ConnectorCredentialsHandle>
   connector: CredentialConnector | null
@@ -57,11 +66,12 @@ export function ConnectorCredentials({
   active: boolean
   disabled: boolean
   onPrepare: () => Promise<CredentialConnector | null>
-  onChange: (id: string) => Promise<CredentialConnector>
+  onChange: (id: string, refreshList?: boolean) => Promise<CredentialConnector>
   onRevoke: (
     change: ConnectorCredentialInput
   ) => Promise<CredentialConnector | null>
   onBusyChange: (busy: boolean) => void
+  actionContainer: HTMLElement | null
 }) {
   const { t } = useTranslation()
   const { showToast } = useAppToast()
@@ -72,9 +82,11 @@ export function ConnectorCredentials({
   const [credentialMethod, setCredentialMethod] = useState(
     connector?.authorizationMethod ?? null
   )
-  const [name, setName] = useState(credential?.name ?? "")
-  const [replaceHeaders, setReplaceHeaders] = useState(false)
-  const [headers, setHeaders] = useState([{ key: "Authorization", value: "" }])
+  const [headers, setHeaders] = useState(() =>
+    connector
+      ? credentialHeaders(credential)
+      : [{ key: "Authorization", value: "" }]
+  )
   const [request, setRequest] = useState<{
     id: string
     url: string
@@ -85,8 +97,20 @@ export function ConnectorCredentials({
   >(null)
   const pending = operation !== null
   const lock = useRef(false)
-  const writeHeaders =
-    !credential || replaceHeaders || credentialMethod === "oauth"
+  const storedHeaderNames = new Set(
+    credentialMethod === "httpHeader"
+      ? credential?.header_names.map((key) => key.toLowerCase())
+      : []
+  )
+  const headersChanged =
+    !credential ||
+    credentialMethod !== "httpHeader" ||
+    headers.length !== storedHeaderNames.size ||
+    headers.some(
+      (header) =>
+        header.value !== "" ||
+        !storedHeaderNames.has(header.key.trim().toLowerCase())
+    )
 
   const acceptCredential = useCallback((saved: Credential | null) => {
     credentialRef.current = saved
@@ -104,32 +128,36 @@ export function ConnectorCredentials({
   }
 
   const validate = () => {
-    if (!name.trim()) throw new Error(t("resources.credentialNameRequired"))
-    if (method === "httpHeader" && writeHeaders) {
+    if (method === "httpHeader") {
       const seen = new Set<string>()
       for (const header of headers) {
         const key = header.key.trim().toLowerCase()
         if (!key || seen.has(key))
           throw new Error(t("resources.headerDuplicate"))
         seen.add(key)
+        if (header.value === "" && !storedHeaderNames.has(key))
+          throw new Error(t("resources.headerValueRequired"))
       }
     }
   }
 
-  const getValue = (): ConnectorCredentialInput | undefined => {
+  const getValue = (
+    connectorName: string
+  ): ConnectorCredentialInput | undefined => {
     validate()
-    const data: ConnectorCredentialInput = { name: name.trim() }
+    const data: ConnectorCredentialInput = {}
     if (credential) {
       data.id = credential.id
       data.revision = credential.revision
+    } else {
+      data.name = credentialNameFor(connectorName)
     }
-    if (method === "httpHeader" && writeHeaders) {
+    if (method === "httpHeader" && headersChanged) {
       data.http_headers = Object.fromEntries(
         headers.map((header) => [header.key.trim(), header.value])
       )
     }
-    if (credential && !data.http_headers && data.name === credential.name)
-      return undefined
+    if (credential && !data.http_headers) return undefined
     return data
   }
 
@@ -140,10 +168,8 @@ export function ConnectorCredentials({
     const saved = target.credentials[0] ?? null
     acceptCredential(saved)
     if (saved) setCredentialMethod(target.authorizationMethod)
-    if (written?.name && saved) setName(saved.name)
     if (written?.http_headers || written?.revoke) {
-      setReplaceHeaders(false)
-      setHeaders([{ key: "Authorization", value: "" }])
+      setHeaders(credentialHeaders(saved))
     }
     if (written && saved?.connection_status === "error") {
       showToast({
@@ -218,7 +244,6 @@ export function ConnectorCredentials({
           await onChange(request.connectorID)
           return
         }
-        setName(saved.name)
         if (saved?.connection_status === "error") {
           showToast({
             status: "error",
@@ -255,7 +280,7 @@ export function ConnectorCredentials({
   }, [request, active, method, onChange, showToast, t, acceptCredential])
 
   const authorize = () => {
-    if (!name.trim() || lock.current) return
+    if (lock.current) return
     const popup = window.open("about:blank", "_blank")
     if (popup) popup.opener = null
     void run(async () => {
@@ -276,7 +301,11 @@ export function ConnectorCredentials({
             headers: credential ? match(credential.revision) : {},
             ...(credential
               ? {}
-              : { body: JSON.stringify({ name: name.trim() }) }),
+              : {
+                  body: JSON.stringify({
+                    name: credentialNameFor(target.name),
+                  }),
+                }),
           }
         )
         setRequest({
@@ -297,198 +326,35 @@ export function ConnectorCredentials({
   return (
     <fieldset
       disabled={disabled || pending || !active}
-      className={
-        active ? "flex min-w-0 flex-col gap-4 border-t pt-4" : "hidden"
-      }
+      className={active ? "flex min-w-0 flex-col gap-4" : "hidden"}
     >
-      <Field>
-        <FieldLabel htmlFor="credential-name">
-          {t("resources.credentialName")}
-        </FieldLabel>
-        <Input
-          id="credential-name"
-          required
-          maxLength={128}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <FieldDescription>{t("resources.credentialNameHint")}</FieldDescription>
-      </Field>
-      {credential && (
-        <p className="text-sm text-muted-foreground" role="status">
-          {t(
-            credential.authorization_status === "authorized"
-              ? "pages.tools.authorized"
-              : "pages.tools.notAuthorized"
-          )}{" "}
-          · {t(`pages.tools.statuses.${credential.connection_status}`)}
-          {credential.last_error && (
-            <span className="mt-1 block text-destructive">
-              {credential.last_error}
-            </span>
-          )}
-        </p>
-      )}
-      {method === "httpHeader" && (
-        <>
-          {credential && credentialMethod !== "oauth" && (
-            <Field orientation="horizontal">
-              <Checkbox
-                id="replace-credential-headers"
-                checked={replaceHeaders}
-                onCheckedChange={setReplaceHeaders}
-              />
-              <FieldLabel htmlFor="replace-credential-headers">
-                {t("resources.replaceHeaders")}
-              </FieldLabel>
-            </Field>
-          )}
-          {writeHeaders && (
-            <Field>
-              <FieldLabel>{t("pages.tools.httpHeaders")}</FieldLabel>
-              <div className="flex min-w-0 flex-col gap-2">
-                {headers.map((header, index) => (
-                  <div className="flex min-w-0 flex-wrap gap-2" key={index}>
-                    <Input
-                      aria-label={t("resources.headerName", {
-                        index: index + 1,
-                      })}
-                      className="min-w-24 flex-1"
-                      required
-                      value={header.key}
-                      onChange={(event) =>
-                        setHeaders(
-                          headers.map((item, i) =>
-                            i === index
-                              ? { ...item, key: event.target.value }
-                              : item
-                          )
-                        )
-                      }
-                    />
-                    <Input
-                      aria-label={t("resources.headerValue", {
-                        index: index + 1,
-                      })}
-                      className="min-w-24 flex-1"
-                      type="password"
-                      autoComplete="new-password"
-                      value={header.value}
-                      onChange={(event) =>
-                        setHeaders(
-                          headers.map((item, i) =>
-                            i === index
-                              ? { ...item, value: event.target.value }
-                              : item
-                          )
-                        )
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={headers.length === 1}
-                      onClick={() =>
-                        setHeaders(headers.filter((_, i) => i !== index))
-                      }
-                    >
-                      {t("pages.tools.delete")}
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  className="self-start"
-                  type="button"
-                  variant="outline"
-                  disabled={headers.length >= 30}
-                  onClick={() =>
-                    setHeaders([...headers, { key: "", value: "" }])
-                  }
-                >
-                  {t("resources.addHeader")}
-                </Button>
-              </div>
-            </Field>
-          )}
-        </>
-      )}
-      {method === "oauth" && (
-        <>
-          <FieldDescription>
-            {t(
-              credential?.authorization_status === "authorized"
-                ? "resources.reauthorizeHint"
-                : "resources.credentialOAuthHint"
-            )}
-          </FieldDescription>
-          {request && (
-            <p role="status" className="text-sm">
-              <a
-                className="underline"
-                href={request.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {t("resources.continueAuthorization")}
-              </a>{" "}
-              · {t("resources.waitAuthorization")}
-            </p>
-          )}
-        </>
-      )}
-      {(method === "oauth" || credential) && (
-        <div className="flex flex-wrap gap-2">
-          {method === "oauth" && (
-            <Button
-              type="button"
-              onClick={authorize}
-              loading={operation === "authorize" || !!request}
-              disabled={pending || !!request || !name.trim()}
-            >
-              {t(
-                credential?.authorization_status === "authorized"
-                  ? "pages.tools.reauthorize"
-                  : "pages.tools.connectAndAuthorize"
-              )}
-            </Button>
-          )}
-          {credential && (
-            <>
+      {active &&
+        (method === "oauth" || credential) &&
+        actionContainer &&
+        createPortal(
+          <>
+            {method === "oauth" && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={pending || !!request}
-                loading={operation === "test"}
-                onClick={() =>
-                  void run(async () => {
-                    validate()
-                    const target = await onPrepare()
-                    if (!target) return
-                    const current = currentCredential(target)
-                    if (!current) return
-                    try {
-                      await api(
-                        base +
-                          `/connectors/${target.id}/credentials/${current.id}/test`,
-                        { method: "POST" }
-                      )
-                      showToast({
-                        status: "success",
-                        title: t("resources.credentialTestPassed"),
-                      })
-                    } finally {
-                      const updated = await onChange(target.id)
-                      acceptCredential(updated.credentials[0] ?? null)
-                    }
-                  }, "test")
-                }
+                size="xs"
+                onClick={authorize}
+                loading={operation === "authorize" || !!request}
+                disabled={disabled || pending || !!request}
               >
-                {t("pages.tools.testConnection")}
+                {t(
+                  credential?.authorization_status === "authorized"
+                    ? "pages.tools.reauthorize"
+                    : "pages.tools.connectAndAuthorize"
+                )}
               </Button>
+            )}
+            {method === "oauth" && credential && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={pending || !!request}
+                size="xs"
+                disabled={disabled || pending || !!request}
                 loading={operation === "revoke"}
                 onClick={() =>
                   void run(async () => {
@@ -508,9 +374,151 @@ export function ConnectorCredentials({
               >
                 {t("resources.revokeCredential")}
               </Button>
-            </>
+            )}
+            {credential && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                disabled={
+                  disabled ||
+                  pending ||
+                  !!request ||
+                  (method === "httpHeader" && headersChanged)
+                }
+                loading={operation === "test"}
+                onClick={() =>
+                  void run(async () => {
+                    validate()
+                    const target = connector
+                    if (!target) return
+                    const current = currentCredential(target)
+                    if (!current) return
+                    try {
+                      await api(
+                        base +
+                          `/connectors/${target.id}/credentials/${current.id}/test`,
+                        { method: "POST" }
+                      )
+                      showToast({
+                        status: "success",
+                        title: t("resources.credentialTestPassed"),
+                      })
+                    } finally {
+                      const updated = await onChange(target.id, false)
+                      acceptCredential(updated.credentials[0] ?? null)
+                    }
+                  }, "test")
+                }
+              >
+                {t("pages.tools.testConnection")}
+              </Button>
+            )}
+          </>,
+          actionContainer
+        )}
+      {credential?.last_error && (
+        <p className="text-sm text-destructive" role="status">
+          {credential.last_error}
+        </p>
+      )}
+      {method === "httpHeader" && (
+        <Field className="min-w-0 rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel>{t("pages.tools.httpHeaders")}</FieldLabel>
+            <Button
+              className="shrink-0"
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={headers.length >= 30}
+              onClick={() => setHeaders([...headers, { key: "", value: "" }])}
+            >
+              {t("resources.addHeader")}
+            </Button>
+          </div>
+          <div className="flex min-w-0 flex-col gap-2">
+            {headers.map((header, index) => (
+              <div className="flex min-w-0 flex-wrap gap-2" key={index}>
+                <Input
+                  aria-label={t("resources.headerName", {
+                    index: index + 1,
+                  })}
+                  className="min-w-24 flex-1"
+                  required
+                  placeholder="Key"
+                  value={header.key}
+                  onChange={(event) =>
+                    setHeaders(
+                      headers.map((item, i) =>
+                        i === index
+                          ? { ...item, key: event.target.value }
+                          : item
+                      )
+                    )
+                  }
+                />
+                <Input
+                  aria-label={t("resources.headerValue", {
+                    index: index + 1,
+                  })}
+                  className="min-w-24 flex-1"
+                  type="password"
+                  autoComplete="new-password"
+                  required={
+                    !storedHeaderNames.has(header.key.trim().toLowerCase())
+                  }
+                  placeholder={
+                    storedHeaderNames.has(header.key.trim().toLowerCase())
+                      ? t("resources.headerKeepValue")
+                      : "Value"
+                  }
+                  value={header.value}
+                  onChange={(event) =>
+                    setHeaders(
+                      headers.map((item, i) =>
+                        i === index
+                          ? { ...item, value: event.target.value }
+                          : item
+                      )
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setHeaders(headers.filter((_, i) => i !== index))
+                  }
+                >
+                  {t("pages.tools.delete")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
+      {method === "oauth" && (
+        <>
+          {credential?.authorization_status !== "authorized" && (
+            <FieldDescription>
+              {t("resources.credentialOAuthHint")}
+            </FieldDescription>
           )}
-        </div>
+          {request && (
+            <p role="status" className="text-sm">
+              <a
+                className="underline"
+                href={request.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("resources.continueAuthorization")}
+              </a>{" "}
+              · {t("resources.waitAuthorization")}
+            </p>
+          )}
+        </>
       )}
     </fieldset>
   )

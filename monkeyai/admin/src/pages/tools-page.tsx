@@ -34,7 +34,6 @@ import {
   PauseIcon,
   PlayIcon,
   PlusSignIcon,
-  TestTube01Icon,
   ToolboxIcon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -101,13 +100,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemTitle,
-} from "@/components/ui/item"
+import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item"
 import {
   Table,
   TableBody,
@@ -116,7 +109,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResourceList } from "@/components/resource-list"
 import { useResourceList } from "@/hooks/use-resource-list"
 import { useResourceBatch } from "@/hooks/use-resource-batch"
@@ -298,22 +290,25 @@ export function ToolsPage() {
     groupIds: subjects.groups.slice(0, 1).map((group) => group.value),
     memberIds: [],
   }
-  const [testingServerId, setTestingServerId] = useState<string | null>(null)
   const [viewingServer, setViewingServer] = useState<McpServer | null>(null)
+  const [toolsLoading, setToolsLoading] = useState(false)
+  const toolsBusy = toolsLoading || remote.pending
   const [contexts, setContexts] = useState<Credential[]>([])
   const [contextID, setContextID] = useState("")
   const formRef = useRef<HTMLFormElement>(null)
   const credentialsRef = useRef<ConnectorCredentialsHandle>(null)
+  const [credentialActionContainer, setCredentialActionContainer] =
+    useState<HTMLDivElement | null>(null)
   const [credentialBusy, setCredentialBusy] = useState(false)
   const editorPending = remote.pending || credentialBusy
   const refreshConnector = useCallback(
-    async (id: string) => {
+    async (id: string, refreshList = true) => {
       const saved = toServer(
         await api<ResourceRow>(base + `/connectors/${id}`),
         i18n.language
       )
       setEditingServer(saved)
-      await reload()
+      if (refreshList) await reload()
       return saved
     },
     [i18n.language, reload]
@@ -326,22 +321,43 @@ export function ToolsPage() {
       ? {}
       : (editingServer?.oauthConfig ?? {})
   const authenticationModeItems = [
-    { value: "none", label: t("pages.tools.authorizationModes.none") },
+    {
+      value: "none",
+      label: t("pages.tools.authorizationModes.none"),
+      description: t("pages.tools.noAuthorizationDescription"),
+    },
     {
       value: "independent",
       label: t("pages.tools.authorizationModes.independent"),
+      description: t("pages.tools.independentAuthorizationDescription"),
     },
     {
       value: "centralized",
       label: t("pages.tools.authorizationModes.centralized"),
+      description: t("pages.tools.centralizedAuthorizationDescription"),
     },
   ]
+  const selectedAuthenticationMode = authenticationModeItems.find(
+    (item) => item.value === authorizationMode
+  )
   const authenticationProtocolItems = [
     {
       value: "httpHeader",
       label: t("pages.tools.authorizationMethods.httpHeader"),
     },
     { value: "oauth", label: t("pages.tools.authorizationMethods.oauth") },
+  ]
+  const oauthClientModeItems = [
+    {
+      value: "dynamic",
+      label: t("resources.oauthClientDynamic"),
+      description: t("resources.oauthDiscoveryHint"),
+    },
+    {
+      value: "manual",
+      label: t("resources.oauthClientManual"),
+      description: t("resources.oauthManualHint"),
+    },
   ]
   const oauthTokenAuthItems = [
     {
@@ -421,7 +437,7 @@ export function ToolsPage() {
   const persistConnector = async (formData: FormData): Promise<McpServer> => {
     const credential =
       authorizationMode === "centralized"
-        ? credentialsRef.current?.getValue()
+        ? credentialsRef.current?.getValue(String(formData.get("name") ?? ""))
         : undefined
     if (editingServer?.origin === "package") {
       const name = String(formData.get("name") ?? "").trim()
@@ -462,6 +478,7 @@ export function ToolsPage() {
         overrides.authorization_method = nextMethod
       }
       if (
+        authorizationMode === "independent" &&
         nextMethod === "http_header" &&
         authHeaderName !== (editingServer.authHeaderName ?? "")
       ) {
@@ -530,7 +547,14 @@ export function ToolsPage() {
             : authorizationMethod === "httpHeader"
               ? "http_header"
               : "oauth",
-        auth_header_name: String(formData.get("authHeaderName") ?? "").trim(),
+        ...(authorizationMode === "independent" &&
+        authorizationMethod === "httpHeader"
+          ? {
+              auth_header_name: String(
+                formData.get("authHeaderName") ?? ""
+              ).trim(),
+            }
+          : {}),
         oauth_config: oauthFormConfig(
           oauthClientMode,
           formData,
@@ -594,8 +618,10 @@ export function ToolsPage() {
       if (saved.authorizationMode === "centralized") {
         const credential = saved.credentials[0]
         if (
-          credential?.authorization_status !== "authorized" ||
-          credential.connection_status === "error"
+          (saved.authorizationMethod === "oauth" && !credential) ||
+          (credential &&
+            (credential.authorization_status !== "authorized" ||
+              credential.connection_status === "error"))
         )
           return
       }
@@ -615,13 +641,6 @@ export function ToolsPage() {
       if (servers.length === 1) remote.previousPage(serverPendingDeletion.type)
       setServerPendingDeletion(null)
     }, t("resources.operationCompleted"))
-  }
-  const handleTestConnection = async (id: string) => {
-    setTestingServerId(id)
-    await remote.run(async () => {
-      await api(base + `/connectors/${id}/test`, { method: "POST" })
-    }, t("resources.operationCompleted"))
-    setTestingServerId(null)
   }
   const loadTools = async (server: McpServer, credential = "") => {
     const path =
@@ -646,18 +665,31 @@ export function ToolsPage() {
     setContextID(credential)
   }
   const handleViewTools = async (server: McpServer) => {
+    if (toolsBusy) return
     setToolDrafts([])
     setContexts([])
     setContextID("")
     setViewingServer(server)
-    await remote.run(async () => {
+    setToolsLoading(true)
+    try {
       if (server.authorizationMode === "independent") {
         const result = await api<{ items: Credential[] }>(
           base + `/connectors/${server.id}/tool-contexts`
         )
         setContexts(result.items)
-      } else await loadTools(server)
-    })
+      } else {
+        await api(base + `/connectors/${server.id}/test`, { method: "POST" })
+        await loadTools(server)
+      }
+      await reload()
+    } catch (error) {
+      showToast({
+        status: "error",
+        title: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setToolsLoading(false)
+    }
   }
 
   const updateToolDraft = (
@@ -672,7 +704,8 @@ export function ToolsPage() {
   }
 
   const handleSaveTools = async () => {
-    if (!viewingServer || viewingServer.origin === "package") return
+    if (!viewingServer || viewingServer.origin === "package" || toolsBusy)
+      return
     await remote.run(async () => {
       for (const tool of toolDrafts) {
         await api(base + `/connectors/${viewingServer.id}/tools/${tool.id}`, {
@@ -813,9 +846,15 @@ export function ToolsPage() {
                           />
                         </Field>
                         <Field className="min-w-0 rounded-lg border p-4">
-                          <FieldLabel>
-                            {t("pages.tools.authorization")}
-                          </FieldLabel>
+                          <div className="flex items-center justify-between gap-2">
+                            <FieldLabel className="shrink-0">
+                              {t("pages.tools.authorization")}
+                            </FieldLabel>
+                            <div
+                              ref={setCredentialActionContainer}
+                              className="flex min-w-0 flex-wrap items-center justify-end gap-2"
+                            />
+                          </div>
                           <div className="flex flex-wrap gap-3">
                             <Item
                               variant="outline"
@@ -828,18 +867,6 @@ export function ToolsPage() {
                                     {t("pages.tools.authorizationMethod")}
                                   </label>
                                 </ItemTitle>
-                                <ItemDescription
-                                  id="mcp-authentication-mode-description"
-                                  className="line-clamp-none"
-                                >
-                                  {t(
-                                    authorizationMode === "none"
-                                      ? "pages.tools.noAuthorizationDescription"
-                                      : authorizationMode === "independent"
-                                        ? "pages.tools.independentAuthorizationDescription"
-                                        : "pages.tools.centralizedAuthorizationDescription"
-                                  )}
-                                </ItemDescription>
                               </ItemContent>
                               <ItemActions>
                                 <Select
@@ -855,22 +882,38 @@ export function ToolsPage() {
                                 >
                                   <SelectTrigger
                                     id="mcp-authentication-mode"
-                                    aria-describedby="mcp-authentication-mode-description"
                                     className="w-28 sm:w-36"
                                   >
-                                    <SelectValue />
+                                    <SelectValue>
+                                      {selectedAuthenticationMode?.label}
+                                    </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent
                                     align="end"
                                     alignItemWithTrigger={false}
+                                    className="w-80 max-w-[calc(100vw-2rem)]"
                                   >
                                     <SelectGroup>
                                       {authenticationModeItems.map((item) => (
                                         <SelectItem
                                           key={item.value}
                                           value={item.value}
+                                          label={item.label}
+                                          aria-label={item.label}
+                                          aria-describedby={`mcp-authentication-option-${item.value}-description`}
+                                          className="py-2"
                                         >
-                                          {item.label}
+                                          <span className="flex min-w-0 flex-col gap-1">
+                                            <span className="font-medium">
+                                              {item.label}
+                                            </span>
+                                            <span
+                                              id={`mcp-authentication-option-${item.value}-description`}
+                                              className="whitespace-normal text-xs text-muted-foreground"
+                                            >
+                                              {item.description}
+                                            </span>
+                                          </span>
                                         </SelectItem>
                                       ))}
                                     </SelectGroup>
@@ -890,14 +933,6 @@ export function ToolsPage() {
                                       {t("pages.tools.authenticationProtocol")}
                                     </label>
                                   </ItemTitle>
-                                  <ItemDescription
-                                    id="mcp-authentication-protocol-description"
-                                    className="line-clamp-none"
-                                  >
-                                    {t(
-                                      `pages.tools.authenticationProtocolDescriptions.${authorizationMethod}`
-                                    )}
-                                  </ItemDescription>
                                 </ItemContent>
                                 <ItemActions>
                                   <Select
@@ -913,7 +948,6 @@ export function ToolsPage() {
                                   >
                                     <SelectTrigger
                                       id="mcp-authentication-protocol"
-                                      aria-describedby="mcp-authentication-protocol-description"
                                       className="w-28 sm:w-36"
                                     >
                                       <SelectValue />
@@ -940,7 +974,7 @@ export function ToolsPage() {
                               </Item>
                             )}
                           </div>
-                          {authorizationMode !== "none" &&
+                          {authorizationMode === "independent" &&
                             authorizationMethod === "httpHeader" && (
                               <Field>
                                 <FieldLabel htmlFor="mcp-auth-header-name">
@@ -956,179 +990,235 @@ export function ToolsPage() {
                                 />
                               </Field>
                             )}
-                          {authorizationMode !== "none" &&
-                            authorizationMethod === "oauth" && (
-                              <>
-                                <Tabs
-                                  className="min-w-0"
-                                  value={oauthClientMode}
-                                  onValueChange={(value) =>
-                                    setOAuthClientMode(value as OAuthClientMode)
-                                  }
-                                >
-                                  <TabsList
-                                    aria-label={t("resources.oauthClientMode")}
-                                    className="!h-auto w-full max-w-full"
-                                  >
-                                    <TabsTrigger
-                                      value="dynamic"
-                                      className="h-auto min-h-8 whitespace-normal text-center"
-                                    >
-                                      {t("resources.oauthClientDynamic")}
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                      value="manual"
-                                      className="h-auto min-h-8 whitespace-normal text-center"
-                                    >
-                                      {t("resources.oauthClientManual")}
-                                    </TabsTrigger>
-                                  </TabsList>
-                                </Tabs>
-                                {oauthClientMode === "dynamic" ? (
-                                  <FieldDescription>
-                                    {t("resources.oauthDiscoveryHint")}
-                                  </FieldDescription>
-                                ) : (
-                                  <>
-                                    {editingServer?.callbackURL ? (
-                                      <Field>
-                                        <FieldLabel htmlFor="mcp-callback-url">
-                                          {t("resources.callbackURL")}
-                                        </FieldLabel>
-                                        <Input
-                                          id="mcp-callback-url"
-                                          readOnly
-                                          value={editingServer.callbackURL}
-                                          onFocus={(event) =>
-                                            event.currentTarget.select()
-                                          }
-                                        />
-                                        <FieldDescription>
-                                          {t(
-                                            "resources.callbackURLDescription"
-                                          )}
-                                        </FieldDescription>
-                                      </Field>
-                                    ) : (
-                                      <p className="text-sm text-muted-foreground">
-                                        {t("resources.saveBeforeAuthorize")}
-                                      </p>
+                          <div
+                            className={
+                              authorizationMode !== "none" &&
+                              authorizationMethod === "oauth"
+                                ? "flex min-w-0 flex-col gap-3 rounded-lg border p-4"
+                                : "contents"
+                            }
+                          >
+                            {authorizationMode !== "none" &&
+                              authorizationMethod === "oauth" && (
+                                <>
+                                  <FieldLabel>
+                                    {t(
+                                      "pages.tools.authorizationMethods.oauth"
                                     )}
-                                    {(
-                                      [
-                                        [
-                                          "oauthAuthorizationURL",
-                                          "authorization_url",
-                                          "OAuth Authorization URL",
-                                        ],
-                                        [
-                                          "oauthTokenURL",
-                                          "token_url",
-                                          "OAuth Token URL",
-                                        ],
-                                        [
-                                          "oauthClientID",
-                                          "client_id",
-                                          "OAuth Client ID",
-                                        ],
-                                        [
-                                          "oauthRegistrationURL",
-                                          "registration_url",
-                                          "OAuth Registration URL",
-                                        ],
-                                        [
-                                          "oauthScopes",
-                                          "scopes",
-                                          "OAuth Scopes",
-                                        ],
-                                        [
-                                          "oauthClientSecret",
-                                          "secret",
-                                          "OAuth Client Secret",
-                                        ],
-                                      ] as const
-                                    )
-                                      .filter(
-                                        ([, key]) =>
-                                          key !== "registration_url" ||
-                                          manualOAuthConfig.registration_url
-                                      )
-                                      .map(([name, key, label]) => (
-                                        <Field key={name}>
-                                          <FieldLabel htmlFor={name}>
-                                            {label}
-                                          </FieldLabel>
-                                          <Input
-                                            id={name}
-                                            name={name}
-                                            type={
-                                              key === "secret"
-                                                ? "password"
-                                                : "text"
-                                            }
-                                            defaultValue={
-                                              manualOAuthConfig[key] ?? ""
-                                            }
-                                            required={[
-                                              "authorization_url",
-                                              "token_url",
-                                              ...(!manualOAuthConfig.registration_url
-                                                ? ["client_id"]
-                                                : []),
-                                            ].includes(key)}
-                                          />
-                                        </Field>
-                                      ))}
-                                    <Field>
-                                      <FieldLabel htmlFor="oauthTokenAuthMethod">
-                                        {t("resources.oauthTokenAuthMethod")}
-                                      </FieldLabel>
+                                  </FieldLabel>
+                                  <Item
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-col items-stretch sm:flex-row sm:flex-nowrap sm:items-center"
+                                  >
+                                    <ItemContent className="min-w-0">
+                                      <ItemTitle>
+                                        <label htmlFor="mcp-oauth-client-mode">
+                                          {t("resources.oauthClientMode")}
+                                        </label>
+                                      </ItemTitle>
+                                    </ItemContent>
+                                    <ItemActions>
                                       <Select
-                                        name="oauthTokenAuthMethod"
-                                        items={oauthTokenAuthItems}
-                                        defaultValue={
-                                          manualOAuthConfig.token_endpoint_auth_method ||
-                                          DEFAULT_TOKEN_AUTH_METHOD
-                                        }
+                                        items={oauthClientModeItems}
+                                        value={oauthClientMode}
+                                        disabled={editorPending}
+                                        onValueChange={(value) => {
+                                          if (value)
+                                            setOAuthClientMode(
+                                              value as OAuthClientMode
+                                            )
+                                        }}
                                       >
                                         <SelectTrigger
-                                          id="oauthTokenAuthMethod"
-                                          className="w-full"
+                                          id="mcp-oauth-client-mode"
+                                          className="w-full sm:w-52"
                                         >
-                                          <SelectValue />
+                                          <SelectValue className="min-w-0 truncate">
+                                            {
+                                              oauthClientModeItems.find(
+                                                (item) =>
+                                                  item.value === oauthClientMode
+                                              )?.label
+                                            }
+                                          </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent
+                                          align="end"
                                           alignItemWithTrigger={false}
-                                          align="start"
+                                          className="w-80 max-w-[calc(100vw-2rem)]"
                                         >
                                           <SelectGroup>
-                                            {oauthTokenAuthItems.map((item) => (
-                                              <SelectItem
-                                                key={item.value}
-                                                value={item.value}
-                                              >
-                                                {item.label}
-                                              </SelectItem>
-                                            ))}
+                                            {oauthClientModeItems.map(
+                                              (item) => (
+                                                <SelectItem
+                                                  key={item.value}
+                                                  value={item.value}
+                                                  label={item.label}
+                                                  aria-label={item.label}
+                                                  aria-describedby={`mcp-oauth-client-option-${item.value}-description`}
+                                                  className="py-2"
+                                                >
+                                                  <span className="flex min-w-0 flex-col gap-1">
+                                                    <span className="font-medium">
+                                                      {item.label}
+                                                    </span>
+                                                    <span
+                                                      id={`mcp-oauth-client-option-${item.value}-description`}
+                                                      className="whitespace-normal text-xs text-muted-foreground"
+                                                    >
+                                                      {item.description}
+                                                    </span>
+                                                  </span>
+                                                </SelectItem>
+                                              )
+                                            )}
                                           </SelectGroup>
                                         </SelectContent>
                                       </Select>
-                                    </Field>
-                                  </>
-                                )}
-                              </>
-                            )}
-                          <ConnectorCredentials
-                            ref={credentialsRef}
-                            connector={editingServer}
-                            method={authorizationMethod}
-                            active={authorizationMode === "centralized"}
-                            disabled={editorPending}
-                            onPrepare={prepareConnector}
-                            onChange={refreshConnector}
-                            onRevoke={revokeCredential}
-                            onBusyChange={setCredentialBusy}
-                          />
+                                    </ItemActions>
+                                  </Item>
+                                  {oauthClientMode === "manual" && (
+                                    <>
+                                      {editingServer?.callbackURL && (
+                                        <Field>
+                                          <FieldLabel htmlFor="mcp-callback-url">
+                                            {t("resources.callbackURL")}
+                                          </FieldLabel>
+                                          <Input
+                                            id="mcp-callback-url"
+                                            readOnly
+                                            value={editingServer.callbackURL}
+                                            onFocus={(event) =>
+                                              event.currentTarget.select()
+                                            }
+                                          />
+                                          <FieldDescription>
+                                            {t(
+                                              "resources.callbackURLDescription"
+                                            )}
+                                          </FieldDescription>
+                                        </Field>
+                                      )}
+                                      {(
+                                        [
+                                          [
+                                            "oauthAuthorizationURL",
+                                            "authorization_url",
+                                            "OAuth Authorization URL",
+                                          ],
+                                          [
+                                            "oauthTokenURL",
+                                            "token_url",
+                                            "OAuth Token URL",
+                                          ],
+                                          [
+                                            "oauthClientID",
+                                            "client_id",
+                                            "OAuth Client ID",
+                                          ],
+                                          [
+                                            "oauthRegistrationURL",
+                                            "registration_url",
+                                            "OAuth Registration URL",
+                                          ],
+                                          [
+                                            "oauthScopes",
+                                            "scopes",
+                                            "OAuth Scopes",
+                                          ],
+                                          [
+                                            "oauthClientSecret",
+                                            "secret",
+                                            "OAuth Client Secret",
+                                          ],
+                                        ] as const
+                                      )
+                                        .filter(
+                                          ([, key]) =>
+                                            key !== "registration_url" ||
+                                            manualOAuthConfig.registration_url
+                                        )
+                                        .map(([name, key, label]) => (
+                                          <Field key={name}>
+                                            <FieldLabel htmlFor={name}>
+                                              {label}
+                                            </FieldLabel>
+                                            <Input
+                                              id={name}
+                                              name={name}
+                                              type={
+                                                key === "secret"
+                                                  ? "password"
+                                                  : "text"
+                                              }
+                                              defaultValue={
+                                                manualOAuthConfig[key] ?? ""
+                                              }
+                                              required={[
+                                                "authorization_url",
+                                                "token_url",
+                                                ...(!manualOAuthConfig.registration_url
+                                                  ? ["client_id"]
+                                                  : []),
+                                              ].includes(key)}
+                                            />
+                                          </Field>
+                                        ))}
+                                      <Field>
+                                        <FieldLabel htmlFor="oauthTokenAuthMethod">
+                                          {t("resources.oauthTokenAuthMethod")}
+                                        </FieldLabel>
+                                        <Select
+                                          name="oauthTokenAuthMethod"
+                                          items={oauthTokenAuthItems}
+                                          defaultValue={
+                                            manualOAuthConfig.token_endpoint_auth_method ||
+                                            DEFAULT_TOKEN_AUTH_METHOD
+                                          }
+                                        >
+                                          <SelectTrigger
+                                            id="oauthTokenAuthMethod"
+                                            className="w-full min-w-0"
+                                          >
+                                            <SelectValue className="min-w-0 truncate" />
+                                          </SelectTrigger>
+                                          <SelectContent
+                                            alignItemWithTrigger={false}
+                                            align="start"
+                                          >
+                                            <SelectGroup>
+                                              {oauthTokenAuthItems.map(
+                                                (item) => (
+                                                  <SelectItem
+                                                    key={item.value}
+                                                    value={item.value}
+                                                  >
+                                                    {item.label}
+                                                  </SelectItem>
+                                                )
+                                              )}
+                                            </SelectGroup>
+                                          </SelectContent>
+                                        </Select>
+                                      </Field>
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            <ConnectorCredentials
+                              ref={credentialsRef}
+                              connector={editingServer}
+                              method={authorizationMethod}
+                              active={authorizationMode === "centralized"}
+                              disabled={editorPending}
+                              onPrepare={prepareConnector}
+                              onChange={refreshConnector}
+                              onRevoke={revokeCredential}
+                              onBusyChange={setCredentialBusy}
+                              actionContainer={credentialActionContainer}
+                            />
+                          </div>
                         </Field>
                       </fieldset>
                       <div className="grid min-w-0 grid-cols-2 gap-4">
@@ -1219,7 +1309,7 @@ export function ToolsPage() {
                     <ResourceNotice
                       error={remote.error || subjects.error}
                       loading={false}
-                      pending={editorPending}
+                      pending={false}
                     />
                     <ResourceEditorFooter
                       id="imported-connector-readonly"
@@ -1354,6 +1444,10 @@ export function ToolsPage() {
                               {t("resources.disable")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              disabled={
+                                toolsBusy ||
+                                server.authorizationMode === "independent"
+                              }
                               onClick={() => handleViewTools(server)}
                             >
                               <HugeiconsIcon
@@ -1370,22 +1464,6 @@ export function ToolsPage() {
                                 strokeWidth={2}
                               />
                               {t("pages.tools.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={
-                                testingServerId === server.id ||
-                                server.authorizationMode === "independent" ||
-                                !server.enabled
-                              }
-                              onClick={() => handleTestConnection(server.id)}
-                            >
-                              <HugeiconsIcon
-                                icon={TestTube01Icon}
-                                strokeWidth={2}
-                              />
-                              {testingServerId === server.id
-                                ? t("pages.tools.testing")
-                                : t("pages.tools.testConnection")}
                             </DropdownMenuItem>
                           </DropdownMenuGroup>
                           <DropdownMenuSeparator
@@ -1481,13 +1559,8 @@ export function ToolsPage() {
               </Select>
             </Field>
           )}
-          <ResourceNotice
-            error={remote.error}
-            pending={remote.pending && toolDrafts.length > 0}
-            loading={false}
-          />
           <div className="max-h-[min(60vh,36rem)] overflow-y-auto rounded-md border">
-            <Table aria-busy={remote.pending}>
+            <Table aria-busy={toolsBusy}>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("pages.tools.toolName")}</TableHead>
@@ -1502,7 +1575,7 @@ export function ToolsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {remote.pending && !toolDrafts.length && (
+                {toolsLoading && !toolDrafts.length && (
                   <TableRow>
                     <TableCell
                       colSpan={
@@ -1539,7 +1612,7 @@ export function ToolsPage() {
                         aria-label={t("pages.tools.toggleTool", {
                           tool: tool.name,
                         })}
-                        disabled={readOnlyTools}
+                        disabled={readOnlyTools || toolsBusy}
                         checked={tool.enabled}
                         onCheckedChange={(enabled) =>
                           updateToolDraft(tool.id, { enabled })
@@ -1553,7 +1626,7 @@ export function ToolsPage() {
                             tool: tool.name,
                           })}
                           className="h-8"
-                          disabled={readOnlyTools || !tool.enabled}
+                          disabled={readOnlyTools || toolsBusy || !tool.enabled}
                           min="0"
                           step="1"
                           type="number"
@@ -1575,10 +1648,42 @@ export function ToolsPage() {
           <ResourceNotice
             error={remote.error || subjects.error}
             loading={false}
-            pending={remote.pending}
+            pending={false}
           />
           <ResourceEditorFooter
             id="imported-connector-tools-readonly"
+            leading={
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    toolsBusy || readOnlyTools || toolDrafts.length === 0
+                  }
+                  onClick={() =>
+                    setToolDrafts((current) =>
+                      current.map((tool) => ({ ...tool, enabled: true }))
+                    )
+                  }
+                >
+                  {t("pages.tools.enableAllTools")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    toolsBusy || readOnlyTools || toolDrafts.length === 0
+                  }
+                  onClick={() =>
+                    setToolDrafts((current) =>
+                      current.map((tool) => ({ ...tool, enabled: false }))
+                    )
+                  }
+                >
+                  {t("pages.tools.disableAllTools")}
+                </Button>
+              </div>
+            }
             reason={
               readOnlyTools
                 ? t("resources.importedConnectorReadOnly")
@@ -1590,7 +1695,7 @@ export function ToolsPage() {
             </DialogClose>
             <Button
               disabled={
-                remote.pending ||
+                toolsBusy ||
                 readOnlyTools ||
                 toolDrafts.some(
                   (tool) =>

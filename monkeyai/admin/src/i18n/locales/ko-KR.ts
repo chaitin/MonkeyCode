@@ -614,6 +614,9 @@ export const koKR = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "저장",
+      enableAllTools: "모두 활성화",
+      disableAllTools: "모두 비활성화",
       title: "커넥터",
       description: "클라이언트가 연결하여 사용할 MCP 서버를 설정합니다.",
     },

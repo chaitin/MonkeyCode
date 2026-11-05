@@ -27,6 +27,8 @@ try {
       rows = new Map(),
       credentials = new Map()
     let failCredential = false,
+      failConnectionTest = false,
+      listRequests = 0,
       blockedPopup = false,
       authRequest = null,
       authSequence = 0
@@ -66,7 +68,10 @@ try {
       callback_url: "",
       icon_path: "",
     })
-    rows.set("package", row("package", "资源包连接器", "package"))
+    rows.set("package", {
+      ...row("package", "资源包连接器", "package"),
+      auth_header_name: "X-Package-Key",
+    })
     credentials.set("package", credential("package", "包凭证"))
     const view = (item) => ({
       ...item,
@@ -81,7 +86,11 @@ try {
         assert.equal(change.id, current.id)
         assert.equal(change.revision, current.revision)
       } else assert(!change.id)
-      if (change.revoke) return undefined
+      if (
+        change.revoke ||
+        (change.http_headers && Object.keys(change.http_headers).length === 0)
+      )
+        return undefined
       const saved = {
         ...(current ?? credential(item.id, change.name)),
         name: change.name ?? current?.name,
@@ -237,12 +246,23 @@ try {
           credentials.set(id, saved)
           return json({ status: "succeeded", credential_id: saved.id })
         }
-        if (/\/credentials\/[^/]+\/test$/.test(endpoint)) return json({})
-        if (endpoint.endsWith("/connectors"))
+        if (/\/credentials\/[^/]+\/test$/.test(endpoint)) {
+          if (failConnectionTest) {
+            failConnectionTest = false
+            return json(
+              { error: { code: "test_failure", message: "检测连接失败测试" } },
+              500
+            )
+          }
+          return json({})
+        }
+        if (endpoint.endsWith("/connectors")) {
+          listRequests++
           return json({
             items: [...rows.values()].map(view),
             next_cursor: null,
           })
+        }
         if (endpoint.endsWith("/session"))
           return json({
             authenticated: true,
@@ -329,6 +349,73 @@ try {
       await dialog().getByRole("button", { name: "取消", exact: true }).click()
       await dialog().waitFor({ state: "hidden" })
     }
+    const checkConnection = async (fail = false) => {
+      const beforeList = listRequests
+      const beforeWrites = writes.length
+      failConnectionTest = fail
+      const testButton = dialog().getByRole("button", {
+        name: "连接检测",
+        exact: true,
+      })
+      const placement = await testButton.evaluate((button) => {
+        const row = button.parentElement.parentElement
+        const label = row.querySelector('[data-slot="field-label"]')
+        const actionBounds = button.getBoundingClientRect()
+        const labelBounds = label.getBoundingClientRect()
+        return {
+          label: label.textContent,
+          actions: [...button.parentElement.querySelectorAll("button")].map(
+            (action) => action.textContent.trim()
+          ),
+          sameRow:
+            Math.abs(
+              actionBounds.y +
+                actionBounds.height / 2 -
+                labelBounds.y -
+                labelBounds.height / 2
+            ) < 2,
+          rightAligned:
+            Math.abs(row.getBoundingClientRect().right - actionBounds.right) <
+            2,
+        }
+      })
+      assert.equal(placement.label, "认证")
+      assert(
+        (placement.sameRow || width < 500) && placement.rightAligned,
+        JSON.stringify(placement)
+      )
+      assert.equal(placement.actions.at(-1), "连接检测")
+      if (placement.actions.includes("重新授权"))
+        assert.deepEqual(placement.actions, [
+          "重新授权",
+          "撤销凭证",
+          "连接检测",
+        ])
+      await testButton.click()
+      await page
+        .getByText(fail ? "检测连接失败测试" : "凭证已保存，连接测试成功。", {
+          exact: true,
+        })
+        .first()
+        .waitFor()
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll('[role="dialog"] button')].some(
+          (button) =>
+            button.textContent.trim() === "连接检测" && !button.disabled
+        )
+      )
+      assert.equal(
+        listRequests,
+        beforeList,
+        "Connection tests must not reload the connector list"
+      )
+      assert.equal(
+        writes.length,
+        beforeWrites + 1,
+        "Connection tests must not save editor drafts"
+      )
+      assert(writes.at(-1).endpoint.endsWith("/test"))
+    }
     const layout = async () => {
       assert.equal(await page.getByRole("dialog").count(), 1)
       const data = await dialog().evaluate((el) => ({
@@ -347,7 +434,16 @@ try {
         await dialog().locator("#mcp-authentication-protocol").innerText()
       ).includes("HTTP Header")
     )
-    await dialog().locator("#credential-name").fill("团队凭证")
+    assert.equal(await dialog().locator("#credential-name").count(), 0)
+    assert.equal(await dialog().locator("#mcp-auth-header-name").count(), 0)
+    assert.equal(
+      await dialog()
+        .getByText("名称由你填写，用于区分凭证，不代表第三方账户身份。", {
+          exact: true,
+        })
+        .count(),
+      0
+    )
     await dialog()
       .getByRole("textbox", { name: "Header 1 内容", exact: true })
       .fill("initial-secret")
@@ -393,20 +489,65 @@ try {
     )
     assert.equal(rows.size, 2)
     assert(credentials.has(header.id))
+    assert.equal(credentials.get(header.id).name, "Header 连接器")
+    assert(
+      !Object.hasOwn(
+        writes.findLast(
+          (write) =>
+            write.method === "POST" && write.endpoint.endsWith("/connectors")
+        ).body,
+        "auth_header_name"
+      )
+    )
 
     await edit("Header 连接器")
+    assert.equal(await dialog().locator("#credential-name").count(), 0)
     assert.equal(
-      await dialog().locator("#credential-name").inputValue(),
-      "团队凭证"
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 内容", exact: true })
+        .inputValue(),
+      ""
+    )
+    assert.equal(
+      await dialog().locator("#replace-credential-headers").count(),
+      0
     )
     assert.equal(
       await dialog()
         .getByRole("textbox", { name: "Header 1 内容", exact: true })
-        .count(),
+        .getAttribute("placeholder"),
+      "留空保留原值"
+    )
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 名称", exact: true })
+        .getAttribute("placeholder"),
+      "Key"
+    )
+    assert.equal(
+      await dialog().getByText("已授权 · 连接正常", { exact: true }).count(),
       0
+    )
+    const credentialFieldset = dialog()
+      .locator("fieldset")
+      .filter({
+        has: page.getByRole("textbox", { name: "Header 1 名称", exact: true }),
+      })
+      .last()
+    assert.equal(
+      await credentialFieldset.evaluate(
+        (el) => getComputedStyle(el).borderTopWidth
+      ),
+      "0px"
     )
     const before = writes.filter((write) => write.body?.credential).length
     await dialog().locator("#mcp-description").fill("只修改说明")
+    await checkConnection()
+    await checkConnection(true)
+    assert.equal(
+      await dialog().locator("#mcp-description").inputValue(),
+      "只修改说明"
+    )
     await submit()
     await dialog().waitFor({ state: "hidden" })
     assert.equal(
@@ -416,20 +557,29 @@ try {
 
     await edit("Header 连接器")
     await dialog()
-      .getByRole("checkbox", {
-        name: "替换全部 Header（未勾选时保留原值）",
-        exact: true,
-      })
-      .check()
-    await dialog()
       .getByRole("textbox", { name: "Header 1 内容", exact: true })
       .fill("replacement-secret")
     await dialog()
       .getByRole("button", { name: "添加 Header", exact: true })
       .click()
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 2 名称", exact: true })
+        .getAttribute("placeholder"),
+      "Key"
+    )
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 2 内容", exact: true })
+        .getAttribute("placeholder"),
+      "Value"
+    )
     await dialog()
       .getByRole("textbox", { name: "Header 2 名称", exact: true })
       .fill("authorization")
+    await dialog()
+      .getByRole("textbox", { name: "Header 2 内容", exact: true })
+      .fill("second-secret")
     const beforeDuplicate = writes.length
     await submit()
     await page
@@ -453,30 +603,215 @@ try {
       "X-API-Key": "second-secret",
     })
 
+    await edit("Header 连接器")
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 2 内容", exact: true })
+        .inputValue(),
+      ""
+    )
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 内容", exact: true })
+      .fill("third-secret")
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    const partial = writes.findLast(
+      (write) => write.body?.credential?.http_headers
+    )
+    assert.deepEqual(partial.body.credential.http_headers, {
+      Authorization: "third-secret",
+      "X-API-Key": "",
+    })
+
+    await edit("Header 连接器")
+    await dialog()
+      .getByRole("button", { name: "删除", exact: true })
+      .nth(1)
+      .click()
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    assert.deepEqual(
+      writes.findLast((write) => write.body?.credential?.http_headers).body
+        .credential.http_headers,
+      { Authorization: "" }
+    )
+    assert.deepEqual(credentials.get(header.id).header_names, ["Authorization"])
+
+    await edit("Header 连接器")
+    assert.equal(
+      await dialog()
+        .getByRole("button", { name: "撤销凭证", exact: true })
+        .count(),
+      0
+    )
+    const beforeClearCancel = writes.length
+    await dialog().getByRole("button", { name: "删除", exact: true }).click()
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 名称", exact: true })
+        .count(),
+      0
+    )
+    assert(
+      await dialog()
+        .getByRole("button", { name: "连接检测", exact: true })
+        .isDisabled()
+    )
+    assert.equal(
+      writes.length,
+      beforeClearCancel,
+      "Deleting rows must only change the draft"
+    )
+    await close()
+    assert.equal(writes.length, beforeClearCancel)
+    assert(credentials.has(header.id), "Cancel must keep the saved credential")
+
+    await edit("Header 连接器")
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 名称", exact: true })
+        .inputValue(),
+      "Authorization"
+    )
+    await dialog().getByRole("button", { name: "删除", exact: true }).click()
+    failCredential = true
+    await submit()
+    await page.getByText("凭证保存失败测试", { exact: true }).waitFor()
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 名称", exact: true })
+        .count(),
+      0
+    )
+    assert(
+      credentials.has(header.id),
+      "A failed clear must keep the stored credential"
+    )
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    const cleared = writes.findLast(
+      (write) => write.body?.credential?.http_headers
+    )
+    assert.deepEqual(cleared.body.credential.http_headers, {})
+    assert(!cleared.body.credential.revoke)
+    assert(!credentials.has(header.id))
+
+    await edit("Header 连接器")
+    assert.equal(
+      await dialog()
+        .getByRole("textbox", { name: "Header 1 名称", exact: true })
+        .count(),
+      0
+    )
+    assert.equal(
+      await dialog()
+        .getByRole("button", { name: "撤销凭证", exact: true })
+        .count(),
+      0
+    )
+    await dialog()
+      .getByRole("button", { name: "添加 Header", exact: true })
+      .click()
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 名称", exact: true })
+      .fill("X-Restored-Key")
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 内容", exact: true })
+      .fill("restored-secret")
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    assert.deepEqual(credentials.get(header.id).header_names, [
+      "X-Restored-Key",
+    ])
+    assert(
+      !writes.findLast((write) => write.body?.credential?.http_headers).body
+        .credential.id
+    )
+
     await create()
     await choose("#mcp-authentication-mode", "集中认证")
     await choose("#mcp-authentication-protocol", "MCP OAuth")
-    await dialog().locator("#credential-name").fill("OAuth 凭证")
     const beforeInvalid = writes.length
     await dialog()
       .getByRole("button", { name: "连接并授权", exact: true })
       .click()
     assert.equal(writes.length, beforeInvalid)
     await fillBasics("OAuth 连接器")
+    assert(
+      (await dialog().locator("#mcp-oauth-client-mode").innerText()).includes(
+        "动态 Client（自动发现）"
+      )
+    )
+    await dialog().locator("#mcp-oauth-client-mode").click()
+    for (const value of ["dynamic", "manual"]) {
+      const description = page.locator(
+        `#mcp-oauth-client-option-${value}-description`
+      )
+      await description.waitFor()
+      assert((await description.innerText()).length > 20)
+      assert.equal(
+        await description
+          .locator('xpath=ancestor::*[@role="option"]')
+          .getAttribute("aria-describedby"),
+        `mcp-oauth-client-option-${value}-description`
+      )
+    }
+    const optionsBounds = await page
+      .locator('[data-slot="select-content"][data-open]')
+      .boundingBox()
+    assert(
+      optionsBounds.x >= 0 && optionsBounds.x + optionsBounds.width <= width + 1
+    )
+    await page
+      .getByRole("option", { name: "传统配置（手动）", exact: true })
+      .click()
+    await page
+      .getByRole("option", { name: "传统配置（手动）", exact: true })
+      .waitFor({ state: "hidden" })
+    assert.equal(
+      (await dialog().locator("#mcp-oauth-client-mode").innerText()).trim(),
+      "传统配置（手动）"
+    )
+    assert.equal(
+      await dialog()
+        .locator("#mcp-oauth-client-option-manual-description")
+        .count(),
+      0
+    )
+    await dialog().locator("#oauthAuthorizationURL").waitFor()
+    await dialog().locator("#oauthTokenURL").waitFor()
+    await dialog().locator("#oauthClientID").waitFor()
+    await layout()
+    await choose("#mcp-oauth-client-mode", "动态 Client（自动发现）")
+    assert.equal(await dialog().locator("#oauthClientID").count(), 0)
     await submit()
     await dialog()
       .getByRole("button", { name: "保存修改", exact: true })
       .waitFor()
-    assert.equal(
-      await dialog().locator("#credential-name").inputValue(),
-      "OAuth 凭证"
-    )
+    assert.equal(await dialog().locator("#credential-name").count(), 0)
     await dialog()
       .getByRole("button", { name: "连接并授权", exact: true })
       .click()
     await dialog()
-      .getByText(/已授权.*连接正常/)
+      .getByRole("button", { name: "重新授权", exact: true })
       .waitFor()
+    assert.equal(
+      await dialog().getByText("已授权 · 连接正常", { exact: true }).count(),
+      0
+    )
+    assert.equal(
+      await dialog()
+        .getByText("重新授权会替换这份凭证的授权内容，并重新同步工具目录。", {
+          exact: true,
+        })
+        .count(),
+      0
+    )
+    assert(
+      await dialog()
+        .getByRole("button", { name: "重新授权", exact: true })
+        .evaluate((button) => button.classList.contains("border-border"))
+    )
     await layout()
     await submit()
     await dialog().waitFor({ state: "hidden" })
@@ -491,18 +826,25 @@ try {
       ).length,
       3
     )
+    assert.equal(credentials.get(oauth.id).name, "OAuth 连接器")
     await edit("OAuth 连接器")
-    await dialog().locator("#credential-name").fill("重命名 OAuth 凭证")
+    assert(
+      (await dialog().locator("#mcp-oauth-client-mode").innerText()).includes(
+        "动态 Client（自动发现）"
+      )
+    )
+    await dialog().locator("#mcp-name").fill("已改名 OAuth 连接器")
     await submit()
     await dialog().waitFor({ state: "hidden" })
-    const rename = writes.findLast(
-      (write) => write.body?.credential?.name === "重命名 OAuth 凭证"
+    const rename = writes.findLast((write) =>
+      write.endpoint.endsWith(`/connectors/${oauth.id}`)
     )
     assert.equal(rename.method, "PUT")
-    assert.equal(rename.body.credential.name, "重命名 OAuth 凭证")
-    assert(!rename.body.credential.http_headers)
-    await edit("OAuth 连接器")
-    await dialog().locator("#credential-name").fill("重新授权时更新名称")
+    assert.equal(rename.body.name, "已改名 OAuth 连接器")
+    assert(!rename.body.credential)
+    assert.equal(credentials.get(oauth.id).name, "OAuth 连接器")
+    await edit("已改名 OAuth 连接器")
+    await dialog().locator("#mcp-name").fill("重新授权的 OAuth 连接器")
     await page.evaluate(() => {
       window.open = () => null
     })
@@ -519,19 +861,13 @@ try {
           .querySelector('[role="dialog"]')
           ?.textContent.includes("正在等待授权结果")
     )
-    assert.equal(credentials.get(oauth.id).name, "重新授权时更新名称")
+    assert.equal(credentials.get(oauth.id).name, "OAuth 连接器")
     await choose("#mcp-authentication-protocol", "HTTP Header")
     await dialog()
       .getByRole("textbox", { name: "Header 1 内容", exact: true })
       .waitFor()
     await choose("#mcp-authentication-protocol", "MCP OAuth")
-    await dialog()
-      .getByRole("button", { name: "检测连接", exact: true })
-      .click()
-    await page
-      .getByText("凭证已保存，连接测试成功。", { exact: true })
-      .first()
-      .waitFor()
+    await checkConnection()
     await dialog()
       .getByRole("button", { name: "撤销凭证", exact: true })
       .click()
@@ -543,27 +879,89 @@ try {
 
     await edit("资源包连接器")
     assert(await dialog().locator("#mcp-avatar-upload").isDisabled())
-    await dialog().locator("#credential-name").fill("更新包凭证")
+    assert.equal(await dialog().locator("#credential-name").count(), 0)
+    await dialog().locator("#mcp-name").fill("自定义包连接器")
     await submit()
     await dialog().waitFor({ state: "hidden" })
-    assert.equal(credentials.get("package").name, "更新包凭证")
+    assert.equal(credentials.get("package").name, "包凭证")
+    assert.equal(rows.get("package").auth_header_name, "X-Package-Key")
+    assert(
+      !Object.hasOwn(
+        writes.findLast((write) =>
+          write.endpoint.endsWith("/connectors/package")
+        ).body,
+        "auth_header_name"
+      )
+    )
 
     await create()
     await fillBasics("直接认证连接器")
     await choose("#mcp-authentication-mode", "集中认证")
     await choose("#mcp-authentication-protocol", "MCP OAuth")
-    await dialog().locator("#credential-name").fill("直接创建 OAuth 凭证")
     await dialog()
       .getByRole("button", { name: "连接并授权", exact: true })
       .click()
     await dialog()
-      .getByText(/已授权.*连接正常/)
+      .getByRole("button", { name: "重新授权", exact: true })
       .waitFor()
     await submit()
     await dialog().waitFor({ state: "hidden" })
     assert(
       [...rows.values()].some(
         (item) => item.name === "直接认证连接器" && credentials.has(item.id)
+      )
+    )
+    const direct = [...rows.values()].find(
+      (item) => item.name === "直接认证连接器"
+    )
+    assert.equal(credentials.get(direct.id).name, direct.name)
+
+    await create()
+    const longName = "a".repeat(127) + "😀" + "b".repeat(40)
+    await fillBasics(`  ${longName}  `)
+    await choose("#mcp-authentication-mode", "集中认证")
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 内容", exact: true })
+      .fill("long-name-secret")
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    const longConnector = [...rows.values()].find(
+      (item) => item.name === longName
+    )
+    assert.equal(credentials.get(longConnector.id).name, "a".repeat(127) + "😀")
+    assert.equal(Array.from(credentials.get(longConnector.id).name).length, 128)
+    await create()
+    await fillBasics("独立认证连接器")
+    await choose("#mcp-authentication-mode", "独立认证")
+    await dialog().locator("#mcp-auth-header-name").fill("X-User-Key")
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    const independent = [...rows.values()].find(
+      (item) => item.name === "独立认证连接器"
+    )
+    assert.equal(independent.auth_header_name, "X-User-Key")
+    assert(!credentials.has(independent.id))
+    await edit(independent.name)
+    await choose("#mcp-authentication-mode", "集中认证")
+    assert.equal(await dialog().locator("#mcp-auth-header-name").count(), 0)
+    await dialog()
+      .getByRole("button", { name: "添加 Header", exact: true })
+      .click()
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 名称", exact: true })
+      .fill("Authorization")
+    await dialog()
+      .getByRole("textbox", { name: "Header 1 内容", exact: true })
+      .fill("central-secret")
+    await submit()
+    await dialog().waitFor({ state: "hidden" })
+    assert.equal(rows.get(independent.id).auth_header_name, "X-User-Key")
+    assert(
+      !Object.hasOwn(
+        writes.findLast((write) =>
+          write.endpoint.endsWith(`/connectors/${independent.id}`)
+        ).body,
+        "auth_header_name"
       )
     )
     assert.deepEqual(errors, [])
@@ -578,7 +976,7 @@ try {
     console.log(
       "PASS inline connector credentials:",
       width,
-      "Header create/retry/preserve/replace/validation; OAuth create/rename/reauthorize/DCR revision/popup fallback/test/revoke; imported permissions; one dialog and form"
+      "automatic credential names, Unicode length limit, existing-name preservation; Header create/retry/preserve/replace/validation/delete-all/cancel/clear-failure/recreate; OAuth create/reauthorize/DCR revision/popup fallback/test/revoke; imported permissions; one dialog and form"
     )
     await context.close()
   }

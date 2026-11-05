@@ -627,6 +627,9 @@ export const jaJP = {
     },
     tools: {
       ...enUS.pages.tools,
+      saveToolSettings: "保存",
+      enableAllTools: "すべて有効化",
+      disableAllTools: "すべて無効化",
       title: "コネクタ",
       description: "クライアントが接続して利用する MCP サーバーを設定します。",
     },

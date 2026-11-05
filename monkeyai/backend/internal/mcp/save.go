@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
@@ -88,12 +89,43 @@ func parseConnectorSave(w http.ResponseWriter, r *http.Request) (resource.Object
 		input.Name = &name
 	}
 	if input.Headers != nil {
-		change.headers, err = decodeHeaders(input.Headers)
+		change.headers, err = decodeHeaderFields(input.Headers, true)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 	return in, change, nil
+}
+
+// Header names are case-insensitive. Blank values retain existing secrets;
+// names omitted from the submitted set are removed.
+func resolveCredentialHeaders(headers map[string]string, old resource.Object) (map[string]string, error) {
+	stored := map[string]string{}
+	if old != nil {
+		raw, err := json.Marshal(old["http_headers"])
+		if err != nil {
+			return nil, err
+		}
+		var values map[string]string
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return nil, err
+		}
+		for key, value := range values {
+			stored[strings.ToLower(key)] = value
+		}
+	}
+	out := make(map[string]string, len(headers))
+	for key, value := range headers {
+		if value == "" {
+			var exists bool
+			value, exists = stored[strings.ToLower(key)]
+			if !exists {
+				return nil, resource.InvalidCode("credential_headers_invalid", "新增认证 Header 必须填写值")
+			}
+		}
+		out[key] = value
+	}
+	return out, nil
 }
 
 // Credential input stays in request context, never in connector fields or package overrides.
@@ -135,7 +167,10 @@ func (s *Service) persistCredential(ctx context.Context, tx pgx.Tx, in resource.
 	} else if old != nil {
 		return false, resource.Conflict
 	}
-	if input.Revoke {
+	if input.Revoke || (input.Headers != nil && len(change.headers) == 0) {
+		if old == nil {
+			return false, nil
+		}
 		if err = q.RevokeCredential(ctx, input.ID); err == nil {
 			_, err = q.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: input.ID})
 		}
@@ -149,7 +184,11 @@ func (s *Service) persistCredential(ctx context.Context, tx pgx.Tx, in resource.
 		data["name"] = *input.Name
 	}
 	if input.Headers != nil {
-		data["http_headers"] = change.headers
+		headers, err := resolveCredentialHeaders(change.headers, old)
+		if err != nil {
+			return false, err
+		}
+		data["http_headers"] = headers
 		data["oauth_access_token"], data["oauth_refresh_token"], data["oauth_expires_at"] = "", "", nil
 		data["auth_change"], data["config_revision"] = true, c.Int("config_revision")
 	}
