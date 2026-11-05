@@ -169,16 +169,6 @@ func (s *Service) setCallDuration(ctx context.Context, id string, duration int64
 }
 
 func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, connector, credential resource.Object, user string, billing InvocationBilling) {
-	headers, credential, err := s.headers(r.Context(), connector, credential)
-	if err != nil {
-		rpcFail(r.Context(), w, in.ID, err)
-		return
-	}
-	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
-	if err != nil {
-		rpcFail(r.Context(), w, in.ID, err)
-		return
-	}
 	if in.Method == "tools/list" {
 		var params struct {
 			Cursor string `json:"cursor"`
@@ -187,6 +177,24 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			rpcReply(r.Context(), w, 200, in.ID, nil, &rpcError{Code: -32602, Message: "工具目录游标无效"})
 			return
 		}
+	}
+	headers, credential, err := s.headers(r.Context(), connector, credential)
+	if err != nil {
+		rpcFail(r.Context(), w, in.ID, err)
+		return
+	}
+	if in.Method == "tools/list" && connector.String("authorization_mode") == "independent" {
+		if _, err := s.testConnection(r.Context(), connector, credential, user, false); err != nil {
+			rpcFail(r.Context(), w, in.ID, err)
+			return
+		}
+	}
+	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
+	if err != nil {
+		rpcFail(r.Context(), w, in.ID, err)
+		return
+	}
+	if in.Method == "tools/list" {
 		out := []resource.Object{}
 		for _, tool := range tools {
 			out = append(out, resource.Object{"name": tool["name"], "description": tool["description"], "inputSchema": tool["input_schema"]})
