@@ -8,7 +8,6 @@ import en from "../src/i18n/resources/en.ts";
 const sourceFiles = {
   checkin: readSource("../src/components/console/nav/nav-checkin.tsx"),
   invite: readSource("../src/components/console/nav/nav-invite.tsx"),
-  essay: readSource("../src/components/console/nav/nav-essay.tsx"),
   freeModelUsage: readSource("../src/components/console/nav/free-model-usage-indicator.tsx"),
 };
 const cjkPattern = /[\u3400-\u9fff]/;
@@ -26,7 +25,6 @@ test("侧边栏在线权益入口使用 consoleShell rewards i18n key", () => {
 
   assert.match(sourceFiles.checkin, /t\("consoleShell\.rewards\.checkin\.label"\)/);
   assert.match(sourceFiles.invite, /t\("consoleShell\.rewards\.invite\.title"\)/);
-  assert.match(sourceFiles.essay, /t\("consoleShell\.rewards\.essay\.label"\)/);
   assert.match(sourceFiles.freeModelUsage, /export function RewardsBalanceIndicator/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.quota\.freeWithValue", \{ amount: formatTokenNumber\(remainingTokens\) \}\)/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.button"\)/);

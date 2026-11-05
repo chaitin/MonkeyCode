@@ -1441,9 +1441,6 @@ const cn = {
         copySuccess: "邀请链接已复制到剪贴板",
         copyFailed: "复制失败，请手动复制",
       },
-      essay: {
-        label: "参与征文拿积分",
-      },
       feedback: {
         button: "提个建议",
         title: "提个建议",
@@ -2377,10 +2374,6 @@ const cn = {
           checkin: {
             label: "每日签到",
             value: "每日 100 积分",
-          },
-          article: {
-            label: "征文投稿",
-            value: "1 万 - 10 万积分",
           },
           community: {
             label: "其他社区活动",

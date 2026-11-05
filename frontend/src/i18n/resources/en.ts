@@ -1441,9 +1441,6 @@ const en = {
         copySuccess: "Invitation link copied to clipboard",
         copyFailed: "Copy failed. Please copy manually.",
       },
-      essay: {
-        label: "Submit an article for credits",
-      },
       feedback: {
         button: "Feedback",
         title: "Share feedback",
@@ -2377,10 +2374,6 @@ const en = {
           checkin: {
             label: "Daily check-in",
             value: "100 credits per day",
-          },
-          article: {
-            label: "Article submission",
-            value: "10K - 100K credits",
           },
           community: {
             label: "Other community events",
