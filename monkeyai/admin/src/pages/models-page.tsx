@@ -2255,10 +2255,10 @@ export function ModelsPage() {
               disabled={testSending}
             />
           </Field>
-          <div className="flex flex-col gap-2">
+          <div className="flex min-w-0 flex-col gap-2">
             <p className="text-sm font-medium">响应内容</p>
             <div
-              className="min-h-24 whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm"
+              className="max-h-[min(20rem,40vh)] min-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 p-3 text-sm"
               aria-live="polite"
             >
               {testResponse || (
