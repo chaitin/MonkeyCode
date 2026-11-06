@@ -2812,7 +2812,7 @@ paths:
   /api/admin/v1/models/{modelID}/probe:
     post:
       summary: 使用已保存配置测试系统大语言模型
-      description: 按模型协议、Base URL、已保存密钥和网络代理向上游发送 stream=true 请求。OpenAI Chat Completions 使用 /chat/completions，OpenAI Responses 使用 /responses，Anthropic 使用 /messages。响应原样流式返回，不缓存、不跟随重定向。
+      description: 按模型协议、Base URL、已保存密钥和网络代理向上游发送非流式请求。OpenAI Chat Completions 使用 /chat/completions，OpenAI Responses 使用 /responses，Anthropic 使用 /messages。服务端提取文本并判断响应是否合法，不缓存、不跟随重定向。
       parameters:
         - {name: modelID, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -2827,10 +2827,15 @@ paths:
                 message: {type: string, minLength: 1, maxLength: 4000}
       responses:
         '200':
-          description: 上游模型的 text/event-stream 响应。
+          description: 模型测试结果。
           content:
-            text/event-stream:
-              schema: {type: string}
+            application/json:
+              schema:
+                type: object
+                required: [content, valid]
+                properties:
+                  content: {type: string}
+                  valid: {type: boolean, description: 上游响应是否包含对应协议的合法文本内容。}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}

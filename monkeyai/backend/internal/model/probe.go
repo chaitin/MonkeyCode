@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -90,28 +91,13 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
+	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if response.StatusCode != http.StatusOK || err != nil {
 		modelError(r.Context(), w, http.StatusBadGateway, fmt.Sprintf("模型返回 HTTP %d，请检查协议和密钥", response.StatusCode))
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	flusher, _ := w.(http.Flusher)
-	buf := make([]byte, 4096)
-	for {
-		n, err := response.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				return
-			}
-			if flusher != nil {
-				flusher.Flush()
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
+	content, valid := probeContent(item.Protocol, data)
+	modelJSON(w, http.StatusOK, map[string]any{"content": content, "valid": valid})
 }
 
 type probeUpstream struct {
@@ -131,22 +117,22 @@ func probeRequest(item Model, message string) (probeUpstream, error) {
 	var endpoint string
 	var body any
 	header := make(http.Header)
-	header.Set("Accept", "text/event-stream")
+	header.Set("Accept", "application/json")
 	header.Set("Content-Type", "application/json")
 	switch item.Protocol {
 	case ProtocolOpenAIChat:
 		endpoint = "chat/completions"
 		header.Set("Authorization", "Bearer "+item.APIKey)
-		body = map[string]any{"model": item.ModelID, "stream": true, "messages": []map[string]string{{"role": "user", "content": message}}}
+		body = map[string]any{"model": item.ModelID, "stream": false, "messages": []map[string]string{{"role": "user", "content": message}}}
 	case ProtocolOpenAIResponses:
 		endpoint = "responses"
 		header.Set("Authorization", "Bearer "+item.APIKey)
-		body = map[string]any{"model": item.ModelID, "stream": true, "input": message}
+		body = map[string]any{"model": item.ModelID, "stream": false, "input": message}
 	case ProtocolAnthropic:
 		endpoint = "messages"
 		header.Set("X-Api-Key", item.APIKey)
 		header.Set("Anthropic-Version", "2023-06-01")
-		body = map[string]any{"model": item.ModelID, "stream": true, "max_tokens": 256, "messages": []map[string]string{{"role": "user", "content": message}}}
+		body = map[string]any{"model": item.ModelID, "stream": false, "max_tokens": 256, "messages": []map[string]string{{"role": "user", "content": message}}}
 	default:
 		return probeUpstream{}, errors.New("仅支持测试大语言模型协议")
 	}
@@ -157,4 +143,41 @@ func probeRequest(item Model, message string) (probeUpstream, error) {
 		return probeUpstream{}, err
 	}
 	return probeUpstream{URL: base.String(), Header: header, Body: encoded}, nil
+}
+
+func probeContent(protocol Protocol, data []byte) (string, bool) {
+	var response map[string]any
+	if json.Unmarshal(data, &response) != nil {
+		return "模型响应不是合法 JSON", false
+	}
+	switch protocol {
+	case ProtocolOpenAIChat:
+		choices, _ := response["choices"].([]any)
+		if len(choices) == 0 {
+			break
+		}
+		choice, _ := choices[0].(map[string]any)
+		message, _ := choice["message"].(map[string]any)
+		if content, ok := message["content"].(string); ok && strings.TrimSpace(content) != "" {
+			return content, true
+		}
+	case ProtocolOpenAIResponses:
+		if content, ok := response["output_text"].(string); ok && strings.TrimSpace(content) != "" {
+			return content, true
+		}
+	case ProtocolAnthropic:
+		blocks, _ := response["content"].([]any)
+		var content strings.Builder
+		for _, block := range blocks {
+			item, _ := block.(map[string]any)
+			if item["type"] == "text" {
+				text, _ := item["text"].(string)
+				content.WriteString(text)
+			}
+		}
+		if strings.TrimSpace(content.String()) != "" {
+			return content.String(), true
+		}
+	}
+	return "模型响应缺少合法文本内容", false
 }
