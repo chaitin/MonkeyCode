@@ -10,11 +10,15 @@ const clients = [
   { label: 'Android', icon: 'android', description: '下载客户端', href: downloads.android },
   { label: 'iOS', icon: 'apple-01', description: '下载客户端', href: downloads.ios },
   { label: 'Windows', icon: 'windows-new', description: 'x64 下载', href: downloads.windows },
+  { label: 'Win7 兼容版', icon: 'windows-new', description: 'x64 下载', href: downloads.windows7 },
   { label: 'macOS ARM', icon: 'apple-01', description: 'Apple Silicon 下载', href: downloads.macos_arm64 },
   { label: 'macOS Intel', icon: 'apple-01', description: 'Intel 下载', href: downloads.macos_x64 },
   { label: 'Linux x64', icon: 'computer-terminal-01', description: 'x64 下载', href: downloads.linux_x64 },
   { label: 'Linux ARM', icon: 'computer-terminal-01', description: 'ARM64 下载', href: downloads.linux_arm64 },
-  { label: '鸿蒙桌面', icon: 'computer-terminal-01', description: '下载客户端', href: downloads.harmony_desktop },
+  { label: '银河麒麟', icon: 'computer-terminal-01', description: '麒麟应用市场', href: '', hoverLabel: '麒麟应用市场' },
+  { label: '统信 UOS', icon: 'computer-terminal-01', description: 'Linux x64 下载', href: downloads.linux_x64 },
+  { label: '鸿蒙手机', icon: 'computer-terminal-01', description: '敬请期待', href: '' },
+  { label: '鸿蒙桌面', icon: 'computer-terminal-01', description: '敬请期待', href: '' },
 ] as const;
 ---
 
@@ -28,6 +32,7 @@ const clients = [
 
     <ClientPlatforms client:load clients={clients.map(client => ({
       href: client.href, label: client.label, description: client.description,
+      hoverLabel: 'hoverLabel' in client ? client.hoverLabel : undefined,
       iconBody: hugeicons.icons[client.icon].body,
     }))} />
 

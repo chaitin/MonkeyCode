@@ -4,20 +4,21 @@ type Props = {
   href: string
   label: string
   description: string
+  hoverLabel?: string
   iconBody: string
 }
 
-export function ClientPlatformButton({ href, label, description, iconBody }: Props) {
+export function ClientPlatformButton({ href, label, description, hoverLabel, iconBody }: Props) {
   const content = <>
     <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconBody }} />
     <span className="studio-client-labels" aria-hidden="true">
       <span className="studio-client-name">{label}</span>
-      <span className="studio-client-hover-label">{!href ? "敬请期待" : label === "Web" ? "打开" : "下载"}</span>
+      <span className="studio-client-hover-label">{hoverLabel ?? (!href ? "敬请期待" : label === "Web" ? "打开" : "下载")}</span>
     </span>
   </>
 
   if (!href) {
-    return <span className={buttonClasses("outline", "md", "studio-client-platform-button")} data-slot="button" data-variant="outline" aria-disabled="true" aria-label={`${label} · 敬请期待`}>
+    return <span className={buttonClasses("outline", "md", "studio-client-platform-button")} data-slot="button" data-variant="outline" aria-disabled="true" aria-label={`${label} · ${hoverLabel ?? "敬请期待"}`}>
       {content}
     </span>
   }
