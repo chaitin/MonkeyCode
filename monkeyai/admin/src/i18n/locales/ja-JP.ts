@@ -667,6 +667,18 @@ export const jaJP = {
         "「{{rule}}」を削除しますか？この操作は元に戻せません。",
     },
     membersAndGroups: {
+      creationResult: {
+        title: "作成結果",
+        passwordMissing: "サーバーから初期パスワードが返されませんでした。パスワードをリセットして新しいパスワードを生成してください。",
+        summary: "{{count}} 人のメンバーを作成しました",
+        hint: "初期パスワードはここでのみ表示されます。コピーしてメンバーに共有してください。閉じた後はパスワードのリセットで新しいパスワードを生成できます。",
+        copy: "コピー",
+        copyAll: "すべてコピー",
+        copyMember: "{{email}} のログイン情報をコピー",
+        copied: "ログイン情報をコピーしました",
+        failedMembers: "再試行するメンバー",
+        retry: "{{count}} 人を再試行",
+      },
       treeSelection: {
         enter: "複数選択",
         exit: "キャンセル",

@@ -1286,6 +1286,18 @@ export const enUS = {
         'Delete "{{rule}}"? This action cannot be undone.',
     },
     membersAndGroups: {
+      creationResult: {
+        title: "Creation results",
+        passwordMissing: "The server did not return an initial password. Use Reset password to generate a new one.",
+        summary: "{{count}} members created",
+        hint: "Initial passwords are shown only here. Copy and share them with the members. After closing, use Reset password to generate a new password.",
+        copy: "Copy",
+        copyAll: "Copy all",
+        copyMember: "Copy sign-in details for {{email}}",
+        copied: "Sign-in details copied",
+        failedMembers: "Members to retry",
+        retry: "Retry {{count}} members",
+      },
       treeSelection: {
         enter: "Select multiple",
         exit: "Cancel",

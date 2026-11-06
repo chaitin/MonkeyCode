@@ -1205,6 +1205,18 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{rule}}”吗？此操作无法撤销。",
     },
     membersAndGroups: {
+      creationResult: {
+        title: "创建结果",
+        passwordMissing: "服务未返回初始密码，请通过重置密码获取新密码。",
+        summary: "已创建 {{count}} 位成员",
+        hint: "初始密码仅本次显示，请复制后交给成员。关闭后可通过重置密码生成新密码。",
+        copy: "复制",
+        copyAll: "复制全部",
+        copyMember: "复制 {{email}} 的登录信息",
+        copied: "登录信息已复制",
+        failedMembers: "待重试成员",
+        retry: "重试 {{count}} 位成员",
+      },
       treeSelection: {
         enter: "多选",
         exit: "取消",

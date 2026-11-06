@@ -678,6 +678,18 @@ export const es419 = {
         '¿Eliminar "{{rule}}"? Esta acción no se puede deshacer.',
     },
     membersAndGroups: {
+      creationResult: {
+        title: "Resultados de creación",
+        passwordMissing: "El servidor no devolvió una contraseña inicial. Usa Restablecer contraseña para generar una nueva.",
+        summary: "{{count}} miembros creados",
+        hint: "Las contraseñas iniciales solo se muestran aquí. Cópialas y compártelas con los miembros. Después de cerrar, usa Restablecer contraseña para generar una nueva.",
+        copy: "Copiar",
+        copyAll: "Copiar todo",
+        copyMember: "Copiar datos de acceso de {{email}}",
+        copied: "Datos de acceso copiados",
+        failedMembers: "Miembros para reintentar",
+        retry: "Reintentar {{count}} miembros",
+      },
       treeSelection: {
         enter: "Selección múltiple",
         exit: "Cancelar",

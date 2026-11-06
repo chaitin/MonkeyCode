@@ -3,6 +3,10 @@ import { useTranslation } from "react-i18next"
 
 import { useAppToast } from "@/components/animated-toast-provider"
 import { MemberGroupSelect } from "@/components/members/member-group-select"
+import {
+  CopyCreatedMembersButton,
+  type CreatedMemberCredentials,
+} from "@/components/members/created-members-result"
 import type { MemberGroup } from "@/lib/member-groups"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
@@ -30,6 +34,7 @@ import type { MemberActionUser } from "@/components/members/member-actions"
 type CreatedMember = MemberActionUser & {
   joined_at: string
   last_login_at?: string
+  initial_password: string
 }
 
 export function BulkAddMembersForm({
@@ -38,6 +43,7 @@ export function BulkAddMembersForm({
   saving,
   onSavingChange,
   onCreated,
+  createdMembers,
   onClose,
 }: {
   groups: MemberGroup[]
@@ -45,6 +51,7 @@ export function BulkAddMembersForm({
   saving: boolean
   onSavingChange: (saving: boolean) => void
   onCreated: (members: CreatedMember[]) => void
+  createdMembers: CreatedMemberCredentials[]
   onClose: () => void
 }) {
   const { t } = useTranslation()
@@ -54,6 +61,7 @@ export function BulkAddMembersForm({
   const [groupIDs, setGroupIDs] = useState<string[]>([])
   const [rows, setRows] = useState<BulkMemberRow[] | null>(null)
   const [inputError, setInputError] = useState("")
+  const [hasSubmitted, setHasSubmitted] = useState(false)
   const [progress, setProgress] = useState<{
     completed: number
     total: number
@@ -114,6 +122,7 @@ export function BulkAddMembersForm({
       (completed, total) => setProgress({ completed, total }),
       groupIDs
     )
+    setHasSubmitted(true)
     if (created.length) onCreated(created)
     onSavingChange(false)
     if (failures.size === 0) {
@@ -121,7 +130,7 @@ export function BulkAddMembersForm({
         status: "success",
         title: t(`${key}.successResult`, { count: created.length }),
       })
-      onClose()
+      setRows([])
       return
     }
     setRows(
@@ -147,40 +156,49 @@ export function BulkAddMembersForm({
       className="flex flex-col gap-4"
       onSubmit={rows === null ? preview : submit}
     >
-      <Field>
-        <FieldLabel htmlFor="bulk-member-role">{t(`${key}.role`)}</FieldLabel>
-        <Select
-          items={{
-            user: t(`${key}.member`),
-            admin: t(`${key}.administrator`),
-          }}
-          value={role}
-          onValueChange={(value) => {
-            if (value === null) return
-            setRole(value as BulkMemberRole)
-            setRows(
-              (current) =>
-                current?.map((row) => ({ ...row, error: undefined })) ?? null
-            )
-          }}
-          disabled={saving}
-        >
-          <SelectTrigger id="bulk-member-role" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectItem value="user">{t(`${key}.member`)}</SelectItem>
-            <SelectItem value="admin">{t(`${key}.administrator`)}</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <MemberGroupSelect
-        id="bulk-member-groups"
-        groups={groups}
-        value={groupIDs}
-        onValueChange={setGroupIDs}
-        disabled={saving}
-      />
+      {(rows === null || rows.length > 0) && (
+        <>
+          <Field>
+            <FieldLabel htmlFor="bulk-member-role">
+              {t(`${key}.role`)}
+            </FieldLabel>
+            <Select
+              items={{
+                user: t(`${key}.member`),
+                admin: t(`${key}.administrator`),
+              }}
+              value={role}
+              onValueChange={(value) => {
+                if (value === null) return
+                setRole(value as BulkMemberRole)
+                setRows(
+                  (current) =>
+                    current?.map((row) => ({ ...row, error: undefined })) ??
+                    null
+                )
+              }}
+              disabled={saving}
+            >
+              <SelectTrigger id="bulk-member-role" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectItem value="user">{t(`${key}.member`)}</SelectItem>
+                <SelectItem value="admin">
+                  {t(`${key}.administrator`)}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <MemberGroupSelect
+            id="bulk-member-groups"
+            groups={groups}
+            value={groupIDs}
+            onValueChange={setGroupIDs}
+            disabled={saving}
+          />
+        </>
+      )}
       {rows === null && (
         <Field>
           <FieldLabel htmlFor="bulk-member-emails">
@@ -206,7 +224,13 @@ export function BulkAddMembersForm({
       )}
       {rows !== null && rows.length > 0 && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium">{t(`${key}.memberList`)}</p>
+          <p className="text-sm font-medium">
+            {t(
+              hasSubmitted
+                ? "pages.membersAndGroups.creationResult.failedMembers"
+                : `${key}.memberList`
+            )}
+          </p>
           {role === "admin" && (
             <p className="text-xs text-muted-foreground">
               {t(`${key}.adminPasswordHint`)}
@@ -291,7 +315,10 @@ export function BulkAddMembersForm({
         </p>
       )}
       <DialogFooter className="mt-2">
-        {rows !== null && rows.length > 0 && (
+        {createdMembers.length > 0 && (
+          <CopyCreatedMembersButton members={createdMembers} />
+        )}
+        {createdMembers.length === 0 && rows !== null && rows.length > 0 && (
           <Button
             type="button"
             variant="outline"
@@ -301,6 +328,7 @@ export function BulkAddMembersForm({
               setInput(rows.map((row) => row.email).join("\n"))
               setRows(null)
               setProgress(null)
+              setHasSubmitted(false)
             }}
           >
             {t(`${key}.previous`)}
@@ -314,17 +342,24 @@ export function BulkAddMembersForm({
         >
           {t("common.close")}
         </Button>
-        <Button
-          type="submit"
-          loading={saving}
-          disabled={
-            saving || (rows !== null && (!rows.length || issues.size > 0))
-          }
-        >
-          {rows === null
-            ? t(`${key}.next`)
-            : t(`${key}.create`, { count: rows.length })}
-        </Button>
+        {(rows === null || rows.length > 0) && (
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={
+              saving || (rows !== null && (!rows.length || issues.size > 0))
+            }
+          >
+            {rows === null
+              ? t(`${key}.next`)
+              : t(
+                  hasSubmitted
+                    ? "pages.membersAndGroups.creationResult.retry"
+                    : `${key}.create`,
+                  { count: rows.length }
+                )}
+          </Button>
+        )}
       </DialogFooter>
     </form>
   )

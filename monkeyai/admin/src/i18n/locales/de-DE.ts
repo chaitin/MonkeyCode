@@ -685,6 +685,18 @@ export const deDE = {
         "„{{rule}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     membersAndGroups: {
+      creationResult: {
+        title: "Erstellungsergebnisse",
+        passwordMissing: "Der Server hat kein Anfangspasswort zurückgegeben. Erstellen Sie über die Passwortzurücksetzung ein neues Passwort.",
+        summary: "{{count}} Mitglieder erstellt",
+        hint: "Anfangspasswörter werden nur hier angezeigt. Kopieren Sie diese und geben Sie sie an die Mitglieder weiter. Nach dem Schließen können neue Passwörter über die Passwortzurücksetzung erstellt werden.",
+        copy: "Kopieren",
+        copyAll: "Alle kopieren",
+        copyMember: "Anmeldedaten für {{email}} kopieren",
+        copied: "Anmeldedaten kopiert",
+        failedMembers: "Erneut zu versuchende Mitglieder",
+        retry: "{{count}} Mitglieder erneut versuchen",
+      },
       treeSelection: {
         enter: "Mehrfachauswahl",
         exit: "Abbrechen",

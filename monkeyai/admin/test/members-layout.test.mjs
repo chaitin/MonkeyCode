@@ -156,7 +156,7 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
     /<Select\s+items=\{\{\s+user: t\(`\$\{key\}\.member`\),\s+admin: t\(`\$\{key\}\.administrator`\),/
   )
   assert.match(bulk, /<SelectTrigger id="bulk-member-role"/)
-  assert.match(bulk, /t\(`\$\{key\}\.memberList`\)/)
+  assert.match(bulk, /`\$\{key\}\.memberList`/)
   assert.match(bulk, /className="max-h-72 min-h-32 resize-y"/)
   assert.doesNotMatch(bulk, /`\$\{key\}\.limit`/)
   assert.doesNotMatch(bulk, /<select\b|previewCount/)
@@ -168,7 +168,7 @@ test("add member button opens one dialog with tabs for single and bulk forms", a
   assert.doesNotMatch(bulk, /editEmails/)
 })
 
-test("member creation reports results in toasts and closes only on success", async () => {
+test("member creation keeps results open and reports failures without discarding successful credentials", async () => {
   const source = await readFile(
     new URL("../src/pages/members-and-groups-page.tsx", import.meta.url),
     "utf8"
@@ -183,7 +183,11 @@ test("member creation reports results in toasts and closes only on success", asy
   const singleSubmit = source
     .split("const createUser = async")[1]
     .split("const nameCollator = useMemo")[0]
-  assert.match(singleSubmit, /status: "success"[\s\S]*?setCreateOpen\(false\)/)
+  assert.match(singleSubmit, /handleMembersCreated\(\[created\]\)/)
+  assert.match(singleSubmit, /status: "success"/)
+  assert.doesNotMatch(singleSubmit, /setCreateOpen\(false\)/)
+  assert.match(source, /<CreatedMembersResult members=\{createdMembers\}/)
+  assert.match(source, /setCreatedMembers\(\[\]\)/)
   assert.match(
     singleSubmit,
     /catch \(reason\) \{\s*showToast\(\{ status: "error"/
@@ -192,8 +196,9 @@ test("member creation reports results in toasts and closes only on success", asy
 
   const successBranch = bulk
     .split("if (failures.size === 0) {")[1]
-    .split("setRows(")[0]
-  assert.match(successBranch, /status: "success"[\s\S]*?onClose\(\)/)
+    .split("return")[0]
+  assert.match(successBranch, /status: "success"[\s\S]*?setRows\(\[\]\)/)
+  assert.doesNotMatch(successBranch, /onClose\(\)/)
   assert.match(bulk, /setRows\([\s\S]*?showToast\(\{\s*status: "error"/)
   assert.doesNotMatch(bulk, /setResult\(|\{result &&/)
 })

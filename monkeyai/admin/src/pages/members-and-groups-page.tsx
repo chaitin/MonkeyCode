@@ -85,6 +85,11 @@ import {
   type MovePayload,
 } from "@/lib/group-move"
 import { BulkAddMembersForm } from "@/components/members/bulk-add-members-form"
+import {
+  CreatedMembersResult,
+  CopyCreatedMembersButton,
+  type CreatedMemberCredentials,
+} from "@/components/members/created-members-result"
 import { GroupActionDialog } from "@/components/members/group-action-dialog"
 import { UserAvatar } from "@/components/user-avatar"
 import { MemberGroupSelect } from "@/components/members/member-group-select"
@@ -145,6 +150,9 @@ export function MembersAndGroupsPage() {
   const [creating, setCreating] = useState(false)
   const [newMemberGroupIDs, setNewMemberGroupIDs] = useState<string[]>([])
   const [batchSaving, setBatchSaving] = useState(false)
+  const [createdMembers, setCreatedMembers] = useState<
+    CreatedMemberCredentials[]
+  >([])
   const [pendingMemberAction, setPendingMemberAction] = useState<{
     user: MemberActionUser
     action: MemberAction
@@ -402,23 +410,51 @@ export function MembersAndGroupsPage() {
     }
   }
 
+  const closeCreateDialog = () => {
+    if (creating || batchSaving) return
+    setCreateOpen(false)
+    setCreatedMembers([])
+    setNewUser({ name: "", email: "", role: "user", password: "" })
+    setNewMemberGroupIDs([])
+  }
+
+  const handleMembersCreated = (
+    created: (User & { initial_password: string })[]
+  ) => {
+    const credentials: CreatedMemberCredentials[] = []
+    const members = created.map(({ initial_password, ...member }) => {
+      credentials.push({
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        initial_password,
+      })
+      return member
+    })
+    setCreatedMembers((current) => [...current, ...credentials])
+    setUsers((current) => [...members, ...current])
+    void reloadGroups()
+  }
+
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (creating || createdMembers.length) return
     setCreating(true)
     try {
-      const created = await api<User>("/api/admin/v1/users", {
-        method: "POST",
-        body: JSON.stringify({ ...newUser, group_ids: newMemberGroupIDs }),
-      })
-      setUsers((current) => [created, ...current])
-      void reloadGroups()
+      const created = await api<User & { initial_password: string }>(
+        "/api/admin/v1/users",
+        {
+          method: "POST",
+          body: JSON.stringify({ ...newUser, group_ids: newMemberGroupIDs }),
+        }
+      )
+      handleMembersCreated([created])
       setNewUser({ name: "", email: "", role: "user", password: "" })
       setNewMemberGroupIDs([])
       showToast({
         status: "success",
         title: t("pages.membersAndGroups.bulk.singleSuccess"),
       })
-      setCreateOpen(false)
     } catch (reason) {
       showToast({ status: "error", title: (reason as Error).message })
     } finally {
@@ -843,7 +879,8 @@ export function MembersAndGroupsPage() {
       <Dialog
         open={createOpen}
         onOpenChange={(open) => {
-          if (open || (!creating && !batchSaving)) setCreateOpen(open)
+          if (open) setCreateOpen(true)
+          else closeCreateDialog()
         }}
       >
         <DialogContent
@@ -853,164 +890,188 @@ export function MembersAndGroupsPage() {
         >
           <DialogHeader>
             <DialogTitle>
-              {t("pages.membersAndGroups.bulk.addMember")}
+              {t(
+                createdMembers.length
+                  ? "pages.membersAndGroups.creationResult.title"
+                  : "pages.membersAndGroups.bulk.addMember"
+              )}
             </DialogTitle>
           </DialogHeader>
-          <Tabs
-            value={createMode}
-            onValueChange={(value) => {
-              if (!creating && !batchSaving)
-                setCreateMode(value as "single" | "bulk")
-            }}
-          >
-            <TabsList
-              className="w-full"
-              aria-label={t("pages.membersAndGroups.bulk.addMember")}
+          {createdMembers.length > 0 && (
+            <CreatedMembersResult members={createdMembers} />
+          )}
+          {createMode === "single" && createdMembers.length > 0 ? (
+            <DialogFooter>
+              <CopyCreatedMembersButton members={createdMembers} />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeCreateDialog}
+              >
+                {t("common.close")}
+              </Button>
+            </DialogFooter>
+          ) : (
+            <Tabs
+              value={createMode}
+              onValueChange={(value) => {
+                if (!creating && !batchSaving)
+                  setCreateMode(value as "single" | "bulk")
+              }}
             >
-              <TabsTrigger value="single" disabled={creating || batchSaving}>
-                {t("pages.membersAndGroups.bulk.addOne")}
-              </TabsTrigger>
-              <TabsTrigger value="bulk" disabled={creating || batchSaving}>
-                {t("pages.membersAndGroups.bulk.addMany")}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="single" keepMounted className="pt-3">
-              <form className="flex flex-col gap-6" onSubmit={createUser}>
-                <FieldGroup className="gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="new-user-role">
-                      {t("pages.membersAndGroups.bulk.role")}
-                    </FieldLabel>
-                    <Select
-                      items={{
-                        user: t("pages.membersAndGroups.bulk.member"),
-                        admin: t("pages.membersAndGroups.bulk.administrator"),
-                      }}
-                      value={newUser.role}
-                      onValueChange={(value) => {
-                        if (value === null) return
-                        setNewUser((current) => ({
-                          ...current,
-                          role: value as User["role"],
-                          password: value === "admin" ? current.password : "",
-                        }))
-                      }}
-                    >
-                      <SelectTrigger id="new-user-role" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectItem value="user">
-                          {t("pages.membersAndGroups.bulk.member")}
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          {t("pages.membersAndGroups.bulk.administrator")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <MemberGroupSelect
-                    id="new-user-groups"
-                    groups={groups}
-                    value={newMemberGroupIDs}
-                    onValueChange={setNewMemberGroupIDs}
-                    disabled={creating || loading}
-                  />
-                  <Field>
-                    <FieldLabel htmlFor="new-user-name">
-                      {t("pages.membersAndGroups.bulk.name")}
-                    </FieldLabel>
-                    <Input
-                      id="new-user-name"
-                      value={newUser.name}
-                      onChange={(event) =>
-                        setNewUser((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                      required
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="new-user-email">
-                      {t("pages.membersAndGroups.bulk.email")}
-                    </FieldLabel>
-                    <Input
-                      id="new-user-email"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(event) =>
-                        setNewUser((current) => ({
-                          ...current,
-                          email: event.target.value,
-                        }))
-                      }
-                      required
-                    />
-                  </Field>
-                  {newUser.role === "admin" && (
+              {createdMembers.length === 0 && (
+                <TabsList
+                  className="w-full"
+                  aria-label={t("pages.membersAndGroups.bulk.addMember")}
+                >
+                  <TabsTrigger
+                    value="single"
+                    disabled={creating || batchSaving}
+                  >
+                    {t("pages.membersAndGroups.bulk.addOne")}
+                  </TabsTrigger>
+                  <TabsTrigger value="bulk" disabled={creating || batchSaving}>
+                    {t("pages.membersAndGroups.bulk.addMany")}
+                  </TabsTrigger>
+                </TabsList>
+              )}
+              <TabsContent value="single" keepMounted className="pt-3">
+                <form className="flex flex-col gap-6" onSubmit={createUser}>
+                  <FieldGroup className="gap-4">
                     <Field>
-                      <FieldLabel htmlFor="new-user-password">
-                        {t("pages.membersAndGroups.bulk.singlePassword")}
+                      <FieldLabel htmlFor="new-user-role">
+                        {t("pages.membersAndGroups.bulk.role")}
+                      </FieldLabel>
+                      <Select
+                        items={{
+                          user: t("pages.membersAndGroups.bulk.member"),
+                          admin: t("pages.membersAndGroups.bulk.administrator"),
+                        }}
+                        value={newUser.role}
+                        onValueChange={(value) => {
+                          if (value === null) return
+                          setNewUser((current) => ({
+                            ...current,
+                            role: value as User["role"],
+                            password: value === "admin" ? current.password : "",
+                          }))
+                        }}
+                      >
+                        <SelectTrigger id="new-user-role" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectItem value="user">
+                            {t("pages.membersAndGroups.bulk.member")}
+                          </SelectItem>
+                          <SelectItem value="admin">
+                            {t("pages.membersAndGroups.bulk.administrator")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <MemberGroupSelect
+                      id="new-user-groups"
+                      groups={groups}
+                      value={newMemberGroupIDs}
+                      onValueChange={setNewMemberGroupIDs}
+                      disabled={creating || loading}
+                    />
+                    <Field>
+                      <FieldLabel htmlFor="new-user-name">
+                        {t("pages.membersAndGroups.bulk.name")}
                       </FieldLabel>
                       <Input
-                        id="new-user-password"
-                        type="password"
-                        autoComplete="new-password"
-                        minLength={12}
-                        value={newUser.password}
+                        id="new-user-name"
+                        value={newUser.name}
                         onChange={(event) =>
                           setNewUser((current) => ({
                             ...current,
-                            password: event.target.value,
+                            name: event.target.value,
                           }))
                         }
                         required
                       />
                     </Field>
-                  )}
-                </FieldGroup>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={creating}
-                    onClick={() => setCreateOpen(false)}
-                  >
-                    {t("pages.membersAndGroups.bulk.cancel")}
-                  </Button>
-                  <Button
-                    type="submit"
-                    loading={creating}
-                    disabled={
-                      creating ||
-                      !newUser.name.trim() ||
-                      !newUser.email.trim() ||
-                      (newUser.role === "admin" && newUser.password.length < 12)
-                    }
-                  >
-                    {t("pages.membersAndGroups.bulk.createOne")}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </TabsContent>
-            <TabsContent value="bulk" keepMounted className="pt-3">
-              {createOpen && (
-                <BulkAddMembersForm
-                  groups={groups}
-                  existingEmails={users.map((user) => user.email)}
-                  saving={batchSaving}
-                  onSavingChange={setBatchSaving}
-                  onCreated={(created) => {
-                    setUsers((current) => [...created, ...current])
-                    void reloadGroups()
-                  }}
-                  onClose={() => setCreateOpen(false)}
-                />
-              )}
-            </TabsContent>
-          </Tabs>
+                    <Field>
+                      <FieldLabel htmlFor="new-user-email">
+                        {t("pages.membersAndGroups.bulk.email")}
+                      </FieldLabel>
+                      <Input
+                        id="new-user-email"
+                        type="email"
+                        value={newUser.email}
+                        onChange={(event) =>
+                          setNewUser((current) => ({
+                            ...current,
+                            email: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    </Field>
+                    {newUser.role === "admin" && (
+                      <Field>
+                        <FieldLabel htmlFor="new-user-password">
+                          {t("pages.membersAndGroups.bulk.singlePassword")}
+                        </FieldLabel>
+                        <Input
+                          id="new-user-password"
+                          type="password"
+                          autoComplete="new-password"
+                          minLength={12}
+                          value={newUser.password}
+                          onChange={(event) =>
+                            setNewUser((current) => ({
+                              ...current,
+                              password: event.target.value,
+                            }))
+                          }
+                          required
+                        />
+                      </Field>
+                    )}
+                  </FieldGroup>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={creating}
+                      onClick={closeCreateDialog}
+                    >
+                      {t("pages.membersAndGroups.bulk.cancel")}
+                    </Button>
+                    <Button
+                      type="submit"
+                      loading={creating}
+                      disabled={
+                        creating ||
+                        !newUser.name.trim() ||
+                        !newUser.email.trim() ||
+                        (newUser.role === "admin" &&
+                          newUser.password.length < 12)
+                      }
+                    >
+                      {t("pages.membersAndGroups.bulk.createOne")}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </TabsContent>
+              <TabsContent value="bulk" keepMounted className="pt-3">
+                {createOpen && (
+                  <BulkAddMembersForm
+                    groups={groups}
+                    existingEmails={users.map((user) => user.email)}
+                    saving={batchSaving}
+                    onSavingChange={setBatchSaving}
+                    createdMembers={createdMembers}
+                    onCreated={handleMembersCreated}
+                    onClose={closeCreateDialog}
+                  />
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
 

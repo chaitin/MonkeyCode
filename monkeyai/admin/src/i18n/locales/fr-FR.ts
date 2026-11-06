@@ -686,6 +686,18 @@ export const frFR = {
         "Supprimer « {{rule}} » ? Cette action est irréversible.",
     },
     membersAndGroups: {
+      creationResult: {
+        title: "Résultats de création",
+        passwordMissing: "Le serveur n’a pas renvoyé de mot de passe initial. Utilisez la réinitialisation pour en générer un nouveau.",
+        summary: "{{count}} membres créés",
+        hint: "Les mots de passe initiaux sont affichés uniquement ici. Copiez-les et transmettez-les aux membres. Après fermeture, utilisez la réinitialisation pour générer un nouveau mot de passe.",
+        copy: "Copier",
+        copyAll: "Tout copier",
+        copyMember: "Copier les identifiants de {{email}}",
+        copied: "Identifiants copiés",
+        failedMembers: "Membres à réessayer",
+        retry: "Réessayer {{count}} membres",
+      },
       treeSelection: {
         enter: "Sélection multiple",
         exit: "Annuler",

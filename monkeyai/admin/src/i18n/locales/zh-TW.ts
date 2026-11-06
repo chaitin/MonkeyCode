@@ -672,6 +672,18 @@ export const zhTW = {
       deleteDialogDescription: "確定刪除「{{rule}}」嗎？此操作無法復原。",
     },
     membersAndGroups: {
+      creationResult: {
+        title: "建立結果",
+        passwordMissing: "服務未回傳初始密碼，請透過重設密碼取得新密碼。",
+        summary: "已建立 {{count}} 位成員",
+        hint: "初始密碼僅在此顯示，請複製後交給成員。關閉後可透過重設密碼產生新密碼。",
+        copy: "複製",
+        copyAll: "複製全部",
+        copyMember: "複製 {{email}} 的登入資訊",
+        copied: "登入資訊已複製",
+        failedMembers: "待重試成員",
+        retry: "重試 {{count}} 位成員",
+      },
       treeSelection: {
         enter: "多選",
         exit: "取消",

@@ -654,6 +654,18 @@ export const koKR = {
         '"{{rule}}" 규칙을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
     },
     membersAndGroups: {
+      creationResult: {
+        title: "생성 결과",
+        passwordMissing: "서버가 초기 비밀번호를 반환하지 않았습니다. 비밀번호 재설정으로 새 비밀번호를 생성하세요.",
+        summary: "멤버 {{count}}명 생성됨",
+        hint: "초기 비밀번호는 여기에서만 표시됩니다. 복사하여 멤버에게 전달하세요. 닫은 후에는 비밀번호 재설정으로 새 비밀번호를 생성할 수 있습니다.",
+        copy: "복사",
+        copyAll: "모두 복사",
+        copyMember: "{{email}}의 로그인 정보 복사",
+        copied: "로그인 정보가 복사되었습니다",
+        failedMembers: "재시도할 멤버",
+        retry: "멤버 {{count}}명 재시도",
+      },
       treeSelection: {
         enter: "다중 선택",
         exit: "취소",

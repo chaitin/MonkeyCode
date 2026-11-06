@@ -11,6 +11,7 @@
     "test": "node --test test/*.test.mjs",
     "test:browser": "node scripts/check-browser.mjs",
     "test:browser:members": "node scripts/check-members-virtualization.mjs",
+    "test:browser:member-creation": "node scripts/check-member-creation.mjs",
     "test:browser:quotas": "node scripts/check-quota-virtualization.mjs",
     "test:browser:groups": "node scripts/check-group-select.mjs",
     "test:browser:models": "node scripts/check-model-config.mjs",

@@ -191,6 +191,15 @@ test("bulk dialog labels and errors exist in all supported languages", () => {
   ]) {
     const members = locale.pages.membersAndGroups
     assert.deepEqual(
+      Object.keys(members.creationResult),
+      Object.keys(enUS.pages.membersAndGroups.creationResult)
+    )
+    for (const value of Object.values(members.creationResult))
+      assert.ok(typeof value === "string" && value.trim())
+    assert.ok(members.creationResult.summary.includes("{{count}}"))
+    assert.ok(members.creationResult.retry.includes("{{count}}"))
+    assert.ok(members.creationResult.copyMember.includes("{{email}}"))
+    assert.deepEqual(
       Object.keys(members.treeSelection),
       Object.keys(enUS.pages.membersAndGroups.treeSelection)
     )

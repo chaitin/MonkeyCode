@@ -166,6 +166,7 @@ func (s *Service) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	var input struct {
 		Name     string   `json:"name"`
 		Email    string   `json:"email"`
@@ -193,10 +194,19 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid_request", "管理员密码不能少于 12 个字符")
 		return
 	}
+	password := input.Password
+	if input.Role == "user" {
+		password, err = generatePassword()
+		if err != nil {
+			logging.Event(r.Context(), slog.Default(), slog.LevelError, "identity.request.failed", "生成初始密码失败", "module", "identity", "operation", "createUser", "error", err)
+			writeError(r.Context(), w, http.StatusInternalServerError, "server_error", "生成密码失败")
+			return
+		}
+	}
 	actor, _ := UserFromContext(r.Context())
 	result, writeErr := s.writer.CreateUser(r.Context(), member.CreateUser{
 		ActorID: actor.ID, Name: input.Name, Email: input.Email,
-		Role: input.Role, Password: input.Password, GroupIDs: groupIDs,
+		Role: input.Role, Password: password, GroupIDs: groupIDs,
 	})
 	user, err := userFromMember(result), writeErr
 	if err != nil {
@@ -217,5 +227,8 @@ func (s *Service) createUser(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	writeJSON(r.Context(), w, http.StatusCreated, user)
+	writeJSON(r.Context(), w, http.StatusCreated, struct {
+		User
+		InitialPassword string `json:"initial_password"`
+	}{User: user, InitialPassword: password})
 }
