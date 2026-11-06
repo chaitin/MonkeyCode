@@ -31,6 +31,18 @@ Agent 在任务执行过程中发现的条目应遵循以下格式：
 
 ## 条目
 
+[子模块初始化约定]
+- Date: 2026-08-27
+- Context: 用户在讨论 desktop-linux 构建兼容性时说明
+- Instructions:
+  - 当前项目任务默认跳过 Git submodule 初始化，除非用户明确要求。
+
+[本地 Rust 构建镜像源]
+- Date: 2026-08-27
+- Context: 本地验证 Debian 10 desktop builder 时
+- Instructions:
+  - 本地 Rustup 与 Cargo 验证优先配置可访问的国内镜像；清华源不可用时使用科大源或北外源。
+
 [Online 预览构建与验证码验收]
 - Date: 2026-07-26
 - Context: Agent 在排查 online 构建后登录验证码失败时发现
