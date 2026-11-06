@@ -1289,13 +1289,13 @@ paths:
           $ref: "#/components/responses/ResourceError403"
         "500":
           $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/statistics/users:
+  /api/admin/v1/statistics/session-reporting/members/overview:
     get:
-      summary: 用户总量、近 24 小时新增和活跃用户及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。活跃指时间范围内存在 session_turns 记录的去重任务所属用户；轮次完成后才可统计。总量和新增人数均包含软删除用户。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
+      summary: 成员总数、7 天和 24 小时活跃成员及近 90 天趋势
+      description: 仅管理员可访问。固定窗口，不接收查询参数。全部统计只包含当前未软删除的成员，包含管理员和停用成员。活跃指时间范围内存在 session_turns 记录的去重任务所属成员，轮次完成上报后才可统计，与总览活跃口径一致。滚动窗口为左闭右开，7 天严格按 168 小时计算，上一周期为紧邻的同长度窗口。每日趋势按北京时间（Asia/Shanghai）自然日，包含当天部分数据；全部数据来自同一只读快照和同一 generated_at。
       responses:
         "200":
-          description: 用户统计及完整的 90 天日序列。
+          description: 同时提供三张数字卡片和新增、活跃两张趋势图所需数据。
           headers:
             Cache-Control:
               schema:
@@ -1304,13 +1304,47 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatisticsUsersOverview"
+                $ref: "#/components/schemas/StatisticsMembersOverview"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
           $ref: "#/components/responses/ResourceError401"
         "403":
           $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/session-reporting/members/{id}:
+    get:
+      summary: 按用户 ID 查询成员使用情况分析
+      description: |
+        仅管理员可访问；不接收查询参数。不存在或已软删除的成员返回 404，停用成员仍可查询。
+        使用同一只读数据库快照和 generated_at 返回成员基本信息、当前分组、近 30 个北京时间自然日（含当天）的任务数、对话数、积分净消耗、本人创建的资源数量、近一年每日对话次数及最近 10 条任务。
+        任务和对话沿用任务历史、对话历史口径：只统计已上报、非占位、未删除且未清理的根会话；对话按轮次开始时间，包含空正文及失败轮次，不包含子会话。近 30 天任务数按创建时间统计。积分取同一时间范围用户所有类别的 charge/refund 净额（扣费减退款），以十进制字符串返回，不计额度发放或手动调整，可为负数。
+        创建资源统计全部历史未删除资源，包含停用资源及系统/个人资源，不统计授权资源，资源包导入不视为本人创作。专家按 created_by_user_id，其余资源按作为作者持久化的 owner_user_id；大模型包含文本、图片、视频类型。知识库尚无服务端存储，knowledge_bases 固定返回 null。
+        activity 从一年前的次日到今天（含首尾，365 或 366 天），按北京时间补零并升序排列；当天仅统计至 generated_at。最近任务按创建时间、ID 倒序，最多 10 条；未核验的对话数量为 null。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: 成员分析面板完整数据。
+          headers:
+            Cache-Control:
+              schema: {type: string, const: "private, no-store"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsMemberAnalysis"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "404":
+          $ref: "#/components/responses/ResourceError404"
         "500":
           $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/conversations:
@@ -6274,27 +6308,112 @@ components:
               date: {type: string, format: date}
               new_tasks: {type: integer, minimum: 0}
               active_tasks: {type: integer, minimum: 0, description: 当日有上报轮次的去重根任务数。}
-    StatisticsUsersOverview:
+    StatisticsMemberActivity:
       type: object
-      required: [total_users, new_users_24h, active_users_24h, timezone, generated_at, days]
+      required: [active_members]
       properties:
-        total_users: {type: integer, minimum: 0, description: users 表的全部用户行数，包含软删除和停用用户。}
-        new_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内创建的用户数，包含此后软删除的用户。}
-        active_users_24h: {type: integer, minimum: 0, description: 滚动 24 小时内存在 session_turns 记录的去重任务所属用户数。}
+        active_members: {type: integer, minimum: 0, description: 窗口内有上报轮次的去重未删除成员数。}
+    StatisticsMembersOverview:
+      type: object
+      required: [total_members, last_7d, previous_7d, last_24h, previous_24h, timezone, generated_at, days]
+      properties:
+        total_members: {type: integer, minimum: 0, description: 与成员管理一致的未删除成员总数，包含管理员及停用成员。}
+        last_7d:
+          $ref: "#/components/schemas/StatisticsMemberActivity"
+          description: "[generated_at - 168 小时, generated_at) 的活跃成员。"
+        previous_7d:
+          $ref: "#/components/schemas/StatisticsMemberActivity"
+          description: "[generated_at - 336 小时, generated_at - 168 小时) 的活跃成员。"
+        last_24h:
+          $ref: "#/components/schemas/StatisticsMemberActivity"
+          description: "[generated_at - 24 小时, generated_at) 的活跃成员。"
+        previous_24h:
+          $ref: "#/components/schemas/StatisticsMemberActivity"
+          description: "[generated_at - 48 小时, generated_at - 24 小时) 的活跃成员。"
         timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
         days:
           type: array
           minItems: 90
           maxItems: 90
-          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 从 89 天前到今天的北京时间自然日，按日期升序，缺失日期补零；今天仅统计至 generated_at。
           items:
             type: object
-            required: [date, new_users, active_users]
+            required: [date, new_members, active_members]
             properties:
               date: {type: string, format: date}
-              new_users: {type: integer, minimum: 0}
-              active_users: {type: integer, minimum: 0, description: 当日存在 session_turns 记录的去重任务所属用户数。}
+              new_members: {type: integer, minimum: 0, description: 该日创建且当前未删除的成员数。}
+              active_members: {type: integer, minimum: 0, description: 当日有上报轮次的去重未删除成员数。}
+    StatisticsMemberAnalysis:
+      type: object
+      required: [timezone, generated_at, member, summary, created_resources, activity, recent_tasks]
+      properties:
+        timezone: {type: string, const: Asia/Shanghai}
+        generated_at: {type: string, format: date-time}
+        member:
+          type: object
+          required: [id, name, email, status, avatar_url, groups]
+          properties:
+            id: {type: string, format: uuid}
+            name: {type: string}
+            email: {type: string}
+            status: {type: string, enum: [active, disabled]}
+            avatar_url: {type: [string, "null"], description: 优先自定义头像，其次第三方头像。}
+            groups:
+              type: array
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string, format: uuid}
+                  name: {type: string}
+        summary:
+          type: object
+          required: [from, until, tasks, conversations, credits]
+          properties:
+            from: {type: string, format: date-time, description: 29 天前的北京时间零点，包含。}
+            until: {type: string, format: date-time, description: 与 generated_at 相同，不包含。}
+            tasks: {type: integer, minimum: 0}
+            conversations: {type: integer, minimum: 0}
+            credits: {type: string, pattern: '^-?[0-9]+(\.[0-9]+)?$', description: 所有类别扣费减退款的净积分消耗。}
+        created_resources:
+          type: object
+          required: [models, knowledge_bases, skills, experts, connectors, rules]
+          properties:
+            models: {type: integer, minimum: 0}
+            knowledge_bases: {type: "null", description: 知识库服务尚未接入，不能将缺失数据解释为零。}
+            skills: {type: integer, minimum: 0}
+            experts: {type: integer, minimum: 0}
+            connectors: {type: integer, minimum: 0}
+            rules: {type: integer, minimum: 0}
+        activity:
+          type: object
+          required: [from, until, days]
+          properties:
+            from: {type: string, format: date}
+            until: {type: string, format: date}
+            days:
+              type: array
+              minItems: 365
+              maxItems: 366
+              items:
+                type: object
+                required: [date, conversations]
+                properties:
+                  date: {type: string, format: date}
+                  conversations: {type: integer, minimum: 0}
+        recent_tasks:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [id, title, turn_count, started_at, last_active_at]
+            properties:
+              id: {type: string, format: uuid}
+              title: {type: string}
+              turn_count: {type: [integer, "null"], minimum: 0}
+              started_at: {type: string, format: date-time}
+              last_active_at: {type: string, format: date-time}
     StatisticsRealtime:
       type: object
       required:

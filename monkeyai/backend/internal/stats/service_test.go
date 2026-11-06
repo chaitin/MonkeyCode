@@ -300,73 +300,15 @@ func TestRealtime(t *testing.T) {
 	out = request(t, s, "/statistics/realtime?range=1h", 200)
 	number(t, out, "total_users", 2)
 }
-func TestUsersOverviewRejectsTimeFilters(t *testing.T) {
-	service := &Service{}
-	w := httptest.NewRecorder()
-	service.usersOverview(w, httptest.NewRequest("GET", "/statistics/users?range=7d", nil))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("时间筛选应被拒绝: %d %s", w.Code, w.Body.String())
-	}
-}
-
-func TestUsersOverview(t *testing.T) {
-	s, user, _ := fixture(t)
-	now := s.now()
-	exec(t, s, `UPDATE users SET created_at=$1 WHERE id=$2`, now.AddDate(0, 0, -100), user)
-	var deletedUser string
-	if err := s.pool.QueryRow(t.Context(), `INSERT INTO users(name,email,created_at,deleted_at) VALUES('已删除','deleted-user@example.com',$1,$2) RETURNING id::text`, now.Add(-3*time.Hour), now.Add(-time.Hour)).Scan(&deletedUser); err != nil {
-		t.Fatal(err)
-	}
-	exec(t, s, `INSERT INTO users(name,email,created_at) VALUES('新用户','new-user@example.com',$1)`, now.Add(-2*time.Hour))
-	for _, row := range []struct {
-		owner string
-		at    time.Time
-		turns int
-	}{
-		{user, now.Add(-40 * time.Minute), 2},
-		{user, now.Add(-25 * time.Hour), 1},
-		{deletedUser, now.Add(-20 * time.Minute), 1},
-	} {
-		var sessionID string
-		if err := s.pool.QueryRow(t.Context(), `INSERT INTO sessions(owner_user_id,title,session_type,client_type,client_name,started_at,last_active_at,reporting_enabled_at) VALUES($1,'统计会话','conversation','desktop','客户端',$2,$2,$2) RETURNING id::text`, row.owner, row.at).Scan(&sessionID); err != nil {
-			t.Fatal(err)
+func TestUsersOverviewEndpointRemoved(t *testing.T) {
+	router := chi.NewRouter()
+	(&Service{}).RegisterAdmin(router)
+	for _, path := range []string{"/statistics/users", "/statistics/users?range=7d"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("旧用户统计接口应不存在: %s %d", path, w.Code)
 		}
-		exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, sessionID)
-		for index := range row.turns {
-			at := row.at.Add(time.Duration(index) * time.Minute)
-			kind := "prompt"
-			if row.owner == deletedUser {
-				kind = "command"
-			}
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot',$5)`, sessionID, index+1, at, at.Add(time.Second), kind)
-		}
-	}
-	out := request(t, s, "/statistics/users", 200)
-	for key, want := range map[string]float64{"total_users": 3, "new_users_24h": 2, "active_users_24h": 2} {
-		number(t, out, key, want)
-	}
-	if out["timezone"] != "Asia/Shanghai" {
-		t.Fatalf("时区错误: %v", out["timezone"])
-	}
-	days, ok := out["days"].([]any)
-	if !ok || len(days) != 90 {
-		t.Fatalf("应返回完整 90 天: %v", out["days"])
-	}
-	for i, point := range days {
-		day := point.(map[string]any)
-		wantDate := now.AddDate(0, 0, i-89).Format("2006-01-02")
-		if day["date"] != wantDate {
-			t.Fatalf("第 %d 天日期不连续: got %v, want %s", i, day["date"], wantDate)
-		}
-		wantNew, wantActive := float64(0), float64(0)
-		if i == 88 {
-			wantActive = 1
-		}
-		if i == 89 {
-			wantNew, wantActive = 2, 2
-		}
-		number(t, day, "new_users", wantNew)
-		number(t, day, "active_users", wantActive)
 	}
 }
 

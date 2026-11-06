@@ -54,6 +54,7 @@ export function AppSidebar({
         },
         ...(
           [
+            ["memberAnalysis", CONSOLE_ROUTES.memberAnalysis],
             ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
             ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
           ] as const

@@ -10,10 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// usersOverview returns a fixed rolling 24-hour summary and 90 Asia/Shanghai calendar days.
-func (s *Service) usersOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Service) membersOverview(w http.ResponseWriter, r *http.Request) {
 	if len(r.URL.Query()) != 0 {
-		resource.Fail(r.Context(), w, resource.Invalid("用户统计不支持查询参数"))
+		resource.Fail(r.Context(), w, resource.Invalid("成员概览不支持查询参数"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -23,8 +22,8 @@ func (s *Service) usersOverview(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	defer rollbackStats(ctx, tx, "users_overview")
-	out, err := resource.DecodeObject(sqlc.New(tx).ReportingUsersOverview(ctx, s.now().UTC()))
+	defer rollbackStats(ctx, tx, "members_overview")
+	out, err := resource.DecodeObject(sqlc.New(tx).ReportingMembersOverview(ctx, s.now().UTC()))
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return

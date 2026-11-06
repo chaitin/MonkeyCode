@@ -25,6 +25,7 @@ import { DeviceAuthorizationPage } from "@/pages/device-authorization-page"
 import { ClientLoginPage } from "@/pages/client-login-page"
 import { ConversationHistoryPage } from "@/pages/conversation-history-page"
 import { ClientAnalysisPage } from "@/pages/client-analysis-page"
+import { MemberAnalysisPage } from "@/pages/member-analysis-page"
 import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelsPage } from "@/pages/models-page"
 import { OperationLogsPage } from "@/pages/operation-logs-page"
@@ -112,6 +113,8 @@ export function App() {
                     <TaskHistoryPage />
                   ) : page.path === CONSOLE_ROUTES.conversationHistory ? (
                     <ConversationHistoryPage />
+                  ) : page.path === CONSOLE_ROUTES.memberAnalysis ? (
+                    <MemberAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.resourceAnalysis ? (
                     <ResourceAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.clientAnalysis ? (

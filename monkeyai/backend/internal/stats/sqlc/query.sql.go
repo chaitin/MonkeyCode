@@ -458,6 +458,126 @@ func (q *Queries) ReportingFreshness(ctx context.Context, filters []byte) (inter
 	return max, err
 }
 
+const reportingMemberAnalysis = `-- name: ReportingMemberAnalysis :one
+WITH bounds AS (
+    SELECT $1::timestamptz AS now_at,
+           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
+), dates AS (
+    SELECT now_at, today, (today - interval '1 year' + interval '1 day')::date AS first_day,
+           ((today - 29)::timestamp AT TIME ZONE 'Asia/Shanghai') AS summary_from
+    FROM bounds
+), member AS (
+    SELECT id, name, email, status,
+           coalesce(nullif(btrim(custom_avatar_url), ''), nullif(btrim(avatar_url), '')) AS avatar_url
+    FROM users WHERE id = $2::uuid AND deleted_at IS NULL
+), roots AS MATERIALIZED (
+    SELECT s.id, s.title, s.started_at, s.last_active_at,
+           CASE WHEN s.turn_count_verified THEN s.turn_count ELSE NULL END AS turn_count
+    FROM sessions s JOIN member m ON m.id = s.owner_user_id CROSS JOIN dates b
+    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+      AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
+), activity AS (
+    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS conversations,
+           count(*) FILTER (WHERE t.started_at >= b.summary_from) AS recent_conversations
+    FROM session_turns t JOIN roots s ON s.id = t.session_id CROSS JOIN dates b
+    WHERE t.started_at >= (b.first_day::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
+    GROUP BY 1
+), days AS (
+    SELECT d.day::date AS day FROM dates b CROSS JOIN LATERAL
+        generate_series(b.first_day::timestamp, b.today::timestamp, interval '1 day') d(day)
+), recent AS (
+    SELECT id, title, started_at, last_active_at, turn_count FROM roots ORDER BY started_at DESC, id DESC LIMIT 10
+)
+SELECT jsonb_build_object(
+    'timezone', 'Asia/Shanghai', 'generated_at', b.now_at,
+    'member', jsonb_build_object('id', m.id, 'name', m.name, 'email', m.email, 'status', m.status, 'avatar_url', m.avatar_url,
+        'groups', coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'name', g.name) ORDER BY g.created_at, g.id)
+            FROM groups g WHERE g.deleted_at IS NULL AND EXISTS (
+                SELECT 1 FROM group_users gu WHERE gu.group_id = g.id AND gu.user_id = m.id AND gu.removed_at IS NULL)), '[]'::jsonb)),
+    'summary', jsonb_build_object('from', b.summary_from, 'until', b.now_at,
+        'tasks', (SELECT count(*) FROM roots WHERE started_at >= b.summary_from),
+        'conversations', (SELECT coalesce(sum(recent_conversations), 0) FROM activity),
+        'credits', (SELECT coalesce(-sum(e.credit_delta), 0)::text FROM credit_ledger_entries e
+            WHERE e.user_id = m.id AND e.entry_type IN ('charge', 'refund') AND e.occurred_at >= b.summary_from AND e.occurred_at < b.now_at)),
+    'created_resources', jsonb_build_object(
+        'models', (SELECT count(*) FROM models WHERE owner_user_id = m.id AND deleted_at IS NULL),
+        'knowledge_bases', NULL,
+        'skills', (SELECT count(*) FROM skills WHERE owner_user_id = m.id AND origin = 'local' AND deleted_at IS NULL),
+        'experts', (SELECT count(*) FROM experts WHERE created_by_user_id = m.id AND origin = 'local' AND deleted_at IS NULL),
+        'connectors', (SELECT count(*) FROM connectors WHERE owner_user_id = m.id AND origin = 'local' AND deleted_at IS NULL),
+        'rules', (SELECT count(*) FROM rules WHERE owner_user_id = m.id AND origin = 'local' AND deleted_at IS NULL)),
+    'activity', jsonb_build_object('from', b.first_day::text, 'until', b.today::text,
+        'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'conversations', coalesce(a.conversations, 0)) ORDER BY d.day)
+            FROM days d LEFT JOIN activity a ON a.day = d.day)),
+    'recent_tasks', coalesce((SELECT jsonb_agg(jsonb_build_object('id', id, 'title', title, 'turn_count', turn_count,
+        'started_at', started_at, 'last_active_at', last_active_at) ORDER BY started_at DESC, id DESC) FROM recent), '[]'::jsonb)
+) FROM member m CROSS JOIN dates b
+`
+
+type ReportingMemberAnalysisParams struct {
+	At     time.Time
+	UserID string
+}
+
+func (q *Queries) ReportingMemberAnalysis(ctx context.Context, arg ReportingMemberAnalysisParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingMemberAnalysis, arg.At, arg.UserID)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
+const reportingMembersOverview = `-- name: ReportingMembersOverview :one
+WITH bounds AS (
+    SELECT $1::timestamptz AS now_at,
+           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
+), members AS MATERIALIZED (
+    SELECT id, created_at FROM users WHERE deleted_at IS NULL
+), days AS (
+    SELECT d.day::date AS day
+    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
+), activity AS MATERIALIZED (
+    SELECT s.owner_user_id, (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day,
+           bool_or(t.started_at >= b.now_at - interval '168 hours') AS last_7d,
+           bool_or(t.started_at >= b.now_at - interval '336 hours' AND t.started_at < b.now_at - interval '168 hours') AS previous_7d,
+           bool_or(t.started_at >= b.now_at - interval '24 hours') AS last_24h,
+           bool_or(t.started_at >= b.now_at - interval '48 hours' AND t.started_at < b.now_at - interval '24 hours') AS previous_24h
+    FROM session_turns t JOIN sessions s ON s.id = t.session_id
+        JOIN members m ON m.id = s.owner_user_id CROSS JOIN bounds b
+    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
+    GROUP BY s.owner_user_id, (t.started_at AT TIME ZONE 'Asia/Shanghai')::date
+), summary AS (
+    SELECT count(DISTINCT owner_user_id) FILTER (WHERE last_7d) AS last_7d,
+           count(DISTINCT owner_user_id) FILTER (WHERE previous_7d) AS previous_7d,
+           count(DISTINCT owner_user_id) FILTER (WHERE last_24h) AS last_24h,
+           count(DISTINCT owner_user_id) FILTER (WHERE previous_24h) AS previous_24h
+    FROM activity
+), new_by_day AS (
+    SELECT (m.created_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
+    FROM members m CROSS JOIN bounds b
+    WHERE m.created_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND m.created_at < b.now_at
+    GROUP BY 1
+), active_by_day AS (
+    SELECT day, count(*) AS total FROM activity GROUP BY day
+)
+SELECT jsonb_build_object(
+    'total_members', (SELECT count(*) FROM members),
+    'last_7d', jsonb_build_object('active_members', summary.last_7d),
+    'previous_7d', jsonb_build_object('active_members', summary.previous_7d),
+    'last_24h', jsonb_build_object('active_members', summary.last_24h),
+    'previous_24h', jsonb_build_object('active_members', summary.previous_24h),
+    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
+    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_members', coalesce(n.total, 0), 'active_members', coalesce(a.total, 0)) ORDER BY d.day)
+             FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
+) FROM summary
+`
+
+func (q *Queries) ReportingMembersOverview(ctx context.Context, at time.Time) ([]byte, error) {
+	row := q.db.QueryRow(ctx, reportingMembersOverview, at)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
 const reportingModelsOverview = `-- name: ReportingModelsOverview :one
 WITH bounds AS NOT MATERIALIZED (
     SELECT $1::timestamptz AS now_at,
@@ -841,41 +961,6 @@ SELECT jsonb_build_object(
 
 func (q *Queries) ReportingTasksOverview(ctx context.Context, at time.Time) ([]byte, error) {
 	row := q.db.QueryRow(ctx, reportingTasksOverview, at)
-	var jsonb_build_object []byte
-	err := row.Scan(&jsonb_build_object)
-	return jsonb_build_object, err
-}
-
-const reportingUsersOverview = `-- name: ReportingUsersOverview :one
-WITH bounds AS (
-    SELECT $1::timestamptz AS now_at,
-           ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
-), days AS (
-    SELECT d.day::date AS day
-    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
-), new_by_day AS (
-    SELECT (u.created_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
-    FROM users u CROSS JOIN bounds b
-    WHERE u.created_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND u.created_at < b.now_at
-    GROUP BY 1
-), active_by_day AS (
-    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(DISTINCT s.owner_user_id) AS total
-    FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b
-    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
-    GROUP BY 1
-)
-SELECT jsonb_build_object(
-    'total_users', (SELECT count(*) FROM users),
-    'new_users_24h', (SELECT count(*) FROM users u CROSS JOIN bounds b WHERE u.created_at >= b.now_at - interval '24 hours' AND u.created_at < b.now_at),
-    'active_users_24h', (SELECT count(DISTINCT s.owner_user_id) FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at),
-    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
-    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_users', coalesce(n.total, 0), 'active_users', coalesce(a.total, 0)) ORDER BY d.day)
-             FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
-)
-`
-
-func (q *Queries) ReportingUsersOverview(ctx context.Context, at time.Time) ([]byte, error) {
-	row := q.db.QueryRow(ctx, reportingUsersOverview, at)
 	var jsonb_build_object []byte
 	err := row.Scan(&jsonb_build_object)
 	return jsonb_build_object, err
