@@ -79,7 +79,8 @@ func TestUpgradeFrom14(t *testing.T) {
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
-		"26/u endpoint_platform_text", "31/u session_client_runtime_add", "37/u oauth_pairing",
+		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
+		"35/u billing_activity_lock_retry", "36/u user_profile_add", "37/u oauth_pairing", "38/u cloud_environments", "39/u environment_directory_storage",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -143,17 +144,49 @@ func TestUpgradeFrom14(t *testing.T) {
 	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='desktop'"); err != nil {
 		t.Fatal(err)
 	}
-	run("down", "1")
-	if latest == 37 {
-		var removed bool
-		if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NULL").Scan(&removed); err != nil || !removed {
-			t.Fatalf("配对迁移回滚未删除新表: %v", err)
+	if _, err := conn.Exec(t.Context(), `
+		INSERT INTO engine_hosts(id,name,architecture,version,enrollment_hash,enrollment_expires_at)
+		VALUES('00000000-0000-0000-0000-000000000002','宿主','amd64','v1','enrollment',now()+interval '1 hour');
+		INSERT INTO environment_presets(id,name,architecture,configuration,cpu_millis,memory_bytes,storage_bytes)
+		VALUES('00000000-0000-0000-0000-000000000003','预设','amd64','{}',1000,1073741824,1073741824);
+		INSERT INTO environments(id,user_id,host_id,preset_id,name,generation,instance_id,desired,spec,cpu_millis,memory_bytes,storage_bytes,request_key,request_hash)
+		VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001',
+		'00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003','环境',1,
+		'00000000-0000-0000-0000-000000000005','stopped','{}',1000,1073741824,1073741824,'create','hash');
+		INSERT INTO environment_runtime(environment_id,machine_id,public_key,instance_id,generation,request_id)
+		VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000006',
+		decode(repeat('ab',32),'hex'),'00000000-0000-0000-0000-000000000005',1,'00000000-0000-0000-0000-000000000007');
+		INSERT INTO environment_operations(environment_id,generation,desired,request_key,request_hash)
+		VALUES('00000000-0000-0000-0000-000000000004',1,'stopped','stop','hash');`); err != nil {
+		t.Fatal(err)
+	}
+	checkEnvironmentReplay(t, conn)
+	run("goto", "37")
+	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 37 || dirty {
+		t.Fatalf("云环境应一次回滚到 37: version=%d dirty=%v err=%v", version, dirty, err)
+	}
+	for _, table := range []string{"engine_hosts", "environment_control", "environment_presets", "environment_hosts", "environment_quotas", "environments", "environment_operations", "environment_runtime"} {
+		var absent bool
+		if err := conn.QueryRow(t.Context(), "SELECT to_regclass($1) IS NULL", table).Scan(&absent); err != nil || !absent {
+			t.Fatalf("云环境回滚残留 %s: %v", table, err)
 		}
+	}
+	for range 2 {
+		applyEnvironmentMigration(t, conn, "000039_environment_directory_storage.down.sql")
+		applyEnvironmentMigration(t, conn, "000038_cloud_environments.down.sql")
+	}
+	run("goto", "36")
+	var removed bool
+	if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NULL").Scan(&removed); err != nil || !removed {
+		t.Fatalf("配对迁移回滚未删除新表: %v", err)
 	}
 	run("up")
 	var restored bool
 	if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NOT NULL").Scan(&restored); err != nil || !restored {
 		t.Fatalf("配对迁移重新升级未恢复新表: %v", err)
+	}
+	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != latest || dirty {
+		t.Fatalf("云环境应升级到最新版本: version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
 		t.Fatalf("重新升级后应支持 runtime 会话: %v", err)
