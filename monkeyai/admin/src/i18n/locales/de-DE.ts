@@ -256,7 +256,7 @@ export const deDE = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "Datenübersicht",
+      title: "Modelle",
       description:
         "Überwachen Sie Modellleistung und Produktaktivität im gewählten Zeitraum.",
       timeRange: "Zeitraum der Live-Statistik",

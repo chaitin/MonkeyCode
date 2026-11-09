@@ -123,7 +123,11 @@ test("member account uses integer key-value balances and dedicated actions", asy
   )
   assert.match(
     accountDialog,
-    /CONSOLE_ROUTES\.billingDetails\}\?view=entries&user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?费用明细[\s\S]*?调整积分[\s\S]*?客户端[\s\S]*?CONSOLE_ROUTES\.taskHistory\}\?user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?任务/
+    /CONSOLE_ROUTES\.billingDetails\}\?view=entries&user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?费用明细[\s\S]*?调整积分[\s\S]*?CONSOLE_ROUTES\.memberAnalysis\}\?user_id=\$\{encodeURIComponent\(userId\)\}[\s\S]*?分析/
+  )
+  assert.doesNotMatch(
+    accountDialog,
+    /客户端|CONSOLE_ROUTES\.(clientAnalysis|taskHistory)/
   )
   assert.doesNotMatch(accountDialog, /查看费用明细/)
   assert.match(accountDialog, /\["add", "增加积分"\]/)

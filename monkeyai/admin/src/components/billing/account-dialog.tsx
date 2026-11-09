@@ -286,26 +286,12 @@ export function AccountDialog({
                   variant="secondary"
                   render={
                     <Link
-                      to={`${CONSOLE_ROUTES.clientAnalysis}?user_id=${encodeURIComponent(userId)}`}
+                      to={`${CONSOLE_ROUTES.memberAnalysis}?user_id=${encodeURIComponent(userId)}`}
                       onClick={onClose}
                     />
                   }
                 >
-                  客户端
-                </Button>
-              )}
-              {userId && (
-                <Button
-                  nativeButton={false}
-                  variant="secondary"
-                  render={
-                    <Link
-                      to={`${CONSOLE_ROUTES.taskHistory}?user_id=${encodeURIComponent(userId)}`}
-                      onClick={onClose}
-                    />
-                  }
-                >
-                  任务
+                  分析
                 </Button>
               )}
             </div>

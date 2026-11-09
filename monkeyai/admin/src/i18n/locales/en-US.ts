@@ -553,7 +553,7 @@ export const enUS = {
       retry: "Retry",
     },
     realtimeStatus: {
-      title: "Data Overview",
+      title: "Models",
       description:
         "Monitor model performance and product activity for the selected period.",
       timeRange: "Live statistics period",
@@ -698,7 +698,7 @@ export const enUS = {
         noPreference: "No usage recorded",
         recentTasks: "Recent tasks",
         createdAt: "Created at",
-        lastActiveAt: "Last active at",
+        lastActiveAt: "Last activity",
         showMore: "Show more",
         showLess: "Show less",
         taskName: "Task",

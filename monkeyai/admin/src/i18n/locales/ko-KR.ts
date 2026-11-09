@@ -241,7 +241,7 @@ export const koKR = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "데이터 개요",
+      title: "모델",
       description: "선택한 기간의 모델 성능과 서비스 활동을 확인합니다.",
       timeRange: "실시간 통계 기간",
       pendingMetric: "데이터 연동 대기 중",

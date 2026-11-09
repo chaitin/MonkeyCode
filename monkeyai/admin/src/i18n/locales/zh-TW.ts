@@ -256,7 +256,7 @@ export const zhTW = {
       retry: "重試",
     },
     realtimeStatus: {
-      title: "數據總覽",
+      title: "模型",
       description: "查看所選時間範圍內的模型運行與業務活躍狀態。",
       timeRange: "即時統計週期",
       pendingMetric: "資料待接入",

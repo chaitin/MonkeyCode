@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
@@ -33,7 +33,7 @@ import {
 import { useStatistics } from "@/hooks/use-statistics"
 import type { MemberAnalysis, MemberOverview } from "@/lib/statistics"
 import { CONSOLE_ROUTES } from "@/lib/routes"
-import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
+import { formatLastActivity, TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import { credits } from "@/lib/billing"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +42,11 @@ const detailMetricIcons = {
   tasks: Task01Icon,
   conversations: AiChat02Icon,
   credits: Coins01Icon,
+}
+const detailMetricRoutes = {
+  tasks: CONSOLE_ROUTES.taskHistory,
+  conversations: CONSOLE_ROUTES.conversationHistory,
+  credits: CONSOLE_ROUTES.billingDetails,
 }
 
 function MemberPicker({
@@ -175,6 +180,16 @@ function OverviewMetric({
 
 function MemberUsageDetails({ userID }: { userID: string }) {
   const { t, i18n } = useTranslation()
+  const [now, setNow] = useState(() => Date.now())
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const relativeFormatter = useMemo(
+    () => new Intl.RelativeTimeFormat(locale, { numeric: "auto" }),
+    [locale]
+  )
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const request = useStatistics<MemberAnalysis>(
     `/api/admin/v1/statistics/session-reporting/members/${encodeURIComponent(userID)}`
   )
@@ -250,15 +265,11 @@ function MemberUsageDetails({ userID }: { userID: string }) {
             note={t(`${key}.metrics.${metric}`)}
             value={
               metric === "credits"
-                ? credits(summary.credits, i18n.language)
+                ? credits(summary.credits, i18n.language, 0, "floor")
                 : number.format(summary[metric])
             }
             icon={detailMetricIcons[metric]}
-            to={
-              metric === "credits"
-                ? undefined
-                : `${metric === "tasks" ? CONSOLE_ROUTES.taskHistory : CONSOLE_ROUTES.conversationHistory}?${new URLSearchParams({ user_id: member.id })}`
-            }
+            to={`${detailMetricRoutes[metric]}?${new URLSearchParams({ user_id: member.id })}`}
             textClassName={
               metric === "credits"
                 ? "text-amber-600 dark:text-amber-400"
@@ -403,7 +414,12 @@ function MemberUsageDetails({ userID }: { userID: string }) {
                     className="pe-4 text-muted-foreground"
                     title={dateTime.format(new Date(task.last_active_at))}
                   >
-                    {dateTime.format(new Date(task.last_active_at))}
+                    {formatLastActivity(
+                      task.last_active_at,
+                      now,
+                      locale,
+                      relativeFormatter
+                    )}
                   </TableCell>
                 </TableRow>
               ))

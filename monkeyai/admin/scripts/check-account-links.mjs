@@ -15,7 +15,9 @@ const user = "00000000-0000-4000-8000-000000000001",
   other = "00000000-0000-4000-8000-000000000002"
 const history = "/api/admin/v1/statistics/history"
 const taskPath = "/console/statistics/task-history",
-  clientPath = "/console/statistics/session-reporting/clients"
+  clientPath = "/console/statistics/session-reporting/clients",
+  memberPath = "/console/statistics/session-reporting/members"
+const memberAPI = "/api/admin/v1/statistics/session-reporting/members"
 const at = "2026-10-01T00:00:00Z"
 const tasks = [user, user, other].map((owner, i) => ({
   id: `10000000-0000-4000-8000-00000000000${i}`,
@@ -121,6 +123,40 @@ try {
             }
           else if (url.pathname.endsWith("/branding"))
             body = { product_name: "百智办公" }
+          else if (url.pathname === `${memberAPI}/overview`)
+            body = {
+              total_members: 2,
+              last_7d: { active_members: 1 },
+              previous_7d: { active_members: 0 },
+              last_24h: { active_members: 1 },
+              previous_24h: { active_members: 0 },
+              timezone: "Asia/Shanghai",
+              generated_at: at,
+              days: [],
+            }
+          else if (url.pathname === `${memberAPI}/${user}`)
+            body = {
+              member: {
+                id: user,
+                name: "同名用户",
+                email: "first@example.test",
+                status: "active",
+                groups: [],
+              },
+              summary: { tasks: 0, conversations: 0, credits: "0" },
+              created_resources: {
+                models: 0,
+                knowledge_bases: null,
+                skills: 0,
+                experts: 0,
+                connectors: 0,
+                rules: 0,
+              },
+              activity: { from: "2025-10-02", until: "2026-10-01", days: [] },
+              recent_tasks: [],
+              timezone: "Asia/Shanghai",
+              generated_at: at,
+            }
           else if (url.pathname === `/api/admin/v1/users/${user}`)
             body = {
               id: user,
@@ -261,7 +297,7 @@ try {
         )
         await page.waitForFunction(() =>
           [...document.querySelectorAll('[role="dialog"] a')].some(
-            (el) => el.textContent.trim() === "任务"
+            (el) => el.textContent.trim() === "分析"
           )
         )
         await page.setViewportSize({ width, height: 500 })
@@ -356,19 +392,36 @@ try {
           .allTextContents()
         assert.deepEqual(
           buttons.map((text) => text.trim()),
-          ["费用明细", "调整积分", "客户端", "任务"]
+          ["费用明细", "调整积分", "分析"]
         )
+        const analysis = page
+          .getByRole("dialog")
+          .locator("a")
+          .filter({ hasText: /^分析$/ })
         assert.equal(
-          await page
-            .locator('[role="dialog"] a')
-            .filter({ hasText: /^任务$/ })
-            .getAttribute("href"),
-          `${taskPath}?user_id=${user}`
+          await analysis.getAttribute("href"),
+          `${memberPath}?user_id=${user}`
         )
         await Promise.all([
-          response(user),
-          click(page, '[role="dialog"] a', "任务"),
+          page.waitForResponse(
+            (response) =>
+              new URL(response.url()).pathname === `${memberAPI}/${user}`
+          ),
+          analysis.click(),
         ])
+        await page.getByText("first@example.test", { exact: true }).waitFor()
+        assert.equal(new URL(page.url()).pathname, memberPath)
+        assert.equal(new URL(page.url()).searchParams.get("user_id"), user)
+        assert.equal(await page.getByRole("dialog").count(), 0)
+        await page.setViewportSize({ width, height: 1000 })
+        const taskLink = page
+          .getByRole("group", { name: "任务数", exact: true })
+          .getByRole("link", { name: "任务数", exact: true })
+        assert.equal(
+          await taskLink.getAttribute("href"),
+          `${taskPath}?user_id=${user}`
+        )
+        await Promise.all([response(user), taskLink.click()])
         await ready(2)
         await page.waitForFunction(
           () => !document.querySelector('[role="dialog"]')
@@ -424,6 +477,7 @@ try {
         await click(page, "#task-history-user")
         await page.keyboard.press("Control+a")
         await page.keyboard.press("Backspace")
+        await page.keyboard.press("Escape")
         await Promise.all([
           response(""),
           click(page, 'button[type="submit"]', "搜索"),
@@ -438,7 +492,7 @@ try {
         )
         assert.deepEqual(errors, [])
         console.log(
-          `PASS account task link ${source} ${width}: fixed header/actions, body wheel scroll, button order, navigation/close, exact UUID, same names, reload, draft, history, clear`
+          `PASS account analysis link ${source} ${width}: fixed header/actions, body wheel scroll, button order, member analysis/navigation/close, exact UUID, same names, reload, draft, history, clear`
         )
       } catch (error) {
         await page.screenshot({

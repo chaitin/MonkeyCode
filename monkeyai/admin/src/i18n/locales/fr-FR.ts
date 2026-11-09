@@ -257,7 +257,7 @@ export const frFR = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "Vue d’ensemble des données",
+      title: "Modèles",
       description:
         "Consultez les performances des modèles et l’activité du produit sur la période sélectionnée.",
       timeRange: "Période des statistiques en temps réel",

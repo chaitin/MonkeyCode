@@ -86,7 +86,7 @@ const detail = (user) => ({
     until: "2026-11-03T12:00:00Z",
     tasks: 123,
     conversations: 345,
-    credits: "1234.123456",
+    credits: "1234.987654",
   },
   created_resources: {
     models: 3,
@@ -102,7 +102,13 @@ const detail = (user) => ({
     title: `服务端任务 ${index + 1}`,
     turn_count: index === 0 ? null : index + 10,
     started_at: `2026-11-03T${String(9 - Math.floor(index / 2)).padStart(2, "0")}:00:00Z`,
-    last_active_at: "2026-11-03T11:00:00Z",
+    last_active_at:
+      [
+        "2026-11-03T11:00:00Z",
+        "2026-11-03T11:55:00Z",
+        "2026-11-01T12:00:00Z",
+        "2026-11-03T11:59:30Z",
+      ][index] ?? "2026-11-03T11:00:00Z",
   })),
 })
 const emptyDetail = {
@@ -142,6 +148,7 @@ try {
       reducedMotion: "reduce",
     })
     page.setDefaultTimeout(15000)
+    await page.clock.setFixedTime(new Date(overview.generated_at))
     const errors = [],
       detailRequests = [],
       historyRequests = [],
@@ -236,7 +243,8 @@ try {
           }
         } else if (
           p === "/api/admin/v1/statistics/history" ||
-          p === "/api/admin/v1/statistics/conversations"
+          p === "/api/admin/v1/statistics/conversations" ||
+          p === "/api/admin/v1/billing/entries"
         ) {
           historyRequests.push(url)
           body = {
@@ -371,7 +379,7 @@ try {
     for (const [label, value] of [
       ["任务数", "123"],
       ["对话数", "345"],
-      ["消耗积分", "1,234.123456"],
+      ["消耗积分", "1,234"],
     ]) {
       assert.equal(
         await root
@@ -456,13 +464,34 @@ try {
       "任务名称",
       "对话数量",
       "创建时间",
-      "最近活动时间",
+      "最近活动",
     ])
     assert.equal(await recent.locator("tbody tr").count(), 10)
     assert.equal(
       await recent.locator("tbody tr").first().locator("td").nth(1).innerText(),
       "—"
     )
+    for (const [index, expected] of [
+      "1 小时前",
+      "5 分钟前",
+      "2 天前",
+      "刚刚",
+    ].entries()) {
+      const row = recent.locator("tbody tr").nth(index)
+      assert.equal(await row.locator("td").nth(3).innerText(), expected)
+      assert.equal(
+        await row.locator("td").nth(3).getAttribute("title"),
+        new Intl.DateTimeFormat("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "Asia/Shanghai",
+        }).format(new Date(detail(users[0]).recent_tasks[index].last_active_at))
+      )
+    }
     await recent
       .getByRole("link", { name: "服务端任务 1", exact: true })
       .waitFor()
@@ -480,6 +509,7 @@ try {
     for (const [label, destination, api] of [
       ["任务数", taskPath, "/api/admin/v1/statistics/history"],
       ["对话数", conversationPath, "/api/admin/v1/statistics/conversations"],
+      ["消耗积分", "/console/billing/details", "/api/admin/v1/billing/entries"],
     ]) {
       const card = root.getByRole("group", { name: label, exact: true }),
         link = card.getByRole("link", { name: label, exact: true }),
@@ -505,6 +535,11 @@ try {
       await body.click({ position: { x: bounds.width - 8, y: 8 } })
       await response
       assert.equal(new URL(page.url()).pathname, destination)
+      assert.equal(new URL(page.url()).searchParams.get("user_id"), users[0].id)
+      assert.equal(
+        historyRequests.at(-1).searchParams.get("user_id"),
+        users[0].id
+      )
       await page.goBack()
       await root.getByText("linmei@example.com", { exact: true }).waitFor()
     }

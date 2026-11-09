@@ -509,7 +509,7 @@ export const zhCN = {
       retry: "重试",
     },
     realtimeStatus: {
-      title: "总览",
+      title: "模型",
       description: "查看所选时间范围内的模型运行与业务活跃状态。",
       timeRange: "实时统计周期",
       pendingMetric: "数据待接入",
@@ -653,7 +653,7 @@ export const zhCN = {
         noPreference: "暂无使用记录",
         recentTasks: "最近任务",
         createdAt: "创建时间",
-        lastActiveAt: "最近活动时间",
+        lastActiveAt: "最近活动",
         showMore: "查看更多",
         showLess: "收起",
         taskName: "任务名称",

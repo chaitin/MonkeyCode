@@ -248,7 +248,7 @@ export const jaJP = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "データ概要",
+      title: "モデル",
       description:
         "選択した期間のモデル稼働状況とサービスの利用状況を確認します。",
       timeRange: "リアルタイム集計期間",

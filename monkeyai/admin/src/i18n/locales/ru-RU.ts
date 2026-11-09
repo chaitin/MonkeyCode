@@ -253,7 +253,7 @@ export const ruRU = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "Обзор данных",
+      title: "Модели",
       description:
         "Отслеживайте работу моделей и активность продукта за выбранный период.",
       timeRange: "Период статистики в реальном времени",

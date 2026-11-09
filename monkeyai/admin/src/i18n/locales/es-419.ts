@@ -250,7 +250,7 @@ export const es419 = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "Resumen de datos",
+      title: "Modelos",
       description:
         "Consulta el rendimiento de los modelos y la actividad del producto durante el periodo seleccionado.",
       timeRange: "Periodo de estadísticas en tiempo real",

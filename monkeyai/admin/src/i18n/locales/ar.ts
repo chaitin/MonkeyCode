@@ -237,7 +237,7 @@ export const ar = {
     },
     license: enUS.pages.license,
     realtimeStatus: {
-      title: "نظرة عامة على البيانات",
+      title: "النماذج",
       description: "راقب أداء النماذج ونشاط المنتج خلال الفترة المحددة.",
       timeRange: "فترة الإحصاءات المباشرة",
       pendingMetric: "بانتظار ربط البيانات",
