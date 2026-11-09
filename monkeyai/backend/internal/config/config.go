@@ -24,6 +24,12 @@ type Database struct {
 }
 
 type Config struct {
+	ImageStateDir     string
+	ImageImportDir    string
+	RuntimeReleaseDir string
+	RuntimeVersion    string
+	EngineReleaseDir  string
+	EngineVersion     string
 	HTTP
 	Database
 	Design
@@ -76,6 +82,12 @@ func Load(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("解析远程执行开关: %w", err)
 	}
 	cfg := Config{
+		ImageStateDir:                os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_STATE_DIR"),
+		ImageImportDir:               os.Getenv("MONKEYAI_ENVIRONMENT_IMAGE_IMPORT_DIR"),
+		RuntimeReleaseDir:            os.Getenv("MONKEYAI_ENVIRONMENT_RUNTIME_DIR"),
+		RuntimeVersion:               os.Getenv("MONKEYAI_ENVIRONMENT_RUNTIME_VERSION"),
+		EngineReleaseDir:             os.Getenv("MONKEYAI_ENGINE_RELEASE_DIR"),
+		EngineVersion:                os.Getenv("MONKEYAI_ENGINE_VERSION"),
 		Design:                       loadDesign(),
 		RuntimeDesktopOrigins:        strings.FieldsFunc(os.Getenv("MONKEYAI_RUNTIME_DESKTOP_ORIGINS"), func(r rune) bool { return r == ',' || r == ' ' }),
 		RuntimeRelay:                 runtimeRelay,

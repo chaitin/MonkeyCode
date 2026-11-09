@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "vite",
+    "dev:environments": "node scripts/environment-fixture.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",

@@ -893,6 +893,7 @@ export const ruRU = {
       categories: {
         model: "Модель",
         tool: "Инструмент",
+        environment: "Облачная среда",
         knowledge: "База знаний",
         other: "Другое",
       },

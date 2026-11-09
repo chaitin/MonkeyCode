@@ -868,6 +868,7 @@ export const zhTW = {
       categories: {
         model: "模型",
         tool: "工具",
+        environment: "雲端環境",
         knowledge: "知識庫",
         other: "其他",
       },

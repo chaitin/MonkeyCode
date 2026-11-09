@@ -161,3 +161,9 @@ SELECT jsonb_build_object('metric','devices','total',(SELECT count(*) FROM devic
  'client_type',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_type'),'[]'::jsonb),
  'platform',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='platform'),'[]'::jsonb),
  'client_version',coalesce((SELECT jsonb_agg(jsonb_build_object('value',value,'count',count) ORDER BY count DESC,value COLLATE "C" ASC NULLS LAST) FROM counts WHERE dimension='client_version'),'[]'::jsonb)));
+
+-- name: CloudDeviceNames :many
+SELECT r.machine_id, e.name
+FROM environments e JOIN environment_runtimes r ON r.environment_id=e.id
+JOIN endpoints d ON d.machine_id=r.machine_id AND d.user_id=e.user_id AND d.execution_public_key=r.public_key
+WHERE e.user_id=sqlc.arg(user_id)::uuid AND r.machine_id=ANY(sqlc.arg(machine_ids)::uuid[]);
