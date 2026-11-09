@@ -48,12 +48,12 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		modelError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
 	defer cancel()
 	transport := &http.Transport{
 		DialContext:       (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		ForceAttemptHTTP2: true, TLSHandshakeTimeout: 5 * time.Second,
-		ResponseHeaderTimeout: 15 * time.Second,
+		ResponseHeaderTimeout: time.Minute,
 	}
 	defer transport.CloseIdleConnections()
 	if item.ProxyID != "" {
