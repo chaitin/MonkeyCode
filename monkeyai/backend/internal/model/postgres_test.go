@@ -142,6 +142,7 @@ func TestResolveModelName(t *testing.T) {
 	uuidName := create(resource.ID(), "user")
 	create(shared.ID, "user")
 	duplicate := create(shared.ModelID, "system")
+	exec(`INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,granted_by_user_id) VALUES('model',$1,$3,'read_only',$3),('model',$2,$3,'read_only',$3)`, shared.ID, duplicate.ID, owner)
 	atName := create("provider/model@version", "user")
 	collision := create(shared.ModelID+"@"+shared.ID, "user")
 	exec(`UPDATE models SET created_at=created_at - interval '1 day' WHERE id=$1`, collision.ID)
@@ -170,7 +171,7 @@ func TestResolveModelName(t *testing.T) {
 		{"UUID格式模型名", owner, uuidName.ModelID, uuidName.ID},
 		{"自有模型", owner, private.ModelID, private.ID},
 		{"父组授权", user, groupModel.ModelID, groupModel.ID},
-		{"管理员系统模型", admin, shared.ModelID, shared.ID},
+		{"管理员未授权系统模型", admin, shared.ModelID, ""},
 		{"未授权", user, private.ModelID, ""},
 		{"管理员无权使用他人私有模型", admin, private.ModelID, ""},
 		{"已停用", admin, disabled.ModelID, ""},
@@ -216,7 +217,7 @@ func TestResolveModelName(t *testing.T) {
 			t.Fatal("系统模型不应由独立用量写入器记录")
 		}
 	})
-	models, err := NewService(repo).AgentModels(ctx, user, false)
+	models, err := NewService(repo).AgentModels(ctx, user)
 	if err != nil || len(models) != 2 {
 		t.Fatalf("下发模型目录错误: %+v, %v", models, err)
 	}
@@ -226,6 +227,80 @@ func TestResolveModelName(t *testing.T) {
 			t.Fatalf("下发模型无法解析: %+v, %v", entry, err)
 		}
 	}
+	t.Run("管理员与普通用户统一按授权使用模型", func(t *testing.T) {
+		actor := resource.ID()
+		exec(`INSERT INTO users(id,name,email,role) VALUES($1,'授权测试管理员','model-authorization@example.com','admin')`, actor)
+		service := NewService(repo).WithKeyAuthenticator(keyAuthenticatorStub{userID: actor})
+		input := validInput()
+		input.ModelID = "authorization-owned-system"
+		input.Authorization = Authorization{UserIDs: []string{owner}}
+		ownedSystem, err := service.Create(ctx, actor, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherSystem := create("authorization-other-system", "system")
+		personal, err := repo.Create(ctx, Model{
+			OwnerUserID: actor, OwnershipType: "user", ModelID: "authorization-personal", DisplayName: "自建模型",
+			Protocol: ProtocolOpenAIChat, BaseURL: "https://example.com/v1", APIKey: "test-key",
+			AdvancedConfig: AdvancedConfig{ContextWindowTokens: 32000, MaxOutputTokens: 4096}, CreditMultiplier: 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		systems := []Model{ownedSystem, otherSystem}
+		assertAccess := func(t *testing.T, allowed bool) {
+			t.Helper()
+			for _, role := range []string{"admin", "user"} {
+				exec(`UPDATE users SET role=$2 WHERE id=$1`, actor, role)
+				models, err := service.AgentModels(ctx, actor)
+				if err != nil {
+					t.Fatal(err)
+				}
+				visible := map[string]bool{}
+				for _, model := range models {
+					visible[model.ID] = true
+				}
+				for _, model := range append([]Model{personal, private}, systems...) {
+					want := allowed
+					if model.OwnershipType == "user" {
+						want = model.OwnerUserID == actor
+					}
+					if visible[model.ID] != want {
+						t.Fatalf("模型目录权限错误 role=%s model=%s: 可见=%v，预期=%v", role, model.ModelID, visible[model.ID], want)
+					}
+					for _, requested := range []string{model.ID, model.ModelID, model.ModelID + "@" + model.ID} {
+						target, err := service.Resolve(ctx, "test-key", requested)
+						if want && (err != nil || target.ID != model.ID) || !want && !errors.Is(err, ErrUnauthorized) {
+							t.Fatalf("模型调用权限错误 role=%s model=%s allowed=%v: %+v, %v", role, requested, want, target, err)
+						}
+					}
+				}
+			}
+		}
+		t.Run("未授权与创建者均不可使用系统模型", func(t *testing.T) { assertAccess(t, false) })
+		for _, model := range systems {
+			exec(`INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,granted_by_user_id) VALUES('model',$1,$2,'read_only',$3)`, model.ID, actor, owner)
+		}
+		t.Run("直接授权后可使用", func(t *testing.T) { assertAccess(t, true) })
+		exec(`DELETE FROM resource_access_grants WHERE resource_type='model' AND user_id=$1`, actor)
+		t.Run("撤销直接授权后不可使用", func(t *testing.T) { assertAccess(t, false) })
+		for _, model := range systems {
+			exec(`INSERT INTO resource_access_grants(resource_type,resource_id,group_id,access_level,granted_by_user_id) VALUES('model',$1,$2,'read_only',$3)`, model.ID, parent, owner)
+		}
+		t.Run("不在授权分组中不可使用", func(t *testing.T) { assertAccess(t, false) })
+		exec(`INSERT INTO group_users(group_id,user_id,assigned_by_user_id) VALUES($1,$2,$3)`, child, actor, owner)
+		t.Run("继承父组授权后可使用", func(t *testing.T) { assertAccess(t, true) })
+		exec(`UPDATE group_users SET removed_at=now() WHERE user_id=$1`, actor)
+		t.Run("退出分组后不可使用", func(t *testing.T) { assertAccess(t, false) })
+		for _, model := range systems {
+			exec(`INSERT INTO resource_access_grants(resource_type,resource_id,all_users,access_level,granted_by_user_id) VALUES('model',$1,true,'read_only',$2)`, model.ID, owner)
+		}
+		t.Run("全员授权后可使用", func(t *testing.T) { assertAccess(t, true) })
+		for _, model := range systems {
+			exec(`DELETE FROM resource_access_grants WHERE resource_type='model' AND resource_id=$1 AND all_users`, model.ID)
+		}
+		t.Run("撤销全员授权后不可使用", func(t *testing.T) { assertAccess(t, false) })
+	})
 	t.Run("全员授权覆盖新增用户并可撤销", func(t *testing.T) {
 		input := validInput()
 		input.ModelID = "all-users-model"
@@ -246,7 +321,7 @@ func TestResolveModelName(t *testing.T) {
 			if err != nil || resolved.ID != item.ID {
 				t.Fatalf("用户未获得全员模型授权: %s, %v", person, err)
 			}
-			available, err := repo.ListAvailable(ctx, person, false)
+			available, err := repo.ListAvailable(ctx, person)
 			if err != nil {
 				t.Fatal(err)
 			}

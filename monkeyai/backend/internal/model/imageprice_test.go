@@ -21,7 +21,7 @@ func TestImageRateValidationAndCatalog(t *testing.T) {
 	if err != nil || strings.Contains(string(encoded), "multiplier") || strings.Contains(string(encoded), "base_credits") {
 		t.Fatalf("必须返回独立单张积分: %s, %v", encoded, err)
 	}
-	catalog, err := service.AgentModels(t.Context(), "admin", true)
+	catalog, err := service.AgentModels(t.Context(), "admin")
 	if err != nil || len(catalog) != 1 || !reflect.DeepEqual(catalog[0].ImagePricing.Rates, pricing.Rates) {
 		t.Fatalf("目录价格不一致: %+v, %v", catalog, err)
 	}
