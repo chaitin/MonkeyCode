@@ -250,7 +250,7 @@ paths:
   /oauth/token:
     post:
       summary: 兑换授权码、手机配对码或轮换安装凭据
-      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。手机配对使用 urn:monkeyai:params:oauth:grant-type:pairing_code，仅允许 monkeyai-mobile，必须提供 device_code 和 43–128 字符的 code_verifier；固定签发 device:connect、files:read、files:write、session:control、session:read 账号权限，不绑定执行设备。等待批准返回 authorization_pending；并发改密或批准占用配对锁时也返回该可重试错误。轮询遵守 join 返回的 interval，每次 slow_down 增加 5 秒。所有响应 no-store。
+      description: 刷新保持 grant_id、scope 和机器绑定；已轮换 refresh token 重放会撤销整个授权族。手机配对使用 urn:monkeyai:params:oauth:grant-type:pairing_code，仅允许 monkeyai-mobile，必须提供 device_code 和 43–128 字符的 code_verifier；固定签发 device:connect、files:read、files:write、resources:manage、session:control、session:read 账号权限，不绑定执行设备。等待批准返回 authorization_pending；并发改密或批准占用配对锁时也返回该可重试错误。轮询遵守 join 返回的 interval，每次 slow_down 增加 5 秒。所有响应 no-store。
       security: []
       requestBody:
         required: true

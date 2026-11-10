@@ -10,7 +10,7 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 二维码固定为 `monkeyai-mobile://pair/scan`，只包含 `v=1`、`server`、`id`、`secret` 四个参数，server 来自服务端公开地址。join 严格校验 JSON，最多 16 KiB；二维码过期、secret 错误与不存在统一返回 `404 pairing_not_found`。join 后窗口延长到当前时间后 60 秒，硬上限为创建后 180 秒。手机每 5 秒轮询，遇到 `slow_down` 再增加 5 秒；状态并发变更占用配对锁时返回可重试的 `authorization_pending`。所有配对响应均为 `Cache-Control: no-store`。
 
-四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect files:read files:write session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
+四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect files:read files:write resources:manage session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
 
 创建与批准在用户锁下复核 Bearer。兑换先锁用户，再以 `NOWAIT` 锁配对，并条件消费，避免与改密的「配对 → 用户」锁序互相等待；改密拿到用户锁后仍复查期间新建的活动配对（pending、joined、approved），必要时返回 `409 authorization_changed` 并回滚。上线前执行迁移 `000037_oauth_pairing`。
 

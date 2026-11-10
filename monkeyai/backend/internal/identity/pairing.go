@@ -29,7 +29,7 @@ const (
 )
 
 var mobilePairingScopes = []string{
-	"device:connect", "files:read", "files:write", "session:control", "session:read",
+	"device:connect", "files:read", "files:write", "resources:manage", "session:control", "session:read",
 }
 
 type PairingResponse struct {

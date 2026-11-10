@@ -146,7 +146,7 @@ func TestPairingFlow(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &token); err != nil || w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("兑换失败: %s %v", w.Body.String(), err)
 	}
-	wantScopes := []string{"device:connect", "files:read", "files:write", "session:control", "session:read"}
+	wantScopes := []string{"device:connect", "files:read", "files:write", "resources:manage", "session:control", "session:read"}
 	if token.AccessToken == "" || token.RefreshToken == "" || token.TokenType != "Bearer" || token.GrantID == "" || token.ExpiresIn != 3600 || !slices.Equal(strings.Fields(token.Scope), wantScopes) || token.MachineID != "" {
 		t.Fatalf("手机凭据错误: %+v", token)
 	}
