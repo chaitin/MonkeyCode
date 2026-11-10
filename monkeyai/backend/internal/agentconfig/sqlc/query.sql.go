@@ -10,16 +10,20 @@ import (
 )
 
 const catalogConnectorLinks = `-- name: CatalogConnectorLinks :many
-SELECT
-    to_jsonb (t)
-FROM
-    expert_connectors t
-ORDER BY
-    expert_id
+SELECT to_jsonb(t)
+FROM expert_connectors t
+WHERE $1::boolean
+    OR expert_id::text = ANY($2::text[])
+ORDER BY expert_id
 `
 
-func (q *Queries) CatalogConnectorLinks(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogConnectorLinks)
+type CatalogConnectorLinksParams struct {
+	AllResources bool
+	ExpertIds    []string
+}
+
+func (q *Queries) CatalogConnectorLinks(ctx context.Context, arg CatalogConnectorLinksParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogConnectorLinks, arg.AllResources, arg.ExpertIds)
 	if err != nil {
 		return nil, err
 	}
@@ -39,56 +43,164 @@ func (q *Queries) CatalogConnectorLinks(ctx context.Context) ([][]byte, error) {
 }
 
 const catalogConnectors = `-- name: CatalogConnectors :many
-SELECT
-    to_jsonb (t)
-FROM
-    connectors t
-WHERE
-    deleted_at IS NULL
+SELECT jsonb_build_object(
+    'id', t.id,
+    'ownership_type', t.ownership_type,
+    'owner_user_id', t.owner_user_id,
+    'enabled', t.enabled,
+    'revision', t.revision,
+    'name', t.name,
+    'description', t.description,
+    'name_i18n', t.name_i18n,
+    'description_i18n', t.description_i18n,
+    'authorization_mode', t.authorization_mode,
+    'authorization_method', t.authorization_method,
+    'auth_header_name', t.auth_header_name,
+    'config_revision', t.config_revision,
+    'connection_status', t.connection_status,
+    'icon_s3_key', t.icon_s3_key
+)
+FROM connectors t
+WHERE t.deleted_at IS NULL
+    AND ($1::boolean
+        OR t.id::text = ANY($2::text[]))
 `
 
-func (q *Queries) CatalogConnectors(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogConnectors)
+type CatalogConnectorsParams struct {
+	AllResources bool
+	ResourceIds  []string
+}
+
+func (q *Queries) CatalogConnectors(ctx context.Context, arg CatalogConnectorsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogConnectors, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil
+}
+
+const catalogConnectorsPage = `-- name: CatalogConnectorsPage :one
+WITH candidates AS (
+    SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
+    FROM connectors
+    WHERE $3::text = 'connector' AND deleted_at IS NULL
+), matching AS (
+    SELECT c.id
+    FROM candidates c
+    WHERE c.enabled
+        AND (c.ownership_type <> 'system' OR $4::boolean)
+        AND ((c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR c.id::text = ANY($6::text[]))
+        AND ($7::text IN ('', 'all')
+            OR ($7::text = 'team' AND c.ownership_type = 'system')
+            OR ($7::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR ($7::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
+        AND ($8::text = ''
+            OR strpos(lower(c.name || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.name_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0
+            OR strpos(lower(c.description || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.description_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0)
+        AND (COALESCE(cardinality($9::text[]), 0) = 0
+            OR ($3::text <> 'rule' AND EXISTS (
+                SELECT 1 FROM resource_tags rt JOIN tags t ON t.id = rt.tag_id
+                WHERE rt.resource_type = $3::text
+                    AND rt.resource_id = c.id AND t.deleted_at IS NULL
+                    AND t.id::text = ANY($9::text[])
+            )))
+)
+SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
+    LIMIT $2::integer OFFSET $1::integer)::text[] AS resource_ids,
+    (SELECT count(*) FROM matching)::bigint AS total_count
+`
+
+type CatalogConnectorsPageParams struct {
+	PageOffset   int32
+	PageSize     int32
+	ResourceType string
+	SystemAccess bool
+	UserID       string
+	GrantedIds   []string
+	OwnerFilter  string
+	SearchQuery  string
+	TagIds       []string
+}
+
+type CatalogConnectorsPageRow struct {
+	ResourceIds []string
+	TotalCount  int64
+}
+
+func (q *Queries) CatalogConnectorsPage(ctx context.Context, arg CatalogConnectorsPageParams) (CatalogConnectorsPageRow, error) {
+	row := q.db.QueryRow(ctx, catalogConnectorsPage,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.ResourceType,
+		arg.SystemAccess,
+		arg.UserID,
+		arg.GrantedIds,
+		arg.OwnerFilter,
+		arg.SearchQuery,
+		arg.TagIds,
+	)
+	var i CatalogConnectorsPageRow
+	err := row.Scan(&i.ResourceIds, &i.TotalCount)
+	return i, err
 }
 
 const catalogExperts = `-- name: CatalogExperts :many
-SELECT
-    to_jsonb (t)
-FROM
-    experts t
-WHERE
-    deleted_at IS NULL
+SELECT jsonb_build_object(
+    'id', t.id,
+    'ownership_type', t.ownership_type,
+    'owner_user_id', t.owner_user_id,
+    'enabled', t.enabled,
+    'revision', t.revision,
+    'name', t.name,
+    'description', t.description,
+    'name_i18n', t.name_i18n,
+    'description_i18n', t.description_i18n,
+    'prompt', t.prompt,
+    'avatar_s3_key', t.avatar_s3_key
+)
+FROM experts t
+WHERE t.deleted_at IS NULL
+    AND ($1::boolean
+        OR t.id::text = ANY($2::text[]))
 `
 
-func (q *Queries) CatalogExperts(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogExperts)
+type CatalogExpertsParams struct {
+	AllResources bool
+	ResourceIds  []string
+}
+
+func (q *Queries) CatalogExperts(ctx context.Context, arg CatalogExpertsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogExperts, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -96,17 +208,93 @@ func (q *Queries) CatalogExperts(ctx context.Context) ([][]byte, error) {
 	return items, nil
 }
 
-const catalogRuleLinks = `-- name: CatalogRuleLinks :many
-SELECT
-    to_jsonb (t)
-FROM
-    expert_rules t
-ORDER BY
-    expert_id
+const catalogExpertsPage = `-- name: CatalogExpertsPage :one
+WITH candidates AS (
+    SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
+    FROM experts
+    WHERE $3::text = 'expert' AND deleted_at IS NULL
+), matching AS (
+    SELECT c.id
+    FROM candidates c
+    WHERE c.enabled
+        AND (c.ownership_type <> 'system' OR $4::boolean)
+        AND ((c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR c.id::text = ANY($6::text[]))
+        AND ($7::text IN ('', 'all')
+            OR ($7::text = 'team' AND c.ownership_type = 'system')
+            OR ($7::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR ($7::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
+        AND ($8::text = ''
+            OR strpos(lower(c.name || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.name_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0
+            OR strpos(lower(c.description || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.description_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0)
+        AND (COALESCE(cardinality($9::text[]), 0) = 0
+            OR ($3::text <> 'rule' AND EXISTS (
+                SELECT 1 FROM resource_tags rt JOIN tags t ON t.id = rt.tag_id
+                WHERE rt.resource_type = $3::text
+                    AND rt.resource_id = c.id AND t.deleted_at IS NULL
+                    AND t.id::text = ANY($9::text[])
+            )))
+)
+SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
+    LIMIT $2::integer OFFSET $1::integer)::text[] AS resource_ids,
+    (SELECT count(*) FROM matching)::bigint AS total_count
 `
 
-func (q *Queries) CatalogRuleLinks(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogRuleLinks)
+type CatalogExpertsPageParams struct {
+	PageOffset   int32
+	PageSize     int32
+	ResourceType string
+	SystemAccess bool
+	UserID       string
+	GrantedIds   []string
+	OwnerFilter  string
+	SearchQuery  string
+	TagIds       []string
+}
+
+type CatalogExpertsPageRow struct {
+	ResourceIds []string
+	TotalCount  int64
+}
+
+func (q *Queries) CatalogExpertsPage(ctx context.Context, arg CatalogExpertsPageParams) (CatalogExpertsPageRow, error) {
+	row := q.db.QueryRow(ctx, catalogExpertsPage,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.ResourceType,
+		arg.SystemAccess,
+		arg.UserID,
+		arg.GrantedIds,
+		arg.OwnerFilter,
+		arg.SearchQuery,
+		arg.TagIds,
+	)
+	var i CatalogExpertsPageRow
+	err := row.Scan(&i.ResourceIds, &i.TotalCount)
+	return i, err
+}
+
+const catalogRuleLinks = `-- name: CatalogRuleLinks :many
+SELECT to_jsonb(t)
+FROM expert_rules t
+WHERE $1::boolean
+    OR expert_id::text = ANY($2::text[])
+ORDER BY expert_id
+`
+
+type CatalogRuleLinksParams struct {
+	AllResources bool
+	ExpertIds    []string
+}
+
+func (q *Queries) CatalogRuleLinks(ctx context.Context, arg CatalogRuleLinksParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogRuleLinks, arg.AllResources, arg.ExpertIds)
 	if err != nil {
 		return nil, err
 	}
@@ -126,27 +314,42 @@ func (q *Queries) CatalogRuleLinks(ctx context.Context) ([][]byte, error) {
 }
 
 const catalogRules = `-- name: CatalogRules :many
-SELECT
-    to_jsonb (t)
-FROM
-    rules t
-WHERE
-    deleted_at IS NULL
+SELECT jsonb_build_object(
+    'id', t.id,
+    'ownership_type', t.ownership_type,
+    'owner_user_id', t.owner_user_id,
+    'enabled', t.enabled,
+    'revision', t.revision,
+    'name', t.name,
+    'description', t.description,
+    'name_i18n', t.name_i18n,
+    'description_i18n', t.description_i18n,
+    'content', t.content
+)
+FROM rules t
+WHERE t.deleted_at IS NULL
+    AND ($1::boolean
+        OR t.id::text = ANY($2::text[]))
 `
 
-func (q *Queries) CatalogRules(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogRules)
+type CatalogRulesParams struct {
+	AllResources bool
+	ResourceIds  []string
+}
+
+func (q *Queries) CatalogRules(ctx context.Context, arg CatalogRulesParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogRules, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -154,17 +357,87 @@ func (q *Queries) CatalogRules(ctx context.Context) ([][]byte, error) {
 	return items, nil
 }
 
-const catalogSkillLinks = `-- name: CatalogSkillLinks :many
-SELECT
-    to_jsonb (t)
-FROM
-    expert_skills t
-ORDER BY
-    expert_id
+const catalogRulesPage = `-- name: CatalogRulesPage :one
+WITH candidates AS (
+    SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
+    FROM rules
+    WHERE $3::text = 'rule' AND deleted_at IS NULL
+), matching AS (
+    SELECT c.id
+    FROM candidates c
+    WHERE c.enabled
+        AND (c.ownership_type <> 'system' OR $4::boolean)
+        AND ((c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR c.id::text = ANY($6::text[]))
+        AND ($7::text IN ('', 'all')
+            OR ($7::text = 'team' AND c.ownership_type = 'system')
+            OR ($7::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR ($7::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
+        AND ($8::text = ''
+            OR strpos(lower(c.name || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.name_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0
+            OR strpos(lower(c.description || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.description_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0)
+        AND COALESCE(cardinality($9::text[]), 0) = 0
+)
+SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
+    LIMIT $2::integer OFFSET $1::integer)::text[] AS resource_ids,
+    (SELECT count(*) FROM matching)::bigint AS total_count
 `
 
-func (q *Queries) CatalogSkillLinks(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogSkillLinks)
+type CatalogRulesPageParams struct {
+	PageOffset   int32
+	PageSize     int32
+	ResourceType string
+	SystemAccess bool
+	UserID       string
+	GrantedIds   []string
+	OwnerFilter  string
+	SearchQuery  string
+	TagIds       []string
+}
+
+type CatalogRulesPageRow struct {
+	ResourceIds []string
+	TotalCount  int64
+}
+
+func (q *Queries) CatalogRulesPage(ctx context.Context, arg CatalogRulesPageParams) (CatalogRulesPageRow, error) {
+	row := q.db.QueryRow(ctx, catalogRulesPage,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.ResourceType,
+		arg.SystemAccess,
+		arg.UserID,
+		arg.GrantedIds,
+		arg.OwnerFilter,
+		arg.SearchQuery,
+		arg.TagIds,
+	)
+	var i CatalogRulesPageRow
+	err := row.Scan(&i.ResourceIds, &i.TotalCount)
+	return i, err
+}
+
+const catalogSkillLinks = `-- name: CatalogSkillLinks :many
+SELECT to_jsonb(t)
+FROM expert_skills t
+WHERE $1::boolean
+    OR expert_id::text = ANY($2::text[])
+ORDER BY expert_id
+`
+
+type CatalogSkillLinksParams struct {
+	AllResources bool
+	ExpertIds    []string
+}
+
+func (q *Queries) CatalogSkillLinks(ctx context.Context, arg CatalogSkillLinksParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogSkillLinks, arg.AllResources, arg.ExpertIds)
 	if err != nil {
 		return nil, err
 	}
@@ -184,27 +457,158 @@ func (q *Queries) CatalogSkillLinks(ctx context.Context) ([][]byte, error) {
 }
 
 const catalogSkills = `-- name: CatalogSkills :many
-SELECT
-    to_jsonb (t)
-FROM
-    skills t
-WHERE
-    deleted_at IS NULL
+SELECT jsonb_build_object(
+    'id', t.id,
+    'ownership_type', t.ownership_type,
+    'owner_user_id', t.owner_user_id,
+    'enabled', t.enabled,
+    'revision', t.revision,
+    'name', t.name,
+    'description', t.description,
+    'name_i18n', t.name_i18n,
+    'description_i18n', t.description_i18n,
+    'package_file_name', t.package_file_name,
+    'package_s3_key', t.package_s3_key,
+    'package_size_bytes', t.package_size_bytes,
+    'package_sha256', t.package_sha256,
+    'file_count', t.file_count
+)
+FROM skills t
+WHERE t.deleted_at IS NULL
+    AND ($1::boolean
+        OR t.id::text = ANY($2::text[]))
 `
 
-func (q *Queries) CatalogSkills(ctx context.Context) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, catalogSkills)
+type CatalogSkillsParams struct {
+	AllResources bool
+	ResourceIds  []string
+}
+
+func (q *Queries) CatalogSkills(ctx context.Context, arg CatalogSkillsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, catalogSkills, arg.AllResources, arg.ResourceIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const catalogSkillsPage = `-- name: CatalogSkillsPage :one
+WITH candidates AS (
+    SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
+    FROM skills
+    WHERE $3::text = 'skill' AND deleted_at IS NULL
+), matching AS (
+    SELECT c.id
+    FROM candidates c
+    WHERE c.enabled
+        AND (c.ownership_type <> 'system' OR $4::boolean)
+        AND ((c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR c.id::text = ANY($6::text[]))
+        AND ($7::text IN ('', 'all')
+            OR ($7::text = 'team' AND c.ownership_type = 'system')
+            OR ($7::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR ($7::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
+        AND ($8::text = ''
+            OR strpos(lower(c.name || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.name_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0
+            OR strpos(lower(c.description || ' ' || COALESCE((
+                SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
+                FROM jsonb_each(c.description_i18n) WHERE jsonb_typeof(value) = 'string'
+            ), '')), $8::text) > 0)
+        AND (COALESCE(cardinality($9::text[]), 0) = 0
+            OR ($3::text <> 'rule' AND EXISTS (
+                SELECT 1 FROM resource_tags rt JOIN tags t ON t.id = rt.tag_id
+                WHERE rt.resource_type = $3::text
+                    AND rt.resource_id = c.id AND t.deleted_at IS NULL
+                    AND t.id::text = ANY($9::text[])
+            )))
+)
+SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
+    LIMIT $2::integer OFFSET $1::integer)::text[] AS resource_ids,
+    (SELECT count(*) FROM matching)::bigint AS total_count
+`
+
+type CatalogSkillsPageParams struct {
+	PageOffset   int32
+	PageSize     int32
+	ResourceType string
+	SystemAccess bool
+	UserID       string
+	GrantedIds   []string
+	OwnerFilter  string
+	SearchQuery  string
+	TagIds       []string
+}
+
+type CatalogSkillsPageRow struct {
+	ResourceIds []string
+	TotalCount  int64
+}
+
+func (q *Queries) CatalogSkillsPage(ctx context.Context, arg CatalogSkillsPageParams) (CatalogSkillsPageRow, error) {
+	row := q.db.QueryRow(ctx, catalogSkillsPage,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.ResourceType,
+		arg.SystemAccess,
+		arg.UserID,
+		arg.GrantedIds,
+		arg.OwnerFilter,
+		arg.SearchQuery,
+		arg.TagIds,
+	)
+	var i CatalogSkillsPageRow
+	err := row.Scan(&i.ResourceIds, &i.TotalCount)
+	return i, err
+}
+
+const catalogTags = `-- name: CatalogTags :many
+SELECT rt.resource_id::text AS resource_id, t.id::text AS id, t.name
+FROM resource_tags rt JOIN tags t ON t.id = rt.tag_id
+WHERE rt.resource_type = $1::text
+    AND rt.resource_id::text = ANY($2::text[])
+    AND t.deleted_at IS NULL
+ORDER BY lower(t.name), t.id
+`
+
+type CatalogTagsParams struct {
+	ResourceType string
+	ResourceIds  []string
+}
+
+type CatalogTagsRow struct {
+	ResourceID string
+	ID         string
+	Name       string
+}
+
+func (q *Queries) CatalogTags(ctx context.Context, arg CatalogTagsParams) ([]CatalogTagsRow, error) {
+	rows, err := q.db.Query(ctx, catalogTags, arg.ResourceType, arg.ResourceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CatalogTagsRow{}
+	for rows.Next() {
+		var i CatalogTagsRow
+		if err := rows.Scan(&i.ResourceID, &i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

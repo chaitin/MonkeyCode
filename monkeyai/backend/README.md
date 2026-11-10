@@ -239,6 +239,10 @@ go test ./... -count=1
 
 各业务服务显式注册到 `internal/app`。`resource.CRUD` 接收各业务包的 sqlc Repository 和字段白名单，业务约束及关系事务由 `rule`、`skill`、`expert`、`mcp` 提供。Agent 按设置、模型、规则、技能、专家和连接器分别读取，各接口独立计算版本与 ETag。规则、技能、专家和连接器目录分别在 PostgreSQL Repeatable Read 视图中读取；某类资源读取失败只影响依赖它的请求，不返回伪造的空目录。
 
+资源列表先在 SQL 中确定可见、匹配筛选的分页 ID，再读取本页字段及专家关联资源；标签和独立凭证工具批量查询，共享连接器只在单个请求内复用，专家工具过滤不修改复用结果。
+
+列表和标签接口按用户、路径及查询条件保存有容量和时间上限的 ETag 映射，不缓存完整目录。每次条件请求仍在同一只读事务中扫描依赖表的 MVCC 行版本；状态未变化时提前返回 304，资源、授权、分组或凭证变化时重建响应。无刷新令牌的 OAuth 凭证到期会使映射失效。增加公开目录依赖时，须同步更新 `internal/agentconfig/cache.sql` 的状态指纹与时间边界。
+
 ## SQL 查询与代码生成
 
 生产查询维护在各业务包的 `query.sql` 中，使用 sqlc v1.30.0 生成 pgx/v5 的类型化调用。MCP 的 Provider 和 Connector CRUD 分别维护在 `provider.sql`、`connector.sql`，生成各自的 Repository。业务代码通过 `sqlc.New(pool)` 或 `sqlc.New(tx)` 使用查询；需要快照的读取继续使用 `database.Reader(ctx, pool)`。
