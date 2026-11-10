@@ -18,7 +18,9 @@ import (
 
 func TestProxyForwardsRequest(t *testing.T) {
 	var gotPath, gotQuery, gotAuthorization, gotAPIKey, gotXForwardedFor, gotBody string
+	var gotHeaders http.Header
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery
 		gotAuthorization = r.Header.Get("Authorization")
@@ -45,6 +47,14 @@ func TestProxyForwardsRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+	forwardedHeaders := map[string]string{
+		"X-Request-ID": "request-id",
+		"X-Session-ID": "legacy-session-id",
+		"Session-Id":   "session-id",
+	}
+	for header, value := range forwardedHeaders {
+		req.Header.Set(header, value)
+	}
 	recorder := httptest.NewRecorder()
 
 	proxy.ServeHTTP(recorder, req)
@@ -67,6 +77,11 @@ func TestProxyForwardsRequest(t *testing.T) {
 	if gotXForwardedFor != "" {
 		t.Fatalf("upstream x-forwarded-for = %q", gotXForwardedFor)
 	}
+	for header, want := range forwardedHeaders {
+		if got := gotHeaders.Get(header); got != want {
+			t.Errorf("upstream %s = %q, want %q", header, got, want)
+		}
+	}
 	if gotBody != body {
 		t.Fatalf("upstream body = %q", gotBody)
 	}
@@ -80,8 +95,11 @@ func (disabledSessionResolver) EnsureSession(context.Context, string, string, st
 
 func TestProxyIgnoresSessionWhenReportingDisabled(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-MAI-Session-ID") != "" || r.Header.Get("X-Session-ID") != "" {
+		if r.Header.Get("X-MAI-Session-ID") != "" {
 			t.Error("内部会话请求头不得透传上游")
+		}
+		if got := r.Header.Get("X-Session-ID"); got != "forwarded-session" {
+			t.Errorf("关闭上报不应剥离 X-Session-ID: %q", got)
 		}
 		_, _ = io.WriteString(w, `{"id":"chat_usage","usage":{"prompt_tokens":1}}`)
 	}))
@@ -93,6 +111,7 @@ func TestProxyIgnoresSessionWhenReportingDisabled(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5"}`))
 	req.Header.Set("Authorization", "Bearer runtime-secret")
 	req.Header.Set("X-MAI-Session-ID", "11111111-1111-4111-8111-111111111111")
+	req.Header.Set("X-Session-ID", "forwarded-session")
 	w := httptest.NewRecorder()
 	gateway.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
