@@ -457,6 +457,12 @@ export const ruRU = {
         "Удалить «{{model}}»? Это действие нельзя отменить.",
     },
     knowledgeBases: {
+      editorSaved: "Документ сохранён. Повторное обучение запущено.",
+      editorDiscard: "Выйти без сохранения изменений?",
+      editorUnsaved: "Несохранённые изменения. Автосохранение через 10 секунд",
+      editorSaving: "Автосохранение",
+      editorClean: "Сохранено",
+
       title: "Базы знаний",
       description:
         "Управляйте источниками знаний, которые агенты могут искать и использовать.",
@@ -474,11 +480,7 @@ export const ruRU = {
       descriptionPlaceholder: "Опишите содержимое этой базы знаний",
       tags: "Теги",
       tagsPlaceholder: "Выберите теги",
-      noTags: "Без тегов",
       authorizedUsers: "Пользователи с доступом",
-      readableUsers: "Пользователи с доступом на чтение",
-      writableUsers: "Пользователи с доступом на запись",
-      authorizationPlaceholder: "Выберите группы или пользователей",
       cancel: "Отмена",
       create: "Создать",
       save: "Сохранить изменения",
@@ -492,7 +494,9 @@ export const ruRU = {
         "Удалить «{{knowledgeBase}}» и всё её содержимое? Это действие нельзя отменить.",
       contentCount: "Всего документов: {{count}}",
       learnedCount: "Изучено {{learned}}/{{total}}",
-      noContent: "Нет материалов",
+      noAuthorizedUsers: "Группы или пользователи пока не авторизованы",
+      retrievalHybrid: "Гибридный (ключевые слова + векторы)",
+      retrievalLexical: "Лексический полнотекстовый поиск",
       manageContents: "Управлять материалами",
       viewContents: "Просмотреть материалы",
       back: "Назад к базам знаний",
@@ -509,7 +513,9 @@ export const ruRU = {
       textPlaceholder: "Введите текст для изучения",
       selectFile: "Выбрать файл",
       fileDescription:
-        "Можно выбрать несколько файлов TXT, Markdown, PDF, DOC и DOCX одновременно.",
+        "Можно выбрать несколько файлов TXT или Markdown одновременно.",
+      fileUnsupported: "Поддерживаются только файлы TXT и Markdown.",
+      fileEmpty: "Файл пуст.",
       addAndLearn: "Добавить и изучить",
       editContent: "Изменить текст",
       editContentTitle: "Изменить текстовый материал",
@@ -542,7 +548,6 @@ export const ruRU = {
       deleteContentTitle: "Удалить материал?",
       deleteContentDescription:
         "Удалить «{{content}}» из базы знаний? Это действие нельзя отменить.",
-      characterCount: "Символов: {{count}}",
     },
     skills: {
       title: "Навыки",

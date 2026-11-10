@@ -431,6 +431,12 @@ export const ar = {
         "هل تريد حذف «{{model}}»؟ لا يمكن التراجع عن هذا الإجراء.",
     },
     knowledgeBases: {
+      editorSaved: "تم حفظ المستند وبدء التعلم مجددًا.",
+      editorDiscard: "هل تريد المغادرة دون حفظ التغييرات؟",
+      editorUnsaved: "تغييرات غير محفوظة. سيتم الحفظ تلقائيًا بعد 10 ثوانٍ",
+      editorSaving: "جارٍ الحفظ التلقائي",
+      editorClean: "تم الحفظ",
+
       title: "قواعد المعرفة",
       description:
         "أدِر مصادر المعرفة التي يمكن للوكلاء البحث فيها والرجوع إليها.",
@@ -447,11 +453,7 @@ export const ar = {
       descriptionPlaceholder: "صِف محتوى قاعدة المعرفة هذه",
       tags: "الوسوم",
       tagsPlaceholder: "اختر الوسوم",
-      noTags: "بلا وسوم",
       authorizedUsers: "المستخدمون المصرح لهم",
-      readableUsers: "مستخدمو صلاحية القراءة",
-      writableUsers: "مستخدمو صلاحية الكتابة",
-      authorizationPlaceholder: "اختر مجموعات أو مستخدمين",
       cancel: "إلغاء",
       create: "إنشاء",
       save: "حفظ التغييرات",
@@ -465,7 +467,9 @@ export const ar = {
         "هل تريد حذف «{{knowledgeBase}}» وكل محتوياتها؟ لا يمكن التراجع عن هذا الإجراء.",
       contentCount: "إجمالي المستندات: {{count}}",
       learnedCount: "تم تعلم {{learned}}/{{total}}",
-      noContent: "لا يوجد محتوى",
+      noAuthorizedUsers: "لم يتم تفويض أي مجموعات أو مستخدمين بعد",
+      retrievalHybrid: "مختلط (كلمات مفتاحية + متجهات)",
+      retrievalLexical: "بحث نصي كامل بالكلمات المفتاحية",
       manageContents: "إدارة المحتوى",
       viewContents: "عرض المحتوى",
       back: "العودة إلى قواعد المعرفة",
@@ -481,8 +485,9 @@ export const ar = {
       contentTitlePlaceholder: "أدخل عنوانًا لهذا المحتوى",
       textPlaceholder: "أدخل المحتوى المعرفي المراد تعلمه",
       selectFile: "اختيار ملف",
-      fileDescription:
-        "يمكن اختيار عدة ملفات TXT وMarkdown وPDF وDOC وDOCX في وقت واحد.",
+      fileDescription: "يمكن اختيار عدة ملفات TXT أو Markdown في وقت واحد.",
+      fileUnsupported: "يتم دعم ملفات TXT وMarkdown فقط.",
+      fileEmpty: "الملف فارغ.",
       addAndLearn: "إضافة وتعلّم",
       editContent: "تعديل النص",
       editContentTitle: "تعديل المحتوى النصي",
@@ -514,7 +519,6 @@ export const ar = {
       deleteContentTitle: "حذف المحتوى؟",
       deleteContentDescription:
         "هل تريد حذف «{{content}}» من قاعدة المعرفة؟ لا يمكن التراجع عن هذا الإجراء.",
-      characterCount: "{{count}} حرفًا",
     },
     skills: {
       title: "المهارات",

@@ -91,7 +91,7 @@ export function AppSidebar({
         },
         {
           title: t("pages.knowledgeBases.title"),
-          url: CONSOLE_ROUTES.knowledgeBases,
+          url: CONSOLE_ROUTES.kb,
         },
         {
           title: t("pages.skills.title"),

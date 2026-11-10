@@ -20,3 +20,22 @@ func TestPageParamsWithLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestPageValuesWithLimit(t *testing.T) {
+	page, size, err := PageValuesWithLimit(2, 50, 100)
+	if err != nil || page != 2 || size != 50 {
+		t.Fatalf("page=%d size=%d err=%v", page, size, err)
+	}
+	for _, tc := range []struct {
+		page, size, max int
+	}{
+		{page: 0, size: 20, max: 100},
+		{page: 1, size: 0, max: 100},
+		{page: 1, size: 101, max: 100},
+		{page: 1000001, size: 20, max: 100},
+	} {
+		if _, _, err := PageValuesWithLimit(tc.page, tc.size, tc.max); err == nil {
+			t.Fatalf("应拒绝无效分页: page=%d size=%d max=%d", tc.page, tc.size, tc.max)
+		}
+	}
+}

@@ -460,6 +460,12 @@ export const deDE = {
         "„{{model}}“ löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     },
     knowledgeBases: {
+      editorSaved: "Dokument gespeichert. Erneutes Lernen gestartet.",
+      editorDiscard: "Mit ungespeicherten Änderungen verlassen?",
+      editorUnsaved: "Ungespeicherte Änderungen. Automatisches Speichern in 10 Sekunden",
+      editorSaving: "Wird automatisch gespeichert",
+      editorClean: "Gespeichert",
+
       title: "Wissensdatenbanken",
       description:
         "Verwalten Sie Wissensressourcen, die Agenten durchsuchen und nutzen können.",
@@ -477,11 +483,7 @@ export const deDE = {
       descriptionPlaceholder: "Inhalt dieser Wissensdatenbank beschreiben",
       tags: "Tags",
       tagsPlaceholder: "Tags auswählen",
-      noTags: "Keine Tags",
       authorizedUsers: "Berechtigte Benutzer",
-      readableUsers: "Benutzer mit Lesezugriff",
-      writableUsers: "Benutzer mit Schreibzugriff",
-      authorizationPlaceholder: "Gruppen oder Benutzer auswählen",
       cancel: "Abbrechen",
       create: "Erstellen",
       save: "Änderungen speichern",
@@ -495,7 +497,9 @@ export const deDE = {
         "„{{knowledgeBase}}“ und alle Inhalte löschen? Dies kann nicht rückgängig gemacht werden.",
       contentCount: "Insgesamt {{count}} Dokumente",
       learnedCount: "{{learned}}/{{total}} gelernt",
-      noContent: "Keine Inhalte",
+      noAuthorizedUsers: "Noch keine Gruppen oder Benutzer autorisiert",
+      retrievalHybrid: "Hybrid (Stichwörter + Vektoren)",
+      retrievalLexical: "Lexikalische Volltextsuche",
       manageContents: "Inhalte verwalten",
       viewContents: "Inhalte anzeigen",
       back: "Zurück zu Wissensdatenbanken",
@@ -512,7 +516,9 @@ export const deDE = {
       textPlaceholder: "Zu lernenden Wissensinhalt eingeben",
       selectFile: "Datei auswählen",
       fileDescription:
-        "Mehrere TXT-, Markdown-, PDF-, DOC- und DOCX-Dateien gleichzeitig auswählen.",
+        "Mehrere TXT- oder Markdown-Dateien gleichzeitig auswählen.",
+      fileUnsupported: "Nur TXT- und Markdown-Dateien werden unterstützt.",
+      fileEmpty: "Die Datei ist leer.",
       addAndLearn: "Hinzufügen und lernen",
       editContent: "Text bearbeiten",
       editContentTitle: "Textinhalt bearbeiten",
@@ -546,7 +552,6 @@ export const deDE = {
       deleteContentTitle: "Inhalt löschen?",
       deleteContentDescription:
         "„{{content}}“ aus dieser Wissensdatenbank löschen? Dies kann nicht rückgängig gemacht werden.",
-      characterCount: "{{count}} Zeichen",
     },
     skills: {
       title: "Fähigkeiten",

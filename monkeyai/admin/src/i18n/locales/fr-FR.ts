@@ -463,6 +463,12 @@ export const frFR = {
         "Supprimer « {{model}} » ? Cette action est irréversible.",
     },
     knowledgeBases: {
+      editorSaved: "Document enregistré. Réapprentissage lancé.",
+      editorDiscard: "Quitter sans enregistrer les modifications ?",
+      editorUnsaved: "Modifications non enregistrées. Enregistrement automatique dans 10 secondes",
+      editorSaving: "Enregistrement automatique",
+      editorClean: "Enregistré",
+
       title: "Bases de connaissances",
       description:
         "Gérez les ressources de connaissances que les agents peuvent rechercher et consulter.",
@@ -480,11 +486,7 @@ export const frFR = {
       descriptionPlaceholder: "Décrivez le contenu de cette base",
       tags: "Étiquettes",
       tagsPlaceholder: "Sélectionner des étiquettes",
-      noTags: "Aucune étiquette",
       authorizedUsers: "Utilisateurs autorisés",
-      readableUsers: "Utilisateurs avec accès en lecture",
-      writableUsers: "Utilisateurs avec accès en écriture",
-      authorizationPlaceholder: "Sélectionnez des groupes ou utilisateurs",
       cancel: "Annuler",
       create: "Créer",
       save: "Enregistrer",
@@ -498,7 +500,9 @@ export const frFR = {
         "Supprimer « {{knowledgeBase}} » et tout son contenu ? Cette action est irréversible.",
       contentCount: "{{count}} documents au total",
       learnedCount: "{{learned}}/{{total}} appris",
-      noContent: "Aucun contenu",
+      noAuthorizedUsers: "Aucun groupe ni utilisateur autorisé pour l’instant",
+      retrievalHybrid: "Hybride (mots-clés + vecteurs)",
+      retrievalLexical: "Recherche lexicale plein texte",
       manageContents: "Gérer le contenu",
       viewContents: "Voir le contenu",
       back: "Retour aux bases",
@@ -515,7 +519,10 @@ export const frFR = {
       textPlaceholder: "Saisissez le contenu à apprendre",
       selectFile: "Sélectionner un fichier",
       fileDescription:
-        "Sélectionnez plusieurs fichiers TXT, Markdown, PDF, DOC et DOCX à la fois.",
+        "Sélectionnez plusieurs fichiers TXT ou Markdown à la fois.",
+      fileUnsupported:
+        "Seuls les fichiers TXT et Markdown sont pris en charge.",
+      fileEmpty: "Le fichier est vide.",
       addAndLearn: "Ajouter et apprendre",
       editContent: "Modifier le texte",
       editContentTitle: "Modifier le contenu texte",
@@ -547,7 +554,6 @@ export const frFR = {
       deleteContentTitle: "Supprimer le contenu ?",
       deleteContentDescription:
         "Supprimer « {{content}} » de cette base ? Cette action est irréversible.",
-      characterCount: "{{count}} caractères",
     },
     skills: {
       title: "Compétences",

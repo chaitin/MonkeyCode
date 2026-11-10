@@ -5561,6 +5561,280 @@ paths:
           description: 需要管理员权限
         '503':
           description: 设备清单暂不可用
+  /api/admin/v1/kb:
+    get:
+      summary: 分页查询知识库
+      description: 仅返回 ownership_type 对应的系统或用户知识库；q 对名称和描述做不区分大小写的包含匹配。向量模型可选，未配置时仅启用 lexical 全文检索。
+      parameters:
+        - {name: ownership_type, in: query, schema: {type: string, enum: [system, user]}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        '200':
+          description: 知识库列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Kb'}}
+                  next_cursor: {type: string}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+    post:
+      summary: 创建知识库
+      description: 后端自动选择可用的系统 embedding 模型；存在可用模型时自动启用向量检索，否则仅使用全文检索。无需配置知识库向量模型。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbInput'}
+      responses:
+        '200':
+          description: 已创建
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Kb'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+  /api/admin/v1/kb/{id}:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    get:
+      summary: 读取知识库详情
+      responses:
+        '200':
+          description: 知识库详情
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Kb'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    put:
+      summary: 更新知识库
+      description: 更新名称、描述、标签和 fusion_config。向量模型由后端自动选择，学习时重新检查可用性，不作为知识库配置项。
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbInput'}
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Kb'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+    delete:
+      summary: 删除知识库
+      description: 业务层级联硬删除文档与全部 chunk；不依赖数据库外键。
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '204': {description: 已删除}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+  /api/admin/v1/kb/{id}/enabled:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    patch:
+      summary: 启用或停用知识库
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: {type: boolean}
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Kb'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+  /api/admin/v1/kb/search:
+    post:
+      summary: 检索知识库分片
+      description: 检索通道由知识库绑定的可用向量模型自动决定。绑定且维度有效时执行 lexical+vector weighted RRF；未绑定时只执行 lexical；向量通道运行时失败时该知识库降级为 lexical 并返回 degraded。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbSearchInput'}
+      responses:
+        '200':
+          description: 检索响应，包含实际通道、融合参数、降级与告警
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbSearchResponse'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+  /api/admin/v1/kb/{id}/embedding-model/switch:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {$ref: '#/components/parameters/IfMatch'}
+    post:
+      summary: 切换或解绑知识库向量模型
+      deprecated: true
+      description: 目标模型必须可用且与当前模型不同。model_id 为空时清空绑定和历史向量，后台同步会将该知识库视为未绑定并自动重新选择可用向量模型，不提供关闭向量检索的持久配置项；非空时更新模型、清空旧向量并创建 rebuild_model 异步任务。全文检索始终执行。旧模型向量在事务提交前全部清空，不会继续参与检索。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                embedding_model_id: {type: [string, 'null'], format: uuid, description: 首选字段；null 表示解绑并清空向量，后续同步会自动重新绑定可用模型。}
+                model_id: {type: string, format: uuid, deprecated: true, description: 兼容旧调用；embedding_model_id 优先。}
+      responses:
+        '200': {description: 已更新并创建向量重建任务, content: {application/json: {schema: {$ref: '#/components/schemas/Kb'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+        '428': {$ref: '#/components/responses/ResourceError428'}
+  /api/admin/v1/kb/{id}/index/rebuild:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {$ref: '#/components/parameters/IfMatch'}
+    post:
+      summary: 重建知识库索引
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation]
+              properties:
+                operation:
+                  type: string
+                  enum: [learn, relearn, rebuild_parse, rebuild_lexical, rebuild_vector, rebuild_model]
+                model_id: {type: string, format: uuid, description: 仅 rebuild_model 使用}
+      responses:
+        '202': {description: 已进入索引任务队列, content: {application/json: {schema: {$ref: '#/components/schemas/Kb'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '409': {$ref: '#/components/responses/ResourceError409'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+        '428': {$ref: '#/components/responses/ResourceError428'}
+  /api/admin/v1/kb/{id}/documents:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    get:
+      summary: 查询知识库文档
+      responses:
+        '200':
+          description: 文档列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/KbDocument'}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    post:
+      summary: 添加并学习文档
+      description: 文档必须属于路径中的知识库。提交后立即返回 pending 文档，并创建异步学习任务完成切分、全文索引和可选向量写入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentInput'}
+      responses:
+        '202':
+          description: 已创建并进入学习队列
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbDocument'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/{documentId}:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 读取文档
+      responses:
+        '200':
+          description: 文档详情
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbDocument'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    put:
+      summary: 更新文档并重新学习
+      description: 保留文档所属知识库边界，取消旧学习任务并创建 relearn 异步任务；响应文档状态为 pending。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentInput'}
+      responses:
+        '202':
+          description: 已更新并进入重新学习队列
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbDocument'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+    delete:
+      summary: 删除文档
+      description: 取消活跃学习任务，并硬删除该文档及其 chunk。
+      responses:
+        '204': {description: 已删除}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/{documentId}/retry:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      summary: 重试文档学习
+      responses:
+        '202':
+          description: 已重置状态并进入学习队列
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbDocument'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/{documentId}/chunks:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: 查询文档分片
+      responses:
+        '200':
+          description: 分片列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/KbChunk'}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
 components:
   securitySchemes:
     BrowserSession:
@@ -8664,3 +8938,174 @@ components:
       - transport
       - authentication
       - required_scope
+    KbInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string}
+        enabled: {type: boolean}
+        fusion_config: {$ref: '#/components/schemas/KbFusionConfig'}
+        tag_ids: {type: array, items: {type: string, format: uuid}}
+        grants:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id: {type: string, format: uuid}
+              group_id: {type: string, format: uuid}
+              all_users: {type: boolean}
+              usage_requirement:
+                type: string
+                enum: [optional]
+                default: optional
+                description: 知识库授权仅支持 optional；required 仅用于系统规则。
+    Kb:
+      type: object
+      required: [id, name, description, ownership_type, enabled, revision, embedding_model_id, embedding_dimension, fusion_config, embedding_configured, capabilities, index_job_summary, document_count, learned_count, tags, grants, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        ownership_type: {type: string, enum: [system, user]}
+        enabled: {type: boolean}
+        revision: {type: integer}
+        embedding_model_id: {type: [string, 'null'], format: uuid}
+        embedding_dimension: {type: [integer, 'null']}
+        fusion_config: {$ref: '#/components/schemas/KbFusionConfig'}
+        embedding_configured: {type: boolean}
+        capabilities: {$ref: '#/components/schemas/KbIndexCapabilities'}
+        index_job_summary: {$ref: '#/components/schemas/KbIndexJobSummary'}
+        document_count: {type: integer}
+        learned_count: {type: integer}
+        tags: {type: array, items: {type: object}}
+        grants: {type: array, items: {type: object}}
+        notice: {type: string, description: 模型切换等操作返回的提示信息。}
+        updated_at: {type: string, format: date-time}
+    KbDocumentInput:
+      type: object
+      additionalProperties: false
+      required: [title, content]
+      properties:
+        title: {type: string, minLength: 1}
+        source_type: {type: string, enum: [text, file]}
+        content: {type: string}
+        file_name: {type: string}
+        mime_type: {type: string}
+        size_bytes: {type: integer, minimum: 0}
+    KbDocument:
+      type: object
+      required: [id, kb_id, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        kb_id: {type: string, format: uuid}
+        title: {type: string}
+        source_type: {type: string, enum: [text, file]}
+        content: {type: string}
+        file_name: {type: [string, 'null']}
+        mime_type: {type: [string, 'null']}
+        size_bytes: {type: integer}
+        status: {type: string, enum: [pending, learning, learned, failed]}
+        error_message: {type: [string, 'null']}
+        chunk_count: {type: integer}
+        revision: {type: integer}
+        learned_at: {type: [string, 'null'], format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    KbChunk:
+      type: object
+      required: [chunk_id, kb_id, document_id, chunk_index, content]
+      properties:
+        chunk_id: {type: string, format: uuid}
+        kb_id: {type: string, format: uuid}
+        document_id: {type: string, format: uuid}
+        chunk_index: {type: integer}
+        content: {type: string}
+        token_count: {type: [integer, 'null']}
+        has_vector: {type: boolean}
+        embedding_model_id: {type: [string, 'null'], format: uuid}
+        heading_path: {type: [string, 'null']}
+        page_no: {type: [integer, 'null']}
+        source_url: {type: [string, 'null']}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    KbSearchInput:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        kb_ids: {type: array, maxItems: 50, items: {type: string, format: uuid}}
+        query: {type: string, minLength: 1}
+        top_k: {type: integer, minimum: 1, maximum: 20, default: 8}
+        filters: {type: object, additionalProperties: true, description: 当前版本保留字段，暂不参与过滤。}
+    KbSearchResult:
+      type: object
+      required: [kb_id, document_id, chunk_id, chunk_index, content, title, score, retrieval_source, citation]
+      properties:
+        kb_id: {type: string, format: uuid}
+        document_id: {type: string, format: uuid}
+        chunk_id: {type: string, format: uuid}
+        chunk_index: {type: integer}
+        content: {type: string}
+        title: {type: string}
+        score: {type: number}
+        retrieval_source: {type: string, enum: [lexical, vector, both]}
+        citation: {$ref: '#/components/schemas/KbCitation'}
+    KbFusionConfig:
+      type: object
+      additionalProperties: false
+      required: [type, k, weights]
+      properties:
+        type: {type: string, enum: [weighted_rrf]}
+        k: {type: integer, minimum: 1, default: 60}
+        weights:
+          type: object
+          required: [lexical, vector]
+          additionalProperties: false
+          properties:
+            lexical: {type: number, minimum: 0, default: 0.3}
+            vector: {type: number, minimum: 0, default: 0.7}
+    KbIndexCapabilities:
+      type: object
+      additionalProperties: false
+      required: [search_modes, channels, embedding_configured]
+      properties:
+        search_modes: {type: array, items: {type: string, enum: [lexical, hybrid]}}
+        channels: {type: array, items: {type: string, enum: [lexical, vector]}}
+        embedding_configured: {type: boolean}
+    KbIndexJobSummary:
+      type: object
+      additionalProperties: false
+      required: [pending, running, failed, by_operation]
+      properties:
+        pending: {type: integer}
+        running: {type: integer}
+        failed: {type: integer}
+        by_operation:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {type: integer}
+    KbCitation:
+      type: object
+      additionalProperties: false
+      required: [heading_path, page_no, source_url]
+      properties:
+        heading_path: {type: [string, 'null']}
+        page_no: {type: [integer, 'null']}
+        source_url: {type: [string, 'null']}
+    KbSearchResponse:
+      type: object
+      required: [query, retrieval_mode, channels_used, fusion, degraded, warnings, items]
+      properties:
+        query: {type: string}
+        retrieval_mode: {type: string, enum: [lexical, hybrid, vector]}
+        channels_used: {type: array, items: {type: string, enum: [lexical, vector]}}
+        fusion:
+          type: object
+          description: 单库或参数一致时为 weighted_rrf 配置；不一致时返回 k_by_kb 与 weights_by_kb。
+          additionalProperties: true
+        degraded: {type: boolean}
+        warnings: {type: array, items: {type: string}}
+        items: {type: array, items: {$ref: '#/components/schemas/KbSearchResult'}}

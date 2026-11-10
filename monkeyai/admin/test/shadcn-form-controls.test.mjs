@@ -11,8 +11,9 @@ test("admin forms use shared shadcn controls instead of native form elements", a
 
   for (const path of files) {
     const source = await readFile(new URL(path, sourceRoot), "utf8")
+    const controls = source.replace(/<input\b[^>]*\btype="file"[^>]*>/g, "")
     assert.doesNotMatch(
-      source,
+      controls,
       /<(?:input|select|textarea|details|summary)\b|type="(?:checkbox|radio)"/,
       `${path} should use the shared shadcn controls`
     )

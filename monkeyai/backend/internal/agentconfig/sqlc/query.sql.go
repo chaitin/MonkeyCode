@@ -96,32 +96,38 @@ WITH candidates AS (
     SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
     FROM connectors
     WHERE $3::text = 'connector' AND deleted_at IS NULL
+    UNION ALL
+    SELECT (builtin ->> 'id')::uuid, builtin ->> 'ownership_type',
+        (builtin ->> 'owner_user_id')::uuid, builtin ->> 'name', builtin ->> 'description',
+        builtin -> 'name_i18n', builtin -> 'description_i18n', TRUE
+    FROM (SELECT $4::jsonb AS builtin) b
+    WHERE NULLIF($5::text, '') IS NOT NULL
 ), matching AS (
     SELECT c.id
     FROM candidates c
     WHERE c.enabled
-        AND (c.ownership_type <> 'system' OR $4::boolean)
+        AND (c.ownership_type <> 'system' OR $6::boolean)
         AND ((c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
-            OR c.id::text = ANY($6::text[]))
-        AND ($7::text IN ('', 'all')
-            OR ($7::text = 'team' AND c.ownership_type = 'system')
-            OR ($7::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
-            OR ($7::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
-        AND ($8::text = ''
+            OR c.id::text = ANY($7::text[]))
+        AND ($8::text IN ('', 'all')
+            OR ($8::text = 'team' AND c.ownership_type = 'system')
+            OR ($8::text = 'mine' AND c.ownership_type = 'user' AND c.owner_user_id::text = $5::text)
+            OR ($8::text = 'shared' AND c.ownership_type = 'user' AND c.owner_user_id::text <> $5::text))
+        AND ($9::text = ''
             OR strpos(lower(c.name || ' ' || COALESCE((
                 SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
                 FROM jsonb_each(c.name_i18n) WHERE jsonb_typeof(value) = 'string'
-            ), '')), $8::text) > 0
+            ), '')), $9::text) > 0
             OR strpos(lower(c.description || ' ' || COALESCE((
                 SELECT string_agg(value #>> '{}', ' ' ORDER BY key COLLATE "C")
                 FROM jsonb_each(c.description_i18n) WHERE jsonb_typeof(value) = 'string'
-            ), '')), $8::text) > 0)
-        AND (COALESCE(cardinality($9::text[]), 0) = 0
+            ), '')), $9::text) > 0)
+        AND (COALESCE(cardinality($10::text[]), 0) = 0
             OR ($3::text <> 'rule' AND EXISTS (
                 SELECT 1 FROM resource_tags rt JOIN tags t ON t.id = rt.tag_id
                 WHERE rt.resource_type = $3::text
                     AND rt.resource_id = c.id AND t.deleted_at IS NULL
-                    AND t.id::text = ANY($9::text[])
+                    AND t.id::text = ANY($10::text[])
             )))
 )
 SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
@@ -130,15 +136,16 @@ SELECT ARRAY(SELECT id::text FROM matching ORDER BY id
 `
 
 type CatalogConnectorsPageParams struct {
-	PageOffset   int32
-	PageSize     int32
-	ResourceType string
-	SystemAccess bool
-	UserID       string
-	GrantedIds   []string
-	OwnerFilter  string
-	SearchQuery  string
-	TagIds       []string
+	PageOffset       int32
+	PageSize         int32
+	ResourceType     string
+	BuiltinConnector []byte
+	UserID           string
+	SystemAccess     bool
+	GrantedIds       []string
+	OwnerFilter      string
+	SearchQuery      string
+	TagIds           []string
 }
 
 type CatalogConnectorsPageRow struct {
@@ -151,8 +158,9 @@ func (q *Queries) CatalogConnectorsPage(ctx context.Context, arg CatalogConnecto
 		arg.PageOffset,
 		arg.PageSize,
 		arg.ResourceType,
-		arg.SystemAccess,
+		arg.BuiltinConnector,
 		arg.UserID,
+		arg.SystemAccess,
 		arg.GrantedIds,
 		arg.OwnerFilter,
 		arg.SearchQuery,

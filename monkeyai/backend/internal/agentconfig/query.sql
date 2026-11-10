@@ -300,6 +300,12 @@ WITH candidates AS (
     SELECT id, ownership_type, owner_user_id, name, description, name_i18n, description_i18n, enabled
     FROM connectors
     WHERE sqlc.arg(resource_type)::text = 'connector' AND deleted_at IS NULL
+    UNION ALL
+    SELECT (builtin ->> 'id')::uuid, builtin ->> 'ownership_type',
+        (builtin ->> 'owner_user_id')::uuid, builtin ->> 'name', builtin ->> 'description',
+        builtin -> 'name_i18n', builtin -> 'description_i18n', TRUE
+    FROM (SELECT sqlc.arg(builtin_connector)::jsonb AS builtin) b
+    WHERE NULLIF(sqlc.arg(user_id)::text, '') IS NOT NULL
 ), matching AS (
     SELECT c.id
     FROM candidates c

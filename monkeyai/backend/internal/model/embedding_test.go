@@ -2,8 +2,30 @@ package model
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
+
+func TestEmbedTextRejectsDisabledModel(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"data":[{"embedding":[1,2,3]}]}`))
+	}))
+	defer upstream.Close()
+	repository := &repositoryStub{models: []Model{{
+		ID: "disabled", Kind: KindEmbedding, BaseURL: upstream.URL,
+		APIKey: "secret", Enabled: false,
+	}}}
+	if _, err := NewService(repository).EmbedText(t.Context(), "disabled", "query"); err == nil {
+		t.Fatal("disabled model was accepted")
+	}
+	if calls.Load() != 0 {
+		t.Fatal("disabled model sent an upstream request")
+	}
+}
 
 func embeddingInput() SaveInput {
 	return SaveInput{
@@ -52,6 +74,27 @@ func TestCreateEmbeddingModelDefaults(t *testing.T) {
 	item, err := embeddingService(&repositoryStub{}, 1024).Create(t.Context(), "admin-1", input)
 	if err != nil || item.Provider != ProviderPassthrough || item.CreditMultiplier != 1 {
 		t.Fatalf("向量模型默认值错误: %+v, %v", item, err)
+	}
+}
+
+func TestEmbeddingModelChangesNotifyKnowledgeBases(t *testing.T) {
+	var calls atomic.Int32
+	service := embeddingService(&repositoryStub{}, 1024).WithEmbeddingChangeHook(func(context.Context) error {
+		calls.Add(1)
+		return nil
+	})
+	item, err := service.Create(t.Context(), "admin-1", embeddingInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetEnabled(t.Context(), item.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(t.Context(), item.ID); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("embedding 变更通知次数 = %d，预期 3", calls.Load())
 	}
 }
 

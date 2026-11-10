@@ -11,7 +11,7 @@ export const CONSOLE_ROUTES = {
   resourceAnalysis: "/console/statistics/session-reporting/resources",
   clientAnalysis: "/console/statistics/session-reporting/clients",
   models: "/console/resources/models",
-  knowledgeBases: "/console/resources/knowledge-bases",
+  kb: "/console/resources/kb",
   skills: "/console/resources/skills",
   experts: "/console/resources/experts",
   tools: "/console/resources/tools",
@@ -71,7 +71,7 @@ export const CONSOLE_PAGES = [
     descriptionKey: "pages.models.description",
   },
   {
-    path: CONSOLE_ROUTES.knowledgeBases,
+    path: CONSOLE_ROUTES.kb,
     sectionKey: "sections.aiResources",
     sectionPath: CONSOLE_ROUTES.models,
     titleKey: "pages.knowledgeBases.title",
@@ -159,6 +159,15 @@ export const CONSOLE_PAGES = [
 export function getConsolePage(pathname: string) {
   return (
     CONSOLE_PAGES.find((page) => page.path === pathname) ??
+    (pathname.startsWith(`${CONSOLE_ROUTES.kb}/`)
+      ? {
+          path: pathname,
+          sectionKey: "sections.aiResources",
+          sectionPath: CONSOLE_ROUTES.kb,
+          titleKey: "pages.knowledgeBases.preview",
+          descriptionKey: "pages.knowledgeBases.description",
+        }
+      : undefined) ??
     (pathname.startsWith(CONSOLE_ROUTES.sessionDetail.replace(":sessionId", ""))
       ? {
           path: pathname,

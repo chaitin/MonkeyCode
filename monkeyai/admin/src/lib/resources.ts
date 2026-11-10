@@ -134,7 +134,7 @@ export function saveResource(path: string, body: unknown, revision?: number) {
   })
 }
 export function savePackageGrants(
-  kind: "skill" | "rule" | "connector" | "expert",
+  kind: "skill" | "rule" | "connector" | "expert" | "kb",
   resource: Pick<ResourceRow, "id" | "revision" | "grants">,
   authorization: AuthorizationSelection,
   required = false

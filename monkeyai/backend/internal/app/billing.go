@@ -13,6 +13,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
@@ -37,6 +38,7 @@ type applicationHandler struct {
 	relay           *relay.Service
 	feedback        *feedback.Service
 	connectors      *mcp.Service
+	knowledgeBases  *kb.Service
 	resourceImports *resourceimport.Service
 }
 type modelBilling struct{ service *billing.Service }

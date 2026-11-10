@@ -90,20 +90,7 @@ func Fail(ctx context.Context, w http.ResponseWriter, err error) {
 		logging.Expected(ctx)
 		return
 	}
-	var e *Error
-	var pe *pgconn.PgError
-	if !errors.As(err, &e) {
-		switch {
-		case errors.Is(err, pgx.ErrNoRows):
-			e = NotFound
-		case errors.As(err, &pe) && pe.Code == "23505":
-			e = &Error{Status: 409, Code: "name_conflict", Message: "名称或关联已存在"}
-		case errors.As(err, &pe) && (pe.Code == "23503" || pe.Code == "22P02" || pe.Code == "23514"):
-			e = &Error{Status: 400, Code: "invalid_reference", Message: "字段或关联对象无效"}
-		default:
-			e = &Error{Status: 500, Code: "resource_error", Message: "资源操作失败"}
-		}
-	}
+	e := AsError(err)
 	if e.Status >= 500 && !logging.Diagnosed(ctx) && !logging.IsExpected(ctx) {
 		event := "resource.operation.failed"
 		if _, ok := logging.ContextField(ctx, "upload_id"); ok {
@@ -119,6 +106,25 @@ func Fail(ctx context.Context, w http.ResponseWriter, err error) {
 	body := web.Body(ctx, e.Code, e.Message)
 	body["references"] = e.References
 	JSON(ctx, w, e.Status, Object{"error": body})
+}
+
+// AsError 将数据库和后端错误归一化为对外的资源错误。
+func AsError(err error) *Error {
+	var e *Error
+	var pe *pgconn.PgError
+	if !errors.As(err, &e) {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			e = NotFound
+		case errors.As(err, &pe) && pe.Code == "23505":
+			e = &Error{Status: 409, Code: "name_conflict", Message: "名称或关联已存在"}
+		case errors.As(err, &pe) && (pe.Code == "23503" || pe.Code == "22P02" || pe.Code == "23514"):
+			e = &Error{Status: 400, Code: "invalid_reference", Message: "字段或关联对象无效"}
+		default:
+			e = &Error{Status: 500, Code: "resource_error", Message: "资源操作失败"}
+		}
+	}
+	return e
 }
 func Decode(w http.ResponseWriter, r *http.Request, v any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -243,6 +249,14 @@ func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any,
 	}
 	return nil
 }
+
+func DeleteRelations(ctx context.Context, q Queryer, kind, id string) error {
+	if _, err := sqlc.New(q).DeleteGrants(ctx, sqlc.DeleteGrantsParams{ResourceType: kind, ResourceID: id}); err != nil {
+		return err
+	}
+	return sqlc.New(q).RemoveResourceTags(ctx, sqlc.RemoveResourceTagsParams{ResourceType: kind, ResourceID: id})
+}
+
 func Audit(ctx context.Context, tx pgx.Tx, actor, kind, id, action string) error {
 	category := "resource"
 	if kind == "group" {
@@ -268,6 +282,8 @@ type Definition struct {
 	Decorate        func(context.Context, Queryer, Object) error
 	UserDecorate    func(Object)
 	References      func(context.Context, pgx.Tx, string) ([]Object, error)
+	AfterSave       func(context.Context, string, Object, Object) error
+	DeleteFunc      func(context.Context, string, string, string) error
 }
 type CRUD struct {
 	Store *Store
@@ -321,7 +337,7 @@ func (c *CRUD) decorate(ctx context.Context, q Queryer, o Object) (Object, error
 
 		o["user"] = users[owner]
 	}
-	if c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule" {
+	if c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule" || c.Def.Kind == "kb" {
 		o["tags"], err = Tags(ctx, q, c.Def.Kind, o.String("id"))
 		if err != nil {
 			return nil, err
@@ -463,7 +479,7 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 			return nil, err
 		}
 	}
-	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule") {
+	if raw, ok := in["tag_ids"]; ok && (c.Def.Kind == "expert" || c.Def.Kind == "connector" || c.Def.Kind == "rule" || c.Def.Kind == "kb") {
 		if err = SaveTags(ctx, tx, c.Def.Kind, id, actor, raw); err != nil {
 			return nil, err
 		}
@@ -473,6 +489,11 @@ func (c *CRUD) save(ctx context.Context, actor, id, match string, in Object, per
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
+	}
+	if c.Def.AfterSave != nil {
+		if err = c.Def.AfterSave(ctx, id, in, old); err != nil {
+			return nil, err
+		}
 	}
 	if personal {
 		return c.GetUser(ctx, c.Store.Pool, id, actor)
@@ -759,9 +780,13 @@ func (c *CRUD) Register(r chi.Router) {
 		})
 	}
 
+	deleteFn := c.Delete
+	if c.Def.DeleteFunc != nil {
+		deleteFn = c.Def.DeleteFunc
+	}
 	r.Delete(path+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		u, _ := identity.UserFromContext(r.Context())
-		if err := c.Delete(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match")); err != nil {
+		if err := deleteFn(r.Context(), u.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match")); err != nil {
 			Fail(r.Context(), w, err)
 			return
 		}
@@ -788,6 +813,17 @@ func Accessible(ctx context.Context, q Queryer, kind string, o Object, user stri
 }
 func Stable(items []Object) {
 	sort.Slice(items, func(i, j int) bool { return items[i].String("id") < items[j].String("id") })
+}
+
+// StableByName 按名称（不区分大小写）和 ID 稳定排序，供知识库列表使用。
+func StableByName(items []Object) {
+	sort.Slice(items, func(i, j int) bool {
+		left, right := strings.ToLower(items[i].String("name")), strings.ToLower(items[j].String("name"))
+		if left != right {
+			return left < right
+		}
+		return items[i].String("id") < items[j].String("id")
+	})
 }
 
 func (c *CRUD) SetEnabled(ctx context.Context, actor, id, match string, enabled bool) (Object, error) {

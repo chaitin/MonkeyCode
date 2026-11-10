@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useBranding } from "@/hooks/use-branding"
 import {
   CONSOLE_PAGES,
+  CONSOLE_ROUTES,
   DEFAULT_CONSOLE_PATH,
   getConsolePage,
   LOGIN_PATH,
@@ -90,6 +91,18 @@ function DashboardContent() {
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
+                {location.pathname.startsWith(`${CONSOLE_ROUTES.kb}/`) && (
+                  <>
+                    <BreadcrumbItem className="hidden md:block">
+                      <BreadcrumbLink
+                        render={<NavLink to={CONSOLE_ROUTES.kb} />}
+                      >
+                        {t("pages.knowledgeBases.title")}
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator className="hidden md:block" />
+                  </>
+                )}
                 <BreadcrumbItem>
                   <BreadcrumbPage>{t(currentPage.titleKey)}</BreadcrumbPage>
                 </BreadcrumbItem>

@@ -11,7 +11,12 @@ type CatalogFilter struct {
 }
 
 func ParseCatalogFilter(r *http.Request) (CatalogFilter, error) {
-	owner := r.URL.Query().Get("owner")
+	return NewCatalogFilter(r.URL.Query().Get("owner"), r.URL.Query().Get("q"))
+}
+
+// NewCatalogFilter 校验并构造知识库/Agent 资源目录筛选条件。
+func NewCatalogFilter(owner, query string) (CatalogFilter, error) {
+	owner = strings.TrimSpace(owner)
 	if owner == "" {
 		owner = "all"
 	}
@@ -20,7 +25,7 @@ func ParseCatalogFilter(r *http.Request) (CatalogFilter, error) {
 	default:
 		return CatalogFilter{}, Invalid("owner 必须为 all、team、mine 或 shared")
 	}
-	return CatalogFilter{Query: strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q"))), Owner: owner}, nil
+	return CatalogFilter{Query: strings.ToLower(strings.TrimSpace(query)), Owner: owner}, nil
 }
 
 func (f CatalogFilter) Matches(ownership, ownerID, userID, name, description string) bool {

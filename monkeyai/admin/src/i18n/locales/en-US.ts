@@ -1110,6 +1110,12 @@ export const enUS = {
         'Delete "{{model}}"? This action cannot be undone.',
     },
     knowledgeBases: {
+      editorSaved: "Document saved. Relearning has started.",
+      editorDiscard: "Leave with unsaved changes?",
+      editorUnsaved: "Unsaved changes. Autosaving in 10 seconds",
+      editorSaving: "Autosaving",
+      editorClean: "Saved",
+
       title: "Knowledge Bases",
       description:
         "Manage knowledge assets that agents can search and reference.",
@@ -1120,18 +1126,15 @@ export const enUS = {
       dialogTitle: "Create knowledge base",
       editDialogTitle: "Edit knowledge base",
       dialogDescription:
-        "Describe this knowledge base and add tags for management.",
+        "Describe this knowledge base, choose the groups or users who can access it, and add tags for management.",
       name: "Name",
       namePlaceholder: "Enter a knowledge base name",
       knowledgeDescription: "Description",
       descriptionPlaceholder: "Describe what this knowledge base contains",
       tags: "Tags",
       tagsPlaceholder: "Select tags",
-      noTags: "No tags",
       authorizedUsers: "Authorized users",
-      readableUsers: "Users with read access",
-      writableUsers: "Users with write access",
-      authorizationPlaceholder: "Select groups or users",
+      noAuthorizedUsers: "No groups or users are authorized yet",
       cancel: "Cancel",
       create: "Create",
       save: "Save changes",
@@ -1145,7 +1148,8 @@ export const enUS = {
         "Delete “{{knowledgeBase}}” and all of its content? This action cannot be undone.",
       contentCount: "{{count}} documents total",
       learnedCount: "{{learned}}/{{total}} learned",
-      noContent: "No content",
+      retrievalHybrid: "Hybrid (keyword + vector)",
+      retrievalLexical: "Keyword full-text",
       manageContents: "Manage content",
       viewContents: "View content",
       back: "Back to knowledge bases",
@@ -1161,8 +1165,9 @@ export const enUS = {
       contentTitlePlaceholder: "Enter a title for this content",
       textPlaceholder: "Enter the knowledge content to learn",
       selectFile: "Select file",
-      fileDescription:
-        "Select multiple TXT, Markdown, PDF, DOC, and DOCX files at once.",
+      fileDescription: "Select multiple TXT or Markdown files at once.",
+      fileUnsupported: "Only TXT and Markdown files are supported.",
+      fileEmpty: "The file is empty.",
       addAndLearn: "Add and learn",
       editContent: "Edit text",
       editContentTitle: "Edit text content",
@@ -1197,7 +1202,6 @@ export const enUS = {
       deleteContentTitle: "Delete content?",
       deleteContentDescription:
         "Delete “{{content}}” from this knowledge base? This action cannot be undone.",
-      characterCount: "{{count}} characters",
     },
     skills: {
       title: "Skills",

@@ -455,6 +455,12 @@ export const es419 = {
         '¿Eliminar "{{model}}"? Esta acción no se puede deshacer.',
     },
     knowledgeBases: {
+      editorSaved: "Documento guardado. Se inició el reaprendizaje.",
+      editorDiscard: "¿Salir sin guardar los cambios?",
+      editorUnsaved: "Cambios sin guardar. Se guardarán automáticamente en 10 segundos",
+      editorSaving: "Guardando automáticamente",
+      editorClean: "Guardado",
+
       title: "Bases de conocimiento",
       description:
         "Administra los recursos de conocimiento que los agentes pueden buscar y consultar.",
@@ -472,11 +478,7 @@ export const es419 = {
       descriptionPlaceholder: "Describe el contenido de esta base",
       tags: "Etiquetas",
       tagsPlaceholder: "Seleccionar etiquetas",
-      noTags: "Sin etiquetas",
       authorizedUsers: "Usuarios autorizados",
-      readableUsers: "Usuarios con acceso de lectura",
-      writableUsers: "Usuarios con acceso de escritura",
-      authorizationPlaceholder: "Selecciona grupos o usuarios",
       cancel: "Cancelar",
       create: "Crear",
       save: "Guardar cambios",
@@ -490,7 +492,9 @@ export const es419 = {
         "¿Eliminar “{{knowledgeBase}}” y todo su contenido? Esta acción no se puede deshacer.",
       contentCount: "{{count}} documentos en total",
       learnedCount: "{{learned}}/{{total}} aprendidos",
-      noContent: "Sin contenido",
+      noAuthorizedUsers: "Aún no hay grupos o usuarios autorizados",
+      retrievalHybrid: "Híbrida (palabras clave + vectores)",
+      retrievalLexical: "Texto completo léxico",
       manageContents: "Administrar contenido",
       viewContents: "Ver contenido",
       back: "Volver a las bases",
@@ -506,8 +510,9 @@ export const es419 = {
       contentTitlePlaceholder: "Ingresa un título para el contenido",
       textPlaceholder: "Ingresa el conocimiento que se debe aprender",
       selectFile: "Seleccionar archivo",
-      fileDescription:
-        "Selecciona varios archivos TXT, Markdown, PDF, DOC y DOCX a la vez.",
+      fileDescription: "Selecciona varios archivos TXT o Markdown a la vez.",
+      fileUnsupported: "Solo se admiten archivos TXT y Markdown.",
+      fileEmpty: "El archivo está vacío.",
       addAndLearn: "Agregar y aprender",
       editContent: "Editar texto",
       editContentTitle: "Editar contenido de texto",
@@ -539,7 +544,6 @@ export const es419 = {
       deleteContentTitle: "¿Eliminar contenido?",
       deleteContentDescription:
         "¿Eliminar “{{content}}” de esta base? Esta acción no se puede deshacer.",
-      characterCount: "{{count}} caracteres",
     },
     skills: {
       title: "Habilidades",
