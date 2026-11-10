@@ -28,7 +28,7 @@ type Repository interface {
 	Delete(context.Context, string) error
 	UpdateUser(context.Context, Model) (Model, error)
 	DeleteUser(context.Context, string, string) error
-	ListAvailable(context.Context, string, bool) ([]Model, error)
+	ListAvailable(context.Context, string) ([]Model, error)
 	Resolve(context.Context, string, string) (Model, error)
 	Subjects(context.Context) (Subjects, error)
 }
@@ -197,8 +197,8 @@ func (s *Service) Subjects(ctx context.Context) (Subjects, error) {
 	return s.repository.Subjects(ctx)
 }
 
-func (s *Service) AgentModels(ctx context.Context, userID string, isAdmin bool) ([]AgentModel, error) {
-	models, err := s.repository.ListAvailable(ctx, userID, isAdmin)
+func (s *Service) AgentModels(ctx context.Context, userID string) ([]AgentModel, error) {
+	models, err := s.repository.ListAvailable(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -224,7 +224,7 @@ WITH RECURSIVE user_groups (
             FROM
                 group_users
             WHERE
-                user_id = $3
+                user_id = $2
                 AND removed_at IS NULL)
         UNION
         SELECT
@@ -245,9 +245,7 @@ WHERE
     m.enabled
     AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR $1::boolean)
-    AND (($2::boolean
-            AND m.ownership_type = 'system')
-        OR m.owner_user_id = $3
+    AND ((m.ownership_type = 'user' AND m.owner_user_id = $2)
         OR EXISTS (
             SELECT
                 1
@@ -257,9 +255,9 @@ WHERE
                 rag.resource_type = 'model'
                 AND rag.resource_id = m.id
                 AND ((rag.all_users AND EXISTS (
-                        SELECT 1 FROM users u WHERE u.id = $3 AND u.status = 'active' AND u.deleted_at IS NULL
+                        SELECT 1 FROM users u WHERE u.id = $2 AND u.status = 'active' AND u.deleted_at IS NULL
                     ))
-                    OR rag.user_id = $3
+                    OR rag.user_id = $2
                     OR rag.group_id IN (
                         SELECT
                             group_id
@@ -272,12 +270,11 @@ WHERE
 
 type ListAvailableParams struct {
 	SystemAccess bool
-	IsAdmin      bool
 	OwnerUserID  string
 }
 
 func (q *Queries) ListAvailable(ctx context.Context, arg ListAvailableParams) ([]Model, error) {
-	rows, err := q.db.Query(ctx, listAvailable, arg.SystemAccess, arg.IsAdmin, arg.OwnerUserID)
+	rows, err := q.db.Query(ctx, listAvailable, arg.SystemAccess, arg.OwnerUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -737,8 +734,7 @@ WHERE (m.model_id || '@' || m.id::text = $2::text
     AND m.enabled AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR $3::boolean)
     AND (
-        (u.role = 'admin' AND m.ownership_type = 'system')
-        OR m.owner_user_id = $1
+        (m.ownership_type = 'user' AND m.owner_user_id = $1)
         OR EXISTS (
             SELECT 1 FROM resource_access_grants rag
             WHERE rag.resource_type = 'model' AND rag.resource_id = m.id

@@ -102,7 +102,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
-		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
+		items, err := s.AgentModels(r.Context(), user.ID)
 		if err != nil {
 			userModelError(r.Context(), w, err)
 			return
@@ -119,7 +119,7 @@ func (s *Service) RegisterAgent(router chi.Router) {
 	})
 	router.Get("/models/tags", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
-		items, err := s.AgentModels(r.Context(), user.ID, user.Role == "admin")
+		items, err := s.AgentModels(r.Context(), user.ID)
 		if err != nil {
 			userModelError(r.Context(), w, err)
 			return

@@ -48,7 +48,7 @@ func (r *repositoryStub) SetEnabled(_ context.Context, id string, enabled bool) 
 	return item, err
 }
 func (r *repositoryStub) Delete(context.Context, string) error { return nil }
-func (r *repositoryStub) ListAvailable(context.Context, string, bool) ([]Model, error) {
+func (r *repositoryStub) ListAvailable(context.Context, string) ([]Model, error) {
 	return r.models, nil
 }
 func (r *repositoryStub) Resolve(ctx context.Context, userID, id string) (Model, error) {
@@ -97,7 +97,7 @@ func TestReasoningCapability(t *testing.T) {
 	if err != nil || !saved.AdvancedConfig.SupportsReasoning {
 		t.Fatalf("创建模型未保存推理能力: %+v, %v", saved.AdvancedConfig, err)
 	}
-	models, err := service.AgentModels(t.Context(), "user-1", true)
+	models, err := service.AgentModels(t.Context(), "user-1")
 	if err != nil || len(models) != 1 || !models[0].SupportsReasoning {
 		t.Fatalf("模型目录未返回推理能力: %+v, %v", models, err)
 	}
