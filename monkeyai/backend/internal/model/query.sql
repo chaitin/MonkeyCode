@@ -137,9 +137,7 @@ WHERE
     m.enabled
     AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR sqlc.arg(system_access)::boolean)
-    AND ((sqlc.arg(is_admin)::boolean
-            AND m.ownership_type = 'system')
-        OR m.owner_user_id = sqlc.arg(owner_user_id)
+    AND ((m.ownership_type = 'user' AND m.owner_user_id = sqlc.arg(owner_user_id))
         OR EXISTS (
             SELECT
                 1
@@ -186,8 +184,7 @@ WHERE (m.model_id || '@' || m.id::text = sqlc.arg(requested_model)::text
     AND m.enabled AND m.deleted_at IS NULL
     AND (m.ownership_type = 'user' OR sqlc.arg(system_access)::boolean)
     AND (
-        (u.role = 'admin' AND m.ownership_type = 'system')
-        OR m.owner_user_id = sqlc.arg(user_id)
+        (m.ownership_type = 'user' AND m.owner_user_id = sqlc.arg(user_id))
         OR EXISTS (
             SELECT 1 FROM resource_access_grants rag
             WHERE rag.resource_type = 'model' AND rag.resource_id = m.id

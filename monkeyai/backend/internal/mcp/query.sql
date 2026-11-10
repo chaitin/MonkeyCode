@@ -4,6 +4,15 @@ SET duration_ms = sqlc.arg(duration_ms)::integer
 WHERE id = sqlc.arg(id)::uuid
     AND started_at=(SELECT billing_activity_time('mcp_tool_calls',sqlc.arg(id)::uuid));
 
+-- name: ListCatalogTools :many
+SELECT COALESCE(t.credential_id::text, '')::text AS credential_id, to_jsonb(t) AS tool
+FROM mcp_tools t
+WHERE t.connector_id = sqlc.arg(connector_id)::uuid
+    AND t.credential_id::text = ANY(sqlc.arg(credential_ids)::text[])
+    AND t.config_revision = sqlc.arg(config_revision)::bigint
+    AND t.deleted_at IS NULL AND t.enabled
+ORDER BY t.name, t.id;
+
 -- name: CountTools :one
 SELECT
     count(*)

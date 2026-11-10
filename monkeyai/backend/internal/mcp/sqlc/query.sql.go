@@ -280,6 +280,47 @@ func (q *Queries) InvalidateTools(ctx context.Context, arg InvalidateToolsParams
 	return q.db.Exec(ctx, invalidateTools, arg.ConnectorID, arg.CredentialID)
 }
 
+const listCatalogTools = `-- name: ListCatalogTools :many
+SELECT COALESCE(t.credential_id::text, '')::text AS credential_id, to_jsonb(t) AS tool
+FROM mcp_tools t
+WHERE t.connector_id = $1::uuid
+    AND t.credential_id::text = ANY($2::text[])
+    AND t.config_revision = $3::bigint
+    AND t.deleted_at IS NULL AND t.enabled
+ORDER BY t.name, t.id
+`
+
+type ListCatalogToolsParams struct {
+	ConnectorID    string
+	CredentialIds  []string
+	ConfigRevision int64
+}
+
+type ListCatalogToolsRow struct {
+	CredentialID string
+	Tool         []byte
+}
+
+func (q *Queries) ListCatalogTools(ctx context.Context, arg ListCatalogToolsParams) ([]ListCatalogToolsRow, error) {
+	rows, err := q.db.Query(ctx, listCatalogTools, arg.ConnectorID, arg.CredentialIds, arg.ConfigRevision)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCatalogToolsRow{}
+	for rows.Next() {
+		var i ListCatalogToolsRow
+		if err := rows.Scan(&i.CredentialID, &i.Tool); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConnectorReferences = `-- name: ListConnectorReferences :many
 SELECT jsonb_build_object('id', e.id, 'name', e.name, 'type', 'expert')
 FROM experts e JOIN expert_connectors x ON x.expert_id = e.id

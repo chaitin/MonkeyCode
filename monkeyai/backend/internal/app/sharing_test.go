@@ -117,7 +117,7 @@ func testModelSharing(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	assertAccess(adminID, ids[0], false)
 	assertGroupModels := func(want int) {
 		t.Helper()
-		available, err := repo.ListAvailable(ctx, users[1], false)
+		available, err := repo.ListAvailable(ctx, users[1])
 		if err != nil || len(available) != want {
 			t.Fatalf("分组模型可见数=%d，预期 %d，err=%v", len(available), want, err)
 		}

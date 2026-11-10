@@ -14,7 +14,9 @@ sql:
       query_parameter_limit: 1
 - engine: postgresql
   schema: schema/schema.sql
-  queries: internal/agentconfig/query.sql
+  queries:
+  - internal/agentconfig/query.sql
+  - internal/agentconfig/cache.sql
   gen:
     go:
       package: sqlc

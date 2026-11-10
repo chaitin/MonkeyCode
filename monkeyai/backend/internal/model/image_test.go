@@ -39,7 +39,7 @@ func TestCreateImageModelAndCatalog(t *testing.T) {
 	if model.Kind != KindImage || model.Provider != ProviderOpenAIImages || model.CreditMultiplier != 1 {
 		t.Fatalf("生图模型信息错误: %+v", model)
 	}
-	items, err := service.AgentModels(t.Context(), "user-1", false)
+	items, err := service.AgentModels(t.Context(), "user-1")
 	if err != nil || len(items) != 1 || items[0].Kind != KindImage || items[0].ImageConfig.DefaultQuality != "2K" || len(items[0].ImagePricing.Rates) != 3 || items[0].ImagePricing.Rates[1].CreditsPerImage != "15" {
 		t.Fatalf("生图目录错误: %+v, %v", items, err)
 	}
@@ -67,7 +67,7 @@ func TestImageCapabilitiesRestrictAdminConfigAndCatalog(t *testing.T) {
 	if _, err := service.Create(t.Context(), "admin-1", input); err != nil {
 		t.Fatal(err)
 	}
-	models, err := service.AgentModels(t.Context(), "user-1", false)
+	models, err := service.AgentModels(t.Context(), "user-1")
 	if err != nil || len(models) != 1 {
 		t.Fatalf("生图目录缺失: %v %v", models, err)
 	}

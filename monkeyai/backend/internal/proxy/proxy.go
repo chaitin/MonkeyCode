@@ -321,8 +321,7 @@ func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
 	r.Out.Header.Del("Authorization")
 	r.Out.Header.Del("X-Api-Key")
 	r.Out.Header.Del("Idempotency-Key")
-	for _, header := range []string{maiSessionHeader, legacySessionHeader, parentSessionHeader, machineSessionHeader} {
-		r.Out.Header.Del("X-Request-ID")
+	for _, header := range []string{maiSessionHeader, parentSessionHeader, machineSessionHeader} {
 		r.Out.Header.Del(header)
 	}
 	if ctx.target.APIKey != "" {

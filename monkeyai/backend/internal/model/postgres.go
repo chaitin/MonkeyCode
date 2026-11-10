@@ -263,13 +263,13 @@ func (p *Postgres) delete(ctx context.Context, id, ownership, userID string) err
 	return tx.Commit(ctx)
 }
 
-func (p *Postgres) ListAvailable(ctx context.Context, userID string, isAdmin bool) ([]Model, error) {
+func (p *Postgres) ListAvailable(ctx context.Context, userID string) ([]Model, error) {
 	q := database.Reader(ctx, p.pool)
 	allowed, err := resource.CanUseSystem(ctx, q, userID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := sqlc.New(q).ListAvailable(ctx, sqlc.ListAvailableParams{OwnerUserID: userID, IsAdmin: isAdmin, SystemAccess: allowed})
+	rows, err := sqlc.New(q).ListAvailable(ctx, sqlc.ListAvailableParams{OwnerUserID: userID, SystemAccess: allowed})
 	if err != nil {
 		return nil, fmt.Errorf("查询可用模型: %w", err)
 	}
