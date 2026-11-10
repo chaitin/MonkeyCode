@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import { IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -198,6 +198,9 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const [selectedAccountPlanId, setSelectedAccountPlanId] = useState<PersonalAccountPlanId>("basic")
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<SubscriptionBillingPeriod>("monthly")
   const [selectedPeriodCount, setSelectedPeriodCount] = useState(1)
+  const [purchaseAutoRenew, setPurchaseAutoRenew] = useState(true)
+  const purchaseAutoRenewId = useId()
+  const confirmAutoRenewId = useId()
   const [confirmSubscriptionPlan, setConfirmSubscriptionPlan] = useState<"pro" | "ultra" | null>(null)
   const [isProLoading, setIsProLoading] = useState(false)
   const [isFlagshipLoading, setIsFlagshipLoading] = useState(false)
@@ -210,6 +213,8 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const currentAccountPlanId = normalizeAccountPlanId(subscription?.plan)
   const currentBillingPeriod: SubscriptionBillingPeriod = subscription?.billing_interval === "year" ? "yearly" : "monthly"
   const isStripeSubscription = subscription?.payment_provider === "stripe" && hasAdvancedPlan
+  const canManageAutoRenew = hasAdvancedPlan && (pricingRegion !== "global"
+    || (isStripeSubscription && (subscription?.billing_status === "active" || subscription?.billing_status === "past_due")))
   const triggerPlanLabel = t(`subscriptionPlan.plans.${currentAccountPlanId}.name`)
   const confirmingPlanCard = accountPlanCards.find((plan) => plan.id === confirmSubscriptionPlan)
   const selectedAccountPlan = accountPlanCards.find((plan) => plan.id === selectedAccountPlanId) || accountPlanCards[0]
@@ -237,6 +242,15 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     : selectedSubscriptionPlan === "pro"
       ? !isFlagshipPlan
       : selectedSubscriptionPlan === "ultra")
+  const canChooseAutoRenew = pricingRegion === "global"
+    && subscription?.payment_provider !== "stripe"
+    && canSubscribeSelectedPlan
+  const isOneTimePurchase = canChooseAutoRenew && !purchaseAutoRenew
+  const purchaseBillingDescription = purchaseAutoRenew
+    ? selectedBillingPeriod === "monthly"
+      ? t("subscriptionPlan.billing.autoRenewMonthly")
+      : t("subscriptionPlan.billing.autoRenewYearly")
+    : t("subscriptionPlan.billing.oneTimePayment")
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
   const selectedOrderTotal = selectedPeriodAmount * selectedPeriodCount
   const selectedOrderTotalLabel = formatRegionCurrency(selectedOrderTotal, pricingRegion)
@@ -271,6 +285,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     let active = true
     queueMicrotask(() => {
       if (active) {
+        setPurchaseAutoRenew(true)
         setSelectedAccountPlanId(isFlagshipPlan ? "ultra" : isProPlan ? "pro" : "basic")
         if (isStripeSubscription) {
           setSelectedBillingPeriod(currentBillingPeriod)
@@ -285,7 +300,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   }, [currentBillingPeriod, isFlagshipPlan, isProPlan, isStripeSubscription, open])
 
   const handleToggleAutoRenew = async (checked: boolean) => {
-    if (!hasAdvancedPlan) {
+    if (!canManageAutoRenew || loadingSubscription) {
       return
     }
 
@@ -310,6 +325,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       plan: plan === "pro" ? ConstsSubscriptionPlan.PlanPro : ConstsSubscriptionPlan.PlanUltra,
       period_unit: selectedPeriodUnit,
       period_count: selectedPeriodCount,
+      ...(canChooseAutoRenew ? { auto_renew: purchaseAutoRenew } : {}),
     }, [], (resp) => {
       const paymentUrl = resp.data?.url
       if (resp.code === 0) {
@@ -352,11 +368,11 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-120 max-h-[calc(100dvh-2rem)] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
-          <DialogHeader className="px-5 py-4">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[80vw] flex-col gap-0 overflow-hidden break-normal p-0 md:max-w-4xl">
+          <DialogHeader className="shrink-0 px-5 py-3">
             <DialogTitle>{t("subscriptionPlan.dialog.title")}</DialogTitle>
           </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
             {!isTeamUser && hasAdvancedPlan ? (
               <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-md border px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
@@ -371,21 +387,25 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   <span className="font-medium">
                     {loadingSubscription
                       ? t("subscriptionPlan.status.autoRenewLoading")
-                      : subscription?.auto_renew
-                        ? t("subscriptionPlan.status.autoRenewEnabled")
-                        : t("subscriptionPlan.status.autoRenewDisabled")}
+                      : !canManageAutoRenew
+                        ? t("subscriptionPlan.status.nonRecurring")
+                        : subscription?.auto_renew
+                          ? t("subscriptionPlan.status.autoRenewEnabled")
+                          : t("subscriptionPlan.status.autoRenewDisabled")}
                   </span>
-                  <Switch
-                    checked={!!subscription?.auto_renew}
-                    onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
-                    disabled={loadingSubscription || isAutoRenewLoading}
-                  />
+                  {canManageAutoRenew ? (
+                    <Switch
+                      checked={!!subscription?.auto_renew}
+                      onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
+                      disabled={loadingSubscription || isAutoRenewLoading}
+                    />
+                  ) : null}
                 </div>
               </div>
             ) : null}
-            <div className="grid min-h-0 flex-1 grid-rows-[1fr_auto] gap-4">
-              <div className="grid min-h-0 gap-4 md:grid-cols-[240px_1fr]">
-                <div className="grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-rows-3">
+            <div className="grid gap-3">
+              <div className="grid items-start gap-4 md:grid-cols-[240px_1fr]">
+                <div className="grid gap-3">
                   {accountPlanCards.map((plan) => {
                     const isCurrentPlan = plan.id === "basic" ? !hasAdvancedPlan : plan.id === "pro" ? isProPlan : plan.id === "ultra" ? isFlagshipPlan : false
                     const isSelected = selectedAccountPlan.id === plan.id
@@ -395,7 +415,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         key={plan.id}
                         type="button"
                         className={cn(
-                          "flex h-full w-full flex-col rounded-md border bg-background p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40",
+                          "flex w-full flex-col rounded-md border bg-background p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/40",
                           isSelected && "border-primary bg-primary/5",
                         )}
                         onClick={() => {
@@ -412,13 +432,13 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                           </div>
                           {isCurrentPlan ? <Badge className="shrink-0">{t("subscriptionPlan.status.currentPlan")}</Badge> : null}
                         </div>
-                        <div className="mt-3 text-xs leading-5 text-muted-foreground [@media(max-height:760px)]:hidden">{plan.desc}</div>
+                        <div className="mt-3 text-xs leading-5 text-muted-foreground">{plan.desc}</div>
                       </button>
                     )
                   })}
                 </div>
 
-                <div className="flex min-h-0 flex-col rounded-md border bg-background">
+                <div className="rounded-md border bg-background">
                   <div className="border-b px-4 py-2">
                     <div>
                       <div className="flex items-center gap-2 text-sm font-medium">
@@ -430,7 +450,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 overflow-auto p-4">
+                  <div className="p-3">
                     <div className="divide-y">
                       {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
                         const status = feature.status || "supported"
@@ -440,7 +460,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                           <div
                             key={label}
                             className={cn(
-                              "flex h-10 items-center gap-3 px-4 text-sm",
+                              "flex min-h-9 items-center gap-3 px-4 py-1 text-sm",
                               status === "unsupported" && "text-muted-foreground",
                             )}
                           >
@@ -455,7 +475,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                               )}
                             />
                             <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
-                              <span className="truncate">{label}</span>
+                              <span className="min-w-0 break-words">{label}</span>
                               {tooltip ? (
                                 <Tooltip>
                                   <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
@@ -482,6 +502,25 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
               </div>
 
               <div>
+                {canChooseAutoRenew ? (
+                  <div className="mb-2 flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-4 py-2">
+                    <div className="min-w-0">
+                      <label htmlFor={purchaseAutoRenewId} className="cursor-pointer text-sm font-medium">
+                        {t("subscriptionPlan.billing.autoRenew")}
+                      </label>
+                      <p id={`${purchaseAutoRenewId}-description`} className="mt-1 text-xs text-muted-foreground">
+                        {purchaseBillingDescription}
+                      </p>
+                    </div>
+                    <Switch
+                      id={purchaseAutoRenewId}
+                      aria-describedby={`${purchaseAutoRenewId}-description`}
+                      checked={purchaseAutoRenew}
+                      onCheckedChange={setPurchaseAutoRenew}
+                      disabled={loadingSubscription || isSelectedPlanLoading}
+                    />
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <Tabs
@@ -535,14 +574,16 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       <Button
                         className="w-full md:w-40"
                         onClick={() => setConfirmSubscriptionPlan(selectedSubscriptionPlan)}
-                        disabled={isSelectedPlanLoading}
+                        disabled={isSelectedPlanLoading || loadingSubscription}
                       >
                         {isSelectedPlanLoading && <Spinner />}
                         {isSelectedStripeUpgrade
                           ? t("subscriptionPlan.actions.upgrade")
-                          : isSelectedCurrentPlan
-                            ? t("subscriptionPlan.actions.renew")
-                            : t("subscriptionPlan.actions.subscribePlan", { plan: selectedAccountPlan.name })}
+                          : isOneTimePurchase
+                            ? t("subscriptionPlan.actions.buyPlan", { plan: selectedAccountPlan.name })
+                            : isSelectedCurrentPlan
+                              ? t("subscriptionPlan.actions.renew")
+                              : t("subscriptionPlan.actions.subscribePlan", { plan: selectedAccountPlan.name })}
                       </Button>
                     ) : (
                       <div className="flex h-9 w-full items-center justify-center rounded-md border bg-background px-4 text-sm text-muted-foreground md:w-40">
@@ -564,9 +605,11 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
             <AlertDialogTitle>
               {isConfirmingStripeUpgrade
                 ? t("subscriptionPlan.confirm.upgradeTitle")
-                : isRenewingCurrentPlan
-                  ? t("subscriptionPlan.confirm.renewTitle")
-                  : t("subscriptionPlan.confirm.subscribeTitle")}
+                : isOneTimePurchase
+                  ? t("subscriptionPlan.confirm.buyTitle")
+                  : isRenewingCurrentPlan
+                    ? t("subscriptionPlan.confirm.renewTitle")
+                    : t("subscriptionPlan.confirm.subscribeTitle")}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
@@ -577,13 +620,32 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                     period: selectedPeriodCountLabel,
                   })
                 : t("subscriptionPlan.confirm.description", {
-                    action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
+                    action: isOneTimePurchase ? t("subscriptionPlan.actions.buy") : isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
                     plan: confirmingPlanCard.name,
                     period: selectedPeriodCountLabel,
                     total: selectedOrderTotalLabel,
                   })
               : ""}
           </AlertDialogDescription>
+          {canChooseAutoRenew ? (
+            <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-4 py-3">
+              <div className="min-w-0">
+                <label htmlFor={confirmAutoRenewId} className="cursor-pointer text-sm font-medium">
+                  {t("subscriptionPlan.billing.autoRenew")}
+                </label>
+                <p id={`${confirmAutoRenewId}-description`} className="mt-1 text-xs text-muted-foreground">
+                  {purchaseBillingDescription}
+                </p>
+              </div>
+              <Switch
+                id={confirmAutoRenewId}
+                aria-describedby={`${confirmAutoRenewId}-description`}
+                checked={purchaseAutoRenew}
+                onCheckedChange={setPurchaseAutoRenew}
+                disabled={loadingSubscription || isProLoading || isFlagshipLoading}
+              />
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>{t("subscriptionPlan.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
@@ -596,9 +658,11 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
               {(isProLoading || isFlagshipLoading) && <Spinner className="mr-2 size-4" />}
               {isConfirmingStripeUpgrade
                 ? t("subscriptionPlan.confirm.upgradeAction")
-                : isRenewingCurrentPlan
-                  ? t("subscriptionPlan.confirm.renewAction")
-                  : t("subscriptionPlan.confirm.subscribeAction")}
+                : isOneTimePurchase
+                  ? t("subscriptionPlan.confirm.buyAction")
+                  : isRenewingCurrentPlan
+                    ? t("subscriptionPlan.confirm.renewAction")
+                    : t("subscriptionPlan.confirm.subscribeAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
