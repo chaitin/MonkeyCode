@@ -1,3 +1,16 @@
+export type MessageModelUsage = {
+  id: string | null
+  name: string | null
+  messages: number
+}
+
+export type ModelMessageDistribution = {
+  from: string
+  until: string
+  total_messages: number
+  models: MessageModelUsage[]
+}
+
 export type ModelOverview = {
   timezone: "Asia/Shanghai"
   generated_at: string
@@ -15,6 +28,7 @@ export type ModelOverview = {
     avg_first_token_time: number | null
     model_success_rate: number | null
   }
+  message_distribution: ModelMessageDistribution
   days: {
     date: string
     model_calls: number
@@ -23,15 +37,6 @@ export type ModelOverview = {
     credits: string
   }[]
 }
-export type TaskOverview = {
-  total_tasks: number
-  new_tasks_24h: number
-  active_tasks_24h: number
-  timezone: "Asia/Shanghai"
-  generated_at: string
-  days: { date: string; new_tasks: number; active_tasks: number }[]
-}
-
 export const sessionOutcomes = [
   "complete",
   "error",
@@ -64,7 +69,7 @@ export type SessionOverview = {
       p10: number | null
       p90: number | null
     }
-    models: { id: string | null; name: string | null; messages: number }[]
+    models: MessageModelUsage[]
   }
   days: {
     date: string

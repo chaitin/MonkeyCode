@@ -256,43 +256,45 @@ function TaskAnalysisContent({ overview }: { overview: SessionOverview }) {
         qualifier={t("pages.realtimeStatus.period24h")}
         className="gap-5"
       >
-        <div
-          data-slot="conversation-outcome-bar"
-          role="group"
-          aria-label={t(`${key}.conversationResults`)}
-          className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
-        >
-          {sessionOutcomes
-            .filter((outcome) => last24hSummary[outcome] > 0)
-            .map((outcome) => {
-              const count = last24hSummary[outcome]
-              const share = count / Math.max(1, last24hSummary.total)
-              const label = t(`${key}.resultDetail`, {
-                outcome: t(`${key}.outcomes.${outcome}`),
-                amount: number.format(count),
-                percent: percent.format(share),
-              })
-              return (
-                <Tooltip key={outcome}>
-                  <TooltipTrigger
-                    render={
-                      <span
-                        tabIndex={0}
-                        data-outcome={outcome}
-                        data-count={count}
-                        aria-label={label}
-                        className="block h-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground/50"
-                        style={{
-                          width: `${share * 100}%`,
-                          background: colors[outcome],
-                        }}
-                      />
-                    }
-                  />
-                  <TooltipContent>{label}</TooltipContent>
-                </Tooltip>
-              )
-            })}
+        <div className="pt-1">
+          <div
+            data-slot="conversation-outcome-bar"
+            role="group"
+            aria-label={t(`${key}.conversationResults`)}
+            className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
+          >
+            {sessionOutcomes
+              .filter((outcome) => last24hSummary[outcome] > 0)
+              .map((outcome) => {
+                const count = last24hSummary[outcome]
+                const share = count / Math.max(1, last24hSummary.total)
+                const label = t(`${key}.resultDetail`, {
+                  outcome: t(`${key}.outcomes.${outcome}`),
+                  amount: number.format(count),
+                  percent: percent.format(share),
+                })
+                return (
+                  <Tooltip key={outcome}>
+                    <TooltipTrigger
+                      render={
+                        <span
+                          tabIndex={0}
+                          data-outcome={outcome}
+                          data-count={count}
+                          aria-label={label}
+                          className="block h-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-foreground/50"
+                          style={{
+                            width: `${share * 100}%`,
+                            background: colors[outcome],
+                          }}
+                        />
+                      }
+                    />
+                    <TooltipContent>{label}</TooltipContent>
+                  </Tooltip>
+                )
+              })}
+          </div>
         </div>
         <div
           data-slot="conversation-outcome-legend"

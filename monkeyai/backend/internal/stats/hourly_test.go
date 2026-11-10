@@ -54,6 +54,14 @@ func assertHourlyOverview(t *testing.T, s *Service) {
 		t.Fatal(err)
 	}
 	actual := request(t, s, "/statistics/models/overview", 200)
+	// This independent reference compares model calls and billing projections.
+	// These fixtures contain no reported messages, regardless of upstream calls.
+	distribution := actual["message_distribution"].(map[string]any)
+	number(t, distribution, "total_messages", 0)
+	if len(distribution["models"].([]any)) != 0 {
+		t.Fatal(distribution)
+	}
+	delete(actual, "message_distribution")
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("汇总接口改变统计口径\nactual=%v\nexpected=%v", actual, expected)
 	}

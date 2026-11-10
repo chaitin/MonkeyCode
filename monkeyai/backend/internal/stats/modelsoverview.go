@@ -11,7 +11,8 @@ import (
 )
 
 func (s *Service) modelsOverview(w http.ResponseWriter, r *http.Request) {
-	if len(r.URL.Query()) != 0 {
+	w.Header().Set("Cache-Control", "private, no-store")
+	if r.URL.RawQuery != "" {
 		resource.Fail(r.Context(), w, resource.Invalid("模型总览不支持查询参数"))
 		return
 	}
@@ -28,6 +29,5 @@ func (s *Service) modelsOverview(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, no-store")
 	resource.JSON(r.Context(), w, http.StatusOK, out)
 }

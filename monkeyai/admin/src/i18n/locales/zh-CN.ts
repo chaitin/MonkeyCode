@@ -618,6 +618,9 @@ export const zhCN = {
         p10Messages: "P10 消息数",
         p90Messages: "P90 消息数",
         modelUsage: "模型使用情况",
+        modelMessageDistribution: "模型使用分布",
+        modelMessageDistributionDetail:
+          "{{model}} · {{amount}} 条消息 · {{percent}}",
         modelUsageHint: "{{conversations}} 条消息使用了 {{model}}",
         otherModels: "其他",
         clickToFilter: "点击模型筛选",

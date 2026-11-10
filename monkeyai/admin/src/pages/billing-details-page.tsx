@@ -94,7 +94,7 @@ type SearchField = "user" | "content" | "dateRange" | "category" | "entryType"
 const billingCredits = (value: string | null | undefined, locale = "zh-CN") =>
   credits(value, locale, 0)
 const changedCredits = (value: string, locale: string) =>
-  credits(value, locale, 0, "expand")
+  credits(value, locale, 1, "expand")
 const balanceCredits = (value: string, locale: string) =>
   credits(value, locale, 0, "floor")
 

@@ -86,7 +86,7 @@ func TestMemberAnalysisAdminAccess(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	analysisPaths := []string{path, "/api/admin/v1/statistics/session-reporting/sessions/overview"}
+	analysisPaths := []string{path, "/api/admin/v1/statistics/session-reporting/sessions/overview", "/api/admin/v1/statistics/models/overview"}
 	for _, analysisPath := range analysisPaths {
 		if w := call("GET", analysisPath, ""); w.Code != 401 {
 			t.Fatalf("匿名访问 %s: %d %s", analysisPath, w.Code, w.Body)
@@ -126,6 +126,19 @@ func TestMemberAnalysisAdminAccess(t *testing.T) {
 		if strings.Contains(w.Body.String(), `"`+field+`"`) {
 			t.Fatalf("会话分析泄漏私密字段 %s", field)
 		}
+	}
+	w = call("GET", analysisPaths[2], "")
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("模型分析管理员读取: %d %s", w.Code, w.Body)
+	}
+	var modelOverview struct {
+		MessageDistribution *struct {
+			TotalMessages int               `json:"total_messages"`
+			Models        []json.RawMessage `json:"models"`
+		} `json:"message_distribution"`
+	}
+	if err = json.Unmarshal(w.Body.Bytes(), &modelOverview); err != nil || modelOverview.MessageDistribution == nil || modelOverview.MessageDistribution.Models == nil || len(modelOverview.MessageDistribution.Models) != 0 || modelOverview.MessageDistribution.TotalMessages != 0 {
+		t.Fatalf("模型分布响应错误: %s %v", w.Body, err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE users SET role='user' WHERE id=$1`, userID); err != nil {
 		t.Fatal(err)

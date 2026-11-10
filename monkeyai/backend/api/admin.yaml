@@ -1202,8 +1202,10 @@ paths:
           $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/models/overview:
     get:
-      summary: 模型调用的固定窗口汇总与近 90 天每日趋势
-      description: 仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为北京时间（Asia/Shanghai）自然日，今天仅统计到 generated_at。Token 和 TPM 仅累计用量明确的调用：优先采用 billing_transactions.usage.known，缺失时以 model_calls.error_code 为空判断；输入包含缓存输入。调用次数、成功率和耗时仍统计全部已完成调用。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
+      summary: 模型运行统计、24 小时消息模型分布与近 90 天趋势
+      description: |
+        仅管理员可访问，不接收查询参数。调用及 Token 按完成时间统计，积分按账本发生时间统计；每日为北京时间（Asia/Shanghai）自然日，今天仅统计到 generated_at。Token 和 TPM 仅累计用量明确的调用：优先采用 billing_transactions.usage.known，缺失时以 model_calls.error_code 为空判断；输入包含缓存输入。调用次数、成功率和耗时仍统计全部已完成调用。首字耗时只使用新采集到首个实际输出片段的流式调用，历史与非流式调用无值。
+        message_distribution 与其他字段来自同一只读快照及 generated_at。分布按消息 started_at 统计滚动 24 小时，与会话分析一致：仅统计已上报、非占位、未删除、未清理且已开始的根会话消息，不包含子会话；包含所有消息结果。按模型 UUID 汇总，保留停用或软删除模型的历史名称，缺失模型归入未知项。只返回模型 ID、名称和消息数，不返回配置、密钥、用户资料或消息正文。
       responses:
         "200":
           description: 同一数据库快照下的模型总览。
@@ -1216,30 +1218,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatisticsModelsOverview"
-        "400":
-          $ref: "#/components/responses/ResourceError400"
-        "401":
-          $ref: "#/components/responses/ResourceError401"
-        "403":
-          $ref: "#/components/responses/ResourceError403"
-        "500":
-          $ref: "#/components/responses/ResourceError500"
-  /api/admin/v1/statistics/tasks/overview:
-    get:
-      summary: 任务总量、近 24 小时新增和活跃任务及近 90 天每日趋势
-      description: 固定窗口，不接收查询参数。只统计上报启用、非占位、未删除或清理的根任务。新增按根任务 started_at 统计；活跃指存在 session_turns 记录的任务，子任务归属根任务并按根任务去重。每日按北京时间（Asia/Shanghai）自然日，包含当天部分数据。
-      responses:
-        "200":
-          description: 任务统计及完整的 90 天日序列。
-          headers:
-            Cache-Control:
-              schema:
-                type: string
-                const: private, no-store
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatisticsTasksOverview"
         "400":
           $ref: "#/components/responses/ResourceError400"
         "401":
@@ -6269,10 +6247,12 @@ components:
     StatisticsModelsOverview:
       type: object
       description: 模型调用与积分通过事务内维护的小时汇总统计；完整小时读取汇总，滚动窗口边界和最近 30 分钟耗时读取明细。北京时间日界、用量明确判定与截尾平均规则保持一致。
-      required: [timezone, generated_at, last_24h, previous_24h, last_30m, days]
+      required: [timezone, generated_at, last_24h, previous_24h, last_30m, message_distribution, days]
       properties:
         timezone: {type: string, const: Asia/Shanghai}
         generated_at: {type: string, format: date-time}
+        message_distribution:
+          $ref: "#/components/schemas/StatisticsModelMessageDistribution"
         last_24h:
           type: object
           description: 按完成时间统计 [generated_at - 24 小时, generated_at) 内的非运行中调用。
@@ -6313,27 +6293,23 @@ components:
               input_tokens: {type: integer, minimum: 0}
               output_tokens: {type: integer, minimum: 0}
               credits: {type: string, description: 模型扣费与退款的净积分，可能为负值，按十进制字符串返回。}
-    StatisticsTasksOverview:
+    StatisticsModelMessageDistribution:
       type: object
-      required: [total_tasks, new_tasks_24h, active_tasks_24h, timezone, generated_at, days]
+      required: [from, until, total_messages, models]
       properties:
-        total_tasks: {type: integer, minimum: 0, description: 当前上报启用且未删除的根任务总量。}
-        new_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内开始的根任务数。}
-        active_tasks_24h: {type: integer, minimum: 0, description: 滚动 24 小时内有上报轮次的去重根任务数。}
-        timezone: {type: string, const: Asia/Shanghai}
-        generated_at: {type: string, format: date-time}
-        days:
+        from: {type: string, format: date-time, description: generated_at 减去 24 小时，包含。}
+        until: {type: string, format: date-time, description: 与 generated_at 相同，不包含。}
+        total_messages: {type: integer, minimum: 0, description: 窗口内有效根会话的全部上报消息数，与 models 消息数合计相等；不等同于模型调用次数。}
+        models:
           type: array
-          minItems: 90
-          maxItems: 90
-          description: 从 89 天前到今天的北京时间自然日，包含无记录的零值日期；今天仅统计至 generated_at。
+          description: 按消息数降序、模型 UUID 升序，未知模型在相同数量中排最后；同名不同 UUID 的模型不合并。无消息时为空数组，total_messages 为零。
           items:
             type: object
-            required: [date, new_tasks, active_tasks]
+            required: [id, name, messages]
             properties:
-              date: {type: string, format: date}
-              new_tasks: {type: integer, minimum: 0}
-              active_tasks: {type: integer, minimum: 0, description: 当日有上报轮次的去重根任务数。}
+              id: {type: [string, "null"], format: uuid}
+              name: {type: [string, "null"], description: 优先取非空展示名称，其次上游模型名称，缺失时为 null。}
+              messages: {type: integer, minimum: 1}
     StatisticsSessionOverview:
       type: object
       required: [timezone, generated_at, total_sessions, new_sessions_24h, active_sessions_24h, total_messages, last_24h, days]

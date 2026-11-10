@@ -7,9 +7,6 @@ import {
   Database02Icon,
   GaugeIcon,
   Loading03Icon,
-  Task01Icon,
-  TaskAdd01Icon,
-  TaskDaily01Icon,
   TaskDone01Icon,
   TokenCircleIcon,
 } from "@hugeicons/core-free-icons"
@@ -18,9 +15,10 @@ import { useTranslation } from "react-i18next"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatisticsTrendCard as TrendCard } from "@/components/statistics-trend-card"
+import { ModelMessageDistributionCard } from "@/components/model-message-distribution-card"
 import { StatisticsPeriodComparison as MetricComparison } from "@/components/statistics-period-comparison"
 import { useStatistics } from "@/hooks/use-statistics"
-import { type ModelOverview, type TaskOverview } from "@/lib/statistics"
+import type { ModelOverview } from "@/lib/statistics"
 import { cn } from "@/lib/utils"
 
 const metricColors = {
@@ -79,18 +77,8 @@ const METRICS = [
     labelKey: "modelSuccessRate",
     icon: TaskDone01Icon,
   },
-  { key: "total_tasks", labelKey: "totalTasks", icon: Task01Icon },
-  { key: "new_tasks_24h", labelKey: "newTasks", icon: TaskAdd01Icon },
-  {
-    key: "active_tasks_24h",
-    labelKey: "activeTasks",
-    icon: TaskDaily01Icon,
-  },
 ] as const satisfies readonly {
-  key:
-    | keyof ModelOverview["last_24h"]
-    | keyof ModelOverview["last_30m"]
-    | keyof TaskOverview
+  key: keyof ModelOverview["last_24h"] | keyof ModelOverview["last_30m"]
   labelKey: string
   icon: IconSvgElement
 }[]
@@ -101,8 +89,6 @@ const PERIOD_METRICS = new Set<MetricKey>([
   "model_calls",
   "input_tokens",
   "output_tokens",
-  "new_tasks_24h",
-  "active_tasks_24h",
 ])
 const SHORT_METRICS = new Set<MetricKey>([
   "tpm",
@@ -111,11 +97,6 @@ const SHORT_METRICS = new Set<MetricKey>([
   "avg_response_time",
   "avg_first_token_time",
   "model_success_rate",
-])
-const OVERVIEW_METRICS = new Set<MetricKey>([
-  "total_tasks",
-  "new_tasks_24h",
-  "active_tasks_24h",
 ])
 
 function StatisticsLoader() {
@@ -235,15 +216,9 @@ export function RealtimeStatusPage() {
     0,
     { retryAction: false }
   )
-  const taskRequest = useStatistics<TaskOverview>(
-    "/api/admin/v1/statistics/tasks/overview",
-    0,
-    { retryAction: false }
-  )
   const model = modelRequest.data
   const summary = model?.last_24h
   const quality = model?.last_30m
-  const tasks = taskRequest.data
   const modelDays =
     model?.days?.length === 90 &&
     model.days.every(
@@ -273,24 +248,6 @@ export function RealtimeStatusPage() {
   const modelOutputTrend = modelDays?.map((day) => ({
     date: day.date,
     count: day.output_tokens,
-  }))
-  const taskDays =
-    tasks?.days?.length === 90 &&
-    tasks.days.every(
-      (day) =>
-        typeof day.date === "string" &&
-        Number.isFinite(day.new_tasks) &&
-        Number.isFinite(day.active_tasks)
-    )
-      ? tasks.days
-      : undefined
-  const newTasksTrend = taskDays?.map((day) => ({
-    date: day.date,
-    count: day.new_tasks,
-  }))
-  const activeTasksTrend = taskDays?.map((day) => ({
-    date: day.date,
-    count: day.active_tasks,
   }))
   const valueLabels: Partial<Record<MetricKey, string>> = {
     ...(summary
@@ -345,32 +302,17 @@ export function RealtimeStatusPage() {
               : `${percentFormatter.format(quality.model_success_rate)}%`,
         }
       : {}),
-    total_tasks:
-      tasks?.total_tasks == null
-        ? "—"
-        : numberFormatter.format(tasks.total_tasks),
-    new_tasks_24h:
-      tasks?.new_tasks_24h == null
-        ? "—"
-        : numberFormatter.format(tasks.new_tasks_24h),
-    active_tasks_24h:
-      tasks?.active_tasks_24h == null
-        ? "—"
-        : numberFormatter.format(tasks.active_tasks_24h),
   }
 
   const renderMetric = (metric: (typeof METRICS)[number]) => {
     const source = SHORT_METRICS.has(metric.key) ? quality : summary
-    const loading = OVERVIEW_METRICS.has(metric.key)
-      ? taskRequest.loading
-      : modelRequest.loading
     return (
       <RealtimeMetricCard
         icon={metric.icon}
         key={metric.key}
         label={t(`pages.realtimeStatus.metrics.${metric.labelKey}`)}
         valueLabel={valueLabels[metric.key] ?? "—"}
-        loading={loading}
+        loading={modelRequest.loading}
         comparison={
           metric.key === "model_calls" ||
           metric.key === "input_tokens" ||
@@ -393,7 +335,6 @@ export function RealtimeStatusPage() {
         }
         pendingLabel={
           source &&
-          !OVERVIEW_METRICS.has(metric.key) &&
           (source as Record<string, unknown>)[metric.key] === undefined
             ? t("pages.realtimeStatus.pendingMetric")
             : undefined
@@ -416,8 +357,12 @@ export function RealtimeStatusPage() {
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
       <div className="flex flex-col gap-5">
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {METRICS.slice(0, 9).map(renderMetric)}
+          {METRICS.map(renderMetric)}
         </div>
+        <ModelMessageDistributionCard
+          distribution={model?.message_distribution}
+          loading={modelRequest.loading}
+        />
         <div className="flex flex-col gap-2">
           <div className="grid gap-5 lg:grid-cols-2">
             <TrendCard
@@ -460,29 +405,6 @@ export function RealtimeStatusPage() {
               barClassName="fill-emerald-600"
             />
           </div>
-        </div>
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {METRICS.slice(9, 12).map(renderMetric)}
-        </div>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <TrendCard
-            icon={TaskAdd01Icon}
-            title={t("pages.realtimeStatus.metrics.newTasks")}
-            periodLabel={t("pages.realtimeStatus.period90d")}
-            points={newTasksTrend}
-            loading={taskRequest.loading}
-            color="var(--color-rose-500)"
-            barClassName="fill-rose-500"
-          />
-          <TrendCard
-            icon={TaskDaily01Icon}
-            title={t("pages.realtimeStatus.metrics.activeTasks")}
-            periodLabel={t("pages.realtimeStatus.period90d")}
-            points={activeTasksTrend}
-            loading={taskRequest.loading}
-            color="var(--color-rose-400)"
-            barClassName="fill-rose-400"
-          />
         </div>
       </div>
     </section>

@@ -218,6 +218,13 @@ WITH bounds AS NOT MATERIALIZED (
         AND e.category = 'model' AND e.entry_type IN ('charge', 'refund') GROUP BY 1
 ), credits_by_day AS (
     SELECT day, sum(credits) AS credits FROM daily_credit_parts GROUP BY day
+), message_models AS (
+    SELECT t.model_id, count(*) AS messages
+    FROM session_turns t JOIN sessions s ON s.id = t.session_id CROSS JOIN bounds b
+    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+      AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
+      AND t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at
+    GROUP BY t.model_id
 )
 SELECT jsonb_build_object(
     'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
@@ -233,46 +240,17 @@ SELECT jsonb_build_object(
         'avg_response_time', (SELECT duration_ms FROM trimmed_durations WHERE metric = 'response'),
         'avg_first_token_time', (SELECT duration_ms FROM trimmed_durations WHERE metric = 'first_token'))
         FROM detail_calls WHERE completed_at >= sqlc.arg(at)::timestamptz - interval '30 minutes'),
+    'message_distribution', jsonb_build_object(
+        'from', (SELECT now_at - interval '24 hours' FROM bounds), 'until', (SELECT now_at FROM bounds),
+        'total_messages', (SELECT coalesce(sum(messages), 0) FROM message_models),
+        'models', coalesce((SELECT jsonb_agg(jsonb_build_object('id', p.model_id,
+            'name', coalesce(nullif(btrim(m.display_name), ''), nullif(btrim(m.model_id), '')), 'messages', p.messages)
+            ORDER BY p.messages DESC, p.model_id NULLS LAST)
+            FROM message_models p LEFT JOIN models m ON m.id = p.model_id), '[]'::jsonb)),
     'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text,
         'model_calls', coalesce(c.calls,0), 'input_tokens', coalesce(c.input_tokens,0),
         'output_tokens', coalesce(c.output_tokens,0), 'credits', coalesce(e.credits,0)::text) ORDER BY d.day)
         FROM days d LEFT JOIN calls_by_day c ON c.day = d.day LEFT JOIN credits_by_day e ON e.day = d.day)
-);
-
--- name: ReportingTasksOverview :one
-WITH bounds AS (
-    SELECT sqlc.arg(at)::timestamptz AS now_at,
-           (sqlc.arg(at)::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
-), roots AS (
-    SELECT id, started_at FROM sessions
-    WHERE parent_session_id IS NULL AND reporting_enabled_at IS NOT NULL
-        AND placeholder = false AND deleted_at IS NULL AND purged_at IS NULL
-), days AS (
-    SELECT d.day::date AS day
-    FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
-), turns AS (
-    SELECT t.started_at, root.id AS root_id
-    FROM session_turns t JOIN sessions s ON s.id = t.session_id
-        JOIN roots root ON root.id = coalesce(s.parent_session_id, s.id)
-        CROSS JOIN bounds b
-    WHERE s.reporting_enabled_at IS NOT NULL AND s.placeholder = false AND s.deleted_at IS NULL AND s.purged_at IS NULL
-        AND t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at
-), new_by_day AS (
-    SELECT (root.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
-    FROM roots root CROSS JOIN bounds b
-    WHERE root.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND root.started_at < b.now_at
-    GROUP BY 1
-), active_by_day AS (
-    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(DISTINCT t.root_id) AS total
-    FROM turns t GROUP BY 1
-)
-SELECT jsonb_build_object(
-    'total_tasks', (SELECT count(*) FROM roots),
-    'new_tasks_24h', (SELECT count(*) FROM roots root CROSS JOIN bounds b WHERE root.started_at >= b.now_at - interval '24 hours' AND root.started_at < b.now_at),
-    'active_tasks_24h', (SELECT count(DISTINCT t.root_id) FROM turns t CROSS JOIN bounds b WHERE t.started_at >= b.now_at - interval '24 hours'),
-    'timezone', 'Asia/Shanghai', 'generated_at', (SELECT now_at FROM bounds),
-    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_tasks', coalesce(n.total, 0), 'active_tasks', coalesce(a.total, 0)) ORDER BY d.day)
-             FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
 );
 
 -- name: ReportingSessionOverview :one

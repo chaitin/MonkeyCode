@@ -42,7 +42,15 @@ HTTP 入口按 W3C Trace Context 接续或创建 OTel server span。默认使用
 
 模型网关和 MCP JSON-RPC 保留各自的错误协议。
 
+## 模型概览的消息使用分布
+
+`GET /api/admin/v1/statistics/models/overview` 同时返回模型指标、90 天趋势和 `message_distribution: {from, until, total_messages, models: [{id, name, messages}]}`。分布来自有效根会话上报的消息，按消息开始时间统计滚动 24 小时，包含所有结果；与会话分析的消息口径一致，缺失模型为 `id/name: null` 的未知项。同名模型按不同 UUID 分别计数，模型停用或软删除保留历史用量，名称优先取展示名称，其次上游模型名称。
+
+数据与其他模型指标来自同一只读快照、同一 `generated_at`，模型页一次请求获取整个页面。无消息时 `total_messages` 为零、`models` 为空数组；不通过模型调用次数生成消息分布。不返回模型配置、密钥、用户资料或消息正文，无需数据库迁移。
+
 ## 会话分析概览
+
+旧 `/api/admin/v1/statistics/tasks/overview` 已移除。模型页面只查询模型概览，会话页面只使用下面的完整概览接口。
 
 `GET /api/admin/v1/statistics/session-reporting/sessions/overview` 为“数据分析 → 会话”提供完整页面数据，仅管理员可读，不接收查询参数，响应为 `Cache-Control: private, no-store`。接口在 15 秒超时的只读 RepeatableRead 快照中，以同一服务端时间返回总量、90 天北京时间自然日趋势和滚动 24 小时统计，无需数据库迁移。
 

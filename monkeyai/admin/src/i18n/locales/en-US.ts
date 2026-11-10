@@ -664,6 +664,9 @@ export const enUS = {
         p10Messages: "P10 messages per session",
         p90Messages: "P90 messages per session",
         modelUsage: "Model usage",
+        modelMessageDistribution: "Model usage distribution",
+        modelMessageDistributionDetail:
+          "{{model}} · {{amount}} messages · {{percent}}",
         modelUsageHint: "{{conversations}} messages used {{model}}",
         otherModels: "Other",
         clickToFilter: "Select a model to filter",

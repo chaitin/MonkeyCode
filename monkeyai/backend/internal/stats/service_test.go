@@ -114,11 +114,12 @@ func TestOldModelsEndpointRemoved(t *testing.T) {
 }
 
 func TestModelsOverviewRejectsFilters(t *testing.T) {
-	s := &Service{}
-	w := httptest.NewRecorder()
-	s.modelsOverview(w, httptest.NewRequest("GET", "/statistics/models/overview?range=7d", nil))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("不应接受时间筛选: %d %s", w.Code, w.Body.String())
+	for _, query := range []string{"?range=7d", "?model_id=x", "?from=", "?%zz"} {
+		w := httptest.NewRecorder()
+		(&Service{}).modelsOverview(w, httptest.NewRequest("GET", "/statistics/models/overview"+query, nil))
+		if w.Code != http.StatusBadRequest || w.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatalf("不应接受查询参数 %s: %d %s", query, w.Code, w.Body.String())
+		}
 	}
 }
 
@@ -312,85 +313,15 @@ func TestUsersOverviewEndpointRemoved(t *testing.T) {
 	}
 }
 
-func TestTasksOverviewRejectsTimeFilters(t *testing.T) {
-	service := &Service{}
-	w := httptest.NewRecorder()
-	service.tasksOverview(w, httptest.NewRequest("GET", "/statistics/tasks/overview?range=7d", nil))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("时间筛选应被拒绝: %d %s", w.Code, w.Body.String())
-	}
-}
-
-func TestTasksOverview(t *testing.T) {
-	s, user, _ := fixture(t)
-	now := s.now()
-	makeSession := func(parent string, at time.Time, reporting, deleted, placeholder bool) string {
-		t.Helper()
-		var parentID, reportingAt, deletedAt any
-		if parent != "" {
-			parentID = parent
+func TestTasksOverviewRemoved(t *testing.T) {
+	r := chi.NewRouter()
+	(&Service{}).RegisterAdmin(r)
+	for _, path := range []string{"/statistics/tasks/overview", "/statistics/tasks/overview?range=7d"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("旧会话统计接口应已移除 %s: %d %s", path, w.Code, w.Body)
 		}
-		if reporting {
-			reportingAt = at
-		}
-		if deleted {
-			deletedAt = now
-		}
-		var id string
-		err := s.pool.QueryRow(t.Context(), `INSERT INTO sessions(owner_user_id,parent_session_id,title,session_type,client_type,client_name,started_at,last_active_at,reporting_enabled_at,deleted_at,placeholder) VALUES($1,$2,'测试任务','conversation','desktop','客户端',$3,$3,$4,$5,$6) RETURNING id::text`, user, parentID, at, reportingAt, deletedAt, placeholder).Scan(&id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return id
-	}
-	makeTurns := func(sessionID string, at time.Time, count int) {
-		t.Helper()
-		exec(t, s, `INSERT INTO session_resource_snapshots(session_id,snapshot_id,items) VALUES($1,'snapshot','[]')`, sessionID)
-		for index := range count {
-			started := at.Add(time.Duration(index) * time.Minute)
-			exec(t, s, `INSERT INTO session_turns(session_id,turn_index,facts_version,report_hash,input_seq,started_at,ended_at,stop_reason,resources_snapshot_id,input_kind) VALUES($1,$2::integer,1,'hash',$2::bigint,$3,$4,'complete','snapshot','text')`, sessionID, index+1, started, started.Add(time.Second))
-		}
-	}
-	old := makeSession("", now.AddDate(0, 0, -100), true, false, false)
-	makeTurns(old, now.Add(-40*time.Minute), 2)
-	child := makeSession(old, now.Add(-35*time.Minute), true, false, false)
-	makeTurns(child, now.Add(-30*time.Minute), 2)
-	recent := makeSession("", now.Add(-2*time.Hour), true, false, false)
-	makeTurns(recent, now.Add(-20*time.Minute), 1)
-	previous := makeSession("", now.Add(-25*time.Hour), true, false, false)
-	makeTurns(previous, now.Add(-25*time.Hour), 1)
-	for _, flags := range []struct{ reporting, deleted, placeholder bool }{
-		{true, true, false}, {true, false, true}, {false, false, false},
-	} {
-		excluded := makeSession("", now.Add(-time.Hour), flags.reporting, flags.deleted, flags.placeholder)
-		makeTurns(excluded, now.Add(-10*time.Minute), 1)
-	}
-	out := request(t, s, "/statistics/tasks/overview", 200)
-	for key, want := range map[string]float64{"total_tasks": 3, "new_tasks_24h": 1, "active_tasks_24h": 2} {
-		number(t, out, key, want)
-	}
-	if out["timezone"] != "Asia/Shanghai" {
-		t.Fatalf("时区错误: %v", out["timezone"])
-	}
-	days, ok := out["days"].([]any)
-	if !ok || len(days) != 90 {
-		t.Fatalf("应返回完整 90 天: %v", out["days"])
-	}
-	for i, point := range days {
-		day := point.(map[string]any)
-		wantDate := now.AddDate(0, 0, i-89).Format("2006-01-02")
-		if day["date"] != wantDate {
-			t.Fatalf("第 %d 天日期不连续: got %v, want %s", i, day["date"], wantDate)
-		}
-		wantNew, wantActive := float64(0), float64(0)
-		if i == 88 {
-			wantNew, wantActive = 1, 1
-		}
-		if i == 89 {
-			wantNew, wantActive = 1, 2
-		}
-		number(t, day, "new_tasks", wantNew)
-		number(t, day, "active_tasks", wantActive)
 	}
 }
 
@@ -557,7 +488,7 @@ func TestReportingDetailAndTombstone(t *testing.T) {
 
 func TestEmptyAndInvalid(t *testing.T) {
 	s, _, _ := fixture(t)
-	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks/overview", "/statistics/realtime", "/statistics/history", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients", "/statistics/session-reporting/clients/overview"} {
+	for _, path := range []string{"/statistics/models/overview", sessionOverviewPath, "/statistics/realtime", "/statistics/history", "/statistics/conversations", "/statistics/session-reporting/resources", "/statistics/session-reporting/clients", "/statistics/session-reporting/clients/overview"} {
 		request(t, s, path, 200)
 	}
 	out := request(t, s, "/statistics/realtime", 200)

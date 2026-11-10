@@ -135,7 +135,6 @@ user 搜索条件过长	The user search query is too long.
 从成员列表或根分组移动到根分组不会改变成员关系	Moving users from the user list or root group into the root group does not change membership.
 任务恢复数量无效	The task recovery count is invalid.
 任务结果无效	The task result is invalid.
-任务统计不支持查询参数	Task statistics do not support query parameters.
 会话分析不支持查询参数	Session analysis does not support query parameters.
 会话 ID 无效	The session ID is invalid.
 会话上报已关闭	Session reporting is disabled.

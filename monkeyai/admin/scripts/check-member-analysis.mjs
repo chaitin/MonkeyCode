@@ -12,6 +12,23 @@ const dist = fileURLToPath(new URL("../dist/", import.meta.url))
 const prefix = "/api/admin/v1/statistics/session-reporting/members/"
 const overviewPath = `${prefix}overview`
 const memberPath = "/console/statistics/session-reporting/members"
+const modelOverviewPath = "/api/admin/v1/statistics/models/overview"
+const messageModels = [
+  ["GPT-5.2", 93],
+  ["Claude Opus 4.6", 67],
+  ["DeepSeek V4", 41],
+  ["Qwen3 Max", 29],
+  ["Gemini 3 Pro", 17],
+  ["GLM-5", 11],
+  ["Kimi K2.5", 7],
+  [null, 5],
+].map(([name, messages], index) => ({
+  id: name
+    ? `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`
+    : null,
+  name,
+  messages,
+}))
 const taskPath = "/console/statistics/task-history"
 const conversationPath = "/console/statistics/conversation-history"
 const users = [
@@ -160,19 +177,55 @@ try {
     const gate = new Promise((resolve) => {
       release = resolve
     })
+    let modelMode = "success",
+      releaseModels
+    const modelsReady = new Promise((resolve) => {
+      releaseModels = resolve
+    })
     await page.route("**/*", async (route) => {
       const request = route.request(),
         url = new URL(request.url()),
         p = url.pathname
       if (p.startsWith("/api/")) {
         assert.equal(request.method(), "GET", `unexpected mutation ${p}`)
+        if (p.startsWith("/api/admin/v1/statistics/")) overviewRequests.push(p)
         let body = { items: [] }
         if (p === overviewPath) body = overview
-        else if (p === "/api/admin/v1/statistics/models/overview") {
-          overviewRequests.push(p)
+        else if (p === modelOverviewPath) {
+          assert.equal(url.search, "")
+          await modelsReady
+          if (modelMode === "error")
+            return route.fulfill({
+              status: 503,
+              json: {
+                error: {
+                  code: "test_stats_unavailable",
+                  message: "模型统计暂不可用",
+                },
+              },
+            })
+          const distributionModels =
+            modelMode === "empty"
+              ? []
+              : modelMode === "unknown"
+                ? [{ id: null, name: null, messages: 8 }]
+                : modelMode === "six"
+                  ? messageModels.slice(0, 6)
+                  : messageModels
           body = {
             timezone: "Asia/Shanghai",
             generated_at: overview.generated_at,
+            message_distribution: {
+              from: new Date(
+                Date.parse(overview.generated_at) - 86_400_000
+              ).toISOString(),
+              until: overview.generated_at,
+              total_messages: distributionModels.reduce(
+                (sum, model) => sum + model.messages,
+                0
+              ),
+              models: distributionModels,
+            },
             last_24h: {
               model_calls: 150,
               input_tokens: 3000,
@@ -197,20 +250,6 @@ try {
               input_tokens: 1000,
               output_tokens: 300,
               credits: "12",
-            })),
-          }
-        } else if (p === "/api/admin/v1/statistics/tasks/overview") {
-          overviewRequests.push(p)
-          body = {
-            total_tasks: 120,
-            new_tasks_24h: 8,
-            active_tasks_24h: 12,
-            timezone: "Asia/Shanghai",
-            generated_at: overview.generated_at,
-            days: overview.days.map((day) => ({
-              date: day.date,
-              new_tasks: 2,
-              active_tasks: 4,
             })),
           }
         } else if (p.startsWith(prefix)) {
@@ -635,23 +674,131 @@ try {
         )
       )
     }
-    // Overview keeps model/task metrics and charts; all five user cards and their API are gone.
+    // Model analysis only requests model statistics; user/session cards live on their own pages.
+    overviewRequests.length = 0
     await page.goto(`${baseURL}/console/statistics/realtime`)
-    for (const label of ["用户总量", "新增用户", "活跃用户"])
+    const loadingDistribution = page.getByRole("region", {
+      name: "模型使用分布",
+      exact: true,
+    })
+    await loadingDistribution
+      .getByRole("status", { name: "加载统计数据…", exact: true })
+      .waitFor()
+    assert.equal(await loadingDistribution.locator("[data-count]").count(), 0)
+    releaseModels()
+    for (const label of [
+      "用户总量",
+      "新增用户",
+      "活跃用户",
+      "会话总量",
+      "新建会话",
+      "活跃会话",
+    ])
       assert.equal(await page.getByText(label, { exact: true }).count(), 0)
     for (const label of [
       "积分消耗量",
       "调用次数",
       "输入 Token",
       "输出 Token",
-      "新建会话",
-      "活跃会话",
     ]) {
       const figure = page.getByRole("figure", { name: label, exact: true })
       await figure.locator(".recharts-bar-rectangle").first().waitFor()
       assert.equal(await figure.locator(".recharts-bar-rectangle").count(), 90)
     }
-    assert.equal(await page.getByRole("figure").count(), 6)
+    assert.equal(await page.getByRole("figure").count(), 4)
+    const modelDistribution = page.getByRole("region", {
+      name: "模型使用分布",
+      exact: true,
+    })
+    await modelDistribution.getByText("24 小时", { exact: true }).waitFor()
+    const distributionBar = modelDistribution.locator(
+      '[data-slot="model-message-distribution-bar"]'
+    )
+    assert.equal(
+      await distributionBar.evaluate(
+        (element) => element.getBoundingClientRect().height
+      ),
+      12
+    )
+    const distributionSegments = await distributionBar
+      .locator("[data-model-id]")
+      .evaluateAll((elements) =>
+        elements.map((element) => ({
+          count: Number(element.dataset.count),
+          width: Number.parseFloat(element.style.width),
+          color: getComputedStyle(element).backgroundColor,
+        }))
+      )
+    assert.equal(distributionSegments.length, 6)
+    assert.deepEqual(
+      distributionSegments.map((segment) => segment.count),
+      [93, 67, 41, 29, 17, 23]
+    )
+    assert.equal(
+      distributionSegments.reduce((sum, segment) => sum + segment.count, 0),
+      270
+    )
+    assert(
+      Math.abs(
+        distributionSegments.reduce((sum, segment) => sum + segment.width, 0) -
+          100
+      ) < 0.0001
+    )
+    for (const segment of distributionSegments) {
+      assert(Math.abs(segment.width - (segment.count / 270) * 100) < 0.0001)
+      assert.notEqual(segment.color, "rgba(0, 0, 0, 0)")
+    }
+    const distributionLegend = modelDistribution.locator(
+      '[data-slot="model-message-distribution-legend"]'
+    )
+    assert.deepEqual(
+      (await distributionLegend.locator(":scope > span").allTextContents()).map(
+        (text) => text.trim()
+      ),
+      [
+        "GPT-5.2",
+        "Claude Opus 4.6",
+        "DeepSeek V4",
+        "Qwen3 Max",
+        "Gemini 3 Pro",
+        "其他",
+      ]
+    )
+    const legendTops = await distributionLegend
+      .locator(":scope > span")
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().top)
+      )
+    assert(legendTops.every((top) => Math.abs(top - legendTops[0]) <= 1))
+    assert.equal(await modelDistribution.getByRole("button").count(), 0)
+    const firstDistributionSegment = distributionBar
+      .locator("[data-model-id]")
+      .first()
+    await firstDistributionSegment.focus()
+    await page
+      .locator('[data-slot="tooltip-content"][data-open]')
+      .getByText("GPT-5.2 · 93 条消息 · 34.4%", { exact: true })
+      .waitFor()
+    await page.keyboard.press("Escape")
+    await firstDistributionSegment.evaluate((element) => element.blur())
+    await page
+      .getByText("GPT-5.2 · 93 条消息 · 34.4%", { exact: true })
+      .waitFor({ state: "hidden" })
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(
+        (theme) =>
+          document.documentElement.classList.toggle("dark", theme === "dark"),
+        theme
+      )
+      await modelDistribution.screenshot({
+        path: `/tmp/monkeyai-model-message-distribution-${width}-${theme}.png`,
+      })
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth
+        )
+      )
+    }
     const comparison = page.locator('[aria-label="较此前 24 小时增加 50%"]')
     await comparison.focus()
     await page
@@ -659,8 +806,46 @@ try {
       .getByText("此前 24 小时：100", { exact: true })
       .waitFor()
     await page.keyboard.press("Escape")
-    assert(overviewRequests.some((p) => p.endsWith("/models/overview")))
-    assert(overviewRequests.some((p) => p.endsWith("/tasks/overview")))
+    assert.deepEqual(overviewRequests, [modelOverviewPath])
+    modelMode = "six"
+    await page.reload()
+    await distributionLegend.getByText("GLM-5", { exact: true }).waitFor()
+    assert.equal(await distributionBar.locator("[data-count]").count(), 6)
+    assert.equal(
+      await distributionLegend.getByText("其他", { exact: true }).count(),
+      0
+    )
+    modelMode = "unknown"
+    await page.reload()
+    const unknownSegment = distributionBar.locator('[data-model-id="unknown"]')
+    await unknownSegment.waitFor()
+    assert.equal(await unknownSegment.getAttribute("data-count"), "8")
+    assert.equal(
+      await unknownSegment.getAttribute("aria-label"),
+      "未知模型 · 8 条消息 · 100%"
+    )
+    assert.equal(await distributionBar.locator("[data-count]").count(), 1)
+    modelMode = "empty"
+    await page.reload()
+    await modelDistribution
+      .getByText("当前筛选范围内暂无数据。", { exact: true })
+      .waitFor()
+    assert.equal(await modelDistribution.locator("[data-count]").count(), 0)
+    modelMode = "error"
+    await page.reload()
+    await modelDistribution.getByText("—", { exact: true }).waitFor()
+    assert.equal(await modelDistribution.locator("[data-count]").count(), 0)
+    modelMode = "success"
+    await page.reload()
+    await distributionLegend.getByText("GPT-5.2", { exact: true }).waitFor()
+    assert.equal(
+      await distributionBar
+        .locator("[data-count]")
+        .first()
+        .getAttribute("data-count"),
+      "93"
+    )
+    assert.deepEqual(overviewRequests, Array(6).fill(modelOverviewPath))
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth
