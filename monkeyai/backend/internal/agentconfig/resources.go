@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -25,6 +27,7 @@ type Resources struct {
 	store  *resource.Store
 	mcp    *mcp.Service
 	skills *skill.Service
+	cache  catalogCache
 }
 
 func NewResources(store *resource.Store, m *mcp.Service, s *skill.Service) *Resources {
@@ -36,21 +39,79 @@ type catalog struct {
 	grants                             map[string]bool
 	required                           map[string]bool
 	links                              map[string][]resource.Object
+	connectorDTOs                      map[string]resource.Object
 }
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
-	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}}
+	return r.loadSelected(ctx, q, user, kind, nil)
+}
+
+func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, kind string, ids []string) (catalog, error) {
+	c := catalog{grants: map[string]bool{}, required: map[string]bool{}, links: map[string][]resource.Object{}, connectorDTOs: map[string]resource.Object{}}
 	systemAccess, err := resource.CanUseSystem(ctx, q, user)
 	if err != nil {
 		return c, err
 	}
 	queries := sqlc.New(q)
+	all := ids == nil
+	dependencies := map[string][]string{}
+	var experts []string
+	if kind == "experts" {
+		experts = ids
+	}
+	if kind == "" || kind == "experts" {
+		for _, link := range []struct {
+			table string
+			kind  string
+			id    string
+			read  func(context.Context) ([][]byte, error)
+		}{
+			{"expert_rules", "rules", "rule_id", func(ctx context.Context) ([][]byte, error) {
+				return queries.CatalogRuleLinks(ctx, sqlc.CatalogRuleLinksParams{AllResources: all, ExpertIds: experts})
+			}},
+			{"expert_skills", "skills", "skill_id", func(ctx context.Context) ([][]byte, error) {
+				return queries.CatalogSkillLinks(ctx, sqlc.CatalogSkillLinksParams{AllResources: all, ExpertIds: experts})
+			}},
+			{"expert_connectors", "connectors", "connector_id", func(ctx context.Context) ([][]byte, error) {
+				return queries.CatalogConnectorLinks(ctx, sqlc.CatalogConnectorLinksParams{AllResources: all, ExpertIds: experts})
+			}},
+		} {
+			out, err := resource.DecodeObjects(link.read(ctx))
+			if err != nil {
+				return c, err
+			}
+			for _, o := range out {
+				if !all {
+					dependencies[link.kind] = append(dependencies[link.kind], o.String(link.id))
+				}
+				c.links[o.String("expert_id")+":"+link.table] = append(c.links[o.String("expert_id")+":"+link.table], o)
+			}
+		}
+	}
+	selected := func(table string) []string {
+		if table == kind {
+			return ids
+		}
+		return dependencies[table]
+	}
 	targets := []struct {
 		table string
 		out   *map[string]resource.Object
 		read  func(context.Context) ([][]byte, error)
-	}{{"rules", &c.rules, queries.CatalogRules}, {"skills", &c.skills, queries.CatalogSkills},
-		{"experts", &c.experts, queries.CatalogExperts}, {"connectors", &c.connectors, queries.CatalogConnectors}}
+	}{
+		{"rules", &c.rules, func(ctx context.Context) ([][]byte, error) {
+			return queries.CatalogRules(ctx, sqlc.CatalogRulesParams{AllResources: all, ResourceIds: selected("rules")})
+		}},
+		{"skills", &c.skills, func(ctx context.Context) ([][]byte, error) {
+			return queries.CatalogSkills(ctx, sqlc.CatalogSkillsParams{AllResources: all, ResourceIds: selected("skills")})
+		}},
+		{"experts", &c.experts, func(ctx context.Context) ([][]byte, error) {
+			return queries.CatalogExperts(ctx, sqlc.CatalogExpertsParams{AllResources: all, ResourceIds: experts})
+		}},
+		{"connectors", &c.connectors, func(ctx context.Context) ([][]byte, error) {
+			return queries.CatalogConnectors(ctx, sqlc.CatalogConnectorsParams{AllResources: all, ResourceIds: selected("connectors")})
+		}},
+	}
 	for _, t := range targets {
 		if (kind == "rules" || kind == "skills") && t.table != kind {
 			continue
@@ -86,21 +147,6 @@ func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind str
 			c.required[o.String("id")] = true
 		}
 	}
-	if kind == "rules" || kind == "skills" || kind == "connectors" {
-		return c, nil
-	}
-	for _, link := range []struct {
-		table string
-		read  func(context.Context) ([][]byte, error)
-	}{{"expert_rules", queries.CatalogRuleLinks}, {"expert_skills", queries.CatalogSkillLinks}, {"expert_connectors", queries.CatalogConnectorLinks}} {
-		out, err := resource.DecodeObjects(link.read(ctx))
-		if err != nil {
-			return c, err
-		}
-		for _, o := range out {
-			c.links[o.String("expert_id")+":"+link.table] = append(c.links[o.String("expert_id")+":"+link.table], o)
-		}
-	}
 	return c, nil
 }
 func (c catalog) allowed(kind string, o resource.Object, user string) bool {
@@ -123,7 +169,31 @@ func skillDTO(o resource.Object, expert string) resource.Object {
 	return resource.Object{"id": o["id"], "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "package_size_bytes": o["package_size_bytes"], "package_sha256": o["package_sha256"], "file_count": o["file_count"], "download_path": path + "?sha256=" + o.String("package_sha256")}
 }
 func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c catalog, o resource.Object, user string) (resource.Object, error) {
-	return r.mcp.Catalog(ctx, q, o, user)
+	id := o.String("id")
+	dto, ok := c.connectorDTOs[id]
+	if !ok {
+		var err error
+		dto, err = r.mcp.Catalog(ctx, q, o, user)
+		if err != nil {
+			return nil, err
+		}
+		if c.connectorDTOs != nil {
+			c.connectorDTOs[id] = dto
+		}
+	}
+	return cloneConnector(dto), nil
+}
+
+func cloneConnector(dto resource.Object) resource.Object {
+	out := maps.Clone(dto)
+	if credentials, ok := dto["credentials"].([]resource.Object); ok {
+		cloned := make([]resource.Object, len(credentials))
+		for i, credential := range credentials {
+			cloned[i] = maps.Clone(credential)
+		}
+		out["credentials"] = cloned
+	}
+	return out
 }
 
 func filterTools(dto, link resource.Object) {
@@ -217,15 +287,15 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 func searchable(o resource.Object) (string, string) {
 	name, description := o.String("name"), o.String("description")
 	if translated, ok := o["name_i18n"].(map[string]any); ok {
-		for _, value := range translated {
-			if text, ok := value.(string); ok {
+		for _, key := range slices.Sorted(maps.Keys(translated)) {
+			if text, ok := translated[key].(string); ok {
 				name += " " + text
 			}
 		}
 	}
 	if translated, ok := o["description_i18n"].(map[string]any); ok {
-		for _, value := range translated {
-			if text, ok := value.(string); ok {
+		for _, key := range slices.Sorted(maps.Keys(translated)) {
+			if text, ok := translated[key].(string); ok {
 				description += " " + text
 			}
 		}
@@ -233,8 +303,8 @@ func searchable(o resource.Object) (string, string) {
 	return name, description
 }
 
-func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string, filter resource.CatalogFilter) ([]resource.Object, error) {
-	c, err := r.load(ctx, q, user, kind)
+func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind string, filter resource.CatalogFilter, ids []string) ([]resource.Object, error) {
+	c, err := r.loadSelected(ctx, q, user, kind, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +322,17 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 	default:
 		return nil, resource.NotFound
 	}
+	tags := map[string][]resource.Object{}
+	if kind != "rules" {
+		resourceIDs := make([]string, 0, len(items))
+		for id := range items {
+			resourceIDs = append(resourceIDs, id)
+		}
+		tags, err = r.tags(ctx, q, kind, resourceIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out := []resource.Object{}
 	owned := []string{}
 	owners := []string{}
@@ -267,7 +348,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			dto = ruleDTO(o, c.required[id])
 		case "skills":
 			dto = skillDTO(o, "")
-			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
+			dto["tags"] = tags[id]
 		case "experts":
 			var manifest resource.Object
 			manifest, err = r.manifest(ctx, q, c, id, user)
@@ -281,10 +362,7 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 			return nil, err
 		}
 		if kind == "experts" || kind == "connectors" {
-			dto["tags"], err = resource.Tags(ctx, q, resourceType, id)
-			if err != nil {
-				return nil, err
-			}
+			dto["tags"] = tags[id]
 		}
 		dto["ownership_type"] = o["ownership_type"]
 		owners = append(owners, o.String("owner_user_id"))
@@ -342,11 +420,28 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
-	items, err := r.list(req.Context(), tx, u.ID, kind, filter)
+	version, err := r.version(req.Context(), tx, kind)
+	if err != nil {
+		resource.Fail(req.Context(), w, err)
+		return
+	}
+	key := catalogKey(u.ID, req)
+	if etag, ok := r.cache.get(key, version.State, time.Now()); ok && httpapi.NotModified(w, req, etag) {
+		return
+	}
+	selected, err := r.page(req.Context(), tx, u.ID, kind, filter, resource.QueryTagIDs(req), page, size)
+	items := []resource.Object{}
 	if err == nil {
-		items = resource.FilterTags(items, resource.QueryTagIDs(req))
-		total := len(items)
-		err = httpapi.CachedJSON(w, req, map[string]any{kind: resource.PageSlice(items, page, size), "total_count": total, "page": page, "page_size": size})
+		if selected.ResourceIds == nil {
+			selected.ResourceIds = []string{}
+		}
+		items, err = r.list(req.Context(), tx, u.ID, kind, filter, selected.ResourceIds)
+	}
+	if err == nil {
+		err = httpapi.CachedJSON(w, req, map[string]any{kind: items, "total_count": selected.TotalCount, "page": page, "page_size": size})
+		if err == nil {
+			r.cache.put(key, version, w.Header().Get("ETag"), time.Now())
+		}
 	}
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
@@ -361,9 +456,29 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
-	items, err := r.list(req.Context(), tx, u.ID, kind, resource.CatalogFilter{})
+	version, err := r.version(req.Context(), tx, kind)
+	if err != nil {
+		resource.Fail(req.Context(), w, err)
+		return
+	}
+	key := catalogKey(u.ID, req)
+	if etag, ok := r.cache.get(key, version.State, time.Now()); ok && httpapi.NotModified(w, req, etag) {
+		return
+	}
+	selected, err := r.page(req.Context(), tx, u.ID, kind, resource.CatalogFilter{}, nil, 1, 2147483647)
+	var tags map[string][]resource.Object
 	if err == nil {
-		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags(items)})
+		tags, err = r.tags(req.Context(), tx, kind, selected.ResourceIds)
+	}
+	if err == nil {
+		all := []resource.Object{}
+		for _, resourceTags := range tags {
+			all = append(all, resourceTags...)
+		}
+		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags([]resource.Object{{"tags": all}})})
+		if err == nil {
+			r.cache.put(key, version, w.Header().Get("ETag"), time.Now())
+		}
 	}
 	if err != nil {
 		resource.Fail(req.Context(), w, err)

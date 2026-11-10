@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 )
 
@@ -20,7 +21,21 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 		out["icon_path"] = "/api/v1/connectors/" + c.String("id") + "/icon?v=" + resource.Hash(key)
 	}
 	if c.String("authorization_mode") == "independent" {
-		creds, err := s.Credentials(ctx, q, c, user)
+		raw, err := resource.DecodeObjects(sqlc.New(q).ListCredentials(ctx, sqlc.ListCredentialsParams{ConnectorID: c.String("id"), UserID: user}))
+		if err != nil {
+			return nil, err
+		}
+		creds, err := credentialViews(ctx, q, c, raw...)
+		if err != nil {
+			return nil, err
+		}
+		ids := []string{}
+		for _, cred := range creds {
+			if cred.String("authorization_status") == "authorized" {
+				ids = append(ids, cred.String("id"))
+			}
+		}
+		tools, err := catalogTools(ctx, q, c, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -28,11 +43,8 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 			// 自动刷新令牌的时间变化不影响公开目录版本。
 			delete(cred, "updated_at")
 			delete(cred, "oauth_expires_at")
-			tools, err := s.Tools(ctx, q, c, user, cred.String("id"), false)
-			if err != nil {
-				return nil, err
-			}
-			cred["tools"], cred["tools_version"] = safeTools(tools), resource.Hash(safeTools(tools))
+			visible := safeTools(tools[cred.String("id")])
+			cred["tools"], cred["tools_version"] = visible, resource.Hash(visible)
 			if cred.String("authorization_status") == "authorized" {
 				cred["mcp_gateway"] = s.gateway(c, cred.String("id"))
 			}
@@ -57,9 +69,31 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 	if err != nil {
 		return nil, err
 	}
-	out["tools"], out["tools_version"] = safeTools(tools), resource.Hash(safeTools(tools))
+	visible := safeTools(tools)
+	out["tools"], out["tools_version"] = visible, resource.Hash(visible)
 	if c.String("authorization_mode") == "none" || credentialStatus(c, cred) == "authorized" {
 		out["mcp_gateway"] = s.gateway(c, cred.String("id"))
+	}
+	return out, nil
+}
+
+func catalogTools(ctx context.Context, q resource.Queryer, c resource.Object, credentials []string) (map[string][]resource.Object, error) {
+	out := make(map[string][]resource.Object, len(credentials))
+	if len(credentials) == 0 {
+		return out, nil
+	}
+	rows, err := sqlc.New(q).ListCatalogTools(ctx, sqlc.ListCatalogToolsParams{
+		ConnectorID: c.String("id"), CredentialIds: credentials, ConfigRevision: c.Int("config_revision"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		tool, err := resource.DecodeObject(row.Tool, nil)
+		if err != nil {
+			return nil, err
+		}
+		out[row.CredentialID] = append(out[row.CredentialID], tool)
 	}
 	return out, nil
 }
