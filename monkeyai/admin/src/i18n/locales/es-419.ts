@@ -203,7 +203,7 @@ export const es419 = {
       activeUntil: "Actividad hasta",
       invalidRange: "La fecha final no puede ser anterior a la inicial.",
       registeredHint:
-        "Fecha de creación del registro del dispositivo, no de la primera conversación o conexión.",
+        "Fecha de creación del registro del dispositivo, no del primer mensaje o de la primera conexión.",
       activityHint:
         "La fecha más reciente entre la última presencia y el informe de información del dispositivo.",
       selectColumns: "Elegir columnas",
@@ -283,7 +283,7 @@ export const es419 = {
       sections: {
         modelHealth: "Rendimiento de los modelos",
         throughput: "Rendimiento y tokens",
-        activity: "Actividad de usuarios y tareas",
+        activity: "Actividad de usuarios y sesiones",
       },
       metrics: {
         modelConsumption: "Consumo de créditos",
@@ -299,10 +299,10 @@ export const es419 = {
         totalUsers: "Usuarios totales",
         newUsers: "Usuarios nuevos",
         activeUsers: "Usuarios activos",
-        totalTasks: "Tareas totales",
-        activeTasks: "Tareas activas",
-        newTasks: "Tareas nuevas",
-        conversations: "Conversaciones",
+        totalTasks: "Sesiones totales",
+        activeTasks: "Sesiones activas",
+        newTasks: "Sesiones nuevas",
+        conversations: "Mensajes",
       },
       units: {
         credits: "{{count}} créditos",
@@ -310,16 +310,17 @@ export const es419 = {
       },
     },
     conversationHistory: {
-      title: "Historial de conversaciones",
-      description: "Consulta los mensajes de cada tarea.",
+      title: "Historial de mensajes",
+      description:
+        "Consulta los mensajes enviados por los usuarios en cada sesión.",
     },
     taskHistory: {
-      title: "Historial de tareas",
-      description: "Consulta las tareas ejecutadas por todos los clientes.",
+      title: "Historial de sesiones",
+      description: "Consulta las sesiones de todos los clientes.",
       filters: {
         userId: "ID de usuario",
-        taskName: "Nombre de la tarea",
-        taskNamePlaceholder: "Ingresa el nombre de la tarea",
+        taskName: "Nombre de la sesión",
+        taskNamePlaceholder: "Ingresa el nombre de la sesión",
         userName: "Nombre de usuario",
         userNamePlaceholder: "Ingresa el nombre de usuario",
         startTime: "Hora de lanzamiento",
@@ -328,13 +329,13 @@ export const es419 = {
         search: "Buscar",
       },
       columns: {
-        task: "Tarea",
+        task: "Sesión",
         user: "Usuario",
-        startedAt: "Fecha de creación de la tarea",
+        startedAt: "Fecha de creación de la sesión",
         lastActiveAt: "Última actividad",
-        conversationCount: "Conversaciones",
+        conversationCount: "Mensajes",
       },
-      empty: "No hay tareas que coincidan con los filtros actuales",
+      empty: "No hay sesiones que coincidan con los filtros actuales",
     },
     models: {
       advancedOptions: "Opciones avanzadas",
@@ -680,7 +681,8 @@ export const es419 = {
     membersAndGroups: {
       creationResult: {
         title: "Resultados de creación",
-        passwordMissing: "El servidor no devolvió una contraseña inicial. Usa Restablecer contraseña para generar una nueva.",
+        passwordMissing:
+          "El servidor no devolvió una contraseña inicial. Usa Restablecer contraseña para generar una nueva.",
         summary: "{{count}} miembros creados",
         hint: "Las contraseñas iniciales solo se muestran aquí. Cópialas y compártelas con los miembros. Después de cerrar, usa Restablecer contraseña para generar una nueva.",
         copy: "Copiar",

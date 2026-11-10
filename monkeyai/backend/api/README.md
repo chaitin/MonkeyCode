@@ -42,6 +42,14 @@ HTTP 入口按 W3C Trace Context 接续或创建 OTel server span。默认使用
 
 模型网关和 MCP JSON-RPC 保留各自的错误协议。
 
+## 会话分析概览
+
+`GET /api/admin/v1/statistics/session-reporting/sessions/overview` 为“数据分析 → 会话”提供完整页面数据，仅管理员可读，不接收查询参数，响应为 `Cache-Control: private, no-store`。接口在 15 秒超时的只读 RepeatableRead 快照中，以同一服务端时间返回总量、90 天北京时间自然日趋势和滚动 24 小时统计，无需数据库迁移。
+
+口径与会话历史、消息历史一致：只计已上报的有效根会话，排除子会话、占位、未上报、已删除、已清理和未来开始的会话；历史所属用户被停用或软删除不会丢弃会话记录。消息按 `session_turns.started_at` 计入左闭右开的窗口，模型调用不作为消息。耗时为各消息开始到结束的秒数；每会话消息数只计窗口内消息，并按有消息的会话等权计算。P10/P90 均取排序后第 `ceil(N * p)` 个值，无样本时平均值及百分位为 `null`。
+
+`last_24h.models` 按模型 UUID 汇总，同名模型不合并，缺失模型为 `id/name: null` 的未知项；包含停用及软删除模型的历史用量。返回值不包含消息正文、用户资料、模型地址或密钥。完整字段见 `StatisticsSessionOverview`。
+
 ## 历史列表分页
 
 `GET /api/admin/v1/statistics/history`（任务历史）和 `/api/admin/v1/statistics/conversations`（对话历史）返回 `{items, page, page_size, has_next}`，不再返回 `total`。每页最多读取 `page_size + 1` 条判断下一页，去掉总数及逐任务轮次 COUNT；超出末页时返回请求页码和空数组。任务行的 `turn_count` 读取已维护的缓存，存量后台校准期间为 `null`。原有筛选、时间范围和稳定排序继续生效。前后端需同步发布，深 OFFSET 与模糊搜索仍有独立成本。

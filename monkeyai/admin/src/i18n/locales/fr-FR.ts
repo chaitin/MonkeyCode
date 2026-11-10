@@ -210,7 +210,7 @@ export const frFR = {
       activeUntil: "Activité jusqu’au",
       invalidRange: "La date de fin doit suivre ou égaler la date de début.",
       registeredHint:
-        "Date de création de la fiche appareil, et non du premier échange ou de la première connexion.",
+        "Date de création de la fiche appareil, et non du premier message ou de la première connexion.",
       activityHint:
         "La plus récente entre la dernière présence et le rapport d’informations enregistrés pour l’appareil.",
       selectColumns: "Choisir les colonnes",
@@ -291,7 +291,7 @@ export const frFR = {
       sections: {
         modelHealth: "Performances des modèles",
         throughput: "Débit et tokens",
-        activity: "Activité des utilisateurs et des tâches",
+        activity: "Activité des utilisateurs et des sessions",
       },
       metrics: {
         modelConsumption: "Consommation de crédits",
@@ -307,10 +307,10 @@ export const frFR = {
         totalUsers: "Total des utilisateurs",
         newUsers: "Nouveaux utilisateurs",
         activeUsers: "Utilisateurs actifs",
-        totalTasks: "Total des tâches",
-        activeTasks: "Tâches actives",
-        newTasks: "Nouvelles tâches",
-        conversations: "Conversations",
+        totalTasks: "Total des sessions",
+        activeTasks: "Sessions actives",
+        newTasks: "Nouvelles sessions",
+        conversations: "Messages",
       },
       units: {
         credits: "{{count}} crédits",
@@ -318,16 +318,17 @@ export const frFR = {
       },
     },
     conversationHistory: {
-      title: "Historique des conversations",
-      description: "Consultez les messages de chaque tâche.",
+      title: "Historique des messages",
+      description:
+        "Consultez les messages envoyés par les utilisateurs dans chaque session.",
     },
     taskHistory: {
-      title: "Historique des tâches",
-      description: "Consultez les tâches exécutées par tous les clients.",
+      title: "Historique des sessions",
+      description: "Consultez les sessions de tous les clients.",
       filters: {
         userId: "ID utilisateur",
-        taskName: "Nom de la tâche",
-        taskNamePlaceholder: "Saisir le nom de la tâche",
+        taskName: "Nom de la session",
+        taskNamePlaceholder: "Saisir le nom de la session",
         userName: "Nom d’utilisateur",
         userNamePlaceholder: "Saisir le nom d’utilisateur",
         startTime: "Date de lancement",
@@ -336,13 +337,13 @@ export const frFR = {
         search: "Rechercher",
       },
       columns: {
-        task: "Tâche",
+        task: "Session",
         user: "Utilisateur",
-        startedAt: "Date de création de la tâche",
+        startedAt: "Date de création de la session",
         lastActiveAt: "Dernière activité",
-        conversationCount: "Conversations",
+        conversationCount: "Messages",
       },
-      empty: "Aucune tâche ne correspond aux filtres actuels",
+      empty: "Aucune session ne correspond aux filtres actuels",
     },
     models: {
       advancedOptions: "Options avancées",
@@ -688,7 +689,8 @@ export const frFR = {
     membersAndGroups: {
       creationResult: {
         title: "Résultats de création",
-        passwordMissing: "Le serveur n’a pas renvoyé de mot de passe initial. Utilisez la réinitialisation pour en générer un nouveau.",
+        passwordMissing:
+          "Le serveur n’a pas renvoyé de mot de passe initial. Utilisez la réinitialisation pour en générer un nouveau.",
         summary: "{{count}} membres créés",
         hint: "Les mots de passe initiaux sont affichés uniquement ici. Copiez-les et transmettez-les aux membres. Après fermeture, utilisez la réinitialisation pour générer un nouveau mot de passe.",
         copy: "Copier",

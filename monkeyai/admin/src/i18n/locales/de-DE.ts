@@ -209,7 +209,7 @@ export const deDE = {
       activeUntil: "Aktivität bis",
       invalidRange: "Das Enddatum darf nicht vor dem Startdatum liegen.",
       registeredHint:
-        "Erstellung des Gerätedatensatzes, nicht das erste Gespräch oder die erste Verbindung.",
+        "Erstellung des Gerätedatensatzes, nicht die erste Nachricht oder die erste Verbindung.",
       activityHint:
         "Der neuere Zeitpunkt von letzter Sichtung und Gerätebericht im Gerätedatensatz.",
       selectColumns: "Spalten auswählen",
@@ -288,7 +288,7 @@ export const deDE = {
       sections: {
         modelHealth: "Modellleistung",
         throughput: "Durchsatz und Token",
-        activity: "Benutzer- und Aufgabenaktivität",
+        activity: "Benutzer- und Sitzungsaktivität",
       },
       metrics: {
         modelConsumption: "Guthabenverbrauch",
@@ -304,10 +304,10 @@ export const deDE = {
         totalUsers: "Benutzer insgesamt",
         newUsers: "Neue Benutzer",
         activeUsers: "Aktive Benutzer",
-        totalTasks: "Aufgaben insgesamt",
-        activeTasks: "Aktive Aufgaben",
-        newTasks: "Neue Aufgaben",
-        conversations: "Unterhaltungen",
+        totalTasks: "Sitzungen insgesamt",
+        activeTasks: "Aktive Sitzungen",
+        newTasks: "Neue Sitzungen",
+        conversations: "Nachrichten",
       },
       units: {
         credits: "{{count}} Punkte",
@@ -315,16 +315,16 @@ export const deDE = {
       },
     },
     conversationHistory: {
-      title: "Gesprächsverlauf",
-      description: "Nachrichten aus den einzelnen Aufgaben anzeigen.",
+      title: "Nachrichtenverlauf",
+      description: "Nachrichten der Benutzer in jeder Sitzung anzeigen.",
     },
     taskHistory: {
-      title: "Aufgabenverlauf",
-      description: "Prüfen Sie die von allen Clients ausgeführten Aufgaben.",
+      title: "Sitzungsverlauf",
+      description: "Sitzungen aus allen Clients anzeigen.",
       filters: {
         userId: "Benutzer-ID",
-        taskName: "Aufgabenname",
-        taskNamePlaceholder: "Aufgabenname eingeben",
+        taskName: "Sitzungsname",
+        taskNamePlaceholder: "Sitzungsname eingeben",
         userName: "Benutzername",
         userNamePlaceholder: "Benutzername eingeben",
         startTime: "Startzeit",
@@ -333,13 +333,13 @@ export const deDE = {
         search: "Suchen",
       },
       columns: {
-        task: "Aufgabe",
+        task: "Sitzung",
         user: "Benutzer",
-        startedAt: "Erstellungszeit der Aufgabe",
+        startedAt: "Erstellungszeit der Sitzung",
         lastActiveAt: "Letzte Aktivität",
-        conversationCount: "Unterhaltungen",
+        conversationCount: "Nachrichten",
       },
-      empty: "Keine Aufgaben entsprechen den aktuellen Filtern",
+      empty: "Keine Sitzungen entsprechen den aktuellen Filtern",
     },
     models: {
       advancedOptions: "Erweiterte Optionen",
@@ -687,7 +687,8 @@ export const deDE = {
     membersAndGroups: {
       creationResult: {
         title: "Erstellungsergebnisse",
-        passwordMissing: "Der Server hat kein Anfangspasswort zurückgegeben. Erstellen Sie über die Passwortzurücksetzung ein neues Passwort.",
+        passwordMissing:
+          "Der Server hat kein Anfangspasswort zurückgegeben. Erstellen Sie über die Passwortzurücksetzung ein neues Passwort.",
         summary: "{{count}} Mitglieder erstellt",
         hint: "Anfangspasswörter werden nur hier angezeigt. Kopieren Sie diese und geben Sie sie an die Mitglieder weiter. Nach dem Schließen können neue Passwörter über die Passwortzurücksetzung erstellt werden.",
         copy: "Kopieren",

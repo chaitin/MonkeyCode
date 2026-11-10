@@ -13,6 +13,7 @@
     "test:browser:members": "node scripts/check-members-virtualization.mjs",
     "test:browser:member-creation": "node scripts/check-member-creation.mjs",
     "test:browser:member-analysis": "node scripts/check-member-analysis.mjs",
+    "test:browser:task-analysis": "node scripts/check-task-analysis.mjs",
     "test:browser:quotas": "node scripts/check-quota-virtualization.mjs",
     "test:browser:groups": "node scripts/check-group-select.mjs",
     "test:browser:models": "node scripts/check-model-config.mjs",

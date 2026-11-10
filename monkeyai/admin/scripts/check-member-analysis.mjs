@@ -377,8 +377,8 @@ try {
     )
     await root.getByText("平台组", { exact: true }).waitFor()
     for (const [label, value] of [
-      ["任务数", "123"],
-      ["对话数", "345"],
+      ["会话数", "123"],
+      ["消息数", "345"],
       ["消耗积分", "1,234"],
     ]) {
       assert.equal(
@@ -389,7 +389,7 @@ try {
         value
       )
     }
-    for (const name of ["活跃天数", "使用偏好", "会话数"])
+    for (const name of ["活跃天数", "使用偏好"])
       assert.equal(await root.getByText(name, { exact: true }).count(), 0)
     const resources = root.getByRole("region", {
       name: "创建的资源",
@@ -412,7 +412,7 @@ try {
       )
     }
     const heatmap = root.getByRole("region", {
-      name: /^近一年共 [\d,]+ 次对话$/,
+      name: /^近一年共 [\d,]+ 条消息$/,
     })
     const cells = heatmap.locator("button[data-date]")
     assert.equal(await cells.count(), days.length)
@@ -444,14 +444,14 @@ try {
     )
     assert.equal(
       await heatmap.locator('[data-slot="card-title"]').innerText(),
-      `近一年共 ${new Intl.NumberFormat("zh-CN").format(days.reduce((sum, day) => sum + day.conversations, 0))} 次对话`
+      `近一年共 ${new Intl.NumberFormat("zh-CN").format(days.reduce((sum, day) => sum + day.conversations, 0))} 条消息`
     )
     for (const day of activity)
       assert.equal(day.opacity, Math.min(1, day.count / 20))
     const lastDay = cells.last()
     assert.match(
       await lastDay.getAttribute("aria-label"),
-      /^2026 年 11 月 3 日 · [\d,]+ 次对话$/
+      /^2026 年 11 月 3 日 · [\d,]+ 条消息$/
     )
     await lastDay.focus()
     await page
@@ -459,10 +459,10 @@ try {
       .getByText(await lastDay.getAttribute("aria-label"), { exact: true })
       .waitFor()
     await page.keyboard.press("Escape")
-    const recent = root.getByRole("region", { name: "最近任务", exact: true })
+    const recent = root.getByRole("region", { name: "最近会话", exact: true })
     assert.deepEqual(await recent.locator("thead th").allTextContents(), [
-      "任务名称",
-      "对话数量",
+      "会话名称",
+      "消息数量",
       "创建时间",
       "最近活动",
     ])
@@ -507,8 +507,8 @@ try {
         )
       })
     for (const [label, destination, api] of [
-      ["任务数", taskPath, "/api/admin/v1/statistics/history"],
-      ["对话数", conversationPath, "/api/admin/v1/statistics/conversations"],
+      ["会话数", taskPath, "/api/admin/v1/statistics/history"],
+      ["消息数", conversationPath, "/api/admin/v1/statistics/conversations"],
       ["消耗积分", "/console/billing/details", "/api/admin/v1/billing/entries"],
     ]) {
       const card = root.getByRole("group", { name: label, exact: true }),
@@ -575,7 +575,7 @@ try {
     await root.getByText("xuning@example.com", { exact: true }).waitFor()
     assert.equal(
       await root
-        .getByRole("group", { name: "任务数", exact: true })
+        .getByRole("group", { name: "会话数", exact: true })
         .locator("p[title]")
         .innerText(),
       "0"
@@ -587,7 +587,7 @@ try {
         .count(),
       0
     )
-    await recent.getByText("没有符合条件的任务", { exact: true }).waitFor()
+    await recent.getByText("没有符合条件的会话", { exact: true }).waitFor()
     assert.equal(
       await more.getAttribute("href"),
       `${taskPath}?user_id=${users[1].id}`
@@ -609,7 +609,7 @@ try {
       0
     )
     assert.equal(
-      await root.getByRole("group", { name: "任务数", exact: true }).count(),
+      await root.getByRole("group", { name: "会话数", exact: true }).count(),
       0
     )
     mode = "success"
@@ -621,7 +621,7 @@ try {
       .getByText("成员不存在", { exact: true })
       .waitFor()
     assert.equal(
-      await root.getByRole("group", { name: "任务数", exact: true }).count(),
+      await root.getByRole("group", { name: "会话数", exact: true }).count(),
       0
     )
     for (const dark of [false, true]) {
@@ -644,8 +644,8 @@ try {
       "调用次数",
       "输入 Token",
       "输出 Token",
-      "新建任务",
-      "活跃任务",
+      "新建会话",
+      "活跃会话",
     ]) {
       const figure = page.getByRole("figure", { name: label, exact: true })
       await figure.locator(".recharts-bar-rectangle").first().waitFor()

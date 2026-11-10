@@ -86,8 +86,11 @@ func TestMemberAnalysisAdminAccess(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	if w := call("GET", path, ""); w.Code != 401 {
-		t.Fatalf("匿名访问: %d %s", w.Code, w.Body)
+	analysisPaths := []string{path, "/api/admin/v1/statistics/session-reporting/sessions/overview"}
+	for _, analysisPath := range analysisPaths {
+		if w := call("GET", analysisPath, ""); w.Code != 401 {
+			t.Fatalf("匿名访问 %s: %d %s", analysisPath, w.Code, w.Body)
+		}
 	}
 	login := call("POST", "/api/auth/v1/admin/login", `{"email":"member-analysis@example.test","password":"member-analysis-test-password"}`)
 	if login.Code != 200 || len(login.Result().Cookies()) == 0 {
@@ -111,10 +114,25 @@ func TestMemberAnalysisAdminAccess(t *testing.T) {
 			t.Fatalf("分析接口泄漏私密字段 %s", field)
 		}
 	}
+	w = call("GET", analysisPaths[1], "")
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("会话分析管理员读取: %d %s", w.Code, w.Body)
+	}
+	var sessionOverview map[string]any
+	if err = json.Unmarshal(w.Body.Bytes(), &sessionOverview); err != nil || sessionOverview["total_sessions"] != float64(0) {
+		t.Fatalf("会话分析响应错误: %s %v", w.Body, err)
+	}
+	for _, field := range []string{"password_hash", "api_key", "oauth_client_secret", "input_text", "user_id", "email"} {
+		if strings.Contains(w.Body.String(), `"`+field+`"`) {
+			t.Fatalf("会话分析泄漏私密字段 %s", field)
+		}
+	}
 	if _, err = pool.Exec(ctx, `UPDATE users SET role='user' WHERE id=$1`, userID); err != nil {
 		t.Fatal(err)
 	}
-	if w = call("GET", path, ""); w.Code != 403 {
-		t.Fatalf("普通用户访问: %d %s", w.Code, w.Body)
+	for _, analysisPath := range analysisPaths {
+		if w = call("GET", analysisPath, ""); w.Code != 403 {
+			t.Fatalf("普通用户访问 %s: %d %s", analysisPath, w.Code, w.Body)
+		}
 	}
 }

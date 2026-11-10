@@ -165,7 +165,7 @@ try {
         })
       })
       try {
-        const table = `table[aria-label="${kind === "task" ? "任务历史" : "对话历史"}"]`
+        const table = `table[aria-label="${kind === "task" ? "会话历史" : "消息历史"}"]`
         const pagination = '[data-slot="table-pagination"]'
         const disabled = (name) =>
           page.evaluate(

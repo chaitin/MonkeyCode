@@ -191,7 +191,7 @@ export const ar = {
       activeFrom: "النشاط من",
       activeUntil: "النشاط حتى",
       invalidRange: "يجب ألا يسبق تاريخ النهاية تاريخ البداية.",
-      registeredHint: "وقت إنشاء سجل الجهاز، وليس أول محادثة أو اتصال.",
+      registeredHint: "وقت إنشاء سجل الجهاز، وليس أول رسالة أو اتصال.",
       activityHint: "الوقت الأحدث بين آخر ظهور وتقرير المعلومات في سجل الجهاز.",
       selectColumns: "اختيار الأعمدة",
       statuses: {
@@ -267,7 +267,7 @@ export const ar = {
       sections: {
         modelHealth: "أداء النماذج",
         throughput: "معدل النقل والرموز",
-        activity: "نشاط المستخدمين والمهام",
+        activity: "نشاط المستخدمين والجلسات",
       },
       metrics: {
         modelConsumption: "استهلاك الرصيد",
@@ -283,10 +283,10 @@ export const ar = {
         totalUsers: "إجمالي المستخدمين",
         newUsers: "المستخدمون الجدد",
         activeUsers: "المستخدمون النشطون",
-        totalTasks: "إجمالي المهام",
-        activeTasks: "المهام النشطة",
-        newTasks: "المهام الجديدة",
-        conversations: "المحادثات",
+        totalTasks: "إجمالي الجلسات",
+        activeTasks: "الجلسات النشطة",
+        newTasks: "الجلسات الجديدة",
+        conversations: "الرسائل",
       },
       units: {
         credits: "{{count}} رصيد",
@@ -294,16 +294,16 @@ export const ar = {
       },
     },
     conversationHistory: {
-      title: "سجل المحادثات",
-      description: "عرض رسائل كل مهمة.",
+      title: "سجل الرسائل",
+      description: "عرض الرسائل التي أرسلها المستخدمون في كل جلسة.",
     },
     taskHistory: {
-      title: "سجل المهام",
-      description: "راجع المهام التي نفّذتها جميع تطبيقات العميل.",
+      title: "سجل الجلسات",
+      description: "راجع جلسات جميع تطبيقات العميل.",
       filters: {
         userId: "معرّف المستخدم",
-        taskName: "اسم المهمة",
-        taskNamePlaceholder: "أدخل اسم المهمة",
+        taskName: "اسم الجلسة",
+        taskNamePlaceholder: "أدخل اسم الجلسة",
         userName: "اسم المستخدم",
         userNamePlaceholder: "أدخل اسم المستخدم",
         startTime: "وقت التشغيل",
@@ -312,13 +312,13 @@ export const ar = {
         search: "بحث",
       },
       columns: {
-        task: "المهمة",
+        task: "الجلسة",
         user: "المستخدم",
-        startedAt: "وقت إنشاء المهمة",
+        startedAt: "وقت إنشاء الجلسة",
         lastActiveAt: "آخر نشاط",
-        conversationCount: "المحادثات",
+        conversationCount: "الرسائل",
       },
-      empty: "لا توجد مهام تطابق عوامل التصفية الحالية",
+      empty: "لا توجد جلسات تطابق عوامل التصفية الحالية",
     },
     models: {
       advancedOptions: "خيارات متقدمة",
@@ -649,7 +649,8 @@ export const ar = {
     membersAndGroups: {
       creationResult: {
         title: "نتائج الإنشاء",
-        passwordMissing: "لم يُرجع الخادم كلمة مرور أولية. استخدم إعادة تعيين كلمة المرور لإنشاء كلمة مرور جديدة.",
+        passwordMissing:
+          "لم يُرجع الخادم كلمة مرور أولية. استخدم إعادة تعيين كلمة المرور لإنشاء كلمة مرور جديدة.",
         summary: "تم إنشاء {{count}} أعضاء",
         hint: "تظهر كلمات المرور الأولية هنا فقط. انسخها وشاركها مع الأعضاء. بعد الإغلاق، استخدم إعادة تعيين كلمة المرور لإنشاء كلمة مرور جديدة.",
         copy: "نسخ",

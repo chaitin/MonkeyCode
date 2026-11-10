@@ -71,7 +71,7 @@ const configurations = [
       until,
     },
     textKey: "content",
-    input: 'input[aria-label="对话内容"]',
+    input: 'input[aria-label="消息内容"]',
     dates: ["conversation-history-from", "conversation-history-until"],
     dateKeys: ["from", "until"],
   },

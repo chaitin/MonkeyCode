@@ -136,6 +136,7 @@ user 搜索条件过长	The user search query is too long.
 任务恢复数量无效	The task recovery count is invalid.
 任务结果无效	The task result is invalid.
 任务统计不支持查询参数	Task statistics do not support query parameters.
+会话分析不支持查询参数	Session analysis does not support query parameters.
 会话 ID 无效	The session ID is invalid.
 会话上报已关闭	Session reporting is disabled.
 会话上报接口仅支持 cursor 分页，不支持 page	Session reporting only supports cursor pagination, not page pagination.

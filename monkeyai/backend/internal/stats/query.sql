@@ -275,6 +275,70 @@ SELECT jsonb_build_object(
              FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN active_by_day a ON a.day = d.day)
 );
 
+-- name: ReportingSessionOverview :one
+WITH bounds AS (
+    SELECT sqlc.arg(at)::timestamptz AS now_at,
+           (sqlc.arg(at)::timestamptz AT TIME ZONE 'Asia/Shanghai')::date AS today
+), roots AS MATERIALIZED (
+    SELECT s.id, s.started_at FROM sessions s CROSS JOIN bounds b
+    WHERE s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL
+      AND NOT s.placeholder AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at
+), days AS (
+    SELECT d.day::date AS day FROM bounds b CROSS JOIN LATERAL
+        generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') d(day)
+), new_by_day AS (
+    SELECT (s.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day, count(*) AS total
+    FROM roots s CROSS JOIN bounds b
+    WHERE s.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') GROUP BY 1
+), activity_by_day AS (
+    SELECT (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day,
+           count(*) AS messages, count(DISTINCT t.session_id) AS active_sessions
+    FROM session_turns t JOIN roots s ON s.id = t.session_id CROSS JOIN bounds b
+    WHERE t.started_at >= ((b.today - 89)::timestamp AT TIME ZONE 'Asia/Shanghai') AND t.started_at < b.now_at GROUP BY 1
+), recent AS MATERIALIZED (
+    SELECT t.session_id, t.model_id, t.stop_reason, extract(epoch FROM (t.ended_at - t.started_at))::double precision AS seconds
+    FROM session_turns t JOIN roots s ON s.id = t.session_id CROSS JOIN bounds b
+    WHERE t.started_at >= b.now_at - interval '24 hours' AND t.started_at < b.now_at
+), per_session AS (
+    SELECT session_id, count(*) AS messages FROM recent GROUP BY session_id
+), per_model AS (
+    SELECT model_id, count(*) AS messages FROM recent GROUP BY model_id
+), recent_summary AS (
+    SELECT count(*) AS messages,
+        jsonb_build_object(
+            'complete', count(*) FILTER (WHERE stop_reason = 'complete'),
+            'error', count(*) FILTER (WHERE stop_reason = 'error'),
+            'interrupted', count(*) FILTER (WHERE stop_reason = 'interrupted'),
+            'max_turns', count(*) FILTER (WHERE stop_reason = 'max_turns'),
+            'output_limit', count(*) FILTER (WHERE stop_reason = 'output_limit'),
+            'unknown', count(*) FILTER (WHERE stop_reason = 'unknown')) AS outcomes,
+        jsonb_build_object('average', avg(seconds),
+            'p10', percentile_disc(0.1) WITHIN GROUP (ORDER BY seconds),
+            'p90', percentile_disc(0.9) WITHIN GROUP (ORDER BY seconds)) AS duration_seconds
+    FROM recent
+), message_counts AS (
+    SELECT count(*) AS sessions, jsonb_build_object('average', avg(messages),
+        'p10', percentile_disc(0.1) WITHIN GROUP (ORDER BY messages),
+        'p90', percentile_disc(0.9) WITHIN GROUP (ORDER BY messages)) AS distribution FROM per_session
+)
+SELECT jsonb_build_object(
+    'timezone', 'Asia/Shanghai', 'generated_at', b.now_at,
+    'total_sessions', (SELECT count(*) FROM roots),
+    'new_sessions_24h', (SELECT count(*) FROM roots WHERE started_at >= b.now_at - interval '24 hours'),
+    'active_sessions_24h', c.sessions,
+    'total_messages', (SELECT count(*) FROM session_turns t JOIN roots s ON s.id = t.session_id WHERE t.started_at < b.now_at),
+    'last_24h', jsonb_build_object('from', b.now_at - interval '24 hours', 'until', b.now_at,
+        'messages', r.messages, 'outcomes', r.outcomes, 'duration_seconds', r.duration_seconds,
+        'messages_per_session', c.distribution,
+        'models', coalesce((SELECT jsonb_agg(jsonb_build_object('id', p.model_id,
+            'name', coalesce(nullif(btrim(m.display_name), ''), nullif(btrim(m.model_id), '')), 'messages', p.messages)
+            ORDER BY p.messages DESC, p.model_id NULLS LAST)
+            FROM per_model p LEFT JOIN models m ON m.id = p.model_id), '[]'::jsonb)),
+    'days', (SELECT jsonb_agg(jsonb_build_object('date', d.day::text, 'new_sessions', coalesce(n.total, 0),
+        'active_sessions', coalesce(a.active_sessions, 0), 'messages', coalesce(a.messages, 0)) ORDER BY d.day)
+        FROM days d LEFT JOIN new_by_day n ON n.day = d.day LEFT JOIN activity_by_day a ON a.day = d.day)
+) FROM bounds b CROSS JOIN recent_summary r CROSS JOIN message_counts c;
+
 -- name: ReportingMembersOverview :one
 WITH bounds AS (
     SELECT sqlc.arg(at)::timestamptz AS now_at,

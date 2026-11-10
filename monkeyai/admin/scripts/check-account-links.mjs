@@ -275,7 +275,7 @@ try {
         page.waitForFunction(
           (count) =>
             document
-              .querySelector('table[aria-label="任务历史"]')
+              .querySelector('table[aria-label="会话历史"]')
               ?.getAttribute("aria-busy") === "false" &&
             document.querySelectorAll("tbody tr").length === count,
           count
@@ -415,8 +415,8 @@ try {
         assert.equal(await page.getByRole("dialog").count(), 0)
         await page.setViewportSize({ width, height: 1000 })
         const taskLink = page
-          .getByRole("group", { name: "任务数", exact: true })
-          .getByRole("link", { name: "任务数", exact: true })
+          .getByRole("group", { name: "会话数", exact: true })
+          .getByRole("link", { name: "会话数", exact: true })
         assert.equal(
           await taskLink.getAttribute("href"),
           `${taskPath}?user_id=${user}`

@@ -1289,6 +1289,32 @@ paths:
           $ref: "#/components/responses/ResourceError403"
         "500":
           $ref: "#/components/responses/ResourceError500"
+  /api/admin/v1/statistics/session-reporting/sessions/overview:
+    get:
+      summary: 会话分析页面的数量、趋势、模型使用、消息结果与分布统计
+      description: |
+        仅管理员可访问，不接收查询参数。全部统计来自同一只读快照及同一 generated_at。
+        沿用会话历史和消息历史口径：仅统计已启用上报、非占位、未删除、未清理且 started_at 早于 generated_at 的根会话；不包含子会话。保留停用或已删除用户的历史会话，与历史列表一致。消息为 session_turns 中的一条已上报轮次，不是模型调用或输入、输出分别计数。
+        会话总量和消息总数覆盖全部历史，未来消息不计入。新增会话按 sessions.started_at，活跃会话按消息 started_at 去重。24 小时窗口为 [generated_at - 24 小时, generated_at)，消息数、结果、耗时、每会话消息数及模型使用均使用此窗口。耗时为 ended_at - started_at，包含所有结果；每会话消息数只统计窗口内有消息的会话，跨模型消息合并到所属根会话。P10/P90 使用最近秩法，即排序后取 ceil(N * p) 项；无样本时平均值和百分位返回 null。
+        days 为近 90 个北京时间（Asia/Shanghai）自然日，含当天部分数据，升序补零。models 按消息数降序、模型 UUID 升序，未知模型排在同数量已知模型之后；包含已停用、已删除模型的历史用量，model_id 缺失时归入 id/name 为 null 的未知模型。仅返回模型 ID、名称与数量，不返回配置、密钥、消息正文或用户资料。
+      responses:
+        "200":
+          description: 会话分析页面完整数据。
+          headers:
+            Cache-Control:
+              schema: {type: string, const: "private, no-store"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsSessionOverview"
+        "400":
+          $ref: "#/components/responses/ResourceError400"
+        "401":
+          $ref: "#/components/responses/ResourceError401"
+        "403":
+          $ref: "#/components/responses/ResourceError403"
+        "500":
+          $ref: "#/components/responses/ResourceError500"
   /api/admin/v1/statistics/session-reporting/members/overview:
     get:
       summary: 成员总数、7 天和 24 小时活跃成员及近 90 天趋势
@@ -6308,6 +6334,72 @@ components:
               date: {type: string, format: date}
               new_tasks: {type: integer, minimum: 0}
               active_tasks: {type: integer, minimum: 0, description: 当日有上报轮次的去重根任务数。}
+    StatisticsSessionOverview:
+      type: object
+      required: [timezone, generated_at, total_sessions, new_sessions_24h, active_sessions_24h, total_messages, last_24h, days]
+      properties:
+        timezone: {type: string, const: Asia/Shanghai}
+        generated_at: {type: string, format: date-time}
+        total_sessions: {type: integer, minimum: 0, description: 当前有效根会话总量。}
+        new_sessions_24h: {type: integer, minimum: 0, description: 滚动 24 小时内创建的有效根会话数。}
+        active_sessions_24h: {type: integer, minimum: 0, description: 滚动 24 小时内有消息的去重有效根会话数，也是每会话消息数的样本量。}
+        total_messages: {type: integer, minimum: 0, description: 有效根会话全部历史上报消息数，不含未来消息。}
+        last_24h:
+          type: object
+          required: [from, until, messages, outcomes, duration_seconds, messages_per_session, models]
+          properties:
+            from: {type: string, format: date-time, description: generated_at 减去 24 小时，包含。}
+            until: {type: string, format: date-time, description: 与 generated_at 相同，不包含。}
+            messages: {type: integer, minimum: 0}
+            outcomes:
+              type: object
+              required: [complete, error, interrupted, max_turns, output_limit, unknown]
+              description: 各结果消息数，合计等于 messages；无数据时全部为零。
+              properties:
+                complete: {type: integer, minimum: 0}
+                error: {type: integer, minimum: 0}
+                interrupted: {type: integer, minimum: 0, description: 用户取消。}
+                max_turns: {type: integer, minimum: 0}
+                output_limit: {type: integer, minimum: 0}
+                unknown: {type: integer, minimum: 0}
+            duration_seconds:
+              type: object
+              required: [average, p10, p90]
+              description: 消息处理耗时，单位为秒，不排除异常或未知结果；无消息时三项均为 null。
+              properties:
+                average: {type: [number, "null"], minimum: 0}
+                p10: {type: [number, "null"], minimum: 0}
+                p90: {type: [number, "null"], minimum: 0}
+            messages_per_session:
+              type: object
+              required: [average, p10, p90]
+              description: 按窗口内消息数量对活跃会话等权统计，排除无消息会话；无活跃会话时三项均为 null。
+              properties:
+                average: {type: [number, "null"], minimum: 0}
+                p10: {type: [integer, "null"], minimum: 1}
+                p90: {type: [integer, "null"], minimum: 1}
+            models:
+              type: array
+              description: 各模型使用的消息数，合计等于 messages；同名模型按 UUID 区分，缺失模型统一归入未知项。无数据时为空数组。
+              items:
+                type: object
+                required: [id, name, messages]
+                properties:
+                  id: {type: [string, "null"], format: uuid}
+                  name: {type: [string, "null"]}
+                  messages: {type: integer, minimum: 1}
+        days:
+          type: array
+          minItems: 90
+          maxItems: 90
+          items:
+            type: object
+            required: [date, new_sessions, active_sessions, messages]
+            properties:
+              date: {type: string, format: date}
+              new_sessions: {type: integer, minimum: 0}
+              active_sessions: {type: integer, minimum: 0}
+              messages: {type: integer, minimum: 0}
     StatisticsMemberActivity:
       type: object
       required: [active_members]

@@ -201,7 +201,7 @@ export const jaJP = {
       activeUntil: "最終活動の終了日",
       invalidRange: "終了日は開始日以降にしてください。",
       registeredHint:
-        "端末レコードの作成日時です。最初の会話や接続の日時ではありません。",
+        "端末レコードの作成日時です。最初のメッセージや接続の日時ではありません。",
       activityHint:
         "端末レコードの最終確認日時と情報報告日時のうち新しい日時です。",
       selectColumns: "列を選択",
@@ -279,7 +279,7 @@ export const jaJP = {
       sections: {
         modelHealth: "モデルパフォーマンス",
         throughput: "スループットと Token",
-        activity: "ユーザーとタスクのアクティビティ",
+        activity: "ユーザーとセッションのアクティビティ",
       },
       metrics: {
         modelConsumption: "クレジット消費量",
@@ -295,10 +295,10 @@ export const jaJP = {
         totalUsers: "総ユーザー数",
         newUsers: "新規ユーザー数",
         activeUsers: "アクティブユーザー数",
-        totalTasks: "総タスク数",
-        activeTasks: "アクティブタスク数",
-        newTasks: "新規タスク数",
-        conversations: "会話回数",
+        totalTasks: "総セッション数",
+        activeTasks: "アクティブセッション数",
+        newTasks: "新規セッション数",
+        conversations: "メッセージ回数",
       },
       units: {
         credits: "{{count}} クレジット",
@@ -306,16 +306,16 @@ export const jaJP = {
       },
     },
     conversationHistory: {
-      title: "会話履歴",
-      description: "タスクごとの発言を確認します。",
+      title: "メッセージ履歴",
+      description: "各セッションでユーザーが送信したメッセージを確認します。",
     },
     taskHistory: {
-      title: "タスク履歴",
-      description: "すべてのクライアントで実行されたタスクを確認します。",
+      title: "セッション履歴",
+      description: "すべてのクライアントのセッション記録を確認します。",
       filters: {
         userId: "ユーザー ID",
-        taskName: "タスク名",
-        taskNamePlaceholder: "タスク名を入力",
+        taskName: "セッション名",
+        taskNamePlaceholder: "セッション名を入力",
         userName: "ユーザー名",
         userNamePlaceholder: "ユーザー名を入力",
         startTime: "起動日時",
@@ -324,13 +324,13 @@ export const jaJP = {
         search: "検索",
       },
       columns: {
-        task: "タスク",
+        task: "セッション",
         user: "ユーザー",
-        startedAt: "タスク作成日時",
+        startedAt: "セッション作成日時",
         lastActiveAt: "最終アクティビティ",
-        conversationCount: "会話数",
+        conversationCount: "メッセージ数",
       },
-      empty: "現在の条件に一致するタスクはありません",
+      empty: "現在の条件に一致するセッションはありません",
     },
     models: {
       advancedOptions: "詳細オプション",
@@ -669,7 +669,8 @@ export const jaJP = {
     membersAndGroups: {
       creationResult: {
         title: "作成結果",
-        passwordMissing: "サーバーから初期パスワードが返されませんでした。パスワードをリセットして新しいパスワードを生成してください。",
+        passwordMissing:
+          "サーバーから初期パスワードが返されませんでした。パスワードをリセットして新しいパスワードを生成してください。",
         summary: "{{count}} 人のメンバーを作成しました",
         hint: "初期パスワードはここでのみ表示されます。コピーしてメンバーに共有してください。閉じた後はパスワードのリセットで新しいパスワードを生成できます。",
         copy: "コピー",

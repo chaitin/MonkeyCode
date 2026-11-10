@@ -58,6 +58,7 @@ func period(r *http.Request, now time.Time) (window, error) {
 
 func (s *Service) RegisterAdmin(r chi.Router) {
 	r.Get("/statistics/realtime", s.read(realtime))
+	r.Get("/statistics/session-reporting/sessions/overview", s.sessionOverview)
 	r.Get("/statistics/session-reporting/members/overview", s.membersOverview)
 	r.Get("/statistics/session-reporting/members/{id}", s.memberAnalysis)
 	r.Get("/statistics/tasks/overview", s.tasksOverview)

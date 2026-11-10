@@ -7,6 +7,7 @@ export const CONSOLE_ROUTES = {
   conversationHistory: "/console/statistics/conversation-history",
   sessionDetail: "/console/statistics/session-reporting/sessions/:sessionId",
   memberAnalysis: "/console/statistics/session-reporting/members",
+  taskAnalysis: "/console/statistics/session-reporting/tasks",
   resourceAnalysis: "/console/statistics/session-reporting/resources",
   clientAnalysis: "/console/statistics/session-reporting/clients",
   models: "/console/resources/models",
@@ -51,6 +52,7 @@ export const CONSOLE_PAGES = [
   ...(
     [
       ["memberAnalysis", CONSOLE_ROUTES.memberAnalysis],
+      ["taskAnalysis", CONSOLE_ROUTES.taskAnalysis],
       ["clientAnalysis", CONSOLE_ROUTES.clientAnalysis],
       ["resourceAnalysis", CONSOLE_ROUTES.resourceAnalysis],
     ] as const

@@ -194,7 +194,7 @@ export const koKR = {
       activeUntil: "최근 활동 종료일",
       invalidRange: "종료일은 시작일보다 빠를 수 없습니다.",
       registeredHint:
-        "기기 기록이 처음 생성된 시간이며 최초 대화나 연결 시간이 아닙니다.",
+        "기기 기록이 처음 생성된 시간이며 최초 메시지나 연결 시간이 아닙니다.",
       activityHint:
         "기기 기록의 마지막 확인 시간과 정보 보고 시간 중 더 최근 시간입니다.",
       selectColumns: "열 선택",
@@ -271,7 +271,7 @@ export const koKR = {
       sections: {
         modelHealth: "모델 성능",
         throughput: "처리량 및 Token",
-        activity: "사용자 및 작업 활동",
+        activity: "사용자 및 세션 활동",
       },
       metrics: {
         modelConsumption: "크레딧 소모량",
@@ -287,10 +287,10 @@ export const koKR = {
         totalUsers: "전체 사용자 수",
         newUsers: "신규 사용자 수",
         activeUsers: "활성 사용자 수",
-        totalTasks: "전체 작업 수",
-        activeTasks: "활성 작업 수",
-        newTasks: "새 작업 수",
-        conversations: "대화 횟수",
+        totalTasks: "전체 세션 수",
+        activeTasks: "활성 세션 수",
+        newTasks: "새 세션 수",
+        conversations: "메시지 횟수",
       },
       units: {
         credits: "{{count}} 크레딧",
@@ -298,16 +298,16 @@ export const koKR = {
       },
     },
     conversationHistory: {
-      title: "대화 기록",
-      description: "작업의 각 대화 내용을 확인합니다.",
+      title: "메시지 기록",
+      description: "각 세션에서 사용자가 보낸 메시지를 확인합니다.",
     },
     taskHistory: {
-      title: "작업 기록",
-      description: "모든 클라이언트에서 실행된 작업을 확인합니다.",
+      title: "세션 기록",
+      description: "모든 클라이언트의 세션 기록을 확인합니다.",
       filters: {
         userId: "사용자 ID",
-        taskName: "작업 이름",
-        taskNamePlaceholder: "작업 이름 입력",
+        taskName: "세션 이름",
+        taskNamePlaceholder: "세션 이름 입력",
         userName: "사용자 이름",
         userNamePlaceholder: "사용자 이름 입력",
         startTime: "시작 시간",
@@ -316,13 +316,13 @@ export const koKR = {
         search: "검색",
       },
       columns: {
-        task: "작업",
+        task: "세션",
         user: "사용자",
-        startedAt: "작업 생성 시간",
+        startedAt: "세션 생성 시간",
         lastActiveAt: "최근 활동 시간",
-        conversationCount: "대화 수",
+        conversationCount: "메시지 수",
       },
-      empty: "현재 필터와 일치하는 작업이 없습니다",
+      empty: "현재 필터와 일치하는 세션이 없습니다",
     },
     models: {
       advancedOptions: "고급 옵션",
@@ -656,7 +656,8 @@ export const koKR = {
     membersAndGroups: {
       creationResult: {
         title: "생성 결과",
-        passwordMissing: "서버가 초기 비밀번호를 반환하지 않았습니다. 비밀번호 재설정으로 새 비밀번호를 생성하세요.",
+        passwordMissing:
+          "서버가 초기 비밀번호를 반환하지 않았습니다. 비밀번호 재설정으로 새 비밀번호를 생성하세요.",
         summary: "멤버 {{count}}명 생성됨",
         hint: "초기 비밀번호는 여기에서만 표시됩니다. 복사하여 멤버에게 전달하세요. 닫은 후에는 비밀번호 재설정으로 새 비밀번호를 생성할 수 있습니다.",
         copy: "복사",

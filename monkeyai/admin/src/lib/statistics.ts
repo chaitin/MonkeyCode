@@ -32,6 +32,48 @@ export type TaskOverview = {
   days: { date: string; new_tasks: number; active_tasks: number }[]
 }
 
+export const sessionOutcomes = [
+  "complete",
+  "error",
+  "interrupted",
+  "max_turns",
+  "output_limit",
+  "unknown",
+] as const
+export type SessionOutcome = (typeof sessionOutcomes)[number]
+
+export type SessionOverview = {
+  timezone: "Asia/Shanghai"
+  generated_at: string
+  total_sessions: number
+  new_sessions_24h: number
+  active_sessions_24h: number
+  total_messages: number
+  last_24h: {
+    from: string
+    until: string
+    messages: number
+    outcomes: Record<SessionOutcome, number>
+    duration_seconds: {
+      average: number | null
+      p10: number | null
+      p90: number | null
+    }
+    messages_per_session: {
+      average: number | null
+      p10: number | null
+      p90: number | null
+    }
+    models: { id: string | null; name: string | null; messages: number }[]
+  }
+  days: {
+    date: string
+    new_sessions: number
+    active_sessions: number
+    messages: number
+  }[]
+}
+
 export type MemberOverview = {
   total_members: number
   last_7d: { active_members: number }

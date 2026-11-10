@@ -202,7 +202,7 @@ export function TaskHistoryPage() {
     if (!task.user_id) {
       showToast({
         status: "error",
-        title: "任务历史缺少用户 ID，请更新后端服务",
+        title: "会话历史缺少用户 ID，请更新后端服务",
       })
       return
     }

@@ -43,7 +43,7 @@ func TestOverviewShanghaiDays(t *testing.T) {
 		exec(t, s, `INSERT INTO credit_ledger_entries(account_id,user_id,entry_type,category,item_name,credit_delta,balance_after,occurred_at)
 			VALUES($1,$2,'charge','model','边界模型',$3,0,$4)`, account, user, fmt.Sprint(-sample.input), sample.at)
 	}
-	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks/overview", membersOverviewPath} {
+	for _, path := range []string{"/statistics/models/overview", "/statistics/tasks/overview", membersOverviewPath, sessionOverviewPath} {
 		t.Run(path, func(t *testing.T) {
 			out := request(t, s, path, 200)
 			if out["timezone"] != "Asia/Shanghai" {
@@ -81,6 +81,10 @@ func TestOverviewShanghaiDays(t *testing.T) {
 				case "/statistics/tasks/overview":
 					number(t, row, "new_tasks", count)
 					number(t, row, "active_tasks", count)
+				case sessionOverviewPath:
+					number(t, row, "new_sessions", count)
+					number(t, row, "active_sessions", count)
+					number(t, row, "messages", count)
 				case membersOverviewPath:
 					number(t, row, "new_members", count)
 					number(t, row, "active_members", count)

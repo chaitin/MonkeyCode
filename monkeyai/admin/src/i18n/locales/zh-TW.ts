@@ -179,7 +179,7 @@ export const zhTW = {
       activeFrom: "最近活動起始",
       activeUntil: "最近活動截止",
       invalidRange: "結束日期不可早於開始日期。",
-      registeredHint: "裝置記錄首次建立時間，不代表首次對話或連線時間。",
+      registeredHint: "裝置記錄首次建立時間，不代表首次訊息或連線時間。",
       activityHint: "裝置記錄中的最近可見時間與資訊上報時間中較新者。",
       selectColumns: "選擇欄位",
       statuses: {
@@ -286,7 +286,7 @@ export const zhTW = {
       sections: {
         modelHealth: "模型運行品質",
         throughput: "吞吐量與 Token",
-        activity: "使用者與任務活躍度",
+        activity: "使用者與會話活躍度",
       },
       metrics: {
         modelConsumption: "積分消耗量",
@@ -302,10 +302,10 @@ export const zhTW = {
         totalUsers: "使用者總數",
         newUsers: "新增使用者",
         activeUsers: "活躍使用者",
-        totalTasks: "任務總數",
-        activeTasks: "活躍任務",
-        newTasks: "新建任務",
-        conversations: "對話次數",
+        totalTasks: "會話總數",
+        activeTasks: "活躍會話",
+        newTasks: "新建會話",
+        conversations: "訊息數",
       },
       units: {
         credits: "{{count}} 點數",
@@ -313,16 +313,16 @@ export const zhTW = {
       },
     },
     conversationHistory: {
-      title: "對話歷史",
-      description: "按輪次查看使用者的對話內容。",
+      title: "訊息歷史",
+      description: "查看使用者在各會話中傳送的訊息。",
     },
     taskHistory: {
-      title: "任務歷史",
-      description: "查看所有用戶端執行過的任務記錄。",
+      title: "會話歷史",
+      description: "查看所有用戶端的會話記錄。",
       filters: {
         userId: "使用者 ID",
-        taskName: "任務名稱",
-        taskNamePlaceholder: "輸入任務名稱",
+        taskName: "會話名稱",
+        taskNamePlaceholder: "輸入會話名稱",
         userName: "使用者名稱",
         userNamePlaceholder: "輸入使用者名稱",
         startTime: "啟動時間",
@@ -331,13 +331,13 @@ export const zhTW = {
         search: "搜尋",
       },
       columns: {
-        task: "任務",
+        task: "會話",
         user: "使用者",
-        startedAt: "任務建立時間",
+        startedAt: "會話建立時間",
         lastActiveAt: "最近活動時間",
-        conversationCount: "對話數量",
+        conversationCount: "訊息數量",
       },
-      empty: "沒有符合目前篩選條件的任務",
+      empty: "沒有符合目前篩選條件的會話",
     },
     models: {
       advancedOptions: "進階選項",
