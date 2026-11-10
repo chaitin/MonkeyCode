@@ -1194,6 +1194,8 @@ export interface DomainPullRequest {
 }
 
 export interface DomainRechargeReq {
+  /** 海外会员自动续费，默认开启；false 为一次性支付 */
+  auto_renew?: boolean;
   /** 积分充值套餐: 2000 / 15000 / 100000 / 500000 */
   credits?: number;
   /** 购买周期数量，必须大于 0 */
