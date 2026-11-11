@@ -261,8 +261,9 @@ func (c *usageCapture) handleStream() (result usageResult) {
 	for decoder.Next() {
 		event := decoder.Event()
 		c.eventType = event.Type
-		estimate.event(c.ctx.path, event)
-		if result.FirstTokenDurationMs == nil && c.ctx.proxyCtx != nil && firstOutputEvent(c.ctx.path, event) {
+		object := readEvent(event.Data)
+		estimate.event(c.ctx.path, event, object)
+		if result.FirstTokenDurationMs == nil && c.ctx.proxyCtx != nil && object.firstOutput(c.ctx.path, event) {
 			elapsed := time.Since(c.ctx.proxyCtx.startedAt).Milliseconds()
 			if elapsed >= 0 && elapsed <= 1<<31-1 {
 				measured := int32(elapsed)
@@ -282,7 +283,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 					result.ObservedResult, result.FailureCode = "failed", "upstream_failed"
 				}
 			}
-			response, err := parseOpenAIResponseEvent(event.Data)
+			response, err := object.responses()
 			if err != nil {
 				c.parseFailure(logger, "解析 Responses 流式事件失败", err)
 				if isTerminal {
@@ -317,7 +318,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 				result.TerminalEvent = "done"
 			}
 		case "", "message":
-			response, err := parseChatCompletion(event.Data)
+			response, err := object.chat()
 			if err != nil {
 				c.parseFailure(logger, "解析 Chat Completions 流式用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
@@ -343,7 +344,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			}
 			result.Known = result.inputKnown && result.outputKnown
 		case "message_start":
-			response, err := parseAnthropicResponse(event.Data)
+			response, err := object.anthropic()
 			if err != nil {
 				c.parseFailure(logger, "解析 Anthropic message_start 用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
@@ -359,7 +360,7 @@ func (c *usageCapture) handleStream() (result usageResult) {
 			result.InputTokens = response.Message.Usage.InputTokens
 			result.CacheReadInputTokens = response.Message.Usage.CacheReadInputTokens
 		case "message_delta":
-			response, err := parseAnthropicResponse(event.Data)
+			response, err := object.anthropic()
 			if err != nil {
 				c.parseFailure(logger, "解析 Anthropic message_delta 用量失败", err)
 				result.ErrorCode = "usage_parse_failed"
@@ -437,7 +438,11 @@ func (c *usageCapture) handleNonStream() (result usageResult) {
 		result.FailureAttrs = append(result.FailureAttrs, logging.ErrorAttrs(err)...)
 		return result
 	}
-	estimate.response(c.ctx.path, data)
+	defer func() {
+		if !result.Known {
+			estimate.response(c.ctx.path, data)
+		}
+	}()
 	switch c.ctx.path {
 	case "/v1/responses":
 		response, err := parseOpenAIResponse(data)

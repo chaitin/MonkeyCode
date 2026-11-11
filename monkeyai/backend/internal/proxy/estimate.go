@@ -3,6 +3,9 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -34,7 +37,7 @@ var (
 )
 
 type tokenEstimate struct {
-	request   map[string]any
+	request   []byte
 	codec     tokenizer.Codec
 	source    string
 	parts     map[string]*strings.Builder
@@ -49,16 +52,15 @@ func newTokenEstimate(pc *proxyContext) *tokenEstimate {
 	if pc == nil || len(pc.requestBody) == 0 {
 		return nil
 	}
-	e := &tokenEstimate{source: "heuristic", supported: true, parts: make(map[string]*strings.Builder), partial: make(map[string]bool)}
-	var err error
-	e.request, err = estimateObject(pc.requestBody)
+	request, _, err := rawObject(pc.requestBody)
 	if err != nil {
 		slog.Warn("操作失败", "module", "proxy", "operation", "newTokenEstimate", "error", err)
 		return nil
 	}
+	e := &tokenEstimate{request: pc.requestBody, source: "heuristic", supported: true, parts: make(map[string]*strings.Builder), partial: make(map[string]bool)}
 	model := pc.target.UpstreamModel
-	if model == "" {
-		model, _ = e.request["model"].(string)
+	if model == "" && len(request["model"]) > 0 {
+		_ = json.Unmarshal(request["model"], &model)
 	}
 	switch {
 	case strings.HasPrefix(model, "gpt-5"), strings.HasPrefix(model, "gpt-4.1"), strings.HasPrefix(model, "gpt-4o"),
@@ -73,10 +75,26 @@ func newTokenEstimate(pc *proxyContext) *tokenEstimate {
 	return e
 }
 
+var estimateNumbers = jsonv2.WithUnmarshalers(jsonv2.UnmarshalFromFunc(func(decoder *jsontext.Decoder, value *any) error {
+	if decoder.PeekKind() != '0' {
+		return errors.ErrUnsupported
+	}
+	token, err := decoder.ReadToken()
+	if err == nil {
+		*value = json.Number(strings.Clone(token.String()))
+	}
+	return err
+}))
+
 func estimateObject(data []byte) (map[string]any, error) {
+	var object map[string]any
+	if err := jsonv2.Unmarshal(data, &object, json.DefaultOptionsV1(), estimateNumbers); err == nil {
+		return object, nil
+	}
+	// 旧估算器可保留非法尾缀之前的可见内容；协议解析仍按完整报文判错。
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	var object map[string]any
+	object = nil
 	err := decoder.Decode(&object)
 	return object, err
 }
@@ -223,11 +241,16 @@ func (e *tokenEstimate) tokens() uint64 {
 }
 
 func (e *tokenEstimate) input() (uint64, bool) {
+	request, err := estimateObject(e.request)
+	if err != nil {
+		slog.Warn("操作失败", "module", "proxy", "operation", "input", "error", err)
+		return 0, false
+	}
 	input := &tokenEstimate{codec: e.codec, source: e.source, supported: true, parts: make(map[string]*strings.Builder)}
 	var overhead uint64 = 3
 	seen := false
 	for _, field := range []string{"system", "instructions", "messages", "input"} {
-		value, ok := e.request[field]
+		value, ok := request[field]
 		if !ok {
 			continue
 		}
@@ -247,10 +270,10 @@ func (e *tokenEstimate) input() (uint64, bool) {
 		}
 	}
 	for _, field := range []string{"tools", "functions", "tool_choice", "response_format", "text"} {
-		input.jsonPart(field, e.request[field])
+		input.jsonPart(field, request[field])
 	}
 	for _, field := range []string{"previous_response_id", "conversation"} {
-		if value := e.request[field]; value != nil && value != "" {
+		if value := request[field]; value != nil && value != "" {
 			input.supported = false
 		}
 	}
@@ -273,6 +296,10 @@ func (e *tokenEstimate) response(path string, data []byte) {
 		e.supported = false
 		return
 	}
+	e.responseObject(path, response)
+}
+
+func (e *tokenEstimate) responseObject(path string, response map[string]any) {
 	if wrapped, ok := response["response"].(map[string]any); ok {
 		response = wrapped
 	}
@@ -304,7 +331,7 @@ func (e *tokenEstimate) response(path string, data []byte) {
 	}
 }
 
-func (e *tokenEstimate) event(path string, event sseEvent) {
+func (e *tokenEstimate) event(path string, event sseEvent, object eventObject) {
 	if e == nil {
 		return
 	}
@@ -312,7 +339,13 @@ func (e *tokenEstimate) event(path string, event sseEvent) {
 		e.complete = e.seen
 		return
 	}
-	data, err := estimateObject(event.Data)
+	if path == "/v1/chat/completions" {
+		if choices, err := object.choices(); err == nil {
+			e.chatChoices(choices)
+			return
+		}
+	}
+	data, err := object.estimate(path)
 	if err != nil || data == nil {
 		if err != nil {
 			slog.Warn("操作失败", "module", "proxy", "operation", "event", "error", err)
@@ -320,44 +353,13 @@ func (e *tokenEstimate) event(path string, event sseEvent) {
 		e.supported = false
 		return
 	}
+	e.consumeEvent(path, event, data)
+}
+
+func (e *tokenEstimate) consumeEvent(path string, event sseEvent, data map[string]any) {
 	switch path {
 	case "/v1/chat/completions":
-		choices, _ := data["choices"].([]any)
-		for _, value := range choices {
-			choice, _ := value.(map[string]any)
-			delta, ok := choice["delta"].(map[string]any)
-			if !ok {
-				continue
-			}
-			e.seen = true
-			key := fmt.Sprintf("choice/%v", choice["index"])
-			for _, field := range []string{"content", "reasoning_content", "reasoning", "refusal"} {
-				if text, ok := delta[field].(string); ok {
-					e.append(key+"/"+field, text)
-				} else if delta[field] != nil {
-					e.supported = false
-				}
-			}
-			if call, ok := delta["function_call"].(map[string]any); ok {
-				e.callDelta(key+"/function", call)
-			}
-			calls, _ := delta["tool_calls"].([]any)
-			for _, value := range calls {
-				call, _ := value.(map[string]any)
-				function, ok := call["function"].(map[string]any)
-				if !ok {
-					e.supported = false
-					continue
-				}
-				e.callDelta(fmt.Sprintf("%s/tool/%v", key, call["index"]), function)
-			}
-			if delta["audio"] != nil {
-				e.supported = false
-			}
-			if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
-				e.complete = true
-			}
-		}
+		e.chatObject(data)
 	case "/v1/messages":
 		key := fmt.Sprintf("block/%v", data["index"])
 		switch event.Type {
@@ -424,8 +426,47 @@ func (e *tokenEstimate) event(path string, event sseEvent) {
 			e.seen = true
 			e.content(key, data["item"])
 		case "response.completed":
-			e.response(path, event.Data)
+			e.responseObject(path, data)
 			e.complete = e.seen
+		}
+	}
+}
+
+func (e *tokenEstimate) chatObject(data map[string]any) {
+	choices, _ := data["choices"].([]any)
+	for _, value := range choices {
+		choice, _ := value.(map[string]any)
+		delta, ok := choice["delta"].(map[string]any)
+		if !ok {
+			continue
+		}
+		e.seen = true
+		key := fmt.Sprintf("choice/%v", choice["index"])
+		for _, field := range []string{"content", "reasoning_content", "reasoning", "refusal"} {
+			if text, ok := delta[field].(string); ok {
+				e.append(key+"/"+field, text)
+			} else if delta[field] != nil {
+				e.supported = false
+			}
+		}
+		if call, ok := delta["function_call"].(map[string]any); ok {
+			e.callDelta(key+"/function", call)
+		}
+		calls, _ := delta["tool_calls"].([]any)
+		for _, value := range calls {
+			call, _ := value.(map[string]any)
+			function, ok := call["function"].(map[string]any)
+			if !ok {
+				e.supported = false
+				continue
+			}
+			e.callDelta(fmt.Sprintf("%s/tool/%v", key, call["index"]), function)
+		}
+		if delta["audio"] != nil {
+			e.supported = false
+		}
+		if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
+			e.complete = true
 		}
 	}
 }
