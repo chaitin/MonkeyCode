@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -38,12 +39,13 @@ func (o Object) Int(k string) int64     { v, _ := o[k].(float64); return int64(v
 func ID() string                        { return uuid.New().String() }
 
 func Hash(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
+	h := sha256.New()
+	if err := jsonv2.MarshalWrite(h, v, json.DefaultOptionsV1()); err != nil {
+		// Marshal 失败时原实现对空字节切片取哈希，不能使用已经写入的前缀。
+		h.Reset()
 		logging.Event(context.Background(), slog.Default(), slog.LevelError, "resource.operation.error", "资源内容哈希编码失败", "module", "resource", "operation", "Hash", "type", fmt.Sprintf("%T", v), "error", err)
 	}
-	h := sha256.Sum256(b)
-	return "sha256:" + hex.EncodeToString(h[:])
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 func Strings(v any) []string {
 	result := []string{}

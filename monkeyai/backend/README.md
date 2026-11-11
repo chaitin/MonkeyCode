@@ -158,6 +158,10 @@ go run ./cmd/server reset
 
 服务提供 `/healthz` 存活检查和 `/readyz` 数据库及 RustFS Bucket 就绪检查。pprof 默认单独监听 `127.0.0.1:6060`，入口为 `/debug/pprof/`，不对业务端口暴露。
 
+模型用量估算器仅引用原始请求，在缺少上游输入用量时才解析输入；可信的非流式用量不再构建无用的输出估算对象。SSE 的用量、估算和首 token 判断共用当前事件的字段视图；视图借用输入字节，不能修改输入或跨下一次事件读取复用。重名字段、大小写别名和异常事件保留原有解析、部分用量及错误诊断语义。
+
+模型名重写保持原先 JSON 编码字节；资源及计费请求哈希使用标准库流式编码，但显式保留 v1 JSON 选项和编码失败行为，避免改变已保存的目录版本或计费幂等哈希。
+
 ## 端点桥接
 
 `/api/v1/endpoints` 提供当前用户的端点管理，`/api/v1/endpoints/connect` 使用原生客户端 OAuth Bearer 升级为 WebSocket；不接受 Cookie、调用密钥或 URL token。完整协议见 [单进程端点桥接设计](../design/endpoint-bridge-design.md)，HTTP 契约见 `api/agent.yaml`。

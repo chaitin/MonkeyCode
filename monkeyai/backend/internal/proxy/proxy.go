@@ -286,8 +286,8 @@ func protocolForPath(requestPath string) string {
 }
 
 func rewriteModel(body []byte, upstreamModel string) ([]byte, error) {
-	var request map[string]json.RawMessage
-	if err := json.Unmarshal(body, &request); err != nil || request == nil {
+	request, _, err := rawObject(body)
+	if err != nil || request == nil {
 		if err != nil {
 			slog.Warn("操作失败", "module", "proxy", "operation", "rewriteModel", "error", err)
 		}
