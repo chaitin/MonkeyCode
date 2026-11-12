@@ -154,7 +154,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     {
       label: t("subscriptionPlan.features.dailyQuota.label"),
       values: {
-        basic: { label: t("subscriptionPlan.featureValues.dailyQuotaBasic") },
+        basic: { label: t("subscriptionPlan.featureValues.dailyQuotaBasic"), status: "unsupported" },
         pro: { label: t("subscriptionPlan.featureValues.dailyQuotaPro") },
         ultra: { label: t("subscriptionPlan.featureValues.dailyQuotaUltra") },
       },

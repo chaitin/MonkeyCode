@@ -1523,7 +1523,7 @@ const en = {
     featureValues: {
       oneTask: "1 task",
       threeTasks: "3 tasks",
-      dailyQuotaBasic: "10M tokens/day",
+      dailyQuotaBasic: "No quota",
       dailyQuotaPro: "100M tokens/day",
       dailyQuotaUltra: "300M tokens/day",
       modelScopeBasic: "Basic models",
@@ -2356,7 +2356,6 @@ const en = {
         concurrency3: "3 concurrent tasks",
         cloud1c4g: "Cloud environment 1C / 4G",
         cloud2c8g: "Cloud environment 2C / 8G",
-        dailyQuotaBasic: "Daily quota: 10M tokens/day",
         dailyQuotaPro: "Daily quota: 100M tokens/day",
         dailyQuotaUltra: "Daily quota: 300M tokens/day",
         modelScopeBasic: "Model scope: Basic models",
