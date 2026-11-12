@@ -135,6 +135,7 @@ var (
 		{Name: "extension_rule_id", Type: field.TypeString, Nullable: true},
 		{Name: "extension_version", Type: field.TypeString, Nullable: true},
 		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
