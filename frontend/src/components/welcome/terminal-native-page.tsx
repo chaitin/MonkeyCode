@@ -190,7 +190,6 @@ const pricingTiers: PricingTier[] = [
     features: [
       { key: "concurrency1" },
       { key: "cloud1c4g" },
-      { key: "dailyQuotaBasic" },
       { key: "modelScopeBasic" },
       { key: "noCredits", status: "unsupported", tooltipKey: "credit" },
       { key: "thirdPartyModels", status: "partial", tooltipKey: "thirdPartyModels" },
