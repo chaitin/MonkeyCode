@@ -21,7 +21,7 @@ import { Spinner } from "@/components/ui/spinner"
 import React from "react"
 import { toast } from "sonner"
 import { apiRequest } from "@/utils/requestUtils"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 import { IconBrandGithub, IconBrandGoogle } from "@tabler/icons-react"
@@ -33,7 +33,16 @@ import { useAppRuntime } from "@/components/app-runtime-provider"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
+const DEFAULT_USER_REDIRECT = '/console/tasks'
 type OAuthProvider = "github" | "google"
+
+// 仅接受站内绝对路径，避免 redir 被用于跳转到外部站点。
+function sanitizeRedirect(raw: string | null): string {
+  if (!raw) return ''
+  if (/[\r\n\t\\]/.test(raw)) return ''
+  if (!raw.startsWith('/') || raw.startsWith('//')) return ''
+  return raw
+}
 
 export default function LoginPage({
   className,
@@ -51,14 +60,19 @@ export default function LoginPage({
   const [oauthLoggingProvider, setOauthLoggingProvider] = React.useState<OAuthProvider | null>(null)
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const userRedirect = sanitizeRedirect(searchParams.get('redir')) || DEFAULT_USER_REDIRECT
   const { t } = useTranslation()
   const { captchaEnabled, reloadAuth, serverConfig } = useAppRuntime()
   const serverRegion = serverConfig?.region as string | undefined
   const isCnRegion = serverRegion === "cn"
   const isGlobalRegion = serverRegion === "global"
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
-  const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
+  const userLoginHref = `/api/v1/users/login?redirect=${encodeURIComponent(userRedirect)}&inviter_id=${inviterId}`
   const defaultOIDCLoginURL = defaultOIDCConfig?.enabled ? defaultOIDCConfig.login_url : ''
+  const defaultOIDCLoginHref = defaultOIDCLoginURL
+    ? `${defaultOIDCLoginURL}${defaultOIDCLoginURL.includes('?') ? '&' : '?'}redirect_url=${encodeURIComponent(userRedirect)}`
+    : ''
 
   const ensureTermsAccepted = React.useCallback(() => {
     if (agreedToTerms) return true
@@ -126,7 +140,7 @@ export default function LoginPage({
         if (resp.code === 0) {
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
           await reloadAuth()
-          navigate('/console/tasks')
+          window.location.assign(userRedirect)
         } else {
           toast.error(t("login.toast.loginFailed"))
         }
@@ -145,7 +159,7 @@ export default function LoginPage({
 
     try {
       const response = await new Api().api.v1UsersOauthLoginDetail(provider, {
-        redirect_url: "/console/tasks",
+        redirect_url: userRedirect,
       })
       const authUrl = response.data?.data?.auth_url
 
@@ -259,7 +273,7 @@ export default function LoginPage({
                       {IS_OFFLINE_EDITION && defaultOIDCLoginURL && (
                         <Button size="lg" className="w-full" asChild>
                           <a
-                            href={defaultOIDCLoginURL}
+                            href={defaultOIDCLoginHref}
                             onClick={(e) => {
                               if (!ensureTermsAccepted()) {
                                 e.preventDefault()
