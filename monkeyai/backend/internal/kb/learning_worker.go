@@ -93,11 +93,14 @@ func (s *Service) executeLearningJob(ctx context.Context, job sqlc.ClaimKbLearni
 			}
 			return err
 		}
-		documents, err := s.ListDocuments(ctx, job.KbID)
+		documents, err := s.ListDocumentNodes(ctx, job.KbID)
 		if err != nil {
 			return err
 		}
 		for _, document := range documents {
+			if document.String("node_type") == "folder" {
+				continue
+			}
 			documentID := document.String("id")
 			if err = s.learnDocument(ctx, documentID, job); err != nil {
 				if errors.Is(err, errDocumentChanged) {

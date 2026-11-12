@@ -10,15 +10,15 @@ var kbPublicFields = []string{
 }
 
 var documentPublicFields = []string{
-	"id", "kb_id", "title", "source_type", "content", "file_name", "mime_type",
+	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "content", "file_name", "mime_type",
 	"size_bytes", "status", "error_message", "chunk_count", "revision",
-	"learned_at", "created_at", "updated_at",
+	"learned_at", "created_at", "updated_at", "children",
 }
 
 var documentListPublicFields = []string{
-	"id", "kb_id", "title", "source_type", "file_name", "mime_type",
+	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "file_name", "mime_type",
 	"size_bytes", "status", "error_message", "chunk_count", "revision",
-	"learned_at", "created_at", "updated_at",
+	"learned_at", "created_at", "updated_at", "children",
 }
 
 func publicKB(item resource.Object) resource.Object {

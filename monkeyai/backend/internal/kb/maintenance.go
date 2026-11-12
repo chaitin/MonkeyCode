@@ -162,7 +162,17 @@ func scheduleLearningJob(ctx context.Context, tx pgx.Tx, kbID, operation string)
 			return err
 		}
 	}
-	if err := queries.CreateKbLearningJob(ctx, sqlc.CreateKbLearningJobParams{KbID: kbID, Operation: operation}); err != nil {
+	binding, err := queries.GetKbEmbedding(ctx, kbID)
+	if err != nil {
+		return err
+	}
+	params := sqlc.CreateKbLearningJobParams{KbID: kbID, Operation: operation}
+	modelID, dimension := embeddingBindingTarget(binding.EmbeddingModelID, binding.EmbeddingDimension)
+	if modelID != "" && dimension > 0 {
+		params.EmbeddingModelID = binding.EmbeddingModelID
+		params.EmbeddingDimension = binding.EmbeddingDimension
+	}
+	if err := queries.CreateKbLearningJob(ctx, params); err != nil {
 		return err
 	}
 	return nil
@@ -183,6 +193,9 @@ func requeueUnfinishedKbDocuments(ctx context.Context, queries *sqlc.Queries, kb
 		return err
 	}
 	for _, document := range documents {
+		if document.String("node_type") == "folder" {
+			continue
+		}
 		if documentHasChunks(document) || document.String("status") == "failed" {
 			continue
 		}
@@ -236,6 +249,9 @@ func scheduleKbDocumentJobs(ctx context.Context, queries *sqlc.Queries, kbID, mo
 		return err
 	}
 	for _, document := range documents {
+		if document.String("node_type") == "folder" {
+			continue
+		}
 		documentID := document.String("id")
 		status := document.String("status")
 		if documentHasChunks(document) {

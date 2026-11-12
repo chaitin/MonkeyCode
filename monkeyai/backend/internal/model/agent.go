@@ -74,7 +74,7 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
-	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+	if err := s.prepareEmbeddingUpdate(existing, &item); err != nil {
 		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
 	return s.repository.UpdateUser(ctx, item)

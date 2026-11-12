@@ -1,6 +1,7 @@
 package kb
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 	}
 
 	kbID := resource.ID()
-	if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'A 的知识库',$2,$2,'user')`, kbID, userA); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'A 的知识库',$2,$2,'user')`, kbID, userA); err != nil {
 		t.Fatal(err)
 	}
 
@@ -35,6 +36,20 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 		t.Fatalf("知识库所有者创建文档失败: %v", err)
 	}
 	documentID := document.String("id")
+	// 即使文档存在且当前用户有权限，错误的知识库也不能读取或修改它。
+	for _, name := range []string{"kb_get_document", "kb_update_document", "kb_delete_document"} {
+		params, err := json.Marshal(map[string]any{
+			"name":      name,
+			"arguments": map[string]any{"kb_id": resource.ID(), "document_id": documentID, "title": "错误更新"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.callMCPTool(ctx, userA, params); !errors.Is(err, resource.NotFound) {
+			t.Fatalf("%s 使用不匹配的 kb_id 应返回 NotFound: %v", name, err)
+		}
+	}
+
 	if document.String("kb_id") != kbID || document.String("status") != "pending" {
 		t.Fatalf("创建文档结果不正确: %v", document)
 	}
@@ -56,10 +71,10 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 	}
 
 	systemKB, systemDocument := resource.ID(), resource.ID()
-	if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'系统知识库',$2,$2,'system')`, systemKB, admin); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'系统知识库',$2,$2,'system')`, systemKB, admin); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'系统文档','系统正文',$3)`, systemDocument, systemKB, admin); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'系统文档','系统正文',$3)`, systemDocument, systemKB, admin); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.GetAccessibleDocument(ctx, userA, systemDocument); !errors.Is(err, resource.NotFound) {
@@ -114,17 +129,17 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 		t.Fatalf("更新文档结果不正确: %v", updated)
 	}
 
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kbID, documentID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kbID, documentID); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.DeleteUserDocument(ctx, userA, documentID); err != nil {
 		t.Fatalf("知识库所有者删除文档失败: %v", err)
 	}
 	var documents, chunks int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM kb_documents WHERE id=$1`, documentID).Scan(&documents); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge_base_documents WHERE id=$1`, documentID).Scan(&documents); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM kb_chunks WHERE document_id=$1`, documentID).Scan(&chunks); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge_base_chunks WHERE document_id=$1`, documentID).Scan(&chunks); err != nil {
 		t.Fatal(err)
 	}
 	if documents != 0 || chunks != 0 {

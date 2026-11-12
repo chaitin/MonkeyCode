@@ -155,7 +155,7 @@ func TestHistoricalDocumentsBackfillWhenEmbeddingModelAppears(t *testing.T) {
 	var documentID, embeddingModelID *string
 	var documentRevision *int32
 	if err := pool.QueryRow(ctx, `SELECT operation, document_id::text, document_revision, embedding_model_id::text
-		FROM kb_learning_jobs
+		FROM knowledge_base_learning_jobs
 		WHERE kb_id=$1 AND status='pending'
 		ORDER BY created_at DESC LIMIT 1`, kb.String("id")).Scan(&operation, &documentID, &documentRevision, &embeddingModelID); err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestVectorFailureKeepsLexicalAndRetryOnlyFillsMissingChunks(t *testing.T) {
 		retryCalls++
 		return model.EmbeddingResult{Vector: []float64{1, 2, 3}}, nil
 	})
-	document, err = s.RetryDocument(ctx, document.String("id"))
+	document, err = s.RestudyDocument(ctx, document.String("id"))
 	if err != nil || document.String("status") != "learning" {
 		t.Fatalf("重试未进入学习中: %v, %v", document, err)
 	}
@@ -326,7 +326,7 @@ func TestDocumentMetadataUpdateKeepsIndex(t *testing.T) {
 		t.Fatalf("只更新标题不应删除分片: %v, %v", chunks, err)
 	}
 	var activeJobs int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM kb_learning_jobs
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge_base_learning_jobs
 		WHERE document_id=$1 AND status IN ('pending', 'running')`, document.String("id")).Scan(&activeJobs); err != nil || activeJobs != 0 {
 		t.Fatalf("只更新标题不应创建学习任务: active=%d err=%v", activeJobs, err)
 	}
@@ -374,7 +374,7 @@ func TestDocumentContentUpdateInvalidatesBothIndexes(t *testing.T) {
 		t.Fatalf("正文更新后仍能搜到旧全文索引: %d", count)
 	}
 	var operation string
-	if err := pool.QueryRow(ctx, `SELECT operation FROM kb_learning_jobs
+	if err := pool.QueryRow(ctx, `SELECT operation FROM knowledge_base_learning_jobs
 		WHERE document_id=$1 AND status='pending' ORDER BY created_at DESC LIMIT 1`, document.String("id")).Scan(&operation); err != nil {
 		t.Fatal(err)
 	}

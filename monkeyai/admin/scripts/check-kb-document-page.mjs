@@ -166,7 +166,7 @@ try {
     waitUntil: "networkidle",
   })
   await page.getByText("测试知识库", { exact: true }).click()
-  await page.getByRole("button", { name: "查看内容", exact: true }).click()
+  await page.getByText("Markdown 测试文档", { exact: true }).click()
   await page.waitForURL(url)
   await page.locator("[data-markdown-editor] .ace_editor").waitFor()
   assert.equal(await page.getByRole("dialog").count(), 0)
@@ -227,8 +227,8 @@ try {
   assert.equal(page.url(), url)
   await title.fill(document.title)
   await page.getByRole("button", { name: "返回知识库", exact: true }).click()
-  await page.waitForURL(`**/kb?kb=${kbId}`)
-  await page.getByRole("dialog").waitFor()
+  await page.waitForURL(`**/kb/${kbId}`)
+  await page.getByText(document.title, { exact: true }).waitFor()
   assert.ok(documentRequests >= 2)
 
   await page.goto(url, { waitUntil: "networkidle" })

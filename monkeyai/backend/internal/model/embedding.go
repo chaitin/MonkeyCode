@@ -43,3 +43,15 @@ func validateEmbeddingDimension(dimension int) error {
 	}
 	return nil
 }
+
+// prepareEmbeddingUpdate keeps each embedding model ID tied to one vector space.
+func (s *Service) prepareEmbeddingUpdate(existing Model, item *Model) error {
+	if existing.Kind != KindEmbedding && item.Kind != KindEmbedding {
+		return nil
+	}
+	if existing.Kind != item.Kind || existing.ModelID != item.ModelID || existing.BaseURL != item.BaseURL || existing.Protocol != item.Protocol || existing.Provider != item.Provider {
+		return errors.New("向量模型的类型、型号、地址、协议和供应商创建后不可修改，请新建模型记录")
+	}
+	item.EmbeddingConfig = existing.EmbeddingConfig
+	return nil
+}

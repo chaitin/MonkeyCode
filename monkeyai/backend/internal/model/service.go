@@ -213,7 +213,7 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
-	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+	if err := s.prepareEmbeddingUpdate(existing, &item); err != nil {
 		return Model{}, err
 	}
 	if len(input.ProviderOptions) == 0 {

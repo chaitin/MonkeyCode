@@ -13,10 +13,10 @@ func TestKbMigrationContainsFinalSchema(t *testing.T) {
 	}
 	sql := strings.ToLower(string(up))
 	for _, table := range []string{
-		"create table kb (",
-		"create table kb_documents (",
-		"create table kb_chunks (",
-		"create table kb_learning_jobs (",
+		"create table knowledge_bases (",
+		"create table knowledge_base_documents (",
+		"create table knowledge_base_chunks (",
+		"create table knowledge_base_learning_jobs (",
 	} {
 		if !strings.Contains(sql, table) {
 			t.Fatalf("迁移缺少表定义 %s", table)
@@ -30,17 +30,16 @@ func TestKbMigrationContainsFinalSchema(t *testing.T) {
 		"embedding_dimension integer",
 		"search_tokens text",
 		"search_tsv tsvector",
-		"create unique index kb_chunks_document_index_key",
-		"on kb_chunks (kb_id, document_id, chunk_index)",
+		"create unique index knowledge_base_chunks_document_index_key",
+		"on knowledge_base_chunks (kb_id, document_id, chunk_index)",
 		"using gin (search_tsv)",
 		"resource_type in ('model', 'skill', 'rule', 'connector', 'expert', 'kb')",
 		"'learn', 'relearn', 'rebuild_parse', 'rebuild_lexical', 'rebuild_vector',",
 		"'rebuild_model'",
-		"kb_learning_jobs_document_revision_check",
-		"kb_learning_jobs_embedding_dimension_check",
-		"create index kb_learning_jobs_document_active_idx",
-		"create index kb_learning_jobs_embedding_model_idx",
-		"insert into migrations (name) values ('000039_create_kb_tables')",
+		"knowledge_base_learning_jobs_document_revision_check",
+		"knowledge_base_learning_jobs_embedding_dimension_check",
+		"create index knowledge_base_learning_jobs_document_active_idx",
+		"create index knowledge_base_learning_jobs_embedding_model_idx",
 	} {
 		if !strings.Contains(sql, fragment) {
 			t.Fatalf("迁移缺少最终结构 %q", fragment)
@@ -65,17 +64,16 @@ func TestKbDownMigrationDropsAllKbTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	sql := strings.ToLower(string(down))
-	jobs := strings.Index(sql, "drop table if exists kb_learning_jobs")
-	chunks := strings.Index(sql, "drop table if exists kb_chunks")
-	documents := strings.Index(sql, "drop table if exists kb_documents")
-	kb := strings.Index(sql, "drop table if exists kb;")
+	jobs := strings.Index(sql, "drop table if exists knowledge_base_learning_jobs")
+	chunks := strings.Index(sql, "drop table if exists knowledge_base_chunks")
+	documents := strings.Index(sql, "drop table if exists knowledge_base_documents")
+	kb := strings.Index(sql, "drop table if exists knowledge_bases;")
 	if jobs < 0 || chunks < 0 || documents < 0 || kb < 0 || !(jobs < chunks && chunks < documents && documents < kb) {
 		t.Fatalf("down 迁移删除顺序无效: %s", down)
 	}
 	for _, cleanup := range []string{
 		"delete from resource_tags where resource_type = 'kb'",
 		"delete from resource_access_grants where resource_type = 'kb'",
-		"delete from migrations where name = '000039_create_kb_tables'",
 	} {
 		if !strings.Contains(sql, cleanup) {
 			t.Fatalf("down 迁移缺少清理 %q", cleanup)

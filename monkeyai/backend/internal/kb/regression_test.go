@@ -16,7 +16,7 @@ func TestKnowledgeBasePagesFollowNameOrder(t *testing.T) {
 	// UUID order deliberately differs from name order.
 	ids := []string{"ffffffff-ffff-4fff-8fff-ffffffffffff", "11111111-1111-4111-8111-111111111111", "88888888-8888-4888-8888-888888888888"}
 	for i, name := range []string{"Alpha", "beta", "Charlie"} {
-		if _, err := pool.Exec(t.Context(), `INSERT INTO kb(id,name,owner_user_id,created_by_user_id) VALUES($1,$2,$3,$3)`, ids[i], name, actor); err != nil {
+		if _, err := pool.Exec(t.Context(), `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id) VALUES($1,$2,$3,$3)`, ids[i], name, actor); err != nil {
 			t.Fatal(err)
 		}
 	}

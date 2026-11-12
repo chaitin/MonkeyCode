@@ -15,7 +15,7 @@
 | 检索 | lexical / hybrid 自动选择、weighted RRF、向量失败降级、多知识库召回和文档去重限制 |
 | MCP | `/mcp/kb` 暴露 7 个知识库目录、文档和检索工具 |
 | 管理端查看文档 | 独立路由，Markdown 源码/预览/分屏，保存后重新学习；个人知识库只读 |
-| 尚未接入 | 原始文件上传接口、文件对象存储、AnyDoc、多格式解析、独立 rerank 和向量 ANN 索引 |
+| 第一期未接入 | AnyDoc、原始文件存储、独立 rerank 和向量 ANN 索引 |
 
 全文检索是基础能力：没有可用向量模型时，文档仍可学习并检索。`embedding_model_id` 和 `embedding_dimension` 是后端维护的索引元数据，当前管理端创建/编辑知识库不提供模型选择器。
 
@@ -77,10 +77,10 @@ flowchart LR
 
 | 表 | 主要字段与约束 |
 | --- | --- |
-| `kb` | UUID 主键；名称、描述、所有权、owner/creator、启停、revision；可空模型 ID/维度；JSONB `fusion_config`；时间戳 |
-| `kb_documents` | UUID 主键、`kb_id`、标题、正文、`source_type`、文件名/MIME/大小；状态、错误、chunk 数、revision、学习时间；预留 `storage_key`、`content_sha256` |
-| `kb_chunks` | UUID 主键、知识库/文档 ID、从 0 开始的 `chunk_index`、正文、近似 token 数；`search_tokens`、`search_tsv`；可空 `embedding` / 模型 ID；JSONB metadata 和引用字段 |
-| `kb_learning_jobs` | UUID 主键、知识库 ID、可空文档 ID、operation、status、attempts/max_attempts、可执行时间、锁时间/worker、错误与完成时间；可空文档 revision、目标模型 ID 和维度快照 |
+| `knowledge_bases` | UUID 主键；名称、描述、所有权、owner/creator、启停、revision；可空模型 ID/维度；JSONB `fusion_config`；时间戳 |
+| `knowledge_base_documents` | UUID 主键、`kb_id`、标题、正文、`source_type`、文件名/MIME/大小；状态、错误、chunk 数、revision、学习时间；预留 `storage_key`、`content_sha256` |
+| `knowledge_base_chunks` | UUID 主键、知识库/文档 ID、从 0 开始的 `chunk_index`、正文、近似 token 数；`search_tokens`、`search_tsv`；可空 `embedding` / 模型 ID；JSONB metadata 和引用字段 |
+| `knowledge_base_learning_jobs` | UUID 主键、知识库 ID、可空文档 ID、operation、status、attempts/max_attempts、可执行时间、锁时间/worker、错误与完成时间；可空文档 revision、目标模型 ID 和维度快照 |
 
 关键索引包括 `(kb_id, document_id, chunk_index)` 唯一索引、`search_tsv` GIN 索引、模型 ID 索引和任务领取索引。`embedding` 使用未固定维度的 `vector` 列；当前没有 HNSW / IVFFlat 索引。
 
@@ -93,10 +93,9 @@ flowchart LR
 - `000038_embedding_model` 扩展模型类型和 embedding 配置。
 - `000039_create_kb_tables` 一次建立四张知识库表、全文/向量字段、学习任务生命周期快照和索引，并扩展资源标签和授权类型约束。
 - 迁移由外部 `migrate` CLI / Compose `migrate` 服务执行；后端在迁移服务成功后启动，不在业务启动过程中自动跑这些建表 SQL。
-- `000039` 包含事务、`migrations(name PRIMARY KEY, applied_at)` 及成功后的名称登记；失败随事务回滚，不留下完成记录。
-- 当前重复执行保护主要来自迁移工具的 `schema_migrations` 版本状态。`000039` 在 DDL 前没有检查 `migrations.name`，建表也不是全部 `IF NOT EXISTS`，不能宣称该文件可直接重复执行。这与“先查名称、再迁移”的规范仍有差距，需单独修复执行机制。
+- `000039` 使用事务执行，失败时回滚；迁移版本统一由迁移工具的 `schema_migrations` 管理。
+- 重复执行保护来自 `schema_migrations` 版本状态；应通过 `migrate up` 执行，不应直接重复执行建表 SQL。
 - 数据库必须安装 pgvector 扩展，即使当前没有配置向量模型，迁移仍执行 `CREATE EXTENSION IF NOT EXISTS vector`。
-- Compose 当前没有 AnyDoc 容器、知识库专用开关或可调 worker 并发配置。已有 RustFS/S3 是全局基础设施，知识库文档尚未使用它保存原文件。
 
 从 `monkeyai/backend/` 执行迁移：
 
@@ -314,7 +313,7 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 | POST | `/kb/search` | 按当前管理员的可访问知识库集合检索 |
 | GET / POST | `/kb/{id}/documents` | 完整文档列表（含正文，无分页）/ 创建并入队（202） |
 | GET / PUT / DELETE | `/kb/{id}/documents/{documentId}` | 详情 / 更新并重新学习（202）/ 删除（204） |
-| POST | `/kb/{id}/documents/{documentId}/retry` | 重新入队（202） |
+| POST | `/kb/{id}/documents/{documentId}/restudy` | 重新入队（202） |
 | GET | `/kb/{id}/documents/{documentId}/chunks` | 分片正文、序号、token 估算、`has_vector` 等 |
 | POST | `/kb/{id}/embedding-model/switch` | 兼容手动切模/解绑，返回详情和提示（200） |
 | POST | `/kb/{id}/index/rebuild` | 接收 `operation`、`model_id`，调度全库任务（202） |
@@ -383,7 +382,7 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 
 | 项目 | 当前事实与后续要求 |
 | --- | --- |
-| AnyDoc / 多格式解析 | 未接入；PDF、Office、HTML 等不能通过现有管理端文件入口解析；后续需单独设计上传、存储、解析和失败恢复 |
+| AnyDoc / 多格式解析 | 未接入；当前只接受 JSON 正文 |
 | 原始文件存储 | 数据表预留字段，当前 JSON 输入没有上传/下载原文件链路 |
 | 模型绑定 | 自动选择与兼容手动切换并存；手动解绑会在后续同步中自动重新绑定，不能作为长期关闭向量的产品开关 |
 | 重建范围 | 实现只接收 `operation/model_id`，不支持原文中的 `document_ids` |

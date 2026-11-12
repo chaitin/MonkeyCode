@@ -19,16 +19,24 @@ const (
 )
 
 var documentStatuses = []string{"pending", "learning", "learned", "failed"}
-var documentSourceTypes = []string{"text", "file"}
+var documentSourceTypes = []string{"text", "file", "url"}
 
 type DocumentInput struct {
-	KbID       string `json:"kb_id"`
-	Title      string `json:"title"`
-	SourceType string `json:"source_type"`
-	Content    string `json:"content"`
-	FileName   string `json:"file_name"`
-	MimeType   string `json:"mime_type"`
-	SizeBytes  int64  `json:"size_bytes"`
+	KbID       string  `json:"kb_id"`
+	ParentID   *string `json:"parent_id"`
+	NodeType   string  `json:"node_type"`
+	Title      string  `json:"title"`
+	SourceType string  `json:"source_type"`
+	Content    string  `json:"content"`
+	FileName   string  `json:"file_name"`
+	MimeType   string  `json:"mime_type"`
+	SizeBytes  int64   `json:"size_bytes"`
+}
+
+type MoveDocumentInput struct {
+	ParentID *string `json:"parent_id"`
+	PrevID   string  `json:"prev_id"`
+	NextID   string  `json:"next_id"`
 }
 
 type DocumentListFilter struct {
@@ -81,6 +89,14 @@ func (s *Service) GetDocument(ctx context.Context, id string) (resource.Object, 
 }
 
 func (s *Service) ListDocuments(ctx context.Context, kbID string) ([]resource.Object, error) {
+	items, err := resource.DecodeObjects(sqlc.New(s.store.Pool).ListKbDocuments(ctx, kbID))
+	if err != nil {
+		return nil, err
+	}
+	return buildDocumentTree(items), nil
+}
+
+func (s *Service) ListDocumentNodes(ctx context.Context, kbID string) ([]resource.Object, error) {
 	return resource.DecodeObjects(sqlc.New(s.store.Pool).ListKbDocuments(ctx, kbID))
 }
 
@@ -153,9 +169,13 @@ func (s *Service) ListAccessibleDocuments(ctx context.Context, userID, kbID stri
 	if _, err := s.accessibleKB(ctx, userID, kbID); err != nil {
 		return DocumentPage{}, err
 	}
-	items, err := s.ListDocuments(ctx, kbID)
+	items, err := s.ListDocumentNodes(ctx, kbID)
 	if err != nil {
 		return DocumentPage{}, err
+	}
+	if strings.TrimSpace(filter.Query) == "" && strings.TrimSpace(filter.Status) == "" && strings.TrimSpace(filter.SourceType) == "" && filter.Page == 0 && filter.PageSize == 0 {
+		tree := publicDocumentTree(buildDocumentTree(items))
+		return DocumentPage{Items: tree, TotalCount: len(tree), Page: 1, PageSize: len(tree)}, nil
 	}
 	return filterDocumentPage(items, filter)
 }
@@ -200,7 +220,7 @@ func normalizeDocumentListFilter(filter DocumentListFilter) (DocumentListFilter,
 		return DocumentListFilter{}, resource.Invalid("status 必须为 pending、learning、learned 或 failed")
 	}
 	if filter.SourceType != "" && !containsString(documentSourceTypes, filter.SourceType) {
-		return DocumentListFilter{}, resource.Invalid("source_type 必须为 text 或 file")
+		return DocumentListFilter{}, resource.Invalid("source_type 必须为 text、file 或 url")
 	}
 	if filter.Page == 0 {
 		filter.Page = 1
@@ -268,13 +288,13 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 	if input.SourceType == "" {
 		input.SourceType = "text"
 	}
-	if input.SourceType != "text" && input.SourceType != "file" {
+	if input.SourceType != "text" && input.SourceType != "file" && input.SourceType != "url" {
 		return nil, resource.Invalid("文档来源类型无效")
 	}
 	if input.SizeBytes <= 0 {
 		input.SizeBytes = int64(len(input.Content))
 	}
-	if strings.TrimSpace(input.Content) == "" {
+	if strings.TrimSpace(input.NodeType) != "folder" && strings.TrimSpace(input.Content) == "" {
 		return nil, resource.Invalid("文档内容不能为空")
 	}
 	tx, err := s.store.Pool.Begin(ctx)
@@ -291,6 +311,44 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 		return nil, err
 	}
 
+	nodeType := strings.TrimSpace(input.NodeType)
+	if nodeType == "" {
+		nodeType = "document"
+	}
+	if nodeType != "document" && nodeType != "folder" {
+		return nil, resource.Invalid("节点类型无效")
+	}
+	parentID, err := normalizeParentID(input.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	if parentID != nil {
+		raw, err := queries.GetKbDocument(ctx, *parentID)
+		parent, decodeErr := resource.DecodeObject(raw, err)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && decodeErr == nil && parent.String("kb_id") != input.KbID) {
+			return nil, resource.Invalid("父节点不存在")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if parent.String("node_type") != "folder" {
+			return nil, resource.Invalid("只能放到文件夹下")
+		}
+	}
+	position, err := queries.NextKbDocumentPosition(ctx, sqlc.NextKbDocumentPositionParams{KbID: input.KbID, ParentID: parentID})
+	if err != nil {
+		return nil, err
+	}
+	status := "pending"
+	if nodeType == "folder" {
+		status = "learned"
+		input.SourceType = "text"
+		input.Content = ""
+		input.SizeBytes = 0
+	}
 	id := resource.ID()
 	if err = queries.CreateKbDocument(ctx, sqlc.CreateKbDocumentParams{
 		ID:              id,
@@ -301,9 +359,19 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 		FileName:        optionalString(input.FileName),
 		MimeType:        optionalString(input.MimeType),
 		SizeBytes:       input.SizeBytes,
+		Status:          status,
 		CreatedByUserID: actor,
+		ParentID:        parentID,
+		NodeType:        nodeType,
+		Position:        position,
 	}); err != nil {
 		return nil, err
+	}
+	if nodeType == "folder" {
+		if err = tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return s.GetDocument(ctx, id)
 	}
 	revision, err := queries.GetKbDocumentRevision(ctx, id)
 	if err != nil {
@@ -349,6 +417,24 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 	if input.KbID != "" && strings.TrimSpace(input.KbID) != current.String("kb_id") {
 		return nil, resource.NotFound
 	}
+	if current.String("node_type") == "folder" {
+		title := strings.TrimSpace(input.Title)
+		if title == "" {
+			title = current.String("title")
+		}
+		if err = queries.UpdateKbDocumentMetadata(ctx, sqlc.UpdateKbDocumentMetadataParams{
+			ID:         id,
+			Title:      title,
+			SourceType: "text",
+			SizeBytes:  0,
+		}); err != nil {
+			return nil, err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return s.GetDocument(ctx, id)
+	}
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
 		title = current.String("title")
@@ -357,7 +443,7 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 	if sourceType == "" {
 		sourceType = current.String("source_type")
 	}
-	if sourceType != "text" && sourceType != "file" {
+	if sourceType != "text" && sourceType != "file" && sourceType != "url" {
 		return nil, resource.Invalid("文档来源类型无效")
 	}
 	if current.String("source_type") == "file" && sourceType != "file" {
@@ -444,6 +530,13 @@ func (s *Service) DeleteDocument(ctx context.Context, id string) error {
 		}
 		return err
 	}
+	children, err := queries.CountKbDocumentChildren(ctx, &id)
+	if err != nil {
+		return err
+	}
+	if children > 0 {
+		return resource.Invalid("请先移走或删除文件夹中的内容")
+	}
 	if err = queries.CancelKbLearningJobsByDocument(ctx, &id); err != nil {
 		return err
 	}
@@ -460,7 +553,7 @@ func (s *Service) DeleteDocument(ctx context.Context, id string) error {
 	return tx.Commit(ctx)
 }
 
-func (s *Service) RetryDocument(ctx context.Context, id string) (resource.Object, error) {
+func (s *Service) RestudyDocument(ctx context.Context, id string) (resource.Object, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -473,6 +566,9 @@ func (s *Service) RetryDocument(ctx context.Context, id string) (resource.Object
 			return nil, resource.NotFound
 		}
 		return nil, err
+	}
+	if document.String("node_type") == "folder" {
+		return nil, resource.Invalid("文件夹不能执行学习任务")
 	}
 	if err = queries.CancelKbLearningJobsByDocument(ctx, &id); err != nil {
 		return nil, err
@@ -628,4 +724,28 @@ func floatValue(value any) float64 {
 	default:
 		return 0
 	}
+}
+
+// RestudyDocuments reports per-document failures without retrying successful items.
+func (s *Service) RestudyDocuments(ctx context.Context, kbID string, ids []string) (BatchDocumentResult, error) {
+	ids, err := normalizeBatchIDs(ids)
+	if err != nil {
+		return BatchDocumentResult{}, err
+	}
+	result := BatchDocumentResult{Succeeded: []string{}, Failed: []BatchDocumentFailure{}}
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		_, err := s.documentInKB(ctx, kbID, id)
+		if err == nil {
+			_, err = s.RestudyDocument(ctx, id)
+		}
+		if err != nil {
+			result.Failed = append(result.Failed, BatchDocumentFailure{ID: id, Reason: err.Error()})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, id)
+	}
+	return result, nil
 }

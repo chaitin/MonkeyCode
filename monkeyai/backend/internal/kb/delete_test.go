@@ -73,16 +73,16 @@ func TestCancelKbLearningJobsWithoutDocument(t *testing.T) {
 	pool, actor := kbTestPool(t)
 	ctx := t.Context()
 	kbID, documentID := resource.ID(), resource.ID()
-	if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id) VALUES($1,'任务取消测试',$2,$2)`, kbID, actor); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id) VALUES($1,'任务取消测试',$2,$2)`, kbID, actor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'文档','内容',$3)`, documentID, kbID, actor); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'文档','内容',$3)`, documentID, kbID, actor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_learning_jobs(kb_id,document_id,operation,status) VALUES($1,NULL,'rebuild_lexical','pending')`, kbID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_learning_jobs(kb_id,document_id,operation,status) VALUES($1,NULL,'rebuild_lexical','pending')`, kbID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_learning_jobs(kb_id,document_id,operation,status) VALUES($1,$2,'relearn','pending')`, kbID, documentID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_learning_jobs(kb_id,document_id,operation,status) VALUES($1,$2,'relearn','pending')`, kbID, documentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +91,7 @@ func TestCancelKbLearningJobsWithoutDocument(t *testing.T) {
 		t.Fatalf("知识库级取消失败: %v", err)
 	}
 	var canceled, pending int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='canceled'), count(*) FILTER (WHERE status='pending') FROM kb_learning_jobs WHERE kb_id=$1`, kbID).Scan(&canceled, &pending); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='canceled'), count(*) FILTER (WHERE status='pending') FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&canceled, &pending); err != nil {
 		t.Fatal(err)
 	}
 	if canceled != 2 || pending != 2 {
@@ -117,16 +117,16 @@ func TestRegisterAdminDeleteRemovesKbRelations(t *testing.T) {
 	otherKbID, otherDocumentID := resource.ID(), resource.ID()
 	seed := func(kb, document string, ownership string) {
 		t.Helper()
-		if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,$4)`, kb, "删除测试 "+kb[:8], actor, ownership); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,$4)`, kb, "删除测试 "+kb[:8], actor, ownership); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(ctx, `INSERT INTO kb_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'文档','内容',$3)`, document, kb, actor); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_documents(id,kb_id,title,content,created_by_user_id) VALUES($1,$2,'文档','内容',$3)`, document, kb, actor); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(ctx, `INSERT INTO kb_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kb, document); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kb, document); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(ctx, `INSERT INTO kb_learning_jobs(kb_id,document_id,operation,status) VALUES($1,NULL,'rebuild_lexical','pending')`, kb); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_learning_jobs(kb_id,document_id,operation,status) VALUES($1,NULL,'rebuild_lexical','pending')`, kb); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := pool.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,all_users,access_level,granted_by_user_id) VALUES('kb',$1,true,'read_only',$2)`, kb, actor); err != nil {
@@ -161,12 +161,12 @@ func TestRegisterAdminDeleteRemovesKbRelations(t *testing.T) {
 	call(kbID, `"1"`, http.StatusNoContent)
 
 	for name, query := range map[string]string{
-		"kb":                     `SELECT count(*) FROM kb WHERE id=$1`,
-		"kb_documents":           `SELECT count(*) FROM kb_documents WHERE kb_id=$1`,
-		"kb_chunks":              `SELECT count(*) FROM kb_chunks WHERE kb_id=$1`,
-		"kb_learning_jobs":       `SELECT count(*) FROM kb_learning_jobs WHERE kb_id=$1`,
-		"resource_access_grants": `SELECT count(*) FROM resource_access_grants WHERE resource_type='kb' AND resource_id=$1`,
-		"resource_tags":          `SELECT count(*) FROM resource_tags WHERE resource_type='kb' AND resource_id=$1`,
+		"kb":                           `SELECT count(*) FROM knowledge_bases WHERE id=$1`,
+		"knowledge_base_documents":     `SELECT count(*) FROM knowledge_base_documents WHERE kb_id=$1`,
+		"knowledge_base_chunks":        `SELECT count(*) FROM knowledge_base_chunks WHERE kb_id=$1`,
+		"knowledge_base_learning_jobs": `SELECT count(*) FROM knowledge_base_learning_jobs WHERE kb_id=$1`,
+		"resource_access_grants":       `SELECT count(*) FROM resource_access_grants WHERE resource_type='kb' AND resource_id=$1`,
+		"resource_tags":                `SELECT count(*) FROM resource_tags WHERE resource_type='kb' AND resource_id=$1`,
 	} {
 		var count int
 		if err := pool.QueryRow(ctx, query, kbID).Scan(&count); err != nil {
@@ -177,10 +177,10 @@ func TestRegisterAdminDeleteRemovesKbRelations(t *testing.T) {
 		}
 	}
 	for name, query := range map[string]string{
-		"kb":               `SELECT count(*) FROM kb WHERE id=$1`,
-		"kb_documents":     `SELECT count(*) FROM kb_documents WHERE kb_id=$1`,
-		"kb_chunks":        `SELECT count(*) FROM kb_chunks WHERE kb_id=$1`,
-		"kb_learning_jobs": `SELECT count(*) FROM kb_learning_jobs WHERE kb_id=$1`,
+		"kb":                           `SELECT count(*) FROM knowledge_bases WHERE id=$1`,
+		"knowledge_base_documents":     `SELECT count(*) FROM knowledge_base_documents WHERE kb_id=$1`,
+		"knowledge_base_chunks":        `SELECT count(*) FROM knowledge_base_chunks WHERE kb_id=$1`,
+		"knowledge_base_learning_jobs": `SELECT count(*) FROM knowledge_base_learning_jobs WHERE kb_id=$1`,
 	} {
 		var count int
 		if err := pool.QueryRow(ctx, query, otherKbID).Scan(&count); err != nil {

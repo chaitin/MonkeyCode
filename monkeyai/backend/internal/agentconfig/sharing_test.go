@@ -153,9 +153,11 @@ func TestSharedExpertCannotReshareOtherOwnersDependencies(t *testing.T) {
 	catalogExec(t, r, "INSERT INTO users(id,name,email) VALUES($1::uuid,$1::text,$1::text)", foreignOwner)
 	expertID := resource.ID()
 	catalogExec(t, r, "INSERT INTO experts(id,ownership_type,owner_user_id,created_by_user_id,name,description,prompt) VALUES($1,'user',$2,$2,'不能转分享的专家','','prompt')", expertID, owner)
+	dependencyIDs := map[string]bool{}
 	for _, ownership := range []string{"user", "system"} {
 		for _, kind := range []string{"skill", "connector"} {
 			id := resource.ID()
+			dependencyIDs[id] = true
 			if kind == "skill" {
 				catalogExec(t, r, "INSERT INTO skills(id,ownership_type,owner_user_id,name,description,package_file_name,package_s3_key,package_size_bytes,package_sha256) VALUES($1,$2,$3,'不可转分享技能','','skill.zip','skill.zip',1,'sha256')", id, ownership, foreignOwner)
 				catalogExec(t, r, "INSERT INTO expert_skills(expert_id,skill_id) VALUES($1,$2)", expertID, id)
@@ -176,6 +178,10 @@ func TestSharedExpertCannotReshareOtherOwnersDependencies(t *testing.T) {
 	}
 	for kind, objects := range map[string]map[string]resource.Object{"skill": c.skills, "connector": c.connectors} {
 		for id, o := range objects {
+			// Only these fixtures belong to other owners; built-in connectors are independent of expert sharing.
+			if !dependencyIDs[id] {
+				continue
+			}
 			allowed, err := resource.Allowed(t.Context(), r.store.Pool, kind, id, recipient)
 			if err != nil || allowed || c.allowed(kind, o, recipient) {
 				t.Fatalf("专家扩大了他人资源或系统资源权限: %s %v", kind, err)

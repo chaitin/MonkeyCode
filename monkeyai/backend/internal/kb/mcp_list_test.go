@@ -97,7 +97,7 @@ func TestMCPKBListResponseMatchesREST(t *testing.T) {
 		{alpha, "Alpha", userA},
 		{shared, "Shared", userB},
 	} {
-		if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,'user')`, item.id, item.name, item.owner); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,'user')`, item.id, item.name, item.owner); err != nil {
 			t.Fatal(err)
 		}
 	}

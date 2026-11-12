@@ -30,10 +30,10 @@ func seedLearningKB(t *testing.T, pool *pgxpool.Pool, actor, operation, status s
 		sql  string
 		args []any
 	}{
-		{`INSERT INTO kb(id,name,owner_user_id,created_by_user_id,embedding_model_id,embedding_dimension) VALUES($1,'regression',$2,$2,$3,3)`, []any{kbID, actor, modelID}},
-		{`INSERT INTO kb_documents(id,kb_id,title,content,status,chunk_count,created_by_user_id) VALUES($1,$2,'document','old content',$3,CASE WHEN $3='learned' THEN 1 ELSE 0 END,$4)`, []any{docID, kbID, status, actor}},
-		{`INSERT INTO kb_learning_jobs(kb_id,operation,document_revision,embedding_model_id,embedding_dimension)
-			SELECT $1,$2,d.revision,$3,3 FROM kb_documents d WHERE d.id=$4`, []any{kbID, operation, modelID, docID}},
+		{`INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,embedding_model_id,embedding_dimension) VALUES($1,'regression',$2,$2,$3,3)`, []any{kbID, actor, modelID}},
+		{`INSERT INTO knowledge_base_documents(id,kb_id,title,content,status,chunk_count,created_by_user_id) VALUES($1,$2,'document','old content',$3,CASE WHEN $3='learned' THEN 1 ELSE 0 END,$4)`, []any{docID, kbID, status, actor}},
+		{`INSERT INTO knowledge_base_learning_jobs(kb_id,operation,document_revision,embedding_model_id,embedding_dimension)
+			SELECT $1,$2,d.revision,$3,3 FROM knowledge_base_documents d WHERE d.id=$4`, []any{kbID, operation, modelID, docID}},
 	} {
 		if _, err := pool.Exec(t.Context(), statement.sql, statement.args...); err != nil {
 			t.Fatal(err)
@@ -61,7 +61,7 @@ func TestLearningWritebackRejectsChangedDocument(t *testing.T) {
 				t.Fatalf("worked=%v err=%v", worked, err)
 			}
 			var chunks int
-			if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM kb_chunks WHERE document_id=$1`, docID).Scan(&chunks); err != nil || chunks != 0 {
+			if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM knowledge_base_chunks WHERE document_id=$1`, docID).Scan(&chunks); err != nil || chunks != 0 {
 				t.Fatalf("stale chunks=%d err=%v", chunks, err)
 			}
 			if mutation == "update" {
@@ -87,7 +87,7 @@ func TestLearningWritebackRejectsChangedDocument(t *testing.T) {
 func TestCanceledVectorRebuildCannotRestoreVectors(t *testing.T) {
 	pool, actor := kbTestPool(t)
 	s, kbID, docID := seedLearningKB(t, pool, actor, OperationRebuildVector, "learned")
-	if _, err := pool.Exec(t.Context(), `INSERT INTO kb_chunks(kb_id,document_id,chunk_index,content,embedding) VALUES($1,$2,0,'old content','[1,2,3]')`, kbID, docID); err != nil {
+	if _, err := pool.Exec(t.Context(), `INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content,embedding) VALUES($1,$2,0,'old content','[1,2,3]')`, kbID, docID); err != nil {
 		t.Fatal(err)
 	}
 	s.models = callbackEmbedder(func(ctx context.Context, _, _ string) (model.EmbeddingResult, error) {
@@ -110,10 +110,10 @@ func TestCanceledVectorRebuildCannotRestoreVectors(t *testing.T) {
 	}
 	var vectors int
 	var status string
-	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM kb_chunks WHERE kb_id=$1 AND embedding IS NOT NULL`, kbID).Scan(&vectors); err != nil || vectors != 0 {
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM knowledge_base_chunks WHERE kb_id=$1 AND embedding IS NOT NULL`, kbID).Scan(&vectors); err != nil || vectors != 0 {
 		t.Fatalf("vectors restored after unbind: %d, %v", vectors, err)
 	}
-	if err := pool.QueryRow(t.Context(), `SELECT status FROM kb_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status); err != nil || status != "canceled" {
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status); err != nil || status != "canceled" {
 		t.Fatalf("canceled job overwritten: %s, %v", status, err)
 	}
 }
@@ -121,7 +121,7 @@ func TestCanceledVectorRebuildCannotRestoreVectors(t *testing.T) {
 func TestLearningFailureMarksCurrentDocument(t *testing.T) {
 	pool, actor := kbTestPool(t)
 	s, _, docID := seedLearningKB(t, pool, actor, OperationLearn, "pending")
-	if _, err := pool.Exec(t.Context(), `UPDATE kb_documents SET content='!!!' WHERE id=$1`, docID); err != nil {
+	if _, err := pool.Exec(t.Context(), `UPDATE knowledge_base_documents SET content='!!!' WHERE id=$1`, docID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.runLearningJob(t.Context()); err == nil {
@@ -165,7 +165,7 @@ func TestLearningLeaseFencesPreviousAttempt(t *testing.T) {
 	pool, actor := kbTestPool(t)
 	s, kbID, docID := seedLearningKB(t, pool, actor, OperationLearn, "pending")
 	s.models = callbackEmbedder(func(ctx context.Context, _, _ string) (model.EmbeddingResult, error) {
-		if _, err := pool.Exec(ctx, `UPDATE kb_learning_jobs SET attempts=attempts+1,locked_by='replacement' WHERE kb_id=$1`, kbID); err != nil {
+		if _, err := pool.Exec(ctx, `UPDATE knowledge_base_learning_jobs SET attempts=attempts+1,locked_by='replacement' WHERE kb_id=$1`, kbID); err != nil {
 			t.Fatal(err)
 		}
 		return model.EmbeddingResult{Vector: []float64{1, 2, 3}}, nil
@@ -174,7 +174,7 @@ func TestLearningLeaseFencesPreviousAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var status, owner string
-	if err := pool.QueryRow(t.Context(), `SELECT status,locked_by FROM kb_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status, &owner); err != nil || status != "running" || owner != "replacement" {
+	if err := pool.QueryRow(t.Context(), `SELECT status,locked_by FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status, &owner); err != nil || status != "running" || owner != "replacement" {
 		t.Fatalf("replacement lease overwritten: %s %s %v", status, owner, err)
 	}
 	items, err := s.ListChunks(t.Context(), docID)
@@ -186,7 +186,7 @@ func TestLearningLeaseFencesPreviousAttempt(t *testing.T) {
 	if err := queries.FailKbLearningJob(t.Context(), sqlc.FailKbLearningJobParams{ID: mustJobID(t, pool, kbID), Attempts: 1, WorkerID: optionalString(s.workerID()), ErrorMessage: &message}); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(t.Context(), `SELECT status FROM kb_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status); err != nil || status != "running" {
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&status); err != nil || status != "running" {
 		t.Fatalf("previous attempt failed replacement: %s %v", status, err)
 	}
 }
@@ -194,7 +194,7 @@ func TestLearningLeaseFencesPreviousAttempt(t *testing.T) {
 func mustJobID(t *testing.T, pool *pgxpool.Pool, kbID string) string {
 	t.Helper()
 	var id string
-	if err := pool.QueryRow(t.Context(), `SELECT id::text FROM kb_learning_jobs WHERE kb_id=$1`, kbID).Scan(&id); err != nil {
+	if err := pool.QueryRow(t.Context(), `SELECT id::text FROM knowledge_base_learning_jobs WHERE kb_id=$1`, kbID).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -203,7 +203,7 @@ func mustJobID(t *testing.T, pool *pgxpool.Pool, kbID string) string {
 func TestAdminPersonalKBWriteRoutesAreReadOnly(t *testing.T) {
 	pool, actor := kbTestPool(t)
 	s, kbID, docID := seedLearningKB(t, pool, actor, OperationLearn, "pending")
-	if _, err := pool.Exec(t.Context(), `UPDATE kb SET ownership_type='user' WHERE id=$1`, kbID); err != nil {
+	if _, err := pool.Exec(t.Context(), `UPDATE knowledge_bases SET ownership_type='user' WHERE id=$1`, kbID); err != nil {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
@@ -212,7 +212,8 @@ func TestAdminPersonalKBWriteRoutesAreReadOnly(t *testing.T) {
 		{"POST", "/documents", `{"title":"injected","content":"injected"}`},
 		{"PUT", "/documents/" + docID, `{"content":"overwritten"}`},
 		{"DELETE", "/documents/" + docID, ""},
-		{"POST", "/documents/" + docID + "/retry", ""},
+		{"POST", "/documents/" + docID + "/restudy", ""},
+		{"POST", "/documents/restudy", `{"ids":["` + docID + `"]}`},
 		{"POST", "/embedding-model/switch", `{"embedding_model_id":null}`},
 		{"POST", "/index/rebuild", `{"operation":"rebuild_parse"}`},
 	} {

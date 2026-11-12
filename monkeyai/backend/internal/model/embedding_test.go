@@ -154,23 +154,58 @@ func TestValidateEmbeddingDimension(t *testing.T) {
 	}
 }
 
-func TestUpdateEmbeddingModelReusesStoredKeyForProbe(t *testing.T) {
-	repository := &repositoryStub{models: []Model{{
-		ID: "model-1", Kind: KindEmbedding, Protocol: ProtocolEmbedding,
-		Provider: ProviderPassthrough, ModelID: "text-embedding-3-small",
-		DisplayName: "Embedding", BaseURL: "https://api.example.com/v1",
-		APIKey: "stored-key", OwnershipType: "system", Enabled: true,
-	}}}
-	service := NewService(repository).WithEmbeddingDimensionProbe(func(_ context.Context, item Model) (int, error) {
-		if item.APIKey != "stored-key" {
-			t.Fatalf("探测未复用已保存的密钥: %q", item.APIKey)
-		}
-		return 1536, nil
-	})
+func TestUpdateEmbeddingModelPreservesStoredKeyAndDimension(t *testing.T) {
+	service := embeddingService(&repositoryStub{}, 1536)
+	original, err := service.Create(t.Context(), "admin", embeddingInput())
+	if err != nil {
+		t.Fatal(err)
+	}
 	input := embeddingInput()
 	input.APIKey = ""
-	item, err := service.Update(t.Context(), "model-1", "admin-1", input)
-	if err != nil || item.EmbeddingConfig == nil || item.EmbeddingConfig.Dimension != 1536 {
-		t.Fatalf("更新时未自动探测维度: %+v, %v", item, err)
+	item, err := service.Update(t.Context(), original.ID, "admin", input)
+	if err != nil || item.EmbeddingConfig == nil || item.EmbeddingConfig.Dimension != 1536 || item.APIKey != original.APIKey {
+		t.Fatalf("stored key and dimension were not preserved: %+v, %v", item, err)
+	}
+}
+
+func TestEmbeddingIdentityImmutable(t *testing.T) {
+	for _, field := range []string{"model", "url", "kind", "metadata"} {
+		t.Run(field, func(t *testing.T) {
+			service := embeddingService(&repositoryStub{}, 3)
+			item, err := service.Create(t.Context(), "admin", embeddingInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := embeddingInput()
+			switch field {
+			case "model":
+				input.ModelID = "another-model"
+			case "url":
+				input.BaseURL = "https://other.example.com/v1"
+			case "kind":
+				input.Kind = KindText
+				input.Protocol = ProtocolOpenAIChat
+			case "metadata":
+				input.DisplayName = "renamed"
+				input.APIKey = "rotated-key"
+			}
+			service.WithEmbeddingDimensionProbe(func(context.Context, Model) (int, error) {
+				t.Fatal("updates must preserve the original dimension without probing")
+				return 0, nil
+			})
+			updated, err := service.Update(t.Context(), item.ID, "admin", input)
+			if field != "metadata" {
+				if err == nil {
+					t.Fatal("immutable identity was modified")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updated.EmbeddingConfig.Dimension != 3 || updated.DisplayName != "renamed" || updated.APIKey != "rotated-key" {
+				t.Fatalf("unexpected update: %+v", updated)
+			}
+		})
 	}
 }

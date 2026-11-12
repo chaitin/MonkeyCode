@@ -22,6 +22,8 @@ try {
     locale: "zh-CN",
   })
   const errors = []
+  let batchRestudyCheck = false
+  const restudyRequests = []
   let documentRequests = 0
   let checkStaleDocuments = false
   const pendingDocuments = []
@@ -105,7 +107,16 @@ try {
             name: "第二知识库",
           })
         }
+      } else if (/^\/api\/admin\/v1\/kb\/[^/]+$/.test(pathname)) {
+        body = { id: pathname.split("/").at(-1), ownership_type: "system", name: "测试知识库", description: "测试描述", grants: [], tags: [], revision: 1 }
+      } else if (pathname.endsWith("/documents/restudy")) {
+        const payload = route.request().postDataJSON()
+        restudyRequests.push(payload)
+        return route.fulfill({ status: 202, json: { succeeded: payload.ids, failed: [] } })
       } else if (pathname.includes("/documents")) {
+        if (batchRestudyCheck) return route.fulfill({ json: { items: [
+          { id: "batch-doc", kb_id: "11111111-1111-4111-8111-111111111111", title: "批量学习文档", node_type: "document", source_type: "text", status: "failed", size_bytes: 10, chunk_count: 0, updated_at: "2026-11-05T00:00:00Z" },
+        ] } })
         documentRequests++
         if (checkStaleDocuments) {
           pendingDocuments.push(route)
@@ -142,41 +153,16 @@ try {
     waitUntil: "networkidle",
   })
   await page.getByText("测试知识库", { exact: true }).click()
-  await page.waitForTimeout(1000)
-
-  assert.equal(await page.locator('[role="dialog"]').count(), 1)
+  await page.waitForURL("**/kb/11111111-1111-4111-8111-111111111111")
+  await page.getByRole("button", { name: "修改信息", exact: true }).waitFor()
+  assert.equal(await page.getByRole("dialog").count(), 0)
   assert.equal(documentRequests, 1)
-  await page.keyboard.press("Escape")
-  await page.waitForTimeout(300)
-
-  await page.getByRole("button", { name: "更多" }).click()
-  await page.getByText("修改信息", { exact: true }).click()
-  await page.waitForTimeout(300)
-  assert.equal(await page.locator('[role="dialog"]').count(), 1)
-  assert.equal(
-    await page
-      .getByRole("dialog")
-      .getByText("修改知识库", { exact: true })
-      .count(),
-    1
-  )
+  await page.getByRole("button", { name: "修改信息", exact: true }).click()
+  await page.getByRole("dialog").waitFor()
   assert.equal(await page.locator("#kb-embedding-model").count(), 0)
   await page.keyboard.press("Escape")
-  await page.waitForTimeout(300)
-
-  await page.getByRole("button", { name: "更多" }).click()
-  await page.getByText("查看内容", { exact: true }).click()
-  await page.waitForTimeout(300)
-  assert.equal(await page.locator('[role="dialog"]').count(), 1)
-  assert.equal(
-    await page
-      .getByRole("dialog")
-      .getByText("测试知识库", { exact: true })
-      .count(),
-    1
-  )
-  await page.getByRole("button", { name: "添加内容", exact: true }).click()
-  await page.waitForTimeout(300)
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  await page.getByRole("button", { name: "创建文档", exact: true }).click()
   const documentBody = page.locator("#kb-document-body")
   const contentDialog = page.getByRole("dialog").filter({ has: documentBody })
   const longContent = `![image](https://example.com/${"a".repeat(10000)}.png)`
@@ -210,6 +196,19 @@ try {
     assert.ok(dimensions.inputOverflow <= 1, "连续长字符串应在输入框内换行")
     assert.equal(await documentBody.inputValue(), longContent)
   }
+  await page.keyboard.press("Escape")
+  batchRestudyCheck = true
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.reload({ waitUntil: "networkidle" })
+  await page.getByRole("button", { name: "批量操作", exact: true }).click()
+  const restudyButton = page.getByRole("button", { name: "重新学习", exact: true })
+  assert.equal(await restudyButton.isDisabled(), true)
+  await page.getByRole("checkbox", { name: "批量学习文档", exact: true }).click()
+  await restudyButton.click()
+  await page.getByRole("button", { name: "批量操作", exact: true }).waitFor()
+  assert.deepEqual(restudyRequests, [{ ids: ["batch-doc"] }])
+  batchRestudyCheck = false
+
   // Keep A pending, switch to B, then deliver A after B has rendered.
   checkStaleDocuments = true
   await page.setViewportSize({ width: 1440, height: 1000 })
@@ -219,7 +218,7 @@ try {
   const firstRequest = new Promise((resolve) => { documentRequested = resolve })
   await page.getByText("测试知识库", { exact: true }).click()
   await firstRequest
-  await page.keyboard.press("Escape")
+  await page.goBack({ waitUntil: "domcontentloaded" })
   const secondRequest = new Promise((resolve) => { documentRequested = resolve })
   await page.getByText("第二知识库", { exact: true }).click()
   await secondRequest
@@ -239,7 +238,7 @@ try {
   assert.equal(await page.getByText("当前文档 B", { exact: true }).count(), 1)
   assert.equal(await page.getByText("旧文档 A", { exact: true }).count(), 0)
   assert.deepEqual(errors, [])
-  console.log("knowledge base dialog regression check passed")
+  console.log("knowledge base detail regression check passed")
 } finally {
   await browser.close()
 }

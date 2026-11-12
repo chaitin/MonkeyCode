@@ -158,12 +158,16 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		}
 		payload = result
 	case "kb_get_document":
-		documentID, _ := call.Arguments["document_id"].(string)
-		if strings.TrimSpace(documentID) == "" {
-			return nil, resource.Invalid("document_id 不能为空")
+		kbID, err := mcpRequiredString(call.Arguments, "kb_id")
+		if err != nil {
+			return nil, err
+		}
+		documentID, err := mcpRequiredString(call.Arguments, "document_id")
+		if err != nil {
+			return nil, err
 		}
 		includeContent, _ := call.Arguments["include_content"].(bool)
-		item, err := s.GetAccessibleDocument(ctx, userID, documentID)
+		item, err := s.GetAccessibleDocumentInKB(ctx, userID, kbID, documentID)
 		if err != nil {
 			return nil, err
 		}
@@ -183,6 +187,10 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		}
 		payload = publicDocument(item)
 	case "kb_update_document":
+		kbID, err := mcpRequiredString(call.Arguments, "kb_id")
+		if err != nil {
+			return nil, err
+		}
 		documentID, err := mcpRequiredString(call.Arguments, "document_id")
 		if err != nil {
 			return nil, err
@@ -194,14 +202,24 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if err != nil {
 			return nil, err
 		}
+		if _, err := s.GetAccessibleDocumentInKB(ctx, userID, kbID, documentID); err != nil {
+			return nil, err
+		}
 		item, err := s.UpdateUserDocument(ctx, userID, documentID, input)
 		if err != nil {
 			return nil, err
 		}
 		payload = publicDocument(item)
 	case "kb_delete_document":
+		kbID, err := mcpRequiredString(call.Arguments, "kb_id")
+		if err != nil {
+			return nil, err
+		}
 		documentID, err := mcpRequiredString(call.Arguments, "document_id")
 		if err != nil {
+			return nil, err
+		}
+		if _, err := s.GetAccessibleDocumentInKB(ctx, userID, kbID, documentID); err != nil {
 			return nil, err
 		}
 		if err := s.DeleteUserDocument(ctx, userID, documentID); err != nil {
@@ -322,10 +340,11 @@ func MCPTools() []resource.Object {
 			"inputSchema": resource.Object{
 				"type": "object",
 				"properties": resource.Object{
+					"kb_id":           resource.Object{"type": "string", "format": "uuid"},
 					"document_id":     resource.Object{"type": "string", "format": "uuid"},
 					"include_content": resource.Object{"type": "boolean", "default": false},
 				},
-				"required": []string{"document_id"},
+				"required": []string{"kb_id", "document_id"},
 			},
 		},
 		{
@@ -344,7 +363,7 @@ func MCPTools() []resource.Object {
 			"inputSchema": resource.Object{
 				"type":                 "object",
 				"properties":           mcpUpdateDocumentProperties(),
-				"required":             []string{"document_id"},
+				"required":             []string{"kb_id", "document_id"},
 				"additionalProperties": false,
 			},
 		},
@@ -353,8 +372,8 @@ func MCPTools() []resource.Object {
 			"description": "删除当前用户拥有的个人知识库下的文档，并取消活跃学习任务；系统知识库或他人知识库文档返回 kb_not_found",
 			"inputSchema": resource.Object{
 				"type":                 "object",
-				"properties":           resource.Object{"document_id": resource.Object{"type": "string", "format": "uuid"}},
-				"required":             []string{"document_id"},
+				"properties":           resource.Object{"kb_id": resource.Object{"type": "string", "format": "uuid"}, "document_id": resource.Object{"type": "string", "format": "uuid"}},
+				"required":             []string{"kb_id", "document_id"},
 				"additionalProperties": false,
 			},
 		},
@@ -450,7 +469,7 @@ func mcpDocumentProperties(includeKB bool) resource.Object {
 }
 
 func mcpUpdateDocumentProperties() resource.Object {
-	properties := mcpDocumentProperties(false)
+	properties := mcpDocumentProperties(true)
 	properties["document_id"] = resource.Object{"type": "string", "format": "uuid"}
 	return properties
 }

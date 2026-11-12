@@ -2,11 +2,6 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS migrations (
-    name text PRIMARY KEY,
-    applied_at timestamptz NOT NULL DEFAULT now()
-);
-
 ALTER TABLE resource_access_grants
     DROP CONSTRAINT IF EXISTS resource_access_grants_resource_type_check;
 ALTER TABLE resource_access_grants
@@ -21,7 +16,7 @@ ALTER TABLE resource_tags
         resource_type IN ('model', 'skill', 'rule', 'connector', 'expert', 'kb')
     );
 
-CREATE TABLE kb (
+CREATE TABLE knowledge_bases (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     description text NOT NULL DEFAULT '',
@@ -46,16 +41,16 @@ CREATE TABLE kb (
 );
 
 CREATE INDEX kb_ownership_name_idx
-    ON kb (ownership_type, lower(name), id);
+    ON knowledge_bases (ownership_type, lower(name), id);
 
 CREATE INDEX kb_owner_user_idx
-    ON kb (owner_user_id, id);
+    ON knowledge_bases (owner_user_id, id);
 
 CREATE INDEX kb_embedding_model_idx
-    ON kb (embedding_model_id)
+    ON knowledge_bases (embedding_model_id)
     WHERE embedding_model_id IS NOT NULL;
 
-CREATE TABLE kb_documents (
+CREATE TABLE knowledge_base_documents (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     kb_id uuid NOT NULL,
     title text NOT NULL,
@@ -74,20 +69,29 @@ CREATE TABLE kb_documents (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     learned_at timestamptz,
-    CONSTRAINT kb_documents_source_type_check CHECK (source_type IN ('text', 'file')),
-    CONSTRAINT kb_documents_status_check CHECK (status IN ('pending', 'learning', 'learned', 'failed')),
-    CONSTRAINT kb_documents_size_bytes_check CHECK (size_bytes >= 0),
-    CONSTRAINT kb_documents_chunk_count_check CHECK (chunk_count >= 0),
-    CONSTRAINT kb_documents_revision_check CHECK (revision > 0)
+    parent_id uuid,
+    node_type text NOT NULL DEFAULT 'document',
+    position double precision NOT NULL DEFAULT 0,
+    CONSTRAINT knowledge_base_documents_source_type_check CHECK (source_type IN ('text', 'file', 'url')),
+    CONSTRAINT knowledge_base_documents_status_check CHECK (status IN ('pending', 'learning', 'learned', 'failed')),
+    CONSTRAINT knowledge_base_documents_size_bytes_check CHECK (size_bytes >= 0),
+    CONSTRAINT knowledge_base_documents_chunk_count_check CHECK (chunk_count >= 0),
+    CONSTRAINT knowledge_base_documents_revision_check CHECK (revision > 0),
+    CONSTRAINT knowledge_base_documents_id_kb_key UNIQUE (id, kb_id),
+    CONSTRAINT knowledge_base_documents_node_type_check CHECK (node_type IN ('folder', 'document')),
+    CONSTRAINT knowledge_base_documents_not_own_parent_check CHECK (parent_id IS DISTINCT FROM id)
 );
 
-CREATE INDEX kb_documents_kb_idx
-    ON kb_documents (kb_id, created_at DESC, id);
+CREATE INDEX knowledge_base_documents_kb_idx
+    ON knowledge_base_documents (kb_id, created_at DESC, id);
 
-CREATE INDEX kb_documents_status_idx
-    ON kb_documents (status, updated_at);
+CREATE INDEX knowledge_base_documents_status_idx
+    ON knowledge_base_documents (status, updated_at);
 
-CREATE TABLE kb_chunks (
+CREATE INDEX knowledge_base_documents_tree_idx
+    ON knowledge_base_documents (kb_id, parent_id, position, id);
+
+CREATE TABLE knowledge_base_chunks (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     kb_id uuid NOT NULL,
     document_id uuid NOT NULL,
@@ -104,25 +108,25 @@ CREATE TABLE kb_chunks (
     heading_path text,
     page_no integer,
     source_url text,
-    CONSTRAINT kb_chunks_chunk_index_check CHECK (chunk_index >= 0),
-    CONSTRAINT kb_chunks_token_count_check CHECK (token_count IS NULL OR token_count >= 0),
-    CONSTRAINT kb_chunks_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
+    CONSTRAINT knowledge_base_chunks_chunk_index_check CHECK (chunk_index >= 0),
+    CONSTRAINT knowledge_base_chunks_token_count_check CHECK (token_count IS NULL OR token_count >= 0),
+    CONSTRAINT knowledge_base_chunks_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
 );
 
-CREATE UNIQUE INDEX kb_chunks_document_index_key
-    ON kb_chunks (kb_id, document_id, chunk_index);
+CREATE UNIQUE INDEX knowledge_base_chunks_document_index_key
+    ON knowledge_base_chunks (kb_id, document_id, chunk_index);
 
-CREATE INDEX kb_chunks_kb_idx
-    ON kb_chunks (kb_id, document_id, chunk_index);
+CREATE INDEX knowledge_base_chunks_kb_idx
+    ON knowledge_base_chunks (kb_id, document_id, chunk_index);
 
-CREATE INDEX kb_chunks_embedding_model_idx
-    ON kb_chunks (embedding_model_id)
+CREATE INDEX knowledge_base_chunks_embedding_model_idx
+    ON knowledge_base_chunks (embedding_model_id)
     WHERE embedding_model_id IS NOT NULL;
 
-CREATE INDEX kb_chunks_search_tsv_idx
-    ON kb_chunks USING gin (search_tsv);
+CREATE INDEX knowledge_base_chunks_search_tsv_idx
+    ON knowledge_base_chunks USING gin (search_tsv);
 
-CREATE TABLE kb_learning_jobs (
+CREATE TABLE knowledge_base_learning_jobs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     kb_id uuid NOT NULL,
     document_id uuid,
@@ -140,36 +144,33 @@ CREATE TABLE kb_learning_jobs (
     document_revision integer,
     embedding_model_id uuid,
     embedding_dimension integer,
-    CONSTRAINT kb_learning_jobs_operation_check CHECK (operation IN (
+    CONSTRAINT knowledge_base_learning_jobs_operation_check CHECK (operation IN (
         'learn', 'relearn', 'rebuild_parse', 'rebuild_lexical', 'rebuild_vector',
         'rebuild_model'
     )),
-    CONSTRAINT kb_learning_jobs_status_check CHECK (status IN ('pending', 'running', 'succeeded', 'failed', 'canceled')),
-    CONSTRAINT kb_learning_jobs_attempts_check CHECK (attempts >= 0 AND max_attempts > 0),
-    CONSTRAINT kb_learning_jobs_document_revision_check CHECK (
+    CONSTRAINT knowledge_base_learning_jobs_status_check CHECK (status IN ('pending', 'running', 'succeeded', 'failed', 'canceled')),
+    CONSTRAINT knowledge_base_learning_jobs_attempts_check CHECK (attempts >= 0 AND max_attempts > 0),
+    CONSTRAINT knowledge_base_learning_jobs_document_revision_check CHECK (
         document_revision IS NULL OR document_revision > 0
     ),
-    CONSTRAINT kb_learning_jobs_embedding_dimension_check CHECK (
+    CONSTRAINT knowledge_base_learning_jobs_embedding_dimension_check CHECK (
         embedding_dimension IS NULL OR embedding_dimension > 0
     )
 );
 
-CREATE INDEX kb_learning_jobs_claim_idx
-    ON kb_learning_jobs (status, available_at, created_at)
+CREATE INDEX knowledge_base_learning_jobs_claim_idx
+    ON knowledge_base_learning_jobs (status, available_at, created_at)
     WHERE status = 'pending';
 
-CREATE INDEX kb_learning_jobs_kb_idx
-    ON kb_learning_jobs (kb_id, created_at DESC);
+CREATE INDEX knowledge_base_learning_jobs_kb_idx
+    ON knowledge_base_learning_jobs (kb_id, created_at DESC);
 
-CREATE INDEX kb_learning_jobs_document_active_idx
-    ON kb_learning_jobs (document_id, created_at)
+CREATE INDEX knowledge_base_learning_jobs_document_active_idx
+    ON knowledge_base_learning_jobs (document_id, created_at)
     WHERE document_id IS NOT NULL AND status IN ('pending', 'running');
 
-CREATE INDEX kb_learning_jobs_embedding_model_idx
-    ON kb_learning_jobs (embedding_model_id)
+CREATE INDEX knowledge_base_learning_jobs_embedding_model_idx
+    ON knowledge_base_learning_jobs (embedding_model_id)
     WHERE embedding_model_id IS NOT NULL;
-
-INSERT INTO migrations (name) VALUES ('000039_create_kb_tables')
-ON CONFLICT (name) DO NOTHING;
 
 COMMIT;

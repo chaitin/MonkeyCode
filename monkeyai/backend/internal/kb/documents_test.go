@@ -87,7 +87,7 @@ func TestFilterDocumentPage(t *testing.T) {
 
 	for _, filter := range []DocumentListFilter{
 		{Status: "unknown"},
-		{SourceType: "url"},
+		{SourceType: "unknown"},
 		{Page: -1},
 		{PageSize: documentMaxPageSize + 1},
 	} {

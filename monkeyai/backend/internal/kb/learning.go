@@ -129,6 +129,9 @@ func (s *Service) learnDocument(ctx context.Context, id string, job sqlc.ClaimKb
 	if err != nil {
 		return err
 	}
+	if document.String("node_type") == "folder" {
+		return errDocumentChanged
+	}
 	if !learningJobRevisionMatches(document, job) {
 		return errDocumentChanged
 	}

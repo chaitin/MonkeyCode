@@ -161,7 +161,7 @@ function DocumentEditorPage({
 
   function back() {
     if (saving) return
-    navigate(`${CONSOLE_ROUTES.kb}?kb=${encodeURIComponent(kbId ?? "")}`)
+    navigate(`${CONSOLE_ROUTES.kb}/${kbId}`)
   }
 
   return (

@@ -45,7 +45,44 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": items})
+		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": publicDocumentTree(items)})
+	})
+
+	r.Post("/kb/{id}/documents/batch", func(w http.ResponseWriter, r *http.Request) {
+		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
+		var input BatchDocumentInput
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		result, err := s.BatchDocuments(r.Context(), kbID, input)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusOK, result)
+	})
+
+	r.Post("/kb/{id}/documents/move", func(w http.ResponseWriter, r *http.Request) {
+		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
+		var input struct {
+			MoveDocumentInput
+			ID string `json:"id"`
+		}
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		if _, err := s.documentInKB(r.Context(), kbID, input.ID); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		item, err := s.MoveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
 	})
 
 	r.Post("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
@@ -109,12 +146,28 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	r.Post("/kb/{id}/documents/{documentId}/retry", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/kb/{id}/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			IDs []string `json:"ids"`
+		}
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		result, err := s.RestudyDocuments(r.Context(), chi.URLParam(r, "id"), input.IDs)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusAccepted, result)
+	})
+
+	r.Post("/kb/{id}/documents/{documentId}/restudy", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.documentInKB(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "documentId")); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		item, err := s.RetryDocument(r.Context(), chi.URLParam(r, "documentId"))
+		item, err := s.RestudyDocument(r.Context(), chi.URLParam(r, "documentId"))
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return

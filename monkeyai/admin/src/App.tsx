@@ -41,6 +41,7 @@ import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
 
 const KbDocumentPage = lazy(() => import("@/pages/kb-document-page"))
+const KbDetailPage = lazy(() => import("@/pages/kb-detail-page"))
 
 function RequireAuth() {
   const { isLoading, user } = useAuth()
@@ -160,6 +161,14 @@ export function App() {
                 }
               />
             ))}
+            <Route
+              path="resources/kb/:kbId"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <KbDetailPage />
+                </Suspense>
+              }
+            />
             <Route
               path="resources/kb/:kbId/documents/:documentId"
               element={

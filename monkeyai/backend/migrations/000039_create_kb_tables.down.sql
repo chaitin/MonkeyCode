@@ -17,11 +17,9 @@ ALTER TABLE resource_tags
         resource_type IN ('model', 'skill', 'rule', 'connector', 'expert')
     );
 
-DROP TABLE IF EXISTS kb_learning_jobs;
-DROP TABLE IF EXISTS kb_chunks;
-DROP TABLE IF EXISTS kb_documents;
-DROP TABLE IF EXISTS kb;
-
-DELETE FROM migrations WHERE name = '000039_create_kb_tables';
+DROP TABLE IF EXISTS knowledge_base_learning_jobs;
+DROP TABLE IF EXISTS knowledge_base_chunks;
+DROP TABLE IF EXISTS knowledge_base_documents;
+DROP TABLE IF EXISTS knowledge_bases;
 
 COMMIT;

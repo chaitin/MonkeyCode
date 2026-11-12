@@ -2215,7 +2215,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
+      description: 支持 model、rule、skill、connector、expert、kb；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。个人知识库共享后接收方可以读取和检索，但不能编辑、删除或转分享。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
       requestBody:
         required: true
         content:
@@ -4013,7 +4013,7 @@ paths:
         '500': {$ref: '#/components/responses/ResourceError500'}
     post:
       summary: 创建当前用户的个人知识库
-      description: 归属固定为当前用户，创建后默认启用。后端自动选择可用的系统 embedding 模型，有可用模型时支持混合检索，否则仅使用全文检索；无需指定向量模型。可配置 fusion_config 和 tag_ids。
+      description: 归属固定为当前用户，创建后默认启用。后端自动选择可用的系统 embedding 模型，有可用模型时支持混合检索，否则仅使用全文检索；无需指定向量模型。可配置 fusion_config 和 tag_ids。分享通过 /resources/shares 管理，type 为 kb。
       requestBody:
         required: true
         content:
@@ -4130,7 +4130,7 @@ paths:
         - name: source_type
           in: query
           description: 按文档来源类型筛选。
-          schema: {type: string, enum: [text, file]}
+          schema: {type: string, enum: [text, file, url]}
       responses:
         '200':
           description: 文档列表
@@ -4161,6 +4161,22 @@ paths:
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/v1/kb/{id}/documents/move:
+    parameters:
+      - $ref: '#/components/parameters/ResourceID'
+    post:
+      summary: 移动当前用户拥有的个人知识库文档树节点
+      description: 仅个人知识库所有者可以移动文件夹或文档。parent_id 为空表示根节点，prev_id 和 next_id 用于同级排序。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentMoveInput'}
+      responses:
+        '200': {description: '节点已移动', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
   /api/v1/kb/{id}/documents/{documentId}:
     parameters:
       - $ref: '#/components/parameters/ResourceID'
@@ -5241,6 +5257,7 @@ components:
                 - skill
                 - connector
                 - expert
+                - kb
                 description: 可分享的个人资源类型；其他类型返回 400。
               id: *id006
         user_ids:
@@ -7005,12 +7022,16 @@ components:
             description: 仅知识库所有者可见的授权范围；被分享者不返回。
     KbDocument:
       type: object
-      required: [id, kb_id, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
+      required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        node_type: {type: string, enum: [folder, document]}
+        position: {type: number}
+        children: {type: array, items: {$ref: '#/components/schemas/KbDocument'}}
         title: {type: string}
-        source_type: {type: string, enum: [text, file]}
+        source_type: {type: string, enum: [text, file, url]}
         content: {type: string}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
@@ -7024,12 +7045,16 @@ components:
         updated_at: {type: string, format: date-time}
     KbDocumentSummary:
       type: object
-      required: [id, kb_id, title, source_type, status, chunk_count, revision, created_at, updated_at]
+      required: [id, kb_id, node_type, title, source_type, status, chunk_count, revision, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        node_type: {type: string, enum: [folder, document]}
+        position: {type: number}
+        children: {type: array, items: {$ref: '#/components/schemas/KbDocumentSummary'}}
         title: {type: string}
-        source_type: {type: string, enum: [text, file]}
+        source_type: {type: string, enum: [text, file, url]}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
         size_bytes: {type: integer}
@@ -7040,13 +7065,24 @@ components:
         learned_at: {type: [string, 'null'], format: date-time}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    KbDocumentMoveInput:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: {type: string, format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        prev_id: {type: string, format: uuid}
+        next_id: {type: string, format: uuid}
     KbDocumentCreateInput:
       type: object
       additionalProperties: false
-      required: [title, content]
+      required: [title]
       properties:
         title: {type: string, minLength: 1}
-        source_type: {type: string, enum: [text, file], default: text}
+        parent_id: {type: [string, 'null'], format: uuid}
+        node_type: {type: string, enum: [folder, document], default: document}
+        source_type: {type: string, enum: [text, file, url], default: text}
         content: {type: string, minLength: 1}
         file_name: {type: string}
         mime_type: {type: string}
@@ -7056,7 +7092,7 @@ components:
       additionalProperties: false
       properties:
         title: {type: string, minLength: 1}
-        source_type: {type: string, enum: [text, file]}
+        source_type: {type: string, enum: [text, file, url]}
         content: {type: string}
         file_name: {type: string}
         mime_type: {type: string}

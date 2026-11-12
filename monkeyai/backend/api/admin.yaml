@@ -5764,6 +5764,25 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/move:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 移动知识库文档树节点
+      description: 将文件夹或文档移动到指定父节点，并按前后相邻节点计算排序。不能移动到自身或子孙节点下。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentMoveInput'}
+      responses:
+        '200':
+          description: 已移动
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbDocument'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
   /api/admin/v1/kb/{id}/documents/{documentId}:
     parameters:
       - {$ref: '#/components/parameters/ResourceID'}
@@ -5802,7 +5821,49 @@ paths:
         '204': {description: 已删除}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/admin/v1/kb/{id}/documents/{documentId}/retry:
+  /api/admin/v1/kb/{id}/documents/restudy:
+    parameters:
+      - {$ref: '#/components/parameters/ResourceID'}
+    post:
+      summary: 批量重新学习知识库文档
+      description: 仅系统知识库可写。ID 去重后最多 200 个，逐项校验知识库归属；文件夹不执行学习。部分失败不回滚成功项。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  items: {type: string, format: uuid}
+                  description: 待重新学习的文档 ID，单条操作也传数组
+      responses:
+        '202':
+          description: 已处理请求，成功项进入现有学习流程，失败项附带原因
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [succeeded, failed]
+                properties:
+                  succeeded:
+                    type: array
+                    items: {type: string, format: uuid}
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, reason]
+                      properties:
+                        id: {type: string}
+                        reason: {type: string}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/{documentId}/restudy:
     parameters:
       - {$ref: '#/components/parameters/ResourceID'}
       - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -8986,22 +9047,37 @@ components:
     KbDocumentInput:
       type: object
       additionalProperties: false
-      required: [title, content]
+      required: [title]
       properties:
         title: {type: string, minLength: 1}
-        source_type: {type: string, enum: [text, file]}
+        parent_id: {type: [string, 'null'], format: uuid}
+        node_type: {type: string, enum: [folder, document], default: document}
+        source_type: {type: string, enum: [text, file, url]}
         content: {type: string}
         file_name: {type: string}
         mime_type: {type: string}
         size_bytes: {type: integer, minimum: 0}
+    KbDocumentMoveInput:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: {type: string, format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        prev_id: {type: string, format: uuid}
+        next_id: {type: string, format: uuid}
     KbDocument:
       type: object
-      required: [id, kb_id, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
+      required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
+        parent_id: {type: [string, 'null'], format: uuid}
+        node_type: {type: string, enum: [folder, document]}
+        position: {type: number}
+        children: {type: array, items: {$ref: '#/components/schemas/KbDocument'}}
         title: {type: string}
-        source_type: {type: string, enum: [text, file]}
+        source_type: {type: string, enum: [text, file, url]}
         content: {type: string}
         file_name: {type: [string, 'null']}
         mime_type: {type: [string, 'null']}
@@ -9109,3 +9185,4 @@ components:
         degraded: {type: boolean}
         warnings: {type: array, items: {type: string}}
         items: {type: array, items: {$ref: '#/components/schemas/KbSearchResult'}}
+

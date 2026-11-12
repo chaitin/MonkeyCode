@@ -269,3 +269,19 @@ func TestKBMCPToolErrorReturnsResult(t *testing.T) {
 		t.Fatalf("工具错误应返回 isError 结果: %s", response.Body.String())
 	}
 }
+
+func TestKBMCPDocumentToolsRequireKnowledgeBase(t *testing.T) {
+	for _, name := range []string{"kb_get_document", "kb_update_document", "kb_delete_document"} {
+		for _, kbID := range []any{nil, "", " ", 123} {
+			args := map[string]any{"document_id": resource.ID(), "title": "更新", "kb_id": kbID}
+			params, err := json.Marshal(map[string]any{"name": name, "arguments": args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = (&Service{}).callMCPTool(t.Context(), "user", params)
+			if err == nil || !strings.Contains(err.Error(), "kb_id") {
+				t.Fatalf("%s kb_id=%v: expected kb_id validation error, got %v", name, kbID, err)
+			}
+		}
+	}
+}

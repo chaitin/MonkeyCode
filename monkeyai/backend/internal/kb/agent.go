@@ -145,6 +145,53 @@ func (s *Service) RegisterAgent(r chi.Router) {
 		resource.JSON(r.Context(), w, http.StatusOK, result)
 	})
 
+	r.Post("/kb/{id}/documents/batch", func(w http.ResponseWriter, r *http.Request) {
+		user, _ := identity.UserFromContext(r.Context())
+		var input BatchDocumentInput
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
+		if _, err := s.ownedUserKB(r.Context(), user.ID, kbID); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		result, err := s.BatchDocuments(r.Context(), kbID, input)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusOK, result)
+	})
+
+	r.Post("/kb/{id}/documents/move", func(w http.ResponseWriter, r *http.Request) {
+		user, _ := identity.UserFromContext(r.Context())
+		var input struct {
+			MoveDocumentInput
+			ID string `json:"id"`
+		}
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
+		if _, err := s.GetAccessibleDocumentInKB(r.Context(), user.ID, kbID, input.ID); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		if _, err := s.ownedUserKB(r.Context(), user.ID, kbID); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		item, err := s.MoveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
+	})
+
 	r.Post("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
 		var input DocumentInput
 		if err := resource.Decode(w, r, &input); err != nil {

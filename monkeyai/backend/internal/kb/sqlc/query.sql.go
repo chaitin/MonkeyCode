@@ -10,7 +10,7 @@ import (
 )
 
 const cancelKbLearningJobs = `-- name: CancelKbLearningJobs :exec
-UPDATE kb_learning_jobs
+UPDATE knowledge_base_learning_jobs
 SET status = 'canceled', updated_at = now(), finished_at = now()
 WHERE kb_id = $1
     AND status IN ('pending', 'running')
@@ -22,7 +22,7 @@ func (q *Queries) CancelKbLearningJobs(ctx context.Context, kbID string) error {
 }
 
 const cancelKbLearningJobsByDocument = `-- name: CancelKbLearningJobsByDocument :exec
-UPDATE kb_learning_jobs
+UPDATE knowledge_base_learning_jobs
 SET status = 'canceled', updated_at = now(), finished_at = now()
 WHERE document_id = $1
     AND status IN ('pending', 'running')
@@ -36,14 +36,14 @@ func (q *Queries) CancelKbLearningJobsByDocument(ctx context.Context, documentID
 const claimKbLearningJob = `-- name: ClaimKbLearningJob :one
 WITH next_job AS (
     SELECT id
-    FROM kb_learning_jobs
+    FROM knowledge_base_learning_jobs
     WHERE (status = 'pending' AND available_at <= now())
         OR (status = 'running' AND locked_at < now() - interval '5 minutes')
     ORDER BY created_at, id
     FOR UPDATE SKIP LOCKED
     LIMIT 1
 )
-UPDATE kb_learning_jobs j
+UPDATE knowledge_base_learning_jobs j
 SET status = 'running',
     attempts = attempts + 1,
     locked_at = now(),
@@ -85,7 +85,7 @@ func (q *Queries) ClaimKbLearningJob(ctx context.Context, workerID *string) (Cla
 }
 
 const clearDocumentVectors = `-- name: ClearDocumentVectors :exec
-UPDATE kb_chunks
+UPDATE knowledge_base_chunks
 SET embedding = NULL,
     embedding_model_id = NULL,
     metadata = metadata - 'vector_error',
@@ -99,7 +99,7 @@ func (q *Queries) ClearDocumentVectors(ctx context.Context, documentID string) e
 }
 
 const clearKbVectors = `-- name: ClearKbVectors :exec
-UPDATE kb_chunks
+UPDATE knowledge_base_chunks
 SET embedding = NULL,
     embedding_model_id = NULL,
     metadata = metadata - 'vector_error',
@@ -112,10 +112,23 @@ func (q *Queries) ClearKbVectors(ctx context.Context, kbID string) error {
 	return err
 }
 
+const countKbDocumentChildren = `-- name: CountKbDocumentChildren :one
+SELECT count(*)
+FROM knowledge_base_documents
+WHERE parent_id = $1
+`
+
+func (q *Queries) CountKbDocumentChildren(ctx context.Context, parentID *string) (int64, error) {
+	row := q.db.QueryRow(ctx, countKbDocumentChildren, parentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countKbDocuments = `-- name: CountKbDocuments :one
-SELECT count(*)::bigint AS total,
-       count(*) FILTER (WHERE chunk_count > 0)::bigint AS learned
-FROM kb_documents
+SELECT count(*) FILTER (WHERE node_type = 'document')::bigint AS total,
+       count(*) FILTER (WHERE node_type = 'document' AND chunk_count > 0)::bigint AS learned
+FROM knowledge_base_documents
 WHERE kb_id = $1
 `
 
@@ -133,7 +146,7 @@ func (q *Queries) CountKbDocuments(ctx context.Context, kbID string) (CountKbDoc
 
 const countKbLearningJobs = `-- name: CountKbLearningJobs :many
 SELECT operation, status, count(*)::bigint AS total
-FROM kb_learning_jobs
+FROM knowledge_base_learning_jobs
 WHERE kb_id = $1
 GROUP BY operation, status
 `
@@ -165,11 +178,11 @@ func (q *Queries) CountKbLearningJobs(ctx context.Context, kbID string) ([]Count
 }
 
 const createKbDocument = `-- name: CreateKbDocument :exec
-INSERT INTO kb_documents (
+INSERT INTO knowledge_base_documents (
     id, kb_id, title, source_type, content, file_name, mime_type, size_bytes,
-    status, created_by_user_id
+    status, created_by_user_id, parent_id, node_type, position
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `
 
 type CreateKbDocumentParams struct {
@@ -181,7 +194,11 @@ type CreateKbDocumentParams struct {
 	FileName        *string
 	MimeType        *string
 	SizeBytes       int64
+	Status          string
 	CreatedByUserID string
+	ParentID        *string
+	NodeType        string
+	Position        float64
 }
 
 func (q *Queries) CreateKbDocument(ctx context.Context, arg CreateKbDocumentParams) error {
@@ -194,13 +211,17 @@ func (q *Queries) CreateKbDocument(ctx context.Context, arg CreateKbDocumentPara
 		arg.FileName,
 		arg.MimeType,
 		arg.SizeBytes,
+		arg.Status,
 		arg.CreatedByUserID,
+		arg.ParentID,
+		arg.NodeType,
+		arg.Position,
 	)
 	return err
 }
 
 const createKbLearningJob = `-- name: CreateKbLearningJob :exec
-INSERT INTO kb_learning_jobs (
+INSERT INTO knowledge_base_learning_jobs (
     kb_id, document_id, operation, document_revision,
     embedding_model_id, embedding_dimension
 )
@@ -229,7 +250,7 @@ func (q *Queries) CreateKbLearningJob(ctx context.Context, arg CreateKbLearningJ
 }
 
 const createKbResource = `-- name: CreateKbResource :exec
-INSERT INTO kb (
+INSERT INTO knowledge_bases (
     name, description, id, owner_user_id, created_by_user_id, ownership_type,
     enabled, embedding_model_id, embedding_dimension, fusion_config
 )
@@ -255,7 +276,7 @@ func (q *Queries) CreateKbResource(ctx context.Context, dollar_1 []byte) error {
 }
 
 const deleteKbChunksByDocument = `-- name: DeleteKbChunksByDocument :exec
-DELETE FROM kb_chunks
+DELETE FROM knowledge_base_chunks
 WHERE document_id = $1
 `
 
@@ -265,7 +286,7 @@ func (q *Queries) DeleteKbChunksByDocument(ctx context.Context, documentID strin
 }
 
 const deleteKbChunksByKb = `-- name: DeleteKbChunksByKb :exec
-DELETE FROM kb_chunks
+DELETE FROM knowledge_base_chunks
 WHERE kb_id = $1
 `
 
@@ -275,7 +296,7 @@ func (q *Queries) DeleteKbChunksByKb(ctx context.Context, kbID string) error {
 }
 
 const deleteKbLearningJobsByKb = `-- name: DeleteKbLearningJobsByKb :exec
-DELETE FROM kb_learning_jobs
+DELETE FROM knowledge_base_learning_jobs
 WHERE kb_id = $1
 `
 
@@ -285,7 +306,7 @@ func (q *Queries) DeleteKbLearningJobsByKb(ctx context.Context, kbID string) err
 }
 
 const deleteKbResource = `-- name: DeleteKbResource :exec
-DELETE FROM kb
+DELETE FROM knowledge_bases
 WHERE id = $1
 `
 
@@ -295,7 +316,7 @@ func (q *Queries) DeleteKbResource(ctx context.Context, id string) error {
 }
 
 const failKbLearningJob = `-- name: FailKbLearningJob :exec
-UPDATE kb_learning_jobs
+UPDATE knowledge_base_learning_jobs
 SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
     available_at = CASE WHEN attempts >= max_attempts THEN available_at ELSE now() + interval '15 seconds' END,
     error_message = $1,
@@ -327,7 +348,7 @@ func (q *Queries) FailKbLearningJob(ctx context.Context, arg FailKbLearningJobPa
 }
 
 const finishKbDocumentLearning = `-- name: FinishKbDocumentLearning :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'learned',
     error_message = NULL,
     chunk_count = $2,
@@ -348,7 +369,7 @@ func (q *Queries) FinishKbDocumentLearning(ctx context.Context, arg FinishKbDocu
 }
 
 const finishKbDocumentVectorLearning = `-- name: FinishKbDocumentVectorLearning :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'learned',
     error_message = NULL,
     learned_at = COALESCE(learned_at, now()),
@@ -363,7 +384,7 @@ func (q *Queries) FinishKbDocumentVectorLearning(ctx context.Context, id string)
 }
 
 const finishKbLearningJob = `-- name: FinishKbLearningJob :exec
-UPDATE kb_learning_jobs
+UPDATE knowledge_base_learning_jobs
 SET status = 'succeeded',
     error_message = NULL,
     locked_at = NULL,
@@ -442,8 +463,8 @@ SELECT jsonb_build_object(
     'page_no', c.page_no,
     'source_url', c.source_url
 )
-FROM kb_chunks c
-JOIN kb_documents d ON d.id = c.document_id
+FROM knowledge_base_chunks c
+JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.id = $1
 `
 
@@ -456,7 +477,7 @@ func (q *Queries) GetKbChunk(ctx context.Context, id string) ([]byte, error) {
 
 const getKbDocument = `-- name: GetKbDocument :one
 SELECT to_jsonb(d)
-FROM kb_documents d
+FROM knowledge_base_documents d
 WHERE d.id = $1
 `
 
@@ -469,7 +490,7 @@ func (q *Queries) GetKbDocument(ctx context.Context, id string) ([]byte, error) 
 
 const getKbDocumentRevision = `-- name: GetKbDocumentRevision :one
 SELECT revision
-FROM kb_documents
+FROM knowledge_base_documents
 WHERE id = $1
 `
 
@@ -482,7 +503,7 @@ func (q *Queries) GetKbDocumentRevision(ctx context.Context, id string) (int32, 
 
 const getKbEmbedding = `-- name: GetKbEmbedding :one
 SELECT embedding_model_id, embedding_dimension
-FROM kb
+FROM knowledge_bases
 WHERE id = $1
     AND enabled
 FOR SHARE
@@ -502,7 +523,7 @@ func (q *Queries) GetKbEmbedding(ctx context.Context, id string) (GetKbEmbedding
 
 const getKbLearningJobStatus = `-- name: GetKbLearningJobStatus :one
 SELECT status
-FROM kb_learning_jobs
+FROM knowledge_base_learning_jobs
 WHERE id = $1
     AND attempts = $2
     AND locked_by = $3
@@ -524,7 +545,7 @@ func (q *Queries) GetKbLearningJobStatus(ctx context.Context, arg GetKbLearningJ
 
 const getKbResource = `-- name: GetKbResource :one
 SELECT to_jsonb(t)
-FROM kb t
+FROM knowledge_bases t
 WHERE id = $1
 `
 
@@ -536,7 +557,7 @@ func (q *Queries) GetKbResource(ctx context.Context, id string) ([]byte, error) 
 }
 
 const insertKbChunk = `-- name: InsertKbChunk :exec
-INSERT INTO kb_chunks (
+INSERT INTO knowledge_base_chunks (
     kb_id, document_id, chunk_index, content, token_count, search_tokens,
     search_tsv, embedding, embedding_model_id, metadata, heading_path, page_no,
     source_url
@@ -612,7 +633,7 @@ SELECT jsonb_build_object(
     'created_at', c.created_at,
     'updated_at', c.updated_at
 )
-FROM kb_chunks c
+FROM knowledge_base_chunks c
 WHERE c.document_id = $1
 ORDER BY c.chunk_index
 `
@@ -639,8 +660,8 @@ func (q *Queries) ListKbChunks(ctx context.Context, documentID string) ([][]byte
 
 const listKbChunksForRebuild = `-- name: ListKbChunksForRebuild :many
 SELECT c.id::text AS id, c.document_id::text AS document_id, c.content
-FROM kb_chunks c
-JOIN kb_documents d ON d.id = c.document_id
+FROM knowledge_base_chunks c
+JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $1
 ORDER BY c.document_id, c.chunk_index
 `
@@ -673,8 +694,8 @@ func (q *Queries) ListKbChunksForRebuild(ctx context.Context, kbID string) ([]Li
 
 const listKbChunksNeedingVector = `-- name: ListKbChunksNeedingVector :many
 SELECT c.id::text AS id, c.document_id::text AS document_id, c.content
-FROM kb_chunks c
-JOIN kb_documents d ON d.id = c.document_id
+FROM knowledge_base_chunks c
+JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $1
     AND c.document_id = $2
     AND (
@@ -718,9 +739,9 @@ func (q *Queries) ListKbChunksNeedingVector(ctx context.Context, arg ListKbChunk
 
 const listKbDocuments = `-- name: ListKbDocuments :many
 SELECT to_jsonb(d)
-FROM kb_documents d
+FROM knowledge_base_documents d
 WHERE d.kb_id = $1
-ORDER BY d.created_at DESC, d.id
+ORDER BY d.position, d.created_at, d.id
 `
 
 func (q *Queries) ListKbDocuments(ctx context.Context, kbID string) ([][]byte, error) {
@@ -745,7 +766,7 @@ func (q *Queries) ListKbDocuments(ctx context.Context, kbID string) ([][]byte, e
 
 const listKbEmbeddingSyncCandidates = `-- name: ListKbEmbeddingSyncCandidates :many
 SELECT k.id::text
-FROM kb k
+FROM knowledge_bases k
 LEFT JOIN models m ON m.id = k.embedding_model_id
     AND m.kind = 'embedding'
     AND m.ownership_type = 'system'
@@ -800,7 +821,7 @@ func (q *Queries) ListKbEmbeddingSyncCandidates(ctx context.Context) ([]string, 
 
 const listKbResources = `-- name: ListKbResources :many
 SELECT to_jsonb(t)
-FROM kb t
+FROM knowledge_bases t
 ORDER BY lower(name), id
 `
 
@@ -826,7 +847,7 @@ func (q *Queries) ListKbResources(ctx context.Context) ([][]byte, error) {
 
 const lockKbDocument = `-- name: LockKbDocument :one
 SELECT to_jsonb(d)
-FROM kb_documents d
+FROM knowledge_base_documents d
 WHERE d.id = $1
 FOR UPDATE
 `
@@ -840,7 +861,7 @@ func (q *Queries) LockKbDocument(ctx context.Context, id string) ([]byte, error)
 
 const lockKbResource = `-- name: LockKbResource :one
 SELECT to_jsonb(t)
-FROM kb t
+FROM knowledge_bases t
 WHERE id = $1
 FOR UPDATE
 `
@@ -853,12 +874,11 @@ func (q *Queries) LockKbResource(ctx context.Context, id string) ([]byte, error)
 }
 
 const markKbDocumentFailed = `-- name: MarkKbDocumentFailed :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'failed',
     error_message = $2,
     chunk_count = 0,
     learned_at = NULL,
-    revision = revision + 1,
     updated_at = now()
 WHERE id = $1
 `
@@ -874,7 +894,7 @@ func (q *Queries) MarkKbDocumentFailed(ctx context.Context, arg MarkKbDocumentFa
 }
 
 const markKbDocumentVectorFailed = `-- name: MarkKbDocumentVectorFailed :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'failed',
     error_message = $2,
     chunk_count = $3,
@@ -895,14 +915,52 @@ func (q *Queries) MarkKbDocumentVectorFailed(ctx context.Context, arg MarkKbDocu
 	return err
 }
 
+const moveKbDocument = `-- name: MoveKbDocument :exec
+UPDATE knowledge_base_documents
+SET parent_id = $2,
+    position = $3,
+    updated_at = now()
+WHERE id = $1
+`
+
+type MoveKbDocumentParams struct {
+	ID       string
+	ParentID *string
+	Position float64
+}
+
+func (q *Queries) MoveKbDocument(ctx context.Context, arg MoveKbDocumentParams) error {
+	_, err := q.db.Exec(ctx, moveKbDocument, arg.ID, arg.ParentID, arg.Position)
+	return err
+}
+
+const nextKbDocumentPosition = `-- name: NextKbDocumentPosition :one
+SELECT (COALESCE(MAX(position), 0) + 1000)::float8
+FROM knowledge_base_documents
+WHERE kb_id = $1
+  AND parent_id IS NOT DISTINCT FROM $2
+`
+
+type NextKbDocumentPositionParams struct {
+	KbID     string
+	ParentID *string
+}
+
+func (q *Queries) NextKbDocumentPosition(ctx context.Context, arg NextKbDocumentPositionParams) (float64, error) {
+	row := q.db.QueryRow(ctx, nextKbDocumentPosition, arg.KbID, arg.ParentID)
+	var column_1 float64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const pageKbResources = `-- name: PageKbResources :many
 SELECT to_jsonb(t)
-FROM kb t
+FROM knowledge_bases t
 WHERE ($1::jsonb ->> 'ownership' = '' OR t.ownership_type = $1::jsonb ->> 'ownership')
     AND (strpos(lower(name), lower($1::jsonb ->> 'search')) > 0
         OR strpos(lower(description), lower($1::jsonb ->> 'search')) > 0)
     AND ($1::jsonb ->> 'cursor' = '' OR (lower(t.name), t.id) > (
-        SELECT lower(cursor_kb.name), cursor_kb.id FROM kb cursor_kb
+        SELECT lower(cursor_kb.name), cursor_kb.id FROM knowledge_bases cursor_kb
         WHERE cursor_kb.id::text = $1::jsonb ->> 'cursor'
     ))
 ORDER BY lower(name), id
@@ -942,8 +1000,8 @@ SELECT jsonb_build_object(
     'source_url', c.source_url,
     'score', ts_rank_cd(c.search_tsv, to_tsquery('simple', $1))
 )
-FROM kb_chunks c
-JOIN kb_documents d ON d.id = c.document_id
+FROM knowledge_base_chunks c
+JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $2
     AND c.search_tsv @@ to_tsquery('simple', $1)
 ORDER BY ts_rank_cd(c.search_tsv, to_tsquery('simple', $1)) DESC,
@@ -991,8 +1049,8 @@ SELECT jsonb_build_object(
     'source_url', c.source_url,
     'score', 1 - (c.embedding <=> $1::text::vector)
 )
-FROM kb_chunks c
-JOIN kb_documents d ON d.id = c.document_id
+FROM knowledge_base_chunks c
+JOIN knowledge_base_documents d ON d.id = c.document_id
 WHERE c.kb_id = $2
     AND c.embedding IS NOT NULL
     AND c.embedding_model_id = $3::uuid
@@ -1058,7 +1116,7 @@ func (q *Queries) SelectKbEmbeddingModel(ctx context.Context, preferredID string
 }
 
 const setKbDocumentLearning = `-- name: SetKbDocumentLearning :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'learning',
     error_message = NULL,
     updated_at = now()
@@ -1071,7 +1129,7 @@ func (q *Queries) SetKbDocumentLearning(ctx context.Context, id string) error {
 }
 
 const setKbDocumentLexicallyLearned = `-- name: SetKbDocumentLexicallyLearned :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'learned',
     error_message = NULL,
     learned_at = COALESCE(learned_at, now()),
@@ -1086,7 +1144,7 @@ func (q *Queries) SetKbDocumentLexicallyLearned(ctx context.Context, id string) 
 }
 
 const setKbDocumentPending = `-- name: SetKbDocumentPending :one
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'pending',
     error_message = NULL,
     chunk_count = 0,
@@ -1105,7 +1163,7 @@ func (q *Queries) SetKbDocumentPending(ctx context.Context, id string) (int32, e
 }
 
 const setKbDocumentVectorLearning = `-- name: SetKbDocumentVectorLearning :one
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET status = 'learning',
     error_message = NULL,
     revision = revision + 1,
@@ -1122,7 +1180,7 @@ func (q *Queries) SetKbDocumentVectorLearning(ctx context.Context, id string) (i
 }
 
 const setKbEmbedding = `-- name: SetKbEmbedding :exec
-UPDATE kb
+UPDATE knowledge_bases
 SET embedding_model_id = $2,
     embedding_dimension = $3,
     revision = revision + 1,
@@ -1142,12 +1200,12 @@ func (q *Queries) SetKbEmbedding(ctx context.Context, arg SetKbEmbeddingParams) 
 }
 
 const setKbEmbeddingModel = `-- name: SetKbEmbeddingModel :exec
-UPDATE kb
+UPDATE knowledge_bases
 SET embedding_model_id = NULLIF($1::text, '')::uuid,
     embedding_dimension = $2::integer,
     revision = revision + 1,
     updated_at = now()
-WHERE id = $3
+WHERE knowledge_bases.id = $3
 `
 
 type SetKbEmbeddingModelParams struct {
@@ -1162,7 +1220,7 @@ func (q *Queries) SetKbEmbeddingModel(ctx context.Context, arg SetKbEmbeddingMod
 }
 
 const setKbResourceEnabled = `-- name: SetKbResourceEnabled :exec
-UPDATE kb
+UPDATE knowledge_bases
 SET enabled = ($1::jsonb ->> 'enabled')::boolean,
     revision = revision + 1,
     updated_at = now()
@@ -1175,7 +1233,7 @@ func (q *Queries) SetKbResourceEnabled(ctx context.Context, dollar_1 []byte) err
 }
 
 const softDeleteKbDocument = `-- name: SoftDeleteKbDocument :execrows
-DELETE FROM kb_documents
+DELETE FROM knowledge_base_documents
 WHERE id = $1
 `
 
@@ -1188,7 +1246,7 @@ func (q *Queries) SoftDeleteKbDocument(ctx context.Context, id string) (int64, e
 }
 
 const softDeleteKbDocumentsByKb = `-- name: SoftDeleteKbDocumentsByKb :exec
-DELETE FROM kb_documents
+DELETE FROM knowledge_base_documents
 WHERE kb_id = $1
 `
 
@@ -1198,7 +1256,7 @@ func (q *Queries) SoftDeleteKbDocumentsByKb(ctx context.Context, kbID string) er
 }
 
 const touchKbResource = `-- name: TouchKbResource :exec
-UPDATE kb
+UPDATE knowledge_bases
 SET revision = revision + 1,
     updated_at = now()
 WHERE id = $1
@@ -1210,7 +1268,7 @@ func (q *Queries) TouchKbResource(ctx context.Context, id string) error {
 }
 
 const updateKbChunkLexical = `-- name: UpdateKbChunkLexical :exec
-UPDATE kb_chunks
+UPDATE knowledge_base_chunks
 SET search_tokens = $1,
     search_tsv = to_tsvector('simple', $1::text),
     updated_at = now()
@@ -1228,7 +1286,7 @@ func (q *Queries) UpdateKbChunkLexical(ctx context.Context, arg UpdateKbChunkLex
 }
 
 const updateKbChunkVector = `-- name: UpdateKbChunkVector :exec
-UPDATE kb_chunks
+UPDATE knowledge_base_chunks
 SET embedding = $1::text::vector,
     embedding_model_id = $2::uuid,
     metadata = $3::text::jsonb,
@@ -1254,7 +1312,7 @@ func (q *Queries) UpdateKbChunkVector(ctx context.Context, arg UpdateKbChunkVect
 }
 
 const updateKbDocument = `-- name: UpdateKbDocument :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET title = $2,
     source_type = $3,
     content = $4,
@@ -1294,7 +1352,7 @@ func (q *Queries) UpdateKbDocument(ctx context.Context, arg UpdateKbDocumentPara
 }
 
 const updateKbDocumentMetadata = `-- name: UpdateKbDocumentMetadata :exec
-UPDATE kb_documents
+UPDATE knowledge_base_documents
 SET title = $2,
     source_type = $3,
     file_name = COALESCE($4, file_name),
@@ -1326,7 +1384,7 @@ func (q *Queries) UpdateKbDocumentMetadata(ctx context.Context, arg UpdateKbDocu
 }
 
 const updateKbResource = `-- name: UpdateKbResource :exec
-UPDATE kb
+UPDATE knowledge_bases
 SET name = CASE WHEN $1::jsonb ? 'name' THEN ($1::jsonb ->> 'name')::text ELSE name END,
     description = CASE WHEN $1::jsonb ? 'description' THEN ($1::jsonb ->> 'description')::text ELSE description END,
     enabled = CASE WHEN $1::jsonb ? 'enabled' THEN ($1::jsonb ->> 'enabled')::boolean ELSE enabled END,

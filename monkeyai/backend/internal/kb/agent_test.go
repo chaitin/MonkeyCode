@@ -68,7 +68,7 @@ func TestListAccessibleCatalogFilters(t *testing.T) {
 		{sharedKB, "他人分享的知识库", userB, "user"},
 		{privateKB, "未分享的知识库", userB, "user"},
 	} {
-		if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,$4)`, kb.id, kb.name, kb.owner, kb.ownership); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,$2,$3,$3,$4)`, kb.id, kb.name, kb.owner, kb.ownership); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -164,7 +164,7 @@ func TestUserKBRESTOperations(t *testing.T) {
 	revision = strconv.FormatInt(objectInt64(updated["revision"]), 10)
 
 	systemKB := resource.ID()
-	if _, err := pool.Exec(ctx, `INSERT INTO kb(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'系统知识库',$2,$2,'system')`, systemKB, admin); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases(id,name,owner_user_id,created_by_user_id,ownership_type) VALUES($1,'系统知识库',$2,$2,'system')`, systemKB, admin); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.UpdateUserKB(ctx, userA, systemKB, `"1"`, resource.Object{"name": "越权系统知识库"}); !errors.Is(err, resource.NotFound) {
@@ -209,7 +209,7 @@ func TestUserKBRESTOperations(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO resource_tags(resource_type,resource_id,tag_id,assigned_by_user_id) VALUES('kb',$1,$2,$3)`, kbID, tagID, userA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO kb_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kbID, documentID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_base_chunks(kb_id,document_id,chunk_index,content) VALUES($1,$2,0,'分片')`, kbID, documentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -224,12 +224,12 @@ func TestUserKBRESTOperations(t *testing.T) {
 	}
 
 	for name, query := range map[string]string{
-		"kb":                     `SELECT count(*) FROM kb WHERE id=$1`,
-		"kb_documents":           `SELECT count(*) FROM kb_documents WHERE kb_id=$1`,
-		"kb_chunks":              `SELECT count(*) FROM kb_chunks WHERE kb_id=$1`,
-		"kb_learning_jobs":       `SELECT count(*) FROM kb_learning_jobs WHERE kb_id=$1`,
-		"resource_access_grants": `SELECT count(*) FROM resource_access_grants WHERE resource_type='kb' AND resource_id=$1`,
-		"resource_tags":          `SELECT count(*) FROM resource_tags WHERE resource_type='kb' AND resource_id=$1`,
+		"kb":                           `SELECT count(*) FROM knowledge_bases WHERE id=$1`,
+		"knowledge_base_documents":     `SELECT count(*) FROM knowledge_base_documents WHERE kb_id=$1`,
+		"knowledge_base_chunks":        `SELECT count(*) FROM knowledge_base_chunks WHERE kb_id=$1`,
+		"knowledge_base_learning_jobs": `SELECT count(*) FROM knowledge_base_learning_jobs WHERE kb_id=$1`,
+		"resource_access_grants":       `SELECT count(*) FROM resource_access_grants WHERE resource_type='kb' AND resource_id=$1`,
+		"resource_tags":                `SELECT count(*) FROM resource_tags WHERE resource_type='kb' AND resource_id=$1`,
 	} {
 		var count int
 		if err := pool.QueryRow(ctx, query, kbID).Scan(&count); err != nil {
