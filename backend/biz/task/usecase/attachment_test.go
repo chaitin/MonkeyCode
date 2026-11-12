@@ -162,3 +162,5 @@ func (f *fakeObjectStore) PresignGet(_ context.Context, key string, expires time
 func (f *fakeObjectStore) PutFile(context.Context, string, string, io.Reader) error {
 	return fmt.Errorf("not implemented")
 }
+
+func (f *fakeObjectStore) DeleteObject(context.Context, string) error { return nil }

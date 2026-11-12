@@ -58,6 +58,62 @@ func (_c *AgentSkillVersionCreate) SetNillableParsedMeta(v *types.SkillParsedMet
 	return _c
 }
 
+// SetGuardStatus sets the "guard_status" field.
+func (_c *AgentSkillVersionCreate) SetGuardStatus(v string) *AgentSkillVersionCreate {
+	_c.mutation.SetGuardStatus(v)
+	return _c
+}
+
+// SetNillableGuardStatus sets the "guard_status" field if the given value is not nil.
+func (_c *AgentSkillVersionCreate) SetNillableGuardStatus(v *string) *AgentSkillVersionCreate {
+	if v != nil {
+		_c.SetGuardStatus(*v)
+	}
+	return _c
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (_c *AgentSkillVersionCreate) SetGuardTaskID(v string) *AgentSkillVersionCreate {
+	_c.mutation.SetGuardTaskID(v)
+	return _c
+}
+
+// SetNillableGuardTaskID sets the "guard_task_id" field if the given value is not nil.
+func (_c *AgentSkillVersionCreate) SetNillableGuardTaskID(v *string) *AgentSkillVersionCreate {
+	if v != nil {
+		_c.SetGuardTaskID(*v)
+	}
+	return _c
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (_c *AgentSkillVersionCreate) SetGuardDeadline(v time.Time) *AgentSkillVersionCreate {
+	_c.mutation.SetGuardDeadline(v)
+	return _c
+}
+
+// SetNillableGuardDeadline sets the "guard_deadline" field if the given value is not nil.
+func (_c *AgentSkillVersionCreate) SetNillableGuardDeadline(v *time.Time) *AgentSkillVersionCreate {
+	if v != nil {
+		_c.SetGuardDeadline(*v)
+	}
+	return _c
+}
+
+// SetGuardError sets the "guard_error" field.
+func (_c *AgentSkillVersionCreate) SetGuardError(v string) *AgentSkillVersionCreate {
+	_c.mutation.SetGuardError(v)
+	return _c
+}
+
+// SetNillableGuardError sets the "guard_error" field if the given value is not nil.
+func (_c *AgentSkillVersionCreate) SetNillableGuardError(v *string) *AgentSkillVersionCreate {
+	if v != nil {
+		_c.SetGuardError(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *AgentSkillVersionCreate) SetCreatedAt(v time.Time) *AgentSkillVersionCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -132,6 +188,10 @@ func (_c *AgentSkillVersionCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AgentSkillVersionCreate) defaults() {
+	if _, ok := _c.mutation.GuardStatus(); !ok {
+		v := agentskillversion.DefaultGuardStatus
+		_c.mutation.SetGuardStatus(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := agentskillversion.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -161,6 +221,24 @@ func (_c *AgentSkillVersionCreate) check() error {
 	if v, ok := _c.mutation.S3Key(); ok {
 		if err := agentskillversion.S3KeyValidator(v); err != nil {
 			return &ValidationError{Name: "s3_key", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.s3_key": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.GuardStatus(); !ok {
+		return &ValidationError{Name: "guard_status", err: errors.New(`db: missing required field "AgentSkillVersion.guard_status"`)}
+	}
+	if v, ok := _c.mutation.GuardStatus(); ok {
+		if err := agentskillversion.GuardStatusValidator(v); err != nil {
+			return &ValidationError{Name: "guard_status", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_status": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.GuardTaskID(); ok {
+		if err := agentskillversion.GuardTaskIDValidator(v); err != nil {
+			return &ValidationError{Name: "guard_task_id", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_task_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.GuardError(); ok {
+		if err := agentskillversion.GuardErrorValidator(v); err != nil {
+			return &ValidationError{Name: "guard_error", err: fmt.Errorf(`db: validator failed for field "AgentSkillVersion.guard_error": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -216,6 +294,22 @@ func (_c *AgentSkillVersionCreate) createSpec() (*AgentSkillVersion, *sqlgraph.C
 	if value, ok := _c.mutation.ParsedMeta(); ok {
 		_spec.SetField(agentskillversion.FieldParsedMeta, field.TypeJSON, value)
 		_node.ParsedMeta = value
+	}
+	if value, ok := _c.mutation.GuardStatus(); ok {
+		_spec.SetField(agentskillversion.FieldGuardStatus, field.TypeString, value)
+		_node.GuardStatus = value
+	}
+	if value, ok := _c.mutation.GuardTaskID(); ok {
+		_spec.SetField(agentskillversion.FieldGuardTaskID, field.TypeString, value)
+		_node.GuardTaskID = &value
+	}
+	if value, ok := _c.mutation.GuardDeadline(); ok {
+		_spec.SetField(agentskillversion.FieldGuardDeadline, field.TypeTime, value)
+		_node.GuardDeadline = &value
+	}
+	if value, ok := _c.mutation.GuardError(); ok {
+		_spec.SetField(agentskillversion.FieldGuardError, field.TypeString, value)
+		_node.GuardError = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(agentskillversion.FieldCreatedAt, field.TypeTime, value)
@@ -344,6 +438,72 @@ func (u *AgentSkillVersionUpsert) ClearParsedMeta() *AgentSkillVersionUpsert {
 	return u
 }
 
+// SetGuardStatus sets the "guard_status" field.
+func (u *AgentSkillVersionUpsert) SetGuardStatus(v string) *AgentSkillVersionUpsert {
+	u.Set(agentskillversion.FieldGuardStatus, v)
+	return u
+}
+
+// UpdateGuardStatus sets the "guard_status" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsert) UpdateGuardStatus() *AgentSkillVersionUpsert {
+	u.SetExcluded(agentskillversion.FieldGuardStatus)
+	return u
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (u *AgentSkillVersionUpsert) SetGuardTaskID(v string) *AgentSkillVersionUpsert {
+	u.Set(agentskillversion.FieldGuardTaskID, v)
+	return u
+}
+
+// UpdateGuardTaskID sets the "guard_task_id" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsert) UpdateGuardTaskID() *AgentSkillVersionUpsert {
+	u.SetExcluded(agentskillversion.FieldGuardTaskID)
+	return u
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (u *AgentSkillVersionUpsert) ClearGuardTaskID() *AgentSkillVersionUpsert {
+	u.SetNull(agentskillversion.FieldGuardTaskID)
+	return u
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (u *AgentSkillVersionUpsert) SetGuardDeadline(v time.Time) *AgentSkillVersionUpsert {
+	u.Set(agentskillversion.FieldGuardDeadline, v)
+	return u
+}
+
+// UpdateGuardDeadline sets the "guard_deadline" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsert) UpdateGuardDeadline() *AgentSkillVersionUpsert {
+	u.SetExcluded(agentskillversion.FieldGuardDeadline)
+	return u
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (u *AgentSkillVersionUpsert) ClearGuardDeadline() *AgentSkillVersionUpsert {
+	u.SetNull(agentskillversion.FieldGuardDeadline)
+	return u
+}
+
+// SetGuardError sets the "guard_error" field.
+func (u *AgentSkillVersionUpsert) SetGuardError(v string) *AgentSkillVersionUpsert {
+	u.Set(agentskillversion.FieldGuardError, v)
+	return u
+}
+
+// UpdateGuardError sets the "guard_error" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsert) UpdateGuardError() *AgentSkillVersionUpsert {
+	u.SetExcluded(agentskillversion.FieldGuardError)
+	return u
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (u *AgentSkillVersionUpsert) ClearGuardError() *AgentSkillVersionUpsert {
+	u.SetNull(agentskillversion.FieldGuardError)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *AgentSkillVersionUpsert) SetCreatedAt(v time.Time) *AgentSkillVersionUpsert {
 	u.Set(agentskillversion.FieldCreatedAt, v)
@@ -464,6 +624,83 @@ func (u *AgentSkillVersionUpsertOne) UpdateParsedMeta() *AgentSkillVersionUpsert
 func (u *AgentSkillVersionUpsertOne) ClearParsedMeta() *AgentSkillVersionUpsertOne {
 	return u.Update(func(s *AgentSkillVersionUpsert) {
 		s.ClearParsedMeta()
+	})
+}
+
+// SetGuardStatus sets the "guard_status" field.
+func (u *AgentSkillVersionUpsertOne) SetGuardStatus(v string) *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardStatus(v)
+	})
+}
+
+// UpdateGuardStatus sets the "guard_status" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertOne) UpdateGuardStatus() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardStatus()
+	})
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (u *AgentSkillVersionUpsertOne) SetGuardTaskID(v string) *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardTaskID(v)
+	})
+}
+
+// UpdateGuardTaskID sets the "guard_task_id" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertOne) UpdateGuardTaskID() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardTaskID()
+	})
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (u *AgentSkillVersionUpsertOne) ClearGuardTaskID() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardTaskID()
+	})
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (u *AgentSkillVersionUpsertOne) SetGuardDeadline(v time.Time) *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardDeadline(v)
+	})
+}
+
+// UpdateGuardDeadline sets the "guard_deadline" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertOne) UpdateGuardDeadline() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardDeadline()
+	})
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (u *AgentSkillVersionUpsertOne) ClearGuardDeadline() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardDeadline()
+	})
+}
+
+// SetGuardError sets the "guard_error" field.
+func (u *AgentSkillVersionUpsertOne) SetGuardError(v string) *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardError(v)
+	})
+}
+
+// UpdateGuardError sets the "guard_error" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertOne) UpdateGuardError() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardError()
+	})
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (u *AgentSkillVersionUpsertOne) ClearGuardError() *AgentSkillVersionUpsertOne {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardError()
 	})
 }
 
@@ -756,6 +993,83 @@ func (u *AgentSkillVersionUpsertBulk) UpdateParsedMeta() *AgentSkillVersionUpser
 func (u *AgentSkillVersionUpsertBulk) ClearParsedMeta() *AgentSkillVersionUpsertBulk {
 	return u.Update(func(s *AgentSkillVersionUpsert) {
 		s.ClearParsedMeta()
+	})
+}
+
+// SetGuardStatus sets the "guard_status" field.
+func (u *AgentSkillVersionUpsertBulk) SetGuardStatus(v string) *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardStatus(v)
+	})
+}
+
+// UpdateGuardStatus sets the "guard_status" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertBulk) UpdateGuardStatus() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardStatus()
+	})
+}
+
+// SetGuardTaskID sets the "guard_task_id" field.
+func (u *AgentSkillVersionUpsertBulk) SetGuardTaskID(v string) *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardTaskID(v)
+	})
+}
+
+// UpdateGuardTaskID sets the "guard_task_id" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertBulk) UpdateGuardTaskID() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardTaskID()
+	})
+}
+
+// ClearGuardTaskID clears the value of the "guard_task_id" field.
+func (u *AgentSkillVersionUpsertBulk) ClearGuardTaskID() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardTaskID()
+	})
+}
+
+// SetGuardDeadline sets the "guard_deadline" field.
+func (u *AgentSkillVersionUpsertBulk) SetGuardDeadline(v time.Time) *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardDeadline(v)
+	})
+}
+
+// UpdateGuardDeadline sets the "guard_deadline" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertBulk) UpdateGuardDeadline() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardDeadline()
+	})
+}
+
+// ClearGuardDeadline clears the value of the "guard_deadline" field.
+func (u *AgentSkillVersionUpsertBulk) ClearGuardDeadline() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardDeadline()
+	})
+}
+
+// SetGuardError sets the "guard_error" field.
+func (u *AgentSkillVersionUpsertBulk) SetGuardError(v string) *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.SetGuardError(v)
+	})
+}
+
+// UpdateGuardError sets the "guard_error" field to the value that was provided on create.
+func (u *AgentSkillVersionUpsertBulk) UpdateGuardError() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.UpdateGuardError()
+	})
+}
+
+// ClearGuardError clears the value of the "guard_error" field.
+func (u *AgentSkillVersionUpsertBulk) ClearGuardError() *AgentSkillVersionUpsertBulk {
+	return u.Update(func(s *AgentSkillVersionUpsert) {
+		s.ClearGuardError()
 	})
 }
 

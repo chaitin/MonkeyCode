@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/auditmeta"
 )
 
 // responseWriter 包装 http.ResponseWriter 以捕获响应内容
@@ -48,6 +49,9 @@ func (a *AuditMiddleware) Audit(operation string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
+			collector := &auditmeta.Collector{}
+			ctx = auditmeta.WithCollector(ctx, collector)
+			c.SetRequest(c.Request().WithContext(ctx))
 			teamUser := GetTeamUser(c)
 
 			// 请求体
@@ -63,15 +67,15 @@ func (a *AuditMiddleware) Audit(operation string) echo.MiddlewareFunc {
 			respWriter := &responseWriter{ResponseWriter: c.Response().Writer, body: &bytes.Buffer{}}
 			c.Response().Writer = respWriter
 
-			err = next(c)
-			if err != nil {
-				return err
+			handlerErr := next(c)
+			if handlerErr != nil && !isSkillAuditOperation(operation) {
+				return handlerErr
 			}
 
 			// 响应内容
 			responseBody := respWriter.body.String()
 
-			if operation == "team_user_login" {
+			if operation == "team_user_login" && handlerErr == nil {
 				req := &domain.TeamLoginReq{}
 				err = json.Unmarshal(bodyBytes, req)
 				if err != nil {
@@ -94,27 +98,41 @@ func (a *AuditMiddleware) Audit(operation string) echo.MiddlewareFunc {
 				}
 			}
 
+			var reqBody, respBody string
+			if isSkillAuditOperation(operation) {
+				guardResult, _ := collector.GuardResult()
+				reqBody, respBody, err = summarizeSkillAudit(operation, c.Request().Header.Get("Content-Type"), bodyBytes, responseBody, c.Response().Status, c.Param("skill_id"), handlerErr, guardResult)
+			} else {
+				reqBody, respBody, err = maskSensitiveData(operation, requestBody, responseBody)
+			}
+			if err != nil {
+				a.logger.ErrorContext(ctx, "failed to summarize audit data", "error", err)
+				return handlerErr
+			}
+
+			var auditUser *domain.User
+			if teamUser != nil {
+				auditUser = teamUser.User
+			}
+			if auditUser == nil {
+				a.logger.WarnContext(ctx, "skip audit without user", "operation", operation)
+				return handlerErr
+			}
+
 			// 构建审计记录，需要检查 teamUser 和 teamUser.User 是否为 nil
 			audit := &domain.Audit{
 				SourceIP:  c.RealIP(),
 				UserAgent: c.Request().UserAgent(),
-				Request:   requestBody,
-				Response:  responseBody,
+				Request:   reqBody,
+				Response:  respBody,
 				Operation: operation,
-				User:      teamUser.User,
+				User:      auditUser,
 			}
-			reqBody, respBody, err := maskSensitiveData(operation, requestBody, responseBody)
-			if err != nil {
-				a.logger.ErrorContext(ctx, "failed to mask sensitive data", "error", err)
-				return nil
-			}
-			audit.Request = reqBody
-			audit.Response = respBody
 			err = a.usecase.CreateAudit(ctx, audit)
 			if err != nil {
 				a.logger.ErrorContext(ctx, "failed to create audit", "error", err)
 			}
-			return nil
+			return handlerErr
 		}
 	}
 }

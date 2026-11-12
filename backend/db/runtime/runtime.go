@@ -303,8 +303,22 @@ func init() {
 	agentskillversionDescS3Key := agentskillversionFields[3].Descriptor()
 	// agentskillversion.S3KeyValidator is a validator for the "s3_key" field. It is called by the builders before save.
 	agentskillversion.S3KeyValidator = agentskillversionDescS3Key.Validators[0].(func(string) error)
+	// agentskillversionDescGuardStatus is the schema descriptor for guard_status field.
+	agentskillversionDescGuardStatus := agentskillversionFields[5].Descriptor()
+	// agentskillversion.DefaultGuardStatus holds the default value on creation for the guard_status field.
+	agentskillversion.DefaultGuardStatus = agentskillversionDescGuardStatus.Default.(string)
+	// agentskillversion.GuardStatusValidator is a validator for the "guard_status" field. It is called by the builders before save.
+	agentskillversion.GuardStatusValidator = agentskillversionDescGuardStatus.Validators[0].(func(string) error)
+	// agentskillversionDescGuardTaskID is the schema descriptor for guard_task_id field.
+	agentskillversionDescGuardTaskID := agentskillversionFields[6].Descriptor()
+	// agentskillversion.GuardTaskIDValidator is a validator for the "guard_task_id" field. It is called by the builders before save.
+	agentskillversion.GuardTaskIDValidator = agentskillversionDescGuardTaskID.Validators[0].(func(string) error)
+	// agentskillversionDescGuardError is the schema descriptor for guard_error field.
+	agentskillversionDescGuardError := agentskillversionFields[8].Descriptor()
+	// agentskillversion.GuardErrorValidator is a validator for the "guard_error" field. It is called by the builders before save.
+	agentskillversion.GuardErrorValidator = agentskillversionDescGuardError.Validators[0].(func(string) error)
 	// agentskillversionDescCreatedAt is the schema descriptor for created_at field.
-	agentskillversionDescCreatedAt := agentskillversionFields[5].Descriptor()
+	agentskillversionDescCreatedAt := agentskillversionFields[9].Descriptor()
 	// agentskillversion.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentskillversion.DefaultCreatedAt = agentskillversionDescCreatedAt.Default.(func() time.Time)
 	// agentskillversionDescID is the schema descriptor for id field.

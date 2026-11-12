@@ -71,6 +71,26 @@ func S3Key(v string) predicate.AgentSkillVersion {
 	return predicate.AgentSkillVersion(sql.FieldEQ(FieldS3Key, v))
 }
 
+// GuardStatus applies equality check predicate on the "guard_status" field. It's identical to GuardStatusEQ.
+func GuardStatus(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardStatus, v))
+}
+
+// GuardTaskID applies equality check predicate on the "guard_task_id" field. It's identical to GuardTaskIDEQ.
+func GuardTaskID(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardTaskID, v))
+}
+
+// GuardDeadline applies equality check predicate on the "guard_deadline" field. It's identical to GuardDeadlineEQ.
+func GuardDeadline(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardDeadline, v))
+}
+
+// GuardError applies equality check predicate on the "guard_error" field. It's identical to GuardErrorEQ.
+func GuardError(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardError, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.AgentSkillVersion {
 	return predicate.AgentSkillVersion(sql.FieldEQ(FieldCreatedAt, v))
@@ -234,6 +254,271 @@ func ParsedMetaIsNil() predicate.AgentSkillVersion {
 // ParsedMetaNotNil applies the NotNil predicate on the "parsed_meta" field.
 func ParsedMetaNotNil() predicate.AgentSkillVersion {
 	return predicate.AgentSkillVersion(sql.FieldNotNull(FieldParsedMeta))
+}
+
+// GuardStatusEQ applies the EQ predicate on the "guard_status" field.
+func GuardStatusEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardStatus, v))
+}
+
+// GuardStatusNEQ applies the NEQ predicate on the "guard_status" field.
+func GuardStatusNEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNEQ(FieldGuardStatus, v))
+}
+
+// GuardStatusIn applies the In predicate on the "guard_status" field.
+func GuardStatusIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIn(FieldGuardStatus, vs...))
+}
+
+// GuardStatusNotIn applies the NotIn predicate on the "guard_status" field.
+func GuardStatusNotIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotIn(FieldGuardStatus, vs...))
+}
+
+// GuardStatusGT applies the GT predicate on the "guard_status" field.
+func GuardStatusGT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGT(FieldGuardStatus, v))
+}
+
+// GuardStatusGTE applies the GTE predicate on the "guard_status" field.
+func GuardStatusGTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGTE(FieldGuardStatus, v))
+}
+
+// GuardStatusLT applies the LT predicate on the "guard_status" field.
+func GuardStatusLT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLT(FieldGuardStatus, v))
+}
+
+// GuardStatusLTE applies the LTE predicate on the "guard_status" field.
+func GuardStatusLTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLTE(FieldGuardStatus, v))
+}
+
+// GuardStatusContains applies the Contains predicate on the "guard_status" field.
+func GuardStatusContains(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContains(FieldGuardStatus, v))
+}
+
+// GuardStatusHasPrefix applies the HasPrefix predicate on the "guard_status" field.
+func GuardStatusHasPrefix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasPrefix(FieldGuardStatus, v))
+}
+
+// GuardStatusHasSuffix applies the HasSuffix predicate on the "guard_status" field.
+func GuardStatusHasSuffix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasSuffix(FieldGuardStatus, v))
+}
+
+// GuardStatusEqualFold applies the EqualFold predicate on the "guard_status" field.
+func GuardStatusEqualFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEqualFold(FieldGuardStatus, v))
+}
+
+// GuardStatusContainsFold applies the ContainsFold predicate on the "guard_status" field.
+func GuardStatusContainsFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContainsFold(FieldGuardStatus, v))
+}
+
+// GuardTaskIDEQ applies the EQ predicate on the "guard_task_id" field.
+func GuardTaskIDEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDNEQ applies the NEQ predicate on the "guard_task_id" field.
+func GuardTaskIDNEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNEQ(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDIn applies the In predicate on the "guard_task_id" field.
+func GuardTaskIDIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIn(FieldGuardTaskID, vs...))
+}
+
+// GuardTaskIDNotIn applies the NotIn predicate on the "guard_task_id" field.
+func GuardTaskIDNotIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotIn(FieldGuardTaskID, vs...))
+}
+
+// GuardTaskIDGT applies the GT predicate on the "guard_task_id" field.
+func GuardTaskIDGT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGT(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDGTE applies the GTE predicate on the "guard_task_id" field.
+func GuardTaskIDGTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGTE(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDLT applies the LT predicate on the "guard_task_id" field.
+func GuardTaskIDLT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLT(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDLTE applies the LTE predicate on the "guard_task_id" field.
+func GuardTaskIDLTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLTE(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDContains applies the Contains predicate on the "guard_task_id" field.
+func GuardTaskIDContains(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContains(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDHasPrefix applies the HasPrefix predicate on the "guard_task_id" field.
+func GuardTaskIDHasPrefix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasPrefix(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDHasSuffix applies the HasSuffix predicate on the "guard_task_id" field.
+func GuardTaskIDHasSuffix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasSuffix(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDIsNil applies the IsNil predicate on the "guard_task_id" field.
+func GuardTaskIDIsNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIsNull(FieldGuardTaskID))
+}
+
+// GuardTaskIDNotNil applies the NotNil predicate on the "guard_task_id" field.
+func GuardTaskIDNotNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotNull(FieldGuardTaskID))
+}
+
+// GuardTaskIDEqualFold applies the EqualFold predicate on the "guard_task_id" field.
+func GuardTaskIDEqualFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEqualFold(FieldGuardTaskID, v))
+}
+
+// GuardTaskIDContainsFold applies the ContainsFold predicate on the "guard_task_id" field.
+func GuardTaskIDContainsFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContainsFold(FieldGuardTaskID, v))
+}
+
+// GuardDeadlineEQ applies the EQ predicate on the "guard_deadline" field.
+func GuardDeadlineEQ(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineNEQ applies the NEQ predicate on the "guard_deadline" field.
+func GuardDeadlineNEQ(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNEQ(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineIn applies the In predicate on the "guard_deadline" field.
+func GuardDeadlineIn(vs ...time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIn(FieldGuardDeadline, vs...))
+}
+
+// GuardDeadlineNotIn applies the NotIn predicate on the "guard_deadline" field.
+func GuardDeadlineNotIn(vs ...time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotIn(FieldGuardDeadline, vs...))
+}
+
+// GuardDeadlineGT applies the GT predicate on the "guard_deadline" field.
+func GuardDeadlineGT(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGT(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineGTE applies the GTE predicate on the "guard_deadline" field.
+func GuardDeadlineGTE(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGTE(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineLT applies the LT predicate on the "guard_deadline" field.
+func GuardDeadlineLT(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLT(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineLTE applies the LTE predicate on the "guard_deadline" field.
+func GuardDeadlineLTE(v time.Time) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLTE(FieldGuardDeadline, v))
+}
+
+// GuardDeadlineIsNil applies the IsNil predicate on the "guard_deadline" field.
+func GuardDeadlineIsNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIsNull(FieldGuardDeadline))
+}
+
+// GuardDeadlineNotNil applies the NotNil predicate on the "guard_deadline" field.
+func GuardDeadlineNotNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotNull(FieldGuardDeadline))
+}
+
+// GuardErrorEQ applies the EQ predicate on the "guard_error" field.
+func GuardErrorEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEQ(FieldGuardError, v))
+}
+
+// GuardErrorNEQ applies the NEQ predicate on the "guard_error" field.
+func GuardErrorNEQ(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNEQ(FieldGuardError, v))
+}
+
+// GuardErrorIn applies the In predicate on the "guard_error" field.
+func GuardErrorIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIn(FieldGuardError, vs...))
+}
+
+// GuardErrorNotIn applies the NotIn predicate on the "guard_error" field.
+func GuardErrorNotIn(vs ...string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotIn(FieldGuardError, vs...))
+}
+
+// GuardErrorGT applies the GT predicate on the "guard_error" field.
+func GuardErrorGT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGT(FieldGuardError, v))
+}
+
+// GuardErrorGTE applies the GTE predicate on the "guard_error" field.
+func GuardErrorGTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldGTE(FieldGuardError, v))
+}
+
+// GuardErrorLT applies the LT predicate on the "guard_error" field.
+func GuardErrorLT(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLT(FieldGuardError, v))
+}
+
+// GuardErrorLTE applies the LTE predicate on the "guard_error" field.
+func GuardErrorLTE(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldLTE(FieldGuardError, v))
+}
+
+// GuardErrorContains applies the Contains predicate on the "guard_error" field.
+func GuardErrorContains(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContains(FieldGuardError, v))
+}
+
+// GuardErrorHasPrefix applies the HasPrefix predicate on the "guard_error" field.
+func GuardErrorHasPrefix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasPrefix(FieldGuardError, v))
+}
+
+// GuardErrorHasSuffix applies the HasSuffix predicate on the "guard_error" field.
+func GuardErrorHasSuffix(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldHasSuffix(FieldGuardError, v))
+}
+
+// GuardErrorIsNil applies the IsNil predicate on the "guard_error" field.
+func GuardErrorIsNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldIsNull(FieldGuardError))
+}
+
+// GuardErrorNotNil applies the NotNil predicate on the "guard_error" field.
+func GuardErrorNotNil() predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldNotNull(FieldGuardError))
+}
+
+// GuardErrorEqualFold applies the EqualFold predicate on the "guard_error" field.
+func GuardErrorEqualFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldEqualFold(FieldGuardError, v))
+}
+
+// GuardErrorContainsFold applies the ContainsFold predicate on the "guard_error" field.
+func GuardErrorContainsFold(v string) predicate.AgentSkillVersion {
+	return predicate.AgentSkillVersion(sql.FieldContainsFold(FieldGuardError, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

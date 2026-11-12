@@ -1,12 +1,15 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -103,6 +106,41 @@ func TestTeamExtensionPackageUsecaseImportReturnsRuleCounts(t *testing.T) {
 	}
 }
 
+func TestExtensionPackageStageFinalizerRestoresResources(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	staticDir := t.TempDir()
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":        `{"package_id":"pack","version":"1.0.0","rules":[{"rule_id":"rule-a","name":"rule-a","path":"rules/a.md"}],"images":[{"image_id":"devbox","name":"repo/devbox:1","archives":[{"arch":"x86_64","archive":"images/devbox.tar.gz"}]}]}`,
+		"rules/a.md":           "# A\n",
+		"images/devbox.tar.gz": "image",
+	})
+	store := &extensionPackageStageObjectStoreStub{data: data}
+	repo := &extensionPackageRepoStub{archives: []*db.TeamExtensionImageArchive{{
+		TeamID: teamID, PackageID: "pack", Version: "1.0.0", ExtensionImageID: "devbox", Arch: "x86_64", ImageName: "repo/devbox:1",
+	}}}
+	finalizer := &extensionPackageStageFinalizer{
+		repo:              repo,
+		ruleImporter:      &extensionPackageRuleImporterStub{created: 1},
+		objstore:          store,
+		staticDir:         staticDir,
+		staticRoutePrefix: "/static",
+		maxPackageSize:    1 << 20,
+	}
+
+	result, err := finalizer.Finalize(ctx, "stage/package.zip", teamID, userID, "pack", "1.0.0")
+	if err != nil {
+		t.Fatalf("Finalize() error = %v", err)
+	}
+	if result.CreatedRules != 1 || repo.importReq == nil || len(repo.importReq.Images) != 1 {
+		t.Fatalf("finalize result=%#v import=%#v", result, repo.importReq)
+	}
+	if _, err := os.Stat(filepath.Join(staticDir, "extensions", "teams", teamID.String(), "images", "x86_64", "manifest.json")); err != nil {
+		t.Fatalf("manifest not written: %v", err)
+	}
+}
+
 type extensionPackageRepoStub struct {
 	importReq *domain.TeamExtensionImport
 	archives  []*db.TeamExtensionImageArchive
@@ -123,6 +161,36 @@ func (s *extensionPackageRepoStub) ListImageArchives(_ context.Context, _ uuid.U
 type extensionPackageRuleImporterStub struct {
 	created int
 	updated int
+}
+
+type extensionPackageStageObjectStoreStub struct {
+	data    []byte
+	deleted string
+}
+
+func (s *extensionPackageStageObjectStoreStub) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(s.data)), nil
+}
+
+func (s *extensionPackageStageObjectStoreStub) PresignGet(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+
+func (s *extensionPackageStageObjectStoreStub) PutFile(_ context.Context, prefix, filename string, body io.Reader) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	s.data = data
+	s.deleted = ""
+	_ = prefix
+	_ = filename
+	return nil
+}
+
+func (s *extensionPackageStageObjectStoreStub) DeleteObject(_ context.Context, key string) error {
+	s.deleted = key
+	return nil
 }
 
 func (s *extensionPackageRuleImporterStub) ImportRules(_ context.Context, _ uuid.UUID, _ *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
