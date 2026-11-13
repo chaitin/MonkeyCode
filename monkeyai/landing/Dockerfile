@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM chaitin-registry-vpc.cn-hangzhou.cr.aliyuncs.com/basic/node:26.13.1-alpine AS build
 
 WORKDIR /app
 
