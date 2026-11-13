@@ -9,6 +9,31 @@ import (
 	"context"
 )
 
+const avatarReferenced = `-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM knowledge_bases WHERE avatar_s3_key = $1)
+`
+
+func (q *Queries) AvatarReferenced(ctx context.Context, avatarS3Key string) (bool, error) {
+	row := q.db.QueryRow(ctx, avatarReferenced, avatarS3Key)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const bumpKbDocumentRevision = `-- name: BumpKbDocumentRevision :exec
+UPDATE knowledge_base_documents SET revision = revision + 1 WHERE id = $1 AND revision = $2
+`
+
+type BumpKbDocumentRevisionParams struct {
+	ID       string
+	Revision int32
+}
+
+func (q *Queries) BumpKbDocumentRevision(ctx context.Context, arg BumpKbDocumentRevisionParams) error {
+	_, err := q.db.Exec(ctx, bumpKbDocumentRevision, arg.ID, arg.Revision)
+	return err
+}
+
 const cancelKbLearningJobs = `-- name: CancelKbLearningJobs :exec
 UPDATE knowledge_base_learning_jobs
 SET status = 'canceled', updated_at = now(), finished_at = now()
@@ -617,6 +642,44 @@ func (q *Queries) InsertKbChunk(ctx context.Context, arg InsertKbChunkParams) er
 	return err
 }
 
+const kbActorActive = `-- name: KbActorActive :one
+SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL)::boolean
+`
+
+func (q *Queries) KbActorActive(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRow(ctx, kbActorActive, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const kbContentAccess = `-- name: KbContentAccess :one
+WITH RECURSIVE user_groups(id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = $2::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT p.id FROM groups g JOIN user_groups ug ON ug.id = g.id
+    JOIN groups p ON p.id = g.parent_id WHERE p.deleted_at IS NULL
+)
+SELECT COALESCE(max(CASE WHEN r.access_level = 'read_write' THEN 2 ELSE 1 END), 0)::integer AS level
+FROM resource_access_grants r
+WHERE r.resource_type = 'kb' AND r.resource_id = $1::uuid
+  AND (r.user_id = $2::uuid OR r.all_users OR r.group_id IN (SELECT id FROM user_groups))
+  AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2::uuid AND u.status = 'active' AND u.deleted_at IS NULL)
+`
+
+type KbContentAccessParams struct {
+	KbID  string
+	Actor string
+}
+
+func (q *Queries) KbContentAccess(ctx context.Context, arg KbContentAccessParams) (int32, error) {
+	row := q.db.QueryRow(ctx, kbContentAccess, arg.KbID, arg.Actor)
+	var level int32
+	err := row.Scan(&level)
+	return level, err
+}
+
 const listKbChunks = `-- name: ListKbChunks :many
 SELECT jsonb_build_object(
     'chunk_id', c.id,
@@ -1115,6 +1178,20 @@ func (q *Queries) SelectKbEmbeddingModel(ctx context.Context, preferredID string
 	return i, err
 }
 
+const setAvatar = `-- name: SetAvatar :exec
+UPDATE knowledge_bases SET avatar_s3_key = $2 WHERE id = $1
+`
+
+type SetAvatarParams struct {
+	ID          string
+	AvatarS3Key string
+}
+
+func (q *Queries) SetAvatar(ctx context.Context, arg SetAvatarParams) error {
+	_, err := q.db.Exec(ctx, setAvatar, arg.ID, arg.AvatarS3Key)
+	return err
+}
+
 const setKbDocumentLearning = `-- name: SetKbDocumentLearning :exec
 UPDATE knowledge_base_documents
 SET status = 'learning',
@@ -1252,6 +1329,20 @@ WHERE kb_id = $1
 
 func (q *Queries) SoftDeleteKbDocumentsByKb(ctx context.Context, kbID string) error {
 	_, err := q.db.Exec(ctx, softDeleteKbDocumentsByKb, kbID)
+	return err
+}
+
+const touchKbDocumentAuthor = `-- name: TouchKbDocumentAuthor :exec
+UPDATE knowledge_base_documents SET updated_by_user_id = $2, content_updated_at = now() WHERE id = $1
+`
+
+type TouchKbDocumentAuthorParams struct {
+	ID              string
+	UpdatedByUserID *string
+}
+
+func (q *Queries) TouchKbDocumentAuthor(ctx context.Context, arg TouchKbDocumentAuthorParams) error {
+	_, err := q.db.Exec(ctx, touchKbDocumentAuthor, arg.ID, arg.UpdatedByUserID)
 	return err
 }
 

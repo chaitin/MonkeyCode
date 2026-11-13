@@ -34,7 +34,14 @@ func checkRetiredGrants(ctx context.Context, tx pgx.Tx, kind, id string, raw any
 			entry["user_id"] = user
 		}
 		if group := grant.String("group_id"); group != "" {
-			entry["group_id"] = group
+			if group == rootgroup.ID {
+				entry["all_users"] = true
+			} else {
+				entry["group_id"] = group
+			}
+		}
+		if kind == "kb" {
+			entry["access_level"] = grant.String("access_level")
 		}
 		allowed[Hash(entry)] = true
 	}
@@ -62,6 +69,23 @@ func checkRetiredGrants(ctx context.Context, tx pgx.Tx, kind, id string, raw any
 		}
 		if group != "" {
 			key["group_id"] = group
+		}
+		if kind == "kb" {
+			level := entry.String("access_level")
+			if level == "" {
+				for _, existing := range current {
+					existingGroup := existing.String("group_id")
+					existingAll := existing.Bool("all_users")
+					if existingGroup == rootgroup.ID {
+						existingGroup, existingAll = "", true
+					}
+					if existing.String("user_id") == user && existingGroup == group && existingAll == entry.Bool("all_users") {
+						level = existing.String("access_level")
+						break
+					}
+				}
+			}
+			key["access_level"] = level
 		}
 		if !allowed[Hash(key)] {
 			return Invalid("退役资源只能撤销现有授权")

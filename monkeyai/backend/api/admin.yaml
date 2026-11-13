@@ -5591,6 +5591,21 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/KbInput'}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, avatar]
+              properties:
+                metadata:
+                  type: string
+                  description: JSON 字符串，字段与 application/json 请求一致。
+                avatar:
+                  type: string
+                  format: binary
+                  description: 必须且仅上传一个 PNG、JPEG 或 WebP 图片文件，最多 1 MiB；不修改图标时使用 application/json。
+            encoding:
+              metadata: {contentType: application/json}
+              avatar: {contentType: 'image/png, image/jpeg, image/webp'}
       responses:
         '200':
           description: 已创建
@@ -5600,6 +5615,23 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '409': {$ref: '#/components/responses/ResourceError409'}
+  /api/admin/v1/kb/{id}/avatar:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    get:
+      summary: 读取知识库图标
+      description: 需要管理员登录。返回 PNG、JPEG 或 WebP 原图；不公开对象存储地址。
+      responses:
+        '200':
+          description: 知识库图标
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
   /api/admin/v1/kb/{id}:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -5621,6 +5653,21 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/KbInput'}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, avatar]
+              properties:
+                metadata:
+                  type: string
+                  description: JSON 字符串，字段与 application/json 请求一致。
+                avatar:
+                  type: string
+                  format: binary
+                  description: 必须且仅上传一个 PNG、JPEG 或 WebP 图片文件，最多 1 MiB；不修改图标时使用 application/json。
+            encoding:
+              metadata: {contentType: application/json}
+              avatar: {contentType: 'image/png, image/jpeg, image/webp'}
       responses:
         '200':
           description: 已更新
@@ -5909,6 +5956,17 @@ components:
       name: monkeyai_session
       description: 管理后台登录后设置的 HttpOnly Session Cookie。
   parameters:
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: 最近详情响应中的知识库 revision ETag，例如 '"1"'。
+      schema: {type: string}
     ProfileCSRF:
       in: header
       name: X-CSRF-Token
@@ -7991,6 +8049,11 @@ components:
       type: object
       description: 每条授权只能选择用户或分组之一；全零 UUID 的虚拟根分组表示全员授权，服务端入库时转换为 all_users，管理端读取时转换回 group_id。兼容写入 all_users=true，但不能同时指定用户或分组。
       properties:
+        id: {type: string, format: uuid, readOnly: true}
+        access_level:
+          type: string
+          enum: [read_only, read_write]
+          description: 知识库只读或读写权限；读写包含删除内容，不包含管理授权或删除整个库。旧请求省略时保留现有权限，新主体默认只读。
         all_users:
           type: boolean
           default: false
@@ -9026,6 +9089,9 @@ components:
       type: object
       required: [id, name, description, ownership_type, enabled, revision, embedding_model_id, embedding_dimension, fusion_config, embedding_configured, capabilities, index_job_summary, document_count, learned_count, tags, grants, updated_at]
       properties:
+        avatar_path:
+          type: string
+          description: 受权限保护的图标读取路径 /api/admin/v1/kb/{id}/avatar，包含图片版本参数；无图标时为空或省略。
         id: {type: string, format: uuid}
         name: {type: string}
         description: {type: string}
@@ -9049,6 +9115,7 @@ components:
       additionalProperties: false
       required: [title]
       properties:
+        expected_revision: {type: integer, minimum: 1, description: 可选文档版本，提供时校验冲突。}
         title: {type: string, minLength: 1}
         parent_id: {type: [string, 'null'], format: uuid}
         node_type: {type: string, enum: [folder, document], default: document}
@@ -9062,6 +9129,7 @@ components:
       additionalProperties: false
       required: [id]
       properties:
+        expected_revision: {type: integer, minimum: 1, description: 可选文档版本，提供时校验冲突。}
         id: {type: string, format: uuid}
         parent_id: {type: [string, 'null'], format: uuid}
         prev_id: {type: string, format: uuid}
@@ -9070,6 +9138,8 @@ components:
       type: object
       required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
       properties:
+        updated_by_user_id: {type: [string, 'null'], format: uuid}
+        content_updated_at: {type: [string, 'null'], format: date-time}
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
         parent_id: {type: [string, 'null'], format: uuid}

@@ -253,7 +253,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	skills := skill.NewService(store, storage)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
 	experts := expert.NewService(store).WithStorage(storage)
-	knowledgeBases := kb.NewService(store, models)
+	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
 

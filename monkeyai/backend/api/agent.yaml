@@ -2215,7 +2215,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert、kb；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。个人知识库共享后接收方可以读取和检索，但不能编辑、删除或转分享。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
+      description: 支持 model、rule、skill、connector、expert、kb；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。个人知识库分享可指定 access_level=read_only 或 read_write，读写包含内容删除，不包含转授权。省略权限的新授权默认只读，重复分享保留已有权限；明确权限可更新对应主体的权限。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示全员授权，包括后续新增用户；个人知识库不允许新增全员分享，历史全员分享可保留或撤销。
       requestBody:
         required: true
         content:
@@ -4019,6 +4019,21 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/KbUserInput'}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, avatar]
+              properties:
+                metadata:
+                  type: string
+                  description: JSON 字符串，字段与 application/json 请求一致。
+                avatar:
+                  type: string
+                  format: binary
+                  description: 必须且仅上传一个 PNG、JPEG 或 WebP 图片文件，最多 1 MiB；不修改图标时使用 application/json。
+            encoding:
+              metadata: {contentType: application/json}
+              avatar: {contentType: 'image/png, image/jpeg, image/webp'}
       responses:
         '201':
           description: 个人知识库已创建
@@ -4058,6 +4073,23 @@ paths:
               schema: {$ref: '#/components/schemas/KbSearchResponse'}
         '400': {description: 参数无效，控制面错误信封}
         '401': {description: 未登录，控制面错误信封}
+  /api/v1/kb/{id}/avatar:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    get:
+      summary: 读取知识库图标
+      description: 需要登录且拥有目标知识库读取权限；撤销权限后不能继续读取。返回 PNG、JPEG 或 WebP 原图；不公开对象存储地址。
+      responses:
+        '200':
+          description: 知识库图标
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
   /api/v1/kb/{id}:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -4084,6 +4116,21 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/KbUserInput'}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, avatar]
+              properties:
+                metadata:
+                  type: string
+                  description: JSON 字符串，字段与 application/json 请求一致。
+                avatar:
+                  type: string
+                  format: binary
+                  description: 必须且仅上传一个 PNG、JPEG 或 WebP 图片文件，最多 1 MiB；不修改图标时使用 application/json。
+            encoding:
+              metadata: {contentType: application/json}
+              avatar: {contentType: 'image/png, image/jpeg, image/webp'}
       responses:
         '200':
           description: 更新后的知识库详情
@@ -4111,11 +4158,117 @@ paths:
         '412': {$ref: '#/components/responses/ResourceError412'}
         '428': {$ref: '#/components/responses/ResourceError428'}
         '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/v1/kb/permissions/list:
+    get:
+      summary: 查询本人个人知识库的授权清单
+      description: 仅个人库所有者可调用；读写成员及系统库均不能通过此入口管理授权。每个人或组是一条独立记录。
+      parameters:
+        - {name: kb_id, in: query, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: 授权清单与知识库版本
+          headers:
+            ETag: {$ref: '#/components/headers/RevisionETag'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbGrantsResponse'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/v1/kb/permissions/update:
+    put:
+      summary: 更新本人个人知识库的授权清单
+      description: 仅所有者可修改；以知识库现有 revision 进行并发控制。差异更新保留授权记录标识，省略现有主体的 access_level 时保留原权限，新主体默认只读。未包含的旧主体授权被移除；重复主体、非法权限及新增全员授权返回 400。
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kb_id, grants]
+              properties:
+                kb_id: {type: string, format: uuid}
+                grants: {type: array, items: {$ref: '#/components/schemas/ResourceGrant'}}
+      responses:
+        '200':
+          description: 更新后的授权清单与知识库版本
+          headers:
+            ETag: {$ref: '#/components/headers/RevisionETag'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KbGrantsResponse'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {$ref: '#/components/responses/ResourceError412'}
+        '428': {$ref: '#/components/responses/ResourceError428'}
+  /api/v1/kb/documents/restudy:
+    post:
+      summary: 重新学习有读写权限的知识库文档
+      description: 个人库所有者或读写成员可调用；支持系统库，文件夹不允许学习。文档须属于指定知识库。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kb_id, document_id]
+              properties:
+                kb_id: {type: string, format: uuid}
+                document_id: {type: string, format: uuid}
+      responses:
+        '202': {description: 已接受文档学习, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 仅有只读权限}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/v1/kb/{id}/documents/batch:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 批量移动或删除有读写权限的知识库内容
+      description: 协作写入须为每个所选文档提供 expected_revisions。所有所选文档必须属于指定知识库，先检查全部归属与版本；文件夹删除覆盖子树。其他操作失败按 succeeded/failed 返回。个人库所有者保留旧无版本请求兼容。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, ids]
+              properties:
+                action: {type: string, enum: [move, delete]}
+                ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+                parent_id: {type: [string, 'null'], format: uuid}
+                expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}, description: 所选文档 ID 到读取时 revision 的映射。}
+      responses:
+        '200':
+          description: 批量操作结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [succeeded, failed]
+                properties:
+                  succeeded: {type: array, items: {type: string, format: uuid}}
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, reason]
+                      properties:
+                        id: {type: string, format: uuid}
+                        reason: {type: string}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 仅有只读权限}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
   /api/v1/kb/{id}/documents:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
       summary: 查询当前用户可访问的知识库文档
-      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库需具备系统知识库使用权限或明确授权，且文档只读；个人知识库允许所有者或明确分享给当前用户的用户读取。支持分页，并可按标题或文件名、学习状态和来源类型筛选；列表不返回正文。
+      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库需同时具备系统资源使用资格及知识库授权；个人知识库允许所有者或明确分享给当前用户的用户读取。支持分页，并可按标题或文件名、学习状态和来源类型筛选；列表不返回正文。
       parameters:
         - $ref: '#/components/parameters/AgentPage'
         - $ref: '#/components/parameters/AgentPageSize'
@@ -4148,8 +4301,8 @@ paths:
         '401': {description: 未登录，控制面错误信封}
         '404': {description: 不存在或无权访问，控制面错误信封}
     post:
-      summary: 向当前用户拥有的个人知识库新增文档
-      description: 仅个人知识库所有者可以新增文档；系统知识库不支持写入。文档创建后进入学习队列，响应返回 status=pending，不等待切分、全文索引和向量化完成。
+      summary: 向当前用户可写的知识库新增文档
+      description: 个人库所有者或具有读写权限的成员可新增文档，支持系统库和共享个人库。文档创建后进入学习队列，响应返回 status=pending，不等待切分、全文索引和向量化完成。
       requestBody:
         required: true
         content:
@@ -4159,14 +4312,15 @@ paths:
         '202': {description: '文档已创建并入队学习', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 仅有只读权限}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '500': {$ref: '#/components/responses/ResourceError500'}
   /api/v1/kb/{id}/documents/move:
     parameters:
       - $ref: '#/components/parameters/ResourceID'
     post:
-      summary: 移动当前用户拥有的个人知识库文档树节点
-      description: 仅个人知识库所有者可以移动文件夹或文档。parent_id 为空表示根节点，prev_id 和 next_id 用于同级排序。
+      summary: 移动当前用户可写的知识库文档树节点
+      description: 个人库所有者或具有读写权限的成员可移动文件夹或文档。协作写入需提供 expected_revision。parent_id 为空表示根节点，prev_id 和 next_id 用于同级排序。
       requestBody:
         required: true
         content:
@@ -4176,6 +4330,9 @@ paths:
         '200': {description: '节点已移动', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 仅有只读权限}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
         '404': {$ref: '#/components/responses/ResourceError404'}
   /api/v1/kb/{id}/documents/{documentId}:
     parameters:
@@ -4186,14 +4343,19 @@ paths:
         schema: {type: string, format: uuid}
     get:
       summary: 读取当前用户可访问的知识库文档详情
-      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库文档只读；个人知识库允许所有者或明确分享给当前用户的用户读取正文。
+      description: 返回当前用户有权限的系统或个人知识库文档。系统知识库按只读或读写授权使用；个人知识库允许所有者或明确分享给当前用户的用户读取正文。
       responses:
         '200': {description: '文档详情', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
     put:
-      summary: 更新当前用户拥有的个人知识库文档
-      description: 仅个人知识库所有者可以更新；系统知识库不支持写入。更新后取消旧学习任务并重新入队，响应返回 status=pending；文档必须属于路径中的知识库。
+      parameters:
+        - name: If-Match
+          in: header
+          schema: {type: string}
+          description: 文档 revision，加双引号；协作删除必填，协作更新可改用正文 expected_revision。
+      summary: 更新当前用户可写的知识库文档
+      description: 个人库所有者或具有读写权限的成员可更新；协作写入需提供 expected_revision 或 If-Match，版本冲突返回 412，缺失返回 428，只读返回 403。更新后取消旧学习任务并重新入队，响应返回 status=pending；文档必须属于路径中的知识库。
       requestBody:
         required: true
         content:
@@ -4204,19 +4366,30 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+        '403': {description: 仅有只读权限}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
         '500': {$ref: '#/components/responses/ResourceError500'}
     delete:
-      summary: 删除当前用户拥有的个人知识库文档
-      description: 仅个人知识库所有者可以删除；系统知识库不支持写入。删除文档、分片并取消活跃学习任务；文档必须属于路径中的知识库。
+      parameters:
+        - name: If-Match
+          in: header
+          schema: {type: string}
+          description: 文档 revision，加双引号；协作删除必填，协作更新可改用正文 expected_revision。
+      summary: 删除当前用户可写的知识库文档
+      description: 个人库所有者或具有读写权限的成员可删除；协作删除需提供 If-Match 文档版本，只读返回 403，版本缺失返回 428，冲突返回 412。删除文档、分片并取消活跃学习任务；文档必须属于路径中的知识库。
       responses:
         '204': {description: 文档已删除}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+        '403': {description: 仅有只读权限}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
         '500': {$ref: '#/components/responses/ResourceError500'}
   /mcp/kb:
     post:
       summary: 百智办公知识库 MCP
-      description: 使用含 mcp:invoke 的全局 API Key。无状态 streamable HTTP JSON-RPC；支持 initialize、ping、tools/list、tools/call。工具为 kb_list、kb_list_documents、kb_get_document、kb_create_document、kb_update_document、kb_delete_document、kb_search。kb_list 支持 owner、q、标签和分页，返回与 GET /api/v1/kb 一致的 knowledge_bases、user、total_count、page、page_size 和 version；kb_list_documents 支持分页、标题或文件名搜索、学习状态和来源类型筛选。文档读取工具支持当前用户有权限的系统或个人知识库；文档写入仅允许个人知识库所有者，系统知识库文档只读。
+      description: 使用含 mcp:invoke 的全局 API Key。无状态 streamable HTTP JSON-RPC；支持 initialize、ping、tools/list、tools/call。工具为 kb_list、kb_list_documents、kb_get_document、kb_create_document、kb_update_document、kb_delete_document、kb_search。kb_list 支持 owner、q、标签和分页，返回与 GET /api/v1/kb 一致的 knowledge_bases、user、total_count、page、page_size 和 version；kb_list_documents 支持分页、标题或文件名搜索、学习状态和来源类型筛选。文档读取工具支持当前用户有权限的系统或个人知识库；文档写入允许个人库所有者或目标库的读写成员，不能管理授权或删除整个库。MCP 协作更新/删除须传 expected_revision。
       security: [{InvocationKey: []}]
       parameters:
         - {name: MCP-Protocol-Version, in: header, required: false, schema: {type: string, enum: ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']}}
@@ -5239,6 +5412,10 @@ components:
       required:
       - resources
       properties:
+        access_level:
+          type: string
+          enum: [read_only, read_write]
+          description: 仅当本批资源全部为 kb 时支持，省略则保留已有权限，新主体只读。
         resources:
           type: array
           minItems: 1
@@ -5878,6 +6055,11 @@ components:
     ResourceGrant:
       type: object
       properties:
+        id: {type: string, format: uuid, readOnly: true}
+        access_level:
+          type: string
+          enum: [read_only, read_write]
+          description: 知识库只读或读写权限；读写包含删除内容，不包含管理授权或删除整个库。旧请求省略时保留现有权限，新主体默认只读。
         user_id:
           type:
           - string
@@ -6980,6 +7162,19 @@ components:
       type: object
       required: [id, name, description, ownership_type, enabled, revision, embedding_model_id, embedding_dimension, fusion_config, embedding_configured, capabilities, index_job_summary, document_count, learned_count, tags, updated_at]
       properties:
+        avatar_path:
+          type: string
+          description: 受权限保护的图标读取路径 /api/v1/kb/{id}/avatar，包含图片版本参数；无图标时为空或省略。
+        permissions:
+          type: object
+          readOnly: true
+          properties:
+            effective_access_level: {type: string, enum: [read_only, read_write, '']}
+            can_read: {type: boolean}
+            can_write_content: {type: boolean}
+            can_manage_permissions: {type: boolean}
+            can_manage_knowledge_base: {type: boolean}
+            can_delete_knowledge_base: {type: boolean}
         id: {type: string, format: uuid}
         name: {type: string}
         description: {type: string}
@@ -7010,6 +7205,12 @@ components:
         learned_count: {type: integer}
         tags: {type: array, items: {type: object}}
         updated_at: {type: string, format: date-time}
+    KbGrantsResponse:
+      type: object
+      required: [grants, revision]
+      properties:
+        grants: {type: array, items: {$ref: '#/components/schemas/ResourceGrant'}}
+        revision: {type: integer, minimum: 1}
     KbDetail:
       allOf:
       - $ref: '#/components/schemas/Kb'
@@ -7024,6 +7225,8 @@ components:
       type: object
       required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
       properties:
+        updated_by_user_id: {type: [string, 'null'], format: uuid}
+        content_updated_at: {type: [string, 'null'], format: date-time}
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
         parent_id: {type: [string, 'null'], format: uuid}
@@ -7047,6 +7250,8 @@ components:
       type: object
       required: [id, kb_id, node_type, title, source_type, status, chunk_count, revision, created_at, updated_at]
       properties:
+        updated_by_user_id: {type: [string, 'null'], format: uuid}
+        content_updated_at: {type: [string, 'null'], format: date-time}
         id: {type: string, format: uuid}
         kb_id: {type: string, format: uuid}
         parent_id: {type: [string, 'null'], format: uuid}
@@ -7070,6 +7275,7 @@ components:
       additionalProperties: false
       required: [id]
       properties:
+        expected_revision: {type: integer, minimum: 1, description: 协作写入必须提供读取到的文档版本。}
         id: {type: string, format: uuid}
         parent_id: {type: [string, 'null'], format: uuid}
         prev_id: {type: string, format: uuid}
@@ -7091,6 +7297,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        expected_revision: {type: integer, minimum: 1, description: 协作写入必须提供读取到的文档版本。}
         title: {type: string, minLength: 1}
         source_type: {type: string, enum: [text, file, url]}
         content: {type: string}

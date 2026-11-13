@@ -1,28 +1,34 @@
 package kb
 
-import "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+import (
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"strings"
+)
 
 var kbPublicFields = []string{
-	"id", "name", "description", "ownership_type", "enabled", "revision",
+	"id", "name", "avatar_path", "description", "ownership_type", "enabled", "revision",
 	"fusion_config", "embedding_model_id",
-	"embedding_dimension", "embedding_configured", "capabilities",
+	"embedding_dimension", "embedding_configured", "capabilities", "permissions",
 	"index_job_summary", "document_count", "learned_count", "tags", "updated_at",
 }
 
 var documentPublicFields = []string{
 	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "content", "file_name", "mime_type",
 	"size_bytes", "status", "error_message", "chunk_count", "revision",
-	"learned_at", "created_at", "updated_at", "children",
+	"learned_at", "created_at", "updated_at", "updated_by_user_id", "content_updated_at", "children",
 }
 
 var documentListPublicFields = []string{
 	"id", "kb_id", "parent_id", "node_type", "position", "title", "source_type", "file_name", "mime_type",
 	"size_bytes", "status", "error_message", "chunk_count", "revision",
-	"learned_at", "created_at", "updated_at", "children",
+	"learned_at", "created_at", "updated_at", "updated_by_user_id", "content_updated_at", "children",
 }
 
 func publicKB(item resource.Object) resource.Object {
 	out := project(item, kbPublicFields)
+	if path := out.String("avatar_path"); path != "" {
+		out["avatar_path"] = strings.Replace(path, "/api/admin/v1/", "/api/v1/", 1)
+	}
 	if _, ok := out["capabilities"]; !ok {
 		decorateRetrievalCapabilities(out)
 	}

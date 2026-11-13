@@ -60,6 +60,8 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000037_oauth_pairing` | 新增一次性手机扫码配对，保存凭据摘要、PKCE、状态及轮询退避信息 |
 | `000038_embedding_model` | 增加 embedding 模型类型及 Embedding 配置 |
 | `000039_create_kb_tables` | 建立知识库最终结构，含学习任务生命周期快照 |
+| `000040_kb_permissions` | 增加授权最后修改人、文档最后修改人及内容修改时间 |
+| `000041_kb_avatar` | 增加知识库自定义图标对象存储键 |
 
 从 `backend` 目录执行：
 
@@ -69,7 +71,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `39` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `41` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -100,3 +102,10 @@ MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 `TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。
 
 知识库文档树不使用数据库外键，父子关系在知识库锁内校验。向量模型通过不可变配置和模型 ID 标识：型号、地址、协议、供应商、类型及维度创建后不可修改；更换型号必须新建模型记录并切换知识库绑定。名称、密钥、代理及授权可更新。
+
+
+版本 `40` 增加 `resource_access_grants.updated_by_user_id`、`knowledge_base_documents.updated_by_user_id` 和 `knowledge_base_documents.content_updated_at`，全部可空；存量记录保持 null，不推断历史修改者或把学习更新时间当作内容修改时间。复用既有 `read_only/read_write`、知识库 revision 及 `schema_migrations`，不新增权限等级、独立授权版本或额外迁移记录表。迁移不更改已有授权、正文、分片或任务。须先迁移，再启动使用这些字段的新后端。
+
+版本 `40` 的 down 仅删除上述三个字段，保留业务数据及既有权限。应用回退可保留新增字段；若执行 down，最后修改人和内容修改时间会丢失，再 up 只恢复空字段。历史 read_write 应在开放协作写入前核实授权意图，migration 不静默降级或升级授权。
+
+版本 `41` 为 `knowledge_bases` 增加 `avatar_s3_key text NOT NULL DEFAULT ''`，历史记录默认没有自定义图标，原有知识库及内容保持不变。须先迁移，再启动使用该字段的新后端。down 仅删除图标存储键字段，丢失自定义图标关联，不删除知识库、文档或对象存储中的图片；再次 up 只恢复默认空字段。

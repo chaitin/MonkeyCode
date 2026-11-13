@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import {
   AlertCircleIcon,
+  BookOpenTextIcon,
   ArrowDown01Icon,
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
@@ -20,7 +21,10 @@ import { useTranslation } from "react-i18next"
 import { useNavigate, useParams } from "react-router-dom"
 
 import { useAppToast } from "@/components/animated-toast-provider"
-import { AuthorizationSelect } from "@/components/authorization-select"
+import { ResourceAvatarField, type ResourceAvatarDraft } from "@/components/resource-avatar-field"
+import { KbPermissionsEditor } from "@/components/kb-permissions-editor"
+import type { Grant } from "@/lib/resources"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ResourceTagSummary } from "@/components/resource-tag-summary"
 import { SkillTagSelect } from "@/components/skill-tag-select"
 import { Badge } from "@/components/ui/badge"
@@ -65,8 +69,8 @@ import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
 import { toggleKbSelection } from "@/lib/kb-selection"
 import { CONSOLE_ROUTES } from "@/lib/routes"
-import { getAuthorizationNames, type AuthorizationSelection } from "@/lib/authorization-groups"
-import { base, grants, match, selection, useSubjects, type ResourceRow } from "@/lib/resources"
+import { getAuthorizationNames } from "@/lib/authorization-groups"
+import { base, match, selection, useSubjects, type ResourceRow } from "@/lib/resources"
 
 type KbDocumentStatus = "pending" | "learning" | "learned" | "failed"
 type KbDocumentSource = "text" | "file" | "url"
@@ -134,10 +138,11 @@ export default function KbDetailPage() {
   const [batchMoveOpen, setBatchMoveOpen] = useState(false)
   const [batchMoveParentId, setBatchMoveParentId] = useState("")
   const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [avatarDraft, setAvatarDraft] = useState<ResourceAvatarDraft>(null)
   const [infoSaving, setInfoSaving] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [authorization, setAuthorization] = useState<AuthorizationSelection>({ groupIds: [], memberIds: [] })
+  const [authorization, setAuthorization] = useState<Grant[]>([])
   const [documentQuery, setDocumentQuery] = useState("")
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [renamingDocumentId, setRenamingDocumentId] = useState<string | null>(null)
@@ -354,8 +359,9 @@ export default function KbDetailPage() {
   const openInfoDialog = () => {
     if (!selectedKb || selectedKb.ownership_type !== "system") return
     setSelectedTagIds((selectedKb.tags ?? []).map((tag) => tag.id))
-    setAuthorization(selection(selectedKb.grants))
+    setAuthorization(selectedKb.grants ?? [])
     setTagsOpen(false)
+    setAvatarDraft(null)
     setInfoDialogOpen(true)
   }
   const handleSubmitKbInfo = async (event: FormEvent<HTMLFormElement>) => {
@@ -367,16 +373,15 @@ export default function KbDetailPage() {
     if (!name || !description) return
     setInfoSaving(true)
     try {
-      await api(`${base}/kb/${selectedKb.id}`, {
-        method: "PUT",
-        headers: match(selectedKb.revision),
-        body: JSON.stringify({
-          name,
-          description,
-          tag_ids: selectedTagIds.filter((tagId) => availableTags.some((tag) => tag.id === tagId)),
-          grants: grants(authorization),
-        }),
-      })
+      const metadata = { name, description, tag_ids: selectedTagIds.filter((tagId) => availableTags.some((tag) => tag.id === tagId)), grants: authorization }
+      let body: string | FormData = JSON.stringify(metadata)
+      if (avatarDraft) {
+        body = new FormData()
+        body.set("metadata", JSON.stringify(metadata))
+        body.set("avatar", avatarDraft.file)
+      }
+      await api(`${base}/kb/${selectedKb.id}`, { method: "PUT", headers: match(selectedKb.revision), body })
+      setAvatarDraft(null)
       setInfoDialogOpen(false)
       reload()
     } catch (reason) {
@@ -390,6 +395,10 @@ export default function KbDetailPage() {
   return (
     <section className="flex h-[calc(100vh-4rem)] min-h-0 flex-none flex-col gap-4 p-4 pt-0 md:h-[calc(100vh-5rem)]">
       <div className="flex shrink-0 items-start gap-4 rounded-xl border p-4">
+        <Avatar size="lg">
+          {selectedKb.avatar_path && <AvatarImage src={selectedKb.avatar_path} alt="" className="object-contain" />}
+          <AvatarFallback><HugeiconsIcon icon={BookOpenTextIcon} strokeWidth={2} /></AvatarFallback>
+        </Avatar>
         <dl className="grid min-w-0 flex-1 grid-cols-4 gap-4 text-sm">
           <div className="min-w-0 space-y-1">
             <dt className="truncate text-muted-foreground">{t("pages.knowledgeBases.knowledgeDescription")}</dt>
@@ -526,17 +535,31 @@ export default function KbDetailPage() {
               <DialogDescription>{t("pages.knowledgeBases.dialogDescription")}</DialogDescription>
             </DialogHeader>
             <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="kb-detail-name">{t("pages.knowledgeBases.name")}</FieldLabel>
-                <Input id="kb-detail-name" name="name" defaultValue={selectedKb.name} required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="kb-detail-description">{t("pages.knowledgeBases.knowledgeDescription")}</FieldLabel>
-                <Textarea id="kb-detail-description" name="description" defaultValue={selectedKb.description} required />
-              </Field>
+              <div data-resource-basics="" className="grid min-w-0 grid-cols-[minmax(0,1fr)_var(--resource-avatar-size,7.5rem)] items-start !gap-x-3 !gap-y-1 sm:!gap-x-4 sm:!gap-y-3">
+                <Field className="contents">
+                  <FieldLabel htmlFor="kb-detail-name">{t("pages.knowledgeBases.name")}</FieldLabel>
+                  <Input id="kb-detail-name" name="name" defaultValue={selectedKb.name} required />
+                </Field>
+                <Field className="contents">
+                  <FieldLabel htmlFor="kb-detail-description">{t("pages.knowledgeBases.knowledgeDescription")}</FieldLabel>
+                  <Textarea id="kb-detail-description" name="description" defaultValue={selectedKb.description} required />
+                </Field>
+                <ResourceAvatarField
+                  id="kb-detail-avatar"
+                  label={t("pages.knowledgeBases.icon")}
+                  uploadLabel={t("pages.knowledgeBases.uploadIcon")}
+                  replaceLabel={t("pages.knowledgeBases.replaceIcon")}
+                  src={selectedKb.avatar_path || ""}
+                  value={avatarDraft}
+                  onValueChange={setAvatarDraft}
+                  disabled={infoSaving}
+                  loading={infoSaving && !!avatarDraft}
+                  fallback={<HugeiconsIcon icon={BookOpenTextIcon} className="size-8" strokeWidth={2} />}
+                />
+              </div>
               <Field>
                 <FieldLabel htmlFor="kb-detail-authorized-users">{t("pages.models.authorizedScope")}</FieldLabel>
-                <AuthorizationSelect groups={subjects.groups} members={subjects.members} id="kb-detail-authorized-users" disabled={infoSaving} value={authorization} onValueChange={setAuthorization} />
+                <KbPermissionsEditor groups={subjects.groups} members={subjects.members} id="kb-detail-authorized-users" disabled={infoSaving} value={authorization} onValueChange={setAuthorization} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="kb-detail-tags">{t("pages.knowledgeBases.tags")}</FieldLabel>

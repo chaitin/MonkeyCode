@@ -8,6 +8,9 @@ import type {
   AuthorizationMember,
 } from "@/lib/authorization-groups"
 export type Grant = {
+  id?: string
+  all_users?: boolean
+  access_level?: "read_only" | "read_write"
   user_id?: string | null
   group_id?: string | null
   group?: { id: string; name: string; parent_id?: string | null } | null

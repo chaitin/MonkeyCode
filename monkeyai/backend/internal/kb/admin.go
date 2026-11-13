@@ -16,6 +16,11 @@ import (
 
 func (s *Service) RegisterAdmin(r chi.Router) {
 	s.CRUD.Register(r)
+	r.Post("/kb", s.saveKb)
+	r.Put("/kb/{id}", s.saveKb)
+	if s.storage != nil {
+		r.Get("/kb/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, true) })
+	}
 
 	// Personal knowledge bases remain read-only through every admin write route.
 	r = r.With(func(next http.Handler) http.Handler {
