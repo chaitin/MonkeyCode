@@ -155,8 +155,7 @@
 
 - 唯一约束 `(user_id, machine_id)`，用户目录查询以 `user_id` 为前缀。
 - `status` 与 `revoked_at` 保持一致；状态约束同时落在数据库。
-- 默认最多 20 个 `active` 端点，离线也计入；恢复端点同样检查上限。
-- 限额检查和新增/恢复写入在同一事务内串行化，可锁定所属用户行，避免两个并发登记共同突破上限。
+- 每用户的端点数量不设上限；新增/恢复写入仍在事务内锁定所属用户行。
 - 不持久化 `online`、连接代次、队列、限流额度、请求或业务消息。
 
 `machine_id` 首次安装随机生成并保存在原生安全存储，重启及账号切换不重新生成；卸载重装可生成新值。不使用 MAC、序列号或硬件指纹。客户端不得主动复制机器标识到其他安装。
@@ -232,7 +231,7 @@ Upgrade 后 5 秒内只能接收一次 hello；超时、重复 hello 或在 welc
   "protocol_version": 1,
   "server_time": 1789545600000,
   "heartbeat": {"interval_ms": 30000, "timeout_ms": 10000},
-  "limits": {"max_frame_bytes": 262144, "max_endpoints": 20}
+  "limits": {"max_frame_bytes": 262144}
 }
 ```
 

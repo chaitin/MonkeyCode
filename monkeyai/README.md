@@ -219,7 +219,7 @@ MCP 默认允许访问公网及私网 HTTP(S) 目标，私网包括 `10.0.0.0/8`
 
 Connector 可以直接编辑地址、认证方式与 OAuth 应用。关键配置变更会使旧凭证和目录失效；用户需更新指定 Header 凭证或对指定凭证重新授权。同一用户可以添加多份凭证，工具目录按具体凭证隔离；调用密钥绑定连接和独立凭证 ID，集中 Header/Token 仅保存在后端。
 
-Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rules`、`/api/v1/skills`、`/api/v1/experts`、`/api/v1/connectors`，每个接口独立提供 SHA-256 版本与 ETag/304。模型代理信息随模型列表返回，整体 `/api/v1/config` 已移除。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；专家授权只委托其固定系统规则和技能，连接仍单独检查授权。专家不绑定模型，会话模型由用户独立选择并校验授权。接口详见两份 OpenAPI。
+Agent 按资源类型读取 `/api/v1/settings`、`/api/v1/models`、`/api/v1/rules`、`/api/v1/skills`、`/api/v1/experts`、`/api/v1/connectors`，每个接口独立提供 SHA-256 版本与 ETag/304。模型代理信息随模型列表返回，整体 `/api/v1/config` 已移除。通过专家清单和 `/api/v1/resources/resolve` 获取最终依赖；系统专家授权只委托其固定系统规则和技能，连接仍单独检查授权；个人专家分享同时授予其所有者持有的个人技能和连接使用权限，依赖调整或撤销专家分享时同步收回继承权限，不影响独立授权。规则、系统资源和他人资源仍需单独授权，连接的个人凭据不随专家转交。专家不绑定模型，会话模型由用户独立选择并校验授权。接口详见两份 OpenAPI。
 
 资源管理列表支持 `q`、`ownership_type`、`cursor` 和 `limit`（1—200），管理页面及关联选择器会读取全部分页。连接图标限 1 MiB 的 PNG/JPEG，由后端验证尺寸并经授权接口读取。
 

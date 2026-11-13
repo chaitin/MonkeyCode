@@ -1076,7 +1076,7 @@ paths:
         '503': {description: authorization_state_unavailable}
     put:
       summary: 登记或更新当前用户的设备元数据
-      description: 不依赖会话上报开关；不会恢复已撤销端点；active 端点最多 20 个。
+      description: 不依赖会话上报开关；不会恢复已撤销端点；设备数量不设上限，仍受登记频率限制。
       requestBody:
         required: true
         content:
@@ -1105,7 +1105,7 @@ paths:
         '200': {$ref: '#/components/responses/EndpointResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '409': {description: endpoint_limit_exceeded 或 endpoint_revoked}
+        '409': {description: endpoint_revoked}
         '429': {description: 设备登记每用户每小时最多一百次，遵守 Retry-After}
         '503': {$ref: '#/components/responses/EndpointUnavailable'}
     get:
@@ -1153,17 +1153,12 @@ paths:
       - {$ref: '#/components/parameters/EndpointMachine'}
     post:
       summary: 恢复已停用端点
-      description: 幂等，不接受请求体。不主动建立连接；active 端点最多 20 个，离线也计入。该入口不恢复新远程执行开关。
+      description: 幂等，不接受请求体。不主动建立连接；设备数量不设上限。该入口不恢复新远程执行开关。
       responses:
         '200': {$ref: '#/components/responses/EndpointResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-        '409':
-          description: active 端点达到上限，错误码 endpoint_limit_exceeded
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ResourceError'}
         '503': {$ref: '#/components/responses/EndpointUnavailable'}
   /oauth/connectors/{id}/callback:
     get:
@@ -2220,7 +2215,7 @@ paths:
   /api/v1/resources/shares:
     post:
       summary: 批量分享自己的资源给指定用户或分组
-      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证，个人专家的依赖仍需接收方获得使用授权。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
+      description: 支持 model、rule、skill、connector、expert；个人规则共享后接收者可选择使用，但不能强制应用。个人 Connector 的接收方使用自己的独立凭证。分享个人专家时，其所有者持有的个人 skill、connector 自动随专家授予只读使用权限，新增或移除依赖即时生效；规则、系统资源及他人资源仍需单独授权，不允许借专家转分享。分享为追加的只读使用授权，不覆盖其他授权；重复授权不会产生重复记录。每批资源 1—100 项，用户与分组 ID 合计 1—100 项；任一资源非本人所有、任一接收用户无效或分组不存在时整批回滚。禁止直接分享给自己，不允许接收方转分享。组授权覆盖其后代组成员并随成员关系变化即时生效；全零 UUID 根组表示系统全员授权，包括后续新增用户。
       requestBody:
         required: true
         content:
@@ -2240,7 +2235,7 @@ paths:
           $ref: '#/components/responses/ResourceError500'
     delete:
       summary: 批量撤销指定用户或分组的资源分享
-      description: 仅所有者可以撤销。只移除本批指定资源与用户或分组间的直接授权，不影响其他用户/分组的授权；不存在的授权视为成功，允许撤销已停用或已删除的接收对象。任一资源无权操作则整批回滚。
+      description: 仅所有者可以撤销。只移除本批指定资源与用户或分组间的直接授权，不影响其他用户/分组的授权；专家分享撤销后，其依赖的继承权限一并失效，但保留依赖自身及其他专家授予的使用权限。不存在的授权视为成功，允许撤销已停用或已删除的接收对象。任一资源无权操作则整批回滚。
       requestBody:
         required: true
         content:

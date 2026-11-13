@@ -190,6 +190,60 @@ SELECT
                     FROM
                         user_groups)));
 
+-- name: HasExpertSkillAccess :one
+WITH RECURSIVE user_groups(group_id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = sqlc.arg(user_id)::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT parent.id FROM groups g
+    JOIN user_groups ug ON ug.group_id = g.id
+    JOIN groups parent ON parent.id = g.parent_id
+    WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
+)
+SELECT EXISTS (
+    SELECT 1 FROM experts e
+    JOIN expert_skills x ON x.expert_id = e.id
+    JOIN skills d ON d.id = x.skill_id
+    JOIN resource_access_grants rag ON rag.resource_type = 'expert' AND rag.resource_id = e.id
+    WHERE d.id = sqlc.arg(resource_id)::uuid
+        AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+        AND d.ownership_type = 'user' AND d.owner_user_id = e.owner_user_id
+        AND d.enabled AND d.deleted_at IS NULL
+        AND (rag.user_id = sqlc.arg(user_id)::uuid
+            OR rag.group_id IN (SELECT group_id FROM user_groups)
+            OR (rag.all_users AND EXISTS (
+                SELECT 1 FROM users u
+                WHERE u.id = sqlc.arg(user_id)::uuid AND u.status = 'active' AND u.deleted_at IS NULL
+            )))
+);
+
+-- name: HasExpertConnectorAccess :one
+WITH RECURSIVE user_groups(group_id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = sqlc.arg(user_id)::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT parent.id FROM groups g
+    JOIN user_groups ug ON ug.group_id = g.id
+    JOIN groups parent ON parent.id = g.parent_id
+    WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
+)
+SELECT EXISTS (
+    SELECT 1 FROM experts e
+    JOIN expert_connectors x ON x.expert_id = e.id
+    JOIN connectors d ON d.id = x.connector_id
+    JOIN resource_access_grants rag ON rag.resource_type = 'expert' AND rag.resource_id = e.id
+    WHERE d.id = sqlc.arg(resource_id)::uuid
+        AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+        AND d.ownership_type = 'user' AND d.owner_user_id = e.owner_user_id
+        AND d.enabled AND d.deleted_at IS NULL
+        AND (rag.user_id = sqlc.arg(user_id)::uuid
+            OR rag.group_id IN (SELECT group_id FROM user_groups)
+            OR (rag.all_users AND EXISTS (
+                SELECT 1 FROM users u
+                WHERE u.id = sqlc.arg(user_id)::uuid AND u.status = 'active' AND u.deleted_at IS NULL
+            )))
+);
+
 -- name: GetResourceImport :one
 SELECT publisher, slug, retired_at IS NOT NULL AS retired
 FROM resource_import_bindings

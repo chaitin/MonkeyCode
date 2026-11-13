@@ -157,9 +157,19 @@ func CanUseSystem(ctx context.Context, q Queryer, user string) (bool, error) {
 }
 
 func Allowed(ctx context.Context, q Queryer, kind, id, user string) (bool, error) {
-	ok, err := sqlc.New(q).HasAccess(ctx, sqlc.HasAccessParams{UserID: new(user), ResourceType: kind, ResourceID: id})
-
-	return ok, err
+	queries := sqlc.New(q)
+	ok, err := queries.HasAccess(ctx, sqlc.HasAccessParams{UserID: new(user), ResourceType: kind, ResourceID: id})
+	if err != nil || ok {
+		return ok, err
+	}
+	switch kind {
+	case "skill":
+		return queries.HasExpertSkillAccess(ctx, sqlc.HasExpertSkillAccessParams{UserID: user, ResourceID: id})
+	case "connector":
+		return queries.HasExpertConnectorAccess(ctx, sqlc.HasExpertConnectorAccessParams{UserID: user, ResourceID: id})
+	default:
+		return false, nil
+	}
 }
 func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 	grants, err := DecodeObjects(sqlc.New(q).ListGrants(ctx, sqlc.ListGrantsParams{ResourceType: kind, ResourceID: id}))

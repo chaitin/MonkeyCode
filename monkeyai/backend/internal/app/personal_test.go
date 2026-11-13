@@ -231,10 +231,10 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	expertShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}}, UserIDs: []string{users[1]}}
 	call("POST", "/resources/shares", "a", "", expertShare, 204)
 	blocked := call("GET", expertPath+"/manifest", "b", "", nil, 200)
-	if blocked.Bool("available") || len(blocked["rules"].([]any)) != 0 || len(blocked["skills"].([]any)) != 0 {
-		t.Fatalf("个人专家扩大了依赖资源权限: %v", blocked)
+	if blocked.Bool("available") || len(blocked["rules"].([]any)) != 0 || len(blocked["skills"].([]any)) != 1 {
+		t.Fatalf("个人专家未继承技能或意外分享了规则: %v", blocked)
 	}
-	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
+	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 200)
 	call("DELETE", "/resources/shares", "a", "", expertShare, 204)
 	share := resource.ShareInput{Resources: []resource.ShareResource{{Type: "expert", ID: expertID}, {Type: "skill", ID: skillID}}, UserIDs: []string{users[1]}}
 	invalid := resource.ShareInput{Resources: share.Resources, UserIDs: []string{users[1], resource.ID()}}
@@ -417,10 +417,10 @@ func testPersonalResources(t *testing.T, pool *pgxpool.Pool, handler http.Handle
 	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 200)
 	skillShare := resource.ShareInput{Resources: []resource.ShareResource{{Type: "skill", ID: skillID}}, UserIDs: share.UserIDs}
 	call("DELETE", "/resources/shares", "a", "", skillShare, 204)
-	if call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
-		t.Fatal("依赖撤权后专家仍可用")
+	if !call("GET", expertPath+"/manifest", "b", "", nil, 200).Bool("available") {
+		t.Fatal("撤销技能直接分享不应影响专家继承的使用权限")
 	}
-	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 404)
+	request("GET", expertPath+"/skills/"+skillID+"/package", "b", "", "", nil, 200)
 	call("POST", "/resources/shares", "a", "", skillShare, 204)
 	call("PUT", "/skills/"+skillID, "b", etag(savedSkill), resource.Object{"name": "personal", "content": "越权"}, 404)
 	rule = call("GET", "/rules/"+ruleID, "a", "", nil, 200)

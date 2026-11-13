@@ -46,8 +46,8 @@ type Store interface {
 	Active(context.Context, string) ([]Endpoint, error)
 	Page(context.Context, string, int, int) (Page, error)
 	Get(context.Context, string, string) (Endpoint, error)
-	Register(context.Context, string, Hello, int) (Endpoint, error)
-	Update(context.Context, string, string, string, *string, int) (Endpoint, error)
+	Register(context.Context, string, Hello) (Endpoint, error)
+	Update(context.Context, string, string, string, *string) (Endpoint, error)
 	Touch(context.Context, string, string, time.Time) error
 }
 
@@ -159,17 +159,7 @@ func (p *Postgres) transaction(ctx context.Context, user string, fn func(*sqlc.Q
 	}
 	return fromRow(row), nil
 }
-func limit(ctx context.Context, q *sqlc.Queries, user string, max int) error {
-	count, err := q.CountActive(ctx, user)
-	if err != nil {
-		return err
-	}
-	if count >= int64(max) {
-		return fault{"endpoint_limit_exceeded"}
-	}
-	return nil
-}
-func (p *Postgres) Register(ctx context.Context, user string, h Hello, max int) (Endpoint, error) {
+func (p *Postgres) Register(ctx context.Context, user string, h Hello) (Endpoint, error) {
 	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
 		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: h.MachineID})
 		fresh := errors.Is(err, pgx.ErrNoRows)
@@ -178,11 +168,6 @@ func (p *Postgres) Register(ctx context.Context, user string, h Hello, max int) 
 		}
 		if !fresh && old.Status == "revoked" {
 			return old, fault{"endpoint_revoked"}
-		}
-		if fresh {
-			if err = limit(ctx, q, user, max); err != nil {
-				return old, err
-			}
 		}
 		row, err := q.Register(ctx, sqlc.RegisterParams{UserID: user, MachineID: h.MachineID, DeviceName: h.Profile.DeviceName, Platform: h.Profile.Platform, OsVersion: h.Profile.OSVersion, Arch: h.Profile.Arch, ClientVersion: h.Profile.ClientVersion})
 		if err != nil {
@@ -194,7 +179,7 @@ func (p *Postgres) Register(ctx context.Context, user string, h Hello, max int) 
 		return row, err
 	})
 }
-func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r Registration, max int) (Endpoint, error) {
+func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r Registration) (Endpoint, error) {
 	bucket := time.Now().UTC().Truncate(time.Hour)
 	count, err := sqlc.New(p.pool).TakeDeviceRegistrationRateLimit(ctx, sqlc.TakeDeviceRegistrationRateLimitParams{UserID: user, BucketStart: bucket})
 	if err != nil {
@@ -212,11 +197,6 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 		if !fresh && old.Status == "revoked" {
 			return old, fault{"endpoint_revoked"}
 		}
-		if fresh {
-			if err = limit(ctx, q, user, max); err != nil {
-				return old, err
-			}
-		}
 		row, err := q.RegisterDevice(ctx, sqlc.RegisterDeviceParams{
 			UserID: user, MachineID: machine, DeviceName: r.DeviceName, Platform: r.Platform,
 			OsVersion: r.OSVersion, Arch: r.Arch, ClientVersion: r.ClientVersion,
@@ -233,7 +213,7 @@ func (p *Postgres) RegisterDevice(ctx context.Context, user, machine string, r R
 		return row, err
 	})
 }
-func (p *Postgres) Update(ctx context.Context, user, machine, action string, alias *string, max int) (Endpoint, error) {
+func (p *Postgres) Update(ctx context.Context, user, machine, action string, alias *string) (Endpoint, error) {
 	revokedGrant := ""
 	result, err := p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {
 		old, err := q.Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
@@ -288,11 +268,6 @@ func (p *Postgres) Update(ctx context.Context, user, machine, action string, ali
 				}
 				row = old
 			} else {
-				if status == "active" {
-					if err = limit(ctx, q, user, max); err != nil {
-						return old, err
-					}
-				}
 				row, err = q.Status(ctx, sqlc.StatusParams{UserID: user, MachineID: machine, Status: status})
 			}
 		default:

@@ -12,6 +12,10 @@ import (
 const catalogConnectorsVersion = `-- name: CatalogConnectorsVersion :one
 SELECT md5(concat_ws(':',
     (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))
+        FROM experts t ),
+    (SELECT md5(COALESCE(string_agg((t.expert_id::text || ':' || t.connector_id::text)::text || ':' || t.xmin::text, ',' ORDER BY t.expert_id::text || ':' || t.connector_id::text), ''))
+        FROM expert_connectors t ),
+    (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))
         FROM users t ),
     (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))
         FROM groups t ),
@@ -145,6 +149,10 @@ func (q *Queries) CatalogRulesVersion(ctx context.Context) (CatalogRulesVersionR
 
 const catalogSkillsVersion = `-- name: CatalogSkillsVersion :one
 SELECT md5(concat_ws(':',
+    (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))
+        FROM experts t ),
+    (SELECT md5(COALESCE(string_agg((t.expert_id::text || ':' || t.skill_id::text)::text || ':' || t.xmin::text, ',' ORDER BY t.expert_id::text || ':' || t.skill_id::text), ''))
+        FROM expert_skills t ),
     (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))
         FROM users t ),
     (SELECT md5(COALESCE(string_agg((t.id)::text || ':' || t.xmin::text, ',' ORDER BY t.id), ''))

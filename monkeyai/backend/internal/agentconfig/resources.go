@@ -131,7 +131,7 @@ func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, 
 			(*t.out)[o.String("id")] = o
 		}
 	}
-	g, err := resource.DecodeObjects(sqlc.New(q).ListGrants(ctx, new(user)))
+	g, err := r.grants(ctx, q, user, kind)
 	if err != nil {
 		return c, err
 	}
@@ -149,6 +149,40 @@ func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, 
 	}
 	return c, nil
 }
+func (r *Resources) grants(ctx context.Context, q resource.Queryer, user, kind string) ([]resource.Object, error) {
+	queries := sqlc.New(q)
+	grants, err := resource.DecodeObjects(queries.ListGrants(ctx, new(user)))
+	if err != nil || kind == "rules" {
+		return grants, err
+	}
+	experts := []string{}
+	for _, grant := range grants {
+		if grant.String("kind") == "expert" {
+			experts = append(experts, grant.String("id"))
+		}
+	}
+	if len(experts) == 0 {
+		return grants, nil
+	}
+	for _, dependency := range []struct {
+		kind string
+		read func(context.Context, []string) ([][]byte, error)
+	}{
+		{"skills", queries.ListSharedExpertSkills},
+		{"connectors", queries.ListSharedExpertConnectors},
+	} {
+		if kind != "" && kind != "experts" && kind != dependency.kind {
+			continue
+		}
+		inherited, err := resource.DecodeObjects(dependency.read(ctx, experts))
+		if err != nil {
+			return nil, err
+		}
+		grants = append(grants, inherited...)
+	}
+	return grants, nil
+}
+
 func (c catalog) allowed(kind string, o resource.Object, user string) bool {
 	if o == nil {
 		return false

@@ -172,7 +172,7 @@ go run ./cmd/server reset
 
 WebSocket 协议随 `MONKEYAI_PUBLIC_URL` 选择：HTTP 使用 WS，HTTPS 使用 WSS。非空 Origin 必须匹配 `MONKEYAI_PUBLIC_URL`，原生客户端可以省略。Nginx 和 Vite 已对桥接入口启用 Upgrade，代理空闲超时需大于心跳及等待窗口，默认 90 秒。应用退出时主动关闭桥接连接并使 `/readyz` 返回不可用。
 
-`MONKEYAI_ENDPOINT_MAX_CONNECTIONS`（或 `-endpoint-max-connections`）默认 1000，包含等待 hello 的连接；每连接业务队列最多 64 条/2 MiB，需按内存预算下调连接数。用户最多 20 个 active 端点，离线仍计入。停用端点不是撤销设备登录授权；持有有效账号凭据可显式恢复。
+`MONKEYAI_ENDPOINT_MAX_CONNECTIONS`（或 `-endpoint-max-connections`）默认 1000，包含等待 hello 的连接；每连接业务队列最多 64 条/2 MiB，需按内存预算下调连接数。每用户的设备数量不设上限，设备登记仍受频率限制。停用端点不是撤销设备登录授权；持有有效账号凭据可显式恢复。
 
 access token 刷新后旧连接凭据失效，客户端应通过统一 OAuth 管理器轮换并重新连接。服务端每 30 秒复验一次，超时 5 秒；已知到期时间直接限制路由，数据库撤销或用户停用最多约 35 秒收敛。桥接不定义会话控制、文件操作等 Agent 业务方法。
 

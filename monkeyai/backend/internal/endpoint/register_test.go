@@ -164,7 +164,7 @@ func TestDeviceRegistrationRateLimit(t *testing.T) {
 	}
 }
 
-func TestDeviceLimit(t *testing.T) {
+func TestDeviceRegistrationWithoutCountLimit(t *testing.T) {
 	f := newFixture(t)
 	if _, err := f.pool.Exec(t.Context(), `INSERT INTO endpoints(user_id,machine_id,device_name,platform,os_version,arch,client_version,protocol_version)
 SELECT $1,gen_random_uuid(),'电脑','macos','15','arm64','1',1 FROM generate_series(1,19)`, f.user); err != nil {
@@ -172,18 +172,18 @@ SELECT $1,gen_random_uuid(),'电脑','macos','15','arm64','1',1 FROM generate_se
 	}
 	code, data := call(t, f, "PUT", "/endpoints/"+uuid.New().String(), deviceBody, "owner")
 	if code != 200 {
-		t.Fatalf("登记未满限额: %d %s", code, data)
+		t.Fatalf("登记第 20 台设备失败: %d %s", code, data)
 	}
 	code, data = call(t, f, "PUT", "/endpoints/"+uuid.New().String(), deviceBody, "owner")
-	if code != 409 || !bytes.Contains(data, []byte("endpoint_limit_exceeded")) {
-		t.Fatalf("超过限额的结果错误: %d %s", code, data)
+	if code != 200 {
+		t.Fatalf("登记第 21 台设备失败: %d %s", code, data)
 	}
 	code, data = call(t, f, "GET", "/endpoints", "", "owner")
 	if code != 200 {
-		t.Fatalf("限额影响端点列表: %d %s", code, data)
+		t.Fatalf("读取端点列表失败: %d %s", code, data)
 	}
 	var page Page
-	if err := json.Unmarshal(data, &page); err != nil || page.Total != 20 {
-		t.Fatalf("限额后设备数错误: %s %v", data, err)
+	if err := json.Unmarshal(data, &page); err != nil || page.Total != 21 {
+		t.Fatalf("设备数错误: %s %v", data, err)
 	}
 }

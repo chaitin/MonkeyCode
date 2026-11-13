@@ -178,9 +178,6 @@ func (e *Execution) Enroll(ctx context.Context, p identity.Principal, in Enrollm
 		if version != 0 {
 			return ExecutionState{}, executionFailure(http.StatusConflict, "device_registration_changed")
 		}
-		if err := limit(ctx, q, p.UserID, 20); err != nil {
-			return ExecutionState{}, err
-		}
 		if err := q.EnsureExecutionEndpoint(ctx, sqlc.EnsureExecutionEndpointParams{UserID: p.UserID, MachineID: in.MachineID, DeviceName: in.DisplayName, Platform: in.Platform, Arch: in.Arch}); err != nil {
 			return ExecutionState{}, err
 		}

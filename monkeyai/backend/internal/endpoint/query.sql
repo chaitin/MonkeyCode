@@ -26,9 +26,6 @@ LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
 -- name: Count :one
 SELECT count(*) FROM endpoints WHERE user_id = $1;
 
--- name: CountActive :one
-SELECT count(*) FROM endpoints WHERE user_id = $1 AND status = 'active';
-
 -- name: Register :one
 INSERT INTO endpoints (user_id, machine_id, device_name, platform, os_version, arch, client_version, protocol_version, last_seen_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,1,now())

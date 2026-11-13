@@ -183,7 +183,7 @@ func (s *Service) update(w http.ResponseWriter, r *http.Request, action string) 
 		return
 	}
 	s.manage(w, r, func(ctx context.Context, user string, u *userState) (any, error) {
-		e, err := s.store.Update(ctx, user, machine, action, alias, 20)
+		e, err := s.store.Update(ctx, user, machine, action, alias)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +373,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = s.load(checkCtx, credential.UserID, u); err == nil {
 		var e Endpoint
-		e, err = s.store.Register(checkCtx, credential.UserID, h, 20)
+		e, err = s.store.Register(checkCtx, credential.UserID, h)
 		if err == nil && !c.valid() {
 			err = fault{"unauthorized"}
 		}
@@ -408,9 +408,6 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		}
 		if name == "endpoint_revoked" {
 			code = 4002
-		}
-		if name == "endpoint_limit_exceeded" {
-			code = 1008
 		}
 		c.stop(code)
 		return
