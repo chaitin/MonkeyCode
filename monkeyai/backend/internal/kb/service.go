@@ -17,11 +17,12 @@ import (
 )
 
 type Service struct {
-	CRUD   *resource.CRUD
-	store  *resource.Store
-	models Embedder
-	worker string
-	syncMu sync.Mutex
+	CRUD    *resource.CRUD
+	store   *resource.Store
+	models  Embedder
+	worker  string
+	storage resource.Storage
+	syncMu  sync.Mutex
 }
 
 type Embedder interface {
@@ -35,8 +36,10 @@ func NewService(store *resource.Store, models *model.Service) *Service {
 		Path:           "/kb",
 		Repository:     func(q resource.Queryer) resource.Repository { return newRepository(q) },
 		Fields:         []string{"name", "description", "enabled", "embedding_model_id", "embedding_dimension", "fusion_config"},
-		UserFields:     []string{"name", "description", "fusion_config", "tag_ids"},
+		UserFields:     []string{"name", "description", "fusion_config", "tag_ids", avatarChangeKey},
 		OverrideFields: []string{"name", "description"},
+		Hidden:         []string{"avatar_s3_key"},
+		Persist:        s.persistAvatar,
 		Validate:       s.validate,
 		Decorate:       s.decorate,
 		DeleteFunc:     s.Delete,
@@ -45,6 +48,9 @@ func NewService(store *resource.Store, models *model.Service) *Service {
 }
 
 func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Object) error {
+	if avatar, ok := in[avatarChangeKey].(*avatarChange); ok {
+		avatar.old = old.String("avatar_s3_key")
+	}
 	// Model bindings are index metadata owned by the backend, not user settings.
 	modelID := old.String("embedding_model_id")
 	dimension := int(objectInt64(old["embedding_dimension"]))
@@ -82,6 +88,9 @@ func (s *Service) validate(ctx context.Context, tx pgx.Tx, in, old resource.Obje
 }
 
 func (s *Service) decorate(ctx context.Context, q resource.Queryer, item resource.Object) error {
+	if key := item.String("avatar_s3_key"); key != "" {
+		item["avatar_path"] = "/api/admin/v1/kb/" + item.String("id") + "/avatar?v=" + resource.Hash(key)
+	}
 	count, err := sqlc.New(q).CountKbDocuments(ctx, item.String("id"))
 	if err != nil {
 		return err
@@ -219,15 +228,18 @@ func (s *Service) listAccessible(ctx context.Context, userID string, filter reso
 		if !filter.Matches(item.String("ownership_type"), item.String("owner_user_id"), userID, item.String("name"), item.String("description")) {
 			continue
 		}
-		ok, err := resource.Accessible(ctx, s.store.Pool, "kb", item, userID)
+		permission, err := resolvePermissions(ctx, s.store.Pool, item, userID)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
+		if !permission.CanRead {
 			continue
 		}
 		decorated, err := s.CRUD.Get(ctx, s.store.Pool, item.String("id"))
 		if err != nil {
+			return nil, err
+		}
+		if err = s.decoratePermissions(ctx, decorated, userID); err != nil {
 			return nil, err
 		}
 		out = append(out, decorated)
@@ -243,18 +255,32 @@ func (s *Service) GetAccessible(ctx context.Context, id, userID string) (resourc
 	if !item.Bool("enabled") {
 		return nil, resource.NotFound
 	}
-	ok, err := resource.Accessible(ctx, s.store.Pool, "kb", item, userID)
+	permission, err := resolvePermissions(ctx, s.store.Pool, item, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !permission.CanRead {
 		return nil, resource.NotFound
 	}
-	return s.CRUD.Get(ctx, s.store.Pool, id)
+	decorated, err := s.CRUD.Get(ctx, s.store.Pool, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.decoratePermissions(ctx, decorated, userID); err != nil {
+		return nil, err
+	}
+	return decorated, nil
 }
 
 func (s *Service) CreateUserKB(ctx context.Context, userID string, input resource.Object) (resource.Object, error) {
-	return s.CRUD.SaveUser(ctx, userID, "", "", input)
+	item, err := s.CRUD.SaveUser(ctx, userID, "", "", input)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.decoratePermissions(ctx, item, userID); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (s *Service) UpdateUserKB(ctx context.Context, userID, id, match string, input resource.Object) (resource.Object, error) {
@@ -327,4 +353,15 @@ func (s *Service) SetEnabled(ctx context.Context, actor, id, match string, enabl
 
 func rollback(ctx context.Context, tx pgx.Tx, _ string) {
 	_ = tx.Rollback(ctx)
+}
+
+func (s *Service) WithStorage(storage resource.Storage) *Service {
+	s.storage = storage
+	return s
+}
+func (s *Service) persistAvatar(ctx context.Context, tx pgx.Tx, in resource.Object) error {
+	if avatar, ok := in[avatarChangeKey].(*avatarChange); ok {
+		return sqlc.New(tx).SetAvatar(ctx, sqlc.SetAvatarParams{ID: in.String("id"), AvatarS3Key: avatar.key})
+	}
+	return nil
 }

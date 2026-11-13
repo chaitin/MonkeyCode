@@ -318,7 +318,7 @@ func TestDocumentMetadataUpdateKeepsIndex(t *testing.T) {
 	}
 	if updated.String("title") != "新标题" || updated.String("content") != "保留的正文" ||
 		updated.String("status") != "learned" || objectInt64(updated["chunk_count"]) != 1 ||
-		objectInt64(updated["revision"]) != objectInt64(before["revision"]) {
+		objectInt64(updated["revision"]) != objectInt64(before["revision"])+1 {
 		t.Fatalf("只更新标题不应使索引失效: before=%v after=%v", before, updated)
 	}
 	chunks, err := s.ListChunks(ctx, document.String("id"))

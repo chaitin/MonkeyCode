@@ -1,6 +1,10 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { GroupSelect, type GroupSelectOption } from "@/components/group-select"
+import {
+  GroupSelect,
+  type GroupSelectProps,
+  type GroupSelectOption,
+} from "@/components/group-select"
 import {
   AUTHORIZATION_GROUP_TREE,
   AUTHORIZATION_MEMBERS,
@@ -14,6 +18,8 @@ type Props = {
   title?: string
   placeholder?: string
   disabled?: boolean
+  renderSelection?: GroupSelectProps["renderSelection"]
+  cascadeGroups?: boolean
   value: AuthorizationSelection
   onValueChange: (value: AuthorizationSelection) => void
   groups?: AuthorizationGroupNode[]
@@ -35,6 +41,8 @@ export function AuthorizationSelect({
   title,
   placeholder,
   disabled = false,
+  cascadeGroups = true,
+  renderSelection,
   value,
   onValueChange,
   groups = AUTHORIZATION_GROUP_TREE,
@@ -76,7 +84,8 @@ export function AuthorizationSelect({
       locale={i18n.resolvedLanguage ?? i18n.language}
       multiple
       selectionMode="both"
-      cascadeGroups
+      cascadeGroups={cascadeGroups}
+      renderSelection={renderSelection}
       searchable
       searchPlaceholder={t("pages.models.searchAuthorization")}
       noResultsText={t("pages.models.noMatchingAuthorization")}

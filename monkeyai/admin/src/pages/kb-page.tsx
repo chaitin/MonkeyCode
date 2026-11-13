@@ -13,7 +13,12 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
-import { AuthorizationSelect } from "@/components/authorization-select"
+import {
+  ResourceAvatarField,
+  type ResourceAvatarDraft,
+} from "@/components/resource-avatar-field"
+import { KbPermissionsEditor } from "@/components/kb-permissions-editor"
+import type { Grant } from "@/lib/resources"
 import { ResourceCard } from "@/components/resource-card"
 import { ResourceCardMenuButton } from "@/components/resource-card-menu-button"
 import { ResourceList } from "@/components/resource-list"
@@ -29,9 +34,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Dialog,
   DialogClose,
@@ -51,19 +61,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { useResourceList } from "@/hooks/use-resource-list"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
 import { CONSOLE_ROUTES } from "@/lib/routes"
-import { type AuthorizationSelection } from "@/lib/authorization-groups"
 import {
   base,
-  grants,
   localized,
   match,
-  selection,
   useSubjects,
   type ResourceRow,
 } from "@/lib/resources"
@@ -114,15 +121,14 @@ export function KbPage() {
   const [kbPendingDeletion, setKbPendingDeletion] = useState<Kb | null>(null)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [authorization, setAuthorization] = useState<AuthorizationSelection>({
-    groupIds: [],
-    memberIds: [],
-  })
+  const [authorization, setAuthorization] = useState<Grant[]>([])
+  const [avatarDraft, setAvatarDraft] = useState<ResourceAvatarDraft>(null)
   const editingKb = knowledgeBases.find((item) => item.id === editingKbId)
   const resetKbOptions = () => {
     setTagsOpen(false)
     setSelectedTagIds([])
-    setAuthorization({ groupIds: [], memberIds: [] })
+    setAuthorization([])
+    setAvatarDraft(null)
   }
 
   const handleKbDialogOpenChange = (open: boolean) => {
@@ -135,9 +141,10 @@ export function KbPage() {
 
   const handleEditKb = (kb: Kb) => {
     if (kb.ownership_type !== "system") return
+    setAvatarDraft(null)
     setEditingKbId(kb.id)
     setSelectedTagIds((kb.tags ?? []).map((tag) => tag.id))
-    setAuthorization(selection(kb.grants))
+    setAuthorization(kb.grants ?? [])
     setTagsOpen(false)
     setKbDialogOpen(true)
   }
@@ -158,18 +165,24 @@ export function KbPage() {
         name,
         description,
         tag_ids: tagIds,
-        grants: grants(authorization),
+        grants: authorization,
+      }
+      let body: string | FormData = JSON.stringify(payload)
+      if (avatarDraft) {
+        body = new FormData()
+        body.set("metadata", JSON.stringify(payload))
+        body.set("avatar", avatarDraft.file)
       }
       if (!editingKb) {
         await api<ResourceRow>(`${base}/kb`, {
           method: "POST",
-          body: JSON.stringify(payload),
+          body,
         })
       } else {
         await api<ResourceRow>(`${base}/kb/${editingKb.id}`, {
           method: "PUT",
           headers: match(editingKb.revision),
-          body: JSON.stringify(payload),
+          body,
         })
       }
       form.reset()
@@ -242,38 +255,63 @@ export function KbPage() {
                     </DialogDescription>
                   </DialogHeader>
                   <FieldGroup className="gap-4">
-                    <Field>
-                      <FieldLabel htmlFor="kb-name">
-                        {t("pages.knowledgeBases.name")}
-                      </FieldLabel>
-                      <Input
-                        id="kb-name"
-                        name="name"
-                        defaultValue={editingKb?.name}
-                        placeholder={t("pages.knowledgeBases.namePlaceholder")}
-                        required
+                    <div
+                      data-resource-basics=""
+                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_var(--resource-avatar-size,7.5rem)] items-start !gap-x-3 !gap-y-1 sm:!gap-x-4 sm:!gap-y-3"
+                    >
+                      <Field className="contents">
+                        <FieldLabel htmlFor="kb-name">
+                          {t("pages.knowledgeBases.name")}
+                        </FieldLabel>
+                        <Input
+                          id="kb-name"
+                          name="name"
+                          defaultValue={editingKb?.name}
+                          placeholder={t(
+                            "pages.knowledgeBases.namePlaceholder"
+                          )}
+                          required
+                        />
+                      </Field>
+                      <Field className="contents">
+                        <FieldLabel htmlFor="kb-description">
+                          {t("pages.knowledgeBases.knowledgeDescription")}
+                        </FieldLabel>
+                        <Textarea
+                          className="max-h-48 min-h-28 min-w-0 resize-y overflow-y-auto [overflow-wrap:anywhere]"
+                          id="kb-description"
+                          name="description"
+                          defaultValue={editingKb?.description}
+                          placeholder={t(
+                            "pages.knowledgeBases.descriptionPlaceholder"
+                          )}
+                          required
+                        />
+                      </Field>
+                      <ResourceAvatarField
+                        id="kb-avatar"
+                        label={t("pages.knowledgeBases.icon")}
+                        uploadLabel={t("pages.knowledgeBases.uploadIcon")}
+                        replaceLabel={t("pages.knowledgeBases.replaceIcon")}
+                        src={editingKb?.avatar_path || ""}
+                        value={avatarDraft}
+                        onValueChange={setAvatarDraft}
+                        disabled={remote.pending}
+                        loading={remote.pending && !!avatarDraft}
+                        fallback={
+                          <HugeiconsIcon
+                            icon={BookOpenTextIcon}
+                            className="size-8"
+                            strokeWidth={2}
+                          />
+                        }
                       />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="kb-description">
-                        {t("pages.knowledgeBases.knowledgeDescription")}
-                      </FieldLabel>
-                      <Textarea
-                        className="max-h-48 min-h-28 min-w-0 resize-y overflow-y-auto [overflow-wrap:anywhere]"
-                        id="kb-description"
-                        name="description"
-                        defaultValue={editingKb?.description}
-                        placeholder={t(
-                          "pages.knowledgeBases.descriptionPlaceholder"
-                        )}
-                        required
-                      />
-                    </Field>
+                    </div>
                     <Field>
                       <FieldLabel htmlFor="kb-authorized-users">
                         {t("pages.models.authorizedScope")}
                       </FieldLabel>
-                      <AuthorizationSelect
+                      <KbPermissionsEditor
                         groups={subjects.groups}
                         members={subjects.members}
                         id="kb-authorized-users"
@@ -327,6 +365,13 @@ export function KbPage() {
               <CardHeader>
                 <div className="flex min-w-0 items-start gap-3">
                   <Avatar size="lg">
+                    {kb.avatar_path && (
+                      <AvatarImage
+                        src={kb.avatar_path}
+                        alt=""
+                        className="object-contain"
+                      />
+                    )}
                     <AvatarFallback
                       className={
                         kb.ownership_type === "user"
@@ -375,7 +420,11 @@ export function KbPage() {
                           onClick={(event) => event.stopPropagation()}
                         >
                           <DropdownMenuGroup>
-                            <DropdownMenuItem onClick={() => navigate(`${CONSOLE_ROUTES.kb}/${kb.id}`)}>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                navigate(`${CONSOLE_ROUTES.kb}/${kb.id}`)
+                              }
+                            >
                               <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
                               {t("pages.knowledgeBases.viewContents")}
                             </DropdownMenuItem>
@@ -473,4 +522,3 @@ export function KbPage() {
     </>
   )
 }
-

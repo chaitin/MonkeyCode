@@ -122,6 +122,33 @@ func (q *Queries) CreateGroupShares(ctx context.Context, arg CreateGroupSharesPa
 	)
 }
 
+const createKbGrant = `-- name: CreateKbGrant :exec
+INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, all_users, access_level, usage_requirement, granted_by_user_id, updated_by_user_id)
+VALUES ('kb', $1, NULLIF($2::text,'')::uuid, NULLIF($3::text,'')::uuid,
+ $4, $5, 'optional', $6::uuid, $6::uuid)
+`
+
+type CreateKbGrantParams struct {
+	ResourceID  string
+	UserID      string
+	GroupID     string
+	AllUsers    bool
+	AccessLevel string
+	Actor       string
+}
+
+func (q *Queries) CreateKbGrant(ctx context.Context, arg CreateKbGrantParams) error {
+	_, err := q.db.Exec(ctx, createKbGrant,
+		arg.ResourceID,
+		arg.UserID,
+		arg.GroupID,
+		arg.AllUsers,
+		arg.AccessLevel,
+		arg.Actor,
+	)
+	return err
+}
+
 const createShares = `-- name: CreateShares :execresult
 INSERT INTO resource_access_grants (resource_type, resource_id, user_id, access_level, granted_by_user_id)
 SELECT
@@ -190,6 +217,15 @@ type DeleteGrantsParams struct {
 
 func (q *Queries) DeleteGrants(ctx context.Context, arg DeleteGrantsParams) (pgconn.CommandTag, error) {
 	return q.db.Exec(ctx, deleteGrants, arg.ResourceType, arg.ResourceID)
+}
+
+const deleteKbGrant = `-- name: DeleteKbGrant :exec
+DELETE FROM resource_access_grants WHERE id = $1 AND resource_type = 'kb'
+`
+
+func (q *Queries) DeleteKbGrant(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteKbGrant, id)
+	return err
 }
 
 const deleteTag = `-- name: DeleteTag :one
@@ -380,7 +416,7 @@ func (q *Queries) HasExpertSkillAccess(ctx context.Context, arg HasExpertSkillAc
 
 const listGrants = `-- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
+    jsonb_build_object('id', rag.id, 'access_level', rag.access_level, 'created_at', rag.created_at, 'updated_at', rag.updated_at, 'user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
         'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END,
         'group', CASE
             WHEN rag.all_users THEN jsonb_build_object('id', '00000000-0000-0000-0000-000000000000',
@@ -866,6 +902,22 @@ func (q *Queries) SubjectExists(ctx context.Context, arg SubjectExistsParams) (b
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const updateKbGrant = `-- name: UpdateKbGrant :exec
+UPDATE resource_access_grants SET access_level = $2, updated_by_user_id = $3, updated_at = now()
+WHERE id = $1 AND resource_type = 'kb' AND access_level IS DISTINCT FROM $2
+`
+
+type UpdateKbGrantParams struct {
+	ID              string
+	AccessLevel     string
+	UpdatedByUserID *string
+}
+
+func (q *Queries) UpdateKbGrant(ctx context.Context, arg UpdateKbGrantParams) error {
+	_, err := q.db.Exec(ctx, updateKbGrant, arg.ID, arg.AccessLevel, arg.UpdatedByUserID)
+	return err
 }
 
 const updateTag = `-- name: UpdateTag :one

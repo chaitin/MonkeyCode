@@ -257,7 +257,7 @@ FOR UPDATE;
 
 -- name: ListGrants :many
 SELECT
-    jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
+    jsonb_build_object('id', rag.id, 'access_level', rag.access_level, 'created_at', rag.created_at, 'updated_at', rag.updated_at, 'user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,
         'user', CASE WHEN u.id IS NOT NULL THEN jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email) END,
         'group', CASE
             WHEN rag.all_users THEN jsonb_build_object('id', '00000000-0000-0000-0000-000000000000',
@@ -354,3 +354,15 @@ SELECT EXISTS (
             WHERE i.user_id = u.id AND i.provider = 'baizhiyun' AND i.deleted_at IS NULL
         ))
 )::boolean;
+
+-- name: UpdateKbGrant :exec
+UPDATE resource_access_grants SET access_level = $2, updated_by_user_id = $3, updated_at = now()
+WHERE id = $1 AND resource_type = 'kb' AND access_level IS DISTINCT FROM $2;
+
+-- name: DeleteKbGrant :exec
+DELETE FROM resource_access_grants WHERE id = $1 AND resource_type = 'kb';
+
+-- name: CreateKbGrant :exec
+INSERT INTO resource_access_grants (resource_type, resource_id, user_id, group_id, all_users, access_level, usage_requirement, granted_by_user_id, updated_by_user_id)
+VALUES ('kb', sqlc.arg(resource_id), NULLIF(sqlc.arg(user_id)::text,'')::uuid, NULLIF(sqlc.arg(group_id)::text,'')::uuid,
+ sqlc.arg(all_users), sqlc.arg(access_level), 'optional', sqlc.arg(actor)::uuid, sqlc.arg(actor)::uuid);

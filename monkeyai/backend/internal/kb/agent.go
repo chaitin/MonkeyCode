@@ -2,6 +2,7 @@ package kb
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -12,6 +13,31 @@ import (
 )
 
 func (s *Service) RegisterAgent(r chi.Router) {
+	s.registerPersonalGrants(r)
+	if s.storage != nil {
+		r.Get("/kb/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, false) })
+	}
+	r.Post("/kb/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			KbID       string `json:"kb_id"`
+			DocumentID string `json:"document_id"`
+		}
+		if err := resource.Decode(w, r, &input); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		user, _ := identity.UserFromContext(r.Context())
+		if _, err := s.GetAccessibleDocumentInKB(r.Context(), user.ID, input.KbID, input.DocumentID); err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		item, err := s.restudyDocument(r.Context(), input.DocumentID, user.ID)
+		if err != nil {
+			resource.Fail(r.Context(), w, err)
+			return
+		}
+		resource.JSON(r.Context(), w, 202, publicDocument(item))
+	})
 	r.Get("/kb", func(w http.ResponseWriter, r *http.Request) {
 		page, size, err := resource.PageParams(r)
 		if err != nil {
@@ -55,13 +81,13 @@ func (s *Service) RegisterAgent(r chi.Router) {
 	})
 
 	r.Post("/kb", func(w http.ResponseWriter, r *http.Request) {
-		var input resource.Object
-		if err := resource.Decode(w, r, &input); err != nil {
+		input, avatar, err := parseKbForm(w, r)
+		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
-		item, err := s.CreateUserKB(r.Context(), user.ID, input)
+		item, err := s.saveAvatar(r.Context(), user.ID, "", "", input, avatar, true)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -99,13 +125,13 @@ func (s *Service) RegisterAgent(r chi.Router) {
 	})
 
 	r.Put("/kb/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var input resource.Object
-		if err := resource.Decode(w, r, &input); err != nil {
+		input, avatar, err := parseKbForm(w, r)
+		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
-		item, err := s.UpdateUserKB(r.Context(), user.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), input)
+		item, err := s.saveAvatar(r.Context(), user.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), input, avatar, true)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -153,11 +179,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			return
 		}
 		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
-		if _, err := s.ownedUserKB(r.Context(), user.ID, kbID); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		result, err := s.BatchDocuments(r.Context(), kbID, input)
+		result, err := s.batchDocuments(r.Context(), kbID, input, user.ID)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -180,11 +202,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		if _, err := s.ownedUserKB(r.Context(), user.ID, kbID); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		item, err := s.MoveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput)
+		item, err := s.moveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput, user.ID)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -229,6 +247,14 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
+		if match := r.Header.Get("If-Match"); match != "" {
+			revision, err := strconv.ParseInt(strings.Trim(match, "\""), 10, 64)
+			if err != nil || revision <= 0 {
+				resource.Fail(r.Context(), w, resource.Invalid("文档版本无效"))
+				return
+			}
+			input.ExpectedRevision = revision
+		}
 		item, err := s.UpdateUserDocument(r.Context(), user.ID, chi.URLParam(r, "documentId"), input)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
@@ -243,7 +269,16 @@ func (s *Service) RegisterAgent(r chi.Router) {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		if err := s.DeleteUserDocument(r.Context(), user.ID, chi.URLParam(r, "documentId")); err != nil {
+		var expected int64
+		if match := r.Header.Get("If-Match"); match != "" {
+			var err error
+			expected, err = strconv.ParseInt(strings.Trim(match, "\""), 10, 64)
+			if err != nil || expected <= 0 {
+				resource.Fail(r.Context(), w, resource.Invalid("文档版本无效"))
+				return
+			}
+		}
+		if err := s.deleteDocument(r.Context(), chi.URLParam(r, "documentId"), user.ID, expected); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}

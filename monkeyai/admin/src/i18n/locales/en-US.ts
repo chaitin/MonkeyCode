@@ -1,4 +1,10 @@
 export const enUS = {
+  kbPermissions: {
+    noAccess: "No access",
+    readOnly: "Read only",
+    readWrite: "Read and write",
+    permissionFor: "Permissions for {{name}}",
+  },
   accountSettings: {
     loadingProfile: "Loading",
     profileLoadFailed: "Could not load account settings. Please retry.",
@@ -1110,6 +1116,9 @@ export const enUS = {
         'Delete "{{model}}"? This action cannot be undone.',
     },
     knowledgeBases: {
+      icon: "Icon",
+      uploadIcon: "Upload icon",
+      replaceIcon: "Replace icon",
       editorSaved: "Document saved. Relearning has started.",
       editorDiscard: "Leave with unsaved changes?",
       editorUnsaved: "Unsaved changes. Autosaving in 10 seconds",
@@ -1225,10 +1234,12 @@ export const enUS = {
       batchClear: "Clear",
       batchMove: "Move to",
       batchMoveTitle: "Move to folder",
-      batchMoveDescription: "Choose a destination folder. Selected items are appended to its end.",
+      batchMoveDescription:
+        "Choose a destination folder. Selected items are appended to its end.",
       batchMoveRoot: "Root",
       batchDeleteTitle: "Delete selected content?",
-      batchDeleteDescription: "Delete the {{count}} selected items? Folders are deleted with their contents. This action cannot be undone.",
+      batchDeleteDescription:
+        "Delete the {{count}} selected items? Folders are deleted with their contents. This action cannot be undone.",
       batchPartial: "Some items were not completed: {{reason}}",
     },
     skills: {

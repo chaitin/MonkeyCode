@@ -154,13 +154,13 @@ Agent 使用 OAuth access token 按资源类型读取，整体 `GET /api/v1/conf
 }
 ```
 
-资源限 1—100 项，`user_ids` 与 `group_ids` 合计限 1—100 项，重复项会去重。当前允许 `type=model`、`type=rule`、`type=skill`、`type=connector`、`type=expert`、`type=kb`；其他资源通过显式注册 `resource.Shareable` 接入。任一资源非本人所有、接收用户无效或真实分组不存在时整批回滚。分享仅授予使用权限，接收方不能修改、删除或转分享。个人模型的积分倍率由服务端管理，创建时为 `1`。
+资源限 1—100 项，`user_ids` 与 `group_ids` 合计限 1—100 项，重复项会去重。当前允许 `type=model`、`type=rule`、`type=skill`、`type=connector`、`type=expert`、`type=kb`；其他资源通过显式注册 `resource.Shareable` 接入。任一资源非本人所有、接收用户无效或真实分组不存在时整批回滚。非知识库分享仅授予使用权限，接收方不能修改、删除或转分享；知识库可指定 `access_level=read_only/read_write`，读写包含内容删除，但不包含转授权或整库管理。个人模型的积分倍率由服务端管理，创建时为 `1`。
 
 分享到根分组时传入 `"group_ids": ["00000000-0000-0000-0000-000000000000"]`，表示授予当前系统全体用户（包括后续新增用户）使用权，不展开成员快照。可同时指定其他用户或分组；撤销根分组分享仅删除全员授权，独立的用户和分组授权继续生效。所有者目录和详情通过 `shared_groups` 回显根节点，其名称来自 `branding.workspace_name`，`parent_id` 为 `null`。分组搜索按根节点名称匹配，匹配时优先返回且计入 `limit`。
 
 Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `user: {id, name, email}`。`ownership_type` 仅表示资源归属，分享不会改变它；自己的模型和别人分享的模型均为 `user`，通过 `user.id` 与当前用户 ID 的比较区分。管理员在用户侧创建的个人模型同样为 `user`。自己的用户模型返回 `shared_users: [{id, name, email}]`，未分享时为 `[]`；收到分享的用户模型返回 `creator: {id, name, email}`，不展示其他接收人。系统模型不返回这两个字段。分享范围或创建者展示信息变化会影响模型目录 ETag；撤销、删除后的新列表请求和代理调用会重新检查权限。
 
-个人知识库通过 `POST /api/v1/kb` 创建，`GET/PUT/DELETE /api/v1/kb/{id}` 中只有详情对接收方开放。所有者使用同一分享接口，`resources[].type` 为 `kb`。接收方可以在目录、详情、文档读取和检索中使用该知识库，不能修改、删除、写入文档或转分享；所有者目录与详情返回 `shared_users`、`shared_groups`，详情的 `grants` 包含对应只读分享授权。撤销或删除后，接收方的读取和检索立即重新检查权限。
+个人知识库通过 `POST /api/v1/kb` 创建，`GET/PUT/DELETE /api/v1/kb/{id}` 中只有详情对接收方开放。所有者使用同一分享接口，`resources[].type` 为 `kb`。接收方按只读或读写授权使用内容；读写可以新增、编辑、移动和删除文档，不能转分享、修改库设置或删除整库。所有者目录与详情返回 `shared_users`、`shared_groups`，详情的 `grants` 包含逐主体的 `access_level`。撤销或删除后，接收方的读取和检索立即重新检查权限。
 
 个人规则通过 `POST /api/v1/rules` 创建，`GET/PUT/DELETE /api/v1/rules/{id}` 仅供创建者维护，修改和删除需要 `If-Match`。个人规则可由创建者分享给指定用户、分组或根分组使用，接收方不能读取详情或修改、删除、转分享；所有者目录与详情返回 `shared_users` 和 `shared_groups`，详情的 `grants` 包含对应只读分享授权。个人规则不会强制应用，即使历史授权标记为 `required`。撤销后目录、资源解析和个人专家依赖校验不再允许接收方使用，删除规则时一并清理授权。系统规则以授权记录确定可见范围，`usage_requirement=required` 表示当前用户不可关闭，`optional` 表示可关闭；同一规则在管理界面统一设置强制性，已有按用户分别配置强制性的授权仍可读取。规则目录返回 `required`；Agent 首次见到规则时默认开启，之后自行维护非强制规则的开关状态，授权撤销时不再使用该规则。`/api/v1/resources/resolve` 始终包含强制规则，可选规则由 Agent 在 `rule_ids` 中显式选取（专家引用的规则另行返回）。
 
@@ -310,3 +310,21 @@ OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 
 免认证的 `credential_id` 为空字符串。上游测试失败返回 502 和脱敏错误，凭证仍保留，最近测试状态记录为 error。查看工具仅读取已发现目录，返回 `{"items":[...]}`；每项包含 `id`、上游 `name`、`description`、`input_schema`、`enabled` 和 `credits_per_call`。
 
 MCP Inspector 等标准 MCP 客户端单独调试时，复用全局创建的 `mcp:invoke` API Key，选择 Streamable HTTP，地址填写选中凭证的 `mcp_gateway.url`，Header 配置为 `Authorization: Bearer <api_key>`。更换凭证时切换地址，Key 可以继续使用。按上面的握手流程连接后，`tools/list` 仅返回该地址下可用的工具，`tools/call` 使用列表返回的工具名称。`ping` 仅检查网关是否响应，`tools/list` 读取已发现目录；验证上游可达性和刷新目录仍使用 REST `/test`。
+
+
+### 知识库读写权限
+
+系统库管理员可为个人、分组或全员配置只读/读写；客户端及 MCP 使用真实调用者的有效权限，多个来源取最高权限，分组包含下级成员。客户端目录和详情返回 `permissions`，其中 `can_write_content` 表示内容写入能力，不等于 `can_manage_permissions` 或整库删除能力。停用库拒绝普通成员内容操作。
+
+- `GET /api/v1/kb/permissions/list?kb_id=...`、`PUT /api/v1/kb/permissions/update`：个人库所有者管理完整授权清单，更新须携带知识库版本 `If-Match`，复用现有 revision。每个主体独立一条记录，更新保留 ID。新主体省略权限默认只读，已有主体省略权限保留原值。系统库授权仍由管理端通用授权接口管理。
+- 协作编辑/移动须提供文档 `expected_revision`；REST 更新也可使用 `If-Match`，REST 删除使用 `If-Match`，MCP 更新/删除使用 `expected_revision`。版本缺失返回 428、冲突返回 412、只读写入返回 403。本人个人库保留旧无版本调用兼容。
+- `POST /api/v1/kb/{id}/documents/batch`：`action=move/delete`，`ids` 最多 200 项，协作调用使用 `expected_revisions` 逐项携带版本。`POST /api/v1/kb/documents/restudy` 接收 `kb_id`、`document_id`，只读用户不能触发学习。
+- 文档返回 `updated_by_user_id`、`content_updated_at`；旧数据未知值为 null。部署依赖 `000040_kb_permissions` 元数据字段增量迁移。
+
+### 知识库图标
+
+管理端及客户端的知识库创建、更新接口兼容原有 JSON，并支持 `multipart/form-data`：`metadata` 为原有字段组成的 JSON 字符串，`avatar` 必须且仅包含一个图片文件。支持 PNG、JPEG、WebP，文件最多 1 MiB；不修改图标时使用 `application/json` 请求，保留原图。客户端仍仅允许个人库所有者修改库信息与图标，内容读写授权不包含此权限。
+
+知识库列表与详情返回 `avatar_path`，通过管理端 `/api/admin/v1/kb/{id}/avatar` 或客户端 `/api/v1/kb/{id}/avatar` 读取，均检查相应身份与知识库访问权限，不公开存储地址。无图标时使用默认图标。
+
+增量迁移 `000041_kb_avatar` 在 `knowledge_bases` 新增 `avatar_s3_key text NOT NULL DEFAULT ''`，历史知识库默认为无自定义图标，不改变原有业务数据。回滚仅删除该字段，不删除知识库及其内容。

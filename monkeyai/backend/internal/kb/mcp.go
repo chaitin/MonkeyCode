@@ -127,6 +127,16 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 	}
 	var payload any
 	switch call.Name {
+	case "kb_create":
+		input, err := mcpCreateKnowledgeBaseInput(call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		item, err := s.CreateUserKB(ctx, userID, input)
+		if err != nil {
+			return nil, err
+		}
+		payload = publicKBDetail(item, userID)
 	case "kb_list":
 		result, err := s.mcpListKnowledgeBases(ctx, userID, call.Arguments)
 		if err != nil {
@@ -222,7 +232,11 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		if _, err := s.GetAccessibleDocumentInKB(ctx, userID, kbID, documentID); err != nil {
 			return nil, err
 		}
-		if err := s.DeleteUserDocument(ctx, userID, documentID); err != nil {
+		input, err := mcpDocumentInput(call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.deleteDocument(ctx, documentID, userID, input.ExpectedRevision); err != nil {
 			return nil, err
 		}
 		payload = resource.Object{"id": documentID, "deleted": true}
@@ -304,6 +318,19 @@ func mcpTagIDs(values ...string) []string {
 func MCPTools() []resource.Object {
 	return []resource.Object{
 		{
+			"name":        "kb_create",
+			"description": "创建归当前调用者所有的个人知识库，返回知识库 id；可随后通过 kb_create_document 添加文档。不支持创建系统知识库或指定其他所有者。",
+			"inputSchema": resource.Object{
+				"type": "object",
+				"properties": resource.Object{
+					"name":        resource.Object{"type": "string", "minLength": 1, "description": "知识库名称，不超过 200 字节"},
+					"description": resource.Object{"type": "string", "description": "知识库说明，可省略"},
+				},
+				"required":             []string{"name"},
+				"additionalProperties": false,
+			},
+		},
+		{
 			"name":        "kb_list",
 			"description": "列出当前用户可访问且已启用的知识库，支持 owner、q、标签和分页，返回与 REST GET /api/v1/kb 一致的 knowledge_bases DTO",
 			"inputSchema": resource.Object{
@@ -349,7 +376,7 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_create_document",
-			"description": "仅当知识库为当前用户拥有的个人知识库时创建文档，并进入学习队列",
+			"description": "仅当知识库为当前用户拥有或具有读写权限的知识库时创建文档，并进入学习队列",
 			"inputSchema": resource.Object{
 				"type":                 "object",
 				"properties":           mcpDocumentProperties(true),
@@ -359,7 +386,7 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_update_document",
-			"description": "更新当前用户拥有的个人知识库下的文档，并重新进入学习队列；系统知识库或他人知识库文档返回 kb_not_found",
+			"description": "更新当前用户拥有或具有读写权限的知识库下的文档，并重新进入学习队列；只读用户不可写入；协作更新和删除须先读取文档并提供 expected_revision",
 			"inputSchema": resource.Object{
 				"type":                 "object",
 				"properties":           mcpUpdateDocumentProperties(),
@@ -369,10 +396,10 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_delete_document",
-			"description": "删除当前用户拥有的个人知识库下的文档，并取消活跃学习任务；系统知识库或他人知识库文档返回 kb_not_found",
+			"description": "删除当前用户拥有或具有读写权限的知识库下的文档，并取消活跃学习任务；只读用户不可写入；协作更新和删除须先读取文档并提供 expected_revision",
 			"inputSchema": resource.Object{
 				"type":                 "object",
-				"properties":           resource.Object{"kb_id": resource.Object{"type": "string", "format": "uuid"}, "document_id": resource.Object{"type": "string", "format": "uuid"}},
+				"properties":           resource.Object{"kb_id": resource.Object{"type": "string", "format": "uuid"}, "document_id": resource.Object{"type": "string", "format": "uuid"}, "expected_revision": resource.Object{"type": "integer", "minimum": 1}},
 				"required":             []string{"kb_id", "document_id"},
 				"additionalProperties": false,
 			},
@@ -471,6 +498,7 @@ func mcpDocumentProperties(includeKB bool) resource.Object {
 func mcpUpdateDocumentProperties() resource.Object {
 	properties := mcpDocumentProperties(true)
 	properties["document_id"] = resource.Object{"type": "string", "format": "uuid"}
+	properties["expected_revision"] = resource.Object{"type": "integer", "minimum": 1}
 	return properties
 }
 

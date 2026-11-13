@@ -1,4 +1,10 @@
 export const zhCN = {
+  kbPermissions: {
+    noAccess: "未授权",
+    readOnly: "只读",
+    readWrite: "读写",
+    permissionFor: "{{name}}的权限",
+  },
   accountSettings: {
     loadingProfile: "正在加载",
     profileLoadFailed: "账户设置加载失败，请重试。",
@@ -1045,6 +1051,9 @@ export const zhCN = {
       deleteDialogDescription: "确定删除“{{model}}”吗？此操作无法撤销。",
     },
     knowledgeBases: {
+      icon: "图标",
+      uploadIcon: "上传图标",
+      replaceIcon: "替换图标",
       editorSaved: "文档已保存，正在重新学习",
       editorDiscard: "有未保存的修改，确定离开吗？",
       editorUnsaved: "未保存更改，10 秒后自动保存",
@@ -1161,7 +1170,8 @@ export const zhCN = {
       batchMoveDescription: "选择目标文件夹，选中内容会追加到该文件夹末尾。",
       batchMoveRoot: "根目录",
       batchDeleteTitle: "删除所选内容？",
-      batchDeleteDescription: "确定删除已选择的 {{count}} 项吗？文件夹会连同其中的内容一起删除，此操作无法撤销。",
+      batchDeleteDescription:
+        "确定删除已选择的 {{count}} 项吗？文件夹会连同其中的内容一起删除，此操作无法撤销。",
       batchPartial: "部分内容未完成：{{reason}}",
     },
     skills: {

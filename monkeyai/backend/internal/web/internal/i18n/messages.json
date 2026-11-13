@@ -1,4 +1,10 @@
 {
+  "kb_avatar_too_large": {"zh-CN":"图标大小不能超过 1 MiB。", "en-US":"The icon must not exceed 1 MiB."},
+  "kb_avatar_invalid": {"zh-CN":"请选择有效的 PNG、JPG/JPEG 或 WebP 图标。", "en-US":"Choose a valid PNG, JPG/JPEG or WebP icon."},
+  "kb_avatar_unavailable": {"zh-CN":"图标存储服务暂不可用，请稍后重试。", "en-US":"Icon storage is temporarily unavailable. Please try again later."},
+  "kb_form_invalid": {"zh-CN":"知识库表单无效或图标大小超过 1 MiB。", "en-US":"The knowledge base form is invalid or the icon exceeds 1 MiB."},
+  "kb_write_forbidden": {"zh-CN":"知识库仅有只读权限。", "en-US":"You only have read access to this knowledge base."},
+  "document_revision_conflict": {"zh-CN":"文档已更新，请刷新后重试。", "en-US":"The document has changed. Refresh and try again."},
   "request_failed": {"zh-CN":"操作失败，请稍后重试。", "en-US":"The operation failed. Please try again later."},
   "invalid_request": {"zh-CN":"请求参数无效，请检查填写内容。", "en-US":"The request is invalid. Please check the input."},
   "invalid_json": {"zh-CN":"请求格式无效，请提交一个有效的 JSON 对象。", "en-US":"The request must contain one valid JSON object."},

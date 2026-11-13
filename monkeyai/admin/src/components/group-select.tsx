@@ -87,6 +87,12 @@ export type GroupSelectProps = {
   searchable?: boolean
   searchPlaceholder?: string
   noResultsText?: string
+  renderSelection?: (
+    kind: "group" | "user",
+    id: string,
+    name: string,
+    disabled: boolean
+  ) => ReactNode
 }
 
 export function GroupSelect({
@@ -109,6 +115,7 @@ export function GroupSelect({
   searchable = false,
   searchPlaceholder = label,
   noResultsText = emptyText,
+  renderSelection,
 }: GroupSelectProps) {
   const { t } = useTranslation()
   const generatedID = useId()
@@ -270,14 +277,17 @@ export function GroupSelect({
               className="data-[size=sm]:size-5"
             />
           </span>
-          <label htmlFor={checkboxID} className={labelClass(inactive)}>
+          <label
+            htmlFor={renderSelection ? undefined : checkboxID}
+            className={labelClass(inactive)}
+          >
             <span
               className="min-w-0 flex-1 truncate"
               title={user.email ? `${user.name} (${user.email})` : user.name}
             >
               {user.name}
             </span>
-            {multiple ? (
+            {renderSelection ? null : multiple ? (
               <Checkbox
                 id={checkboxID}
                 checked={
@@ -297,6 +307,7 @@ export function GroupSelect({
               />
             )}
           </label>
+          {renderSelection?.("user", user.id, user.name, inactive)}
         </div>
       )
     }
@@ -338,7 +349,10 @@ export function GroupSelect({
           </span>
         ) : null}
         {selectable ? (
-          <label htmlFor={checkboxID} className={labelClass(inactive)}>
+          <label
+            htmlFor={renderSelection ? undefined : checkboxID}
+            className={labelClass(inactive)}
+          >
             {!canCollapse && (
               <span className="-me-1 flex size-6 shrink-0 items-center justify-center">
                 {folderIcon}
@@ -350,7 +364,7 @@ export function GroupSelect({
             >
               {group.name}
             </span>
-            {multiple ? (
+            {renderSelection ? null : multiple ? (
               <Checkbox
                 id={checkboxID}
                 checked={
@@ -382,6 +396,8 @@ export function GroupSelect({
             </span>
           </span>
         )}
+        {selectable &&
+          renderSelection?.("group", group.id, group.name, inactive)}
       </div>
     )
   }
@@ -522,6 +538,13 @@ function GroupSelectList({
       event.altKey ||
       event.ctrlKey ||
       event.metaKey
+    )
+      return
+    if (
+      event.key !== "Tab" &&
+      (event.target as HTMLElement).closest(
+        '[role="combobox"], [role="listbox"]'
+      )
     )
       return
     const element = (event.target as HTMLElement).closest<HTMLElement>(
