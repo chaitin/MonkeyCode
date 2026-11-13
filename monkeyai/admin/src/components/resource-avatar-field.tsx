@@ -12,6 +12,9 @@ export type ResourceAvatarDraft = { file: File; previewURL: string } | null
 
 export function ResourceAvatarField({
   id,
+  label,
+  uploadLabel,
+  replaceLabel,
   fallback,
   acceptedTypes = ["image/png", "image/jpeg", "image/webp"],
   invalidImageMessage,
@@ -22,6 +25,9 @@ export function ResourceAvatarField({
   loading,
 }: {
   id: string
+  label?: string
+  uploadLabel?: string
+  replaceLabel?: string
   fallback: ReactNode
   acceptedTypes?: string[]
   invalidImageMessage?: string
@@ -61,7 +67,7 @@ export function ResourceAvatarField({
   return (
     <Field className="contents">
       <FieldLabel htmlFor={`${id}-upload`} className="col-start-2 row-start-1">
-        {t("pages.experts.avatar")}
+        {label ?? t("pages.experts.avatar")}
       </FieldLabel>
       <Button
         ref={squarePreviewRef}
@@ -71,11 +77,11 @@ export function ResourceAvatarField({
         className="group relative col-start-2 row-span-3 row-start-2 size-full min-h-0 cursor-pointer rounded-md border-input p-1"
         disabled={disabled}
         aria-busy={loading}
-        aria-label={t(
+        aria-label={
           imageURL
-            ? "pages.experts.replaceAvatar"
-            : "pages.experts.uploadAvatar"
-        )}
+            ? (replaceLabel ?? t("pages.experts.replaceAvatar"))
+            : (uploadLabel ?? t("pages.experts.uploadAvatar"))
+        }
         onClick={() => input.current?.click()}
       >
         <Avatar className="size-full rounded-md after:rounded-md after:border-0">

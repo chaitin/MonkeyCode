@@ -22,21 +22,23 @@ var documentStatuses = []string{"pending", "learning", "learned", "failed"}
 var documentSourceTypes = []string{"text", "file", "url"}
 
 type DocumentInput struct {
-	KbID       string  `json:"kb_id"`
-	ParentID   *string `json:"parent_id"`
-	NodeType   string  `json:"node_type"`
-	Title      string  `json:"title"`
-	SourceType string  `json:"source_type"`
-	Content    string  `json:"content"`
-	FileName   string  `json:"file_name"`
-	MimeType   string  `json:"mime_type"`
-	SizeBytes  int64   `json:"size_bytes"`
+	ExpectedRevision int64   `json:"expected_revision,omitempty"`
+	KbID             string  `json:"kb_id"`
+	ParentID         *string `json:"parent_id"`
+	NodeType         string  `json:"node_type"`
+	Title            string  `json:"title"`
+	SourceType       string  `json:"source_type"`
+	Content          string  `json:"content"`
+	FileName         string  `json:"file_name"`
+	MimeType         string  `json:"mime_type"`
+	SizeBytes        int64   `json:"size_bytes"`
 }
 
 type MoveDocumentInput struct {
-	ParentID *string `json:"parent_id"`
-	PrevID   string  `json:"prev_id"`
-	NextID   string  `json:"next_id"`
+	ExpectedRevision int64   `json:"expected_revision,omitempty"`
+	ParentID         *string `json:"parent_id"`
+	PrevID           string  `json:"prev_id"`
+	NextID           string  `json:"next_id"`
 }
 
 type DocumentListFilter struct {
@@ -120,11 +122,11 @@ func (s *Service) accessibleKB(ctx context.Context, userID, kbID string) (resour
 	if err != nil {
 		return nil, err
 	}
-	ok, err := resource.Accessible(ctx, s.store.Pool, "kb", item, userID)
+	permission, err := resolvePermissions(ctx, s.store.Pool, item, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !permission.CanRead {
 		return nil, resource.NotFound
 	}
 	return s.CRUD.Get(ctx, s.store.Pool, kbID)
@@ -252,33 +254,19 @@ func (s *Service) ownedUserDocument(ctx context.Context, userID, documentID stri
 }
 
 func (s *Service) CreateUserDocument(ctx context.Context, userID string, input DocumentInput) (resource.Object, error) {
-	input.KbID = strings.TrimSpace(input.KbID)
-	if input.KbID == "" {
-		return nil, resource.Invalid("知识库不能为空")
-	}
-	if _, err := s.ownedUserKB(ctx, userID, input.KbID); err != nil {
-		return nil, err
-	}
-	return s.CreateDocument(ctx, userID, input)
+	return s.createDocument(ctx, userID, input, true)
 }
-
 func (s *Service) UpdateUserDocument(ctx context.Context, userID, documentID string, input DocumentInput) (resource.Object, error) {
-	item, err := s.ownedUserDocument(ctx, userID, documentID)
-	if err != nil {
-		return nil, err
-	}
-	input.KbID = item.String("kb_id")
-	return s.UpdateDocument(ctx, documentID, input)
+	return s.updateDocument(ctx, documentID, input, userID)
 }
-
 func (s *Service) DeleteUserDocument(ctx context.Context, userID, documentID string) error {
-	if _, err := s.ownedUserDocument(ctx, userID, documentID); err != nil {
-		return err
-	}
-	return s.DeleteDocument(ctx, documentID)
+	return s.deleteDocument(ctx, documentID, userID, 0)
 }
 
 func (s *Service) CreateDocument(ctx context.Context, actor string, input DocumentInput) (resource.Object, error) {
+	return s.createDocument(ctx, actor, input, false)
+}
+func (s *Service) createDocument(ctx context.Context, actor string, input DocumentInput, personal bool) (resource.Object, error) {
 	input.KbID = strings.TrimSpace(input.KbID)
 	input.Title = strings.TrimSpace(input.Title)
 	input.SourceType = strings.TrimSpace(input.SourceType)
@@ -303,6 +291,14 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 	}
 	defer rollback(ctx, tx, input.KbID)
 	queries := sqlc.New(tx)
+	if _, err = queries.LockKbResource(ctx, input.KbID); err != nil {
+		return nil, err
+	}
+	if personal {
+		if err = requireContentWrite(ctx, tx, input.KbID, actor); err != nil {
+			return nil, err
+		}
+	}
 	binding, err := queries.GetKbEmbedding(ctx, input.KbID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -368,6 +364,9 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 		return nil, err
 	}
 	if nodeType == "folder" {
+		if err = recordContentChange(ctx, tx, actor, input.KbID, id, "create"); err != nil {
+			return nil, err
+		}
 		if err = tx.Commit(ctx); err != nil {
 			return nil, err
 		}
@@ -379,6 +378,9 @@ func (s *Service) CreateDocument(ctx context.Context, actor string, input Docume
 	}
 	targetModel, targetDimension := embeddingBindingTarget(binding.EmbeddingModelID, binding.EmbeddingDimension)
 	if err = createKbDocumentJob(ctx, queries, input.KbID, id, OperationLearn, revision, targetModel, targetDimension); err != nil {
+		return nil, err
+	}
+	if err = recordContentChange(ctx, tx, actor, input.KbID, id, "create"); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -401,6 +403,9 @@ func lockDocument(ctx context.Context, queries *sqlc.Queries, id string) (resour
 }
 
 func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentInput) (resource.Object, error) {
+	return s.updateDocument(ctx, id, input, "")
+}
+func (s *Service) updateDocument(ctx context.Context, id string, input DocumentInput, actor string) (resource.Object, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -412,6 +417,12 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, resource.NotFound
 		}
+		return nil, err
+	}
+	if err = requireContentWrite(ctx, tx, current.String("kb_id"), actor); err != nil {
+		return nil, err
+	}
+	if err = requireDocumentVersion(ctx, tx, current, actor, input.ExpectedRevision); err != nil {
 		return nil, err
 	}
 	if input.KbID != "" && strings.TrimSpace(input.KbID) != current.String("kb_id") {
@@ -428,6 +439,12 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 			SourceType: "text",
 			SizeBytes:  0,
 		}); err != nil {
+			return nil, err
+		}
+		if err = bumpDocumentVersion(ctx, tx, current); err != nil {
+			return nil, err
+		}
+		if err = recordContentChange(ctx, tx, actor, current.String("kb_id"), id, "update"); err != nil {
 			return nil, err
 		}
 		if err = tx.Commit(ctx); err != nil {
@@ -511,6 +528,12 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 	}); err != nil {
 		return nil, err
 	}
+	if err = bumpDocumentVersion(ctx, tx, current); err != nil {
+		return nil, err
+	}
+	if err = recordContentChange(ctx, tx, actor, current.String("kb_id"), id, "update"); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -518,16 +541,26 @@ func (s *Service) UpdateDocument(ctx context.Context, id string, input DocumentI
 }
 
 func (s *Service) DeleteDocument(ctx context.Context, id string) error {
+	return s.deleteDocument(ctx, id, "", 0)
+}
+func (s *Service) deleteDocument(ctx context.Context, id, actor string, expected int64) error {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer rollback(ctx, tx, id)
 	queries := sqlc.New(tx)
-	if _, err = lockDocument(ctx, queries, id); err != nil {
+	current, err := lockDocument(ctx, queries, id)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return resource.NotFound
 		}
+		return err
+	}
+	if err = requireContentWrite(ctx, tx, current.String("kb_id"), actor); err != nil {
+		return err
+	}
+	if err = requireDocumentVersion(ctx, tx, current, actor, expected); err != nil {
 		return err
 	}
 	children, err := queries.CountKbDocumentChildren(ctx, &id)
@@ -550,10 +583,16 @@ func (s *Service) DeleteDocument(ctx context.Context, id string) error {
 	if deleted == 0 {
 		return resource.NotFound
 	}
+	if err = recordContentChange(ctx, tx, actor, current.String("kb_id"), id, "delete"); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
 func (s *Service) RestudyDocument(ctx context.Context, id string) (resource.Object, error) {
+	return s.restudyDocument(ctx, id, "")
+}
+func (s *Service) restudyDocument(ctx context.Context, id, actor string) (resource.Object, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -565,6 +604,9 @@ func (s *Service) RestudyDocument(ctx context.Context, id string) (resource.Obje
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, resource.NotFound
 		}
+		return nil, err
+	}
+	if err = requireContentWrite(ctx, tx, document.String("kb_id"), actor); err != nil {
 		return nil, err
 	}
 	if document.String("node_type") == "folder" {
@@ -642,7 +684,7 @@ func (s *Service) SearchLearnedWithResponse(ctx context.Context, userID string, 
 	} else {
 		normalized.KbIDs = ids
 	}
-	return s.searchAccessible(ctx, accessible, normalized)
+	return s.searchWithPermissionRecheck(ctx, userID, accessible, normalized)
 }
 
 func (s *Service) SearchWithResponse(ctx context.Context, userID string, input SearchInput) (SearchResponse, error) {
@@ -650,7 +692,7 @@ func (s *Service) SearchWithResponse(ctx context.Context, userID string, input S
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	return s.searchAccessible(ctx, accessible, input)
+	return s.searchWithPermissionRecheck(ctx, userID, accessible, input)
 }
 
 func normalizeSearchInput(input SearchInput) (SearchInput, error) {

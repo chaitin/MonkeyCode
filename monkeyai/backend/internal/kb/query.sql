@@ -579,3 +579,32 @@ WHERE c.kb_id = sqlc.arg(kb_id)
         OR c.embedding_model_id IS DISTINCT FROM sqlc.arg(embedding_model_id)::uuid
     )
 ORDER BY c.chunk_index, c.id;
+
+-- name: KbContentAccess :one
+WITH RECURSIVE user_groups(id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = sqlc.arg(actor)::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT p.id FROM groups g JOIN user_groups ug ON ug.id = g.id
+    JOIN groups p ON p.id = g.parent_id WHERE p.deleted_at IS NULL
+)
+SELECT COALESCE(max(CASE WHEN r.access_level = 'read_write' THEN 2 ELSE 1 END), 0)::integer AS level
+FROM resource_access_grants r
+WHERE r.resource_type = 'kb' AND r.resource_id = sqlc.arg(kb_id)::uuid
+  AND (r.user_id = sqlc.arg(actor)::uuid OR r.all_users OR r.group_id IN (SELECT id FROM user_groups))
+  AND EXISTS (SELECT 1 FROM users u WHERE u.id = sqlc.arg(actor)::uuid AND u.status = 'active' AND u.deleted_at IS NULL);
+
+-- name: KbActorActive :one
+SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL)::boolean;
+
+-- name: TouchKbDocumentAuthor :exec
+UPDATE knowledge_base_documents SET updated_by_user_id = $2, content_updated_at = now() WHERE id = $1;
+
+-- name: BumpKbDocumentRevision :exec
+UPDATE knowledge_base_documents SET revision = revision + 1 WHERE id = $1 AND revision = $2;
+
+-- name: SetAvatar :exec
+UPDATE knowledge_bases SET avatar_s3_key = $2 WHERE id = $1;
+
+-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM knowledge_bases WHERE avatar_s3_key = $1);

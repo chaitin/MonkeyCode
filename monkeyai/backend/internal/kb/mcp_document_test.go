@@ -3,6 +3,7 @@ package kb
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -95,14 +96,14 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 	if _, err := service.GetAccessibleDocument(ctx, userB, systemDocument); !errors.Is(err, resource.NotFound) {
 		t.Fatalf("无权限用户读取系统知识库文档应返回 NotFound，实际: %v", err)
 	}
-	if _, err := service.CreateUserDocument(ctx, userA, DocumentInput{KbID: systemKB, Title: "越权", Content: "越权"}); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("系统知识库创建文档应返回 NotFound，实际: %v", err)
+	if _, err := service.CreateUserDocument(ctx, userA, DocumentInput{KbID: systemKB, Title: "越权", Content: "越权"}); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("系统知识库创建文档应返回 Forbidden，实际: %v", err)
 	}
-	if _, err := service.UpdateUserDocument(ctx, userA, systemDocument, DocumentInput{Title: "越权"}); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("更新系统知识库文档应返回 NotFound，实际: %v", err)
+	if _, err := service.UpdateUserDocument(ctx, userA, systemDocument, DocumentInput{Title: "越权"}); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("更新系统知识库文档应返回 Forbidden，实际: %v", err)
 	}
-	if err := service.DeleteUserDocument(ctx, userA, systemDocument); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("删除系统知识库文档应返回 NotFound，实际: %v", err)
+	if err := service.DeleteUserDocument(ctx, userA, systemDocument); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("删除系统知识库文档应返回 Forbidden，实际: %v", err)
 	}
 
 	if _, err := pool.Exec(ctx, `INSERT INTO resource_access_grants(resource_type,resource_id,user_id,access_level,granted_by_user_id) VALUES('kb',$1,$2,'read_only',$3)`, kbID, userB, userA); err != nil {
@@ -114,11 +115,11 @@ func TestUserDocumentMCPAccess(t *testing.T) {
 	if page, err := service.ListAccessibleDocuments(ctx, userB, kbID, DocumentListFilter{}); err != nil || len(page.Items) != 1 || page.Items[0].String("id") != documentID {
 		t.Fatalf("只读分享用户应可列出文档: %v, %v", page, err)
 	}
-	if _, err := service.UpdateUserDocument(ctx, userB, documentID, DocumentInput{Title: "只读越权"}); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("只读分享用户更新文档应返回 NotFound，实际: %v", err)
+	if _, err := service.UpdateUserDocument(ctx, userB, documentID, DocumentInput{Title: "只读越权"}); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("只读分享用户更新文档应返回 Forbidden，实际: %v", err)
 	}
-	if err := service.DeleteUserDocument(ctx, userB, documentID); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("只读分享用户删除文档应返回 NotFound，实际: %v", err)
+	if err := service.DeleteUserDocument(ctx, userB, documentID); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("只读分享用户删除文档应返回 Forbidden，实际: %v", err)
 	}
 
 	updated, err := service.UpdateUserDocument(ctx, userA, documentID, DocumentInput{Title: "更新文档", Content: "更新正文"})

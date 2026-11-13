@@ -191,6 +191,9 @@ func Grants(ctx context.Context, q Queryer, kind, id string) ([]Object, error) {
 	return grants, nil
 }
 func SaveGrants(ctx context.Context, tx pgx.Tx, kind, id, actor string, raw any, personal bool) error {
+	if kind == "kb" {
+		return SaveKbGrants(ctx, tx, id, actor, raw, personal)
+	}
 	b, err := json.Marshal(raw)
 	if err != nil {
 		return fmt.Errorf("编码 %s 资源 %s 的授权: %w", kind, id, err)

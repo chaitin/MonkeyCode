@@ -195,11 +195,11 @@ func TestUserKBRESTOperations(t *testing.T) {
 	if _, err := service.GetAccessibleDocumentInKB(ctx, userB, kbID, documentID); err != nil {
 		t.Fatalf("只读分享用户读取文档失败: %v", err)
 	}
-	if _, err := service.UpdateUserDocument(ctx, userB, documentID, DocumentInput{Title: "只读越权"}); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("只读分享用户更新文档应返回 NotFound，实际: %v", err)
+	if _, err := service.UpdateUserDocument(ctx, userB, documentID, DocumentInput{Title: "只读越权"}); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("只读分享用户更新文档应返回 Forbidden，实际: %v", err)
 	}
-	if err := service.DeleteUserDocument(ctx, userB, documentID); !errors.Is(err, resource.NotFound) {
-		t.Fatalf("只读分享用户删除文档应返回 NotFound，实际: %v", err)
+	if err := service.DeleteUserDocument(ctx, userB, documentID); resource.AsError(err).Status != http.StatusForbidden {
+		t.Fatalf("只读分享用户删除文档应返回 Forbidden，实际: %v", err)
 	}
 
 	tagID := resource.ID()

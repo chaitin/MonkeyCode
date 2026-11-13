@@ -1,0 +1,173 @@
+package kb
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
+	"log/slog"
+	"mime"
+	"net/http"
+	"time"
+
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb/sqlc"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/go-chi/chi/v5"
+	_ "golang.org/x/image/webp"
+)
+
+const avatarUploadLimit = 1 << 20
+const avatarChangeKey = "avatar"
+
+// 仅保存处理器可构造此类型，JSON 中的对象不能指定存储键。
+type avatarChange struct {
+	data []byte
+	mime string
+	key  string
+	old  string
+}
+
+func readAvatar(data []byte) (*avatarChange, error) {
+	if len(data) > avatarUploadLimit {
+		return nil, resource.InvalidCode("kb_avatar_too_large", "图标大小不能超过 1 MiB")
+	}
+	_, format, err := image.DecodeConfig(bytes.NewReader(data))
+	contentType := map[string]string{"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}[format]
+	if err != nil || contentType == "" {
+		return nil, resource.InvalidCode("kb_avatar_invalid", "请选择有效的 PNG、JPG/JPEG 或 WebP 图片")
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return nil, resource.InvalidCode("kb_avatar_invalid", "图标图片损坏")
+	}
+	return &avatarChange{data: data, mime: contentType}, nil
+}
+
+func parseKbForm(w http.ResponseWriter, r *http.Request) (resource.Object, *avatarChange, error) {
+	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	var in resource.Object
+	if mediaType != "multipart/form-data" {
+		err := resource.Decode(w, r, &in)
+		return in, nil, err
+	}
+	// Keep the existing 1 MiB metadata allowance, plus one 1 MiB image and framing.
+	r.Body = http.MaxBytesReader(w, r.Body, 2*avatarUploadLimit+16384)
+	if err := r.ParseMultipartForm(2 * avatarUploadLimit); err != nil {
+		return nil, nil, resource.InvalidCode("kb_form_invalid", "知识库表单无效或图标大小超过 1 MiB")
+	}
+	defer r.MultipartForm.RemoveAll()
+	metadata := r.MultipartForm.Value["metadata"]
+	if len(metadata) != 1 || len(metadata[0]) > 1<<20 || json.Unmarshal([]byte(metadata[0]), &in) != nil || in == nil {
+		return nil, nil, resource.InvalidCode("kb_form_invalid", "知识库 metadata 必须为 JSON 对象")
+	}
+	files := r.MultipartForm.File["avatar"]
+	if len(files) != 1 {
+		return nil, nil, resource.InvalidCode("kb_avatar_invalid", "请选择一张图标图片")
+	}
+	if files[0].Size > avatarUploadLimit {
+		return nil, nil, resource.InvalidCode("kb_avatar_too_large", "图标大小不能超过 1 MiB")
+	}
+	file, err := files[0].Open()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, avatarUploadLimit+1))
+	if err != nil {
+		return nil, nil, err
+	}
+	avatar, err := readAvatar(data)
+	return in, avatar, err
+}
+
+func (s *Service) saveKb(w http.ResponseWriter, r *http.Request) {
+	in, avatar, err := parseKbForm(w, r)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	user, _ := identity.UserFromContext(r.Context())
+	out, err := s.saveWithAvatar(r.Context(), user.ID, chi.URLParam(r, "id"), r.Header.Get("If-Match"), in, avatar)
+	if err != nil {
+		resource.Fail(r.Context(), w, err)
+		return
+	}
+	resource.ETag(w, out)
+	resource.JSON(r.Context(), w, http.StatusOK, out)
+}
+
+func (s *Service) saveWithAvatar(ctx context.Context, actor, id, match string, in resource.Object, avatar *avatarChange) (resource.Object, error) {
+	return s.saveAvatar(ctx, actor, id, match, in, avatar, false)
+}
+
+func (s *Service) saveAvatar(ctx context.Context, actor, id, match string, in resource.Object, avatar *avatarChange, personal bool) (resource.Object, error) {
+	delete(in, avatarChangeKey)
+	if avatar != nil {
+		if id != "" {
+			if personal {
+				if _, err := s.CRUD.GetUser(ctx, s.store.Pool, id, actor); err != nil {
+					return nil, err
+				}
+			}
+			imported, err := resource.Imported(ctx, s.store.Pool, "kb", id)
+			if err != nil {
+				return nil, err
+			}
+			if imported {
+				return nil, resource.ImportedReadOnly
+			}
+		}
+		if s.storage == nil {
+			if personal {
+				return nil, &resource.Error{Status: 503, Code: "kb_avatar_unavailable", Message: "图标存储不可用"}
+			}
+			return nil, &resource.Error{Status: 503, Code: "storage_unavailable", Message: "图标存储不可用"}
+		}
+		if len(avatar.data) > 0 {
+			avatar.key = "knowledge-bases/avatars/" + resource.ID()
+			if err := s.storage.Put(ctx, avatar.key, avatar.data, avatar.mime); err != nil {
+				s.discardUnusedAvatar(ctx, avatar.key)
+				return nil, err
+			}
+		}
+		in[avatarChangeKey] = avatar
+	}
+	save := s.CRUD.Save
+	if personal {
+		save = s.CRUD.SaveUser
+	}
+	out, err := save(ctx, actor, id, match, in)
+	if avatar != nil {
+		if err != nil && avatar.key != "" {
+			s.discardUnusedAvatar(ctx, avatar.key)
+		} else if err == nil && avatar.old != "" {
+			s.discardUnusedAvatar(ctx, avatar.old)
+		}
+	}
+	if err == nil && personal {
+		if err = s.decoratePermissions(ctx, out, actor); err != nil {
+			return nil, err
+		}
+	}
+	return out, err
+}
+
+func (s *Service) discardUnusedAvatar(ctx context.Context, key string) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	// Save can commit before its final response read fails. Never delete a referenced
+	// object, including an image shared by another (or soft-deleted) kb.
+	referenced, err := sqlc.New(s.store.Pool).AvatarReferenced(cleanup, key)
+	if err != nil {
+		slog.WarnContext(cleanup, "检查知识库图标引用失败", "module", "kb", "error", err)
+		return
+	}
+	if !referenced {
+		if err := s.storage.Delete(cleanup, key); err != nil {
+			slog.WarnContext(cleanup, "清理知识库图标失败", "module", "kb", "error", err)
+		}
+	}
+}
