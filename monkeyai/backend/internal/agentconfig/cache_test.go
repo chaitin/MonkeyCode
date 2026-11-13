@@ -6,12 +6,11 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -80,21 +79,21 @@ func catalogRead(t testing.TB, handler http.Handler, user, path, etag string) *h
 	return w
 }
 
-func TestCatalogFast304AndQueryIsolation(t *testing.T) {
+func TestCatalogConditionalRequestsAndQueryIsolation(t *testing.T) {
 	r, user, other := catalogDatabase(t)
 	seedCatalog(t, r, user, other)
 	handler := catalogHandler(t, r, user, other)
 	trace := r.store.Pool.Config().ConnConfig.Tracer.(*catalogTrace)
 	for _, path := range []string{"/rules", "/skills?page_size=2", "/experts", "/connectors", "/skills/tags", "/experts/tags", "/connectors/tags"} {
-		first := catalogRead(t, handler, user, path, "")
 		trace.reset()
+		first := catalogRead(t, handler, user, path, "")
 		cached := catalogRead(t, handler, user, path, "W/"+first.Header().Get("ETag"))
 		if cached.Code != 304 || cached.Body.Len() != 0 {
 			t.Fatalf("%s 未命中条件缓存: %d %s", path, cached.Code, cached.Body.String())
 		}
 		for name, n := range trace.counts() {
-			if strings.HasPrefix(name, "Catalog") && !strings.HasSuffix(name, "Version") {
-				t.Fatalf("304 重建了目录: %s=%d", name, n)
+			if strings.HasPrefix(name, "Catalog") && strings.HasSuffix(name, "Version") {
+				t.Fatalf("%s 执行了全表版本检查: %s=%d", path, name, n)
 			}
 		}
 	}
@@ -167,7 +166,7 @@ func TestCatalogCredentialRevocationInvalidatesETag(t *testing.T) {
 	}
 }
 
-func TestCatalogVersionUsesReadSnapshot(t *testing.T) {
+func TestCatalogReadsUseSnapshot(t *testing.T) {
 	r, user, other := catalogDatabase(t)
 	seedCatalog(t, r, user, other)
 	tx, err := r.transaction(t.Context())
@@ -175,97 +174,60 @@ func TestCatalogVersionUsesReadSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tx.Rollback(context.Background())
-	before, err := r.version(t.Context(), tx, "skills")
+	ids := []string{"10000000-0000-0000-0000-000000000001"}
+	before, err := r.tags(t.Context(), tx, "skills", ids)
 	if err != nil {
 		t.Fatal(err)
 	}
 	catalogExec(t, r, "UPDATE tags SET name='changed-'||id::text")
-	same, err := r.version(t.Context(), tx, "skills")
+	same, err := r.tags(t.Context(), tx, "skills", ids)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := r.version(t.Context(), r.store.Pool, "skills")
+	fresh, err := r.tags(t.Context(), r.store.Pool, "skills", ids)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if same.State != before.State || fresh.State == before.State {
-		t.Fatal("版本校验未遵循目录读取的事务快照")
+	if !reflect.DeepEqual(same, before) || reflect.DeepEqual(fresh, before) {
+		t.Fatal("目录读取未遵循事务快照")
 	}
 }
 
-func TestCatalogVersionTracksOAuthDeadline(t *testing.T) {
-	r, user, _ := catalogDatabase(t)
-	connector := "10000000-0000-0000-0000-000000000001"
-	catalogExec(t, r, "INSERT INTO connectors(id,owner_user_id,name,url,authorization_mode,authorization_method) VALUES($1,$2,'oauth','https://example.com/mcp','independent','oauth')", connector, user)
-	catalogExec(t, r, "INSERT INTO connector_credentials(connector_id,user_id,config_revision,oauth_access_token,oauth_expires_at) VALUES($1,$2,1,'secret',now()+interval '10 seconds')", connector, user)
-	version, err := r.version(t.Context(), r.store.Pool, "connectors")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version.ValidUntil <= float64(time.Now().Unix()) {
-		t.Fatal("版本校验没有返回无刷新令牌凭证的过期边界")
-	}
-	catalogExec(t, r, "UPDATE connector_credentials SET oauth_expires_at=now()-interval '10 seconds'")
-	earlierClock, err := sqlc.New(r.store.Pool).CatalogConnectorsVersion(t.Context(), float64(time.Now().Add(-time.Minute).Unix()))
-	if err != nil || earlierClock.ValidUntil == 0 {
-		t.Fatalf("到期边界使用了数据库时钟而非认证时钟: %v", err)
-	}
-	catalogExec(t, r, "UPDATE connector_credentials SET oauth_refresh_token='refresh'")
-	refreshable, err := r.version(t.Context(), r.store.Pool, "connectors")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if refreshable.ValidUntil != 0 {
-		t.Fatal("可刷新令牌的时间变化不应使公开目录定时失效")
-	}
-}
-
-func TestCatalogCacheConcurrent(t *testing.T) {
-	var cache catalogCache
-	var workers sync.WaitGroup
-	now := time.Now()
-	for worker := range 16 {
-		workers.Go(func() {
-			for i := range 32 {
-				key := string(rune('a'+worker)) + strings.Repeat("x", i)
-				cache.put(key, catalogVersion{State: "state"}, key, now)
-				if got, ok := cache.get(key, "state", now); ok && got != key {
-					t.Errorf("并发缓存混入其他查询: got=%q want=%q", got, key)
+func TestCatalogOAuthExpirationETag(t *testing.T) {
+	for _, refreshable := range []bool{false, true} {
+		name := "无刷新令牌"
+		if refreshable {
+			name = "可刷新令牌"
+		}
+		t.Run(name, func(t *testing.T) {
+			r, user, _ := catalogDatabase(t)
+			connector := "10000000-0000-0000-0000-000000000001"
+			refreshToken := ""
+			if refreshable {
+				refreshToken = "refresh"
+			}
+			catalogExec(t, r, "INSERT INTO connectors(id,ownership_type,owner_user_id,name,url,authorization_mode,authorization_method) VALUES($1,'user',$2,'oauth','https://example.com/mcp','independent','oauth')", connector, user)
+			catalogExec(t, r, "INSERT INTO connector_credentials(connector_id,user_id,config_revision,oauth_access_token,oauth_refresh_token,oauth_expires_at) VALUES($1,$2,1,'secret',$3,now()+interval '1 hour')", connector, user, refreshToken)
+			handler := catalogHandler(t, r, user)
+			before := catalogRead(t, handler, user, "/connectors", "")
+			if !strings.Contains(before.Body.String(), `"authorization_status":"authorized"`) {
+				t.Fatalf("目录未包含有效凭证: %s", before.Body.String())
+			}
+			etag := before.Header().Get("ETag")
+			if got := catalogRead(t, handler, user, "/connectors", etag); got.Code != 304 {
+				t.Fatal("凭证未变更时未返回304")
+			}
+			catalogExec(t, r, "UPDATE connector_credentials SET oauth_expires_at=now()-interval '10 seconds'")
+			after := catalogRead(t, handler, user, "/connectors", etag)
+			if refreshable {
+				if after.Code != 304 {
+					t.Fatal("可刷新令牌的过期时间不应改变公开目录")
 				}
+			} else if after.Code != 200 || after.Header().Get("ETag") == etag ||
+				!strings.Contains(after.Body.String(), `"authorization_status":"authorization_required"`) ||
+				strings.Contains(after.Body.String(), `"mcp_gateway"`) {
+				t.Fatalf("凭证过期后目录状态不正确: status=%d body=%s", after.Code, after.Body.String())
 			}
 		})
-	}
-	workers.Wait()
-}
-
-func TestCatalogCacheDeadlineAndCapacity(t *testing.T) {
-	var cache catalogCache
-	now := time.Unix(2000000000, 0)
-	version := catalogVersion{State: "state", ValidUntil: float64(now.Unix() + 5)}
-	cache.put("key", version, "etag", now)
-	if _, ok := cache.get("key", "state", now.Add(4*time.Second)); !ok {
-		t.Fatal("有效期内未命中缓存")
-	}
-	if _, ok := cache.get("key", "state", now.Add(5*time.Second)); ok {
-		t.Fatal("凭证过期后仍命中缓存")
-	}
-	version.ValidUntil = 0
-	cache.put("key", version, "etag", now)
-	if _, ok := cache.get("key", "changed", now); ok {
-		t.Fatal("状态变更后仍命中缓存")
-	}
-	cache.put("key", version, "etag", now)
-	if _, ok := cache.get("key", "state", now.Add(time.Minute)); ok {
-		t.Fatal("缓存超过最大保留时间")
-	}
-	for i := range 600 {
-		cache.put(strings.Repeat("x", i), version, "etag", now)
-	}
-	if len(cache.entries) != 512 {
-		t.Fatalf("缓存未限制容量: %d", len(cache.entries))
-	}
-	cache.put(strings.Repeat("y", 4097), version, "etag", now)
-	if len(cache.entries) != 512 {
-		t.Fatal("超长查询键进入缓存")
 	}
 }
