@@ -10,9 +10,10 @@ import (
 type Kind string
 
 const (
-	KindText  Kind = "text"
-	KindImage Kind = "image"
-	KindVideo Kind = "video"
+	KindText      Kind = "text"
+	KindImage     Kind = "image"
+	KindVideo     Kind = "video"
+	KindEmbedding Kind = "embedding"
 
 	ImageQuality1K = "1K"
 	ImageQuality2K = "2K"
@@ -39,6 +40,7 @@ const (
 	ProtocolAnthropic       Protocol = "anthropic"
 	ProtocolImage           Protocol = "image_generation"
 	ProtocolVideo           Protocol = "video_generation"
+	ProtocolEmbedding       Protocol = "openai_embeddings"
 )
 
 type AdvancedConfig struct {
@@ -183,6 +185,10 @@ type VideoPricing struct {
 	Rates []VideoResolutionRate `json:"rates"`
 }
 
+type EmbeddingConfig struct {
+	Dimension int `json:"dimension"`
+}
+
 type Authorization struct {
 	AllUsers bool     `json:"all_users"`
 	UserIDs  []string `json:"user_ids"`
@@ -207,6 +213,7 @@ type Model struct {
 	ImagePricing     *ImagePricing      `json:"image_pricing,omitempty"`
 	VideoConfig      *VideoConfig       `json:"video_config,omitempty"`
 	VideoPricing     *VideoPricing      `json:"video_pricing,omitempty"`
+	EmbeddingConfig  *EmbeddingConfig   `json:"embedding_config,omitempty"`
 	BaseURL          string             `json:"base_url"`
 	ProxyID          string             `json:"proxy_id"`
 	APIKey           string             `json:"-"`
@@ -237,6 +244,7 @@ type AgentModel struct {
 	ImagePricing        *ImagePricing      `json:"image_pricing,omitempty"`
 	VideoConfig         *AgentVideoConfig  `json:"video_config,omitempty"`
 	VideoPricing        *VideoPricing      `json:"video_pricing,omitempty"`
+	EmbeddingConfig     *EmbeddingConfig   `json:"embedding_config,omitempty"`
 	ContextWindowTokens int64              `json:"context_window_tokens"`
 	MaxOutputTokens     int64              `json:"max_output_tokens"`
 	SupportsVision      bool               `json:"supports_vision"`
@@ -255,6 +263,7 @@ type Target struct {
 	Kind            Kind
 	Provider        Provider
 	ProviderOptions json.RawMessage
+	EmbeddingConfig *EmbeddingConfig
 	BaseURL         string
 	ProxyURL        string
 	APIKey          string

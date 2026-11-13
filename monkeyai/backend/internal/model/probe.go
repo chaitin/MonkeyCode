@@ -39,8 +39,24 @@ func (s *Service) probeModel(w http.ResponseWriter, r *http.Request) {
 		modelError(r.Context(), w, status, "模型不存在")
 		return
 	}
-	if item.OwnershipType != "system" || item.Kind != KindText {
-		modelError(r.Context(), w, http.StatusBadRequest, "仅支持测试系统大语言模型")
+	if item.OwnershipType != "system" || (item.Kind != KindText && item.Kind != KindEmbedding) {
+		modelError(r.Context(), w, http.StatusBadRequest, "仅支持测试系统大语言模型或向量模型")
+		return
+	}
+	if item.Kind == KindEmbedding {
+		result, err := s.testEmbedding(r.Context(), item, strings.TrimSpace(input.Message))
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			status := http.StatusBadGateway
+			if errors.Is(err, errEmbeddingProbeTimeout) {
+				status = http.StatusGatewayTimeout
+			}
+			modelError(r.Context(), w, status, err.Error())
+			return
+		}
+		modelJSON(w, http.StatusOK, result)
 		return
 	}
 	upstream, err := probeRequest(item, input.Message)

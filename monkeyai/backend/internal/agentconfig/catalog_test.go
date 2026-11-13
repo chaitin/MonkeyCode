@@ -167,9 +167,6 @@ func TestCatalogPageMatchesVisibleList(t *testing.T) {
 							if !slices.Equal(selected.ResourceIds, ids) {
 								t.Fatalf("%s page=%d: ids=%v want=%v", kind, page, selected.ResourceIds, ids)
 							}
-							if len(ids) == 0 {
-								continue
-							}
 							got, err := r.list(ctx, r.store.Pool, user, kind, filter, selected.ResourceIds)
 							if err != nil {
 								t.Fatal(err)
@@ -182,6 +179,44 @@ func TestCatalogPageMatchesVisibleList(t *testing.T) {
 						}
 					}
 				}
+			}
+		}
+	}
+}
+
+func TestKnowledgeBaseConnectorPagination(t *testing.T) {
+	r, user, other := catalogDatabase(t)
+	seedCatalog(t, r, user, other)
+	for _, tc := range []struct {
+		owner, query string
+		tags         []string
+		want         int64
+	}{
+		{owner: "all", query: "knowledge base", want: 1},
+		{owner: "mine", query: "知识库", want: 1},
+		{owner: "team", query: "知识库"},
+		{owner: "shared", query: "知识库"},
+		{owner: "all", query: "知识库", tags: []string{"20000000-0000-0000-0000-000000000001"}},
+	} {
+		filter := resource.CatalogFilter{Owner: tc.owner, Query: tc.query}
+		for page := 1; page <= 2; page++ {
+			selected, err := r.page(t.Context(), r.store.Pool, user, "connectors", filter, tc.tags, page, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selected.TotalCount != tc.want {
+				t.Fatalf("filter=%+v tags=%v: total=%d want=%d", filter, tc.tags, selected.TotalCount, tc.want)
+			}
+			items, err := r.list(t.Context(), r.store.Pool, user, "connectors", filter, selected.ResourceIds)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if page == 1 {
+				want = int(tc.want)
+			}
+			if len(items) != want || want == 1 && items[0].String("id") != knowledgeBaseConnectorID {
+				t.Fatalf("filter=%+v page=%d: items=%v", filter, page, items)
 			}
 		}
 	}

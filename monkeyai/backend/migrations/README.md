@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=37, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=39, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -58,6 +58,8 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000035_billing_activity_lock_retry` | 交易／调用周分区预建遇到锁竞争时返回可重试状态 |
 | `000036_user_profile_add` | 增加独立的自定义头像字段、本人修改密码的尝试次数记录，以及待兑换设备批准的用户索引 |
 | `000037_oauth_pairing` | 新增一次性手机扫码配对，保存凭据摘要、PKCE、状态及轮询退避信息 |
+| `000038_embedding_model` | 增加 embedding 模型类型及 Embedding 配置 |
+| `000039_create_kb_tables` | 建立知识库最终结构，含学习任务生命周期快照 |
 
 从 `backend` 目录执行：
 
@@ -67,7 +69,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `37` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `39` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -81,6 +83,10 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 
 版本 `37` 创建 `oauth_pairing_requests` 和过期、创建者状态、设备码摘要索引；手机端只取得账号级登录态，不登记执行设备。新后端修改密码时依赖该表撤销未兑换配对，因此须先迁移再启动。down 会删除全部一次性配对记录，再 up 只恢复空表；已签发的 OAuth 授权与令牌不由此表管理。
 
+版本 `38` 为 `models` 增加 embedding 类型、Embedding 配置及相关约束，供知识库向量索引和增量向量重建使用。down 会恢复 text/image/video 模型约束，执行前必须先删除 embedding 模型记录。
+
+版本 `39` 一次建立知识库最终结构，包括 `knowledge_bases`、`knowledge_base_documents`、`knowledge_base_chunks`、`knowledge_base_learning_jobs`、向量与全文检索字段、资源授权约束、后台学习任务索引，以及学习任务上的文档 revision、目标模型和维度快照。知识库不增加自动绑定开关；未绑定模型的知识库由后台同步选择可用模型并按文档补齐向量。此前同一次功能开发中的增量迁移已合并到该版本；须先迁移再启动新后端。down 会清理全部 `kb` 授权和标签，并删除知识库、文档、分片和学习任务表，生产回滚前必须备份。
+
 版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 
 升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
@@ -92,3 +98,5 @@ MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 `000024_remote_runtime` 的 up/down SQL 将当前工作树新增的远程执行结构作为一个版本执行，支持重复执行。重复升级保留已有授权族、刷新链、设备版本、会话摘要和密钥绑定；旧 token 只在尚未绑定授权族时回填。重复回滚会保留既有撤销时间和原因，重新升级不会恢复已撤销凭据。
 
 `TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。
+
+知识库文档树不使用数据库外键，父子关系在知识库锁内校验。向量模型通过不可变配置和模型 ID 标识：型号、地址、协议、供应商、类型及维度创建后不可修改；更换型号必须新建模型记录并切换知识库绑定。名称、密钥、代理及授权可更新。

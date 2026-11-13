@@ -390,4 +390,27 @@ func TestResolveModelName(t *testing.T) {
 			t.Fatalf("生图目标未解析: %+v, %v", target, err)
 		}
 	})
+	t.Run("向量模型配置持久化", func(t *testing.T) {
+		dimension := 3072
+		service := NewService(repo).WithEmbeddingDimensionProbe(func(context.Context, Model) (int, error) {
+			return dimension, nil
+		})
+		input := embeddingInput()
+		item, err := service.Create(ctx, admin, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := repo.Get(ctx, item.ID)
+		if err != nil || stored.Kind != KindEmbedding || stored.EmbeddingConfig == nil || stored.EmbeddingConfig.Dimension != 3072 {
+			t.Fatalf("向量模型未完整回读: %+v, %v", stored, err)
+		}
+		dimension = 1536
+		if _, err := service.Update(ctx, item.ID, admin, input); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = repo.Get(ctx, item.ID)
+		if err != nil || stored.EmbeddingConfig == nil || stored.EmbeddingConfig.Dimension != 1536 {
+			t.Fatalf("向量模型未保存修改: %+v, %v", stored, err)
+		}
+	})
 }

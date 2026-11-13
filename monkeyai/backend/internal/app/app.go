@@ -31,6 +31,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/volcengine"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imagegen/xai"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/imageproxy"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/model"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
@@ -67,6 +68,7 @@ type App struct {
 	endpoints       *endpoint.Service
 	feedback        *feedback.Service
 	connectors      *mcp.Service
+	knowledgeBases  *kb.Service
 	resourceImports *resourceimport.Service
 }
 
@@ -151,6 +153,7 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 		endpoints:       handler.(*applicationHandler).endpoints,
 		feedback:        handler.(*applicationHandler).feedback,
 		connectors:      handler.(*applicationHandler).connectors,
+		knowledgeBases:  handler.(*applicationHandler).knowledgeBases,
 		resourceImports: handler.(*applicationHandler).resourceImports,
 		database:        pool,
 		shutdownTimeout: cfg.ShutdownTimeout,
@@ -250,6 +253,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	skills := skill.NewService(store, storage)
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
 	experts := expert.NewService(store).WithStorage(storage)
+	knowledgeBases := kb.NewService(store, models)
+	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
 	admin := chi.NewRouter()
@@ -274,13 +279,14 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	keys.RegisterAdmin(admin)
 	models.RegisterAdmin(admin)
 	store.RegisterAdmin(admin)
-	store.RegisterGrants(admin, map[string]*resource.CRUD{"rule": rules, "skill": skills.CRUD, "expert": experts.CRUD, "connector": connectors.Connectors})
+	store.RegisterGrants(admin, map[string]*resource.CRUD{"rule": rules, "skill": skills.CRUD, "expert": experts.CRUD, "connector": connectors.Connectors, "kb": knowledgeBases.CRUD})
 	resourceImports := resourceimport.NewService(pool, storage)
 	resourceImports.RegisterAdmin(admin)
 	rules.Register(admin)
 	skills.RegisterAdmin(admin)
 	connectors.RegisterAdmin(admin)
 	experts.RegisterAdmin(admin)
+	knowledgeBases.RegisterAdmin(admin)
 	resources.RegisterAdmin(admin)
 	feedbacks.RegisterAdmin(admin)
 	sessions.RegisterAdmin(admin)
@@ -311,7 +317,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	rules.RegisterAgent(agent)
 	skills.RegisterAgent(agent)
 	experts.RegisterAgent(agent)
-	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD})
+	knowledgeBases.RegisterAgent(agent)
+	store.RegisterSharing(agent, map[string]resource.Shareable{"model": modelRepo, "rule": rules, "skill": skills.CRUD, "connector": connectors.Connectors, "expert": experts.CRUD, "kb": knowledgeBases.CRUD})
 	settings.RegisterAgent(agent)
 	connectors.RegisterAgent(agent)
 	resources.RegisterAgent(agent)
@@ -336,6 +343,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		WithInputs(imageUploader{inputs: imageInputs}).WithOutputs(imageOutputs).Register(router)
 	videoproxy.New(modelResolver{service: models}, keys, sessionResolver, videoService).Register(router)
 	connectors.WithSessionResolver(sessionResolver).RegisterGateway(router, keys, toolBilling{service: charges})
+	knowledgeBases.RegisterMCP(router, keys)
 	var runtimeRelay *relay.Service
 	if cfg.RuntimeRelay {
 		runtimeRelay, err = relay.NewService(pool, identities, executions, logger, relay.Config{DesktopOrigins: cfg.RuntimeDesktopOrigins, PreviewOriginTemplate: cfg.RuntimePreviewOriginTemplate, StateDir: cfg.RuntimeStateDir, ServerID: cfg.RuntimeServerID, PublicURL: cfg.PublicURL, FilesOrigin: cfg.RuntimeFilesOrigin, SigningKeyFile: cfg.RuntimeSigningKeyFile, VerificationKeysFile: cfg.RuntimeVerificationKeysFile, MaxDevices: cfg.EndpointMaxConnections})
@@ -378,7 +386,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	})(identities.AuthRouter())
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, resourceImports: resourceImports}, nil
+	return &applicationHandler{Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -453,6 +461,13 @@ func (a *App) Run(ctx context.Context) error {
 			a.connectors.Run(workerCtx)
 		}
 	}()
+	knowledgeDone := make(chan struct{})
+	go func() {
+		defer close(knowledgeDone)
+		if a.knowledgeBases != nil {
+			a.knowledgeBases.Run(workerCtx)
+		}
+	}()
 	observeDone := make(chan struct{})
 	go func() { defer close(observeDone); a.endpoints.Observe(workerCtx) }()
 	imageDone := make(chan struct{})
@@ -481,6 +496,7 @@ func (a *App) Run(ctx context.Context) error {
 		<-sessionsDone
 		<-relayDone
 		<-connectorsDone
+		<-knowledgeDone
 		<-observeDone
 		<-imageDone
 		<-videoDone

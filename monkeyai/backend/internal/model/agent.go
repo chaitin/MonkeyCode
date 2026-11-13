@@ -21,6 +21,9 @@ func (s *Service) CreateUser(ctx context.Context, userID string, input UserInput
 	if item.APIKey == "" {
 		return Model{}, resource.InvalidCode("model_key_required", "api_key 不能为空")
 	}
+	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
+	}
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
 	}
@@ -71,14 +74,18 @@ func (s *Service) UpdateUser(ctx context.Context, id, userID string, input UserI
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
+	if err := s.prepareEmbeddingUpdate(existing, &item); err != nil {
+		return Model{}, resource.InvalidCode("model_capability_invalid", err.Error())
+	}
 	return s.repository.UpdateUser(ctx, item)
 }
 
 func userModelFromInput(input UserInput) (Model, error) {
 	item, err := modelFromInput(SaveInput{
 		ModelID: input.ModelID, DisplayName: input.DisplayName, Protocol: input.Protocol,
-		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig, VideoConfig: input.VideoConfig,
-		BaseURL: input.BaseURL, APIKey: input.APIKey, AdvancedConfig: input.AdvancedConfig,
+		Kind: input.Kind, Provider: input.Provider, ImageConfig: input.ImageConfig,
+		VideoConfig: input.VideoConfig,
+		BaseURL:     input.BaseURL, APIKey: input.APIKey, AdvancedConfig: input.AdvancedConfig,
 		ImagePricing:     userImagePricing(input.Kind),
 		VideoPricing:     userVideoPricing(input.Kind, input.Provider, input.ModelID, input.VideoConfig),
 		CreditMultiplier: 1, TagIDs: input.TagIDs,

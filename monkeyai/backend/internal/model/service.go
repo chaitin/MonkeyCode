@@ -42,11 +42,13 @@ type ProxyResolver interface {
 }
 
 type Service struct {
-	proxies           ProxyResolver
-	repository        Repository
-	keys              KeyAuthenticator
-	gatewayURL        string
-	imageCapabilities func(Provider, string) (ImageCapabilities, error)
+	proxies                 ProxyResolver
+	repository              Repository
+	keys                    KeyAuthenticator
+	gatewayURL              string
+	imageCapabilities       func(Provider, string) (ImageCapabilities, error)
+	embeddingDimensionProbe func(context.Context, Model) (int, error)
+	embeddingChangeHook     func(context.Context) error
 }
 
 func NewService(repository Repository) *Service {
@@ -82,6 +84,28 @@ func (s *Service) WithGatewayURL(url string) *Service {
 func (s *Service) WithImageCapabilities(describe func(Provider, string) (ImageCapabilities, error)) *Service {
 	s.imageCapabilities = describe
 	return s
+}
+
+func (s *Service) WithEmbeddingDimensionProbe(probe func(context.Context, Model) (int, error)) *Service {
+	s.embeddingDimensionProbe = probe
+	return s
+}
+
+// WithEmbeddingChangeHook notifies the knowledge base index whenever embedding
+// model availability or configuration changes. The hook runs after the model
+// transaction commits; periodic reconciliation compensates for hook failures.
+func (s *Service) WithEmbeddingChangeHook(hook func(context.Context) error) *Service {
+	s.embeddingChangeHook = hook
+	return s
+}
+
+func (s *Service) notifyEmbeddingChange(ctx context.Context) {
+	if s.embeddingChangeHook == nil {
+		return
+	}
+	if err := s.embeddingChangeHook(ctx); err != nil {
+		logging.Event(ctx, slog.Default(), slog.LevelError, "model.operation.error", "同步知识库向量模型失败", "module", "model", "operation", "syncEmbeddingChange", "error", err)
+	}
 }
 
 func (s *Service) DescribeImage(provider Provider, modelID string) (ImageCapabilities, error) {
@@ -134,6 +158,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	if err := s.validateProxy(ctx, item.ProxyID); err != nil {
 		return Model{}, err
 	}
+	if err := s.applyEmbeddingDimension(ctx, &item); err != nil {
+		return Model{}, err
+	}
 	if err := s.validateImageCapability(item); err != nil {
 		return Model{}, err
 	}
@@ -144,7 +171,14 @@ func (s *Service) Create(ctx context.Context, ownerUserID string, input SaveInpu
 	item.OwnerUserID = ownerUserID
 	item.GrantorUserID = ownerUserID
 	item.Enabled = true
-	return s.repository.Create(ctx, item)
+	created, err := s.repository.Create(ctx, item)
+	if err != nil {
+		return Model{}, err
+	}
+	if created.Kind == KindEmbedding {
+		s.notifyEmbeddingChange(ctx)
+	}
+	return created, nil
 }
 
 func (s *Service) Update(ctx context.Context, id, actorUserID string, input SaveInput) (Model, error) {
@@ -179,18 +213,42 @@ func (s *Service) Update(ctx context.Context, id, actorUserID string, input Save
 	if item.APIKey == "" {
 		item.APIKey = existing.APIKey
 	}
+	if err := s.prepareEmbeddingUpdate(existing, &item); err != nil {
+		return Model{}, err
+	}
 	if len(input.ProviderOptions) == 0 {
 		item.ProviderOptions = existing.ProviderOptions
 	}
-	return s.repository.Update(ctx, item)
+	updated, err := s.repository.Update(ctx, item)
+	if err != nil {
+		return Model{}, err
+	}
+	if existing.Kind == KindEmbedding || updated.Kind == KindEmbedding {
+		s.notifyEmbeddingChange(ctx)
+	}
+	return updated, nil
 }
 
 func (s *Service) SetEnabled(ctx context.Context, id string, enabled bool) (Model, error) {
-	return s.repository.SetEnabled(ctx, id, enabled)
+	item, err := s.repository.SetEnabled(ctx, id, enabled)
+	if err == nil && item.Kind == KindEmbedding {
+		s.notifyEmbeddingChange(ctx)
+	}
+	return item, err
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
-	return s.repository.Delete(ctx, id)
+	existing, err := s.repository.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.repository.Delete(ctx, id); err != nil {
+		return err
+	}
+	if existing.Kind == KindEmbedding {
+		s.notifyEmbeddingChange(ctx)
+	}
+	return nil
 }
 
 func (s *Service) Subjects(ctx context.Context) (Subjects, error) {
@@ -245,6 +303,7 @@ func (s *Service) AgentModels(ctx context.Context, userID string) ([]AgentModel,
 			ImagePricing:        presentImagePricing(item.ImageConfig, item.ImagePricing),
 			VideoConfig:         videoConfig,
 			VideoPricing:        item.VideoPricing,
+			EmbeddingConfig:     item.EmbeddingConfig,
 			ContextWindowTokens: item.AdvancedConfig.ContextWindowTokens,
 			MaxOutputTokens:     item.AdvancedConfig.MaxOutputTokens,
 			SupportsVision:      item.AdvancedConfig.SupportsVision,
@@ -306,6 +365,7 @@ func (s *Service) Resolve(ctx context.Context, credential, requestedModel string
 		Kind:            item.Kind,
 		Provider:        item.Provider,
 		ProviderOptions: item.ProviderOptions,
+		EmbeddingConfig: item.EmbeddingConfig,
 		BaseURL:         item.BaseURL,
 		APIKey:          item.APIKey,
 	}, nil
@@ -317,7 +377,7 @@ func modelFromInput(input SaveInput) (Model, error) {
 		kind = KindText
 	}
 	provider := input.Provider
-	if provider == "" && kind == KindText {
+	if provider == "" && (kind == KindText || kind == KindEmbedding) {
 		provider = ProviderPassthrough
 	}
 	item := Model{
@@ -355,6 +415,10 @@ func modelFromInput(input SaveInput) (Model, error) {
 		}
 	} else if kind == KindVideo {
 		if err := validateVideoModel(&item); err != nil {
+			return Model{}, err
+		}
+	} else if kind == KindEmbedding {
+		if err := validateEmbeddingModel(&item); err != nil {
 			return Model{}, err
 		}
 	} else {

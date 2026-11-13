@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { useTranslation } from "react-i18next"
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
@@ -18,7 +18,7 @@ import { BillingDetailsPage } from "@/pages/billing-details-page"
 import { BillingSettingsPage } from "@/pages/billing-settings-page"
 import { ExpertsPage } from "@/pages/experts-page"
 import { FeedbackPage } from "@/pages/feedback-page"
-import { KnowledgeBasesPage } from "@/pages/knowledge-bases-page"
+import { KbPage } from "@/pages/kb-page"
 import { LandingPage } from "@/pages/landing-page"
 import { LoginPage } from "@/pages/login-page"
 import { DeviceAuthorizationPage } from "@/pages/device-authorization-page"
@@ -39,6 +39,9 @@ import { TaskHistoryPage } from "@/pages/task-history-page"
 import { ResourceAnalysisPage } from "@/pages/resource-analysis-page"
 import { SessionDetailPage } from "@/pages/session-detail-page"
 import { ToolsPage } from "@/pages/tools-page"
+
+const KbDocumentPage = lazy(() => import("@/pages/kb-document-page"))
+const KbDetailPage = lazy(() => import("@/pages/kb-detail-page"))
 
 function RequireAuth() {
   const { isLoading, user } = useAuth()
@@ -103,6 +106,10 @@ export function App() {
               path="statistics/models"
               element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
             />
+            <Route
+              path="resources/knowledge-bases"
+              element={<Navigate to={CONSOLE_ROUTES.kb} replace />}
+            />
             {CONSOLE_PAGES.map((page) => (
               <Route
                 key={page.path}
@@ -124,8 +131,8 @@ export function App() {
                     <ClientAnalysisPage />
                   ) : page.path === CONSOLE_ROUTES.models ? (
                     <ModelsPage />
-                  ) : page.path === CONSOLE_ROUTES.knowledgeBases ? (
-                    <KnowledgeBasesPage />
+                  ) : page.path === CONSOLE_ROUTES.kb ? (
+                    <KbPage />
                   ) : page.path === CONSOLE_ROUTES.rules ? (
                     <RulesPage />
                   ) : page.path === CONSOLE_ROUTES.resourceImports ? (
@@ -154,6 +161,22 @@ export function App() {
                 }
               />
             ))}
+            <Route
+              path="resources/kb/:kbId"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <KbDetailPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="resources/kb/:kbId/documents/:documentId"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <KbDocumentPage />
+                </Suspense>
+              }
+            />
             <Route
               path={CONSOLE_ROUTES.sessionDetail.slice(CONSOLE_PATH.length + 1)}
               element={<SessionDetailPage />}

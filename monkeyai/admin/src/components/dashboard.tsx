@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
@@ -22,8 +23,11 @@ import {
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/use-auth"
 import { useBranding } from "@/hooks/use-branding"
+import { api } from "@/lib/api"
+import { base } from "@/lib/resources"
 import {
   CONSOLE_PAGES,
+  CONSOLE_ROUTES,
   DEFAULT_CONSOLE_PATH,
   getConsolePage,
   LOGIN_PATH,
@@ -46,6 +50,22 @@ function DashboardContent() {
   const currentPage = getConsolePage(location.pathname) ?? CONSOLE_PAGES[0]
   const { branding } = useBranding()
   const productName = branding.product_name
+  const kbId = location.pathname.match(/^\/console\/resources\/kb\/([^/]+)/)?.[1]
+  const [kbName, setKbName] = useState("")
+
+  useEffect(() => {
+    if (!kbId) {
+      setKbName("")
+      return
+    }
+    const controller = new AbortController()
+    api<{ name: string }>(`${base}/kb/${kbId}`, { signal: controller.signal })
+      .then((item) => {
+        if (!controller.signal.aborted) setKbName(item.name)
+      })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [kbId])
 
   const handleLogout = async () => {
     try {
@@ -90,8 +110,20 @@ function DashboardContent() {
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block" />
+                {location.pathname.startsWith(`${CONSOLE_ROUTES.kb}/`) && (
+                  <>
+                    <BreadcrumbItem className="hidden md:block">
+                      <BreadcrumbLink
+                        render={<NavLink to={CONSOLE_ROUTES.kb} />}
+                      >
+                        {t("pages.knowledgeBases.title")}
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator className="hidden md:block" />
+                  </>
+                )}
                 <BreadcrumbItem>
-                  <BreadcrumbPage>{t(currentPage.titleKey)}</BreadcrumbPage>
+                  <BreadcrumbPage>{kbId ? kbName || t(currentPage.titleKey) : t(currentPage.titleKey)}</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>

@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
@@ -27,6 +28,8 @@ type Resources struct {
 	mcp    *mcp.Service
 	skills *skill.Service
 }
+
+const knowledgeBaseConnectorID = "c7b5d0e2-4a1f-4f3e-9b2a-0d6e8c5f1a73"
 
 func NewResources(store *resource.Store, m *mcp.Service, s *skill.Service) *Resources {
 	return &Resources{store: store, mcp: m, skills: s}
@@ -129,6 +132,9 @@ func (r *Resources) loadSelected(ctx context.Context, q resource.Queryer, user, 
 			(*t.out)[o.String("id")] = o
 		}
 	}
+	if user != "" && c.connectors != nil && (all || slices.Contains(selected("connectors"), knowledgeBaseConnectorID)) {
+		c.connectors[knowledgeBaseConnectorID] = knowledgeBaseConnector(user)
+	}
 	g, err := r.grants(ctx, q, user, kind)
 	if err != nil {
 		return c, err
@@ -201,6 +207,9 @@ func skillDTO(o resource.Object, expert string) resource.Object {
 	return resource.Object{"id": o["id"], "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "package_size_bytes": o["package_size_bytes"], "package_sha256": o["package_sha256"], "file_count": o["file_count"], "download_path": path + "?sha256=" + o.String("package_sha256")}
 }
 func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c catalog, o resource.Object, user string) (resource.Object, error) {
+	if o.String("id") == knowledgeBaseConnectorID {
+		return r.knowledgeBaseConnectorDTO(o), nil
+	}
 	id := o.String("id")
 	dto, ok := c.connectorDTOs[id]
 	if !ok {
@@ -226,6 +235,64 @@ func cloneConnector(dto resource.Object) resource.Object {
 		out["credentials"] = cloned
 	}
 	return out
+}
+
+func knowledgeBaseConnector(user string) resource.Object {
+	return resource.Object{
+		"id":                 knowledgeBaseConnectorID,
+		"name":               "知识库",
+		"description":        "检索当前用户可访问的知识库文档",
+		"name_i18n":          map[string]any{"zh-CN": "知识库", "en-US": "Knowledge Base"},
+		"description_i18n":   map[string]any{"zh-CN": "检索当前用户可访问的知识库文档", "en-US": "Search documents in knowledge bases available to the current user"},
+		"authorization_mode": "none",
+		"enabled":            true,
+		"ownership_type":     "user",
+		"owner_user_id":      user,
+		"revision":           int64(1),
+		"config_revision":    int64(1),
+	}
+}
+
+func knowledgeBaseConnectorTools() []resource.Object {
+	tools := kb.MCPTools()
+	out := make([]resource.Object, 0, len(tools))
+	for _, tool := range tools {
+		out = append(out, resource.Object{
+			"id":               tool["name"],
+			"name":             tool["name"],
+			"description":      tool["description"],
+			"input_schema":     tool["inputSchema"],
+			"enabled":          true,
+			"credits_per_call": int64(0),
+		})
+	}
+	return out
+}
+
+func (r *Resources) knowledgeBaseConnectorDTO(o resource.Object) resource.Object {
+	tools := knowledgeBaseConnectorTools()
+	return resource.Object{
+		"id":                   o["id"],
+		"name":                 o["name"],
+		"description":          o["description"],
+		"name_i18n":            o["name_i18n"],
+		"description_i18n":     o["description_i18n"],
+		"authorization_mode":   "none",
+		"authorization_method": nil,
+		"auth_header_name":     "",
+		"icon_path":            "",
+		"capabilities":         []string{"catalog", "invoke"},
+		"authorization_status": "not_required",
+		"connection_status":    "connected",
+		"tools":                tools,
+		"tools_version":        resource.Hash(tools),
+		"mcp_gateway": resource.Object{
+			"url":            r.mcp.PublicURL + "/mcp/kb",
+			"transport":      "streamable_http",
+			"authentication": "api_key",
+			"required_scope": "mcp:invoke",
+		},
+	}
 }
 
 func filterTools(dto, link resource.Object) {

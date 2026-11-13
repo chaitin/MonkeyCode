@@ -2,6 +2,7 @@ package agentconfig
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
@@ -64,7 +65,16 @@ func (r *Resources) page(ctx context.Context, q resource.Queryer, user, kind str
 		row, err := queries.CatalogExpertsPage(ctx, sqlc.CatalogExpertsPageParams(args))
 		return catalogPage(row), err
 	case "connectors":
-		row, err := queries.CatalogConnectorsPage(ctx, sqlc.CatalogConnectorsPageParams(args))
+		builtin, err := json.Marshal(knowledgeBaseConnector(user))
+		if err != nil {
+			return catalogPage{}, err
+		}
+		row, err := queries.CatalogConnectorsPage(ctx, sqlc.CatalogConnectorsPageParams{
+			ResourceType: args.ResourceType, SystemAccess: args.SystemAccess,
+			UserID: args.UserID, GrantedIds: args.GrantedIds, OwnerFilter: args.OwnerFilter,
+			SearchQuery: args.SearchQuery, TagIds: args.TagIds,
+			PageOffset: args.PageOffset, PageSize: args.PageSize, BuiltinConnector: builtin,
+		})
 		return catalogPage(row), err
 	default:
 		return catalogPage{}, resource.NotFound

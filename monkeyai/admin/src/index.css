@@ -418,3 +418,47 @@
     transition: none;
   }
 }
+
+/* The bundled editor stylesheet passes a custom property as the second
+   argument of var(), which browsers discard. Combined with table-layout:fixed
+   and a 100px minimum cell width, preview tables collapse into unbordered
+   stacks. Keep the grid readable inside the knowledge-base editor. */
+[data-markdown-editor] {
+  --table-cell-border-color: var(--border);
+  --table-head-background-color: var(--muted);
+}
+
+[data-markdown-editor] .tiptap.ProseMirror div[data-content-type="table"] {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+[data-markdown-editor] .tiptap.ProseMirror .tableWrapper {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  overflow: visible;
+}
+
+[data-markdown-editor] .tiptap.ProseMirror table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+  border-collapse: collapse;
+  border: 1px solid var(--table-cell-border-color);
+}
+
+[data-markdown-editor] .tiptap.ProseMirror table th,
+[data-markdown-editor] .tiptap.ProseMirror table td {
+  min-width: 4.5rem;
+  border: 1px solid var(--table-cell-border-color);
+  text-transform: none;
+  letter-spacing: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+[data-markdown-editor] .tiptap.ProseMirror table th {
+  background-color: var(--table-head-background-color);
+}

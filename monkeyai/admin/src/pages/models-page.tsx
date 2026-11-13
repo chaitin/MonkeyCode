@@ -81,7 +81,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Item, ItemActions, ItemContent, ItemGroup } from "@/components/ui/item"
 import { Input } from "@/components/ui/input"
 import {
@@ -125,14 +130,30 @@ const PROTOCOLS = [
 ] as const
 
 type ModelProtocol =
-  (typeof PROTOCOLS)[number]["value"] | "image_generation" | "video_generation"
-type ModelKind = "text" | "image" | "video"
+  | (typeof PROTOCOLS)[number]["value"]
+  | "image_generation"
+  | "video_generation"
+  | "openai_embeddings"
+type ModelKind = "text" | "image" | "video" | "embedding"
 type ImageProvider =
   "openai_images" | "openai_responses_image" | "volcengine" | "xai" | "agnes"
 type ModelProvider = ImageProvider | VideoProvider | "passthrough"
 type ModelType = "system" | "user"
 type VideoPricing = {
   rates: Array<{ resolution: string; credits_per_second: string }>
+}
+
+type EmbeddingConfig = {
+  dimension: number
+}
+
+type EmbeddingProbeResult = {
+  dimension: number
+  configured_dimension: number
+  dimension_matches: boolean
+  vector_preview: number[]
+  prompt_tokens: number
+  total_tokens: number
 }
 
 const IMAGE_PROVIDERS: Array<{
@@ -214,6 +235,7 @@ type ModelBase = {
   imagePricing?: ImagePricing
   videoConfig?: VideoConfig
   videoPricing?: VideoPricing
+  embeddingConfig?: EmbeddingConfig
   apiKeyConfigured: boolean
   tagIds: string[]
   authorization: AuthorizationSelection
@@ -235,6 +257,7 @@ type ApiModel = {
   image_pricing?: ImagePricing
   video_config?: VideoConfig
   video_pricing?: VideoPricing
+  embedding_config?: EmbeddingConfig
   base_url: string
   proxy_id: string
   api_key_configured: boolean
@@ -281,6 +304,7 @@ function fromApiModel(model: ApiModel): Model {
     imagePricing: model.image_pricing,
     videoConfig: model.video_config,
     videoPricing: model.video_pricing,
+    embeddingConfig: model.embedding_config,
     apiKeyConfigured: model.api_key_configured,
     multiplier: model.credit_multiplier,
     tagIds: (model.tags ?? []).map((tag) => tag.id),
@@ -567,12 +591,13 @@ export function ModelsPage() {
   }, [dialogOpen, kind, provider, modelId, formModel])
 
   const sendTextTest = async () => {
-    if (!textModelToTest || !testMessage.trim() || testSending) return
+    const target = textModelToTest
+    if (!target || !testMessage.trim() || testSending) return
     setTestSending(true)
     setTestResponse("")
     try {
       const response = await fetch(
-        `/api/admin/v1/models/${textModelToTest.id}/probe`,
+        `/api/admin/v1/models/${target.id}/probe`,
         {
           method: "POST",
           credentials: "include",
@@ -583,6 +608,25 @@ export function ModelsPage() {
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "模型测试失败")
+      }
+      if (target.kind === "embedding") {
+        const result = payload as EmbeddingProbeResult
+        const preview = result.vector_preview
+          .map((value) => value.toFixed(6))
+          .join(", ")
+        const lines = [
+          `向量维度：${result.dimension}`,
+          `已保存维度：${result.configured_dimension}`,
+          `维度一致：${result.dimension_matches ? "是" : "否"}`,
+          `向量预览：[${preview}]`,
+        ]
+        if (result.prompt_tokens > 0 || result.total_tokens > 0) {
+          lines.push(
+            `Token 用量：输入 ${result.prompt_tokens} / 总计 ${result.total_tokens}`
+          )
+        }
+        setTestResponse(lines.join("\n"))
+        return
       }
       setTestResponse(payload?.content || "模型返回了空响应")
     } catch (reason) {
@@ -733,14 +777,22 @@ export function ModelsPage() {
                 video_config: model.videoConfig,
                 video_pricing: model.videoPricing,
               }
-            : {
-                ...common,
-                kind: "image",
-                provider: model.provider,
-                protocol: "image_generation",
-                image_config: model.imageConfig,
-                image_pricing: model.imagePricing,
-              }
+            : model.kind === "embedding"
+              ? {
+                  ...common,
+                  kind: "embedding",
+                  provider: "passthrough",
+                  protocol: "openai_embeddings",
+                  credit_multiplier: model.multiplier,
+                }
+              : {
+                  ...common,
+                  kind: "image",
+                  provider: model.provider,
+                  protocol: "image_generation",
+                  image_config: model.imageConfig,
+                  image_pricing: model.imagePricing,
+                }
       try {
         await api<ApiModel>(`/api/admin/v1/models/${model.id}`, {
           method: "PUT",
@@ -863,7 +915,9 @@ export function ModelsPage() {
     setModelId(model.modelId)
     setDisplayNameOverride(model.displayName?.trim() ? model.displayName : null)
     setProvider(
-      model.provider === "passthrough" ? "openai_images" : model.provider
+      model.provider === "passthrough" && model.kind !== "embedding"
+        ? "openai_images"
+        : model.provider
     )
     setQualities(model.imageConfig?.qualities ?? [])
     setAspectRatios(model.imageConfig?.aspect_ratios ?? [])
@@ -987,6 +1041,15 @@ export function ModelsPage() {
         )
       )
         return reject(t("pages.models.validation.videoPriceInvalid"))
+    } else if (kind === "embedding") {
+      if (!Number.isFinite(multiplier) || multiplier <= 0) {
+        setAdvancedOpen(true)
+        return reject(
+          t("pages.models.validation.positiveNumber", {
+            field: t("pages.models.billingMultiplier"),
+          })
+        )
+      }
     } else {
       if (!imageCapabilities)
         return reject(t("pages.models.imageCapabilitiesUnavailable"))
@@ -1073,24 +1136,32 @@ export function ModelsPage() {
                   ),
                 },
               }
-            : {
-                ...common,
-                kind: "image",
-                provider,
-                protocol: "image_generation",
-                image_config: {
-                  qualities,
-                  aspect_ratios: aspectRatios,
-                  default_quality: defaultQuality,
-                  default_aspect_ratio: defaultAspectRatio,
-                },
-                image_pricing: {
-                  rates: qualities.map((quality) => ({
-                    quality,
-                    credits_per_image: imageRates[quality],
-                  })),
-                },
-              }
+            : kind === "embedding"
+              ? {
+                  ...common,
+                  kind: "embedding",
+                  provider: "passthrough",
+                  protocol: "openai_embeddings",
+                  credit_multiplier: multiplier,
+                }
+              : {
+                  ...common,
+                  kind: "image",
+                  provider,
+                  protocol: "image_generation",
+                  image_config: {
+                    qualities,
+                    aspect_ratios: aspectRatios,
+                    default_quality: defaultQuality,
+                    default_aspect_ratio: defaultAspectRatio,
+                  },
+                  image_pricing: {
+                    rates: qualities.map((quality) => ({
+                      quality,
+                      credits_per_image: imageRates[quality],
+                    })),
+                  },
+                }
       await api<ApiModel>(
         editingModel
           ? `/api/admin/v1/models/${editingModel.id}`
@@ -1303,6 +1374,10 @@ export function ModelsPage() {
                               setProvider(VIDEO_MODELS[0].provider)
                               changeModelId(VIDEO_MODELS[0].model)
                             }
+                            if (next === "embedding") {
+                              setProvider("passthrough")
+                              setProtocol("openai_embeddings")
+                            }
                           }}
                         >
                           <TabsList
@@ -1317,6 +1392,9 @@ export function ModelsPage() {
                             </TabsTrigger>
                             <TabsTrigger type="button" value="video">
                               {t("pages.models.videoKind")}
+                            </TabsTrigger>
+                            <TabsTrigger type="button" value="embedding">
+                              {t("pages.models.embeddingKind")}
                             </TabsTrigger>
                           </TabsList>
                         </Tabs>
@@ -1526,6 +1604,12 @@ export function ModelsPage() {
                               />
                             </Field>
                           </FieldGroup>
+
+                          {kind === "embedding" && (
+                            <FieldDescription>
+                              {t("pages.models.embeddingDimensionAuto")}
+                            </FieldDescription>
+                          )}
 
                           {kind === "text" && (
                             <ItemGroup className="grid grid-cols-2 gap-4 has-[[data-size=sm]]:gap-4">
@@ -1821,26 +1905,28 @@ export function ModelsPage() {
                                         required
                                       />
                                     </Field>
-                                    <Field>
-                                      <FieldLabel htmlFor="model-multiplier">
-                                        {t("pages.models.billingMultiplier")}
-                                      </FieldLabel>
-                                      <Input
-                                        id="model-multiplier"
-                                        min="0.01"
-                                        step="0.01"
-                                        name="multiplier"
-                                        defaultValue={
-                                          formModel?.type === "system"
-                                            ? formModel.multiplier
-                                            : 1
-                                        }
-                                        placeholder="1.0"
-                                        type="number"
-                                        required
-                                      />
-                                    </Field>
                                   </>
+                                )}
+                                {(kind === "text" || kind === "embedding") && (
+                                  <Field>
+                                    <FieldLabel htmlFor="model-multiplier">
+                                      {t("pages.models.billingMultiplier")}
+                                    </FieldLabel>
+                                    <Input
+                                      id="model-multiplier"
+                                      min="0.01"
+                                      step="0.01"
+                                      name="multiplier"
+                                      defaultValue={
+                                        formModel?.type === "system"
+                                          ? formModel.multiplier
+                                          : 1
+                                      }
+                                      placeholder="1.0"
+                                      type="number"
+                                      required
+                                    />
+                                  </Field>
                                 )}
                               </FieldGroup>
                             </CollapsibleContent>
@@ -1872,7 +1958,7 @@ export function ModelsPage() {
         }
       >
         <div className="space-y-4">
-          {(["text", "image", "video"] as const).map((kind) => {
+          {(["text", "image", "video", "embedding"] as const).map((kind) => {
             const kindModels = models.filter((model) => model.kind === kind)
             if (kindModels.length === 0) return null
 
@@ -1884,17 +1970,17 @@ export function ModelsPage() {
               >
                 <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50">
                   <HugeiconsIcon
-                    icon={kind === "text" ? AiChat02Icon : AiImageIcon}
+                    icon={
+                      kind === "text"
+                        ? AiChat02Icon
+                        : kind === "embedding"
+                          ? Radar03Icon
+                          : AiImageIcon
+                    }
                     strokeWidth={2}
                   />
                   <span className="font-medium">
-                    {kind === "video"
-                      ? t("pages.models.videoKind")
-                      : t(
-                          kind === "text"
-                            ? "pages.models.textKind"
-                            : "pages.models.imageKind"
-                        )}
+                    {t(`pages.models.${kind}Kind`)}
                   </span>
                   <Badge className="ms-auto" variant="secondary">
                     {kindModels.length}
@@ -2040,7 +2126,8 @@ export function ModelsPage() {
                                             />
                                             {t("pages.models.disable")}
                                           </DropdownMenuItem>
-                                          {model.kind === "text" && (
+                                          {(model.kind === "text" ||
+                                            model.kind === "embedding") && (
                                             <DropdownMenuItem
                                               onClick={() =>
                                                 setTextModelToTest(model)
@@ -2233,10 +2320,16 @@ export function ModelsPage() {
       >
         <DialogContent className="sm:max-w-xl" showCloseButton={!testSending}>
           <DialogHeader>
-            <DialogTitle>测试模型</DialogTitle>
+            <DialogTitle>
+              {textModelToTest?.kind === "embedding"
+                ? "测试向量模型"
+                : "测试模型"}
+            </DialogTitle>
           </DialogHeader>
           <Field>
-            <FieldLabel htmlFor="text-model-test-message">消息</FieldLabel>
+            <FieldLabel htmlFor="text-model-test-message">
+              {textModelToTest?.kind === "embedding" ? "输入文本" : "消息"}
+            </FieldLabel>
             <Input
               id="text-model-test-message"
               value={testMessage}
@@ -2245,7 +2338,9 @@ export function ModelsPage() {
             />
           </Field>
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm font-medium">响应内容</p>
+            <p className="text-sm font-medium">
+              {textModelToTest?.kind === "embedding" ? "测试结果" : "响应内容"}
+            </p>
             <div
               className="max-h-[min(20rem,40vh)] min-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 p-3 text-sm"
               aria-live="polite"
@@ -2274,7 +2369,7 @@ export function ModelsPage() {
               disabled={!testMessage.trim() || testSending}
               onClick={() => void sendTextTest()}
             >
-              发送
+              {textModelToTest?.kind === "embedding" ? "测试" : "发送"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -82,7 +82,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	if item.Kind == KindImage || item.Kind == KindVideo {
+	if item.Kind == KindImage || item.Kind == KindVideo || item.Kind == KindEmbedding {
 		advanced = []byte("{}")
 	}
 	options, config, pricing, err := marshalImageFields(item)
@@ -90,6 +90,10 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		return Model{}, err
 	}
 	videoConfig, videoPricing, err := marshalVideoFields(item)
+	if err != nil {
+		return Model{}, err
+	}
+	embeddingConfig, err := marshalEmbeddingConfig(item)
 	if err != nil {
 		return Model{}, err
 	}
@@ -111,6 +115,7 @@ func (p *Postgres) Create(ctx context.Context, item Model) (Model, error) {
 		ImagePricing:     pricing,
 		VideoConfig:      videoConfig,
 		VideoPricing:     videoPricing,
+		EmbeddingConfig:  embeddingConfig,
 		ProxyID:          item.ProxyID,
 	}))
 	if err != nil {
@@ -153,7 +158,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 	if err != nil {
 		return Model{}, err
 	}
-	if item.Kind == KindImage || item.Kind == KindVideo {
+	if item.Kind == KindImage || item.Kind == KindVideo || item.Kind == KindEmbedding {
 		advanced = []byte("{}")
 	}
 	options, config, pricing, err := marshalImageFields(item)
@@ -161,6 +166,10 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		return Model{}, err
 	}
 	videoConfig, videoPricing, err := marshalVideoFields(item)
+	if err != nil {
+		return Model{}, err
+	}
+	embeddingConfig, err := marshalEmbeddingConfig(item)
 	if err != nil {
 		return Model{}, err
 	}
@@ -182,6 +191,7 @@ func (p *Postgres) update(ctx context.Context, item Model, ownership string) (Mo
 		ImagePricing:     pricing,
 		VideoConfig:      videoConfig,
 		VideoPricing:     videoPricing,
+		EmbeddingConfig:  embeddingConfig,
 		ProxyID:          item.ProxyID,
 		OwnershipType:    ownership,
 		OwnerUserID:      item.OwnerUserID,
@@ -363,6 +373,11 @@ func readModel(row sqlc.Model, err error) (Model, error) {
 	if len(row.VideoPricing) != 0 {
 		if err := json.Unmarshal(row.VideoPricing, &item.VideoPricing); err != nil {
 			return Model{}, fmt.Errorf("解析视频积分: %w", err)
+		}
+	}
+	if len(row.EmbeddingConfig) != 0 {
+		if err := json.Unmarshal(row.EmbeddingConfig, &item.EmbeddingConfig); err != nil {
+			return Model{}, fmt.Errorf("解析向量配置: %w", err)
 		}
 	}
 	return item, nil
