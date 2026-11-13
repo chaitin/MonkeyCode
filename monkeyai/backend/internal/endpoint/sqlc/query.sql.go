@@ -169,17 +169,6 @@ func (q *Queries) Count(ctx context.Context, userID string) (int64, error) {
 	return count, err
 }
 
-const countActive = `-- name: CountActive :one
-SELECT count(*) FROM endpoints WHERE user_id = $1 AND status = 'active'
-`
-
-func (q *Queries) CountActive(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActive, userID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const enableExecution = `-- name: EnableExecution :one
 UPDATE endpoints SET remote_access_state = 'enabled', active_grant_id = $3, deployment_mode = $4,
     execution_protocols=$5, runtime_version=$6,engine_version=$7,

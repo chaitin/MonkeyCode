@@ -45,6 +45,26 @@ WHERE
 GROUP BY
     resource_type,
     resource_id;
+
+-- name: ListSharedExpertSkills :many
+SELECT DISTINCT jsonb_build_object('kind', 'skill', 'id', s.id, 'required', false)
+FROM experts e
+JOIN expert_skills x ON x.expert_id = e.id
+JOIN skills s ON s.id = x.skill_id
+WHERE e.id::text = ANY(sqlc.arg(expert_ids)::text[])
+    AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+    AND s.ownership_type = 'user' AND s.owner_user_id = e.owner_user_id
+    AND s.enabled AND s.deleted_at IS NULL;
+
+-- name: ListSharedExpertConnectors :many
+SELECT DISTINCT jsonb_build_object('kind', 'connector', 'id', c.id, 'required', false)
+FROM experts e
+JOIN expert_connectors x ON x.expert_id = e.id
+JOIN connectors c ON c.id = x.connector_id
+WHERE e.id::text = ANY(sqlc.arg(expert_ids)::text[])
+    AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+    AND c.ownership_type = 'user' AND c.owner_user_id = e.owner_user_id
+    AND c.enabled AND c.deleted_at IS NULL;
 -- name: ListSkillTags :many
 SELECT
     jsonb_build_object('id', t.id, 'name', t.name)

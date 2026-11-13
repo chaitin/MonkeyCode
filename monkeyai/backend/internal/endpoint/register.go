@@ -30,7 +30,7 @@ type Registration struct {
 }
 
 type Registrar interface {
-	RegisterDevice(context.Context, string, string, Registration, int) (Endpoint, error)
+	RegisterDevice(context.Context, string, string, Registration) (Endpoint, error)
 }
 
 func registration(data []byte) (Registration, error) {
@@ -97,7 +97,7 @@ func (s *Service) register(w http.ResponseWriter, req *http.Request) {
 		if !ok {
 			return nil, fault{"service_unavailable"}
 		}
-		e, err := store.RegisterDevice(ctx, user, machine, r, 20)
+		e, err := store.RegisterDevice(ctx, user, machine, r)
 		if err != nil {
 			return nil, err
 		}

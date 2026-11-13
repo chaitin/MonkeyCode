@@ -37,7 +37,7 @@ func (r *Resources) page(ctx context.Context, q resource.Queryer, user, kind str
 		return catalogPage{}, err
 	}
 	queries := sqlc.New(q)
-	grants, err := resource.DecodeObjects(queries.ListGrants(ctx, new(user)))
+	grants, err := r.grants(ctx, q, user, kind)
 	if err != nil {
 		return catalogPage{}, err
 	}

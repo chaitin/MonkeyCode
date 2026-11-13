@@ -685,6 +685,68 @@ func (q *Queries) ListGrants(ctx context.Context, userID *string) ([][]byte, err
 	return items, nil
 }
 
+const listSharedExpertConnectors = `-- name: ListSharedExpertConnectors :many
+SELECT DISTINCT jsonb_build_object('kind', 'connector', 'id', c.id, 'required', false)
+FROM experts e
+JOIN expert_connectors x ON x.expert_id = e.id
+JOIN connectors c ON c.id = x.connector_id
+WHERE e.id::text = ANY($1::text[])
+    AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+    AND c.ownership_type = 'user' AND c.owner_user_id = e.owner_user_id
+    AND c.enabled AND c.deleted_at IS NULL
+`
+
+func (q *Queries) ListSharedExpertConnectors(ctx context.Context, expertIds []string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listSharedExpertConnectors, expertIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedExpertSkills = `-- name: ListSharedExpertSkills :many
+SELECT DISTINCT jsonb_build_object('kind', 'skill', 'id', s.id, 'required', false)
+FROM experts e
+JOIN expert_skills x ON x.expert_id = e.id
+JOIN skills s ON s.id = x.skill_id
+WHERE e.id::text = ANY($1::text[])
+    AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+    AND s.ownership_type = 'user' AND s.owner_user_id = e.owner_user_id
+    AND s.enabled AND s.deleted_at IS NULL
+`
+
+func (q *Queries) ListSharedExpertSkills(ctx context.Context, expertIds []string) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listSharedExpertSkills, expertIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSkillTags = `-- name: ListSkillTags :many
 SELECT
     jsonb_build_object('id', t.id, 'name', t.name)

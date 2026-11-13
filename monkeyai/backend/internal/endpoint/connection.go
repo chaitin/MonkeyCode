@@ -171,7 +171,7 @@ func (c *connection) writer() {
 		c.stop(4003)
 		return
 	}
-	welcome := map[string]any{"type": "welcome", "protocol_version": 1, "server_time": time.Now().UnixMilli(), "heartbeat": map[string]int64{"interval_ms": c.service.pingInterval.Milliseconds(), "timeout_ms": c.service.timePong.Milliseconds()}, "limits": map[string]int{"max_frame_bytes": maxMessage, "max_endpoints": 20}}
+	welcome := map[string]any{"type": "welcome", "protocol_version": 1, "server_time": time.Now().UnixMilli(), "heartbeat": map[string]int64{"interval_ms": c.service.pingInterval.Milliseconds(), "timeout_ms": c.service.timePong.Milliseconds()}, "limits": map[string]int{"max_frame_bytes": maxMessage}}
 	data, err := json.Marshal(welcome)
 	if err != nil {
 		logging.Event(context.Background(), c.service.logger, slog.LevelError, "endpoint.operation.error", "序列化端点欢迎消息失败", "module", "endpoint", "operation", "writer", "user_id", c.credential.UserID, "machine_id", c.machine, "operation", "welcome", "error", err)

@@ -298,6 +298,86 @@ func (q *Queries) HasAccess(ctx context.Context, arg HasAccessParams) (bool, err
 	return exists, err
 }
 
+const hasExpertConnectorAccess = `-- name: HasExpertConnectorAccess :one
+WITH RECURSIVE user_groups(group_id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = $2::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT parent.id FROM groups g
+    JOIN user_groups ug ON ug.group_id = g.id
+    JOIN groups parent ON parent.id = g.parent_id
+    WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
+)
+SELECT EXISTS (
+    SELECT 1 FROM experts e
+    JOIN expert_connectors x ON x.expert_id = e.id
+    JOIN connectors d ON d.id = x.connector_id
+    JOIN resource_access_grants rag ON rag.resource_type = 'expert' AND rag.resource_id = e.id
+    WHERE d.id = $1::uuid
+        AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+        AND d.ownership_type = 'user' AND d.owner_user_id = e.owner_user_id
+        AND d.enabled AND d.deleted_at IS NULL
+        AND (rag.user_id = $2::uuid
+            OR rag.group_id IN (SELECT group_id FROM user_groups)
+            OR (rag.all_users AND EXISTS (
+                SELECT 1 FROM users u
+                WHERE u.id = $2::uuid AND u.status = 'active' AND u.deleted_at IS NULL
+            )))
+)
+`
+
+type HasExpertConnectorAccessParams struct {
+	ResourceID string
+	UserID     string
+}
+
+func (q *Queries) HasExpertConnectorAccess(ctx context.Context, arg HasExpertConnectorAccessParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasExpertConnectorAccess, arg.ResourceID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const hasExpertSkillAccess = `-- name: HasExpertSkillAccess :one
+WITH RECURSIVE user_groups(group_id) AS (
+    SELECT g.id FROM groups g JOIN group_users gu ON gu.group_id = g.id
+    WHERE gu.user_id = $2::uuid AND gu.removed_at IS NULL AND g.deleted_at IS NULL
+    UNION
+    SELECT parent.id FROM groups g
+    JOIN user_groups ug ON ug.group_id = g.id
+    JOIN groups parent ON parent.id = g.parent_id
+    WHERE g.deleted_at IS NULL AND parent.deleted_at IS NULL
+)
+SELECT EXISTS (
+    SELECT 1 FROM experts e
+    JOIN expert_skills x ON x.expert_id = e.id
+    JOIN skills d ON d.id = x.skill_id
+    JOIN resource_access_grants rag ON rag.resource_type = 'expert' AND rag.resource_id = e.id
+    WHERE d.id = $1::uuid
+        AND e.ownership_type = 'user' AND e.enabled AND e.deleted_at IS NULL
+        AND d.ownership_type = 'user' AND d.owner_user_id = e.owner_user_id
+        AND d.enabled AND d.deleted_at IS NULL
+        AND (rag.user_id = $2::uuid
+            OR rag.group_id IN (SELECT group_id FROM user_groups)
+            OR (rag.all_users AND EXISTS (
+                SELECT 1 FROM users u
+                WHERE u.id = $2::uuid AND u.status = 'active' AND u.deleted_at IS NULL
+            )))
+)
+`
+
+type HasExpertSkillAccessParams struct {
+	ResourceID string
+	UserID     string
+}
+
+func (q *Queries) HasExpertSkillAccess(ctx context.Context, arg HasExpertSkillAccessParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasExpertSkillAccess, arg.ResourceID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listGrants = `-- name: ListGrants :many
 SELECT
     jsonb_build_object('user_id', rag.user_id, 'group_id', rag.group_id, 'all_users', rag.all_users, 'usage_requirement', rag.usage_requirement,

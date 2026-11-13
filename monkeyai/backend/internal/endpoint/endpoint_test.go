@@ -297,7 +297,7 @@ func TestTokenRevocationAndFailures(t *testing.T) {
 	}
 }
 
-func TestStoreLimitAndAudit(t *testing.T) {
+func TestStoreRegistrationAndAudit(t *testing.T) {
 	pool := testDatabase(t)
 	user := testUser(t, pool, "owner")
 	store := NewPostgres(pool)
@@ -305,47 +305,42 @@ func TestStoreLimitAndAudit(t *testing.T) {
 	results := make(chan error, 25)
 	for range 25 {
 		wg.Go(func() {
-			_, err := store.Register(t.Context(), user, Hello{MachineID: uuid.New().String(), Profile: Profile{"电脑", "macos", "15", "arm64", "1"}}, 20)
+			_, err := store.Register(t.Context(), user, Hello{MachineID: uuid.New().String(), Profile: Profile{"电脑", "macos", "15", "arm64", "1"}})
 			results <- err
 		})
 	}
 	wg.Wait()
 	close(results)
-	success, limited := 0, 0
 	for err := range results {
-		if err == nil {
-			success++
-		} else if err.Error() == "endpoint_limit_exceeded" {
-			limited++
-		} else {
-			t.Fatal(err)
+		if err != nil {
+			t.Fatalf("并发登记超过 20 台设备失败: %v", err)
 		}
-	}
-	if success != 20 || limited != 5 {
-		t.Fatalf("并发限额失效 %d %d", success, limited)
 	}
 	rows, err := store.Active(t.Context(), user)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(rows) != 25 {
+		t.Fatalf("登记设备数 %d", len(rows))
+	}
 	id := rows[0].MachineID
-	if _, err = store.Update(t.Context(), user, id, "revoke", nil, 20); err != nil {
+	if _, err = store.Update(t.Context(), user, id, "revoke", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.Register(t.Context(), user, Hello{MachineID: id, Profile: Profile{"电脑", "macos", "15", "arm64", "1"}}, 20); err == nil || err.Error() != "endpoint_revoked" {
+	if _, err = store.Register(t.Context(), user, Hello{MachineID: id, Profile: Profile{"电脑", "macos", "15", "arm64", "1"}}); err == nil || err.Error() != "endpoint_revoked" {
 		t.Fatalf("hello 自动恢复已停用端点: %v", err)
 	}
-	if _, err = store.Register(t.Context(), user, Hello{MachineID: uuid.New().String(), Profile: Profile{"电脑", "macos", "15", "arm64", "1"}}, 20); err != nil {
+	if _, err = store.Register(t.Context(), user, Hello{MachineID: uuid.New().String(), Profile: Profile{"电脑", "macos", "15", "arm64", "1"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.Update(t.Context(), user, id, "restore", nil, 20); err == nil || err.Error() != "endpoint_limit_exceeded" {
-		t.Fatalf("恢复绕过限额 %v", err)
+	if _, err = store.Update(t.Context(), user, id, "restore", nil); err != nil {
+		t.Fatalf("超过 20 台设备后恢复失败: %v", err)
 	}
 	var n int
 	if err = pool.QueryRow(t.Context(), `SELECT count(*) FROM audits WHERE action='endpoint.register'`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 21 {
+	if n != 26 {
 		t.Fatalf("登记审计数 %d", n)
 	}
 }
