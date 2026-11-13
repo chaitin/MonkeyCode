@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
+FROM --platform=$BUILDPLATFORM chaitin-registry.cn-hangzhou.cr.aliyuncs.com/basic/golang:1.27.4-alpine3.23 AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM alpine:3.23
 
-RUN apk add --no-cache ca-certificates tzdata \
+RUN apk add --no-cache ca-certificates curl tzdata \
     && addgroup -S -g 10001 monkeyai \
     && adduser -S -D -u 10001 -G monkeyai monkeyai \
     && mkdir -p /app/runtime /app/import-tmp \
