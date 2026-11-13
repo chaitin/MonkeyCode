@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
@@ -27,7 +26,6 @@ type Resources struct {
 	store  *resource.Store
 	mcp    *mcp.Service
 	skills *skill.Service
-	cache  catalogCache
 }
 
 func NewResources(store *resource.Store, m *mcp.Service, s *skill.Service) *Resources {
@@ -454,15 +452,6 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
-	version, err := r.version(req.Context(), tx, kind)
-	if err != nil {
-		resource.Fail(req.Context(), w, err)
-		return
-	}
-	key := catalogKey(u.ID, req)
-	if etag, ok := r.cache.get(key, version.State, time.Now()); ok && httpapi.NotModified(w, req, etag) {
-		return
-	}
 	selected, err := r.page(req.Context(), tx, u.ID, kind, filter, resource.QueryTagIDs(req), page, size)
 	items := []resource.Object{}
 	if err == nil {
@@ -473,9 +462,6 @@ func (r *Resources) getList(w http.ResponseWriter, req *http.Request, kind strin
 	}
 	if err == nil {
 		err = httpapi.CachedJSON(w, req, map[string]any{kind: items, "total_count": selected.TotalCount, "page": page, "page_size": size})
-		if err == nil {
-			r.cache.put(key, version, w.Header().Get("ETag"), time.Now())
-		}
 	}
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
@@ -490,15 +476,6 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 		return
 	}
 	defer func() { rollbackCatalog(req.Context(), tx, "catalog_read", u.ID) }()
-	version, err := r.version(req.Context(), tx, kind)
-	if err != nil {
-		resource.Fail(req.Context(), w, err)
-		return
-	}
-	key := catalogKey(u.ID, req)
-	if etag, ok := r.cache.get(key, version.State, time.Now()); ok && httpapi.NotModified(w, req, etag) {
-		return
-	}
 	selected, err := r.page(req.Context(), tx, u.ID, kind, resource.CatalogFilter{}, nil, 1, 2147483647)
 	var tags map[string][]resource.Object
 	if err == nil {
@@ -510,9 +487,6 @@ func (r *Resources) getTags(w http.ResponseWriter, req *http.Request, kind strin
 			all = append(all, resourceTags...)
 		}
 		err = httpapi.CachedJSON(w, req, map[string]any{"tags": resource.CollectTags([]resource.Object{{"tags": all}})})
-		if err == nil {
-			r.cache.put(key, version, w.Header().Get("ETag"), time.Now())
-		}
 	}
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
