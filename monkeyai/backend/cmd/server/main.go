@@ -12,6 +12,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/app"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/config"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/envimage"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/server"
 )
@@ -21,6 +22,18 @@ func main() {
 }
 
 func mainCode() int {
+	if len(os.Args) > 1 && os.Args[1] == "environment-images" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		if err := envimage.Command(ctx, os.Args[2:], os.Stdout); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return 0
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	if len(os.Args) > 1 && os.Args[1] == "reset" {
 		if err := server.Reset(context.Background(), os.Args[2:], os.Stdin, os.Stdout); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)

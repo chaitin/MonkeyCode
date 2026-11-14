@@ -42,3 +42,10 @@ WHERE id=$1 AND user_id=$2 AND machine_id=$3 AND purpose='runtime' AND revoked_a
 WITH expired_states AS (DELETE FROM oauth_login_states WHERE device_request_id IS NOT NULL AND expires_at<now())
 DELETE FROM oauth_device_requests WHERE expires_at<now()-interval '1 day'
 AND id NOT IN (SELECT device_request_id FROM oauth_login_states WHERE device_request_id IS NOT NULL);
+
+-- name: LockDeviceUserCode :one
+SELECT * FROM oauth_device_requests WHERE user_code_hash=$1 FOR UPDATE;
+
+-- name: RevokeRuntimeMachine :many
+UPDATE oauth_grants SET revoked_at=now(),revoke_reason='environment_deleted',revocation_version=revocation_version+1
+WHERE user_id=$1 AND purpose='runtime' AND (machine_id=$2 OR requested_machine_id=$2) AND revoked_at IS NULL RETURNING id;

@@ -230,12 +230,15 @@ func effectiveQuota(ctx context.Context, q resource.Queryer, user string) (Amoun
 	return a, group, source, err
 }
 func (s *Service) ensureAccount(ctx context.Context, tx pgx.Tx, user string, p Policy) (Account, error) {
+	return s.ensureAccountAt(ctx, tx, user, p, s.now())
+}
+func (s *Service) ensureAccountAt(ctx context.Context, tx pgx.Tx, user string, p Policy, at time.Time) (Account, error) {
 	_, err := sqlc.New(tx).LockUser(ctx, user)
 	if err != nil {
 		return Account{}, err
 	}
 
-	start, end := p.period(s.now())
+	start, end := p.period(at)
 	a, err := accountRow(ctx, tx, user, start)
 	if err == nil {
 		return a, nil
@@ -254,7 +257,7 @@ func (s *Service) ensureAccount(ctx context.Context, tx pgx.Tx, user string, p P
 		GroupID:         group,
 		PeriodStartAt:   start,
 		PeriodEndAt:     end,
-		LastRefreshedAt: s.now(),
+		LastRefreshedAt: at,
 	})
 
 	if err != nil {

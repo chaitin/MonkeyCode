@@ -222,7 +222,7 @@ test("billing transaction details follow the credit account key-value layout", a
   )
 })
 
-test("billing entries show one decimal for changes and integer balances", async () => {
+test("billing entries preserve existing rounding and exact environment credits", async () => {
   const source = await readFile(
     new URL("../src/pages/billing-details-page.tsx", import.meta.url),
     "utf8"
@@ -230,7 +230,8 @@ test("billing entries show one decimal for changes and integer balances", async 
   assert.match(source, /=>\s*credits\(value, locale, 0\)/)
   assert.match(source, /credits\(value, locale, 1, "expand"\)/)
   assert.match(source, /credits\(value, locale, 0, "floor"\)/)
-  assert.equal((source.match(/\bcredits\(/g) ?? []).length, 3)
+  assert.equal(credits("-0.000001", "en-US"), "-0.000001")
+  assert.equal(credits("256000000000.000256", "en-US"), "256,000,000,000.000256")
   assert.match(source, /changedCredits\(e\.credit_delta, i18n\.language\)/)
   assert.match(source, /balanceCredits\(e\.balance_after, i18n\.language\)/)
   assert.match(source, /billingCredits\(tx\.reserve, i18n\.language\)/)

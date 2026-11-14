@@ -158,6 +158,43 @@ func (q *Queries) AdminDevices(ctx context.Context, arg AdminDevicesParams) ([][
 	return items, nil
 }
 
+const cloudDeviceNames = `-- name: CloudDeviceNames :many
+SELECT r.machine_id, e.name
+FROM environments e JOIN environment_runtimes r ON r.environment_id=e.id
+JOIN endpoints d ON d.machine_id=r.machine_id AND d.user_id=e.user_id AND d.execution_public_key=r.public_key
+WHERE e.user_id=$1::uuid AND r.machine_id=ANY($2::uuid[])
+`
+
+type CloudDeviceNamesParams struct {
+	UserID     string
+	MachineIds []string
+}
+
+type CloudDeviceNamesRow struct {
+	MachineID *string
+	Name      string
+}
+
+func (q *Queries) CloudDeviceNames(ctx context.Context, arg CloudDeviceNamesParams) ([]CloudDeviceNamesRow, error) {
+	rows, err := q.db.Query(ctx, cloudDeviceNames, arg.UserID, arg.MachineIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CloudDeviceNamesRow{}
+	for rows.Next() {
+		var i CloudDeviceNamesRow
+		if err := rows.Scan(&i.MachineID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const count = `-- name: Count :one
 SELECT count(*) FROM endpoints WHERE user_id = $1
 `

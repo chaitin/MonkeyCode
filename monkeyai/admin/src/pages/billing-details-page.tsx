@@ -98,7 +98,7 @@ const changedCredits = (value: string, locale: string) =>
 const balanceCredits = (value: string, locale: string) =>
   credits(value, locale, 0, "floor")
 
-const CATEGORY_FILTERS = ["model", "tool", "other"]
+const CATEGORY_FILTERS = ["model", "tool", "environment", "other"]
 const ENTRY_FILTERS = ["charge", "grant", "reset", "refund", "adjustment"]
 
 function filterDate(value?: string) {
@@ -143,6 +143,7 @@ const categoryNames: Record<string, string> = {
   model: "模型",
   image: "生图",
   tool: "工具",
+  environment: "云环境",
   other: "其他",
 }
 
@@ -605,10 +606,10 @@ export function BillingDetailsPage() {
                         <TableCell
                           className={`text-start font-medium tabular-nums ${e.credit_delta.startsWith("-") ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}
                         >
-                          {changedCredits(e.credit_delta, i18n.language)}
+                          {e.category === "environment" ? credits(e.credit_delta, i18n.language) : changedCredits(e.credit_delta, i18n.language)}
                         </TableCell>
                         <TableCell className="text-start text-yellow-600 tabular-nums dark:text-yellow-400">
-                          {balanceCredits(e.balance_after, i18n.language)}
+                          {e.category === "environment" ? credits(e.balance_after, i18n.language) : balanceCredits(e.balance_after, i18n.language)}
                         </TableCell>
                         <TableCell className="w-20 pe-[var(--card-spacing)] whitespace-nowrap">
                           {e.transaction_id ? (
@@ -901,24 +902,36 @@ function TransactionDialog({
         { label: "用户", value: data.user_name },
         { label: "内容", value: data.item_name },
         { label: "状态", value: stateNames[data.status] },
-        {
-          label: "预留积分",
-          value: billingCredits(data.reserve, i18n.language),
-        },
+        ...(data.category !== "environment"
+          ? [
+              {
+                label: "预留积分",
+                value: billingCredits(data.reserve, i18n.language),
+              },
+            ]
+          : []),
         {
           label: "结算积分",
-          value: billingCredits(data.amount, i18n.language),
+          value: data.category === "environment" ? credits(data.amount, i18n.language) : billingCredits(data.amount, i18n.language),
         },
         { label: "交易 ID", value: data.id },
-        { label: "调用时间", value: dateTime(data.started_at) },
+        {
+          label:
+            data.category === "environment"
+              ? t("environmentAdmin.billing.rangeFrom")
+              : "调用时间",
+          value: dateTime(data.started_at),
+        },
         {
           label: "模式",
           value: data.mode === "remote" ? "百智云远程计费" : "本地计费",
         },
-        { label: "会话", value: data.session_id || "未关联会话" },
+        ...(data.category !== "environment"
+          ? [{ label: "会话", value: data.session_id || "未关联会话" }]
+          : []),
         {
           label: "原始计价",
-          value: `${billingCredits(data.raw_amount, i18n.language)} 积分`,
+          value: `${data.category === "environment" ? credits(data.raw_amount, i18n.language) : billingCredits(data.raw_amount, i18n.language)} 积分`,
         },
         ...(data.request_id
           ? [{ label: "上游响应 ID", value: data.request_id }]
@@ -937,17 +950,53 @@ function TransactionDialog({
         ...(data.usage?.reconciled
           ? [{ label: "用量来源", value: "上游自动对账" }]
           : []),
+        ...(data.usage && data.category === "environment"
+          ? [
+              {
+                label: t("environmentAdmin.environmentID"),
+                value: data.usage.environment_id || "—",
+              },
+              {
+                label: t("environmentAdmin.billing.rangeUntil"),
+                value: dateTime(data.usage.until),
+              },
+              {
+                label: t("environmentAdmin.billing.duration"),
+                value: t("environmentAdmin.billing.seconds", {
+                  seconds: data.usage.duration_seconds ?? 0,
+                }),
+              },
+              {
+                label: t("environmentAdmin.fields.cpu"),
+                value: (data.usage.cpu_millis ?? 0) / 1000,
+              },
+              {
+                label: t("environmentAdmin.fields.memoryGiB"),
+                value: (data.usage.memory_bytes ?? 0) / 1073741824,
+              },
+              {
+                label: t("environmentAdmin.billing.cpuPrice"),
+                value: `${credits(data.pricing?.cpu_credits_per_core_hour, i18n.language)} ${t("environmentAdmin.billing.cpuUnit")}`,
+              },
+              {
+                label: t("environmentAdmin.billing.memoryPrice"),
+                value: `${credits(data.pricing?.memory_credits_per_gib_hour, i18n.language)} ${t("environmentAdmin.billing.memoryUnit")}`,
+              },
+            ]
+          : []),
         ...(data.usage && data.category === "model"
           ? [
               {
                 label: "普通输入 Token",
-                value: data.usage.input_tokens - data.usage.cached_input_tokens,
+                value:
+                  (data.usage.input_tokens ?? 0) -
+                  (data.usage.cached_input_tokens ?? 0),
               },
               {
                 label: "缓存输入 Token",
-                value: data.usage.cached_input_tokens,
+                value: data.usage.cached_input_tokens ?? 0,
               },
-              { label: "输出 Token", value: data.usage.output_tokens },
+              { label: "输出 Token", value: data.usage.output_tokens ?? 0 },
             ]
           : []),
         ...(data.usage && data.category === "image"

@@ -893,6 +893,7 @@ export const es419 = {
       categories: {
         model: "Modelo",
         tool: "Herramienta",
+        environment: "Entorno en la nube",
         knowledge: "Base de conocimiento",
         other: "Otro",
       },
