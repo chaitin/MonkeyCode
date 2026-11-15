@@ -37,6 +37,27 @@ sudo ./bin/monkeyai-engine doctor \
 
 数据目录要求是已经准备好的、非符号链接的受限目录。持久数据使用普通目录，不实施容量或 inode 配额，也不要求 XFS／ext4 配额或独立镜像。CPU、内存、进程数及临时 tmpfs 限制继续生效，详见[安装说明](INSTALL.md#持久目录)。
 
+## 执行引擎平台探测
+
+自动选型的第一阶段已提供独立命令，不改变现有 `doctor` 或生产调度语义：
+
+```bash
+sudo ./bin/monkeyai-engine probe --driver auto
+sudo ./bin/monkeyai-engine probe --driver auto --current-driver gvisor
+```
+
+`--architecture` 默认取当前架构，可显式指定 `amd64`／`arm64`。修复／升级的调用方必须把已保存引擎传入 `--current-driver`，命令不会读取或改写生产安装配置。`--driver=firecracker|gvisor` 只控制探测范围，不执行驱动切换。
+
+- 共用检查 Linux、架构及 cgroup v2 控制器；失败时不探测其他驱动。
+- 自动模式先检查 Firecracker：实际访问 KVM、核对 API／基础扩展、创建临时 VM／vCPU，并反向关闭句柄；检查 TUN/TAP 设备基础能力。不执行 `KVM_RUN`、不启动用户虚拟机、不改网络或磁盘。
+- 仅明确不支持时尝试 gVisor：检查 systrap 所需 seccomp 动作、当前发行要求的 pidfd 和 ARM64 页大小。不安装软件或启动 Docker。
+- I/O、资源耗尽、未知错误、取消或临时资源清理失败均拒绝自动回退。已有驱动不可用时保留绑定，不换成另一驱动。
+- 报告为 `scope=platform_only`，返回 `candidate_driver`，`readiness_verified` 和 `workload_verified` 均为 false；不得将其替代 `doctor`、保存为安装成功或用于放行调度。
+
+退出码 `0` 仅表示找到值得继续准备组件的候选；`1` 表示无候选或探测失败；`2` 表示参数错误。探测在步骤之间响应取消，原生内核调用仍需由后续安装器的独立受限自检进程提供进程级超时监管。
+
+当前仍只执行 gVisor。若生产配置显式写入尚未实现的 `default_driver=firecracker`，服务、本地环境入口和远程升级拒绝按 gVisor 处理。完整自检、组件安装、Firecracker 生命周期、镜像转换和自动选型落盘均待后续实施，见[实施记录](../design/firecracker-environment-implementation.md)。
+
 ## 预设校验
 
 ```bash

@@ -34,6 +34,9 @@ func open() (*driver.Driver, error) {
 	if json.Unmarshal(raw, &cfg) != nil || cfg.HostID == "" || cfg.Architecture != runtime.GOARCH {
 		return nil, errors.New("宿主安装配置无效")
 	}
+	if err := cfg.ValidateDriver(); err != nil {
+		return nil, err
+	}
 	volumes, err := storage.New(cfg.DataDir)
 	if err != nil {
 		return nil, err

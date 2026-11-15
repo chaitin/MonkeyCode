@@ -168,6 +168,9 @@ func RunUpgrade(ctx context.Context, id string, out io.Writer) (result error) {
 	if err = json.Unmarshal(raw, &cfg); err != nil {
 		return err
 	}
+	if err := cfg.ValidateDriver(); err != nil {
+		return err
+	}
 	key, err := Key(KeyPath)
 	if err != nil {
 		return err

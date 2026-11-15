@@ -66,6 +66,9 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 			return err
 		}
 	}
+	if err := cfg.ValidateDriver(); err != nil {
+		return err
+	}
 	if version != "" && version != cfg.Version {
 		return errors.New("engine 二进制版本与宿主配置不一致")
 	}

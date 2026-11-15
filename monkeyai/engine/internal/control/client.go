@@ -21,6 +21,7 @@ import (
 )
 
 type Config struct {
+	DefaultDriver string `json:"default_driver,omitempty"`
 	NetworkConfig
 	RawLogEnvironments []string `json:"raw_log_environments,omitempty"`
 	OperationWorkers   int      `json:"operation_workers,omitempty"`
@@ -33,6 +34,18 @@ type Config struct {
 	Version            string   `json:"version"`
 	DataDir            string   `json:"data_dir"`
 }
+
+func (c Config) ValidateDriver() error {
+	switch c.DefaultDriver {
+	case "", "gvisor":
+		return nil
+	case "firecracker":
+		return errors.New("当前版本尚未接入 Firecracker 执行驱动，拒绝按 gVisor 执行或升级")
+	default:
+		return fmt.Errorf("不支持的已保存执行引擎 %q", c.DefaultDriver)
+	}
+}
+
 type Client struct {
 	Server  string
 	URL     string

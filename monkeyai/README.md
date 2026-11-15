@@ -23,7 +23,7 @@ docker compose up --build
 
 ### 云端执行环境
 
-客户端通过接口选择后台预设创建云电脑，`monkeyai-engine` 管理 containerd／gVisor，并复用现有 standalone runtime。已提供宿主安装、环境控制、资源预留和持久目录；真实宿主闭环仍待统一人工验收。架构见 [设计方案](design/cloud-environment-design.md)，当前状态见 [实施记录](design/cloud-environment-implementation.md)，客户端调用流程见 [接口说明](design/environment-client-api.md)。Firecracker 和 Kubernetes 保留为后续扩展；Firecracker 的已确认决策、宿主安装器自动选型、完整工程设计与验收要求见[Firecracker 云环境与宿主安装器设计](design/firecracker-environment-design.md)，该方案尚未实现。
+客户端通过接口选择后台预设创建云电脑，`monkeyai-engine` 管理 containerd／gVisor，并复用现有 standalone runtime。已提供宿主安装、环境控制、资源预留和持久目录；真实宿主闭环仍待统一人工验收。架构见 [设计方案](design/cloud-environment-design.md)，当前状态见 [实施记录](design/cloud-environment-implementation.md)，客户端调用流程见 [接口说明](design/environment-client-api.md)。Firecracker 和 Kubernetes 保留为后续扩展；Firecracker 的已确认决策、宿主安装器自动选型、完整工程设计与验收要求见[Firecracker 云环境与宿主安装器设计](design/firecracker-environment-design.md)，该方案已开始基础代码实施，完整运行能力与自动安装仍未交付，进度见[实施记录](design/firecracker-environment-implementation.md)。
 
 ### 前置代理与操作记录来源 IP
 
