@@ -633,6 +633,8 @@ stopped → preparing
 
 ## 18. Firecracker 扩展
 
+本节保留原始扩展边界。后续确认的双驱动、Runner首次镜像转换、双盘持久化、磁盘超卖保护，以及优先Firecracker的自动选型安装器，统一见[Firecracker云环境与宿主安装器完整设计](firecracker-environment-design.md)。新方案尚未实现，不将本节的历史设想当作已交付能力。
+
 后台与客户端模型不变，宿主增加 `firecracker` 驱动和能力检测：
 
 - 检查 `/dev/kvm`、CPU 架构、客体内核和 jailer；宿主是虚拟机时还需确认嵌套虚拟化可用。
