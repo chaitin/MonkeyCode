@@ -580,6 +580,15 @@ LIMIT 1
 ON CONFLICT (KEY)
     DO NOTHING;
 
+-- name: LockComputeUser :one
+SELECT id,deleted_at FROM users WHERE id=$1 FOR NO KEY UPDATE;
+
+-- name: ComputeAccountStart :one
+SELECT period_start_at FROM credit_accounts WHERE user_id=sqlc.arg(user_id) AND period_start_at<=sqlc.arg(at) AND period_end_at>sqlc.arg(at) ORDER BY period_start_at DESC LIMIT 1 FOR UPDATE;
+
+-- name: LockComputeChargeAccount :one
+SELECT user_id,period_start_at FROM credit_accounts WHERE id=$1 FOR UPDATE;
+
 -- name: LockAccount :one
 SELECT
     id,

@@ -171,9 +171,17 @@ export type Transaction = {
   request_id?: string
   pricing?: Record<string, string>
   usage?: {
-    input_tokens: number
-    cached_input_tokens: number
-    output_tokens: number
+    input_tokens?: number
+    cached_input_tokens?: number
+    output_tokens?: number
+    environment_id?: string
+    period_id?: string
+    from?: string
+    until?: string
+    duration_seconds?: number
+    cpu_millis?: number
+    memory_bytes?: number
+    pricing_revision?: number
     generated_images?: number
     known: boolean
     stream?: boolean

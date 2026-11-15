@@ -15,6 +15,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/relay/sqlc"
 	"github.com/hashicorp/yamux"
 )
@@ -496,6 +497,10 @@ func (s *Service) monitor(r *route, stop <-chan struct{}) {
 			valid, err := s.identity.VerifyGrant(ctx, r.principal)
 			state, stateErr := s.devices.State(ctx, r.target.user, r.target.machine)
 			cancel()
+			if errors.Is(err, identity.ErrRuntimeUnavailable) {
+				s.closeRoute(r)
+				return
+			}
 			if err == nil && stateErr == nil {
 				if !valid || state.GrantVersion != r.state.GrantVersion || state.RemoteAccessState != "enabled" {
 					s.pushDeviceRevoked(r)

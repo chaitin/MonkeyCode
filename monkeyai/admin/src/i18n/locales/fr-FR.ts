@@ -904,6 +904,7 @@ export const frFR = {
       categories: {
         model: "Modèle",
         tool: "Outil",
+        environment: "Environnement cloud",
         knowledge: "Base de connaissances",
         other: "Autre",
       },

@@ -79,7 +79,8 @@ func TestUpgradeFrom14(t *testing.T) {
 		"15/u billing_remove_credit_freeze", "16/u outbound_proxy_add", "17/u resource_import",
 		"18/u resource_origin", "19/u session_turn_content_add", "20/u model_call_first_token_duration",
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
-		"26/u endpoint_platform_text", "31/u session_client_runtime_add", "37/u oauth_pairing",
+		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
+		"35/u billing_activity_lock_retry", "36/u user_profile_add", "37/u oauth_pairing", "38/u embedding_model", "39/u create_kb_tables", "40/u cloud_environments",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -100,7 +101,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || dirty {
+	if version != 40 || latest != 40 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -110,6 +111,10 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || balance != "100.000000" || frozen != "0.000000" ||
 		description != "保留描述" || origin != "local" || nameI18n != "{}" {
 		t.Fatalf("业务数据或新增字段默认值错误: %q %q %q %q %q %v", balance, frozen, description, origin, nameI18n, err)
+	}
+	var billingDisabled bool
+	if err := conn.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='host_environment_configs' AND column_name='billing' AND column_default LIKE '%"enabled": false%') AND (SELECT count(*)=0 FROM environment_billing_periods)`).Scan(&billingDisabled); err != nil || !billingDisabled {
+		t.Fatalf("升级应保留数据且默认关闭环境收费：%v", err)
 	}
 	var valid bool
 	err = conn.QueryRow(t.Context(), `SELECT
@@ -143,17 +148,51 @@ func TestUpgradeFrom14(t *testing.T) {
 	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='desktop'"); err != nil {
 		t.Fatal(err)
 	}
-	run("down", "1")
-	if latest == 37 {
-		var removed bool
-		if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NULL").Scan(&removed); err != nil || !removed {
-			t.Fatalf("配对迁移回滚未删除新表: %v", err)
+	if _, err := conn.Exec(t.Context(), `
+ INSERT INTO hosts(id,user_id,name,architecture,version)
+ VALUES('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','宿主','amd64','v1');
+ INSERT INTO host_environment_configs(host_id) VALUES('00000000-0000-0000-0000-000000000002');
+ INSERT INTO environments(id,user_id,host_id,name,generation,instance_id,desired,spec,cpu_millis,memory_bytes)
+ VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001',
+ '00000000-0000-0000-0000-000000000002','环境',1,'00000000-0000-0000-0000-000000000005','stopped','{}',1000,1073741824);
+ INSERT INTO environment_runtimes(environment_id,machine_id,public_key,instance_id,generation)
+ VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000006',decode(repeat('ab',32),'hex'),'00000000-0000-0000-0000-000000000005',1);
+ INSERT INTO environment_operations(environment_id,user_id,generation,desired,request_key,request_hash)
+ VALUES('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001',1,'stopped','stop','hash');`); err != nil {
+		t.Fatal(err)
+	}
+
+	checkRuntimeUpgradeReplay(t, conn)
+	checkEnvironmentReplay(t, conn)
+	checkResourceDefaultsReplay(t, conn)
+	if _, err := conn.Exec(t.Context(), "UPDATE environments SET desired='deleted',phase='deleted',observed_generation=generation"); err != nil {
+		t.Fatal(err)
+	}
+	run("goto", "39")
+	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 39 || dirty {
+		t.Fatalf("云环境应一次回滚到39，保留知识库: version=%d dirty=%v err=%v", version, dirty, err)
+	}
+	for _, table := range []string{"hosts", "host_environment_configs", "host_upgrades", "environment_quotas", "environments", "environment_runtimes", "environment_operations", "environment_billing_periods"} {
+		var absent bool
+		if err := conn.QueryRow(t.Context(), "SELECT to_regclass($1) IS NULL", table).Scan(&absent); err != nil || !absent {
+			t.Fatalf("云环境回滚残留 %s: %v", table, err)
 		}
+	}
+	for range 2 {
+		applyEnvironmentMigration(t, conn, "000040_cloud_environments.down.sql")
+	}
+	run("goto", "36")
+	var removed bool
+	if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NULL").Scan(&removed); err != nil || !removed {
+		t.Fatalf("配对迁移回滚未删除新表: %v", err)
 	}
 	run("up")
 	var restored bool
 	if err := conn.QueryRow(t.Context(), "SELECT to_regclass('oauth_pairing_requests') IS NOT NULL").Scan(&restored); err != nil || !restored {
 		t.Fatalf("配对迁移重新升级未恢复新表: %v", err)
+	}
+	if err := conn.QueryRow(t.Context(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != latest || dirty {
+		t.Fatalf("云环境应升级到最新版本: version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	if _, err := conn.Exec(t.Context(), "UPDATE sessions SET client_type='runtime'"); err != nil {
 		t.Fatalf("重新升级后应支持 runtime 会话: %v", err)

@@ -301,3 +301,16 @@ func TestAuthorizationScopeInput(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvironmentScopesAreExplicitAndUnavailableToRuntime(t *testing.T) {
+	scopes, err := parseScopes("monkeyai-desktop", "environment:read environment:manage")
+	if err != nil || len(scopes) != 2 {
+		t.Fatalf("客户端不能申请环境权限：%v", err)
+	}
+	if _, err := parseScopes(RuntimeClientID, "environment:manage"); err == nil {
+		t.Fatal("runtime 可获取云环境管理权限")
+	}
+	if (Principal{Audience: Audience, Scopes: []string{"device:manage"}}).Has("environment:manage") {
+		t.Fatal("设备权限被隐式扩成环境权限")
+	}
+}

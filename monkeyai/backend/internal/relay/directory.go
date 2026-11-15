@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -90,13 +91,16 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 			status = "revoked"
 		} else if online {
 			valid, err := s.identity.VerifyGrant(ctx, current.principal)
-			if err != nil {
+			if err != nil && !errors.Is(err, identity.ErrRuntimeUnavailable) {
 				slog.WarnContext(r.Context(), "操作失败", "module", "relay", "operation", "directory", "error", err)
 				failure(r.Context(), w, 503, "authorization_state_unavailable")
 				return
 			}
 			if valid {
 				status = current.status
+			} else if errors.Is(err, identity.ErrRuntimeUnavailable) {
+				status = "offline"
+				online = false
 			} else {
 				status = "auth_required"
 			}
@@ -129,4 +133,27 @@ func (s *Service) directory(w http.ResponseWriter, r *http.Request) {
 	end := min(start+size, len(out))
 	w.Header().Set("Cache-Control", "no-store")
 	resource.JSON(r.Context(), w, 200, map[string]any{"items": out[start:end], "total": len(out), "page": page, "page_size": size, "version": hex.EncodeToString(digest[:])})
+}
+
+func (s *Service) RuntimeReady(ctx context.Context, user, machine string) (bool, error) {
+	r := s.current(target{user, machine})
+	if r == nil {
+		return false, nil
+	}
+	s.mu.Lock()
+	online := r.runtimeStatus == "online" && r.data != nil && !r.data.IsClosed() && !r.closed
+	principal := r.principal
+	version, epoch := r.state.GrantVersion, r.state.LeaseEpoch
+	s.mu.Unlock()
+	if !online {
+		return false, nil
+	}
+	state, err := s.devices.State(ctx, user, machine)
+	if err != nil {
+		return false, err
+	}
+	if state.RemoteAccessState != "enabled" || state.GrantVersion != version || state.LeaseEpoch != epoch {
+		return false, nil
+	}
+	return s.identity.VerifyGrant(ctx, principal)
 }

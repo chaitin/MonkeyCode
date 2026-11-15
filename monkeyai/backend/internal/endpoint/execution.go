@@ -108,9 +108,15 @@ func (e *Execution) Snapshot(ctx context.Context, userID string, executeOnly boo
 	if err != nil {
 		return nil, err
 	}
+	names, err := cloudNames(ctx, sqlc.New(e.pool), userID, rows)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]ExecutionState, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, executionState(row))
+		state := executionState(row)
+		state.DisplayName = displayName(row, names)
+		out = append(out, state)
 	}
 	return out, nil
 }

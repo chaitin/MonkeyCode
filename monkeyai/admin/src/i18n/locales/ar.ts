@@ -851,6 +851,7 @@ export const ar = {
       categories: {
         model: "نموذج",
         tool: "أداة",
+        environment: "بيئة سحابية",
         knowledge: "قاعدة معرفة",
         other: "أخرى",
       },

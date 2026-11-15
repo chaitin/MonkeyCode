@@ -904,6 +904,7 @@ export const deDE = {
       categories: {
         model: "Modell",
         tool: "Tool",
+        environment: "Cloud-Umgebung",
         knowledge: "Wissensdatenbank",
         other: "Sonstiges",
       },

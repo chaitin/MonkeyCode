@@ -860,6 +860,7 @@ export const koKR = {
       categories: {
         model: "모델",
         tool: "도구",
+        environment: "클라우드 환경",
         knowledge: "지식 베이스",
         other: "기타",
       },

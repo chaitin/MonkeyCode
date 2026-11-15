@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/database"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/endpoint"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/enginehost"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/envimage"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/environment"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/expert"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/feedback"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/group"
@@ -39,6 +43,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rule"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/runtimeartifact"
 	sessionreporting "github.com/chaitin/MonkeyCode/monkeyai/backend/internal/session"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/setting"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
@@ -54,22 +59,24 @@ import (
 )
 
 type App struct {
-	servers         []*http.Server
-	database        *pgxpool.Pool
-	shutdownTimeout time.Duration
-	billing         *billing.Service
-	sessions        *sessionreporting.Service
-	proxy           *proxy.Proxy
-	images          *imagegen.Service
-	videos          *videogen.Service
-	inputs          *imagegen.Inputs
-	runtimeKeys     *apikey.Service
-	relay           *relay.Service
-	endpoints       *endpoint.Service
-	feedback        *feedback.Service
-	connectors      *mcp.Service
-	knowledgeBases  *kb.Service
-	resourceImports *resourceimport.Service
+	servers           []*http.Server
+	database          *pgxpool.Pool
+	shutdownTimeout   time.Duration
+	billing           *billing.Service
+	sessions          *sessionreporting.Service
+	proxy             *proxy.Proxy
+	images            *imagegen.Service
+	videos            *videogen.Service
+	inputs            *imagegen.Inputs
+	runtimeKeys       *apikey.Service
+	relay             *relay.Service
+	endpoints         *endpoint.Service
+	feedback          *feedback.Service
+	connectors        *mcp.Service
+	knowledgeBases    *kb.Service
+	resourceImports   *resourceimport.Service
+	environmentImages *envimage.Service
+	environments      *environment.Service
 }
 
 type MemberWriters func(*pgxpool.Pool) (member.UserWriter, member.GroupWriter, error)
@@ -142,21 +149,23 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, factory
 				ErrorLog:          logging.ErrorLog(logger),
 			},
 		},
-		billing:         handler.(*applicationHandler).billing,
-		sessions:        handler.(*applicationHandler).sessions,
-		proxy:           handler.(*applicationHandler).proxy,
-		images:          handler.(*applicationHandler).images,
-		videos:          handler.(*applicationHandler).videos,
-		inputs:          handler.(*applicationHandler).inputs,
-		runtimeKeys:     handler.(*applicationHandler).runtimeKeys,
-		relay:           handler.(*applicationHandler).relay,
-		endpoints:       handler.(*applicationHandler).endpoints,
-		feedback:        handler.(*applicationHandler).feedback,
-		connectors:      handler.(*applicationHandler).connectors,
-		knowledgeBases:  handler.(*applicationHandler).knowledgeBases,
-		resourceImports: handler.(*applicationHandler).resourceImports,
-		database:        pool,
-		shutdownTimeout: cfg.ShutdownTimeout,
+		billing:           handler.(*applicationHandler).billing,
+		sessions:          handler.(*applicationHandler).sessions,
+		proxy:             handler.(*applicationHandler).proxy,
+		images:            handler.(*applicationHandler).images,
+		videos:            handler.(*applicationHandler).videos,
+		inputs:            handler.(*applicationHandler).inputs,
+		runtimeKeys:       handler.(*applicationHandler).runtimeKeys,
+		relay:             handler.(*applicationHandler).relay,
+		endpoints:         handler.(*applicationHandler).endpoints,
+		feedback:          handler.(*applicationHandler).feedback,
+		connectors:        handler.(*applicationHandler).connectors,
+		knowledgeBases:    handler.(*applicationHandler).knowledgeBases,
+		resourceImports:   handler.(*applicationHandler).resourceImports,
+		environmentImages: handler.(*applicationHandler).environmentImages,
+		environments:      handler.(*applicationHandler).environments,
+		database:          pool,
+		shutdownTimeout:   cfg.ShutdownTimeout,
 	}, nil
 }
 
@@ -266,6 +275,22 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	}))
 	audits.RegisterAdmin(admin)
 	identities.RegisterAdmin(admin)
+	engineHosts := enginehost.NewService(pool).WithInstallation(cfg.PublicURL, cfg.EngineReleaseDir, cfg.EngineVersion)
+	if cfg.EngineReleaseDir != "" {
+		stateDir := cfg.RuntimeStateDir
+		if stateDir == "" {
+			stateDir = "data/runtime"
+		}
+		key, err := enginehost.EnrollmentKey(filepath.Join(stateDir, "host-signing.key"))
+		if err != nil {
+			return nil, fmt.Errorf("初始化宿主接入签名: %w", err)
+		}
+		engineHosts.WithEnrollmentKey(key)
+	}
+	environments := environment.NewService(pool).WithBilling(charges)
+	engineHosts.WithCommands(environments)
+	environments.RegisterAdmin(admin)
+	engineHosts.RegisterAdmin(admin)
 	groupService := group.NewService(pool).WithAccountPreserver(charges).WithMemberWriter(groups)
 	groupService.RegisterAdmin(admin)
 	for _, registrar := range registrars {
@@ -293,6 +318,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 
 	agent := chi.NewRouter()
 	agent.Use(identities.RequireAgent)
+	environments.RegisterAgent(agent)
 	endpointStore := endpoint.NewPostgres(pool).WithDeviceAuthorizer(identities)
 	var instanceID string
 	for _, registrar := range registrars {
@@ -331,6 +357,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
+	engineHosts.Register(router)
 	designs.RegisterCatalog(router, identities.RequireAgent)
 	sessionResolver := sessionAdapter{service: sessions}
 	modelProxy := proxy.NewProxy(modelResolver{service: models}, logger).
@@ -350,7 +377,8 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		if err != nil {
 			return nil, fmt.Errorf("初始化远程执行中转: %w", err)
 		}
-		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions)
+		identities.WithDeviceAuthorization(runtimeRelay.Metadata()["server_id"].(string), runtimeRelay.DeviceAuthorizationKey(), executions).WithRuntimeAccess(environments)
+		environments.WithRuntime(cfg.PublicURL, runtimeRelay.Metadata()["server_id"].(string), identities).WithDisconnect(runtimeRelay.DisconnectRuntime).WithReadiness(runtimeRelay)
 		runtimeRelay.Register(router)
 		sessions.WithRuntimeStatus(runtimeRelay)
 		identities.WithRuntimeFeatures(func(ctx context.Context) (map[string]bool, error) {
@@ -385,8 +413,30 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 			return audit.Actor{}
 		}
 	})(identities.AuthRouter())
+	if cfg.RuntimeReleaseDir != "" {
+		runtimes := runtimeartifact.New(cfg.RuntimeReleaseDir, cfg.RuntimeVersion)
+		environments.WithRuntimeCatalog(runtimes)
+		runtimes.RegisterHost(router)
+	}
+	var environmentImages *envimage.Service
+	if cfg.ImageStateDir != "" {
+		environmentImages, err = envimage.New(ctx, cfg.ImageStateDir, cfg.PublicURL)
+		if err != nil {
+			return nil, fmt.Errorf("初始化环境镜像仓库: %w", err)
+		}
+		environmentImages.WithAuthorize(engineHosts.RegistryAuthorized)
+		if cfg.ImageImportDir != "" {
+			if err := environmentImages.Import(ctx, cfg.ImageImportDir); err != nil {
+				environmentImages.Close()
+				return nil, fmt.Errorf("导入环境镜像资源: %w", err)
+			}
+		}
+		environments.WithImages(environmentImages)
+		environmentImages.RegisterAdmin(admin)
+		environmentImages.RegisterHost(router)
+	}
 	router.Mount("/", httpapi.New(logger, readiness{pool: pool, storage: storage, endpoints: endpoints}, admin, agent, auth))
-	return &applicationHandler{Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
+	return &applicationHandler{environments: environments, environmentImages: environmentImages, Handler: router, sessions: sessions, billing: charges, proxy: modelProxy, images: imageService, videos: videoService, inputs: imageInputs, endpoints: endpoints, relay: runtimeRelay, runtimeKeys: keys, feedback: feedbacks, connectors: connectors, knowledgeBases: knowledgeBases, resourceImports: resourceImports}, nil
 }
 
 type sessionAdapter struct{ service *sessionreporting.Service }
@@ -418,6 +468,9 @@ func (r modelResolver) Resolve(ctx context.Context, credential, requestedModel s
 
 func (a *App) Run(ctx context.Context) error {
 	defer a.database.Close()
+	if a.environmentImages != nil {
+		defer a.environmentImages.Close()
+	}
 	workerCtx, stopWorker := context.WithCancel(context.Background())
 	sessionsDone := make(chan struct{})
 	go func() {
@@ -428,6 +481,13 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); a.billing.Run(workerCtx) }()
+	environmentDone := make(chan struct{})
+	go func() {
+		defer close(environmentDone)
+		if a.environments != nil {
+			a.environments.Run(workerCtx)
+		}
+	}()
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
@@ -493,6 +553,7 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		stopWorker()
 		<-workerDone
+		<-environmentDone
 		<-sessionsDone
 		<-relayDone
 		<-connectorsDone

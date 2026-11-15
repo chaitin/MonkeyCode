@@ -274,6 +274,22 @@ func (q *Queries) CompleteSettlement(ctx context.Context, id string) (pgconn.Com
 	return q.db.Exec(ctx, completeSettlement, id)
 }
 
+const computeAccountStart = `-- name: ComputeAccountStart :one
+SELECT period_start_at FROM credit_accounts WHERE user_id=$1 AND period_start_at<=$2 AND period_end_at>$2 ORDER BY period_start_at DESC LIMIT 1 FOR UPDATE
+`
+
+type ComputeAccountStartParams struct {
+	UserID string
+	At     time.Time
+}
+
+func (q *Queries) ComputeAccountStart(ctx context.Context, arg ComputeAccountStartParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, computeAccountStart, arg.UserID, arg.At)
+	var period_start_at time.Time
+	err := row.Scan(&period_start_at)
+	return period_start_at, err
+}
+
 const copyActivityBatch = `-- name: CopyActivityBatch :one
 SELECT billing_copy_activity_batch($1::text,1000)::integer
 `
@@ -1488,6 +1504,38 @@ func (q *Queries) LockBalance(ctx context.Context, id string) (string, error) {
 	var balance string
 	err := row.Scan(&balance)
 	return balance, err
+}
+
+const lockComputeChargeAccount = `-- name: LockComputeChargeAccount :one
+SELECT user_id,period_start_at FROM credit_accounts WHERE id=$1 FOR UPDATE
+`
+
+type LockComputeChargeAccountRow struct {
+	UserID        string
+	PeriodStartAt time.Time
+}
+
+func (q *Queries) LockComputeChargeAccount(ctx context.Context, id string) (LockComputeChargeAccountRow, error) {
+	row := q.db.QueryRow(ctx, lockComputeChargeAccount, id)
+	var i LockComputeChargeAccountRow
+	err := row.Scan(&i.UserID, &i.PeriodStartAt)
+	return i, err
+}
+
+const lockComputeUser = `-- name: LockComputeUser :one
+SELECT id,deleted_at FROM users WHERE id=$1 FOR NO KEY UPDATE
+`
+
+type LockComputeUserRow struct {
+	ID        string
+	DeletedAt *time.Time
+}
+
+func (q *Queries) LockComputeUser(ctx context.Context, id string) (LockComputeUserRow, error) {
+	row := q.db.QueryRow(ctx, lockComputeUser, id)
+	var i LockComputeUserRow
+	err := row.Scan(&i.ID, &i.DeletedAt)
+	return i, err
 }
 
 const lockGroupsForReset = `-- name: LockGroupsForReset :execresult

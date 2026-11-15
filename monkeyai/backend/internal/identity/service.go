@@ -133,6 +133,7 @@ func (s *Service) WithUserWriter(writer member.UserWriter) *Service {
 }
 
 type Service struct {
+	runtimeAccess   RuntimeAccess
 	device          *deviceAuthorization
 	email           EmailSender
 	accounts        AccountPreserver

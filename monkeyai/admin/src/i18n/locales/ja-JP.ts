@@ -876,6 +876,7 @@ export const jaJP = {
       categories: {
         model: "モデル",
         tool: "ツール",
+        environment: "クラウド環境",
         knowledge: "ナレッジベース",
         other: "その他",
       },

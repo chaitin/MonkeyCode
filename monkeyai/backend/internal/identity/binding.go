@@ -34,7 +34,14 @@ func (s *Service) lockDeviceGrant(ctx context.Context, tx pgx.Tx, p Principal, s
 
 func (s *Service) AuthorizeDevice(ctx context.Context, tx pgx.Tx, p Principal, scope string) (bool, error) {
 	_, valid, err := s.lockDeviceGrant(ctx, tx, p, scope)
-	return valid, err
+	if err != nil || !valid {
+		return valid, err
+	}
+	allowed, err := s.runtimeAllowed(ctx, tx, p.UserID, p.MachineID)
+	if err == nil && !allowed {
+		err = ErrRuntimeUnavailable
+	}
+	return allowed, err
 }
 
 func (s *Service) BindDevice(ctx context.Context, tx pgx.Tx, p Principal, machineID, keyID string) (bool, error) {
@@ -47,6 +54,12 @@ func (s *Service) BindDevice(ctx context.Context, tx pgx.Tx, p Principal, machin
 	}
 	if g.MachineID != nil && (*g.MachineID != machineID || g.KeyID == nil || *g.KeyID != keyID) {
 		return false, ErrDeviceBindingConflict
+	}
+	if allowed, err := s.runtimeAllowed(ctx, tx, p.UserID, machineID); err != nil || !allowed {
+		if err == nil {
+			err = ErrRuntimeUnavailable
+		}
+		return false, err
 	}
 	changed, err := sqlc.New(tx).BindGrant(ctx, sqlc.BindGrantParams{ID: g.ID, MachineID: new(machineID), KeyID: new(keyID)})
 	return changed == 1, err

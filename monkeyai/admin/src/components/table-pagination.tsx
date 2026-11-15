@@ -23,7 +23,7 @@ export function TablePagination({
   loading: boolean
   error?: boolean
   hasNext?: boolean
-  onPageSizeChange: (size: number) => void
+  onPageSizeChange?: (size: number) => void
   onPrevious: () => void
   onNext: () => void
 }) {
@@ -40,12 +40,14 @@ export function TablePagination({
       className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-[var(--card-spacing)]"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <PageSizeSelect
-          value={pageSize}
-          onValueChange={(size) => {
-            if (size !== pageSize) onPageSizeChange(size)
-          }}
-        />
+        {onPageSizeChange && (
+          <PageSizeSelect
+            value={pageSize}
+            onValueChange={(size) => {
+              if (size !== pageSize) onPageSizeChange(size)
+            }}
+          />
+        )}
         <p className="text-sm text-muted-foreground">
           {total === undefined
             ? t("pages.sessionReporting.clients.cursorSummary", { from, to })
@@ -66,7 +68,10 @@ export function TablePagination({
           onClick={onPrevious}
           aria-label={t("pages.operationLogs.pagination.previous")}
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} className="[[dir=rtl]_&]:rotate-180" />
+          <HugeiconsIcon
+            icon={ArrowLeft01Icon}
+            className="[[dir=rtl]_&]:rotate-180"
+          />
         </Button>
         <Button
           type="button"
@@ -76,7 +81,10 @@ export function TablePagination({
           onClick={onNext}
           aria-label={t("pages.operationLogs.pagination.next")}
         >
-          <HugeiconsIcon icon={ArrowRight01Icon} className="[[dir=rtl]_&]:rotate-180" />
+          <HugeiconsIcon
+            icon={ArrowRight01Icon}
+            className="[[dir=rtl]_&]:rotate-180"
+          />
         </Button>
       </div>
     </div>

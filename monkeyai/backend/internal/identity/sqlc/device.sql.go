@@ -302,6 +302,37 @@ func (q *Queries) LockDeviceRequest(ctx context.Context, id string) (OauthDevice
 	return i, err
 }
 
+const lockDeviceUserCode = `-- name: LockDeviceUserCode :one
+SELECT id, client_id, device_code_hash, user_code_hash, machine_id, execution_public_key, key_id, display_name, platform, arch, requested_scopes, approved_scopes, owner_user_id, restore_revoked, status, interval_ms, next_poll_at, created_at, expires_at FROM oauth_device_requests WHERE user_code_hash=$1 FOR UPDATE
+`
+
+func (q *Queries) LockDeviceUserCode(ctx context.Context, userCodeHash string) (OauthDeviceRequest, error) {
+	row := q.db.QueryRow(ctx, lockDeviceUserCode, userCodeHash)
+	var i OauthDeviceRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ClientID,
+		&i.DeviceCodeHash,
+		&i.UserCodeHash,
+		&i.MachineID,
+		&i.ExecutionPublicKey,
+		&i.KeyID,
+		&i.DisplayName,
+		&i.Platform,
+		&i.Arch,
+		&i.RequestedScopes,
+		&i.ApprovedScopes,
+		&i.OwnerUserID,
+		&i.RestoreRevoked,
+		&i.Status,
+		&i.IntervalMs,
+		&i.NextPollAt,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const resolveDeviceRequest = `-- name: ResolveDeviceRequest :exec
 UPDATE oauth_device_requests SET status=$2 WHERE id=$1
 `
@@ -333,6 +364,36 @@ func (q *Queries) RevokeBoundRuntimeGrant(ctx context.Context, arg RevokeBoundRu
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const revokeRuntimeMachine = `-- name: RevokeRuntimeMachine :many
+UPDATE oauth_grants SET revoked_at=now(),revoke_reason='environment_deleted',revocation_version=revocation_version+1
+WHERE user_id=$1 AND purpose='runtime' AND (machine_id=$2 OR requested_machine_id=$2) AND revoked_at IS NULL RETURNING id
+`
+
+type RevokeRuntimeMachineParams struct {
+	UserID    string
+	MachineID *string
+}
+
+func (q *Queries) RevokeRuntimeMachine(ctx context.Context, arg RevokeRuntimeMachineParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, revokeRuntimeMachine, arg.UserID, arg.MachineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setDevicePoll = `-- name: SetDevicePoll :exec

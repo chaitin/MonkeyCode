@@ -99,16 +99,32 @@ func missing(err error) error {
 }
 
 func (p *Postgres) Active(ctx context.Context, user string) ([]Endpoint, error) {
-	rows, err := sqlc.New(p.pool).Active(ctx, user)
+	q := sqlc.New(p.pool)
+	rows, err := q.Active(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	names, err := cloudNames(ctx, q, user, rows)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Endpoint, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, fromRow(row))
+		out = append(out, namedEndpoint(row, names))
 	}
 	return out, err
 }
 func (p *Postgres) Get(ctx context.Context, user, machine string) (Endpoint, error) {
 	row, err := sqlc.New(p.pool).Get(ctx, sqlc.GetParams{UserID: user, MachineID: machine})
-	return fromRow(row), missing(err)
+	if err != nil {
+		return Endpoint{}, missing(err)
+	}
+	rows := []sqlc.Endpoint{row}
+	names, err := cloudNames(ctx, sqlc.New(p.pool), user, rows)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	return namedEndpoint(rows[0], names), nil
 }
 func rollback(ctx context.Context, tx pgx.Tx, user, operation string) {
 	if err := tx.Rollback(ctx); err != nil && ctx.Err() == nil &&
@@ -133,9 +149,13 @@ func (p *Postgres) Page(ctx context.Context, user string, page, size int) (Page,
 	if err != nil {
 		return Page{}, err
 	}
+	names, err := cloudNames(ctx, q, user, rows)
+	if err != nil {
+		return Page{}, err
+	}
 	out := Page{Items: make([]Endpoint, 0, len(rows)), Total: total, Page: page, Size: size}
 	for _, row := range rows {
-		out.Items = append(out.Items, fromRow(row))
+		out.Items = append(out.Items, namedEndpoint(row, names))
 	}
 	return out, tx.Commit(ctx)
 }
@@ -154,10 +174,15 @@ func (p *Postgres) transaction(ctx context.Context, user string, fn func(*sqlc.Q
 	if err != nil {
 		return Endpoint{}, err
 	}
+	rows := []sqlc.Endpoint{row}
+	names, err := cloudNames(ctx, q, user, rows)
+	if err != nil {
+		return Endpoint{}, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return Endpoint{}, err
 	}
-	return fromRow(row), nil
+	return namedEndpoint(rows[0], names), nil
 }
 func (p *Postgres) Register(ctx context.Context, user string, h Hello) (Endpoint, error) {
 	return p.transaction(ctx, user, func(q *sqlc.Queries, tx pgx.Tx) (sqlc.Endpoint, error) {

@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=39, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=40, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -58,8 +58,9 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000035_billing_activity_lock_retry` | 交易／调用周分区预建遇到锁竞争时返回可重试状态 |
 | `000036_user_profile_add` | 增加独立的自定义头像字段、本人修改密码的尝试次数记录，以及待兑换设备批准的用户索引 |
 | `000037_oauth_pairing` | 新增一次性手机扫码配对，保存凭据摘要、PKCE、状态及轮询退避信息 |
-| `000038_embedding_model` | 增加 embedding 模型类型及 Embedding 配置 |
-| `000039_create_kb_tables` | 建立知识库最终结构，含学习任务生命周期快照 |
+| `000038_embedding_model` | 主线向量模型类型与配置 |
+| `000039_create_kb_tables` | 主线知识库、文档、分片与学习任务 |
+| `000040_cloud_environments` | 宿主创建者、独立环境配置、升级历史、runtime及计费；八张表，数量调度允许资源超卖 |
 
 从 `backend` 目录执行：
 
@@ -69,7 +70,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `39` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `40` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -83,10 +84,6 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 
 版本 `37` 创建 `oauth_pairing_requests` 和过期、创建者状态、设备码摘要索引；手机端只取得账号级登录态，不登记执行设备。新后端修改密码时依赖该表撤销未兑换配对，因此须先迁移再启动。down 会删除全部一次性配对记录，再 up 只恢复空表；已签发的 OAuth 授权与令牌不由此表管理。
 
-版本 `38` 为 `models` 增加 embedding 类型、Embedding 配置及相关约束，供知识库向量索引和增量向量重建使用。down 会恢复 text/image/video 模型约束，执行前必须先删除 embedding 模型记录。
-
-版本 `39` 一次建立知识库最终结构，包括 `knowledge_bases`、`knowledge_base_documents`、`knowledge_base_chunks`、`knowledge_base_learning_jobs`、向量与全文检索字段、资源授权约束、后台学习任务索引，以及学习任务上的文档 revision、目标模型和维度快照。知识库不增加自动绑定开关；未绑定模型的知识库由后台同步选择可用模型并按文档补齐向量。此前同一次功能开发中的增量迁移已合并到该版本；须先迁移再启动新后端。down 会清理全部 `kb` 授权和标签，并删除知识库、文档、分片和学习任务表，生产回滚前必须备份。
-
 版本 `23` 回滚会恢复视频供应商约束；版本 `24` 回滚会移除远程执行新增结构；版本 `26` 回滚会恢复设备平台枚举，需先处理旧枚举以外的平台记录，否则回滚失败，不会静默改写平台值。已有生产数据回滚前必须先备份并按部署方案确认，测试 down/up 只用于隔离数据库。
 
 升级回归测试使用独立临时 schema，通过真实 `migrate` CLI 验证版本顺序、业务数据保留、冻结额清理、新增结构与重复执行，需要本地安装 `migrate`：
@@ -99,4 +96,39 @@ MONKEYAI_TEST_DATABASE_URL="postgres://..." go test ./migrations -v
 
 `TestRuntimeMigrationsIdempotent` 使用真实 PostgreSQL 验证 `000024_remote_runtime` 重复执行、完整迁移组重跑及回滚后重新升级，并检查业务数据、约束和旧写入触发器。`migrate up` 的 `no change` 检查仍单独保留。
 
-知识库文档树不使用数据库外键，父子关系在知识库锁内校验。向量模型通过不可变配置和模型 ID 标识：型号、地址、协议、供应商、类型及维度创建后不可修改；更换型号必须新建模型记录并切换知识库绑定。名称、密钥、代理及授权可更新。
+版本 `38` 为 `models` 增加embedding模型类型与配置；down恢复旧类型约束，需先处理embedding模型记录。版本 `39` 建立知识库、文档树、向量／全文分片及学习任务快照；down清理kb授权和标签并删除知识库数据，生产回退前必须备份。二者属于既有主线，云环境40不改写它们。
+
+知识库文档树不使用数据库外键，父子关系在知识库锁内校验。向量模型通过不可变配置和模型ID标识：型号、地址、协议、供应商、类型及维度创建后不可修改；更换型号必须新建模型记录并切换知识库绑定。名称、密钥、代理及授权可更新。
+
+### 000040_cloud_environments
+
+云环境相关结构收敛为一个40版本。用户确认保留新主线38向量模型及39知识库，主线1～39不改；云环境不再占用38，不提供独立的计费和宿主授权迁移。40在同一事务中创建八表并扩展OAuth scope、宿主授权和环境账务类别；host授权约束保留主线kb类型，回退只清理host授权，知识库记录及权限不动。
+
+| 表 | 职责 |
+| --- | --- |
+| `hosts` | 创建者user_id、宿主身份、激活／心跳、enabled及最大环境数，不保存接入／挑战状态或权重 |
+| `host_environment_configs` | 每宿主规格、每用户默认数量和价格，无配置／价格revision |
+| `host_upgrades` | engine升级任务历史及from_version，单宿主最多一个未完成任务 |
+| `environments` | 环境目标／实际状态、精简执行配置、CPU／内存规格、监控及计费停机原因 |
+| `environment_runtimes` | runtime实际版本及机器／公钥／实例／代次绑定 |
+| `environment_operations` | 创建、生命周期和runtime更新的幂等请求及结果；创建键按用户唯一 |
+| `environment_quotas` | (host_id,user_id)个人环境数量覆盖 |
+| `environment_billing_periods` | 价格／规格快照下的区间、确认边界及持久结算进度，无价格revision |
+
+不创建预设或控制锁表，不保留preset_id、旧全局配置、资源预留标记及停用的磁盘额度列。已有账户、交易和不可变流水继续复用，不增加钱包；存储暂不收费。
+
+主线39正常up到40；从14升级仍依次执行15～40并保留主线业务数据。已经使用旧开发版38或此前拆分版本的数据库不能靠up、force或重放新版40修补结构；须使用原迁移包并单独制定保留数据的迁移方案，只有确认可丢弃的隔离测试库才能重建。本轮不自动清理或修改任何实际数据库。
+
+新宿主enabled默认false、最大环境数默认0，管理员配置后才能分配；每用户默认环境数量为3，收费默认关闭、两项单价0，规格未配置。宿主和用户都按未确认删除的环境计数，停止仍占名额，确认删除才释放；降低上限不清理已有环境，重启不重复申请名额。允许分配规格总量超过物理CPU／内存，仅保留单环境运行限制和计费规格。授权复用resource_access_grants的host类型，新宿主由管理员保存范围，撤回仅限制新建／再次启动，不打断原运行与连接。
+
+接入凭证由服务器级持久签名密钥签发，包含宿主ID、版本和有效期，不写宿主认证字段；签名文件位于MONKEYAI_RUNTIME_STATE_DIR下host-signing.key，权限0600，须随server状态保留。重发命令会撤销原待接入记录并创建新ID，不能在原安装过程中重发。首次注册绑定公钥并写activated_at，创建者来自管理员登录态。
+
+心跳和环境交换使用v2签名，包含用途、服务端根地址、宿主ID、服务端/time返回的at和正文摘要。原子推进已接受业务报告时间，旧时间／重放拒绝，不能推进费用；不保存挑战或nonce。server、engine和installer需配套更新，保留宿主原私钥及配置。Server显式HTTP支持保留，第三方HTTPS校验不变。
+
+up支持对本版最终结构重放，保留宿主配置、个人覆盖、受限或空授权、升级历史、环境／runtime身份及账务。控制路径先取按schema区分的PostgreSQL事务级advisory lock，再锁宿主、环境和账户，数量检查与创建同事务；不再有environment_defaults固定行。spec只保存执行配置，下发时从列组装ID／实例／代次／目标及CPU／内存，已有环境规格不跟随宿主配置变化。价格变化比较内容，只结束本宿主旧时段，余额耗尽不停止免费宿主环境。
+
+账务类别同时扩展交易和账本的源表、周分区父表及已有分区，兼容回填及切换后的状态。收费需启用本地积分模式；服务端确认可用后按秒计量、每分钟结算，停止尾段及跨周期使用快照；失联未知时间不补扣，迁移不追溯收费或修改余额。
+
+down在开放计费时段、已收费时段、交易／账本环境历史、待完成宿主升级／runtime更新或未确认删除环境存在时拒绝，整笔事务回滚，保留数据、权限和余额。允许回退时先撤销环境scope授权族和token、过期未完成申请及授权码，移除host授权，再按依赖删除八张表并恢复原账务类别约束。重复down不重复增加撤销版本，重新up不恢复已撤销凭据；回退不会操作宿主容器和持久目录，不能代替工作负载回收。
+
+隔离PostgreSQL回归覆盖14→40、39→40、一次回退到39及down/up、最终schema、SQL重放保持受限授权／配置／快照、余额保留与财务历史保护，以及账本／交易周分区切换前后收费。schema/sqlc仅通过make generate生成。

@@ -5896,6 +5896,1002 @@ paths:
                   items: {type: array, items: {$ref: '#/components/schemas/KbChunk'}}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/environments:
+    get:
+      summary: 查询环境列表
+      description: '默认隐藏已确认删除的环境，等待删除和删除失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentList'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      parameters:
+      - name: host_id
+        in: query
+        description: 精确筛选宿主；格式为UUID，不存在的宿主返回空列表，重复或无效值返回400。
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        schema:
+          type: string
+          default: active
+          enum: [active, all, running, stopped, failed, pending_running, pending_stopped, pending_deleted, deleted]
+      - name: sort
+        in: query
+        schema:
+          type: string
+          default: newest
+          enum: [newest, cpu_desc, cpu_asc, memory_desc, memory_asc]
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+  /api/admin/v1/environment-images:
+    get:
+      summary: 列出 server 已同步的云环境镜像
+      responses:
+        '200':
+          description: 同步状态和 server 固定摘要引用。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/EnvironmentImage'}}
+        '403': {description: 需要管理员权限。}
+  /api/admin/v1/environment-images/sync:
+    post:
+      summary: 将固定摘要镜像同步到 server 仓库
+      description: 异步准备完整镜像与已有架构，完成后宿主仅从 server 拉取。相同来源正在同步或已就绪时复用记录，失败可重试。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: {type: string, description: 上游完整仓库引用和固定 sha256 摘要。}
+              additionalProperties: false
+      responses:
+        '202':
+          description: 已受理或已有同步记录。
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentImage'}
+        '400': {description: 镜像引用无效。}
+        '403': {description: 需要管理员权限。}
+  /api/admin/v1/environments/{id}:
+    get:
+      summary: 查询环境详情
+      description: ' 所有响应使用 Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: 删除运行实例并保留持久目录
+      description: '环境确认删除后释放数量名额；失败可用新request_key和当前generation重试，不执行数据purge。所有响应不缓存。'
+      responses:
+        '202':
+          description: 请求已接受；操作结果通过查询环境或操作列表获得。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentResult'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentChange'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/admin/v1/environments/{id}/operations:
+    get:
+      summary: 查询环境操作记录
+      description: ' 所有响应使用 Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentOperationList'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+  /api/admin/v1/environments/{id}/stop:
+    post:
+      summary: 停止环境
+      description: '当前代次确认停止后结束计费，但仍保留环境名额和数据。所有响应不缓存。'
+      responses:
+        '202':
+          description: 请求已接受；操作结果通过查询环境或操作列表获得。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentResult'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentChange'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/admin/v1/environment-hosts:
+    get:
+      summary: 查询宿主环境容量
+      description: ' 所有响应使用 Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentHostList'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+  /api/admin/v1/environment-hosts/{id}/setup:
+    get:
+      summary: 读取全局环境资源与用户额度
+      description: 只保存资源与默认用户额度，不接受名称、镜像、架构或网络策略配置。默认镜像来自server导入清单，架构自动适配宿主；镜像准备状态只读返回。容量使用最新硬件报告全量，调度开关独立保存。已有环境快照不变，个人配额优先。所有响应不缓存。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentSetup'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+    put:
+      summary: 原子保存全局环境资源与默认用户额度
+      description: 当前宿主独立保存规格、宿主最大环境数、每用户默认数量、计费及授权，最后有效提交覆盖，不使用配置revision。数量包含已停止环境，确认删除后释放；允许CPU／内存总规格超卖，降低上限不删除或停止现有环境。修改价格只影响后续可确认区间，已有执行规格不改写。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentSetup'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentSetupInput'
+  /api/admin/v1/environment-hosts/{id}/scheduling:
+    patch:
+      summary: 设置是否允许分配新环境
+      description: '仅 active 宿主可修改。容量使用最新心跳上报的全部 CPU 和内存，无独立环境数量限制。关闭不停止已有环境；资源设置保存不会覆盖此状态。新接入默认关闭，启用后仍需预检、协议同步与心跳就绪。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentCapacity'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              additionalProperties: false
+              properties:
+                enabled: {type: boolean}
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/admin/v1/environment-hosts/{id}:
+    put:
+      summary: 设置宿主调度开关（兼容旧接口）
+      deprecated: true
+      description: '仅保存 enabled；旧容量字段忽略，容量由 engine 最新心跳决定。新调用方使用 scheduling 接口。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentCapacity'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentCapacityInput'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/admin/v1/environment-quotas/{id}:
+    parameters:
+    - name: host_id
+      in: query
+      required: true
+      schema: {type: string, format: uuid}
+      description: 配额所属宿主，统计和校验仅限该宿主。
+    get:
+      summary: 查询用户在宿主上的环境配额
+      description: 'id是用户UUID，host_id是宿主UUID；未设置个人覆盖时使用该宿主的默认用户配额。所有响应使用Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentQuota'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: 设置用户环境额度
+      description: ' 所有响应使用 Cache-Control: no-store。'
+      responses:
+        '200':
+          description: 成功。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentQuota'
+        '400':
+          description: 请求参数、字段或大小无效。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '401':
+          description: 登录凭据无效或过期。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '403':
+          description: 缺少管理员角色或对应 environment scope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '404':
+          description: 资源不存在或不属于当前用户。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '409':
+          description: 版本、幂等键、状态、配额、容量或宿主准入冲突；响应 error.code 区分原因。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+        '500':
+          description: 内部存储或服务错误。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentQuotaInput'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /api/admin/v1/engine-host-enrollments:
+    post:
+      summary: 生成宿主安装命令
+      description: 仅管理员可用；无需填写参数，命令有效期 30 分钟，仅首次返回。服务器必须已安装双架构 engine 资源。脚本自动识别架构和宿主名称，使用默认数据目录，全部运行组件从本 server 下载。令牌仅以摘要保存，首次注册绑定公钥和架构。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '201':
+          description: 待接入宿主及仅本次展示的安装命令
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - host_id
+                - command
+                - expires_at
+                properties:
+                  host_id:
+                    type: string
+                    format: uuid
+                  command:
+                    type: string
+                    description: 含一次性凭据的完整 shell 命令
+                  version:
+                    type: string
+                    description: 本次安装锁定的发行版本
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员或来源校验失败
+        '503':
+          description: HTTPS 地址或架构对应的安装发行物尚未准备好
+  /api/admin/v1/engine-upgrade:
+    get:
+      summary: 获取 engine 统一安装／升级命令
+      description: 返回锁定当前 server 发行版本的宿主升级命令，不创建宿主、不重新注册身份。安装与升级使用同一个 install.sh，命令在宿主手动执行后由 installer 提供操作选择，保留配置和数据；失败恢复旧版本。仅支持 Docker engine 且 Docker/gVisor 依赖未变化的升级。
+      responses:
+        '200':
+          description: 固定版本升级命令
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, command]
+                properties:
+                  version:
+                    type: string
+                  command:
+                    type: string
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员
+        '503':
+          description: HTTPS 地址或双架构 Docker engine 发行资源不完整
+  /api/admin/v1/engine-hosts:
+    get:
+      summary: 分页查询宿主及最近预检报告
+      description: online 仅表示 90 秒内有签名心跳；prerequisites_met 只表示预检前置条件，不能据此接收工作负载。不会返回令牌、密钥或签名挑战。
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: page_size
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: 宿主列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - total
+                - page
+                - page_size
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EngineHost'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员
+  /api/admin/v1/engine-hosts/{id}/upgrade:
+    post:
+      summary: 下发宿主 engine 升级任务
+      description: 仅支持在线且声明 upgrade_protocol=1 的宿主。目标版本必须为 server 当前版本，按 vYYMMDDNN 比较且必须高于宿主版本；未知或测试版本使用统一安装脚本。相同目标的活动任务重复请求返回同一任务，其他目标冲突。通过签名心跳响应下发固定发行摘要；30 分钟未完成则标记失败，允许重试。已有容器不重启。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version]
+              properties:
+                version: {type: string, description: 页面显示的目标版本，用于拒绝过期操作}
+      responses:
+        '202':
+          description: 已持久化的升级任务；重复请求返回已有任务
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EngineUpgradeTask'}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {description: 未登录管理员}
+        '403': {description: 非管理员或来源校验失败}
+        '404': {description: 宿主不存在或已删除}
+        '409': {description: 离线、不支持远程升级、版本不可升级或已有其他任务}
+        '503': {description: 目标架构的升级资源不完整}
+  /api/admin/v1/engine-hosts/{id}/enrollment:
+    post:
+      summary: 为待接入宿主重新生成安装命令
+      description: 仅管理员可用。保持同一宿主记录，原命令立即失效，新命令有效期 30 分钟并锁定 server 当前发行版本。已接入、撤销或删除的宿主不允许重新生成。令牌仅保存摘要，返回值禁止缓存。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '200':
+          $ref: '#/paths/~1api~1admin~1v1~1engine-host-enrollments/post/responses/201'
+        '400':
+          $ref: '#/components/responses/ResourceError400'
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员或来源校验失败
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          description: 宿主已接入、撤销或删除
+        '503':
+          description: server 安装资源或地址尚未准备好
+  /api/admin/v1/engine-hosts/{id}:
+    delete:
+      summary: 撤销宿主接入
+      description: 同时失效待接入命令、宿主认证和当前挑战；保留墓碑，不卸载宿主程序或删除数据。重复撤销幂等。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 已撤销
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员或来源校验失败
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+  /api/admin/v1/engine-hosts/{id}/record:
+    delete:
+      summary: 删除宿主记录
+      description: 移除管理列表中的宿主并撤销接入、停用调度；所有关联环境必须已确认删除（目标和实际状态均为 deleted，观察代次为当前代次），否则返回 409。保留内部墓碑及历史关联，不卸载 engine 或清理宿主数据。重复删除幂等。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: 已删除或记录不存在
+        '401':
+          description: 未登录管理员
+        '403':
+          description: 非管理员或来源校验失败
+        '404':
+          $ref: '#/components/responses/ResourceError404'
+        '409':
+          description: 宿主仍有关联环境或环境尚未清理完成
 components:
   securitySchemes:
     BrowserSession:
@@ -5909,6 +6905,17 @@ components:
       name: monkeyai_session
       description: 管理后台登录后设置的 HttpOnly Session Cookie。
   parameters:
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: 当前资源的ETag，用于知识库并发更新和删除。
+      schema: {type: string, example: '"1"'}
     ProfileCSRF:
       in: header
       name: X-CSRF-Token
@@ -7357,6 +8364,9 @@ components:
           enum:
           - model
           - tool
+          - image
+          - video
+          - environment
           - other
         entry_type:
           enum:
@@ -7415,6 +8425,13 @@ components:
         output_tokens:
           type: integer
           minimum: 0
+        environment_id: {type: string, format: uuid}
+        period_id: {type: string, format: uuid}
+        from: {type: string, format: date-time}
+        until: {type: string, format: date-time}
+        duration_seconds: {type: integer, format: int64, minimum: 0}
+        cpu_millis: {type: integer, format: int64, minimum: 1}
+        memory_bytes: {type: integer, format: int64, minimum: 1}
       required:
       - result
     BillingTransaction:
@@ -7447,6 +8464,9 @@ components:
           enum:
           - model
           - tool
+          - image
+          - video
+          - environment
         mode:
           enum:
           - local
@@ -7472,7 +8492,9 @@ components:
           - $ref: '#/components/schemas/CreditAmount'
           - type: 'null'
         pricing:
-          $ref: '#/components/schemas/BillingPrice'
+          anyOf:
+          - $ref: '#/components/schemas/BillingPrice'
+          - $ref: agent.yaml#/components/schemas/EnvironmentBillingPricing
         usage:
           $ref: '#/components/schemas/BillingUsage'
         error_code:
@@ -9185,4 +10207,703 @@ components:
         degraded: {type: boolean}
         warnings: {type: array, items: {type: string}}
         items: {type: array, items: {$ref: '#/components/schemas/KbSearchResult'}}
+    EnvironmentDefaultQuota:
+      type: object
+      additionalProperties: false
+      required: [max_environments]
+      description: 用户在指定宿主的环境持有数量，含停止及未确认删除的环境；0禁止新建，不代表无限。
+      properties:
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+    EnvironmentBillingConfig:
+      type: object
+      additionalProperties: false
+      required: [enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
+      description: 默认关闭；按分配CPU和内存按秒计量，每分钟结算。存储暂不收费，当前仅支持本地积分。配置修改不追溯历史时段。
+      properties:
+        enabled: {type: boolean}
+        cpu_credits_per_core_hour:
+          $ref: '#/components/schemas/CreditAmount'
+        memory_credits_per_gib_hour:
+          $ref: '#/components/schemas/CreditAmount'
+    HostGrantInput:
+      type: object
+      additionalProperties: false
+      description: 每条仅指定用户、分组或全员之一；根分组代表全员，空数组代表不允许任何用户新建或启动。撤回不影响已有运行与连接。
+      properties:
+        user_id: {type: string, format: uuid}
+        group_id: {type: string, format: uuid}
+        all_users: {type: boolean}
+        usage_requirement: {type: string, enum: [optional]}
+    EnvironmentSetupInput:
+      type: object
+      additionalProperties: false
+      required: [resource, max_environments, user_max_environments]
+      properties:
+        max_environments: {type: integer, minimum: 0, maximum: 1000000, description: 宿主上全部未确认删除环境的数量上限}
+        user_max_environments: {type: integer, minimum: 0, maximum: 1000000, description: 本宿主每位用户的默认数量上限}
+        resource:
+          $ref: host.yaml#/components/schemas/EnvironmentResource
+        billing:
+          $ref: '#/components/schemas/EnvironmentBillingConfig'
+        grants:
+          type: array
+          items: {$ref: '#/components/schemas/HostGrantInput'}
+          description: 省略时保留现有范围；显式空数组撤回全部新建／启动权限，不打断已有环境。
+    EnvironmentSetup:
+      type: object
+      description: 当前宿主独立保存资源、用户配额、计费和授权范围。修改一个宿主不影响其他宿主或已有资源快照。
+      required: [host_id, host_name, max_environments, user_max_environments, resource, capacity, image_ready, billing, grants]
+      properties:
+        host_id: {type: string, format: uuid}
+        host_name: {type: string}
+        grants:
+          type: array
+          items: {$ref: '#/components/schemas/ResourceGrant'}
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+        user_max_environments: {type: integer, minimum: 0, maximum: 1000000}
+        resource:
+          oneOf:
+          - $ref: host.yaml#/components/schemas/EnvironmentResource
+          - type: 'null'
+        capacity:
+          $ref: '#/components/schemas/EnvironmentCapacity'
+        image_ready:
+          type: boolean
+          description: server默认镜像是否已准备当前宿主架构；不影响保存资源，但未就绪不能创建环境。
+        image_reason:
+          type: string
+          description: 默认镜像未就绪的原因。
+        billing:
+          $ref: '#/components/schemas/EnvironmentBillingConfig'
+    HostSystem:
+      type: object
+      description: 宿主整机信息；CPU 为相邻心跳采样间使用率，首次或计数失效时省略。内存使用量为总量减 MemAvailable；磁盘为 data_dir 所在文件系统，已用量不含保留块，可用量扣除保留块。采集失败的分组省略，不代表零占用。
+      properties:
+        private_ips:
+          type: array
+          maxItems: 64
+          description: 活跃宿主网卡的内网 IPv4/IPv6 地址，排除容器虚拟接口；包括 CGNAT 地址。
+          items: {type: string}
+        public_ips:
+          type: array
+          maxItems: 64
+          description: 活跃宿主网卡的公网地址；管理端额外合并后台观察到的公网连接来源，不代表可入站访问。
+          items: {type: string}
+        network:
+          type: object
+          description: 宿主非容器网卡的区间平均收发速率，排除回环及 bridge/bond 从接口。首次采样、计数回退或网卡集合变化时省略。
+          required: [receive_bytes_per_second, transmit_bytes_per_second]
+          properties:
+            receive_bytes_per_second: {type: number, minimum: 0}
+            transmit_bytes_per_second: {type: number, minimum: 0}
+        disk_io:
+          type: object
+          description: 数据目录所在块设备的区间平均读写速率，包含该设备上其他进程的 I/O。首次采样、计数回退、设备变化或非块设备文件系统时省略。
+          required: [read_bytes_per_second, write_bytes_per_second]
+          properties:
+            read_bytes_per_second: {type: number, minimum: 0}
+            write_bytes_per_second: {type: number, minimum: 0}
+        hostname: {type: string, maxLength: 255}
+        os_name: {type: string, maxLength: 256}
+        kernel_version: {type: string, maxLength: 256}
+        cpu:
+          type: object
+          required: [model, logical_cores]
+          properties:
+            model: {type: string, maxLength: 512}
+            logical_cores: {type: integer, minimum: 1, maximum: 1048576}
+            usage_percent: {type: number, minimum: 0, maximum: 100}
+        memory:
+          $ref: '#/components/schemas/HostMemory'
+        disk:
+          allOf:
+          - $ref: '#/components/schemas/HostMemory'
+          - type: object
+            required: [path]
+            properties:
+              path: {type: string, maxLength: 4096, pattern: '^/'}
+    HostMemory:
+      type: object
+      required: [total_bytes, used_bytes, available_bytes]
+      properties:
+        total_bytes: {type: integer, format: int64, minimum: 1}
+        used_bytes: {type: integer, format: int64, minimum: 0}
+        available_bytes: {type: integer, format: int64, minimum: 0}
+    EnvironmentUsage:
+      type: object
+      description: 当前实例最近一次 Docker CPU/内存采样；只存最新值，不保存历史。采集失败或旧 engine 可省略，不能将缺失视为零。超过 90 秒的样本应标记过期。
+      required: [at]
+      properties:
+        at: {type: string, format: date-time}
+        cpu_cores:
+          type: number
+          minimum: 0
+          maximum: 1048576
+          description: CPU 使用核数，1 表示占满一个逻辑核；展示百分比时除以配置核数。
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Docker 内存使用量，排除 inactive file 缓存；包含 gVisor 沙箱开销。
+      additionalProperties: false
+    Environment:
+      type: object
+      required:
+      - id
+      - user_id
+      - host_id
+      - name
+      - generation
+      - instance_id
+      - desired
+      - phase
+      - observed_generation
+      - observed_at
+      - reason
+      - storage_retained
+      - workload_verified
+      - spec
+      - created_at
+      properties:
+        billing:
+          $ref: agent.yaml#/components/schemas/EnvironmentBilling
+        billing_stop_reason:
+          type: string
+          enum: [insufficient_credits, billing_unavailable]
+        runtime_version:
+          type: string
+          description: 最近一次宿主上报的 runtime 版本，未知为空。
+        usage_stale:
+          type: boolean
+          description: 最新资源样本超过 90 秒；由服务端计算，不能当作当前实时值。
+        usage:
+          $ref: '#/components/schemas/EnvironmentUsage'
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+          format: uuid
+        user:
+          type: object
+          description: 管理端展示的所属用户信息
+          required: [name, email, avatar_url]
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            avatar_url:
+              type: string
+        host:
+          type: object
+          description: 管理端展示的宿主信息，hostname 未上报时为空
+          required: [name, hostname, os_name]
+          properties:
+            name:
+              type: string
+            hostname:
+              type: string
+            os_name:
+              type: string
+        name:
+          type: string
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        instance_id:
+          type: string
+          format: uuid
+        desired:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+        phase:
+          type: string
+          enum:
+          - pending
+          - preparing
+          - starting
+          - running
+          - stopping
+          - stopped
+          - deleting
+          - deleted
+          - failed
+        observed_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        observed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        reason:
+          type: string
+          enum:
+          - ''
+          - apply_failed
+          - inspect_failed
+          - process_exited
+          - local_state_conflict
+          - runtime_failed
+          - runtime_upgrade_failed
+        storage_retained:
+          type: boolean
+          const: true
+        workload_verified:
+          type: boolean
+          const: false
+        spec:
+          $ref: host.yaml#/components/schemas/EnvironmentSpec
+        created_at:
+          type: string
+          format: date-time
+      description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，尚不代表 runtime
+        登录或用户可连接。
+    EnvironmentImage:
+      type: object
+      required: [source, reference, status, architectures, updated_at]
+      properties:
+        source: {type: string}
+        reference: {type: string, description: server 镜像仓库的固定摘要引用。}
+        status: {type: string, enum: [syncing, ready, failed]}
+        architectures: {type: array, items: {type: string, enum: [amd64, arm64]}}
+        error: {type: string}
+        updated_at: {type: string, format: date-time}
+    EnvironmentOperation:
+      type: object
+      required:
+      - id
+      - environment_id
+      - generation
+      - desired
+      - status
+      - reason
+      - created_at
+      - finished_at
+      properties:
+        kind: {type: string, enum: [create, lifecycle, runtime_upgrade]}
+        target_version: {type: string}
+        id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        desired:
+          type: string
+          enum:
+          - running
+          - stopped
+          - deleted
+        status:
+          type: string
+          enum:
+          - pending
+          - succeeded
+          - failed
+          - superseded
+        reason:
+          type: string
+          enum:
+          - ''
+          - apply_failed
+          - inspect_failed
+          - process_exited
+          - local_state_conflict
+          - runtime_failed
+          - runtime_upgrade_failed
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    EnvironmentChange:
+      type: object
+      required:
+      - generation
+      - request_key
+      properties:
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        request_key:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$
+      additionalProperties: false
+    EnvironmentResult:
+      type: object
+      required:
+      - environment
+      - operation
+      properties:
+        environment:
+          $ref: '#/components/schemas/Environment'
+        operation:
+          $ref: '#/components/schemas/EnvironmentOperation'
+    EnvironmentError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    EnvironmentList:
+      type: object
+      required:
+      - items
+      - page
+      - page_size
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Environment'
+        page:
+          type: integer
+          format: int64
+          minimum: 1
+        page_size:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+    EnvironmentOperationList:
+      type: object
+      required:
+      - items
+      - page
+      - page_size
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentOperation'
+        page:
+          type: integer
+          format: int64
+          minimum: 1
+        page_size:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+    EnvironmentCapacityInput:
+      type: object
+      additionalProperties: false
+      required: [enabled,max_environments]
+      properties:
+        enabled: {type: boolean}
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+    EnvironmentCapacity:
+      description: CPU与内存是宿主硬件报告，仅用于监控。准入只检查未确认删除环境数量，停止环境仍占名额；max_environments为0禁止新建。
+      type: object
+      required:
+      - enabled
+      - cpu_millis
+      - memory_bytes
+      - max_environments
+      properties:
+        enabled:
+          type: boolean
+        cpu_millis:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1048576000
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        max_environments:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000
+      additionalProperties: false
+    EnvironmentHost:
+      type: object
+      required:
+      - host_id
+      - enabled
+      - cpu_millis
+      - memory_bytes
+      - max_environments
+      - protocol
+      - sync_at
+      properties:
+        host_id:
+          type: string
+          format: uuid
+        enabled:
+          type: boolean
+        cpu_millis:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4096000
+        memory_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 17592186044416
+        max_environments:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1000000
+        protocol:
+          type: integer
+          format: int64
+          minimum: 0
+        sync_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    EnvironmentHostList:
+      type: object
+      required:
+      - items
+      - page
+      - page_size
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+            - host_id
+            - enabled
+            - cpu_millis
+            - memory_bytes
+            - max_environments
+            - protocol
+            - sync_at
+            - architecture
+            - status
+            - last_seen_at
+            properties:
+              host_id:
+                type: string
+                format: uuid
+              enabled:
+                type: boolean
+              cpu_millis:
+                type: integer
+                format: int64
+                minimum: 0
+                maximum: 4096000
+              memory_bytes:
+                type: integer
+                format: int64
+                minimum: 0
+                maximum: 17592186044416
+              max_environments:
+                type: integer
+                format: int64
+                minimum: 0
+                maximum: 10000
+              protocol:
+                type: integer
+                format: int64
+                minimum: 0
+              sync_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
+              architecture:
+                type: string
+                enum:
+                - amd64
+                - arm64
+              status:
+                type: string
+                enum:
+                - pending
+                - active
+                - revoked
+              last_seen_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
+        page:
+          type: integer
+          format: int64
+          minimum: 1
+        page_size:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+    EnvironmentQuotaInput:
+      type: object
+      additionalProperties: false
+      required: [max_environments]
+      description: 仅限制用户在指定宿主上的环境数量，停止仍计数；允许降低到已有数量以下，不清理现有环境。
+      properties:
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+    EnvironmentQuota:
+      type: object
+      required: [host_id, user_id, max_environments]
+      properties:
+        host_id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+    EngineUpgradeTask:
+      type: object
+      required: [id, from_version, version, status, reason, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        from_version: {type: string, description: 创建升级任务时的当前engine版本快照}
+        version: {type: string}
+        status: {type: string, enum: [pending, running, succeeded, failed]}
+        reason: {type: string, enum: ['', launch_failed, upgrade_failed, upgrade_interrupted, upgrade_timeout]}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    EngineUpgrade:
+      type: object
+      required: [target_version, version_state, update_available, supported, can_upgrade, task]
+      properties:
+        target_version: {type: string}
+        version_state: {type: string, enum: [current, available, ahead, unknown]}
+        update_available: {type: boolean}
+        supported: {type: boolean, description: 宿主是否声明远程升级协议版本 1}
+        can_upgrade: {type: boolean, description: 在线、支持协议、有更高版本且没有活动任务；提交时再次检查发行资源}
+        task:
+          oneOf:
+          - {$ref: '#/components/schemas/EngineUpgradeTask'}
+          - {type: 'null'}
+    EngineHost:
+      type: object
+      required:
+      - environment_count
+      - id
+      - name
+      - architecture
+      - version
+      - status
+      - online
+      - user_id
+      - enabled
+      - max_environments
+      - activated_at
+      - last_seen_at
+      - report
+      - created_at
+      properties:
+        environment_count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 该宿主尚未确认删除的环境数，包含停止、失败和删除中环境；与按host_id筛选的默认环境列表一致，不受宿主在线或调度状态影响。
+        user_id: {type: string, format: uuid, description: 创建宿主记录的用户}
+        enabled:
+          type: boolean
+          description: 是否允许新建环境调度；关闭不停止已有环境。
+        max_environments: {type: integer, minimum: 0, maximum: 1000000}
+        upgrade:
+          $ref: '#/components/schemas/EngineUpgrade'
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        architecture:
+          type: string
+          enum:
+          - amd64
+          - arm64
+        version:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - active
+          - revoked
+        online:
+          type: boolean
+        activated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_seen_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        report:
+          type: object
+          description: 未收到报告时为空对象；硬件字段来自宿主自报，不代表可信硬件证明。公网地址额外合并后台观察到的连接来源。
+          properties:
+            version:
+              type: integer
+              const: 1
+            upgrade_protocol:
+              type: integer
+              enum: [0, 1]
+            engine_version:
+              type: string
+              description: 实际运行的 engine 版本；签名心跳接受后同步更新宿主版本。
+            at:
+              type: string
+              format: date-time
+            system:
+              $ref: '#/components/schemas/HostSystem'
+            os:
+              type: string
+            architecture:
+              type: string
+            prerequisites_met:
+              type: boolean
+            workload_verified:
+              type: boolean
+              const: false
+            checks:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required:
+                - name
+                - passed
+                - detail
+                properties:
+                  name:
+                    type: string
+                  passed:
+                    type: boolean
+                  detail:
+                    type: string
 

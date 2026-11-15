@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "dependency_version": "v26110302",
+  "source": "Docker 官方固定版本静态包与 gVisor 官方发行摘要；Docker 29.4.3 于 2026-11-03 下载校验",
+  "architectures": {
+    "amd64": [
+      {
+        "component": "docker",
+        "version": "29.4.3",
+        "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.4.3.tgz",
+        "sha256": "bc9734a89d3edd15eeca8620961f6499ba69948814c85d7ac3488e34b3e16d01",
+        "members": {
+          "docker/runc": "runc",
+          "docker/containerd": "containerd",
+          "docker/docker": "docker",
+          "docker/docker-init": "docker-init",
+          "docker/dockerd": "dockerd",
+          "docker/ctr": "ctr",
+          "docker/containerd-shim-runc-v2": "containerd-shim-runc-v2",
+          "docker/docker-proxy": "docker-proxy"
+        }
+      },
+      {
+        "component": "gvisor",
+        "version": "release-20261026.0",
+        "url": "https://github.com/google/gvisor/releases/download/release-20261026.0/gvisor-x86_64.tar.bz2",
+        "sha256": "096589d2d6078ba4caa26aa0200932f571aa5da9d08a5156b98ab1d93fa54468",
+        "members": {
+          "runsc": "runsc",
+          "gvisor-bin/checkpointgofer": "checkpointgofer",
+          "gvisor-bin/gvisor-proc-umounter": "gvisor-proc-umounter",
+          "gvisor-bin/gvisor-sentry-prewarmer": "gvisor-sentry-prewarmer",
+          "gvisor-bin/gvisor_sentry": "gvisor_sentry",
+          "gvisor-bin/runsc-fd-parking": "runsc-fd-parking",
+          "gvisor-bin/runsc-metric-server": "runsc-metric-server"
+        }
+      }
+    ],
+    "arm64": [
+      {
+        "component": "docker",
+        "version": "29.4.3",
+        "url": "https://download.docker.com/linux/static/stable/aarch64/docker-29.4.3.tgz",
+        "sha256": "fdde3dbedbd8dc9e9e54a3172e682b4e69e740296e580542ea9ceacebbbf4f4c",
+        "members": {
+          "docker/docker": "docker",
+          "docker/docker-proxy": "docker-proxy",
+          "docker/dockerd": "dockerd",
+          "docker/containerd": "containerd",
+          "docker/ctr": "ctr",
+          "docker/containerd-shim-runc-v2": "containerd-shim-runc-v2",
+          "docker/docker-init": "docker-init",
+          "docker/runc": "runc"
+        }
+      },
+      {
+        "component": "gvisor",
+        "version": "release-20261026.0",
+        "url": "https://github.com/google/gvisor/releases/download/release-20261026.0/gvisor-aarch64.tar.bz2",
+        "sha256": "6b03c9d53f46b5ac56fd32522f38f108645e9f80a26a335e86ad1e09dcdaefda",
+        "members": {
+          "runsc": "runsc",
+          "gvisor-bin/checkpointgofer": "checkpointgofer",
+          "gvisor-bin/gvisor-proc-umounter": "gvisor-proc-umounter",
+          "gvisor-bin/gvisor-sentry-prewarmer": "gvisor-sentry-prewarmer",
+          "gvisor-bin/gvisor_sentry": "gvisor_sentry",
+          "gvisor-bin/runsc-fd-parking": "runsc-fd-parking",
+          "gvisor-bin/runsc-metric-server": "runsc-metric-server"
+        }
+      }
+    ]
+  }
+}
