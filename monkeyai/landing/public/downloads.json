@@ -1,10 +1,12 @@
 {
-  "android": "",
-  "ios": "",
+  "android": "https://release.monkeycode-ai.com/public/monkeyai/mobile/apk/MonkeyAI-latest.apk",
+  "ios": "https://apps.apple.com/cn/app/%E7%99%BE%E6%99%BA%E5%8A%9E%E5%85%AC%E5%B9%B3%E5%8F%B0/id6829699295",
   "windows": "https://release.monkeycode-ai.com/public/monkeyai/desktop/win/x64/MonkeyAI-latest-win-x64.exe",
   "windows7": "https://release.monkeycode-ai.com/public/monkeyai/desktop/win7/x64/MonkeyAI-latest-win7-x64.exe",
-  "linux_arm64": "",
+  "linux_arm64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/arm64/MonkeyAI-latest-linux-arm64.AppImage",
+  "linux_arm64_deb": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/arm64/MonkeyAI-latest-linux-arm64.deb",
   "linux_x64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/x64/MonkeyAI-latest-linux-x86_64.AppImage",
+  "linux_x64_deb": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/x64/MonkeyAI-latest-linux-amd64.deb",
   "macos_arm64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/mac/arm64/MonkeyAI-latest-mac-arm64.dmg",
   "macos_x64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/mac/x64/MonkeyAI-latest-mac-x64.dmg",
   "harmony_desktop": ""

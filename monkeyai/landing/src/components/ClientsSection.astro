@@ -13,8 +13,8 @@ const clients = [
   { label: 'Win7 兼容版', icon: 'windows-new', description: 'x64 下载', href: downloads.windows7 },
   { label: 'macOS ARM', icon: 'apple-01', description: 'Apple Silicon 下载', href: downloads.macos_arm64 },
   { label: 'macOS Intel', icon: 'apple-01', description: 'Intel 下载', href: downloads.macos_x64 },
-  { label: 'Linux x64', icon: 'computer-terminal-01', description: 'x64 下载', href: downloads.linux_x64 },
-  { label: 'Linux ARM', icon: 'computer-terminal-01', description: 'ARM64 下载', href: downloads.linux_arm64 },
+  { label: 'Linux x64', icon: 'computer-terminal-01', description: 'x64 下载', href: downloads.linux_x64, downloadOptions: [{ label: 'AppImage · 免安装', href: downloads.linux_x64 }, { label: 'DEB · Debian / Ubuntu', href: downloads.linux_x64_deb }] },
+  { label: 'Linux ARM', icon: 'computer-terminal-01', description: 'ARM64 下载', href: downloads.linux_arm64, downloadOptions: [{ label: 'AppImage · 免安装', href: downloads.linux_arm64 }, { label: 'DEB · Debian / Ubuntu', href: downloads.linux_arm64_deb }] },
   { label: '银河麒麟', icon: 'computer-terminal-01', description: '麒麟应用市场', href: '', hoverLabel: '麒麟应用市场' },
   { label: '统信 UOS', icon: 'computer-terminal-01', description: 'Linux x64 下载', href: downloads.linux_x64 },
   { label: '鸿蒙手机', icon: 'computer-terminal-01', description: '敬请期待', href: '' },
@@ -33,6 +33,7 @@ const clients = [
     <ClientPlatforms client:load clients={clients.map(client => ({
       href: client.href, label: client.label, description: client.description,
       hoverLabel: 'hoverLabel' in client ? client.hoverLabel : undefined,
+      downloadOptions: 'downloadOptions' in client ? client.downloadOptions : undefined,
       iconBody: hugeicons.icons[client.icon].body,
     }))} />
 

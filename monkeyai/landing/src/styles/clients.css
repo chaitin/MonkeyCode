@@ -4,6 +4,31 @@ body.site-theme .studio-client-platform-button[data-slot='button'] { --button-ho
 body.site-theme .studio-client-platform-button[data-slot='button'] > svg { width: 40px; height: 40px; flex-shrink: 0; color: var(--green); }
 body.site-theme .studio-client-platform-button[data-slot='button'][data-variant='outline']:not(:disabled):hover { border-color: var(--green); background: color-mix(in srgb, var(--green) 12%, var(--studio-surface)); color: var(--studio-text); box-shadow: var(--button-hover-shadow, none); }
 .studio-client-platform-button[aria-disabled='true'] { cursor: default; }
+body.site-theme .studio-client-platforms > li[data-current-device='true'] .studio-client-platform-button[data-slot='button'] { position: relative; border-color: transparent; background: color-mix(in srgb, var(--green) 12%, var(--studio-surface)); box-shadow: 0 0 16px color-mix(in srgb, var(--green) 18%, transparent), 0 0 24px rgb(139 92 246 / 12%); }
+body.site-theme .studio-client-platforms > li[data-current-device='true'] .studio-client-platform-button[data-slot='button']::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, var(--green), #22d3ee, #818cf8, #e879f9, #fbbf24, var(--green));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: studio-client-border-flow 6s linear infinite;
+}
+body.site-theme .studio-client-platforms > li[data-current-device='true'] .studio-client-platform-button[data-slot='button']:hover { border-color: var(--green); box-shadow: 0 0 16px color-mix(in srgb, var(--green) 18%, transparent), 0 0 24px rgb(139 92 246 / 12%); }
+body.site-theme .studio-client-platforms > li[data-current-device='true'] .studio-client-platform-button[data-slot='button']:hover::before { display: none; }
+@keyframes studio-client-border-flow { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  body.site-theme .studio-client-platforms > li[data-current-device='true'] .studio-client-platform-button[data-slot='button']::before { animation: none; }
+}
+.studio-client-download-menu { z-index: 100; min-width: 220px; padding: 8px; border: 1px solid var(--studio-line); border-radius: 12px; background: var(--studio-surface); color: var(--studio-text); box-shadow: 0 12px 32px rgb(0 0 0 / 12%); }
+.studio-client-download-heading { padding: 8px 12px; color: var(--studio-subtle); font-size: var(--type-body); }
+.studio-client-download-option { display: block; padding: 10px 12px; border-radius: 6px; color: inherit; text-decoration: none; font-size: var(--type-body); cursor: pointer; }
+.studio-client-download-option[data-highlighted] { outline: none; background: var(--studio-raised); color: var(--green); }
 .studio-client-labels { display: grid; }
 .studio-client-labels > span { grid-area: 1 / 1; transition: opacity 180ms ease; }
 .studio-client-hover-label { opacity: 0; }
