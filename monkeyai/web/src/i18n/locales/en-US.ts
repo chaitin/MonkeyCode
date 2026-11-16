@@ -358,6 +358,7 @@ export const enUS = {
       running: "Running limit",
     },
     states: {
+      protected: "Storage protection",
       pending_running: "Awaiting start",
       pending_stopped: "Awaiting stop",
       archived: "Removed, cleanup unconfirmed",
@@ -379,6 +380,7 @@ export const enUS = {
       superseded: "Superseded",
     },
     reasons: {
+      storage_pressure: "Host storage is low. The environment is protected and compute billing is paused. Ask an administrator to free space, then stop and start the environment. It will not restart automatically.",
       apply_failed:
         "Execution failed. Inspect host logs and clean up before starting again.",
       inspect_failed:

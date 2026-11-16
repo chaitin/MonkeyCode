@@ -9,36 +9,43 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/control"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/guest"
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/storage"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/vmdisk"
 )
 
 type Spec struct {
-	Disks      vmdisk.Spec `json:"disks"`
-	VCPUs      int         `json:"vcpus"`
-	MemoryMiB  int64       `json:"memory_mib"`
-	Generation int64       `json:"generation"`
+	Fingerprint string      `json:"fingerprint,omitempty"`
+	Disks       vmdisk.Spec `json:"disks"`
+	VCPUs       int         `json:"vcpus"`
+	CPUMillis   int64       `json:"cpu_millis,omitempty"`
+	MemoryMiB   int64       `json:"memory_mib"`
+	Generation  int64       `json:"generation"`
 }
 type State struct {
-	Spec                 Spec   `json:"spec"`
-	ID                   string `json:"id"`
-	BootID               string `json:"boot_id,omitempty"`
-	Lease                string `json:"lease,omitempty"`
-	Phase                string `json:"phase"`
-	Generation           int64  `json:"generation"`
-	ProtectionGeneration int64  `json:"protection_generation,omitempty"`
+	Protection           *lifecycle.Protection `json:"protection,omitempty"`
+	Spec                 Spec                  `json:"spec"`
+	ID                   string                `json:"id"`
+	BootID               string                `json:"boot_id,omitempty"`
+	Lease                string                `json:"lease,omitempty"`
+	Phase                string                `json:"phase"`
+	Generation           int64                 `json:"generation"`
+	ProtectionGeneration int64                 `json:"protection_generation,omitempty"`
 }
 type Launch struct {
-	SelfTest  bool
-	ID        string
-	BootID    string
-	Disks     vmdisk.Disks
-	VCPUs     int
-	MemoryMiB int64
-	Binding   guest.Binding
+	Maintenance bool
+	CPUMillis   int64
+	SelfTest    bool
+	ID          string
+	BootID      string
+	Disks       vmdisk.Disks
+	VCPUs       int
+	MemoryMiB   int64
+	Binding     guest.Binding
 }
 
 // Host 必须核验进程归属、jailer、cgroup和网络隔离，不能用客体自报确认停止。
@@ -92,8 +99,11 @@ func (m *Manager) load(id string) (State, error) {
 	if json.Unmarshal(raw, &s) != nil || s.Spec.Disks.EnvironmentID != id || s.ID != storage.Key(id) || s.Generation < 1 || s.Generation < s.ProtectionGeneration {
 		return State{}, errors.New("虚拟机状态损坏")
 	}
+	if s.ProtectionGeneration != 0 && s.Protection == nil || s.Protection != nil && !s.Protection.Valid(s.Generation) {
+		return State{}, errors.New("虚拟机保护事件与锁定状态不一致")
+	}
 	switch s.Phase {
-	case "created", "starting", "running", "stopping", "stopped", "paused", "retained", "failed":
+	case "created", "starting", "running", "stopping", "stopped", "paused", "retained", "failed", "maintenance", "destroyed":
 	default:
 		return State{}, errors.New("未知虚拟机状态")
 	}
@@ -125,6 +135,12 @@ func (m *Manager) Create(ctx context.Context, spec Spec, template string) (State
 	return s, m.save(s)
 }
 func (m *Manager) Start(ctx context.Context, id string, generation int64) (State, error) {
+	return m.start(ctx, id, generation, false)
+}
+func (m *Manager) Maintain(ctx context.Context, id string, generation int64) (State, error) {
+	return m.start(ctx, id, generation, true)
+}
+func (m *Manager) start(ctx context.Context, id string, generation int64, maintenance bool) (State, error) {
 	unlock, err := m.lock(id)
 	if err != nil {
 		return State{}, err
@@ -139,6 +155,9 @@ func (m *Manager) Start(ctx context.Context, id string, generation int64) (State
 	}
 	if generation < s.Generation {
 		return s, errors.New("启动代次已过期")
+	}
+	if maintenance && (s.Phase != "stopped" || generation != s.Generation) {
+		return s, errors.New("维护启动需要已确认停止的同一代次")
 	}
 	if s.Phase == "running" {
 		if generation != s.Generation {
@@ -156,7 +175,7 @@ func (m *Manager) Start(ctx context.Context, id string, generation int64) (State
 	if s.Phase != "created" && s.Phase != "stopped" {
 		return s, errors.New("虚拟机当前状态不允许启动")
 	}
-	if s.Phase == "stopped" && generation <= s.Generation {
+	if s.Phase == "stopped" && generation <= s.Generation && !maintenance {
 		return s, errors.New("再次启动需要更高代次")
 	}
 	running, err := m.host.Running(ctx, s.ID)
@@ -181,7 +200,7 @@ func (m *Manager) Start(ctx context.Context, id string, generation int64) (State
 	if err := m.save(s); err != nil {
 		return s, err
 	}
-	launch := Launch{ID: s.ID, BootID: s.BootID, Disks: disks, VCPUs: s.Spec.VCPUs, MemoryMiB: s.Spec.MemoryMiB, Binding: guest.Binding{EnvironmentID: id, InstanceID: s.Spec.Disks.InstanceID, BootID: s.BootID}}
+	launch := Launch{Maintenance: maintenance, ID: s.ID, BootID: s.BootID, Disks: disks, VCPUs: s.Spec.VCPUs, CPUMillis: s.Spec.CPUMillis, MemoryMiB: s.Spec.MemoryMiB, Binding: guest.Binding{EnvironmentID: id, InstanceID: s.Spec.Disks.InstanceID, BootID: s.BootID}}
 	if err := m.host.Start(ctx, launch); err != nil {
 		s.Phase = "failed"
 		return s, errors.Join(err, m.save(s))
@@ -192,6 +211,9 @@ func (m *Manager) Start(ctx context.Context, id string, generation int64) (State
 		return s, errors.Join(errors.New("未确认虚拟机已运行"), err, m.save(s))
 	}
 	s.Phase = "running"
+	if maintenance {
+		s.Phase = "maintenance"
+	}
 	return s, m.save(s)
 }
 func (m *Manager) Stop(ctx context.Context, id string, generation int64) (State, error) {
@@ -213,7 +235,7 @@ func (m *Manager) Stop(ctx context.Context, id string, generation int64) (State,
 	s.Generation = generation
 	s.Phase = "stopping"
 	if err := m.save(s); err != nil {
-		return s, err
+		return s, errors.Join(err, m.host.Stop(ctx, s.ID))
 	}
 	if err := m.host.Stop(ctx, s.ID); err != nil {
 		return s, err
@@ -247,13 +269,22 @@ func (m *Manager) Protect(ctx context.Context, id string) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	if s.Phase != "running" && s.Phase != "starting" && s.Phase != "paused" {
+	if s.Phase != "running" && s.Phase != "starting" && s.Phase != "paused" && s.Phase != "maintenance" && s.Phase != "failed" && s.Phase != "stopping" {
 		return s, nil
+	}
+	if s.ProtectionGeneration == 0 {
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return s, err
+		}
+		eventID := fmt.Sprintf("%x-%x-%x-%x-%x", random[0:4], random[4:6], random[6:8], random[8:10], random[10:16])
+		s.Protection = &lifecycle.Protection{ID: eventID, At: time.Now().UTC(), Generation: s.Generation, Reason: "storage_pressure"}
 	}
 	s.ProtectionGeneration = s.Generation
 	// 先保存锁定，即使暂停失败或Runner崩溃也不能被旧running目标拉起。
+	// 元数据空间耗尽时仍需阻止继续写盘；保留占用，不把此失败宣称为已确认停止。
 	if err := m.save(s); err != nil {
-		return s, err
+		return s, errors.Join(err, m.host.Stop(ctx, s.ID))
 	}
 	if err := m.host.Pause(ctx, s.ID); err != nil {
 		return s, errors.Join(fmt.Errorf("保护暂停失败: %w", err), m.host.Stop(ctx, s.ID))
@@ -327,7 +358,7 @@ func (m *Manager) Inspect(ctx context.Context, id string) (State, error) {
 	if err != nil {
 		return s, err
 	}
-	if s.Phase == "running" {
+	if s.Phase == "running" || s.Phase == "maintenance" {
 		running, err := m.host.Running(ctx, s.ID)
 		if err != nil {
 			return s, err

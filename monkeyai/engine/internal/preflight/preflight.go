@@ -51,6 +51,11 @@ type Check struct {
 }
 
 type Report struct {
+	Driver             string          `json:"driver,omitempty"`
+	VirtualMachine     json.RawMessage `json:"virtual_machine,omitempty"`
+	ProtectionProtocol int             `json:"protection_protocol,omitempty"`
+	DiskPressure       string          `json:"disk_pressure,omitempty"`
+
 	EngineVersion         string    `json:"engine_version,omitempty"`
 	System                *System   `json:"system,omitempty"`
 	NetworkPolicies       []string  `json:"network_policies"`

@@ -168,7 +168,12 @@ paths:
                         version: {type: string}
                         status: {type: string, enum: [running, succeeded, failed]}
                         reason: {type: string, enum: ['', launch_failed, upgrade_failed, upgrade_interrupted]}
-                    environment_protocol: {type: integer, enum: [0, 2, 3], description: 2 支持保留容器及旧摘要引用；3 进一步支持可读版本tag并独立校验image_digest。}
+                    environment_protocol: {type: integer, enum: [0, 2, 3, 4], description: 2 为保留容器；3 支持固定版本tag；4 为固定组件和双盘Firecracker虚拟机。}
+                    driver: {type: string, enum: [gvisor, firecracker]}
+                    protection_protocol: {type: integer, enum: [1]}
+                    disk_pressure: {type: string, enum: [normal, warning, critical]}
+                    virtual_machine:
+                      $ref: '#/components/schemas/VirtualMachine'
                     runtime_update_protocol: {type: integer, enum: [0, 1, 2], description: 1 支持旧四文件资源包；2 支持官方单文件及宿主本地准备内嵌引擎。}
                     runtime_protocol: {type: integer, enum: [0, 1], description: standalone 编排能力版本，缺省为 0}
                     sandbox_root: {type: boolean, default: false, description: 支持受限 root 与只读管理目录。}
@@ -395,6 +400,24 @@ components:
               minProperties: 4
               maxProperties: 4
       additionalProperties: false
+    VirtualMachine:
+      type: object
+      required: [architecture, bundle_sha256, system_bytes, data_bytes]
+      properties:
+        architecture: {type: string, enum: [amd64, arm64]}
+        bundle_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        system_bytes: {type: integer, format: int64, minimum: 67108864, maximum: 17592186044416, multipleOf: 4096}
+        data_bytes: {type: integer, format: int64, minimum: 67108864, maximum: 17592186044416, multipleOf: 4096}
+      additionalProperties: false
+    EnvironmentProtection:
+      type: object
+      required: [id, generation, at, reason]
+      properties:
+        id: {type: string, format: uuid}
+        generation: {type: integer, format: int64, minimum: 1}
+        at: {type: string, format: date-time}
+        reason: {type: string, const: storage_pressure}
+      additionalProperties: false
     EnvironmentSpec:
       type: object
       required:
@@ -410,6 +433,8 @@ components:
       - network_policy
       properties:
         sandbox_root: {type: boolean, default: false, description: 受限 gVisor 持久环境的执行身份为 root，不启用特权模式。}
+        virtual_machine:
+          $ref: '#/components/schemas/VirtualMachine'
         persistent_container:
           type: boolean
           default: false
@@ -434,7 +459,7 @@ components:
           - deleted
         driver:
           type: string
-          const: gvisor
+          enum: [gvisor, firecracker]
         image:
           type: string
           maxLength: 512
@@ -535,6 +560,9 @@ components:
       - phase
       - reason
       properties:
+        observed_at: {type: string, format: date-time, description: Firecracker实际观测时间；计费只确认至此时间，重传不推进。}
+        protection:
+          $ref: '#/components/schemas/EnvironmentProtection'
         runtime_version: {type: string, description: 独立 runtime 更新协议协商后上报，未初始化时省略。}
         usage:
           $ref: '#/components/schemas/EnvironmentUsage'
@@ -555,6 +583,7 @@ components:
           - stopped
           - deleted
           - failed
+          - protected
         reason:
           type: string
           enum:
@@ -565,6 +594,7 @@ components:
           - local_state_conflict
           - runtime_failed
           - runtime_upgrade_failed
+          - storage_pressure
       additionalProperties: false
     EnvironmentExchange:
       type: object
@@ -598,6 +628,7 @@ components:
       - targets
       - acknowledged
       properties:
+        protection_protocol: {type: integer, const: 1, description: 支持持久保护事件及实际观测时间，旧服务端省略时engine不发送新增字段。}
         runtime_update_protocol: {type: integer, enum: [0, 1, 2], description: 按宿主能力协商；1 为旧四文件资源包，2 为官方单文件；旧 server 省略时 engine 不发送新增字段。}
         usage_protocol: {type: integer, enum: [1], description: 支持环境占用上报；旧服务端省略时 engine 不发送 usage。}
         protocol:

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/control"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/storage"
@@ -99,12 +100,31 @@ func (c *Cache) Ensure(ctx context.Context, identity Identity, build Build) (Tem
 	if build == nil {
 		return Template{}, errors.New("缺少镜像转换器")
 	}
-	stage, err := os.MkdirTemp(filepath.Join(c.root, "templates"), ".convert-")
+	pending, err := os.ReadDir(filepath.Join(c.root, "templates"))
 	if err != nil {
 		return Template{}, err
 	}
-	defer os.RemoveAll(stage)
+	for _, entry := range pending {
+		if strings.HasPrefix(entry.Name(), ".convert-"+key+"-") {
+			if err := recoverConversion(ctx, filepath.Join(c.root, "templates", entry.Name())); err != nil {
+				return Template{}, fmt.Errorf("恢复中断转换: %w", err)
+			}
+		}
+	}
+	stage, err := os.MkdirTemp(filepath.Join(c.root, "templates"), ".convert-"+key+"-")
+	if err != nil {
+		return Template{}, err
+	}
+	clean := true
+	defer func() {
+		if clean {
+			os.RemoveAll(stage)
+		}
+	}()
 	if err := build(ctx, identity, stage); err != nil {
+		if errors.Is(err, ErrConversionCleanup) {
+			clean = false
+		}
 		return Template{}, fmt.Errorf("转换镜像: %w", err)
 	}
 	path := filepath.Join(stage, "root.ext4")

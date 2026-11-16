@@ -24,11 +24,16 @@ import (
 const directory = "_engine"
 
 type Preparer func(context.Context, string, string, lifecycle.RuntimePackage, []string) (lifecycle.RuntimePackage, error)
+type Fetcher func(context.Context, lifecycle.RuntimePackage, string) (io.ReadCloser, error)
+
 type Manager struct {
+	fetch   Fetcher
 	root    string
 	client  *control.Client
 	prepare Preparer
 }
+
+func (m *Manager) WithFetcher(fetch Fetcher) *Manager { m.fetch = fetch; return m }
 
 func (m *Manager) WithPreparer(prepare Preparer) *Manager { m.prepare = prepare; return m }
 
@@ -128,7 +133,7 @@ func (m *Manager) Update(ctx context.Context, release lifecycle.RuntimePackage) 
 	if err := release.Validate(); err != nil {
 		return err
 	}
-	if release.Architecture != runtime.GOARCH || m.client == nil || !m.protected() {
+	if release.Architecture != runtime.GOARCH || (m.client == nil && m.fetch == nil) || !m.protected() {
 		return errors.New("runtime 更新需要匹配架构、server连接及受保护的持久目录")
 	}
 	root := filepath.Join(m.root, directory)
@@ -228,27 +233,38 @@ func (m *Manager) Update(ctx context.Context, release lifecycle.RuntimePackage) 
 }
 func (m *Manager) download(ctx context.Context, release lifecycle.RuntimePackage, name, path string) error {
 	expected := release.Files[name]
-	client := *m.client.HTTP
-	client.Timeout = 10 * time.Minute
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.client.URL+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
-	if err != nil {
-		return err
+	var body io.ReadCloser
+	if m.fetch != nil {
+		var err error
+		body, err = m.fetch(ctx, release, name)
+		if err != nil {
+			return err
+		}
+	} else {
+		client := *m.client.HTTP
+		client.Timeout = 10 * time.Minute
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.client.URL+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
+		if err != nil {
+			return err
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		if response.StatusCode != http.StatusOK || response.ContentLength > expected.Size {
+			response.Body.Close()
+			return errors.New("runtime 下载失败或长度不符合发行清单")
+		}
+		body = response.Body
 	}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK || response.ContentLength > expected.Size {
-		return errors.New("runtime 下载失败或长度不符合发行清单")
-	}
+	defer body.Close()
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, expected.Size+1))
+	n, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(body, expected.Size+1))
 	if err != nil || n != expected.Size || hex.EncodeToString(hash.Sum(nil)) != expected.SHA256 {
 		return errors.New("runtime 下载文件摘要或长度不匹配")
 	}

@@ -81,6 +81,8 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		fmt.Fprintln(out, version)
 		return 0
+	case "convert":
+		return convertCommand(ctx, args[1:], stderr)
 	case "selftest":
 		return selftestCommand(ctx, args[1:], out, stderr)
 	case "probe":
@@ -89,6 +91,7 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		c := preflight.DefaultConfig()
 		f := flag.NewFlagSet("doctor", flag.ContinueOnError)
 		f.SetOutput(stderr)
+		driver := f.String("driver", "gvisor", "已安装执行驱动")
 		f.StringVar(&c.Architecture, "architecture", c.Architecture, "目标宿主架构")
 		f.StringVar(&c.DataDir, "data-dir", c.DataDir, "持久数据目录")
 		f.StringVar(&c.Socket, "docker-socket", c.Socket, "本地 Docker Unix socket")
@@ -101,6 +104,27 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		defer cancel()
+		if *driver == "firecracker" {
+			raw, err := os.ReadFile(control.ConfigPath)
+			var cfg control.Config
+			if err != nil || json.Unmarshal(raw, &cfg) != nil || cfg.DefaultDriver != "firecracker" || cfg.Architecture != c.Architecture || cfg.DataDir != c.DataDir {
+				return 1
+			}
+			report, err := host.Report(ctx, cfg)
+			if err != nil {
+				return 1
+			}
+			if json.NewEncoder(out).Encode(report) != nil {
+				return 1
+			}
+			if !report.Prerequisites {
+				return 1
+			}
+			return 0
+		}
+		if *driver != "gvisor" {
+			return 2
+		}
 		report, err := preflight.Inspect(ctx, c)
 		if err != nil {
 			fmt.Fprintln(stderr, err)

@@ -109,6 +109,9 @@ func (p *Process) Status(ctx context.Context) (standalone.Status, error) {
 	return status, nil
 }
 func (p *Process) Login(ctx context.Context, r lifecycle.Runtime, authorize func(string) error) error {
+	if maintenanceMode() {
+		return errors.New("维护启动不能登录用户")
+	}
 	select {
 	case p.login <- struct{}{}:
 		defer func() { <-p.login }()
@@ -138,6 +141,9 @@ func (p *Process) Login(ctx context.Context, r lifecycle.Runtime, authorize func
 	return nil
 }
 func (p *Process) Serve(ctx context.Context, observe bool) error {
+	if maintenanceMode() {
+		return errors.New("维护启动不能执行用户runtime")
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.serve != nil {

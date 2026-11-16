@@ -19,7 +19,9 @@ mountpoint -q /var/lib/monkeyai || mount --bind /mnt/monkeyai-data/runtime /var/
 
 if test ! -e /mnt/monkeyai-data/.initialized; then
   mkdir -p /var/lib/monkeyai/state
-  chown 1000:1000 /workspace /home/monkey /var/lib/monkeyai /var/lib/monkeyai/state
+  chown 1000:1000 /workspace /home/monkey /var/lib/monkeyai/state
+  chown 0:0 /var/lib/monkeyai
+  chmod 755 /var/lib/monkeyai
   chmod 700 /var/lib/monkeyai/state
   touch /mnt/monkeyai-data/.initialized
   sync

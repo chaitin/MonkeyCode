@@ -38,6 +38,8 @@ type Artifact struct {
 	Digest string `json:"digest"`
 }
 
+func (a Artifact) Verify(ctx context.Context) error { return a.verify(ctx) }
+
 func (a Artifact) verify(ctx context.Context) error {
 	if !validPath(a.Path) || len(a.Digest) != 71 || !strings.HasPrefix(a.Digest, "sha256:") {
 		return errors.New("内核资源身份无效")
@@ -286,6 +288,9 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 	if l.ID != storage.Key(l.Binding.EnvironmentID) || l.Binding.BootID != l.BootID || l.Binding.InstanceID != l.Disks.Spec.InstanceID || l.Disks.Lease == "" {
 		return errors.New("启动身份与磁盘占用不匹配")
 	}
+	if l.CPUMillis < 0 || l.CPUMillis > int64(l.VCPUs)*1000 || l.CPUMillis > 32000 {
+		return errors.New("虚拟机CPU配额无效")
+	}
 	if err := l.Binding.Validate(); err != nil {
 		return err
 	}
@@ -365,6 +370,9 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 	}
 	init := "/sbin/init"
 	extra := ""
+	if l.Maintenance {
+		extra = "monkeyai.maintenance=1 systemd.unit=monkeyai-maintenance.target "
+	}
 	if l.SelfTest {
 		init = "/monkeyai-selftest"
 		extra = "monkeyai.selftest=1 "
@@ -381,7 +389,7 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 	if len(h.socket(l.ID)) > 100 {
 		return errors.New("jailer数据路径超过Unix socket长度限制")
 	}
-	command := []string{"--unit=" + h.unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID, "--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group", "--property=TimeoutStopSec=25s", "--property=MemoryMax=" + strconv.FormatInt(l.MemoryMiB+h.config.OverheadMiB, 10) + "M", "--property=MemorySwapMax=0", "--property=CPUQuota=" + strconv.Itoa(l.VCPUs*100) + "%", "--property=TasksMax=512", "--property=LimitNOFILE=4096", "--property=StandardOutput=null", "--property=StandardError=null", "--", h.config.Jailer.Path, "--id", l.ID, "--exec-file", h.config.Firecracker.Path, "--uid", strconv.FormatUint(uint64(lease.UID), 10), "--gid", strconv.FormatUint(uint64(lease.UID), 10), "--chroot-base-dir", filepath.Join(h.config.Root, "jailer"), "--netns", lease.Namespace, "--", "--api-sock", "/run/firecracker.socket", "--id", l.ID}
+	command := []string{"--unit=" + h.unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID, "--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group", "--property=TimeoutStopSec=25s", "--property=MemoryMax=" + strconv.FormatInt(l.MemoryMiB+h.config.OverheadMiB, 10) + "M", "--property=MemorySwapMax=0", "--property=CPUQuota=" + cpuQuota(l), "--property=TasksMax=512", "--property=LimitNOFILE=4096", "--property=StandardOutput=null", "--property=StandardError=null", "--", h.config.Jailer.Path, "--id", l.ID, "--exec-file", h.config.Firecracker.Path, "--uid", strconv.FormatUint(uint64(lease.UID), 10), "--gid", strconv.FormatUint(uint64(lease.UID), 10), "--chroot-base-dir", filepath.Join(h.config.Root, "jailer"), "--netns", lease.Namespace, "--", "--api-sock", "/run/firecracker.socket", "--id", l.ID}
 	if _, err := h.command(ctx, "systemd-run", command...); err != nil {
 		return err
 	}
@@ -441,6 +449,13 @@ func copyKernel(ctx context.Context, source, target string) error {
 	}
 	return errors.Join(result, out.Sync(), out.Close())
 }
+func cpuQuota(l Launch) string {
+	if l.CPUMillis > 0 {
+		return fmt.Sprintf("%d.%d%%", l.CPUMillis/10, l.CPUMillis%10)
+	}
+	return strconv.Itoa(l.VCPUs*100) + "%"
+}
+
 func (h *SystemHost) GuestClient(id string) (*guest.Client, error) {
 	record, err := h.load(id)
 	if err != nil {

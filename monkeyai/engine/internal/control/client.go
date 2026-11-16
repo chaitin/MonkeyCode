@@ -21,7 +21,9 @@ import (
 )
 
 type Config struct {
-	DefaultDriver string `json:"default_driver,omitempty"`
+	SelfTest      *DriverSelfTest `json:"driver_selftest,omitempty"`
+	Firecracker   json.RawMessage `json:"firecracker,omitempty"`
+	DefaultDriver string          `json:"default_driver,omitempty"`
 	NetworkConfig
 	RawLogEnvironments []string `json:"raw_log_environments,omitempty"`
 	OperationWorkers   int      `json:"operation_workers,omitempty"`
@@ -40,10 +42,20 @@ func (c Config) ValidateDriver() error {
 	case "", "gvisor":
 		return nil
 	case "firecracker":
-		return errors.New("当前版本尚未接入 Firecracker 执行驱动，拒绝按 gVisor 执行或升级")
+		if len(c.Firecracker) == 0 || !json.Valid(c.Firecracker) || bytes.Equal(bytes.TrimSpace(c.Firecracker), []byte("null")) {
+			return errors.New("缺少Firecracker固定组件及资源配置，拒绝按gVisor执行或升级")
+		}
+		return nil
 	default:
 		return fmt.Errorf("不支持的已保存执行引擎 %q", c.DefaultDriver)
 	}
+}
+
+type DriverSelfTest struct {
+	Driver       string    `json:"driver"`
+	Architecture string    `json:"architecture"`
+	BundleSHA256 string    `json:"bundle_sha256"`
+	At           time.Time `json:"at"`
 }
 
 type Client struct {

@@ -40,13 +40,15 @@ type approval struct {
 	done    chan error
 }
 type Observation struct {
-	RuntimeVersion string           `json:"runtime_version,omitempty"`
-	Usage          *lifecycle.Usage `json:"usage,omitempty"`
-	EnvironmentID  string           `json:"environment_id"`
-	InstanceID     string           `json:"instance_id"`
-	Generation     int64            `json:"generation"`
-	Phase          string           `json:"phase"`
-	Reason         string           `json:"reason"`
+	ObservedAt     *time.Time            `json:"observed_at,omitempty"`
+	Protection     *lifecycle.Protection `json:"protection,omitempty"`
+	RuntimeVersion string                `json:"runtime_version,omitempty"`
+	Usage          *lifecycle.Usage      `json:"usage,omitempty"`
+	EnvironmentID  string                `json:"environment_id"`
+	InstanceID     string                `json:"instance_id"`
+	Generation     int64                 `json:"generation"`
+	Phase          string                `json:"phase"`
+	Reason         string                `json:"reason"`
 }
 type entry struct {
 	Target       lifecycle.Spec `json:"target"`
@@ -60,6 +62,7 @@ type exchange struct {
 	Runtime  []standalone.Request `json:"runtime,omitempty"`
 }
 type commands struct {
+	ProtectionProtocol    int                `json:"protection_protocol"`
 	RuntimeUpdateProtocol int                `json:"runtime_update_protocol"`
 	UsageProtocol         int                `json:"usage_protocol"`
 	Protocol              int                `json:"protocol"`
@@ -101,6 +104,7 @@ type Worker struct {
 	approvals                     []*approval
 	runtimeUpdates                bool
 	usage                         bool
+	protection                    bool
 }
 
 func New(root string, executor Executor) (*Worker, error) {
@@ -162,6 +166,12 @@ func validResult(e entry) bool {
 	}
 	if r.EnvironmentID != e.Target.EnvironmentID || r.InstanceID != e.Target.InstanceID || r.Generation != e.Target.Generation {
 		return false
+	}
+	if r.Protection != nil && (e.Target.Driver != "firecracker" || !r.Protection.Valid(r.Generation)) {
+		return false
+	}
+	if r.Phase == "protected" {
+		return r.Protection != nil && r.Reason == "storage_pressure"
 	}
 	if r.Phase != "failed" {
 		return r.Phase == string(e.Target.DesiredState) && r.Reason == ""
@@ -242,7 +252,7 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 			if !w.runtimeUpdates {
 				result.RuntimeVersion = ""
 			}
-			in.Results = append(in.Results, result)
+			in.Results = append(in.Results, w.wireObservation(result))
 			if len(in.Results) == 16 {
 				break
 			}
@@ -309,7 +319,7 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 		if !w.runtimeUpdates {
 			result.RuntimeVersion = ""
 		}
-		if sameObservation(result, ack) {
+		if sameObservation(w.wireObservation(result), ack) {
 			if !e.Acknowledged {
 				slog.Info("后台确认环境结果", "environment_id", ack.EnvironmentID, "generation", ack.Generation, "phase", ack.Phase)
 			}
@@ -358,9 +368,11 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 	}
 	w.usage = out.UsageProtocol == 1
 	w.runtimeUpdates = out.RuntimeUpdateProtocol >= 1 && out.RuntimeUpdateProtocol <= 2
+	w.protection = out.ProtectionProtocol == 1
 	w.start(ctx)
 	return nil
 }
+
 // 旧后台不发送身份字段；只在首次创建时取默认值，重放和停启沿用已落盘的选择。
 func resolveSandboxRoot(s *lifecycle.Spec, raw json.RawMessage, previous lifecycle.Spec) error {
 	var identity struct {
@@ -443,7 +455,7 @@ func (w *Worker) dispatch(ctx context.Context, ids []string, inspect bool, slots
 		if _, busy := w.active[id]; busy || w.writing[id] != nil || (e.Result != nil) != inspect {
 			continue
 		}
-		if inspect && (e.Result.Phase != "running" || time.Since(w.checked[id]) < 30*time.Second) {
+		if inspect && (!(e.Result.Phase == "running" || e.Target.Driver == "firecracker" && e.Result.Phase == "failed" || e.Result.Phase == "protected" && e.Target.DesiredState != lifecycle.DesiredRunning) || time.Since(w.checked[id]) < 30*time.Second) {
 			continue
 		}
 		limit := operationTimeout
@@ -470,7 +482,7 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 	log.Info("开始处理环境")
 	var cause error
 	result := Observation{EnvironmentID: s.EnvironmentID, InstanceID: s.InstanceID, Generation: s.Generation}
-	if e.Result != nil && e.Result.Phase == "running" {
+	if e.Result != nil && (e.Result.Phase == "running" || s.Driver == "firecracker" && e.Result.Phase == "failed") {
 		state, instance, err := w.executor.Inspect(ctx, s.EnvironmentID)
 		if err != nil {
 			result.Phase = "failed"
@@ -479,9 +491,16 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 		} else if state.Spec.Generation != s.Generation || state.Spec.InstanceID != s.InstanceID {
 			result.Phase = "failed"
 			result.Reason = "local_state_conflict"
+		} else if instance.Protection != nil {
+			result.Phase = "protected"
+			result.Reason = "storage_pressure"
+			result.Protection = instance.Protection
 		} else if instance.Phase != lifecycle.InstanceRunning {
 			result.Phase = "failed"
 			result.Reason = "process_exited"
+		} else if e.Result.Phase == "failed" {
+			result.Phase = "failed"
+			result.Reason = e.Result.Reason
 		} else {
 			result.Phase = "running"
 		}
@@ -496,6 +515,16 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 			result.Reason = "local_state_conflict"
 		} else {
 			result.Phase = string(state.Phase)
+		}
+	}
+	if s.Driver == "firecracker" && result.Protection == nil {
+		state, instance, err := w.executor.Inspect(ctx, s.EnvironmentID)
+		if err == nil && state.Spec.Generation == s.Generation && state.Spec.InstanceID == s.InstanceID && instance.Protection != nil {
+			result.Protection = instance.Protection
+			if result.Phase != "stopped" && result.Phase != "deleted" {
+				result.Phase = "protected"
+				result.Reason = "storage_pressure"
+			}
 		}
 	}
 	if result.Phase == "running" && s.Runtime != nil {
@@ -539,6 +568,10 @@ func (w *Worker) execute(ctx context.Context, e entry, usage bool) {
 				log.Warn("采集环境用量失败", "error", dockerapi.Diagnostic(err))
 			}
 		}
+	}
+	if s.Driver == "firecracker" {
+		at := time.Now().UTC()
+		result.ObservedAt = &at
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()

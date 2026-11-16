@@ -341,6 +341,7 @@ export const zhCN = {
       running: "同时运行数量上限",
     },
     states: {
+      protected: "存储保护",
       pending_running: "等待启动",
       pending_stopped: "等待停止",
       archived: "已移除，清理未确认",
@@ -362,6 +363,7 @@ export const zhCN = {
       superseded: "已被新操作替代",
     },
     reasons: {
+      storage_pressure: "宿主磁盘空间不足，已暂停保护，暂停期间免计算费。请联系管理员释放空间，再停止并重新启动环境；恢复后不会自动启动。",
       apply_failed: "执行失败，请检查宿主日志；清理后可重新启动。",
       inspect_failed: "无法核对运行状态，请检查宿主后重试清理。",
       process_exited: "容器进程已退出，不会自动重启。",

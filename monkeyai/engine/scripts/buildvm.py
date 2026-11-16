@@ -57,13 +57,42 @@ def source_tree(archive, destination):
     return children[0]
 
 
-def build(architecture, output, cache, jobs):
+def source_digest():
+    paths = [ROOT / 'go.mod', ROOT / 'go.sum']
+    paths += [p for folder in ('cmd', 'internal') for p in (ROOT / folder).rglob('*.go') if not p.name.endswith('_test.go')]
+    value = hashlib.sha256()
+    for path in sorted(paths):
+        value.update(path.relative_to(ROOT).as_posix().encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
+    return value.hexdigest()
+
+
+def import_go_components(source, output, architecture):
+    source = source.resolve(strict=True)
+    record = json.loads((source / 'go-components.json').read_text())
+    names = {'monkeyai-guest', 'monkeyai-selftest', 'umoci'}
+    lock = json.loads((ROOT / 'firecracker.lock.json').read_text())
+    if (record.get('architecture') != architecture or record.get('source_sha256') != source_digest()
+            or record.get('umoci_sum') != lock['umoci']['sum'] or set(record.get('files', {})) != names):
+        raise ValueError('Go组件与当前源码、架构或umoci锁定身份不一致')
+    from packagevm import static_elf
+    for name in names:
+        path = source / name
+        if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 256 << 20 or digest(path) != record['files'][name]:
+            raise ValueError('预编译Go组件摘要、类型或大小无效')
+        static_elf(path, architecture)
+        shutil.copyfile(path, output / name)
+
+
+def build(architecture, output, cache, jobs, go_components=None):
     native = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(platform.machine())
     if platform.system() != 'Linux' or native != architecture:
         raise ValueError('内核和静态工具必须在对应架构的独立 Linux 构建机原生构建')
     if jobs < 1 or jobs > 64:
         raise ValueError('构建并行数必须介于1和64之间')
-    for tool in ('go', 'make', 'gcc', 'pkg-config', 'bison', 'flex', 'bc', 'objcopy'):
+    tools = ['make', 'gcc', 'pkg-config', 'bison', 'flex', 'bc', 'objcopy']
+    if go_components is None:
+        tools.append('go')
+    for tool in tools:
         if not shutil.which(tool):
             raise ValueError(f'构建机缺少 {tool}；请在构建镜像中准备依赖')
     lock = json.loads((ROOT / 'firecracker.lock.json').read_text())
@@ -94,13 +123,16 @@ def build(architecture, output, cache, jobs):
             (output / name).chmod(0o755)
     env = os.environ.copy()
     env.update({'GOWORK': 'off', 'CGO_ENABLED': '0', 'GOOS': 'linux', 'GOARCH': architecture})
-    command(['go', 'build', '-trimpath', '-ldflags=-s -w', '-o', output / 'monkeyai-guest', './cmd/monkeyai-guest'], ROOT, env)
-    command(['go', 'build', '-trimpath', '-ldflags=-s -w', '-o', output / 'monkeyai-selftest', './cmd/monkeyai-selftest'], ROOT, env)
-    module = lock['umoci']
-    info = json.loads(subprocess.check_output(['go', 'mod', 'download', '-json', f"{module['module']}@{module['version']}"], cwd=ROOT, env=env))
-    if info.get('Sum') != module['sum']:
-        raise ValueError('umoci 源码模块摘要不符')
-    command(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags=-s -w', '-o', output / 'umoci', './cmd/umoci'], Path(info['Dir']), env)
+    if go_components is not None:
+        import_go_components(go_components, output, architecture)
+    else:
+        command(['go', 'build', '-trimpath', '-ldflags=-s -w', '-o', output / 'monkeyai-guest', './cmd/monkeyai-guest'], ROOT, env)
+        command(['go', 'build', '-trimpath', '-ldflags=-s -w', '-o', output / 'monkeyai-selftest', './cmd/monkeyai-selftest'], ROOT, env)
+        module = lock['umoci']
+        info = json.loads(subprocess.check_output(['go', 'mod', 'download', '-json', f"{module['module']}@{module['version']}"], cwd=ROOT, env=env))
+        if info.get('Sum') != module['sum']:
+            raise ValueError('umoci 源码模块摘要不符')
+        command(['go', 'build', '-mod=readonly', '-trimpath', '-ldflags=-s -w', '-o', output / 'umoci', './cmd/umoci'], Path(info['Dir']), env)
     with tempfile.TemporaryDirectory(prefix='monkeyai-vm-build-') as work:
         work = Path(work)
         kernel_dir, fs_dir = work / 'kernel', work / 'e2fsprogs'
@@ -127,7 +159,7 @@ def build(architecture, output, cache, jobs):
         # 保留构建所用源码版本、配置和授权材料，不把这些文件混入宿主可执行路径。
         notices = output / 'licenses'
         notices.mkdir()
-        for name, path in [('linux.COPYING', kernel / 'COPYING'), ('e2fsprogs.NOTICE', fs / 'NOTICE'), ('umoci.COPYING', Path(info['Dir']) / 'COPYING')]:
+        for name, path in [('linux.COPYING', kernel / 'COPYING'), ('e2fsprogs.NOTICE', fs / 'NOTICE')]:
             if path.is_file():
                 shutil.copyfile(path, notices / name)
         shutil.copyfile(kernel / '.config', notices / f'kernel-{architecture}.config')
@@ -145,9 +177,10 @@ def main():
     parser.add_argument('--arch', choices=['amd64', 'arm64'], required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--cache', type=Path, required=True)
+    parser.add_argument('--go-components', type=Path, help='可选的同源码静态Go交叉编译产物，须附带摘要清单')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
-    build(args.arch, args.output, args.cache, args.jobs)
+    build(args.arch, args.output, args.cache, args.jobs, args.go_components)
 
 
 if __name__ == '__main__':

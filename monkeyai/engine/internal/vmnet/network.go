@@ -23,6 +23,7 @@ type Exception struct {
 	Port uint16
 }
 type Config struct {
+	Policy     string
 	Root       string
 	GuestPool  netip.Prefix
 	LinkPool   netip.Prefix
@@ -31,10 +32,11 @@ type Config struct {
 	Rate       firecracker.Rate
 }
 type record struct {
-	ID    string                   `json:"id"`
-	Slot  int                      `json:"slot"`
-	Ready bool                     `json:"ready"`
-	Lease firecracker.NetworkLease `json:"lease"`
+	Policy string                   `json:"policy,omitempty"`
+	ID     string                   `json:"id"`
+	Slot   int                      `json:"slot"`
+	Ready  bool                     `json:"ready"`
+	Lease  firecracker.NetworkLease `json:"lease"`
 }
 type Manager struct {
 	config Config
@@ -42,6 +44,12 @@ type Manager struct {
 }
 
 func New(c Config) (*Manager, error) {
+	if c.Policy == "" {
+		c.Policy = "public-only"
+	}
+	if c.Policy != "public-only" && c.Policy != "isolated" {
+		return nil, errors.New("虚拟机网络策略无效")
+	}
 	if !filepath.IsAbs(c.Root) || filepath.Clean(c.Root) != c.Root || c.Root == "/" {
 		return nil, errors.New("网络状态目录无效")
 	}
@@ -176,7 +184,7 @@ func (m *Manager) Prepare(ctx context.Context, id string) (firecracker.NetworkLe
 		return firecracker.NetworkLease{}, err
 	}
 	if r, ok := all[id]; ok {
-		if !r.Ready {
+		if !r.Ready || r.Policy != m.config.Policy {
 			return r.Lease, errors.New("存在未完成网络准备，拒绝接管残留")
 		}
 		return r.Lease, m.Verify(ctx, id, r.Lease)
@@ -201,7 +209,7 @@ func (m *Manager) Prepare(ctx context.Context, id string) (firecracker.NetworkLe
 	if err := m.checkRoutes(ctx, slot); err != nil {
 		return firecracker.NetworkLease{}, err
 	}
-	r := record{ID: id, Slot: slot, Lease: m.plan(id, slot)}
+	r := record{Policy: m.config.Policy, ID: id, Slot: slot, Lease: m.plan(id, slot)}
 	// 在修改内核资源前登记，失败后不会把半成品当成安全网络。
 	all[id] = r
 	if err := m.save(all); err != nil {
@@ -240,7 +248,7 @@ func (m *Manager) Prepare(ctx context.Context, id string) (firecracker.NetworkLe
 	if _, err := m.run(ctx, "ip", []string{"netns", "exec", namespace, "sysctl", "-q", "-w", "net.ipv4.ip_forward=1", "net.ipv6.conf.all.disable_ipv6=1"}, ""); err != nil {
 		return r.Lease, err
 	}
-	all[id] = record{ID: id, Slot: slot, Ready: true, Lease: r.Lease}
+	all[id] = record{Policy: m.config.Policy, ID: id, Slot: slot, Ready: true, Lease: r.Lease}
 	if err := m.save(all); err != nil {
 		return r.Lease, err
 	}
@@ -296,25 +304,33 @@ func (m *Manager) rules(r record) string {
 	host := "mfh" + id[:10]
 	address := slotIP(m.config.GuestPool, r.Slot, 2).String()
 	allowed := ""
-	for _, dns := range m.config.DNS {
-		allowed += fmt.Sprintf("ip daddr %s udp dport 53 accept\nip daddr %s tcp dport 53 accept\n", dns, dns)
+	local := ""
+	if m.config.Policy == "public-only" {
+		for _, dns := range m.config.DNS {
+			allowed += fmt.Sprintf("ip daddr %s udp dport 53 accept\nip daddr %s tcp dport 53 accept\n", dns, dns)
+		}
+		for _, ex := range m.config.Exceptions {
+			allowed += fmt.Sprintf("ip daddr %s tcp dport %d accept\n", ex.IP, ex.Port)
+			local += fmt.Sprintf("iifname \"%s\" ip saddr %s ip daddr %s tcp dport %d accept;\n", host, address, ex.IP, ex.Port)
+		}
 	}
-	for _, ex := range m.config.Exceptions {
-		allowed += fmt.Sprintf("ip daddr %s tcp dport %d accept\n", ex.IP, ex.Port)
+	public := ""
+	if m.config.Policy == "public-only" {
+		public = "tcp dport { 22, 80, 443 } accept;"
 	}
 	return fmt.Sprintf(`table inet %s {
  comment "monkeyai-firecracker-%s"
- chain input { type filter hook input priority -200; policy accept; iifname "%s" drop; }
- chain output { type filter hook output priority -200; policy accept; oifname "%s" drop; }
+ chain input { type filter hook input priority -200; policy accept; %s iifname "%s" drop; }
+ chain output { type filter hook output priority -200; policy accept; oifname "%s" ct state established,related accept; oifname "%s" drop; }
  chain forward { type filter hook forward priority -200; policy accept; iifname "%s" jump outbound; oifname "%s" ct state established,related accept; oifname "%s" drop; }
  chain outbound { meta nfproto != ipv4 drop; ip saddr != %s drop; ct state invalid drop; fib daddr type local drop;
  %s
  ip daddr { %s } drop;
- tcp dport { 22, 80, 443 } accept; drop;
+ %s drop;
  }
  chain nat { type nat hook postrouting priority srcnat; policy accept; ip saddr %s masquerade; }
 }
-`, table, id, host, host, host, host, host, address, allowed, denied, address)
+`, table, id, local, host, host, host, host, host, host, address, allowed, denied, public, address)
 }
 func (m *Manager) Verify(ctx context.Context, id string, lease firecracker.NetworkLease) error {
 	if !validID(id) {
@@ -325,7 +341,7 @@ func (m *Manager) Verify(ctx context.Context, id string, lease firecracker.Netwo
 		return err
 	}
 	r, ok := all[id]
-	if !ok || !r.Ready || r.Lease != lease {
+	if !ok || !r.Ready || r.Lease != lease || r.Policy != m.config.Policy {
 		return errors.New("网络状态或归属不符")
 	}
 	raw, err := m.run(ctx, "ip", []string{"-j", "link", "show", "dev", "mfh" + id[:10]}, "")

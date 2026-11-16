@@ -21,12 +21,12 @@ type Capacity struct {
 }
 
 type PressurePolicy struct {
-	WarningBytes   int64
-	CriticalBytes  int64
-	RecoveryBytes  int64
-	WarningInodes  int64
-	CriticalInodes int64
-	RecoveryInodes int64
+	WarningBytes   int64 `json:"warning_bytes"`
+	CriticalBytes  int64 `json:"critical_bytes"`
+	RecoveryBytes  int64 `json:"recovery_bytes"`
+	WarningInodes  int64 `json:"warning_inodes"`
+	CriticalInodes int64 `json:"critical_inodes"`
+	RecoveryInodes int64 `json:"recovery_inodes"`
 }
 
 func (p PressurePolicy) Validate() error {

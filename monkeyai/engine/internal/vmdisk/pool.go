@@ -14,9 +14,10 @@ import (
 )
 
 type Reservation struct {
-	LogicalBytes  int64 `json:"logical_bytes"`
-	PhysicalBytes int64 `json:"physical_bytes"`
-	Committed     bool  `json:"committed"`
+	LogicalBytes   int64 `json:"logical_bytes"`
+	PhysicalBytes  int64 `json:"physical_bytes"`
+	ReservedInodes int64 `json:"reserved_inodes,omitempty"`
+	Committed      bool  `json:"committed"`
 }
 type Pool struct {
 	root, path string
@@ -61,7 +62,7 @@ func (p *Pool) load() (map[string]Reservation, error) {
 		return nil, errors.New("存储容量记录损坏")
 	}
 	for id, r := range all {
-		if id == "" || len(id) > 256 || r.LogicalBytes <= 0 || r.PhysicalBytes < 0 || r.Committed && r.PhysicalBytes != 0 {
+		if id == "" || len(id) > 256 || r.LogicalBytes <= 0 || r.PhysicalBytes < 0 || r.ReservedInodes < 0 || r.Committed && (r.PhysicalBytes != 0 || r.ReservedInodes != 0) {
 			return nil, errors.New("存储容量记录不一致")
 		}
 	}
@@ -77,7 +78,11 @@ func (p *Pool) save(all map[string]Reservation) error {
 
 // Reserve 同时对逻辑上限和物理准备预算准入，未完成预留在重启后继续保留。
 func (p *Pool) Reserve(ctx context.Context, id string, logical, physical int64) error {
-	if id == "" || len(id) > 256 || logical <= 0 || physical <= 0 {
+	return p.ReserveFiles(ctx, id, logical, physical, 1)
+}
+
+func (p *Pool) ReserveFiles(ctx context.Context, id string, logical, physical, files int64) error {
+	if id == "" || len(id) > 256 || logical <= 0 || physical <= 0 || files <= 0 || files > 1<<60 {
 		return errors.New("存储预留参数无效")
 	}
 	if err := ctx.Err(); err != nil {
@@ -93,13 +98,18 @@ func (p *Pool) Reserve(ctx context.Context, id string, logical, physical int64) 
 		return err
 	}
 	if old, ok := all[id]; ok {
-		if old.LogicalBytes != logical || !old.Committed && old.PhysicalBytes != physical {
+		if old.LogicalBytes != logical || !old.Committed && (old.PhysicalBytes != physical || old.ReservedInodes != files) {
 			return errors.New("同一环境重复预留内容不一致")
 		}
-		return nil
+		if old.Committed {
+			return nil
+		}
 	}
-	var logicalUsed, physicalUsed int64
-	for _, r := range all {
+	var logicalUsed, physicalUsed, inodesUsed int64
+	for name, r := range all {
+		if name == id {
+			continue
+		}
 		if r.LogicalBytes > p.limit-logicalUsed {
 			return errors.New("既有逻辑分配已达到上限")
 		}
@@ -108,6 +118,10 @@ func (p *Pool) Reserve(ctx context.Context, id string, logical, physical int64) 
 			return errors.New("物理准备预算累计溢出")
 		}
 		physicalUsed += r.PhysicalBytes
+		if r.ReservedInodes > 1<<60-inodesUsed {
+			return errors.New("inode准备预算累计溢出")
+		}
+		inodesUsed += r.ReservedInodes
 	}
 	if logical > p.limit-logicalUsed {
 		return errors.New("磁盘逻辑超卖总额超出上限")
@@ -116,10 +130,17 @@ func (p *Pool) Reserve(ctx context.Context, id string, logical, physical int64) 
 	if err != nil {
 		return err
 	}
-	if err := p.policy.Admit(capacity, PressureNormal, physicalUsed, physical); err != nil {
+	pressure, err := p.pressure(capacity)
+	if err != nil {
 		return err
 	}
-	all[id] = Reservation{LogicalBytes: logical, PhysicalBytes: physical}
+	if err := p.policy.Admit(capacity, pressure, physicalUsed, physical); err != nil {
+		return err
+	}
+	if inodesUsed > capacity.FreeInodes-p.policy.CriticalInodes || files > capacity.FreeInodes-p.policy.CriticalInodes-inodesUsed {
+		return errors.New("inode准备预算不足")
+	}
+	all[id] = Reservation{LogicalBytes: logical, PhysicalBytes: physical, ReservedInodes: files}
 	return p.save(all)
 }
 
@@ -139,6 +160,7 @@ func (p *Pool) Commit(id string) error {
 		return errors.New("容量预留不存在")
 	}
 	r.PhysicalBytes = 0
+	r.ReservedInodes = 0
 	r.Committed = true
 	all[id] = r
 	return p.save(all)

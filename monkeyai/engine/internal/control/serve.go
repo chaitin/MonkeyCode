@@ -83,6 +83,8 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 	if err != nil {
 		return err
 	}
+	safety := monitorSafety(ctx, commands, cfg)
+	defer safety.Close()
 	pc := preflight.DefaultConfig()
 	pc.Architecture = cfg.Architecture
 	pc.DataDir = cfg.DataDir
@@ -90,14 +92,31 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 	var inspector preflight.Inspector
 	for {
 		if time.Since(lastHeartbeat) >= 15*time.Second {
-			report, err := inspector.Inspect(ctx, pc)
+			var report preflight.Report
+			var err error
+			if cfg.DefaultDriver == "firecracker" {
+				reporter, ok := commands.(interface {
+					Report(context.Context, Config) (preflight.Report, error)
+				})
+				if !ok {
+					err = errors.New("缺少Firecracker能力上报器")
+				} else {
+					report, err = reporter.Report(ctx, cfg)
+				}
+			} else {
+				report, err = inspector.Inspect(ctx, pc)
+			}
 			if err == nil {
 				report.EngineVersion = version
-				if commands != nil {
+				if commands != nil && cfg.DefaultDriver != "firecracker" {
 					report.NetworkPolicies = commands.NetworkPolicies(ctx)
 					report.SandboxRoot = report.Prerequisites
 					report.RuntimeProtocol = 1
 					report.RuntimeUpdateProtocol = 2
+				}
+				if safetyErr := safety.Error(); safetyErr != nil {
+					report.Prerequisites = false
+					report.Checks = append(report.Checks, preflight.Check{Name: "local_storage_guard", Detail: safetyErr.Error()})
 				}
 				upgrade, upgradeErr := remoteUpgradePath.report(ctx)
 				if upgradeErr != nil {

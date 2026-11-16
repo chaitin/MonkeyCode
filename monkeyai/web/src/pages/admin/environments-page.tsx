@@ -97,6 +97,7 @@ const statuses = [
   "active",
   "running",
   "stopped",
+  "protected",
   "failed",
   "pending_running",
   "pending_stopped",

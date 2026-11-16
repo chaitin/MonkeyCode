@@ -64,6 +64,10 @@ func (c *Coordinator) Apply(ctx context.Context, spec Spec) (State, error) {
 		return State{}, err
 	}
 	spec.Volumes = slices.Clone(spec.Volumes)
+	if spec.VirtualMachine != nil {
+		clone := *spec.VirtualMachine
+		spec.VirtualMachine = &clone
+	}
 	if spec.RuntimePackage != nil {
 		clone := *spec.RuntimePackage
 		clone.Files = maps.Clone(clone.Files)
@@ -101,12 +105,12 @@ func (c *Coordinator) Apply(ctx context.Context, spec Spec) (State, error) {
 				return state, ErrFailedGeneration
 			}
 		} else {
-			if state.Spec.PersistentContainer && !spec.PersistentContainer {
+			if state.Spec.RetainsInstance() && !spec.RetainsInstance() {
 				return state, ErrGenerationConflict
 			}
 			if spec.DesiredState == DesiredRunning {
 				retained := state.ProviderRef != ""
-				if state.Phase != PhaseStopped || (retained || state.Spec.PersistentContainer) && !sameInstance(state.Spec, spec) || !retained && !state.Spec.PersistentContainer && state.Spec.InstanceID == spec.InstanceID {
+				if state.Phase != PhaseStopped || (retained || state.Spec.RetainsInstance()) && !sameInstance(state.Spec, spec) || !retained && !state.Spec.RetainsInstance() && state.Spec.InstanceID == spec.InstanceID {
 					return state, ErrInstanceConflict
 				}
 			} else if !sameInstance(state.Spec, spec) {
@@ -133,7 +137,7 @@ func (c *Coordinator) inspect(ctx context.Context, state State) (Instance, error
 	}
 	switch instance.Phase {
 	case InstanceAbsent:
-	case InstanceCreated, InstanceRunning, InstanceStopped:
+	case InstanceCreated, InstanceRunning, InstanceStopped, InstancePaused, InstanceProtected:
 		if instance.Ref == "" || (state.ProviderRef != "" && state.ProviderRef != instance.Ref) {
 			return Instance{}, errors.New("驱动返回的实例引用不一致")
 		}
@@ -185,12 +189,14 @@ func (c *Coordinator) start(ctx context.Context, state State) (State, error) {
 		state.Phase = PhaseRunning
 		state.Reason = ""
 		return state, c.store.Save(state.Spec.EnvironmentID, state)
+	case InstancePaused, InstanceProtected:
+		return c.fail(state, "inspect", errors.New("虚拟机处于保护暂停，需要显式停止并恢复"))
 	case InstanceCreated:
 		if state.Phase == PhaseRunning {
 			return c.fail(state, "inspect", errors.New("运行实例状态倒退"))
 		}
 	case InstanceStopped:
-		if !state.Spec.PersistentContainer || state.Phase != PhasePending {
+		if !state.Spec.RetainsInstance() || state.Phase != PhasePending {
 			return c.fail(state, "inspect", errors.New("实例已退出，需要显式停止后重新启动"))
 		}
 	default:
@@ -230,7 +236,7 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 	if err != nil {
 		return c.fail(state, "inspect", err)
 	}
-	if instance.Phase == InstanceAbsent && state.Spec.PersistentContainer && state.ProviderRef != "" {
+	if instance.Phase == InstanceAbsent && state.Spec.RetainsInstance() && state.ProviderRef != "" {
 		if state.Spec.DesiredState != DesiredDeleted {
 			return c.fail(state, "inspect", errors.New("持久容器已丢失，不能作为正常停止处理"))
 		}
@@ -243,7 +249,7 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 		if err := c.store.Save(state.Spec.EnvironmentID, state); err != nil {
 			return state, err
 		}
-		if instance.Phase == InstanceRunning {
+		if instance.Phase == InstanceRunning || instance.Phase == InstancePaused || instance.Phase == InstanceProtected {
 			if err := c.driver.Stop(ctx, state.Spec, state.ProviderRef); err != nil {
 				return c.fail(state, "stop", err)
 			}
@@ -251,11 +257,16 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 			if err != nil {
 				return c.fail(state, "inspect", err)
 			}
-			if instance.Phase == InstanceRunning {
+			if instance.Phase == InstanceRunning || instance.Phase == InstancePaused || instance.Phase == InstanceProtected {
 				return c.fail(state, "stop", errors.New("实例仍在运行"))
 			}
 		}
-		if instance.Phase != InstanceAbsent && (!state.Spec.PersistentContainer || state.Spec.DesiredState == DesiredDeleted) {
+		if cleanup, ok := c.driver.(StoppedCleaner); ok && instance.Phase != InstanceAbsent {
+			if err := cleanup.FinalizeStop(ctx, state.Spec, state.ProviderRef); err != nil {
+				return c.fail(state, "stop_cleanup", err)
+			}
+		}
+		if instance.Phase != InstanceAbsent && (!state.Spec.RetainsInstance() || state.Spec.DesiredState == DesiredDeleted) {
 			if err := c.driver.Remove(ctx, state.Spec, state.ProviderRef); err != nil {
 				return c.fail(state, "remove", err)
 			}
@@ -268,7 +279,7 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 			}
 		}
 	}
-	if !state.Spec.PersistentContainer || state.Spec.DesiredState == DesiredDeleted {
+	if !state.Spec.RetainsInstance() || state.Spec.DesiredState == DesiredDeleted {
 		state.ProviderRef = ""
 	}
 	state.Reason = ""
@@ -281,7 +292,7 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 
 func sameInstance(a, b Spec) bool {
 	return a.EnvironmentID == b.EnvironmentID && a.InstanceID == b.InstanceID && a.Driver == b.Driver &&
-		sameRuntime(a.Runtime, b.Runtime) && a.Image == b.Image && a.ImageDigest == b.ImageDigest && a.NetworkPolicy == b.NetworkPolicy && a.Resource == b.Resource && slices.Equal(a.Volumes, b.Volumes)
+		sameRuntime(a.Runtime, b.Runtime) && reflect.DeepEqual(a.VirtualMachine, b.VirtualMachine) && a.Image == b.Image && a.ImageDigest == b.ImageDigest && a.NetworkPolicy == b.NetworkPolicy && a.Resource == b.Resource && slices.Equal(a.Volumes, b.Volumes)
 }
 
 func sameSpec(a, b Spec) bool {

@@ -35,19 +35,23 @@ type Limits struct {
 // Converter 仅消费已拉取的本地 OCI 布局。调用方负责在受限离线进程中执行。
 // 解包复用固定版本 umoci，避免自行实现 whiteout、所有权和扩展属性规则。
 type Converter struct {
-	Unpack   Tool
-	Mkfs     Tool
-	Assets   []Asset
-	Limits   Limits
-	run      func(context.Context, Tool, ...string) error
-	populate func(context.Context, string, int64, string) error
+	ImplementationDigest string
+	Unpack               Tool
+	Mkfs                 Tool
+	Assets               []Asset
+	Limits               Limits
+	run                  func(context.Context, Tool, ...string) error
+	populate             func(context.Context, string, int64, string) error
 }
 
 func (c *Converter) Identity() (converter, bootstrap string, err error) {
 	if !digestPattern.MatchString(c.Unpack.Digest) || !digestPattern.MatchString(c.Mkfs.Digest) {
 		return "", "", errors.New("转换工具缺少固定摘要")
 	}
-	raw, _ := json.Marshal([]string{"monkeyai-oci-ext4-v1", c.Unpack.Digest, c.Mkfs.Digest})
+	if c.ImplementationDigest != "" && !digestPattern.MatchString(c.ImplementationDigest) {
+		return "", "", errors.New("转换程序摘要无效")
+	}
+	raw, _ := json.Marshal([]string{"monkeyai-oci-ext4-v1", c.Unpack.Digest, c.Mkfs.Digest, c.ImplementationDigest})
 	converter = digestBytes(raw)
 	assets := append([]Asset(nil), c.Assets...)
 	sort.Slice(assets, func(i, j int) bool { return assets[i].Target < assets[j].Target })

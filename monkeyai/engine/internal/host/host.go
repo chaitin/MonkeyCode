@@ -18,11 +18,22 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/runtimeupdate"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/standalone"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/storage"
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/vmhost"
 )
 
 const root = "/var/lib/monkeyai-engine/control/environments"
 
-func open() (*driver.Driver, error) {
+type execution interface {
+	lifecycle.Driver
+	standalone.Runner
+	Close() error
+	RuntimeVersion(context.Context, lifecycle.Spec) (string, error)
+	UpdateRuntime(context.Context, lifecycle.Spec) error
+	Usage(context.Context, lifecycle.Spec, string) (*lifecycle.Usage, error)
+	Cache(context.Context, bool) (cache.Report, error)
+}
+
+func open(name string) (execution, error) {
 	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
 		return nil, errors.New("环境操作需要 Linux root")
 	}
@@ -37,10 +48,6 @@ func open() (*driver.Driver, error) {
 	if err := cfg.ValidateDriver(); err != nil {
 		return nil, err
 	}
-	volumes, err := storage.New(cfg.DataDir)
-	if err != nil {
-		return nil, err
-	}
 	if _, err := os.Lstat(control.KeyPath); err != nil {
 		return nil, err
 	}
@@ -49,6 +56,22 @@ func open() (*driver.Driver, error) {
 		return nil, err
 	}
 	client, err := cfg.Client(key)
+	if err != nil {
+		return nil, err
+	}
+	if name == "" {
+		name = cfg.DefaultDriver
+		if name == "" {
+			name = "gvisor"
+		}
+	}
+	if name == "firecracker" {
+		return vmhost.New(filepath.Join(cfg.DataDir, "firecracker"), filepath.Join(root, "firecracker"), cfg.Firecracker, client, cfg.HostID)
+	}
+	if name != "gvisor" {
+		return nil, errors.New("不支持的环境执行驱动")
+	}
+	volumes, err := storage.New(cfg.DataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +126,7 @@ func Apply(ctx context.Context, s lifecycle.Spec) (lifecycle.State, error) {
 		return lifecycle.State{}, err
 	}
 	defer unlock()
-	d, err := open()
+	d, err := open(s.Driver)
 	if err != nil {
 		return lifecycle.State{}, err
 	}
@@ -140,7 +163,7 @@ func Inspect(ctx context.Context, id string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	d, err := open()
+	d, err := open(state.Spec.Driver)
 	if err != nil {
 		return Status{}, err
 	}
@@ -166,7 +189,7 @@ func (Executor) UpdateRuntime(ctx context.Context, s lifecycle.Spec) error {
 	if state.Spec.Generation != s.Generation || state.Spec.InstanceID != s.InstanceID || state.Phase != lifecycle.PhaseStopped {
 		return errors.New("runtime 更新与已停止环境不一致")
 	}
-	d, err := open()
+	d, err := open(s.Driver)
 	if err != nil {
 		return err
 	}
@@ -174,7 +197,7 @@ func (Executor) UpdateRuntime(ctx context.Context, s lifecycle.Spec) error {
 	return d.UpdateRuntime(ctx, s)
 }
 func (Executor) RuntimeVersion(ctx context.Context, s lifecycle.Spec) (string, error) {
-	d, err := open()
+	d, err := open(s.Driver)
 	if err != nil {
 		return "", err
 	}
@@ -183,7 +206,7 @@ func (Executor) RuntimeVersion(ctx context.Context, s lifecycle.Spec) (string, e
 }
 
 func (Executor) Usage(ctx context.Context, s lifecycle.Spec) (*lifecycle.Usage, error) {
-	d, err := open()
+	d, err := open(s.Driver)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +223,7 @@ func (Executor) Inspect(ctx context.Context, id string) (lifecycle.State, lifecy
 }
 
 func Cache(ctx context.Context, prune bool) (cache.Report, error) {
-	d, err := open()
+	d, err := open("")
 	if err != nil {
 		return cache.Report{}, err
 	}
@@ -221,7 +244,7 @@ func (Executor) Runtime(ctx context.Context, s lifecycle.Spec, approve standalon
 	if state.Spec.Generation != s.Generation || state.Spec.InstanceID != s.InstanceID || state.Phase != lifecycle.PhaseRunning {
 		return errors.New("运行时目标与当前实例不一致")
 	}
-	d, err := open()
+	d, err := open(s.Driver)
 	if err != nil {
 		return err
 	}

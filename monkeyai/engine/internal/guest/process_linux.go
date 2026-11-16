@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/runtimeupdate"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/standalone"
 	"golang.org/x/sys/unix"
 )
@@ -20,7 +21,21 @@ func runtimeCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
 	if !dataMounted() {
 		return nil, errors.New("持久数据盘未挂载，禁止初始化或执行 runtime")
 	}
-	command := exec.CommandContext(ctx, standalone.Binary, args...)
+	binary := standalone.Binary
+	files, err := runtimeupdate.New("/var/lib/monkeyai", nil).Current()
+	if err != nil {
+		return nil, err
+	}
+	if files.Binary != "" {
+		binary = files.Binary
+		args = append([]string(nil), args...)
+		for i := 0; i+1 < len(args); i++ {
+			if args[i] == "--engine-bin" {
+				args[i+1] = files.Engine
+			}
+		}
+	}
+	command := exec.CommandContext(ctx, binary, args...)
 	command.Dir = "/workspace"
 	command.Env = []string{"PATH=/opt/monkeyai:/usr/local/bin:/usr/bin:/bin", "HOME=/home/monkey", "USER=monkey", "LOGNAME=monkey", "LANG=C.UTF-8"}
 	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}, Setpgid: true, Pdeathsig: syscall.SIGKILL}

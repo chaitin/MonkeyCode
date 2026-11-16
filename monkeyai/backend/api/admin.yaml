@@ -6214,7 +6214,7 @@ paths:
         schema:
           type: string
           default: active
-          enum: [active, all, running, stopped, failed, pending_running, pending_stopped, pending_deleted, deleted]
+          enum: [active, all, running, stopped, failed, protected, pending_running, pending_stopped, pending_deleted, deleted]
       - name: sort
         in: query
         schema:
@@ -10864,6 +10864,7 @@ components:
           - deleting
           - deleted
           - failed
+          - protected
         observed_generation:
           type: integer
           format: int64
@@ -10883,6 +10884,7 @@ components:
           - local_state_conflict
           - runtime_failed
           - runtime_upgrade_failed
+          - storage_pressure
         storage_retained:
           type: boolean
           const: true

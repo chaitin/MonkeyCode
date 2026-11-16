@@ -43,10 +43,11 @@ type Request struct {
 	Observe bool               `json:"observe,omitempty"`
 }
 type Event struct {
-	Event  string             `json:"event"`
-	Code   string             `json:"user_code,omitempty"`
-	Status *standalone.Status `json:"status,omitempty"`
-	Error  string             `json:"error,omitempty"`
+	RuntimeVersion string             `json:"runtime_version,omitempty"`
+	Event          string             `json:"event"`
+	Code           string             `json:"user_code,omitempty"`
+	Status         *standalone.Status `json:"status,omitempty"`
+	Error          string             `json:"error,omitempty"`
 }
 type Backend interface {
 	Status(context.Context) (standalone.Status, error)
@@ -74,8 +75,12 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
+	if r.URL.Path == "/v1/runtime" {
+		s.installRuntime(w, r)
+		return
+	}
 	switch r.URL.Path {
-	case "/v1/status", "/v1/login", "/v1/serve", "/v1/shutdown":
+	case "/v1/version", "/v1/status", "/v1/login", "/v1/serve", "/v1/shutdown":
 	default:
 		w.WriteHeader(404)
 		return
@@ -107,6 +112,22 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var operationErr error
 	switch r.URL.Path {
+	case "/v1/version":
+		backend, ok := s.backend.(interface {
+			Version(context.Context) (string, error)
+		})
+		if !ok {
+			operationErr = errors.New("不支持版本查询")
+			break
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+		value, err := backend.Version(ctx)
+		if err != nil || !lifecycle.ValidRuntimeVersion(value) {
+			operationErr = errors.New("版本查询失败")
+			break
+		}
+		operationErr = write(Event{Event: "version", RuntimeVersion: value})
 	case "/v1/status":
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
@@ -205,7 +226,7 @@ func (c *Client) call(ctx context.Context, action string, in Request, handle fun
 			done = true
 		case "error":
 			return errors.New("虚拟机管理操作失败")
-		case "status", "authorize":
+		case "status", "authorize", "version":
 			if handle == nil {
 				return errors.New("意外管理事件")
 			}

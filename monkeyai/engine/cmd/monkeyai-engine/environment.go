@@ -61,6 +61,31 @@ func environment(ctx context.Context, args []string, out, stderr io.Writer) int 
 			return 1
 		}
 		return 0
+	case "retained":
+		if f.Parse(args[1:]) != nil || f.NArg() != 0 {
+			return 2
+		}
+		disks, err := host.Retained(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if err := json.NewEncoder(out).Encode(disks); err != nil {
+			return 1
+		}
+		return 0
+	case "destroy-disks":
+		id := f.String("id", "", "已删除的环境ID")
+		confirmed := f.String("confirm-environment", "", "再次输入同一环境ID，确认不可恢复地销毁系统盘和数据盘")
+		if f.Parse(args[1:]) != nil || f.NArg() != 0 || *id == "" || *confirmed != *id {
+			return 2
+		}
+		if err := host.DestroyDisks(ctx, *id, *confirmed); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(out, "保留双盘已永久销毁")
+		return 0
 	case "inspect":
 		id := f.String("id", "", "环境 ID")
 		if f.Parse(args[1:]) != nil || f.NArg() != 0 || *id == "" {

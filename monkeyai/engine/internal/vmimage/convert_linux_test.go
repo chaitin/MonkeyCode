@@ -89,6 +89,11 @@ func TestConversionIntegration(t *testing.T) {
 		}
 		return nil
 	}
+	implementation := Tool{}
+	if executable := os.Getenv("MONKEYAI_CONVERT_ENGINE"); executable != "" {
+		implementation = tool(executable)
+		converter.ImplementationDigest = implementation.Digest
+	}
 	cd, bd, err := converter.Identity()
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +103,11 @@ func TestConversionIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := Identity{Architecture: runtime.GOARCH, ImageDigest: manifest.Digest, ConverterDigest: cd, KernelDigest: cd, BootstrapDigest: bd, SystemBytes: 64 << 20}
-	template, err := cache.Ensure(context.Background(), id, converter.Build(layout))
+	build := converter.Build(layout)
+	if implementation.Path != "" {
+		build = converter.BuildIsolated(layout, implementation)
+	}
+	template, err := cache.Ensure(context.Background(), id, build)
 	if err != nil {
 		t.Fatal(err)
 	}

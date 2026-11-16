@@ -42,7 +42,27 @@ type Runtime struct {
 	ServerID string `json:"server_id"`
 	UserID   string `json:"user_id"`
 }
+type VirtualMachine struct {
+	Architecture string `json:"architecture"`
+	BundleSHA256 string `json:"bundle_sha256"`
+	SystemBytes  int64  `json:"system_bytes"`
+	DataBytes    int64  `json:"data_bytes"`
+}
+
+func (v VirtualMachine) Validate() error {
+	if (v.Architecture != "amd64" && v.Architecture != "arm64") || !runtimeSHA.MatchString(v.BundleSHA256) {
+		return errors.New("虚拟机架构或固定组件摘要无效")
+	}
+	for _, size := range []int64{v.SystemBytes, v.DataBytes} {
+		if size < 64<<20 || size > 16<<40 || size%4096 != 0 {
+			return errors.New("虚拟磁盘容量无效")
+		}
+	}
+	return nil
+}
+
 type Spec struct {
+	VirtualMachine      *VirtualMachine `json:"virtual_machine,omitempty"`
 	RuntimePackage      *RuntimePackage `json:"runtime_package,omitempty"`
 	SandboxRoot         bool            `json:"sandbox_root,omitempty"`
 	PersistentContainer bool            `json:"persistent_container,omitempty"`
@@ -93,12 +113,16 @@ func (s Spec) DigestReference() string {
 	}
 	return s.Image[:index] + "@" + s.ImageDigest
 }
+func (s Spec) RetainsInstance() bool {
+	return s.PersistentContainer || s.Driver == "firecracker" && s.VirtualMachine != nil
+}
+
 func (s Spec) Validate() error {
 	if s.SandboxRoot && !s.PersistentContainer {
 		return errors.New("沙箱 root 需要持久容器")
 	}
 	if s.RuntimePackage != nil {
-		if s.Runtime == nil || !s.PersistentContainer {
+		if s.Runtime == nil || !s.RetainsInstance() {
 			return errors.New("runtime 更新需要持久容器及 standalone 配置")
 		}
 		if err := s.RuntimePackage.Validate(); err != nil {
@@ -114,8 +138,21 @@ func (s Spec) Validate() error {
 	if s.DesiredState != DesiredRunning && s.DesiredState != DesiredStopped && s.DesiredState != DesiredDeleted {
 		return errors.New("目标状态无效")
 	}
-	if s.Driver != "gvisor" {
+	if s.Driver != "gvisor" && s.Driver != "firecracker" {
 		return errors.New("不支持的执行驱动")
+	}
+	if s.Driver == "firecracker" {
+		if s.VirtualMachine == nil || s.PersistentContainer {
+			return errors.New("Firecracker必须使用明确的虚拟机规格，不能伪装持久容器")
+		}
+		if err := s.VirtualMachine.Validate(); err != nil {
+			return err
+		}
+		if s.Resource.CPUMillis > 32000 || s.Resource.MemoryBytes%(1<<20) != 0 {
+			return errors.New("首版Firecracker最多32vCPU，内存须按MiB对齐")
+		}
+	} else if s.VirtualMachine != nil {
+		return errors.New("gVisor不接受虚拟机规格")
 	}
 	if !imageDigest.MatchString(s.ImageDigest) || (!imageName.MatchString(s.Image) && !imageTag.MatchString(s.Image)) || (imageName.MatchString(s.Image) && !strings.HasSuffix(s.Image, "@"+s.ImageDigest)) || strings.EqualFold(s.Image[strings.LastIndexByte(s.Image, ':')+1:], "latest") || len(s.Image) > 512 {
 		return errors.New("镜像必须使用一致的仓库引用和固定 sha256 摘要")
