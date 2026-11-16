@@ -20,7 +20,13 @@ var installer []byte
 var legacyFiles = map[string]bool{"monkeyai-engine": true, "containerd": true, "runsc": true, "containerd-shim-runsc-v1": true, "bridge": true, "ptp": true, "host-local": true, "loopback": true, "checkpointgofer": true, "gvisor-proc-umounter": true, "gvisor-sentry-prewarmer": true, "gvisor_sentry": true, "runsc-fd-parking": true, "runsc-metric-server": true}
 var files = map[string]bool{"installer": true, "checkpointgofer": true, "containerd": true, "containerd-shim-runc-v2": true, "ctr": true, "docker": true, "docker-init": true, "docker-proxy": true, "dockerd": true, "gvisor-proc-umounter": true, "gvisor-sentry-prewarmer": true, "gvisor_sentry": true, "monkeyai-engine": true, "runc": true, "runsc": true, "runsc-fd-parking": true, "runsc-metric-server": true}
 
+type vmManifest struct {
+	Version       int    `json:"version"`
+	ArchiveSHA256 string `json:"archive_sha256"`
+}
+
 type manifest struct {
+	VM           *vmManifest       `json:"firecracker,omitempty"`
 	Version      string            `json:"version"`
 	Architecture string            `json:"architecture"`
 	Files        map[string]string `json:"files"`
@@ -45,6 +51,15 @@ func (s *Service) manifest(version, arch string) (manifest, []byte, error) {
 		info, err := os.Lstat(filepath.Join(s.releases, version, arch, name))
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 256<<20 {
 			return m, nil, errors.New("发行文件缺失或类型无效")
+		}
+	}
+	if m.VM != nil {
+		if m.VM.Version != 1 || !hashPattern.MatchString(m.VM.ArchiveSHA256) {
+			return m, nil, errors.New("Firecracker发行清单无效")
+		}
+		info, err := os.Lstat(filepath.Join(s.releases, version, arch, "firecracker.tgz"))
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 1<<30 {
+			return m, nil, errors.New("Firecracker依赖归档缺失或类型无效")
 		}
 	}
 	return m, raw, nil
@@ -119,7 +134,7 @@ func (s *Service) script(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) artifact(w http.ResponseWriter, r *http.Request) {
 	version, arch, name := chi.URLParam(r, "version"), chi.URLParam(r, "arch"), chi.URLParam(r, "file")
-	if name != "manifest.json" && name != "resources.tgz" && !files[name] && !legacyFiles[name] {
+	if name != "manifest.json" && name != "resources.tgz" && name != "firecracker.tgz" && !files[name] && !legacyFiles[name] {
 		web.NotFound(w, r)
 		return
 	}
@@ -127,7 +142,12 @@ func (s *Service) artifact(w http.ResponseWriter, r *http.Request) {
 		web.NotFound(w, r)
 		return
 	}
-	if _, _, err := s.manifest(version, arch); err != nil {
+	m, _, err := s.manifest(version, arch)
+	if err != nil {
+		web.NotFound(w, r)
+		return
+	}
+	if name == "firecracker.tgz" && m.VM == nil {
 		web.NotFound(w, r)
 		return
 	}

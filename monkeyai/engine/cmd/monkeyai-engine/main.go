@@ -29,7 +29,7 @@ func main() {
 
 func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "用法：monkeyai-engine serve | environment | cache | doctor | probe | validate-preset | version")
+		fmt.Fprintln(stderr, "用法：monkeyai-engine serve | environment | cache | doctor | probe | selftest | validate-preset | version")
 		return 2
 	}
 	switch args[0] {
@@ -81,6 +81,8 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		fmt.Fprintln(out, version)
 		return 0
+	case "selftest":
+		return selftestCommand(ctx, args[1:], out, stderr)
 	case "probe":
 		return probe(ctx, args[1:], out, stderr)
 	case "doctor":

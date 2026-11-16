@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "firecracker_version": "v1.18.0",
+  "kernel_version": "6.1.167",
+  "kernel_source": {
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.167.tar.xz",
+    "sha256": "2818053c07976ba4ed5f44deb0f5dc7ae7b0975d7918c313d48d8fe7c4e598cb"
+  },
+  "e2fsprogs": {
+    "version": "1.47.2",
+    "url": "https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.2/e2fsprogs-1.47.2.tar.xz",
+    "sha256": "08242e64ca0e8194d9c1caad49762b19209a06318199b63ce74ae4ef2d74e63c"
+  },
+  "umoci": {
+    "module": "github.com/opencontainers/umoci",
+    "version": "v0.5.1",
+    "sum": "h1:bjfDF30Vyn+yydbucRmCc8kYTNdoHbkwwQeIwYkoalE="
+  },
+  "architectures": {
+    "amd64": {
+      "archive_url": "https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-x86_64.tgz",
+      "archive_sha256": "1ac8eec866dd5eea14efecf6323e22b23eea24054545338a5b34bc5bca6623cd",
+      "config_url": "https://raw.githubusercontent.com/firecracker-microvm/firecracker/v1.18.0/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config",
+      "config_sha256": "153ca1b40f3312bfb40b7587b471ea548a915f98f480f0d0892a1537957a2147"
+    },
+    "arm64": {
+      "archive_url": "https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-aarch64.tgz",
+      "archive_sha256": "2a6130ff0338901ff9d7fbd73ce046c6b1c6123889dc84a34d678aa53bd0c0c2",
+      "config_url": "https://raw.githubusercontent.com/firecracker-microvm/firecracker/v1.18.0/resources/guest_configs/microvm-kernel-ci-aarch64-6.1.config",
+      "config_sha256": "5c73202d00b5591ad987d9f808208a318e317fd32dbc17de613c5a93fabe2939"
+    }
+  }
+}

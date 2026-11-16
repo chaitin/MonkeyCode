@@ -1,0 +1,18 @@
+[Unit]
+Description=MonkeyAI 开发虚拟机管理服务
+After=local-fs.target
+Before=multi-user.target
+ConditionKernelCommandLine=monkeyai.guest=1
+
+[Service]
+Type=exec
+ExecStart=/opt/monkeyai/guest-bootstrap
+Restart=no
+KillMode=control-group
+TimeoutStopSec=20s
+StandardOutput=null
+StandardError=journal
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
