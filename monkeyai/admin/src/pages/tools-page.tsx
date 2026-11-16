@@ -204,6 +204,7 @@ type McpServer = {
   creator: string
   url: string
   proxyId: string
+  skipTLSVerify: boolean
   authHeaderName?: string
   timeoutMs?: number
   authorizationMode: McpAuthorizationMode
@@ -231,6 +232,7 @@ function toServer(row: ResourceRow, language: string): McpServer {
     tagIds: (row.tags ?? []).map((tag) => tag.id),
     url: row.url,
     proxyId: row.proxy_id ?? "",
+    skipTLSVerify: row.skip_tls_verify ?? false,
     authHeaderName: row.auth_header_name,
     timeoutMs: row.timeout_ms,
     authorizationMode: row.authorization_mode,
@@ -278,6 +280,7 @@ export function ToolsPage() {
   }, [])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [skipTLSVerify, setSkipTLSVerify] = useState(false)
   const [editingServer, setEditingServer] = useState<McpServer | null>(null)
   const [serverPendingDeletion, setServerPendingDeletion] =
     useState<McpServer | null>(null)
@@ -410,6 +413,7 @@ export function ToolsPage() {
   const resetDraft = () => {
     setEditingServer(null)
     setAdvancedOpen(false)
+    setSkipTLSVerify(false)
     setAuthorizationMode("none")
     setAuthorizationMethod("httpHeader")
     setOAuthClientMode("dynamic")
@@ -430,6 +434,7 @@ export function ToolsPage() {
 
     setEditingServer(server)
     setAdvancedOpen(false)
+    setSkipTLSVerify(server.skipTLSVerify)
     setAvatarDraft(null)
     setAuthorizationMode(server.authorizationMode)
     setAuthorizationMethod(server.authorizationMethod ?? "httpHeader")
@@ -478,6 +483,9 @@ export function ToolsPage() {
       if (url !== editingServer.url) overrides.url = url
       if (proxyId !== (editingServer.proxyId ?? "")) {
         overrides.proxy_id = proxyId
+      }
+      if (skipTLSVerify !== editingServer.skipTLSVerify) {
+        overrides.skip_tls_verify = skipTLSVerify
       }
       if (authorizationMode !== editingServer.authorizationMode) {
         overrides.authorization_mode = authorizationMode
@@ -542,6 +550,7 @@ export function ToolsPage() {
         description,
         url,
         ...(credential ? { credential } : {}),
+        skip_tls_verify: skipTLSVerify,
         proxy_id: String(formData.get("proxyId") ?? "").replace(
           /^__direct__$/,
           ""
@@ -1292,7 +1301,7 @@ export function ToolsPage() {
                         >
                           <fieldset
                             disabled={editorPending}
-                            className="min-w-0"
+                            className="flex min-w-0 flex-col gap-4"
                           >
                             <Field>
                               <FieldLabel htmlFor="mcp-proxy">
@@ -1308,6 +1317,25 @@ export function ToolsPage() {
                                   {proxyError}
                                 </p>
                               )}
+                            </Field>
+                            <Field>
+                              <div className="flex items-center justify-between gap-3">
+                                <FieldLabel htmlFor="mcp-skip-tls-verify">
+                                  {t("pages.tools.skipTLSVerify")}
+                                </FieldLabel>
+                                <Switch
+                                  id="mcp-skip-tls-verify"
+                                  checked={skipTLSVerify}
+                                  onCheckedChange={setSkipTLSVerify}
+                                  disabled={editorPending}
+                                  aria-describedby="mcp-skip-tls-verify-description"
+                                />
+                              </div>
+                              <FieldDescription
+                                id="mcp-skip-tls-verify-description"
+                              >
+                                {t("pages.tools.skipTLSVerifyDescription")}
+                              </FieldDescription>
                             </Field>
                           </fieldset>
                         </CollapsibleContent>

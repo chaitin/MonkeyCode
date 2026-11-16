@@ -61,6 +61,7 @@ export type ResourceRow = {
   credentials: Credential[]
   url: string
   proxy_id?: string
+  skip_tls_verify?: boolean
   authorization_mode: "none" | "centralized" | "independent"
   authorization_method: "oauth" | "http_header" | null
   auth_header_name?: string

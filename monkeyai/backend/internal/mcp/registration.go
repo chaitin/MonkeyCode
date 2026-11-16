@@ -24,7 +24,7 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	if o.ClientID != "" && !o.clientSecretExpired() {
 		return nil
 	}
-	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	h, err := s.clientFor(ctx, c)
 	if err != nil {
 		return err
 	}

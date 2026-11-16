@@ -51,7 +51,7 @@ LIMIT (sqlc.arg(filter)::jsonb ->> 'limit')::integer;
 
 -- name: CreateResource :exec
 INSERT INTO connectors (name, description, url, authorization_mode, authorization_method, oauth_config,
-    oauth_client_secret, auth_header_name, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id)
+    oauth_client_secret, auth_header_name, enabled, config_revision, connection_status, id, owner_user_id, ownership_type, proxy_id, skip_tls_verify)
     VALUES (
         CASE WHEN sqlc.arg(DATA)::jsonb ? 'name' THEN
             (sqlc.arg(DATA)::jsonb ->> 'name')::text
@@ -74,7 +74,7 @@ INSERT INTO connectors (name, description, url, authorization_mode, authorizatio
         ELSE
             'unknown'
 	END, (sqlc.arg(DATA)::jsonb ->> 'id')::uuid, (sqlc.arg(DATA)::jsonb ->>
-	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'), COALESCE(sqlc.arg(DATA)::jsonb ->> 'proxy_id', ''));
+	    'actor_id')::uuid, COALESCE(sqlc.arg(DATA)::jsonb ->> 'ownership_type', 'system'), COALESCE(sqlc.arg(DATA)::jsonb ->> 'proxy_id', ''), COALESCE((sqlc.arg(DATA)::jsonb ->> 'skip_tls_verify')::boolean, false));
 
 -- name: UpdateResource :exec
 UPDATE
@@ -105,6 +105,9 @@ SET
     ELSE
         url
     END,
+    skip_tls_verify = CASE WHEN sqlc.arg(DATA)::jsonb ? 'skip_tls_verify' THEN
+        (sqlc.arg(DATA)::jsonb ->> 'skip_tls_verify')::boolean
+    ELSE skip_tls_verify END,
     authorization_mode = CASE WHEN sqlc.arg(DATA)::jsonb ? 'authorization_mode' THEN
         (sqlc.arg(DATA)::jsonb ->> 'authorization_mode')::text
     ELSE

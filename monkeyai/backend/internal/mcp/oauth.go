@@ -474,6 +474,7 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 			return tokens{}, err
 		}
 	}
+	setSkipTLSVerify(h, c.Bool("skip_tls_verify"))
 	defer h.CloseIdleConnections()
 	resp, err := h.Do(req)
 	if err != nil {

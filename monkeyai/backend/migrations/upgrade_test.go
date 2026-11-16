@@ -81,7 +81,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
 		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
 		"35/u billing_activity_lock_retry", "36/u user_profile_add", "37/u oauth_pairing", "38/u embedding_model", "39/u create_kb_tables", "40/u cloud_environments", "41/u kb_permissions",
-		"42/u mcp_live_tools", "43/u mcp_network_settings",
+		"42/u mcp_live_tools", "43/u mcp_network_settings", "44/u connector_skip_tls_verify",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -102,7 +102,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || latest != 43 || dirty {
+	if version != latest || latest != 44 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string
@@ -112,6 +112,10 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil || balance != "100.000000" || frozen != "0.000000" ||
 		description != "保留描述" || origin != "local" || nameI18n != "{}" {
 		t.Fatalf("业务数据或新增字段默认值错误: %q %q %q %q %q %v", balance, frozen, description, origin, nameI18n, err)
+	}
+	var skipTLSVerify bool
+	if err := conn.QueryRow(t.Context(), `INSERT INTO connectors (owner_user_id,name,url,authorization_mode) VALUES ('00000000-0000-0000-0000-000000000001','TLS 默认值','https://mcp.example.com/mcp','none') RETURNING skip_tls_verify`).Scan(&skipTLSVerify); err != nil || skipTLSVerify {
+		t.Fatalf("升级后连接器应默认校验 TLS 证书: skip=%v err=%v", skipTLSVerify, err)
 	}
 	var billingDisabled bool
 	if err := conn.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='host_environment_configs' AND column_name='billing' AND column_default LIKE '%"enabled": false%') AND (SELECT count(*)=0 FROM environment_billing_periods)`).Scan(&billingDisabled); err != nil || !billingDisabled {
