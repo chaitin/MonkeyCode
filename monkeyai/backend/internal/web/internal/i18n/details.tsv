@@ -7,6 +7,9 @@ CA 证书无效或不具备 CA 签发用途	The CA certificate is invalid or can
 JSON 格式无效	The JSON format is invalid.
 JSON-RPC 请求无效	The JSON-RPC request is invalid.
 MCP URL 无效	The MCP URL is invalid.
+MCP 黑名单必须是 CIDR 字符串数组	The MCP blocklist must be an array of CIDR strings.
+第 %d 个 MCP 黑名单 IP 段无效，请使用 IPv4 或 IPv6 CIDR	MCP blocklist entry %d is invalid; use an IPv4 or IPv6 CIDR.
+读取 MCP 网络设置: %w	Could not read MCP network settings: %w
 MCP 协议版本不支持	The MCP protocol version is not supported.
 MCP 请求处理失败	The MCP request could not be processed.
 MCP 调用密钥无效或权限不足	The MCP invocation key is invalid or lacks the required permissions.

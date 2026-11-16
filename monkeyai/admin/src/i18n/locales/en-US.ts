@@ -2354,6 +2354,20 @@ export const enUS = {
     },
     otherSettings: {
       about: "About",
+      mcpNetwork: {
+        title: "MCP network access",
+        description:
+          "Public and private networks are allowed by default. Blocklisted addresses are always denied.",
+        label: "IP range blocklist",
+        hint: "Use IPv4/IPv6 CIDRs, such as 10.0.0.0/8 or fd00::/8. Use /32 or /128 for a single IP. Saved rules apply to new MCP and OAuth requests, including proxied requests.",
+        entry: "IP range {{index}}",
+        add: "Add IP range",
+        remove: "Remove",
+        save: "Save",
+        cancel: "Cancel",
+        saved: "MCP network settings saved",
+        empty: "No blocked IP ranges",
+      },
       proxies: {
         title: "System proxies",
         description:

@@ -260,7 +260,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	store := resource.NewStore(pool)
 	rules := rule.NewService(store)
 	skills := skill.NewService(store, storage)
-	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
+	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings).WithNetworkSettings(settings)
 	experts := expert.NewService(store).WithStorage(storage)
 	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)

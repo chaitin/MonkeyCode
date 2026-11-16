@@ -123,7 +123,7 @@ func TestClientDirectTransport(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
 	t.Setenv("NO_PROXY", "example.invalid")
-	transport, ok := client().Transport.(*http.Transport)
+	transport, ok := client(nil).Transport.(*http.Transport)
 	if !ok || transport.Proxy != nil {
 		t.Fatal("MCP transport 不应设置代理回调")
 	}
@@ -136,7 +136,7 @@ func TestClientDirectTransport(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer s.Close()
-	c := client()
+	c := client(nil)
 	defer c.CloseIdleConnections()
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
 	if _, err := c.Get(s.URL); err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
@@ -205,7 +205,7 @@ func TestTokenProxyPinsConnectIPAndKeepsTLSIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, target, err := tokenClient(req, proxyForToken, resolve)
+	h, target, err := tokenClient(req, proxyForToken, resolve, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestTokenProxyPinsConnectIPAndKeepsTLSIdentity(t *testing.T) {
 
 	address.Host = net.JoinHostPort("untrusted.example", address.Port())
 	req, _ = http.NewRequestWithContext(t.Context(), http.MethodPost, address.String(), nil)
-	h, target, err = tokenClient(req, proxyForToken, resolve)
+	h, target, err = tokenClient(req, proxyForToken, resolve, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestTokenProxyAllowsPrivateTargetsByDefault(t *testing.T) {
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.com/token", nil)
 	h, target, err := tokenClient(req, func(*http.Request) (*url.URL, error) { return p, nil }, func(context.Context, string, string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("10.0.0.1")}, nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestTokenProxyRejectsUnsafeTargets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
 			req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, tc.target, nil)
-			_, _, err := tokenClient(req, proxy, func(context.Context, string, string) ([]netip.Addr, error) { return tc.ips, nil })
+			_, _, err := tokenClient(req, proxy, func(context.Context, string, string) ([]netip.Addr, error) { return tc.ips, nil }, nil)
 			if err == nil {
 				t.Fatal("不安全的目标地址通过了代理校验")
 			}
@@ -280,7 +280,7 @@ func TestTokenProxyRejectsUnsafeTargets(t *testing.T) {
 	}
 	secureProxy, _ := url.Parse("https://127.0.0.1:3128")
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.com/token", nil)
-	if _, _, err := tokenClient(req, func(*http.Request) (*url.URL, error) { return secureProxy, nil }, nil); err == nil {
+	if _, _, err := tokenClient(req, func(*http.Request) (*url.URL, error) { return secureProxy, nil }, nil, nil); err == nil {
 		t.Fatal("不支持的 HTTPS 代理未被拒绝")
 	}
 }
@@ -291,14 +291,14 @@ func TestTokenEnvironmentNoProxy(t *testing.T) {
 		h, direct, err := tokenClient(req, http.ProxyFromEnvironment, func(context.Context, string, string) ([]netip.Addr, error) {
 			t.Fatal("NO_PROXY 命中时不应走代理域名解析")
 			return nil, nil
-		})
+		}, nil)
 		if err != nil || h.Transport.(*http.Transport).Proxy != nil || direct.URL.Host != req.URL.Host {
 			t.Fatalf("NO_PROXY 未保持直连策略: %v", err)
 		}
 		req, _ = http.NewRequestWithContext(t.Context(), http.MethodPost, "https://other.example/token", nil)
 		_, _, err = tokenClient(req, http.ProxyFromEnvironment, func(context.Context, string, string) ([]netip.Addr, error) {
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
-		})
+		}, nil)
 		if err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
 			t.Fatalf("环境代理未对非 NO_PROXY 域名执行目标 IP 校验: %v", err)
 		}

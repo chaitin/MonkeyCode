@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=42, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=43, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -33,6 +33,12 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 版本 `42` 移除工具调用原始表到 `mcp_tools` 的工具外键，稳定工具 ID 和调用名称快照仍保留在调用／计费记录中。迁移通过分区状态中的原始表 OID 定位，兼容尚未切换与已切换的调用周分区。不清理历史工具目录，不改写历史调用；新后端只持久化无认证／集中认证的显式开关和单价，不保存独立认证工具或远端描述／Schema。必须先执行迁移再启动配套后端，前端需同步发布以在首次保存配置时提交工具名。
 
 `down` 以 `NOT VALID` 恢复原始表外键，不伪造工具目录记录，也不删除已存在的实时工具调用历史。回滚前停止新后端，恢复后的约束仅校验后续写入。
+
+## MCP 网络访问黑名单升级
+
+版本 `43` 允许在 `settings` 中保存 `mcp` 网络访问设置，不预置业务配置；未配置时黑名单为空。须先迁移，再通过管理端保存 IPv4/IPv6 CIDR 黑名单。
+
+`down` 在已有 `mcp` 设置时拒绝回滚，避免丢失已配置的网络限制；应用回退可以保留该设置。需回退数据库时，应先备份并按部署方案处理该设置，不能只清空黑名单列表后直接执行 `down`。
 
 ## 从版本 14 升级
 
@@ -69,6 +75,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000040_cloud_environments` | 宿主创建者、独立环境配置、升级历史、runtime及计费；八张表，数量调度允许资源超卖 |
 | `000041_kb_permissions` | 增加文档最后修改人、内容修改时间及知识库自定义图标对象存储键 |
 | `000042_mcp_live_tools` | 解耦工具调用记录与工具配置，支持实时工具目录和独立认证不保存工具记录 |
+| `000043_mcp_network_settings` | 增加 MCP 网络访问设置域，支持保存 IPv4/IPv6 CIDR 黑名单 |
 
 从 `backend` 目录执行：
 
@@ -78,7 +85,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `42` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `43` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 

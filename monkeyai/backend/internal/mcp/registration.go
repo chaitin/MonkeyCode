@@ -76,7 +76,7 @@ func (o oauthConfig) clientSecretExpired() bool {
 }
 
 func registerOAuthClient(ctx context.Context, o oauthConfig, redirect string) (oauthRegistration, error) {
-	return registerOAuthClientWithClient(ctx, o, redirect, client())
+	return registerOAuthClientWithClient(ctx, o, redirect, client(nil))
 }
 
 func registerOAuthClientWithClient(ctx context.Context, o oauthConfig, redirect string, h *http.Client) (oauthRegistration, error) {

@@ -35,34 +35,57 @@ func allowedIP(ip netip.Addr) bool {
 	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast()
 }
 
-func client() *http.Client {
-	return &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return failure("mcp_redirect_denied", nil) }, Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
+func checkIPs(ctx context.Context, ips []netip.Addr, settings NetworkSettings) error {
+	var blocked []netip.Prefix
+	if settings != nil {
+		var err error
+		blocked, err = settings.MCPBlockedCIDRs(ctx)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("读取 MCP 网络设置: %w", err)
 		}
-		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-		if err != nil {
-			return nil, err
+	}
+	for _, ip := range ips {
+		if ip.Zone() != "" || !allowedIP(ip) {
+			return failure("mcp_address_denied", nil)
 		}
-		for _, ip := range ips {
-			if !allowedIP(ip) {
-				return nil, failure("mcp_address_denied", nil)
+		for _, prefix := range blocked {
+			if prefix.Contains(ip.Unmap()) {
+				return failure("mcp_address_denied", nil)
 			}
 		}
-		var dialErr error
-		for _, ip := range ips {
-			c, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-			if err == nil {
-				return c, nil
-			}
-			dialErr = err
-		}
-		return nil, upstreamFailure(dialErr, "mcp_connect_failed")
-	}}}
+	}
+	return nil
 }
-func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error), lookup func(context.Context, string, string) ([]netip.Addr, error)) (*http.Client, *http.Request, error) {
-	h := client()
+
+func client(settings NetworkSettings) *http.Client {
+	return &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return failure("mcp_redirect_denied", nil) }, Transport: &http.Transport{
+		// 禁止复用旧连接，确保保存黑名单后每个新请求都重新校验。
+		DisableKeepAlives: settings != nil,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+			if err != nil {
+				return nil, err
+			}
+			if err := checkIPs(ctx, ips, settings); err != nil {
+				return nil, err
+			}
+			var dialErr error
+			for _, ip := range ips {
+				c, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+				if err == nil {
+					return c, nil
+				}
+				dialErr = err
+			}
+			return nil, upstreamFailure(dialErr, "mcp_connect_failed")
+		}}}
+}
+func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error), lookup func(context.Context, string, string) ([]netip.Addr, error), settings NetworkSettings) (*http.Client, *http.Request, error) {
+	h := client(settings)
 	p, err := proxy(req)
 	if err != nil || p == nil {
 		return h, req, err
@@ -78,10 +101,8 @@ func tokenClient(req *http.Request, proxy func(*http.Request) (*url.URL, error),
 	if len(ips) == 0 {
 		return nil, nil, fmt.Errorf("无法解析 OAuth Token 目标")
 	}
-	for _, ip := range ips {
-		if ip.Zone() != "" || !allowedIP(ip) {
-			return nil, nil, failure("mcp_address_denied", nil)
-		}
+	if err := checkIPs(req.Context(), ips, settings); err != nil {
+		return nil, nil, err
 	}
 	target := req.Clone(req.Context())
 	u := *req.URL
@@ -117,7 +138,7 @@ func setConnectorTimeout(h *http.Client, timeoutMS int64) {
 }
 
 func discover(ctx context.Context, target string, headers map[string]string, timeout ...time.Duration) ([]remoteTool, error) {
-	h := client()
+	h := client(nil)
 	if len(timeout) > 0 {
 		setConnectorTimeout(h, int64(timeout[0]/time.Millisecond))
 	}

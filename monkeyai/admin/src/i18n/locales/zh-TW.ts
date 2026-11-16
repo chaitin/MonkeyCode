@@ -1065,6 +1065,19 @@ export const zhTW = {
     },
     otherSettings: {
       about: "關於",
+      mcpNetwork: {
+        title: "MCP 網路存取",
+        description: "預設允許存取公網和私網，符合黑名單的位址一律拒絕存取。",
+        label: "IP 網段黑名單",
+        hint: "使用 IPv4/IPv6 CIDR，例如 10.0.0.0/8、fd00::/8。單一 IP 使用 /32 或 /128。儲存後對新的 MCP 和 OAuth 請求生效，包含代理請求。",
+        entry: "IP 網段 {{index}}",
+        add: "新增 IP 網段",
+        remove: "刪除",
+        save: "儲存",
+        cancel: "取消",
+        saved: "MCP 網路設定已儲存",
+        empty: "尚未設定黑名單",
+      },
       proxies: {
         title: "系統代理",
         description: "設定模型與連接器可選用的出站代理。使用中的代理無法刪除。",

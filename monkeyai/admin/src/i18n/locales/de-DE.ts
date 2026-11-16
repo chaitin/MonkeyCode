@@ -1114,6 +1114,20 @@ export const deDE = {
     },
     otherSettings: {
       about: "Über",
+      mcpNetwork: {
+        title: "MCP-Netzwerkzugriff",
+        description:
+          "Öffentliche und private Netzwerke sind standardmäßig erlaubt. Gesperrte Adressen werden immer abgewiesen.",
+        label: "IP-Bereichssperrliste",
+        hint: "IPv4-/IPv6-CIDRs wie 10.0.0.0/8 oder fd00::/8 verwenden. Für einzelne IPs /32 oder /128 verwenden. Gespeicherte Regeln gelten für neue MCP- und OAuth-Anfragen, auch über Proxys.",
+        entry: "IP-Bereich {{index}}",
+        add: "IP-Bereich hinzufügen",
+        remove: "Entfernen",
+        save: "Speichern",
+        cancel: "Abbrechen",
+        saved: "MCP-Netzwerkeinstellungen gespeichert",
+        empty: "Keine gesperrten IP-Bereiche",
+      },
       proxies: {
         title: "System-Proxys",
         description:
