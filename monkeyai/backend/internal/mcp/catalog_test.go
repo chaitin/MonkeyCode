@@ -173,8 +173,9 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 				if len(credentials) != 1 {
 					t.Fatal("用户目录中的凭证数量错误")
 				}
-				if _, ok := credentials[0]["tools"]; ok {
-					t.Fatal("用户目录不应内嵌工具")
+				tools := credentials[0]["tools"].([]resource.Object)
+				if len(tools) != want || credentials[0].String("tools_version") != resource.Hash(tools) {
+					t.Fatal("用户目录应内嵌当前凭证工具及版本")
 				}
 				body, _ := json.Marshal(resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 				r := httptest.NewRequest("POST", "/mcp/connectors/"+c.String("id")+"/credentials/"+cred.String("id"), bytes.NewReader(body))

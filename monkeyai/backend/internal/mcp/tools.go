@@ -30,14 +30,11 @@ func (s *Service) liveTools(ctx context.Context, q resource.Queryer, c, cred res
 	if err != nil {
 		return nil, upstreamFailure(err, "mcp_protocol_invalid")
 	}
-	settings := []resource.Object{}
-	if c.String("authorization_mode") != "independent" {
-		settings, err = resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
-			ConnectorID: c.String("id"), CredentialID: cred.String("id"),
-		}))
-		if err != nil {
-			return nil, err
-		}
+	settings, err := resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
+		ConnectorID: c.String("id"), CredentialID: cred.String("id"),
+	}))
+	if err != nil {
+		return nil, err
 	}
 	return toolViews(c, cred, remote, settings, admin), nil
 }
@@ -52,16 +49,17 @@ func toolID(c, cred resource.Object, name string) string {
 
 func toolViews(c, cred resource.Object, remote []remoteTool, settings []resource.Object, admin bool) []resource.Object {
 	byName := make(map[string]resource.Object, len(settings))
-	if c.String("authorization_mode") != "independent" {
-		for _, setting := range settings {
-			byName[setting.String("name")] = setting
-		}
+	for _, setting := range settings {
+		byName[setting.String("name")] = setting
 	}
 	out := make([]resource.Object, 0, len(remote))
 	for _, tool := range remote {
 		view := resource.Object{"id": toolID(c, cred, tool.Name), "name": tool.Name, "description": tool.Description, "input_schema": tool.InputSchema, "enabled": true, "credits_per_call": int64(0)}
 		if setting := byName[tool.Name]; setting != nil {
-			view["id"], view["enabled"], view["credits_per_call"] = setting["id"], setting["enabled"], setting["credits_per_call"]
+			view["id"], view["enabled"] = setting["id"], setting["enabled"]
+			if c.String("authorization_mode") != "independent" {
+				view["credits_per_call"] = setting["credits_per_call"]
+			}
 		}
 		if admin || view.Bool("enabled") {
 			out = append(out, view)
@@ -77,6 +75,23 @@ func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Obje
 	}
 	return s.liveTools(ctx, q, c, cred, admin)
 }
+func (s *Service) toolName(ctx context.Context, q resource.Queryer, connectorID, user, id string) (string, error) {
+	connector, err := s.Connector(ctx, q, connectorID, user, true)
+	if err != nil {
+		return "", err
+	}
+	tools, err := s.Tools(ctx, q, connector, user, "", true)
+	if err != nil {
+		return "", err
+	}
+	for _, tool := range tools {
+		if tool.String("id") == id {
+			return tool.String("name"), nil
+		}
+	}
+	return "", resource.NotFound
+}
+
 func safeTools(tools []resource.Object) []resource.Object {
 	out := []resource.Object{}
 	for _, tool := range tools {

@@ -71,15 +71,16 @@ func TestCatalogReusesConnectorAcrossExperts(t *testing.T) {
 			t.Fatal(err)
 		}
 		conn := manifest["connectors"].([]resource.Object)[0]
-		if _, ok := conn["tools"]; ok {
-			t.Fatalf("专家配置不应内嵌工具: %v", conn)
+		tools := conn["tools"].([]resource.Object)
+		if len(tools) != 1 || tools[0].String("name") != fmt.Sprintf("tool%d", i) || conn.String("tools_version") != resource.Hash(tools) {
+			t.Fatalf("专家工具过滤或版本不正确: %v", conn)
 		}
 		if got := resource.Strings(conn["tool_allowlist"]); len(got) != 1 || got[0] != fmt.Sprintf("tool%d", i) {
 			t.Fatalf("专家工具允许规则丢失: %v", conn)
 		}
 	}
-	if q.counts["ListTools"] != 0 || q.counts["ListCatalogTools"] != 0 {
-		t.Fatalf("专家配置不应查询工具目录: %v", q.counts)
+	if q.counts["ListTools"] != 1 || q.counts["ListCatalogTools"] != 0 {
+		t.Fatalf("多个专家应复用同一次工具查询: %v", q.counts)
 	}
 }
 
@@ -92,7 +93,7 @@ func TestCloneConnectorCredentials(t *testing.T) {
 	}
 }
 
-func TestCatalogIndependentToolsBatched(t *testing.T) {
+func TestCatalogIndependentToolsIsolated(t *testing.T) {
 	r, user, other := catalogDatabase(t)
 	seedCatalog(t, r, user, other)
 	connector := "10000000-0000-0000-0000-000000000001"
@@ -129,15 +130,21 @@ func TestCatalogIndependentToolsBatched(t *testing.T) {
 		t.Fatalf("凭证越过用户边界: %v", credentials)
 	}
 	for _, credential := range credentials {
-		if _, ok := credential["tools"]; ok {
-			t.Fatalf("凭证目录不应内嵌工具: %v", credential)
+		tools := credential["tools"].([]resource.Object)
+		if credential.String("tools_version") != resource.Hash(tools) {
+			t.Fatalf("凭证工具版本不正确: %v", credential)
 		}
-		if _, ok := credential["tools_version"]; ok {
-			t.Fatalf("凭证目录不应包含工具版本: %v", credential)
+		if credential.String("authorization_status") != "authorized" && len(tools) != 0 {
+			t.Fatalf("未认证凭证不应返回工具: %v", credential)
+		}
+		for _, tool := range tools {
+			if tool.String("name") == "disabled" || tool.Int("credits_per_call") != 0 {
+				t.Fatalf("独立凭证未保留历史禁用配置或返回非零价格: %v", tool)
+			}
 		}
 	}
-	if q.counts["ListCatalogTools"] != 0 || q.counts["ListTools"] != 0 || q.counts["GetCredential"] != 0 {
-		t.Fatalf("连接器目录不应读取工具配置: %v", q.counts)
+	if q.counts["ListCatalogTools"] != 0 || q.counts["ListTools"] != 2 || q.counts["GetCredential"] != 0 {
+		t.Fatalf("应只为已授权凭证读取各自的工具配置: %v", q.counts)
 	}
 	encoded, _ := json.Marshal(out)
 	if strings.Contains(string(encoded), "secret-") || strings.Contains(string(encoded), "http_headers") {

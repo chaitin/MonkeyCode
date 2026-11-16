@@ -2550,7 +2550,7 @@ SELECT
     c.ownership_type
 FROM connectors c
 LEFT JOIN mcp_tools t ON t.connector_id = c.id
-    AND c.authorization_mode <> 'independent' AND t.deleted_at IS NULL
+    AND t.deleted_at IS NULL
     AND (($1::text <> '' AND t.name = $1::text
         AND t.credential_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid)
         OR ($1::text = '' AND t.id = $3::uuid))

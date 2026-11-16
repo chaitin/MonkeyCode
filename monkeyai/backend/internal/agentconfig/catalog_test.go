@@ -82,6 +82,7 @@ func catalogExec(t testing.TB, r *Resources, query string, args ...any) {
 
 func seedCatalog(t testing.TB, r *Resources, user, other string) {
 	t.Helper()
+	remote := catalogRemote(t)
 	parent, child := resource.ID(), resource.ID()
 	catalogExec(t, r, "INSERT INTO groups(id,name) VALUES($1,'parent')", parent)
 	catalogExec(t, r, "INSERT INTO groups(id,name,parent_id) VALUES($1,'child',$2)", child, parent)
@@ -105,7 +106,7 @@ func seedCatalog(t testing.TB, r *Resources, user, other string) {
 			case "experts":
 				columns, values = ",prompt,created_by_user_id", ",'prompt',$2"
 			case "connectors":
-				columns, values = ",url,authorization_mode", ",'https://example.com/mcp','none'"
+				columns, values = ",url,authorization_mode", fmt.Sprintf(",'%s','none'", remote)
 			}
 			catalogExec(t, r, "INSERT INTO "+kind+"(id,owner_user_id,ownership_type,name,description,name_i18n,description_i18n,admin_overrides"+columns+") VALUES($1,$2,$3,$4,'description','{\"zh\":\"翻译名称\",\"invalid\":7}','{\"zh\":\"翻译描述\"}',jsonb_build_object('unused',repeat('x',8192))"+values+")", id, owner, ownership, fmt.Sprintf("name_%d%%", i))
 			if i == 2 || i == 4 || i == 6 {

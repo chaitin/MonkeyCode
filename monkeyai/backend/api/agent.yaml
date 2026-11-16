@@ -2379,7 +2379,7 @@ paths:
     post:
       summary: 调用指定凭证的 MCP 网关
       description: 使用全局 mcp:invoke API Key 认证用户；地址明确指定集中或独立凭证。每次请求校验用户的连接使用权、凭证与连接关系及当前状态，独立凭证必须属于调用用户。撤销的凭证地址不自动切换到新凭证。 tools/list
-        和 tools/call 实时发现上游工具，不读取目录缓存；独立认证不持久化工具，无认证／集中认证叠加本地开关，未配置默认启用。
+        和 tools/call 实时发现上游工具，不读取目录缓存；保留各认证模式的历史工具 ID 和禁用配置，独立认证不新增工具配置，无认证／集中认证叠加本地单价，未配置默认启用。
       security:
       - InvocationKey: []
       parameters:
@@ -3273,6 +3273,7 @@ paths:
   /api/v1/resources/resolve:
     post:
       summary: 解析专家、规则、技能与连接绑定
+      description: 返回兼容旧客户端的 tools 和 tools_version，工具定义实时获取；沿用 REST 工具接口的权限、历史开关和单价规则。服务端应用专家工具允许／拒绝规则，拒绝规则优先。远端查询失败直接返回错误，不回退旧目录。
       responses:
         '200':
           description: 解析专家、规则、技能与连接绑定
@@ -3395,7 +3396,7 @@ paths:
   /api/v1/connectors/{id}/tools:
     get:
       summary: 实时读取认证上下文的工具目录
-      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证不读取或保存工具配置。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
+      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证保留历史工具 ID 和启停配置，但不新增配置且单价固定为零。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -4289,7 +4290,7 @@ paths:
   /api/v1/connectors/{id}/credentials/{credential_id}/tools:
     get:
       summary: 实时读取认证上下文的工具目录
-      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证不读取或保存工具配置。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
+      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证保留历史工具 ID 和启停配置，但不新增配置且单价固定为零。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -7008,7 +7009,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          description: 普通 MCP 保留已有 UUID，未配置工具使用稳定 UUID；内置知识库沿用工具名称作为 ID。
         name:
           type: string
         description:
@@ -7211,6 +7212,14 @@ components:
             - invoke
         mcp_gateway:
           $ref: '#/components/schemas/MCPGateway'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPTool'
+          description: 实时启用工具，字段结构兼容旧客户端；无工具时为 []。独立认证目录在 credentials 内返回，resolve 提升所选凭证的工具。内置知识库返回本地定义。
+        tools_version:
+          type: string
+          description: tools 内容的哈希；专家清单和 resolve 基于服务端过滤后的工具计算。
         credentials:
           type: array
           items:
@@ -7227,7 +7236,7 @@ components:
       - description
       - authorization_mode
       - capabilities
-      description: 独立认证在 credentials 内返回每份凭证的状态和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。目录、专家 manifest 和 resolve 均不返回 tools 或 tools_version；工具定义通过 REST 工具接口或 MCP tools/list 实时获取。resolve 返回所选凭证和 mcp_gateway，专家工具允许／拒绝规则由客户端应用。
+      description: 连接目录、专家 manifest 和 resolve 保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态、实时工具和专属代理地址，resolve 提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。专家允许／拒绝规则在服务端应用，拒绝规则优先。工具定义实时获取，失败不回退旧目录。
     AgentExpert:
       type: object
       properties:
@@ -7827,6 +7836,14 @@ components:
       - $ref: '#/components/schemas/ConnectorCredential'
       - type: object
         properties:
+          tools:
+            type: array
+            items:
+              $ref: '#/components/schemas/MCPTool'
+            description: 连接目录和专家清单内嵌凭证的实时启用工具；未认证时为 []。
+          tools_version:
+            type: string
+            description: tools 内容的哈希。
           mcp_gateway:
             $ref: '#/components/schemas/MCPGateway'
     AuthorizationName:

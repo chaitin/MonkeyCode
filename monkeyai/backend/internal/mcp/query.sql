@@ -100,6 +100,17 @@ ON CONFLICT (connector_id, credential_id, name) DO UPDATE SET
 RETURNING jsonb_build_object('id', mcp_tools.id, 'name', mcp_tools.name,
     'enabled', mcp_tools.enabled, 'credits_per_call', mcp_tools.credits_per_call);
 
+-- name: UpdateIndependentTool :one
+UPDATE mcp_tools t
+SET enabled = sqlc.arg(enabled)::boolean, credits_per_call = 0, updated_at = now()
+FROM connectors c
+WHERE t.id = sqlc.arg(id)::uuid AND t.connector_id = sqlc.arg(connector_id)::uuid
+    AND c.id = t.connector_id AND c.ownership_type = 'system'
+    AND c.authorization_mode = 'independent' AND c.deleted_at IS NULL
+    AND t.deleted_at IS NULL
+RETURNING jsonb_build_object('id', t.id, 'name', t.name,
+    'enabled', t.enabled, 'credits_per_call', t.credits_per_call);
+
 -- name: LockIconConnector :one
 SELECT to_jsonb(c) FROM connectors c
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL

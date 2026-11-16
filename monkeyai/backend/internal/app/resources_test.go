@@ -568,7 +568,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			for _, raw := range catalog["connectors"].([]any) {
 				entry := resource.Object(raw.(map[string]any))
 				if entry.String("id") == connector.String("id") {
-					found = entry["tools"] == nil && entry["mcp_gateway"] != nil
+					found = len(entry["tools"].([]any)) == 1 && entry.String("tools_version") != "" && entry["mcp_gateway"] != nil
 				}
 			}
 			if !found {
@@ -597,7 +597,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			t.Fatalf("重新发现启用了系统工具或失效个人工具：%v", err)
 		}
 		if after := must("GET", "/api/v1/connectors", nil, "a", ""); after.String("version") != before.String("version") {
-			t.Fatal("工具发现不应改变不含工具的资源目录版本")
+			t.Fatal("工具内容未变时目录版本不应改变")
 		}
 		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": "0"}, "", "")
 	})
@@ -708,8 +708,8 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		selected["connector_bindings"] = resource.Object{id: credentialIDs["a"]}
 		out = must("POST", "/api/v1/resources/resolve", selected, "a", "")
 		selectedConnector := resource.Object(out["connectors"].([]any)[0].(map[string]any))
-		if len(resource.Strings(selectedConnector["tool_denylist"])) != 1 || selectedConnector["tools"] != nil {
-			t.Fatal("解析应保留专家工具过滤规则，不内嵌工具目录")
+		if len(resource.Strings(selectedConnector["tool_denylist"])) != 1 || len(selectedConnector["tools"].([]any)) != 0 || selectedConnector.String("tools_version") == "" {
+			t.Fatal("解析应在服务端应用专家拒绝名单并返回空工具及版本")
 		}
 		if code, _, _ := call("DELETE", "/api/admin/v1/connectors/"+id, nil, "", `"1"`); code != 409 {
 			t.Fatal("连接删除未检查专家引用")
@@ -873,7 +873,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	refreshable := must("GET", "/api/v1/connectors", nil, "a", "")
 	for _, raw := range refreshable["connectors"].([]any) {
 		entry := resource.Object(raw.(map[string]any))
-		if entry.String("id") == c3.String("id") && (entry.String("authorization_status") != "authorized" || entry["tools"] != nil) {
+		if entry.String("id") == c3.String("id") && (entry.String("authorization_status") != "authorized" || len(entry["tools"].([]any)) == 0) {
 			t.Fatal("可自动刷新的 OAuth 凭证不应要求手工重新授权")
 		}
 	}

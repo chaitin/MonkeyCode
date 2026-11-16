@@ -571,6 +571,31 @@ func (q *Queries) UpdateCredential(ctx context.Context, data []byte) ([]byte, er
 	return to_jsonb, err
 }
 
+const updateIndependentTool = `-- name: UpdateIndependentTool :one
+UPDATE mcp_tools t
+SET enabled = $1::boolean, credits_per_call = 0, updated_at = now()
+FROM connectors c
+WHERE t.id = $2::uuid AND t.connector_id = $3::uuid
+    AND c.id = t.connector_id AND c.ownership_type = 'system'
+    AND c.authorization_mode = 'independent' AND c.deleted_at IS NULL
+    AND t.deleted_at IS NULL
+RETURNING jsonb_build_object('id', t.id, 'name', t.name,
+    'enabled', t.enabled, 'credits_per_call', t.credits_per_call)
+`
+
+type UpdateIndependentToolParams struct {
+	Enabled     bool
+	ID          string
+	ConnectorID string
+}
+
+func (q *Queries) UpdateIndependentTool(ctx context.Context, arg UpdateIndependentToolParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, updateIndependentTool, arg.Enabled, arg.ID, arg.ConnectorID)
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
+}
+
 const updateTool = `-- name: UpdateTool :one
 WITH setting AS (
     SELECT c.id AS connector_id, cr.id AS credential_id, c.config_revision,
