@@ -58,7 +58,7 @@ KVM测试逻辑及CLI在本机通过，Linux两架构测试二进制可交叉编
 - `guest`及`cmd/monkeyai-guest`：vsock握手、仅宿主CID连接、有限管理RPC，普通用户status/login/serve与关机请求；数据盘和启动标识检查；独立runtime升级通过临时根目录释放内嵌引擎并核对摘要，维护启动不登录或运行用户runtime；停止时复用宿主记录查询版本。
 - `vmnet`：网络地址登记、私有namespace/TAP/veth、专用nftables出口隔离和固定例外；已在本地Linux完成真实namespace／TAP／veth／路由／nftables创建、核验和回收，以及两种策略的nft语法检查；完整流量攻击验收和准备中断后的完整自动恢复仍待补齐。
 - `selftest`及CLI：固定驱动真实自检入口、最小PID1测试程序、受限gVisor版本执行、microVM+vsock测试及清理确认。无KVM时不谎报就绪，尚未验证真实KVM启动。
-- 组件锁定Firecracker v1.18.0、Linux 6.1.167、umoci v0.5.1、e2fsprogs 1.47.2；`buildvm.py`提供独立Linux构建机原生构建流程，`packagevm.py`提供静态ELF／SHA校验和确定性归档。ARM64内核、静态mke2fs、umoci及管理程序已在本地Linux实际构建并打包，归档位于工作空间 `.artifacts/firecracker-65cff420-arm64/`，这是65cff420版本的开发产物。后续源码已更新，必须重建后才能发行，尚未生成最终双架构发行包。
+- 组件锁定Firecracker v1.18.0、Linux 6.1.167、umoci v0.5.1、e2fsprogs 1.47.2；`buildvm.py`提供独立Linux构建机原生构建流程，`packagevm.py`提供静态ELF／SHA校验和确定性归档。当前ARM64开发包对应代码提交`cf94f92d`，位于工作空间`.artifacts/firecracker-cf94f92d-arm64/package/`，归档SHA256为`8664154778c929dc1e01181440b1485467cce2d4553e1d16baecf8a6ca9a8bf4`，已通过Pro installer对实际归档的完整解包、逐文件摘要和静态ELF／架构校验。此前65cff420版本的开发产物保留用于追溯。AMD64开发包也已构建完成，位于`.artifacts/firecracker-cf94f92d-amd64/package/`，归档SHA256为`0e68d7085b28890b316b7c8beb330d283cd149ed541428750f523dade65f5553`。它使用macOS上的静态Go交叉编译产物及ARM64 Linux上的AMD64 GCC交叉工具链构建，未运行模拟架构中的Go/GCC；已通过Pro安装器对实际归档的完整校验。两个包都是本地开发产物，没有发布。
 - Pro：新增VM清单、独立归档下载／SHA／静态ELF校验；在线／离线engine分发和资源包支持可选firecracker.tgz；发行脚本纳入其摘要和源码指纹。`Run`已接通平台选择、固定包准备、真实自检记录、驱动配置和服务保存；Firecracker服务不依赖Docker，升级保留驱动和旧组件路径。旧版无VM清单的发行继续走历史gVisor路径。
 - 中心服务enginehost：按可信发行清单提供可选firecracker.tgz，拒绝缺失、未声明和符号链接归档。中心调度和环境创建支持协议4的Firecracker规格，冻结组件清单摘要与双盘容量；普通停止／恢复保持实例ID，gVisor继续按原协议执行。
 
@@ -75,13 +75,14 @@ KVM测试逻辑及CLI在本机通过，Linux两架构测试二进制可交叉编
 - 存储保护循环独立于心跳和命令同步每秒检查，warning阻止新分配，critical持久写入保护事件与代次后暂停，暂停失败则停止。空间恢复不会自动解除实例锁定或启动用户进程。
 - 保护事件包含固定事件ID、实例、代次和发生时间；worker持久保存并协商protection_protocol，旧协议不发送新字段。中心状态使用protected，禁止旧running覆盖；保护时断开runtime连接并拒绝继续接入。
 - 暂停关闭收费时段，报告重放不推进实际观测时间；显式停止／更高代次重新可用后开启新时段。实际PostgreSQL测试覆盖延迟上报、重复事件、内容冲突、停止期间免计和恢复后重新计费，并保持旧gVisor计费测试通过。
+- 模板缓存回收与磁盘准备共用跨进程锁；从磁盘登记核对引用，保留、准备中、登记不一致或未知条目都会阻止删除。只清理无引用模板，实际物理占用以块数核对；critical先暂停活动写入者再尝试回收，空间恢复仍不自动启动。
 - 管理端增加存储保护状态、筛选、免计费及恢复步骤说明；前端类型检查、相关ESLint及全部前端测试通过。
 - 普通环境删除保留双盘与逻辑预算。新增本地 `environment retained` 列举，以及 `environment destroy-disks --id <ID> --confirm-environment <同一ID>` 独立销毁入口；没有执行真实用户数据销毁。
 - Linux隔离容器中的真实官方runtime单文件准备、内嵌引擎校验、原子激活和重复安装已通过。该验证不能替代vsock上的真实虚拟机升级验收。
 
 ## 安装与构建示例
 
-原生对应架构Linux构建机运行：
+对应架构Linux构建机运行；或在ARM64 Linux构建机显式使用`--arch amd64 --cross-prefix x86_64-linux-gnu-`及AMD64静态uuid/blkid/libc开发库交叉编译。
 
 ```sh
 python3 scripts/buildvm.py --arch arm64 --output /artifacts/components-arm64 --cache /artifacts/cache --jobs 2
@@ -89,6 +90,10 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 ```
 
 构建机需要Go工具链、make、gcc、pkg-config、bison、flex、bc、objcopy及静态uuid／blkid／libc开发库。可用 `--go-components <目录>` 导入静态Go交叉编译产物，`go-components.json`必须包含architecture、当前cmd/internal/go.mod/go.sum的source_sha256、锁文件umoci_sum和三个Go程序的SHA；源码、架构或文件内容不匹配会拒绝。该选项只用于中央构建，不在Runner编译依赖。
+
+在中央构建机使用`packagevm.py --manifest <同输出目录的manifest.json>`可把VM描述合并进尚未发布的engine父清单。Pro构建脚本设置`ENGINE_VM_COMPONENTS_DIR=<根目录>`后按`<根目录>/amd64`与`arm64`读取components.json和组件，校验实际文件并把VM组件摘要纳入发行版本指纹，自动合并父清单，再交给既有在线／离线归档分发；不需要手改JSON。
+
+首次安装保存对应组件的真实自检记录；同版本修复和升级会复核记录及固定摘要，保留内核／组件与驱动，不在已有虚拟机旁另起可能争用地址的自检虚拟机。缺失或不匹配的记录明确拒绝，需要人工核对活动实例后处理。
 
 安装器默认值为系统盘20GiB、数据盘100GiB、逻辑池16TiB；物理空间critical/warning/recovery为2/4/8GiB，inode为1万/5万/10万，转换限16GiB/100万文件。通过 `--vm-config` JSON可调整容量、地址池、DNS、保护水位和限速；固定发行组件和中心服务例外由安装器生成。所有发行清单、内核及组件引用均需固定摘要，自检不通过不会改选其他驱动。
 

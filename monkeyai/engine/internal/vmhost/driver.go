@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/control"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/firecracker"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/standalone"
@@ -52,6 +53,11 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) error {
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	unlockCache, err := control.Lock(filepath.Join(d.state, "cache.lock"))
+	if err != nil {
+		return err
+	}
+	defer unlockCache()
 	dir, r, err := d.components(s)
 	if err != nil {
 		return err

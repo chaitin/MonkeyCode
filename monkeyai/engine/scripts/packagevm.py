@@ -109,13 +109,59 @@ def package(source, destination, architecture, lock_path=None):
     return record
 
 
+def attach_manifest(path, record, architecture, destination):
+    path = Path(path)
+    destination = Path(destination)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 16 << 10 or path.parent.resolve() != destination.resolve():
+        raise ValueError('父发行清单必须为同目录有界普通文件')
+    raw = path.read_bytes()
+    parent = json.loads(raw)
+    if (parent.get('architecture') != architecture or not parent.get('version')
+            or not isinstance(parent.get('files'), dict) or 'firecracker' in parent):
+        raise ValueError('父清单架构、版本或既有VM声明不匹配')
+    for name, checksum in parent['files'].items():
+        if Path(name).name != name or not name or name in ('.', '..'):
+            raise ValueError('父清单包含非普通组件名称')
+        component = destination / name
+        if (component.is_symlink() or not component.is_file() or not 0 < component.stat().st_size <= MAX_FILE
+                or digest(component) != checksum):
+            raise ValueError('父清单组件摘要不匹配')
+    if digest(destination / 'firecracker.tgz') != record['archive_sha256']:
+        raise ValueError('VM归档摘要不符')
+    parent['firecracker'] = record
+    encoded = json.dumps(parent, ensure_ascii=False, sort_keys=True, indent=2).encode() + b'\n'
+    if len(encoded) > 16 << 10:
+        raise ValueError('合并后的父清单超过上限')
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.vm-manifest-', delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            output.write(encoded)
+            output.flush()
+            os.fsync(output.fileno())
+            if path.read_bytes() != raw:
+                raise ValueError('父清单在合并期间发生变化')
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return parent
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--components', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--arch', choices=['amd64', 'arm64'], required=True)
+    parser.add_argument('--manifest', type=Path, help='可选的同目录engine父清单，仅在发布前合并VM描述')
     args = parser.parse_args()
-    package(args.components, args.output, args.arch)
+    record = package(args.components, args.output, args.arch)
+    if args.manifest:
+        attach_manifest(args.manifest, record, args.arch, args.output)
 
 
 if __name__ == '__main__':

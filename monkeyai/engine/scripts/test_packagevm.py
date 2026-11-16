@@ -50,6 +50,23 @@ class PackageVMTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     packagevm.package(source, base / 'first', arch)
 
+    def test_attach_to_matching_parent_and_reject_replacement(self):
+        with tempfile.TemporaryDirectory() as work:
+            base = Path(work)
+            source, _ = self.fixture(base)
+            output = base / 'out'
+            record = packagevm.package(source, output, 'amd64')
+            (output / 'monkeyai-engine').write_bytes(b'fixed engine')
+            files = {'monkeyai-engine': packagevm.digest(output / 'monkeyai-engine')}
+            manifest = output / 'manifest.json'
+            manifest.write_text(json.dumps({'version': 'engine-test', 'architecture': 'amd64', 'files': files}))
+            parent = packagevm.attach_manifest(manifest, record, 'amd64', output)
+            self.assertEqual(parent['files'], files)
+            self.assertEqual(parent['firecracker']['archive_sha256'], record['archive_sha256'])
+            with self.assertRaises(ValueError):
+                packagevm.attach_manifest(manifest, record, 'amd64', output)
+            self.assertEqual(json.loads(manifest.read_text()), parent)
+
     def test_corruption_architecture_and_symlink(self):
         for mode in ('checksum', 'arch', 'symlink'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as work:

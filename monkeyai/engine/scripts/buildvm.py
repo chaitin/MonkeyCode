@@ -83,13 +83,17 @@ def import_go_components(source, output, architecture):
         shutil.copyfile(path, output / name)
 
 
-def build(architecture, output, cache, jobs, go_components=None):
+def build(architecture, output, cache, jobs, go_components=None, cross_prefix=None):
     native = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(platform.machine())
-    if platform.system() != 'Linux' or native != architecture:
-        raise ValueError('内核和静态工具必须在对应架构的独立 Linux 构建机原生构建')
+    if platform.system() != 'Linux' or native != architecture and not (native == 'arm64' and architecture == 'amd64' and cross_prefix == 'x86_64-linux-gnu-'):
+        raise ValueError('需要对应架构Linux构建机，或显式提供受支持的ARM64到AMD64交叉工具链')
+    if cross_prefix and (architecture != 'amd64' or native != 'arm64' or cross_prefix != 'x86_64-linux-gnu-'):
+        raise ValueError('不支持的内核交叉编译组合')
     if jobs < 1 or jobs > 64:
         raise ValueError('构建并行数必须介于1和64之间')
     tools = ['make', 'gcc', 'pkg-config', 'bison', 'flex', 'bc', 'objcopy']
+    if cross_prefix:
+        tools += [cross_prefix + name for name in ('gcc', 'ar', 'ranlib', 'objcopy')]
     if go_components is None:
         tools.append('go')
     for tool in tools:
@@ -142,19 +146,27 @@ def build(architecture, output, cache, jobs, go_components=None):
         fs = source_tree(fetched['e2fsprogs'], fs_dir)
         shutil.copyfile(fetched['config'], kernel / '.config')
         command(['scripts/config', '--disable', 'DEBUG_INFO_BTF', '--set-str', 'SYSTEM_TRUSTED_KEYS', '', '--set-str', 'SYSTEM_REVOCATION_KEYS', ''], kernel)
-        command(['make', 'olddefconfig'], kernel)
+        kernel_env = os.environ.copy()
+        if cross_prefix:
+            kernel_env.update({'ARCH': 'x86', 'CROSS_COMPILE': cross_prefix, 'HOSTCC': 'gcc', 'HOSTCXX': 'g++'})
+        command(['make', 'olddefconfig'], kernel, kernel_env)
         config = (kernel / '.config').read_text()
         for option in ('CONFIG_EXT4_FS=y', 'CONFIG_IP_PNP=y', 'CONFIG_VIRTIO_VSOCKETS=y', 'CONFIG_DEVTMPFS_MOUNT=y', 'CONFIG_CGROUPS=y'):
             if option not in config.splitlines():
                 raise ValueError(f'构建内核缺少 {option}')
-        command(['make', f'-j{jobs}', 'vmlinux' if architecture == 'amd64' else 'Image'], kernel)
+        command(['make', f'-j{jobs}', 'vmlinux' if architecture == 'amd64' else 'Image'], kernel, kernel_env)
         if architecture == 'amd64':
-            command(['objcopy', '--strip-debug', kernel / 'vmlinux', output / 'kernel'], kernel)
+            command([(cross_prefix or '') + 'objcopy', '--strip-debug', kernel / 'vmlinux', output / 'kernel'], kernel)
         else:
             shutil.copyfile(kernel / 'arch/arm64/boot/Image', output / 'kernel')
-        command(['./configure', '--disable-nls', '--disable-uuidd', '--disable-fuse2fs', '--disable-elf-shlibs'], fs)
-        command(['make', f'-j{jobs}', 'libs'], fs)
-        command(['make', '-C', 'misc', f'-j{jobs}', 'mke2fs.static'], fs)
+        fs_env = os.environ.copy()
+        configure = ['./configure', '--disable-nls', '--disable-uuidd', '--disable-fuse2fs', '--disable-elf-shlibs']
+        if cross_prefix:
+            configure += ['--build=aarch64-linux-gnu', '--host=x86_64-linux-gnu']
+            fs_env.update({'CC': cross_prefix + 'gcc', 'AR': cross_prefix + 'ar', 'RANLIB': cross_prefix + 'ranlib', 'BUILD_CC': 'gcc', 'PKG_CONFIG_LIBDIR': '/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig'})
+        command(configure, fs, fs_env)
+        command(['make', f'-j{jobs}', 'libs'], fs, fs_env)
+        command(['make', '-C', 'misc', f'-j{jobs}', 'mke2fs.static'], fs, fs_env)
         shutil.copyfile(fs / 'misc/mke2fs.static', output / 'mke2fs')
         # 保留构建所用源码版本、配置和授权材料，不把这些文件混入宿主可执行路径。
         notices = output / 'licenses'
@@ -178,9 +190,10 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--cache', type=Path, required=True)
     parser.add_argument('--go-components', type=Path, help='可选的同源码静态Go交叉编译产物，须附带摘要清单')
+    parser.add_argument('--cross-prefix', choices=['x86_64-linux-gnu-'], help='在ARM64 Linux构建机上显式交叉编译AMD64内核和工具')
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()
-    build(args.arch, args.output, args.cache, args.jobs, args.go_components)
+    build(args.arch, args.output, args.cache, args.jobs, args.go_components, args.cross_prefix)
 
 
 if __name__ == '__main__':
