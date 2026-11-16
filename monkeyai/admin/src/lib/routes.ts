@@ -2,6 +2,7 @@ export const LOGIN_PATH = "/login"
 export const CONSOLE_PATH = "/console"
 
 export const CONSOLE_ROUTES = {
+  cloudHosts: "/console/environments/cloud-hosts",
   environments: "/console/environments/instances",
   environmentCapacity: "/console/environments/capacity",
   environmentQuotas: "/console/environments/quotas",
@@ -33,18 +34,11 @@ export const DEFAULT_CONSOLE_PATH = CONSOLE_ROUTES.realtimeStatus
 
 export const CONSOLE_PAGES = [
   {
-    path: CONSOLE_ROUTES.environments,
-    sectionKey: "environmentAdmin.group",
-    sectionPath: CONSOLE_ROUTES.environments,
-    titleKey: "environmentAdmin.environmentsTitle",
-    descriptionKey: "environmentAdmin.environmentsDescription",
-  },
-  {
-    path: CONSOLE_ROUTES.engineHosts,
-    sectionKey: "environmentAdmin.group",
-    sectionPath: CONSOLE_ROUTES.environments,
-    titleKey: "pages.engineHosts.title",
-    descriptionKey: "pages.engineHosts.description",
+    path: CONSOLE_ROUTES.cloudHosts,
+    sectionKey: "sections.aiResources",
+    sectionPath: CONSOLE_ROUTES.models,
+    titleKey: "environmentAdmin.cloudHostsTitle",
+    descriptionKey: "environmentAdmin.cloudHostsDescription",
   },
   {
     path: CONSOLE_ROUTES.realtimeStatus,

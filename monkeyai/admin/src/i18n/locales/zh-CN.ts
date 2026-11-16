@@ -29,6 +29,8 @@ export const zhCN = {
     save: "保存",
   },
   environmentAdmin: {
+    cloudHostsTitle: "云电脑",
+    cloudHostsDescription: "管理宿主机与云环境。",
     statusFilter: "筛选状态",
     hostFilter: "宿主：{{name}}",
     clearHostFilter: "清除宿主筛选",
@@ -143,7 +145,7 @@ export const zhCN = {
 
     directoryStorage: "项目与用户目录持久保存，暂不限制磁盘容量。",
     group: "云环境",
-    environmentsTitle: "环境管理",
+    environmentsTitle: "云电脑",
     environmentsDescription:
       "查看环境运行状态与操作记录，管理停止和删除。运行中不代表已可连接。",
     capacityTitle: "宿主容量",
@@ -816,7 +818,7 @@ export const zhCN = {
         "整机使用情况，包含其他进程。CPU 为两次采样间的使用率；首次采样暂不显示。数据盘为数据目录所在文件系统。",
 
       retry: "重试",
-      title: "宿主管理",
+      title: "宿主机",
       description: "安装并接入运行云电脑的 Linux 宿主机。",
       add: "添加宿主机",
       stage: "安装完成后，在列表中打开“开启”开关。",

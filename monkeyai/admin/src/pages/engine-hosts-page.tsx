@@ -1,4 +1,10 @@
 import {
+  CloudSection,
+  CloudGrid,
+  CloudCard,
+  CloudField,
+} from "@/components/environments/cloud-section"
+import {
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -15,12 +21,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { HostStatus } from "@/components/environments/status-badge"
-import {
-  EnvironmentFrame,
-  EnvironmentTable,
-  Pagination,
-  Identity,
-} from "@/components/environments/common"
+import { Pagination, Identity } from "@/components/environments/common"
 import {
   HostUpgrade,
   type HostUpgradeState,
@@ -28,6 +29,7 @@ import {
 import { HostSetupDialog } from "@/components/environments/host-setup-dialog"
 import { ResourceMeter } from "@/components/environments/resource-meter"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { RefreshCw } from "lucide-react"
 import {
   Add01Icon,
   ArrowUp02Icon,
@@ -43,7 +45,6 @@ import { HostCommand } from "@/components/environments/host-command"
 import { rememberCommand } from "@/lib/host-command"
 import { useAuth } from "@/hooks/use-auth"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
-import { TableCell, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
@@ -249,16 +250,25 @@ export function EngineHostsPage() {
     }
   }
   return (
-    <EnvironmentFrame
-      table
+    <CloudSection
       title={text("title")}
-      description={text("description")}
-      action={
+      headerAction={
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" disabled={result.loading} onClick={refresh}>
-            {t("environmentAdmin.refresh")}
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={t("environmentAdmin.refresh")}
+            title={t("environmentAdmin.refresh")}
+            disabled={result.loading}
+            onClick={refresh}
+          >
+            <RefreshCw aria-hidden="true" />
           </Button>
-          <Button disabled={busy} onClick={() => void create()}>
+          <Button
+            variant={result.data?.total === 0 ? "default" : "outline"}
+            disabled={busy}
+            onClick={() => void create()}
+          >
             <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
             {text("add")}
           </Button>
@@ -273,20 +283,9 @@ export function EngineHostsPage() {
           {notice}
         </p>
       )}
-      <EnvironmentTable
+      <CloudGrid
+        singleColumn
         title={text("title")}
-        columns={[
-          text("name"),
-          t("environmentAdmin.status"),
-          text("environmentCount"),
-          text("system"),
-          text("network"),
-          "CPU",
-          text("memory"),
-          text("disk"),
-          t("environmentAdmin.scheduling"),
-          t("environmentAdmin.actions"),
-        ]}
         {...result}
         empty={!hosts.length}
       >
@@ -302,8 +301,8 @@ export function EngineHostsPage() {
           const system = host.report.system
           const stale = !host.online || host.status !== "active"
           return (
-            <TableRow key={host.id}>
-              <TableCell className="ps-[var(--card-spacing)]">
+            <CloudCard horizontal key={host.id}>
+              <CloudField label={text("name")}>
                 <div className="flex items-center gap-3">
                   <OSIcon name={system?.os_name} />
                   <div className="min-w-0">
@@ -323,14 +322,14 @@ export function EngineHostsPage() {
                     </p>
                   </div>
                 </div>
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={t("environmentAdmin.status")}>
                 <HostStatus status={status} />
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={text("environmentCount")}>
                 {typeof host.environment_count === "number" ? (
                   <Link
-                    to={`${CONSOLE_ROUTES.environments}?${new URLSearchParams({ host_id: host.id, host_name: host.name })}`}
+                    to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: host.name })}`}
                     className={`${buttonVariants({ variant: "link" })} min-w-10 tabular-nums`}
                     aria-label={text("viewEnvironments", {
                       name: host.name,
@@ -343,8 +342,8 @@ export function EngineHostsPage() {
                 ) : (
                   "—"
                 )}
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={text("system")}>
                 <p className="max-w-48 truncate" title={system?.os_name}>
                   {system?.os_name && system.os_name.toLowerCase() !== "linux"
                     ? system.os_name
@@ -371,8 +370,8 @@ export function EngineHostsPage() {
                       </Button>
                     )}
                 </div>
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={text("network")}>
                 <div className="space-y-1 text-xs">
                   {(["private_ips", "public_ips"] as const).map((key) => (
                     <div key={key} className="flex items-baseline gap-2">
@@ -399,8 +398,8 @@ export function EngineHostsPage() {
                     )}
                   </p>
                 </div>
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={"CPU"}>
                 <ResourceMeter
                   label={text("cpuUsage")}
                   value={system?.cpu?.usage_percent}
@@ -411,8 +410,8 @@ export function EngineHostsPage() {
                       : text("notReported")
                   }
                 />
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={text("memory")}>
                 <ResourceMeter
                   label={text("memoryUsage")}
                   value={usage(system?.memory)}
@@ -423,8 +422,8 @@ export function EngineHostsPage() {
                       : text("notReported")
                   }
                 />
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={text("disk")}>
                 <ResourceMeter
                   label={text("diskUsage")}
                   value={usage(system?.disk)}
@@ -441,8 +440,8 @@ export function EngineHostsPage() {
                   {text("writeRate")}{" "}
                   {rate(system?.disk_io?.write_bytes_per_second)}
                 </p>
-              </TableCell>
-              <TableCell>
+              </CloudField>
+              <CloudField label={t("environmentAdmin.scheduling")}>
                 <Switch
                   checked={host.enabled}
                   disabled={
@@ -455,8 +454,8 @@ export function EngineHostsPage() {
                     void changeScheduling(host, enabled)
                   }
                 />
-              </TableCell>
-              <TableCell className="pe-[var(--card-spacing)]">
+              </CloudField>
+              <CloudField label={t("environmentAdmin.actions")}>
                 <div className="flex items-center gap-1">
                   <ActionButton
                     label={t("environmentAdmin.configure")}
@@ -478,11 +477,11 @@ export function EngineHostsPage() {
                     }}
                   />
                 </div>
-              </TableCell>
-            </TableRow>
+              </CloudField>
+            </CloudCard>
           )
         })}
-      </EnvironmentTable>
+      </CloudGrid>
       {configuring && (
         <HostSetupDialog
           host={configuring}
@@ -967,6 +966,6 @@ export function EngineHostsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </EnvironmentFrame>
+    </CloudSection>
   )
 }

@@ -22,7 +22,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ChartRingIcon,
-  ComputerCloudIcon,
   Clock01Icon,
   RoboticIcon,
   Settings05Icon,
@@ -114,6 +113,10 @@ export function AppSidebar({
           title: t("pages.resourceImports.title"),
           url: CONSOLE_ROUTES.resourceImports,
         },
+        {
+          title: t("environmentAdmin.cloudHostsTitle"),
+          url: CONSOLE_ROUTES.cloudHosts,
+        },
       ],
     },
     {
@@ -128,21 +131,6 @@ export function AppSidebar({
         {
           title: t("pages.billingDetails.title"),
           url: CONSOLE_ROUTES.billingDetails,
-        },
-      ],
-    },
-    {
-      title: t("environmentAdmin.group"),
-      url: CONSOLE_ROUTES.environments,
-      icon: <HugeiconsIcon icon={ComputerCloudIcon} strokeWidth={2} />,
-      items: [
-        {
-          title: t("pages.engineHosts.title"),
-          url: CONSOLE_ROUTES.engineHosts,
-        },
-        {
-          title: t("environmentAdmin.environmentsTitle"),
-          url: CONSOLE_ROUTES.environments,
         },
       ],
     },

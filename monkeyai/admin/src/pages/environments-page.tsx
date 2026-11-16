@@ -1,6 +1,13 @@
+import {
+  CloudSection,
+  CloudGrid,
+  CloudCard,
+  CloudField,
+} from "@/components/environments/cloud-section"
 import { ArrowDown02Icon } from "@hugeicons/core-free-icons"
 import { ActionButton } from "@/components/environments/action-button"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { RefreshCw } from "lucide-react"
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -33,15 +40,12 @@ import {
 } from "@/lib/environments"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import {
-  EnvironmentFrame,
-  EnvironmentTable,
   LoadState,
   Pagination,
   Identity,
   FormError,
 } from "@/components/environments/common"
 import { Button } from "@/components/ui/button"
-import { TableCell, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -162,8 +166,7 @@ export function EnvironmentsPage() {
     })
   }
   return (
-    <EnvironmentFrame
-      table
+    <CloudSection
       title={t("environmentAdmin.environmentsTitle")}
       description={t("environmentAdmin.environmentsDescription")}
       action={
@@ -208,10 +211,13 @@ export function EnvironmentsPage() {
           </Select>
           <Button
             variant="outline"
+            size="icon"
+            aria-label={t("environmentAdmin.refresh")}
+            title={t("environmentAdmin.refresh")}
             disabled={result.loading}
             onClick={result.refresh}
           >
-            {t("environmentAdmin.refresh")}
+            <RefreshCw aria-hidden="true" />
           </Button>
         </div>
       }
@@ -247,25 +253,14 @@ export function EnvironmentsPage() {
           {notice}
         </p>
       )}
-      <EnvironmentTable
+      <CloudGrid
         title={t("environmentAdmin.environmentsTitle")}
-        columns={[
-          "name",
-          "status",
-          "runtimeVersion",
-          "resourceUsage",
-          "billing.title",
-          "user",
-          "host",
-          "observed",
-          "actions",
-        ].map((key) => t(`environmentAdmin.${key}`))}
         {...result}
         empty={!result.data?.items.length}
       >
         {result.data?.items.map((env) => (
-          <TableRow key={env.id}>
-            <TableCell className="min-w-40 ps-[var(--card-spacing)]">
+          <CloudCard key={env.id}>
+            <CloudField label={t("environmentAdmin.name")}>
               <Button
                 variant="link"
                 className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium"
@@ -273,8 +268,8 @@ export function EnvironmentsPage() {
               >
                 {env.name}
               </Button>
-            </TableCell>
-            <TableCell>
+            </CloudField>
+            <CloudField label={t("environmentAdmin.status")}>
               <EnvironmentStatus environment={env} />
               {env.reason && env.generation === env.observed_generation && (
                 <p className="mt-1 max-w-60 whitespace-normal break-words text-xs text-destructive">
@@ -283,17 +278,17 @@ export function EnvironmentsPage() {
                   })}
                 </p>
               )}
-            </TableCell>
-            <TableCell className="whitespace-nowrap font-mono text-xs tabular-nums">
+            </CloudField>
+            <CloudField label={t("environmentAdmin.runtimeVersion")}>
               {env.runtime_version || t("environmentAdmin.runtimeUnknown")}
-            </TableCell>
-            <TableCell>
-              <EnvironmentUsage environment={env} compact />
-            </TableCell>
-            <TableCell>
+            </CloudField>
+            <CloudField wide label={t("environmentAdmin.resourceUsage")}>
+              <EnvironmentUsage environment={env} />
+            </CloudField>
+            <CloudField wide label={t("environmentAdmin.billing.title")}>
               <EnvironmentBillingInfo environment={env} compact />
-            </TableCell>
-            <TableCell>
+            </CloudField>
+            <CloudField label={t("environmentAdmin.user")}>
               <div className="flex items-center gap-2.5">
                 <UserAvatar src={env.user?.avatar_url} size="default" />
                 <div className="min-w-0">
@@ -313,8 +308,8 @@ export function EnvironmentsPage() {
                   )}
                 </div>
               </div>
-            </TableCell>
-            <TableCell>
+            </CloudField>
+            <CloudField label={t("environmentAdmin.host")}>
               <div className="flex items-center gap-2.5">
                 <OSIcon name={env.host?.os_name} />
                 <span
@@ -324,13 +319,13 @@ export function EnvironmentsPage() {
                   {env.host?.hostname || env.host?.name || env.host_id}
                 </span>
               </div>
-            </TableCell>
-            <TableCell className="text-muted-foreground">
+            </CloudField>
+            <CloudField label={t("environmentAdmin.observed")}>
               {env.observed_at
                 ? new Date(env.observed_at).toLocaleString()
                 : t("environmentAdmin.notObserved")}
-            </TableCell>
-            <TableCell className="pe-[var(--card-spacing)]">
+            </CloudField>
+            <CloudField label={t("environmentAdmin.actions")}>
               <div className="flex items-center gap-1">
                 <ActionButton
                   label={t("environmentAdmin.details")}
@@ -348,10 +343,10 @@ export function EnvironmentsPage() {
                   onClick={() => request(env, "deleted")}
                 />
               </div>
-            </TableCell>
-          </TableRow>
+            </CloudField>
+          </CloudCard>
         ))}
-      </EnvironmentTable>
+      </CloudGrid>
       <Pagination
         page={page}
         count={result.data?.items.length ?? 0}
@@ -417,7 +412,7 @@ export function EnvironmentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </EnvironmentFrame>
+    </CloudSection>
   )
 }
 function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {

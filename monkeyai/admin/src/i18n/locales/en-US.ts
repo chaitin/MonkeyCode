@@ -31,6 +31,8 @@ export const enUS = {
     save: "Save changes",
   },
   environmentAdmin: {
+    cloudHostsTitle: "Cloud Hosts",
+    cloudHostsDescription: "Manage hosts and cloud environments.",
     statusFilter: "Filter status",
     hostFilter: "Host: {{name}}",
     clearHostFilter: "Clear host filter",

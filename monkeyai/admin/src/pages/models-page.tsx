@@ -1359,7 +1359,7 @@ export function ModelsPage() {
                             : t("pages.models.dialogTitle")}
                         </DialogTitle>
                       </DialogHeader>
-                      <ScrollArea className="-m-1 flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-scrollbar]]:translate-x-2.5 rtl:[&_[data-slot=scroll-area-scrollbar]]:-translate-x-2.5 [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:p-1">
+                      <ScrollArea className="-m-1 flex min-h-0 min-w-0 flex-1 flex-col [&_[data-slot=scroll-area-scrollbar]]:translate-x-2.5 [[dir=rtl]_&_[data-slot=scroll-area-scrollbar]]:-translate-x-2.5 [&_[data-slot=scroll-area-viewport]]:flex-1 [&_[data-slot=scroll-area-viewport]]:space-y-6 [&_[data-slot=scroll-area-viewport]]:p-1">
                         <Tabs
                           value={kind}
                           onValueChange={(value) => {
