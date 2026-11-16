@@ -26,7 +26,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{Architecture: "amd64", DataDir: "/var/lib/monkeyai-engine", Socket: "/var/run/docker.sock", CgroupRoot: "/sys/fs/cgroup"}
+	return Config{Architecture: "amd64", DataDir: "/data/monkeyai-engine", Socket: "/var/run/docker.sock", CgroupRoot: "/sys/fs/cgroup"}
 }
 
 func (c Config) Validate() error {

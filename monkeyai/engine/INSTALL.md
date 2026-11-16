@@ -10,7 +10,7 @@
 sudo bash -c "$(curl -kfsSL 'https://server.example/api/host/v1/install.sh?token=短期凭据' || echo 'exit 1')"
 ```
 
-脚本自动识别 amd64／arm64；engine 注册时上报 hostname，使用默认数据目录 `/var/lib/monkeyai-engine/data`。全部组件从该 server 的 `/api/host/v1/releases/<version>/<arch>/<file>` 下载，不访问 OSS、GitHub 或系统软件源。脚本包含固定版本和摘要，校验统一 installer 后执行 `installer monkeyai-engine install`，installer 负责组件下载、注册和服务安装。首次注册绑定公钥和架构，重试保留身份。
+脚本自动识别 amd64／arm64；engine 注册时上报 hostname。首次交互安装会显示与monkeyai服务安装一致的数据目录输入框，默认`/data/monkeyai-engine`，可修改并确认。非交互安装可以通过`--data-dir`指定目录，省略时使用同一默认值；已有安装的修复／升级沿用原目录。全部组件从该 server 的 `/api/host/v1/releases/<version>/<arch>/<file>` 下载，不访问 OSS、GitHub 或系统软件源。脚本包含固定版本和摘要，校验统一 installer 后执行 `installer monkeyai-engine install`，installer 负责组件下载、注册和服务安装。首次注册绑定公钥和架构，重试保留身份。
 
 ## 宿主代理与私网访问
 
@@ -65,7 +65,7 @@ journalctl -u monkeyai-engine -u docker --since '-10 min'
 
 ## 持久目录
 
-数据目录默认是 `/var/lib/monkeyai-engine/data`。项目、用户目录和 runtime 状态保存在普通目录中，停止／重建容器时保留。无需配置 XFS／ext4 项目配额、quota 内核模块或独立磁盘镜像，也无需安装 xfsprogs。
+新安装的数据目录默认是`/data/monkeyai-engine`，交互安装可修改，已有目录保持不变。以下普通目录说明适用于gVisor；Firecracker在该数据目录下创建独立双盘，详见[Firecracker实施记录](../design/firecracker-environment-implementation.md)。项目、用户目录和 runtime 状态保存在普通目录中，停止／重建容器时保留。无需配置 XFS／ext4 项目配额、quota 内核模块或独立磁盘镜像，也无需安装 xfsprogs。
 
 当前不限制每台云电脑的持久目录容量或 inode 数，不为其预分配磁盘空间。CPU、内存、宿主进程数和临时 tmpfs 限制继续生效；宿主总磁盘空间由管理员维护。镜像缓存的空间检查和回收仍独立生效。
 
