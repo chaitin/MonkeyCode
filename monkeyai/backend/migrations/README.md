@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=40, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=42, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -61,6 +61,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 | `000038_embedding_model` | 主线向量模型类型与配置 |
 | `000039_create_kb_tables` | 主线知识库、文档、分片与学习任务 |
 | `000040_cloud_environments` | 宿主创建者、独立环境配置、升级历史、runtime及计费；八张表，数量调度允许资源超卖 |
+| `000041_kb_permissions` | 增加文档最后修改人、内容修改时间及知识库自定义图标对象存储键 |
 
 从 `backend` 目录执行：
 
@@ -70,7 +71,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `40` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `42` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 
@@ -132,3 +133,9 @@ up支持对本版最终结构重放，保留宿主配置、个人覆盖、受限
 down在开放计费时段、已收费时段、交易／账本环境历史、待完成宿主升级／runtime更新或未确认删除环境存在时拒绝，整笔事务回滚，保留数据、权限和余额。允许回退时先撤销环境scope授权族和token、过期未完成申请及授权码，移除host授权，再按依赖删除八张表并恢复原账务类别约束。重复down不重复增加撤销版本，重新up不恢复已撤销凭据；回退不会操作宿主容器和持久目录，不能代替工作负载回收。
 
 隔离PostgreSQL回归覆盖14→40、39→40、一次回退到39及down/up、最终schema、SQL重放保持受限授权／配置／快照、余额保留与财务历史保护，以及账本／交易周分区切换前后收费。schema/sqlc仅通过make generate生成。
+
+版本 `41` 增加 `knowledge_base_documents.updated_by_user_id` 和 `knowledge_base_documents.content_updated_at`，全部可空；存量记录保持 null，不推断历史修改者或把学习更新时间当作内容修改时间。复用既有 `read_only/read_write`、知识库 revision 及 `schema_migrations`，不新增权限等级、独立授权版本或额外迁移记录表。迁移不更改已有授权、正文、分片或任务。须先迁移，再启动使用这些字段的新后端。
+
+版本 `41` 的 down 删除文档的上述两个字段及知识库图标存储键字段，保留业务数据及既有权限。应用回退可保留新增字段；若执行 down，最后修改人和内容修改时间会丢失，再 up 只恢复空字段。历史 read_write 应在开放协作写入前核实授权意图，migration 不静默降级或升级授权。
+
+版本 `41` 同时为 `knowledge_bases` 增加 `avatar_s3_key text NOT NULL DEFAULT ''`，历史记录默认没有自定义图标，原有知识库及内容保持不变。须先迁移，再启动使用该字段的新后端。down 仅删除图标存储键字段，丢失自定义图标关联，不删除知识库、文档或对象存储中的图片；再次 up 只恢复默认空字段。

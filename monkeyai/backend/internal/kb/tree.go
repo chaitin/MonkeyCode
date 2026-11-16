@@ -64,6 +64,9 @@ func normalizeParentID(value *string) (*string, error) {
 }
 
 func (s *Service) MoveDocument(ctx context.Context, kbID, id string, input MoveDocumentInput) (resource.Object, error) {
+	return s.moveDocument(ctx, kbID, id, input, "")
+}
+func (s *Service) moveDocument(ctx context.Context, kbID, id string, input MoveDocumentInput, actor string) (resource.Object, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -75,6 +78,12 @@ func (s *Service) MoveDocument(ctx context.Context, kbID, id string, input MoveD
 		return nil, resource.NotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err = requireContentWrite(ctx, tx, kbID, actor); err != nil {
+		return nil, err
+	}
+	if err = requireDocumentVersion(ctx, tx, current, actor, input.ExpectedRevision); err != nil {
 		return nil, err
 	}
 	parentID, err := normalizeParentID(input.ParentID)
@@ -109,6 +118,12 @@ func (s *Service) MoveDocument(ctx context.Context, kbID, id string, input MoveD
 		return nil, err
 	}
 	if err = queries.MoveKbDocument(ctx, sqlc.MoveKbDocumentParams{ID: id, ParentID: parentID, Position: position}); err != nil {
+		return nil, err
+	}
+	if err = bumpDocumentVersion(ctx, tx, current); err != nil {
+		return nil, err
+	}
+	if err = recordContentChange(ctx, tx, actor, kbID, id, "move"); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -209,9 +224,10 @@ func objectFloat(value any) float64 {
 const maxBatchDocuments = 200
 
 type BatchDocumentInput struct {
-	Action   string   `json:"action"`
-	IDs      []string `json:"ids"`
-	ParentID *string  `json:"parent_id"`
+	ExpectedRevisions map[string]int64 `json:"expected_revisions,omitempty"`
+	Action            string           `json:"action"`
+	IDs               []string         `json:"ids"`
+	ParentID          *string          `json:"parent_id"`
 }
 
 type BatchDocumentFailure struct {
@@ -225,15 +241,18 @@ type BatchDocumentResult struct {
 }
 
 func (s *Service) BatchDocuments(ctx context.Context, kbID string, input BatchDocumentInput) (BatchDocumentResult, error) {
+	return s.batchDocuments(ctx, kbID, input, "")
+}
+func (s *Service) batchDocuments(ctx context.Context, kbID string, input BatchDocumentInput, actor string) (BatchDocumentResult, error) {
 	ids, err := normalizeBatchIDs(input.IDs)
 	if err != nil {
 		return BatchDocumentResult{}, err
 	}
 	switch input.Action {
 	case "delete":
-		return s.batchDeleteDocuments(ctx, kbID, ids)
+		return s.batchDeleteDocuments(ctx, kbID, ids, actor, input.ExpectedRevisions)
 	case "move":
-		return s.batchMoveDocuments(ctx, kbID, ids, input.ParentID)
+		return s.batchMoveDocuments(ctx, kbID, ids, input.ParentID, actor, input.ExpectedRevisions)
 	default:
 		return BatchDocumentResult{}, resource.Invalid("不支持的批量操作")
 	}
@@ -259,7 +278,7 @@ func normalizeBatchIDs(ids []string) ([]string, error) {
 	return out, nil
 }
 
-func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []string) (BatchDocumentResult, error) {
+func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []string, actor string, expected map[string]int64) (BatchDocumentResult, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return BatchDocumentResult{}, err
@@ -267,6 +286,9 @@ func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []s
 	defer rollback(ctx, tx, strings.Join(ids, ","))
 	queries := sqlc.New(tx)
 	if _, err = queries.LockKbResource(ctx, kbID); err != nil {
+		return BatchDocumentResult{}, err
+	}
+	if err = requireContentWrite(ctx, tx, kbID, actor); err != nil {
 		return BatchDocumentResult{}, err
 	}
 	nodes, err := resource.DecodeObjects(queries.ListKbDocuments(ctx, kbID))
@@ -279,6 +301,17 @@ func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []s
 		id := node.String("id")
 		byID[id] = node
 		children[node.String("parent_id")] = append(children[node.String("parent_id")], id)
+	}
+	if actor != "" {
+		for _, id := range ids {
+			node, exists := byID[id]
+			if !exists {
+				return BatchDocumentResult{}, resource.NotFound
+			}
+			if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
+				return BatchDocumentResult{}, err
+			}
+		}
 	}
 	selected := map[string]bool{}
 	result := BatchDocumentResult{Succeeded: []string{}, Failed: []BatchDocumentFailure{}}
@@ -317,6 +350,9 @@ func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []s
 			}
 			continue
 		}
+		if err = recordContentChange(ctx, tx, actor, kbID, id, "delete"); err != nil {
+			return BatchDocumentResult{}, err
+		}
 		if selected[id] {
 			result.Succeeded = append(result.Succeeded, id)
 		}
@@ -349,7 +385,7 @@ func batchDeleteOrder(ids []string, selected map[string]bool, children map[strin
 	return order
 }
 
-func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []string, parentID *string) (BatchDocumentResult, error) {
+func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []string, parentID *string, actor string, expected map[string]int64) (BatchDocumentResult, error) {
 	tx, err := s.store.Pool.Begin(ctx)
 	if err != nil {
 		return BatchDocumentResult{}, err
@@ -357,6 +393,9 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 	defer rollback(ctx, tx, strings.Join(ids, ","))
 	queries := sqlc.New(tx)
 	if _, err = queries.LockKbResource(ctx, kbID); err != nil {
+		return BatchDocumentResult{}, err
+	}
+	if err = requireContentWrite(ctx, tx, kbID, actor); err != nil {
 		return BatchDocumentResult{}, err
 	}
 	nodes, err := resource.DecodeObjects(queries.ListKbDocuments(ctx, kbID))
@@ -381,6 +420,17 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 		}
 		if parent.String("node_type") != "folder" {
 			return BatchDocumentResult{}, resource.Invalid("只能放到文件夹下")
+		}
+	}
+	if actor != "" {
+		for _, id := range ids {
+			node, exists := byID[id]
+			if !exists {
+				return BatchDocumentResult{}, resource.NotFound
+			}
+			if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
+				return BatchDocumentResult{}, err
+			}
 		}
 	}
 	selected := map[string]bool{}
@@ -413,6 +463,12 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 			return BatchDocumentResult{}, err
 		}
 		if err = queries.MoveKbDocument(ctx, sqlc.MoveKbDocumentParams{ID: id, ParentID: target, Position: position}); err != nil {
+			return BatchDocumentResult{}, err
+		}
+		if err = bumpDocumentVersion(ctx, tx, byID[id]); err != nil {
+			return BatchDocumentResult{}, err
+		}
+		if err = recordContentChange(ctx, tx, actor, kbID, id, "move"); err != nil {
 			return BatchDocumentResult{}, err
 		}
 		result.Succeeded = append(result.Succeeded, id)

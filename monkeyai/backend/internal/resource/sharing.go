@@ -25,9 +25,10 @@ type ShareResource struct {
 }
 
 type ShareInput struct {
-	Resources []ShareResource `json:"resources"`
-	UserIDs   []string        `json:"user_ids"`
-	GroupIDs  []string        `json:"group_ids"`
+	AccessLevel string          `json:"access_level,omitempty"`
+	Resources   []ShareResource `json:"resources"`
+	UserIDs     []string        `json:"user_ids"`
+	GroupIDs    []string        `json:"group_ids"`
 }
 
 func SharedUsers(ctx context.Context, q Queryer, kind string, ids []string) (map[string][]Object, error) {
@@ -91,6 +92,14 @@ func (s *Store) RegisterSharing(router chi.Router, kinds map[string]Shareable) {
 func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revoke bool, kinds map[string]Shareable) error {
 	if len(input.Resources) == 0 || len(input.Resources) > 100 || len(input.UserIDs)+len(input.GroupIDs) == 0 || len(input.UserIDs)+len(input.GroupIDs) > 100 {
 		return InvalidCode("sharing_invalid", "resources 必须包含 1—100 项，user_ids 和 group_ids 合计必须包含 1—100 项")
+	}
+	if input.AccessLevel != "" && input.AccessLevel != "read_only" && input.AccessLevel != "read_write" {
+		return Invalid("权限必须为只读或读写")
+	}
+	for _, item := range input.Resources {
+		if input.AccessLevel != "" && item.Type != "kb" {
+			return Invalid("仅知识库分享支持选择读写权限")
+		}
 	}
 	input.Resources = slices.Clone(input.Resources)
 	input.UserIDs = slices.Clone(input.UserIDs)
@@ -169,6 +178,21 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 	}
 	for _, item := range input.Resources {
+		if item.Type == "kb" && allUsers && !revoke {
+			existing, err := Grants(ctx, tx, "kb", item.ID)
+			if err != nil {
+				return err
+			}
+			hasAll := false
+			for _, grant := range existing {
+				if grant.String("group_id") == rootgroup.ID {
+					hasAll = true
+				}
+			}
+			if !hasAll {
+				return Invalid("个人知识库不支持新增全员授权")
+			}
+		}
 		if revoke {
 			if len(input.UserIDs) > 0 {
 				_, err = sqlc.New(tx).RevokeShares(ctx, sqlc.RevokeSharesParams{ResourceType: item.Type, ResourceID: item.ID, UserIds: input.UserIDs})
@@ -189,6 +213,18 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 			if err == nil && allUsers {
 				_, err = sqlc.New(tx).CreateAllShares(ctx, sqlc.CreateAllSharesParams{ResourceType: item.Type, ResourceID: item.ID, GrantedByUserID: actor})
 			}
+		}
+		if err == nil && item.Type == "kb" && !revoke && input.AccessLevel != "" {
+			entries, loadErr := Grants(ctx, tx, "kb", item.ID)
+			if loadErr != nil {
+				return loadErr
+			}
+			for _, entry := range entries {
+				if slices.Contains(input.UserIDs, entry.String("user_id")) || slices.Contains(input.GroupIDs, entry.String("group_id")) || (allUsers && entry.String("group_id") == rootgroup.ID) {
+					entry["access_level"] = input.AccessLevel
+				}
+			}
+			err = SaveKbGrants(ctx, tx, item.ID, actor, entries, true)
 		}
 		if err != nil {
 			return err

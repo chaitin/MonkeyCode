@@ -2065,3 +2065,9 @@ ALTER TABLE resource_access_grants DROP CONSTRAINT IF EXISTS resource_access_gra
 
 ALTER TABLE resource_access_grants ADD CONSTRAINT resource_access_grants_resource_type_check
  CHECK(resource_type IN ('model','skill','rule','connector','expert','kb','host'));
+
+ALTER TABLE knowledge_base_documents ADD COLUMN updated_by_user_id uuid;
+
+ALTER TABLE knowledge_base_documents ADD COLUMN content_updated_at timestamptz;
+
+ALTER TABLE knowledge_bases ADD COLUMN avatar_s3_key text NOT NULL DEFAULT '';
