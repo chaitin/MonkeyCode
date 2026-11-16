@@ -125,7 +125,7 @@ func (s *Service) list(admin bool) http.HandlerFunc {
 				return
 			}
 		}
-		rows, err := sqlc.New(s.pool).ListEnvironments(r.Context(), sqlc.ListEnvironmentsParams{UserID: owner(r, admin), Limit: int32(size), Offset: int32((page - 1) * size), Status: filter.status, Sort: filter.sort, HostID: filter.hostID})
+		rows, err := sqlc.New(s.pool).ListEnvironments(r.Context(), sqlc.ListEnvironmentsParams{UserID: owner(r, admin), Limit: int32(size), Offset: int32((page - 1) * size), Status: filter.status, Sort: filter.sort, HostID: filter.hostID, IncludeDeleted: admin})
 		if err != nil {
 			fail(w, r, err)
 			return

@@ -52,6 +52,7 @@ type View struct {
 	WorkloadVerified   bool            `json:"workload_verified"`
 	Spec               json.RawMessage `json:"spec"`
 	CreatedAt          time.Time       `json:"created_at"`
+	DeletedAt          *time.Time      `json:"deleted_at"`
 }
 
 func view(e sqlc.Environment) View {
@@ -59,7 +60,7 @@ func view(e sqlc.Environment) View {
 	if e.Desired == "running" && e.Phase == "running" && e.Generation == e.ObservedGeneration {
 		_ = json.Unmarshal(e.Usage, &usage)
 	}
-	return View{BillingStopReason: e.BillingStopReason, Usage: usage, UsageStale: usage != nil && time.Since(usage.At) > 90*time.Second, Stale: e.ObservedAt == nil || time.Since(*e.ObservedAt) > 90*time.Second, ID: e.ID, UserID: e.UserID, HostID: e.HostID, Name: e.Name, Generation: e.Generation, InstanceID: e.InstanceID, Desired: e.Desired, Phase: e.Phase, ObservedGeneration: e.ObservedGeneration, ObservedAt: e.ObservedAt, Reason: e.Reason, StorageRetained: true, Spec: wireSpec(e), CreatedAt: e.CreatedAt}
+	return View{BillingStopReason: e.BillingStopReason, Usage: usage, UsageStale: usage != nil && time.Since(usage.At) > 90*time.Second, Stale: e.ObservedAt == nil || time.Since(*e.ObservedAt) > 90*time.Second, ID: e.ID, UserID: e.UserID, HostID: e.HostID, Name: e.Name, Generation: e.Generation, InstanceID: e.InstanceID, Desired: e.Desired, Phase: e.Phase, ObservedGeneration: e.ObservedGeneration, ObservedAt: e.ObservedAt, Reason: e.Reason, StorageRetained: true, Spec: wireSpec(e), CreatedAt: e.CreatedAt, DeletedAt: e.DeletedAt}
 }
 
 type Operation struct {

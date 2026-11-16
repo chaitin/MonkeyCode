@@ -32,7 +32,7 @@ paths:
   /api/v1/environments:
     get:
       summary: 查询环境列表
-      description: ' 所有响应使用 Cache-Control: no-store。 需要 environment:read，只访问当前用户环境；旧 token 不会自动获得该权限。'
+      description: '默认不返回 deleted_at 非空的已确认删除环境；删除中和删除失败仍显示，过滤先于分页。所有响应使用 Cache-Control: no-store。需要 environment:read，只访问当前用户环境；旧 token 不会自动获得该权限。'
       responses:
         '200':
           description: 成功。
@@ -5278,6 +5278,7 @@ components:
       - workload_verified
       - spec
       - created_at
+      - deleted_at
       properties:
         billing:
           $ref: '#/components/schemas/EnvironmentBilling'
@@ -5367,6 +5368,10 @@ components:
         created_at:
           type: string
           format: date-time
+        deleted_at:
+          type: [string, 'null']
+          format: date-time
+          description: 宿主确认当前代次删除完成的时间；未完成或失败时为 null。已删除详情和幂等操作回执仍可查询。
       description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，connectable 还要求当前代次观测、有效设备授权及中转双通道在线。
     EnvironmentRuntimeUpgrade:
       type: object
