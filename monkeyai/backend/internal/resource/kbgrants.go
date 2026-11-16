@@ -13,7 +13,8 @@ import (
 
 // SaveKbGrants preserves grant identity and omitted access levels for older clients.
 // The caller must hold the knowledge base row lock (or be creating that row).
-func SaveKbGrants(ctx context.Context, tx pgx.Tx, id, actor string, raw any, personal bool) error {
+// The legacy personal flag is ignored: both ownership types support root-group grants.
+func SaveKbGrants(ctx context.Context, tx pgx.Tx, id, actor string, raw any, _ bool) error {
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return err
@@ -55,9 +56,6 @@ func SaveKbGrants(ctx context.Context, tx pgx.Tx, id, actor string, raw any, per
 		}
 		seen[k] = true
 		old := previous[k]
-		if personal && all && old == nil {
-			return Invalid("个人知识库不支持新增全员授权")
-		}
 		if user != "" && !validUUID(user) || group != "" && !validUUID(group) {
 			return Invalid("授权对象 ID 无效")
 		}
