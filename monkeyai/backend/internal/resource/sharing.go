@@ -178,21 +178,7 @@ func (s *Store) Share(ctx context.Context, actor string, input ShareInput, revok
 		}
 	}
 	for _, item := range input.Resources {
-		if item.Type == "kb" && allUsers && !revoke {
-			existing, err := Grants(ctx, tx, "kb", item.ID)
-			if err != nil {
-				return err
-			}
-			hasAll := false
-			for _, grant := range existing {
-				if grant.String("group_id") == rootgroup.ID {
-					hasAll = true
-				}
-			}
-			if !hasAll {
-				return Invalid("个人知识库不支持新增全员授权")
-			}
-		}
+
 		if revoke {
 			if len(input.UserIDs) > 0 {
 				_, err = sqlc.New(tx).RevokeShares(ctx, sqlc.RevokeSharesParams{ResourceType: item.Type, ResourceID: item.ID, UserIds: input.UserIDs})

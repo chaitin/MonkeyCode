@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/rootgroup"
 )
 
 func TestKnowledgeBaseContentPermissions(t *testing.T) {
@@ -206,5 +207,73 @@ func TestKnowledgeBaseGrantIdentityAndInheritance(t *testing.T) {
 	}
 	if current["permissions"].(Permissions).CanWriteContent {
 		t.Fatal("removed group grant still writable")
+	}
+}
+
+func TestPersonalKnowledgeBaseRootGroupGrants(t *testing.T) {
+	pool, owner := kbTestPool(t)
+	ctx := t.Context()
+	store := resource.NewStore(pool)
+	service := NewService(store, nil)
+	member := resource.ID()
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,name,email) VALUES($1,'member',$2)`, member, member+"@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"share", "save"} {
+		t.Run(mode, func(t *testing.T) {
+			kb, err := service.CreateUserKB(ctx, owner, resource.Object{"name": "root grant " + mode})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := kb.String("id")
+			kinds := map[string]resource.Shareable{"kb": service.CRUD}
+			input := resource.ShareInput{Resources: []resource.ShareResource{{Type: "kb", ID: id}}, GroupIDs: []string{rootgroup.ID}}
+			if err = store.Share(ctx, member, input, false, kinds); err == nil {
+				t.Fatal("non-owner granted access")
+			}
+			for _, level := range []string{"read_only", "read_write"} {
+				if mode == "share" {
+					input.AccessLevel = level
+					err = store.Share(ctx, owner, input, false, kinds)
+				} else {
+					tx, beginErr := pool.Begin(ctx)
+					if beginErr != nil {
+						t.Fatal(beginErr)
+					}
+					defer tx.Rollback(ctx)
+					if _, err = newRepository(tx).LockResource(ctx, id); err != nil {
+						t.Fatal(err)
+					}
+					err = resource.SaveKbGrants(ctx, tx, id, owner, []resource.Object{{"group_id": rootgroup.ID, "access_level": level}}, true)
+					if err == nil {
+						err = tx.Commit(ctx)
+					}
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				accessible, err := service.GetAccessible(ctx, id, member)
+				if err != nil {
+					t.Fatal(err)
+				}
+				permissions := accessible["permissions"].(Permissions)
+				if permissions.CanWriteContent != (level == "read_write") || permissions.CanManagePermissions {
+					t.Fatalf("unexpected root grant permissions: %+v", permissions)
+				}
+				grants, err := resource.Grants(ctx, pool, "kb", id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(grants) != 1 || grants[0].String("group_id") != rootgroup.ID {
+					t.Fatalf("unexpected grants: %v", grants)
+				}
+			}
+			if err = store.Share(ctx, owner, input, true, kinds); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = service.GetAccessible(ctx, id, member); !errors.Is(err, resource.NotFound) {
+				t.Fatalf("revoked access: %v", err)
+			}
+		})
 	}
 }
