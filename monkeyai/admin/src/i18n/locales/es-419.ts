@@ -1097,6 +1097,20 @@ export const es419 = {
     },
     otherSettings: {
       about: "Acerca de",
+      mcpNetwork: {
+        title: "Acceso de red MCP",
+        description:
+          "Las redes públicas y privadas se permiten de forma predeterminada. Las direcciones bloqueadas siempre se rechazan.",
+        label: "Lista de bloqueo de rangos IP",
+        hint: "Usa CIDR IPv4/IPv6, como 10.0.0.0/8 o fd00::/8. Usa /32 o /128 para una sola IP. Las reglas guardadas se aplican a nuevas solicitudes MCP y OAuth, incluso a través de proxies.",
+        entry: "Rango IP {{index}}",
+        add: "Agregar rango IP",
+        remove: "Eliminar",
+        save: "Guardar",
+        cancel: "Cancelar",
+        saved: "Configuración de red MCP guardada",
+        empty: "No hay rangos IP bloqueados",
+      },
       proxies: {
         title: "Proxies del sistema",
         description:

@@ -161,7 +161,7 @@ func (c *remoteClient) call(ctx context.Context, id int, method string, params a
 }
 
 func openRemote(ctx context.Context, target string, headers map[string]string, timeout ...time.Duration) (*remoteClient, error) {
-	h := client()
+	h := client(nil)
 	if len(timeout) > 0 && timeout[0] >= time.Second && timeout[0] <= 120*time.Second {
 		h.Timeout = timeout[0]
 	}

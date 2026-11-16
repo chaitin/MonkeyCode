@@ -432,14 +432,14 @@ func (s *Service) exchange(ctx context.Context, c resource.Object, v url.Values)
 		}
 		ctx = context.WithValue(ctx, configuredProxyKey{}, address)
 	}
-	return exchange(ctx, c, v)
+	return exchangeWithProxy(ctx, c, v, http.ProxyFromEnvironment, s.network)
 }
 
 func exchange(ctx context.Context, c resource.Object, v url.Values) (tokens, error) {
-	return exchangeWithProxy(ctx, c, v, http.ProxyFromEnvironment)
+	return exchangeWithProxy(ctx, c, v, http.ProxyFromEnvironment, nil)
 }
 
-func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, proxy func(*http.Request) (*url.URL, error)) (tokens, error) {
+func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, proxy func(*http.Request) (*url.URL, error), settings NetworkSettings) (tokens, error) {
 	o := oauthSettings(c)
 	if o.clientSecretExpired() {
 		return tokens{}, invalidGrant
@@ -466,10 +466,10 @@ func exchangeWithProxy(ctx context.Context, c resource.Object, v url.Values, pro
 	req.Header.Set("Accept", "application/json")
 	var h *http.Client
 	if configured, ok := ctx.Value(configuredProxyKey{}).(string); ok && configured != "" {
-		h = client()
-		h.Transport = checkedProxy{address: configured}
+		h = client(settings)
+		h.Transport = checkedProxy{address: configured, network: settings}
 	} else {
-		h, req, err = tokenClient(req, proxy, net.DefaultResolver.LookupNetIP)
+		h, req, err = tokenClient(req, proxy, net.DefaultResolver.LookupNetIP, settings)
 		if err != nil {
 			return tokens{}, err
 		}

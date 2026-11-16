@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
@@ -22,13 +23,23 @@ type ProxyResolver interface {
 	ProxyURL(context.Context, string) (string, error)
 }
 
+type NetworkSettings interface {
+	MCPBlockedCIDRs(context.Context) ([]netip.Prefix, error)
+}
+
 type Service struct {
+	network    NetworkSettings
 	proxies    ProxyResolver
 	storage    resource.Storage
 	sessions   SessionResolver
 	Connectors *resource.CRUD
 	Store      *resource.Store
 	PublicURL  string
+}
+
+func (s *Service) WithNetworkSettings(settings NetworkSettings) *Service {
+	s.network = settings
+	return s
 }
 
 func (s *Service) WithProxyResolver(proxies ProxyResolver) *Service {

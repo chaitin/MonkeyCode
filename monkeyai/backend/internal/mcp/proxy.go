@@ -11,7 +11,10 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/proxy"
 )
 
-type checkedProxy struct{ address string }
+type checkedProxy struct {
+	address string
+	network NetworkSettings
+}
 
 func (p checkedProxy) RoundTrip(req *http.Request) (*http.Response, error) {
 	name := req.URL.Hostname()
@@ -22,10 +25,8 @@ func (p checkedProxy) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return nil, fmt.Errorf("无法解析连接目标")
 	}
-	for _, ip := range ips {
-		if ip.Zone() != "" || !allowedIP(ip) {
-			return nil, fmt.Errorf("目标地址不在允许范围内")
-		}
+	if err := checkIPs(req.Context(), ips, p.network); err != nil {
+		return nil, err
 	}
 	pinned := req.Clone(req.Context())
 	address := *req.URL
@@ -51,7 +52,7 @@ func (p checkedProxy) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func (s *Service) clientFor(ctx context.Context, id string) (*http.Client, error) {
 	if id == "" {
-		return client(), nil
+		return client(s.network), nil
 	}
 	if s.proxies == nil {
 		return nil, fmt.Errorf("系统代理不可用")
@@ -60,7 +61,7 @@ func (s *Service) clientFor(ctx context.Context, id string) (*http.Client, error
 	if err != nil {
 		return nil, err
 	}
-	h := client()
-	h.Transport = checkedProxy{address: address}
+	h := client(s.network)
+	h.Transport = checkedProxy{address: address, network: s.network}
 	return h, nil
 }

@@ -66,15 +66,15 @@ func TestExchangeNoProxyKeepsDirectPolicy(t *testing.T) {
 		return resource.Object{"oauth_config": oauthConfig{ClientID: "client", TokenURL: target}}
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "")
-	if _, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"refresh_token"}}, noProxy); err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
+	if _, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"refresh_token"}}, noProxy, nil); err == nil || upstreamFailure(err, "").Code != "mcp_address_denied" {
 		t.Fatalf("未继承直连目标 IP 校验: %v", err)
 	}
 	t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
-	result, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"authorization_code"}}, noProxy)
+	result, err := exchangeWithProxy(t.Context(), config(server.URL), url.Values{"grant_type": {"authorization_code"}}, noProxy, nil)
 	if err != nil || result.Access != "direct" {
 		t.Fatalf("无代理时 OAuth 授权交换未直连: %+v %v", result, err)
 	}
-	if _, err := exchangeWithProxy(t.Context(), config(server.URL+"/redirect"), url.Values{"grant_type": {"refresh_token"}}, noProxy); err == nil || upstreamFailure(err, "").Code != "mcp_redirect_denied" {
+	if _, err := exchangeWithProxy(t.Context(), config(server.URL+"/redirect"), url.Values{"grant_type": {"refresh_token"}}, noProxy, nil); err == nil || upstreamFailure(err, "").Code != "mcp_redirect_denied" {
 		t.Fatalf("未继承直连禁重定向策略: %v", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestExchangeRejectsHTTPProxyTarget(t *testing.T) {
 	proxyURL, _ := url.Parse("http://127.0.0.1:3128")
 	_, err := exchangeWithProxy(t.Context(), resource.Object{"oauth_config": oauthConfig{TokenURL: "http://example.com/token"}}, url.Values{"grant_type": {"refresh_token"}}, func(*http.Request) (*url.URL, error) {
 		return proxyURL, nil
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "仅支持 HTTPS 目标") {
 		t.Fatalf("HTTP Token URL 不得由代理解析: %v", err)
 	}

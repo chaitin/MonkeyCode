@@ -1075,6 +1075,20 @@ export const jaJP = {
     },
     otherSettings: {
       about: "このアプリについて",
+      mcpNetwork: {
+        title: "MCP ネットワークアクセス",
+        description:
+          "既定ではパブリックおよびプライベートネットワークを許可します。ブロック対象のアドレスは常に拒否されます。",
+        label: "IP 範囲のブロックリスト",
+        hint: "10.0.0.0/8 や fd00::/8 などの IPv4/IPv6 CIDR を使用します。単一 IP には /32 または /128 を指定します。保存したルールは、プロキシ経由を含む新しい MCP および OAuth リクエストに適用されます。",
+        entry: "IP 範囲 {{index}}",
+        add: "IP 範囲を追加",
+        remove: "削除",
+        save: "保存",
+        cancel: "キャンセル",
+        saved: "MCP ネットワーク設定を保存しました",
+        empty: "ブロック対象の IP 範囲はありません",
+      },
       proxies: {
         title: "システムプロキシ",
         description:

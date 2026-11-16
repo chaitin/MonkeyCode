@@ -1058,6 +1058,20 @@ export const koKR = {
     },
     otherSettings: {
       about: "정보",
+      mcpNetwork: {
+        title: "MCP 네트워크 접근",
+        description:
+          "기본적으로 공용 및 사설 네트워크를 허용합니다. 차단 목록의 주소는 항상 거부됩니다.",
+        label: "IP 대역 차단 목록",
+        hint: "10.0.0.0/8 또는 fd00::/8 같은 IPv4/IPv6 CIDR을 사용하세요. 단일 IP에는 /32 또는 /128을 사용하세요. 저장된 규칙은 프록시를 포함한 새로운 MCP 및 OAuth 요청에 적용됩니다.",
+        entry: "IP 대역 {{index}}",
+        add: "IP 대역 추가",
+        remove: "삭제",
+        save: "저장",
+        cancel: "취소",
+        saved: "MCP 네트워크 설정이 저장되었습니다",
+        empty: "차단된 IP 대역 없음",
+      },
       proxies: {
         title: "시스템 프록시",
         description:
