@@ -1705,6 +1705,9 @@ export const zhCN = {
       descriptionPlaceholder: "说明这个 MCP 服务可以提供哪些能力",
       url: "服务地址",
       urlPlaceholder: "https://mcp.example.com/mcp",
+      skipTLSVerify: "跳过 TLS 校验",
+      skipTLSVerifyDescription:
+        "默认关闭。开启后，此连接器的 MCP 和 OAuth 请求将不校验服务端证书，存在中间人攻击风险，仅建议用于可信的自签名证书服务。",
       authorization: "认证",
       authorizationMode: "认证模式",
       authorizationModes: {

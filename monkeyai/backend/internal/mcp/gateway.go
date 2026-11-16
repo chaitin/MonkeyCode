@@ -234,7 +234,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		rpcFail(r.Context(), w, in.ID, err)
 		return
 	}
-	h, err := s.clientFor(r.Context(), connector.String("proxy_id"))
+	h, err := s.clientFor(r.Context(), connector)
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "invoke", "error", err)
 		rpcFail(r.Context(), w, in.ID, &resource.Error{Status: 502, Code: "mcp_connect_failed", Message: "系统代理不可用"})

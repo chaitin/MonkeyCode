@@ -21,7 +21,7 @@ func (s *Service) liveTools(ctx context.Context, q resource.Queryer, c, cred res
 	if err != nil {
 		return nil, err
 	}
-	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	h, err := s.clientFor(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
-	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	h, err := s.clientFor(ctx, c)
 	if err != nil {
 		return nil, err
 	}

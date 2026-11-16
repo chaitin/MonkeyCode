@@ -152,6 +152,7 @@ CREATE TABLE connectors (
     name text NOT NULL,
     description text NOT NULL DEFAULT '',
     url text NOT NULL,
+    skip_tls_verify boolean NOT NULL DEFAULT false,
     authorization_mode text NOT NULL CHECK (authorization_mode IN ('none','centralized','independent')),
     authorization_method text CHECK (authorization_method IN ('http_header','oauth')),
     oauth_config jsonb NOT NULL DEFAULT '{}'::jsonb,

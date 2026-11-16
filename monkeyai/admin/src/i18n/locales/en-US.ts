@@ -1813,6 +1813,9 @@ export const enUS = {
       descriptionPlaceholder: "Describe the capabilities this MCP provides",
       url: "Server URL",
       urlPlaceholder: "https://mcp.example.com/mcp",
+      skipTLSVerify: "Skip TLS verification",
+      skipTLSVerifyDescription:
+        "Off by default. Disables server certificate verification for this connector's MCP and OAuth requests. This risks man-in-the-middle attacks; use only for trusted services with self-signed certificates.",
       authorization: "Authentication",
       authorizationMode: "Authentication mode",
       authorizationModes: {

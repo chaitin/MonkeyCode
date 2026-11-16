@@ -69,7 +69,7 @@ func TestMCPDirectBlacklistChangesApplyToExistingClient(t *testing.T) {
 	defer server.Close()
 	settings := &networkTestSettings{}
 	s := NewService(nil, "").WithNetworkSettings(settings)
-	h, err := s.clientFor(t.Context(), "")
+	h, err := s.clientFor(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestMCPConfiguredProxyEnforcesBlacklist(t *testing.T) {
 	defer proxy.Close()
 	settings := &networkTestSettings{blocked: []netip.Prefix{netip.MustParsePrefix("8.8.8.8/32")}}
 	s := NewService(nil, "").WithNetworkSettings(settings).WithProxyResolver(networkTestProxy(proxy.URL))
-	h, err := s.clientFor(t.Context(), "proxy")
+	h, err := s.clientFor(t.Context(), resource.Object{"proxy_id": "proxy"})
 	if err != nil {
 		t.Fatal(err)
 	}

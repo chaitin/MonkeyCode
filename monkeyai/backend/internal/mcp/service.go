@@ -57,9 +57,9 @@ func NewService(store *resource.Store, publicURL string) *Service {
 	s.Connectors = resource.NewCRUD(store, resource.Definition{
 		Kind: "connector", Path: "/connectors",
 		Repository:           func(q resource.Queryer) resource.Repository { return connector.New(q) },
-		Fields:               []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "proxy_id", "enabled", "config_revision", "connection_status"},
-		UserFields:           []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
-		OverrideFields:       []string{"name", "description", "url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "tag_ids"},
+		Fields:               []string{"name", "description", "url", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "proxy_id", "skip_tls_verify", "enabled", "config_revision", "connection_status"},
+		UserFields:           []string{"name", "description", "url", "skip_tls_verify", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "tag_ids"},
+		OverrideFields:       []string{"name", "description", "url", "proxy_id", "skip_tls_verify", "authorization_mode", "authorization_method", "oauth_config", "oauth_client_secret", "auth_header_name", "tag_ids"},
 		Hidden:               []string{"oauth_client_secret", "icon_s3_key"},
 		AllowImportedEnabled: true,
 		PrepareOverride:      s.validateConnector,
@@ -81,7 +81,14 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 	if _, exists := in["provider_id"]; exists {
 		return resource.InvalidCode("mcp_auth_config_invalid", "连接不再使用 Provider，请直接配置连接地址和认证方式")
 	}
-	fields := []string{"url", "proxy_id", "authorization_mode", "authorization_method", "oauth_config"}
+	if value, exists := in["skip_tls_verify"]; exists {
+		if _, ok := value.(bool); !ok {
+			return resource.Invalid("跳过 TLS 校验必须为布尔值")
+		}
+	} else {
+		in["skip_tls_verify"] = old.Bool("skip_tls_verify")
+	}
+	fields := []string{"url", "proxy_id", "skip_tls_verify", "authorization_mode", "authorization_method", "oauth_config"}
 	for _, key := range fields {
 		if _, ok := in[key]; !ok {
 			in[key] = old[key]
