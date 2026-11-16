@@ -164,7 +164,7 @@ body.site-theme .studio-community-title { margin: 0; font-size: var(--type-headi
 .studio-comparison .studio-highlight { border-inline: 1px solid color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); background: color-mix(in srgb, var(--green) 4%, transparent); }
 .studio-comparison thead .studio-highlight { box-shadow: inset 0 3px 0 var(--green); background-image: linear-gradient(to bottom, color-mix(in srgb, var(--green) 20%, transparent) 3px, transparent 18px); }
 .studio-comparison .studio-highlight svg { color: var(--green); }
-.studio-comparison .studio-unsupported svg { color: #936800; }
+.studio-comparison .studio-unsupported svg { color: #dc2626; }
 .studio-comparison .studio-highlight > span { display: block; margin-top: 4px; font-family: var(--studio-mono); font-size: var(--type-caption); letter-spacing: .12em; }
 .studio-comparison .studio-highlight > .sr-only { display: initial; }
 .studio-compare-note { max-width: 960px; margin-top: 17px; color: var(--studio-subtle); font-size: 11px; line-height: 1.9; }
