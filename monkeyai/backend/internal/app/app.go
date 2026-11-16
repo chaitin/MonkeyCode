@@ -355,6 +355,15 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	router := chi.NewRouter()
 	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	router.With(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "" {
+				identities.RequireAgent(next).ServeHTTP(w, r)
+			} else {
+				identities.RequireBrowser(next).ServeHTTP(w, r)
+			}
+		})
+	}).Get("/api/kb/{id}/assets/{name}", knowledgeBases.ServeAsset)
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
 	engineHosts.Register(router)

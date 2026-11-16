@@ -85,7 +85,9 @@ func TestPersonalPermissionsRESTAndAtomicBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"delete", "move"} {
-		call(editor, "POST", "/kb/"+kbID+"/documents/batch", resource.Object{"action": action, "ids": []string{docID, foreign.String("id")}, "expected_revisions": map[string]any{docID: doc["revision"], foreign.String("id"): foreign["revision"]}}, "", 404)
+		call(editor, "POST", "/kb/"+kbID+"/documents/"+action, resource.Object{"ids": []string{docID}}, "", 428)
+		call(editor, "POST", "/kb/"+kbID+"/documents/"+action, resource.Object{"ids": []string{docID}, "expected_revisions": map[string]int64{docID: 99999}}, "", 412)
+		call(editor, "POST", "/kb/"+kbID+"/documents/"+action, resource.Object{"ids": []string{docID, foreign.String("id")}, "expected_revisions": map[string]any{docID: doc["revision"], foreign.String("id"): foreign["revision"]}}, "", 404)
 		current, err := s.GetDocument(ctx, docID)
 		if err != nil || objectInt64(current["revision"]) != objectInt64(doc["revision"]) {
 			t.Fatalf("failed batch changed valid document: %v %v", current, err)

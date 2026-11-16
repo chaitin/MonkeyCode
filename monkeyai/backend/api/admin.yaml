@@ -7,6 +7,25 @@ servers:
 security:
   - AdminSession: []
 paths:
+  /api/kb/{id}/assets/{name}:
+    get:
+      summary: 读取知识库正文图片
+      description: 支持浏览器会话或 Agent Bearer token。管理员可读取未删除库；普通用户必须拥有启用库的阅读权限。每次读取检查权限，响应 private/no-store；不接受源站 URL，始终读取该知识库对象存储目录下已校验的图片。
+      security: [{BrowserSession: []}, {KnowledgeAssetBearer: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}\.(png|jpg|gif|webp)$'}}
+      responses:
+        '200':
+          description: 原始图片二进制，PNG/JPEG/GIF/WebP
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+
   /api/auth/v1/profile:
     get:
       summary: 读取本人账户设置
@@ -5657,6 +5676,40 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '409': {$ref: '#/components/responses/ResourceError409'}
+  /api/admin/v1/kb/{id}/images/upload:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 上传知识库正文图片
+      description: 需要管理员会话，仅允许上传系统知识库图片；个人知识库在管理端只读。 使用 multipart/form-data 的 file 字段上传一张图片，最多 32 MiB、2500 万像素，支持 PNG、JPEG、GIF、WebP；按真实内容完整解码校验，拒绝 SVG。图片按知识库和内容摘要存入对象存储，不新增关联表。返回的 url 及 markdown 可写入文档正文，读取时仍检查当前权限。此操作不创建或修改文档。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: 图片已保存；重复上传相同图片返回同一知识库内的相同地址。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, url, mime_type, size_bytes, markdown]
+                properties:
+                  name: {type: string, description: 内容摘要加真实图片扩展名}
+                  url: {type: string, description: 受权限保护的 /api/kb/<id>/assets/<name> 相对地址}
+                  mime_type: {type: string, enum: [image/png, image/jpeg, image/gif, image/webp]}
+                  size_bytes: {type: integer, minimum: 1, maximum: 33554432}
+                  markdown: {type: string, description: 可直接插入正文的 Markdown 图片语法}
+        '400': {description: 无效图片、文件超限或 multipart 字段不合法}
+        '401': {description: 未登录或凭证失效}
+        '403': {description: 无正文写权限或非管理员调用管理端接口}
+        '404': {description: 知识库不存在或不可访问}
+        '409': {description: 知识库不允许编辑}
+        '503': {description: 未配置知识库对象存储}
   /api/admin/v1/kb/{id}/avatar:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -5853,10 +5906,28 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/delete:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 删除知识库文档或文件夹（支持多个 ID）
+      description: ids 去重后最多 200 项，文件夹删除覆盖子树。协作写入须逐项提供 expected_revisions，全部归属与版本校验通过后执行。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentDeleteInput'}
+      responses:
+        '200': {description: 操作结果, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 无写入权限}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
   /api/admin/v1/kb/{id}/documents/move:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     post:
-      summary: 移动知识库文档树节点
+      summary: 移动知识库文档树节点（支持多个 ID）
       description: 将文件夹或文档移动到指定父节点，并按前后相邻节点计算排序。不能移动到自身或子孙节点下。
       requestBody:
         required: true
@@ -5868,7 +5939,7 @@ paths:
           description: 已移动
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/KbDocument'}
+              schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
@@ -5903,13 +5974,7 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-    delete:
-      summary: 删除文档
-      description: 取消活跃学习任务，并硬删除该文档及其 chunk。
-      responses:
-        '204': {description: 已删除}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '404': {$ref: '#/components/responses/ResourceError404'}
+
   /api/admin/v1/kb/{id}/documents/restudy:
     parameters:
       - {$ref: '#/components/parameters/ResourceID'}
@@ -5927,6 +5992,7 @@ paths:
                 ids:
                   type: array
                   minItems: 1
+                  maxItems: 200
                   items: {type: string, format: uuid}
                   description: 待重新学习的文档 ID，单条操作也传数组
       responses:
@@ -5949,21 +6015,6 @@ paths:
                       properties:
                         id: {type: string}
                         reason: {type: string}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/admin/v1/kb/{id}/documents/{documentId}/restudy:
-    parameters:
-      - {$ref: '#/components/parameters/ResourceID'}
-      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      summary: 重试文档学习
-      responses:
-        '202':
-          description: 已重置状态并进入学习队列
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/KbDocument'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
@@ -6983,6 +7034,9 @@ paths:
           description: 宿主仍有关联环境或环境尚未清理完成
 components:
   securitySchemes:
+    KnowledgeAssetBearer:
+      type: http
+      scheme: bearer
     BrowserSession:
       type: apiKey
       in: cookie
@@ -10196,16 +10250,37 @@ components:
         file_name: {type: string}
         mime_type: {type: string}
         size_bytes: {type: integer, minimum: 0}
+    KbDocumentDeleteInput:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
+    KbDocumentOperationResult:
+      type: object
+      required: [succeeded, failed]
+      properties:
+        succeeded: {type: array, items: {type: string, format: uuid}}
+        failed:
+          type: array
+          items:
+            type: object
+            required: [id, reason]
+            properties:
+              id: {type: string}
+              reason: {type: string}
     KbDocumentMoveInput:
       type: object
       additionalProperties: false
-      required: [id]
+      required: [ids]
       properties:
-        expected_revision: {type: integer, minimum: 1, description: 可选文档版本，提供时校验冲突。}
-        id: {type: string, format: uuid}
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
         parent_id: {type: [string, 'null'], format: uuid}
-        prev_id: {type: string, format: uuid}
-        next_id: {type: string, format: uuid}
+        prev_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+        next_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+
     KbDocument:
       type: object
       required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]

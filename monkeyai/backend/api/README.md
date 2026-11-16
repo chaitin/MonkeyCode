@@ -328,7 +328,7 @@ MCP Inspector 等标准 MCP 客户端单独调试时，复用全局创建的 `mc
 
 - `GET /api/v1/kb/permissions/list?kb_id=...`、`PUT /api/v1/kb/permissions/update`：个人库所有者管理完整授权清单，更新须携带知识库版本 `If-Match`，复用现有 revision。每个主体独立一条记录，更新保留 ID。新主体省略权限默认只读，已有主体省略权限保留原值。系统库授权仍由管理端通用授权接口管理。
 - 协作编辑/移动须提供文档 `expected_revision`；REST 更新也可使用 `If-Match`，REST 删除使用 `If-Match`，MCP 更新/删除使用 `expected_revision`。版本缺失返回 428、冲突返回 412、只读写入返回 403。本人个人库保留旧无版本调用兼容。
-- `POST /api/v1/kb/{id}/documents/batch`：`action=move/delete`，`ids` 最多 200 项，协作调用使用 `expected_revisions` 逐项携带版本。`POST /api/v1/kb/documents/restudy` 接收 `kb_id`、`document_id`，只读用户不能触发学习。
+- 文档移动、删除分别使用 `POST /api/v1/kb/{id}/documents/move`、`POST /api/v1/kb/{id}/documents/delete`，body 接收 `ids`（单条也使用数组，最多 200 项），协作调用使用 `expected_revisions` 逐项携带版本。重新学习使用 `POST /api/v1/kb/documents/restudy`，body 为 `kb_id`、`ids`。三个接口返回 `succeeded/failed`；管理端重新学习路径为 `/api/admin/v1/kb/{id}/documents/restudy`。移动时 `prev_id/next_id` 仅适用于单条排序。MCP 原有三个工具同样支持 `ids`，兼容旧 `document_id` 调用。
 - 文档返回 `updated_by_user_id`、`content_updated_at`；旧数据未知值为 null。部署依赖 `000041_kb_permissions` 元数据字段增量迁移。
 
 ### 知识库图标

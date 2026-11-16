@@ -13,7 +13,7 @@
 | 文档学习 | PostgreSQL 持久化队列；切分、分词、全文索引、可选向量化；更新和重试重新入队 |
 | 向量模型 | 模型模块支持 embedding 配置、维度探测与在线测试；知识库由后端自动选择可用系统向量模型 |
 | 检索 | lexical / hybrid 自动选择、weighted RRF、向量失败降级、多知识库召回和文档去重限制 |
-| MCP | `/mcp/kb` 暴露 7 个知识库目录、文档和检索工具 |
+| MCP | `/mcp/kb` 暴露 18 个知识库信息、授权读取、目录、图片、文档和检索工具 |
 | 管理端查看文档 | 独立路由，Markdown 源码/预览/分屏，保存后重新学习；个人知识库只读 |
 | 第一期未接入 | AnyDoc、原始文件存储、独立 rerank 和向量 ANN 索引 |
 
@@ -63,7 +63,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | 管理端 | 可管理资源、文档、授权、启停和索引 | 只读 | 只读 |
 | Agent REST | 有访问权限时读取、检索；不可写 | 可创建、更新、删除资源及文档 | 按授权读取、检索；不可写 |
-| MCP | 有访问权限时读取、检索；不可写 | 可读写文档；不提供知识库 CRUD 工具 | 按授权读取、检索；不可写 |
+| MCP | 按有效授权读取、检索及读写文档；不能管理库信息 | 可创建、更新库信息、查看授权、读写文档 | 按有效授权读取、检索及读写文档；不能管理库信息或查看完整授权 |
 
 - 复用 `resource_access_grants`、`resource_tags` 及已有用户/分组授权判定。权限在服务端校验，UI 隐藏按钮仅用于表达可用操作。
 - 管理端文档、重试、模型切换和索引写路由拒绝个人知识库；资源 CRUD 复用资源层约束。
@@ -312,8 +312,10 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 | PATCH | `/kb/{id}/enabled` | 启停 |
 | POST | `/kb/search` | 按当前管理员的可访问知识库集合检索 |
 | GET / POST | `/kb/{id}/documents` | 完整文档列表（含正文，无分页）/ 创建并入队（202） |
-| GET / PUT / DELETE | `/kb/{id}/documents/{documentId}` | 详情 / 更新并重新学习（202）/ 删除（204） |
-| POST | `/kb/{id}/documents/{documentId}/restudy` | 重新入队（202） |
+| GET / PUT | `/kb/{id}/documents/{documentId}` | 详情 / 更新并重新学习（202） |
+| POST | `/kb/{id}/documents/delete` | body ids，单条或批量删除，返回 succeeded/failed（200） |
+| POST | `/kb/{id}/documents/move` | body ids、parent_id，单条或批量移动，返回 succeeded/failed（200） |
+| POST | `/kb/{id}/documents/restudy` | 重新入队（202） |
 | GET | `/kb/{id}/documents/{documentId}/chunks` | 分片正文、序号、token 估算、`has_vector` 等 |
 | POST | `/kb/{id}/embedding-model/switch` | 兼容手动切模/解绑，返回详情和提示（200） |
 | POST | `/kb/{id}/index/rebuild` | 接收 `operation`、`model_id`，调度全库任务（202） |
@@ -344,21 +346,65 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 
 ### 8.3 内置 MCP
 
-`POST /mcp/kb` 使用 JSON-RPC 2.0 和 JSON 响应，要求 `Authorization: Bearer <key>`、`mcp:invoke` 作用域及 `Content-Type: application/json`，请求体上限 1 MiB。
+`POST /mcp/kb` 使用 JSON-RPC 2.0 和 JSON 响应，要求 `Authorization: Bearer <key>`、`mcp:invoke` 作用域及 `Content-Type: application/json`，普通请求体上限 1 MiB；`kb_upload_image` 调用上限为 32 MiB 图片经 Base64 编码后的长度加 64 KiB JSON 开销（44,804,780 字节）；`kb_update` 为替换图标允许 1 MiB 图标经 Base64 编码后的长度加 1 MiB 元数据开销。
 
 支持 `initialize`、`ping`、`tools/list`、`tools/call`，无 ID 通知返回 `202`。兼容协议版本 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`，默认协商最新值。当前是无状态 POST 处理器，没有 GET SSE、会话恢复或服务端推送实现。
 
+当前提供以下 18 个工具（以 `internal/kb/mcp.go` 的 `MCPTools()` 为准）：
+
 | 工具 | 主要参数与行为 |
 | --- | --- |
+| `kb_upload_image` | `kb_id`、`data_base64` 必填；上传标准 Base64 编码图片（无 data URL 前缀），返回 `name/url/mime_type/size_bytes/markdown`；要求正文读写权限，上传不修改文档 |
+| `kb_create` | `name` 必填，`description` 可选；创建归调用者所有的个人知识库，返回知识库 `id`；不支持创建系统库或指定其他所有者 |
+| `kb_get` | `kb_id` 必填；读取启用且可访问的知识库详情、图标地址 `avatar_path`、有效权限和 `revision`，仅所有者能读取完整授权 |
+| `kb_update` | `kb_id/name/expected_revision` 必填；仅个人库所有者可更新名称、描述、标签、`fusion_config`，或用 `avatar_base64` 替换图标；版本对应 REST `If-Match`，缺失返回 428、过期返回 412 |
 | `kb_list` | 同 REST 目录的所有权、搜索、标签、分页语义；返回目录 DTO 和内容 hash `version` |
+| `kb_list_tags` | 无参数；读取可访问且启用的知识库所使用的标签，对应 `GET /api/v1/kb/tags` |
+| `kb_list_permissions` | `kb_id` 必填；对应 `GET /api/v1/kb/permissions/list`，仅个人库所有者可读取授权列表与库 `revision` |
+| `kb_get_image` | `kb_id/name` 必填；读取正文图片，`name` 使用上传结果或 assets URL 末段；逐次校验阅读权限和图片摘要，返回原生 MCP 图片内容块和元数据 |
 | `kb_list_documents` | `kb_id` 必填；分页文档摘要，支持搜索、状态、来源过滤 |
-| `kb_get_document` | `document_id`；默认不返回正文，需 `include_content=true` |
-| `kb_create_document` | `kb_id`、标题、正文；仅本人个人知识库可写 |
-| `kb_update_document` | `document_id` 和至少一个更新字段；仅本人个人知识库可写 |
-| `kb_delete_document` | `document_id`；仅本人个人知识库可写 |
+| `kb_get_document` | `kb_id`、`document_id` 必填；默认不返回正文，需 `include_content=true`；返回文档 `revision` 供协作更新和删除使用 |
+| `kb_list_chunks` | `kb_id/document_id` 必填；读取有阅读权限文档的分块正文及元数据，对应管理端分块 GET 能力，但不赋予管理员身份 |
+| `kb_create_folder` | `kb_id`、`title` 必填；`parent_id` 可选，指定同库父文件夹；省略、null 或空字符串表示根目录。要求正文读写权限，返回文件夹 `id/parent_id/node_type/revision`，不进入学习队列 |
+| `kb_create_document` | `kb_id`、`title`、`content` 必填；`parent_id` 可选，指定同库父文件夹，省略、null 或空字符串表示根目录；个人库所有者或有正文读写权限的成员可创建，创建后进入学习队列 |
+| `kb_update_document` | `kb_id`、`document_id` 和至少一个更新字段；个人库所有者或有正文读写权限的成员可更新，更新后重新进入学习队列；协作更新须携带 `expected_revision` |
+| `kb_delete_document` | `kb_id` 必填，支持 `ids` 数组和 `expected_revisions`；兼容 `document_id` 单条调用；个人库所有者或有正文读写权限的成员可删除，并取消活跃学习任务；协作删除须携带 `expected_revision` |
+| `kb_move_document` | `kb_id` 必填，支持 `ids` 数组和 `expected_revisions`；兼容 `document_id` 单条调用；对应 `POST /api/v1/kb/{id}/documents/move`，`parent_id` 为空或省略表示根目录，`prev_id/next_id` 指定相邻节点；要求正文读写权限，协作移动须携带文档 `expected_revision` |
+| `kb_restudy_document` | `kb_id` 必填，支持 `ids` 数组；兼容 `document_id` 单条调用；对应 `POST /api/v1/kb/documents/restudy`，要求正文读写权限，取消旧活跃任务并按当前索引状态重新学习；文件夹不支持 |
 | `kb_search` | `query`、可选 `kb_ids/top_k/filters`；自动选择通道 |
 
-成功结果同时包含文本 `content` 与 `structuredContent`；工具业务错误使用 `isError=true` 结果，协议错误使用 JSON-RPC error。没有知识库 CRUD、分片读取或索引维护 MCP 工具，不应按数据库中存在对应查询就推导为已开放工具。
+创建文件夹与文档示例（以下为 `tools/call` 的 `params`，统一通过 `POST /mcp/kb` 调用）：
+
+```json
+{
+  "name": "kb_create_folder",
+  "arguments": {
+    "kb_id": "<知识库ID>",
+    "title": "产品文档",
+    "parent_id": null
+  }
+}
+```
+
+将返回的文件夹 `id` 用作后续创建文档或子文件夹的 `parent_id`：
+
+```json
+{
+  "name": "kb_create_document",
+  "arguments": {
+    "kb_id": "<知识库ID>",
+    "parent_id": "<文件夹ID>",
+    "title": "使用说明",
+    "content": "# 使用说明\n\n文档正文"
+  }
+}
+```
+
+父节点必须是同一知识库内存在的文件夹；不存在、属于其他知识库或为普通文档时返回参数错误。省略 `parent_id` 的旧调用继续在根目录创建。文档移动仍使用 `kb_move_document`，不通过 `kb_update_document` 修改父目录。
+
+内容读写要求知识库启用；无访问权限返回不可访问错误，只读成员不可写入。协作更新/删除缺少版本返回 428、版本冲突返回 412；本人个人库保留无版本调用兼容。
+
+普通成功结果同时包含文本 `content` 与 `structuredContent`；正文图片读取额外返回 `{type: "image", data: "<base64>", mimeType: "image/..."}` 内容块，`structuredContent` 仅包含图片元数据，不重复返回 Base64。读取图片无需浏览器 Cookie 或 OAuth access token，只需当前 MCP 调用密钥。工具业务错误使用 `isError=true` 结果，协议错误使用 JSON-RPC error。当前未提供知识库删除、授权更新、启停、批量文档操作或全库索引维护 MCP 工具。正文图片可通过 `kb_upload_image` 或 [图片上传 REST 接口](knowledge-base-image-upload.md) 获取 Markdown，再传给 `kb_create_document` 或 `kb_update_document` 保存。
 
 ## 9. 管理端文档页面
 
@@ -396,3 +442,7 @@ query embedding 或向量 SQL 失败时，相关知识库保留 lexical，响应
 | 前端加载体积 | 编辑器按独立页面懒加载，但编辑器及图形依赖较大；后续优化应以构建产物为依据 |
 
 后续修改应同时核对 `api/admin.yaml`、`api/agent.yaml`、`MCPTools()`、DTO 和管理端行为，避免只更新契约或设计文案。本文不将上述差异隐含为本次已经修复。
+
+文档删除、移动、重新学习统一使用原生操作接口的 body `ids`（单条也传数组，去重后最多 200 项），返回 `succeeded/failed`。删除使用 `POST /kb/{id}/documents/delete`；移动使用 `POST /kb/{id}/documents/move`；管理端重新学习使用 `POST /kb/{id}/documents/restudy`，用户端使用 `POST /kb/documents/restudy` 并附带 `kb_id`。协作删除和移动逐项提供 `expected_revisions`；`prev_id/next_id` 仅用于单条排序。MCP 对应三个工具支持 `ids`，旧 `document_id` 参数仍兼容。
+
+文档移动、删除、重新学习的 REST 请求统一使用 body `ids`，不再提供 `/documents/batch` 或带文档 ID 路径的删除/重新学习接口。单条操作也传数组（去重后最多 200 项），结果为 `succeeded/failed`。协作移动和删除使用 `expected_revisions`；移动指定 `prev_id/next_id` 时仅接受单条。MCP 的原有三个工具支持 `ids`，兼容旧 `document_id` 调用。

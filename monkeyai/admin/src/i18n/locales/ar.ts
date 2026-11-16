@@ -444,6 +444,9 @@ export const ar = {
       editorSaved: "تم حفظ المستند وبدء التعلم مجددًا.",
       editorDiscard: "هل تريد المغادرة دون حفظ التغييرات؟",
       editorUnsaved: "تغييرات غير محفوظة. سيتم الحفظ تلقائيًا بعد 10 ثوانٍ",
+      imageUploading: "جارٍ رفع الصورة…",
+      imageUploadInvalid: "تُدعم فقط صور PNG وJPEG وGIF وWebP",
+      imageUploadTooLarge: "يجب ألا تكون الصورة فارغة أو تتجاوز 32 MiB",
       editorSaving: "جارٍ الحفظ التلقائي",
       editorClean: "تم الحفظ",
 

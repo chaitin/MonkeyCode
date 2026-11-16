@@ -473,6 +473,11 @@ export const deDE = {
       editorSaved: "Dokument gespeichert. Erneutes Lernen gestartet.",
       editorDiscard: "Mit ungespeicherten Änderungen verlassen?",
       editorUnsaved: "Ungespeicherte Änderungen. Automatisches Speichern in 10 Sekunden",
+      imageUploading: "Bild wird hochgeladen…",
+      imageUploadInvalid:
+        "Nur PNG-, JPEG-, GIF- und WebP-Bilder werden unterstützt",
+      imageUploadTooLarge:
+        "Bilder dürfen nicht leer oder größer als 32 MiB sein",
       editorSaving: "Wird automatisch gespeichert",
       editorClean: "Gespeichert",
 

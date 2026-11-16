@@ -52,6 +52,8 @@ function DocumentEditorPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(0)
+  const uploadingRef = useRef(0)
   const savingRef = useRef(false)
   const loadedRef = useRef(loaded)
   const titleRef = useRef(title)
@@ -66,7 +68,7 @@ function DocumentEditorPage({
       content !== loaded.document.content)
   )
   const readOnly = !loaded?.writable
-  const blocker = useBlocker(dirty || saving)
+  const blocker = useBlocker(dirty || saving || uploading > 0)
 
   useEffect(() => {
     if (blocker.state !== "blocked") return
@@ -100,20 +102,56 @@ function DocumentEditorPage({
   }, [kbId, path])
 
   useEffect(() => {
-    if (!dirty) return
+    if (!dirty && !uploading) return
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ""
     }
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
-  }, [dirty])
+  }, [dirty, uploading])
 
   useEffect(() => {
-    if (!loaded?.writable || !dirty || saving) return
+    if (!loaded?.writable || !dirty || saving || uploading) return
     const timer = window.setTimeout(() => void save(), 10_000)
     return () => window.clearTimeout(timer)
-  }, [content, dirty, loaded, saving, title])
+  }, [content, dirty, loaded, saving, title, uploading])
+
+  async function uploadImage(file: File, signal: AbortSignal): Promise<string> {
+    uploadingRef.current++
+    setUploading(uploadingRef.current)
+    try {
+      if (
+        !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
+          file.type
+        )
+      )
+        throw new Error(t("pages.knowledgeBases.imageUploadInvalid"))
+      if (!file.size || file.size > 32 * 1024 * 1024)
+        throw new Error(t("pages.knowledgeBases.imageUploadTooLarge"))
+      const form = new FormData()
+      form.append("file", file)
+      const result = await api<{ url: string }>(
+        `${base}/kb/${kbId}/images/upload`,
+        {
+          method: "POST",
+          body: form,
+          signal,
+        }
+      )
+      return result.url
+    } catch (reason) {
+      if (!signal.aborted)
+        showToast({
+          status: "error",
+          title: reason instanceof Error ? reason.message : String(reason),
+        })
+      throw reason
+    } finally {
+      uploadingRef.current--
+      if (!signal.aborted) setUploading(uploadingRef.current)
+    }
+  }
 
   async function save() {
     const current = loadedRef.current
@@ -122,6 +160,7 @@ function DocumentEditorPage({
     if (
       !current?.writable ||
       savingRef.current ||
+      uploadingRef.current > 0 ||
       (currentTitle === current.document.title &&
         currentContent === current.document.content) ||
       !currentTitle.trim() ||
@@ -192,18 +231,26 @@ function DocumentEditorPage({
             {t(
               readOnly
                 ? "pages.knowledgeBases.readOnly"
-                : saving
-                  ? "pages.knowledgeBases.editorSaving"
-                  : dirty
-                    ? "pages.knowledgeBases.editorUnsaved"
-                    : "pages.knowledgeBases.editorClean"
+                : uploading > 0
+                  ? "pages.knowledgeBases.imageUploading"
+                  : saving
+                    ? "pages.knowledgeBases.editorSaving"
+                    : dirty
+                      ? "pages.knowledgeBases.editorUnsaved"
+                      : "pages.knowledgeBases.editorClean"
             )}
           </span>
         )}
         {loaded?.writable && (
           <Button
             loading={saving}
-            disabled={loading || !dirty || !title.trim() || !content.trim()}
+            disabled={
+              loading ||
+              uploading > 0 ||
+              !dirty ||
+              !title.trim() ||
+              !content.trim()
+            }
             onClick={() => void save()}
           >
             {t("pages.knowledgeBases.saveAndRelearn")}
@@ -225,6 +272,7 @@ function DocumentEditorPage({
               readOnly={readOnly || saving}
               onChange={setContent}
               onSave={() => void save()}
+              onImageUpload={uploadImage}
             />
           )
         )}
