@@ -4,36 +4,6 @@ SET duration_ms = sqlc.arg(duration_ms)::integer
 WHERE id = sqlc.arg(id)::uuid
     AND started_at=(SELECT billing_activity_time('mcp_tool_calls',sqlc.arg(id)::uuid));
 
--- name: ListCatalogTools :many
-SELECT COALESCE(t.credential_id::text, '')::text AS credential_id, to_jsonb(t) AS tool
-FROM mcp_tools t
-WHERE t.connector_id = sqlc.arg(connector_id)::uuid
-    AND t.credential_id::text = ANY(sqlc.arg(credential_ids)::text[])
-    AND t.config_revision = sqlc.arg(config_revision)::bigint
-    AND t.deleted_at IS NULL AND t.enabled
-ORDER BY t.name, t.id;
-
--- name: CountTools :one
-SELECT
-    count(*)
-FROM
-    mcp_tools
-WHERE
-    connector_id = $1
-    AND deleted_at IS NULL;
--- name: CountCentralTools :one
-SELECT count(*) FILTER (WHERE t.enabled) AS enabled_count, count(*) AS total_count
-FROM mcp_tools t
-JOIN connectors c ON c.id = t.connector_id
-JOIN connector_credentials cr ON cr.id = t.credential_id AND cr.connector_id = c.id
-WHERE c.id = $1
-    AND c.authorization_mode = 'centralized'
-    AND t.deleted_at IS NULL
-    AND t.config_revision = c.config_revision
-    AND cr.user_id IS NULL
-    AND cr.revoked_at IS NULL
-    AND cr.config_revision = c.config_revision;
-
 -- name: UserActive :one
 SELECT
     EXISTS (
@@ -58,16 +28,13 @@ WHERE
     AND c.enabled;
 -- name: ListTools :many
 SELECT
-    to_jsonb (t)
+    jsonb_build_object('id', t.id, 'name', t.name, 'enabled', t.enabled, 'credits_per_call', t.credits_per_call)
 FROM
     mcp_tools t
 WHERE
     connector_id = sqlc.arg(connector_id)
     AND credential_id IS NOT DISTINCT FROM NULLIF (sqlc.arg(credential_id)::text, '')::uuid
-    AND config_revision = sqlc.arg(config_revision)
     AND deleted_at IS NULL
-    AND (sqlc.arg(is_admin)::boolean
-        OR enabled)
 ORDER BY
     name,
     id;
@@ -98,19 +65,6 @@ SET
 WHERE
     connector_id = sqlc.arg(connector_id)
     AND credential_id IS NOT DISTINCT FROM NULLIF (sqlc.arg(credential_id)::text, '')::uuid;
--- name: UpsertTool :execresult
-INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision, enabled)
-    VALUES (sqlc.arg(connector_id), NULLIF (sqlc.arg(credential_id)::text, '')::uuid,
-	sqlc.arg(name), sqlc.arg(description), sqlc.arg(input_schema), sqlc.arg(config_revision), sqlc.arg(enabled))
-ON CONFLICT (connector_id, credential_id, name)
-    DO UPDATE SET
-        description = EXCLUDED.description,
-        input_schema = EXCLUDED.input_schema,
-        config_revision = EXCLUDED.config_revision,
-        enabled = mcp_tools.enabled OR sqlc.arg(enable_existing)::boolean,
-        discovered_at = now(),
-        updated_at = now(),
-        deleted_at = NULL;
 -- name: GetAuthorizationMode :one
 SELECT
     authorization_mode
@@ -120,23 +74,31 @@ WHERE
     id = $1
     AND deleted_at IS NULL;
 -- name: UpdateTool :one
-UPDATE
-    mcp_tools t
-SET
-    enabled = $3,
-    credits_per_call = $4,
-    updated_at = now()
-FROM
-    connectors c
-WHERE
-    t.id = $2
-    AND t.connector_id = $1
-    AND c.id = t.connector_id
-    AND c.ownership_type = 'system'
-    AND c.deleted_at IS NULL
-    AND t.deleted_at IS NULL
-RETURNING
-    to_jsonb (t);
+WITH setting AS (
+    SELECT c.id AS connector_id, cr.id AS credential_id, c.config_revision,
+        COALESCE(NULLIF(sqlc.arg(name)::text, ''), (
+            SELECT t.name FROM mcp_tools t
+            WHERE t.id = sqlc.arg(id)::uuid AND t.connector_id = c.id
+                AND t.credential_id IS NOT DISTINCT FROM cr.id AND t.deleted_at IS NULL
+        )) AS name
+    FROM connectors c
+    LEFT JOIN connector_credentials cr ON cr.connector_id = c.id
+        AND c.authorization_mode = 'centralized' AND cr.user_id IS NULL
+        AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    WHERE c.id = sqlc.arg(connector_id)::uuid AND c.ownership_type = 'system'
+        AND c.deleted_at IS NULL AND c.authorization_mode IN ('none', 'centralized')
+        AND (c.authorization_mode = 'centralized' OR sqlc.arg(credits_per_call) = 0)
+        AND (c.authorization_mode = 'none' OR cr.id IS NOT NULL)
+)
+INSERT INTO mcp_tools (id, connector_id, credential_id, name, enabled, credits_per_call, config_revision)
+SELECT sqlc.arg(id)::uuid, connector_id, credential_id, name,
+    sqlc.arg(enabled)::boolean, sqlc.arg(credits_per_call), config_revision
+FROM setting WHERE name IS NOT NULL
+ON CONFLICT (connector_id, credential_id, name) DO UPDATE SET
+    enabled = EXCLUDED.enabled, credits_per_call = EXCLUDED.credits_per_call,
+    config_revision = EXCLUDED.config_revision, updated_at = now(), deleted_at = NULL
+RETURNING jsonb_build_object('id', mcp_tools.id, 'name', mcp_tools.name,
+    'enabled', mcp_tools.enabled, 'credits_per_call', mcp_tools.credits_per_call);
 
 -- name: LockIconConnector :one
 SELECT to_jsonb(c) FROM connectors c

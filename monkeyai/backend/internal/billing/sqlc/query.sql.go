@@ -2544,39 +2544,46 @@ func (q *Queries) SummarizeEntriesByUser(ctx context.Context, arg SummarizeEntri
 
 const toolPricing = `-- name: ToolPricing :one
 SELECT
-    t.name,
-    t.credits_per_call::text,
+    COALESCE(t.name, $1::text)::text AS name,
+    COALESCE(t.credits_per_call, 0)::text AS credits_per_call,
     c.authorization_mode,
     c.ownership_type
-FROM
-    mcp_tools t
-    JOIN connectors c ON c.id = t.connector_id
-WHERE
-    t.id = $1
-    AND c.id = $2
-    AND t.enabled
-    AND t.deleted_at IS NULL
-    AND c.deleted_at IS NULL
+FROM connectors c
+LEFT JOIN mcp_tools t ON t.connector_id = c.id
+    AND c.authorization_mode <> 'independent' AND t.deleted_at IS NULL
+    AND (($1::text <> '' AND t.name = $1::text
+        AND t.credential_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid)
+        OR ($1::text = '' AND t.id = $3::uuid))
+WHERE c.id = $4 AND c.enabled AND c.deleted_at IS NULL
+    AND COALESCE(t.enabled, true)
+    AND (t.id IS NOT NULL OR $1::text <> '')
 `
 
 type ToolPricingParams struct {
-	ID          string
-	ConnectorID string
+	ToolName     string
+	CredentialID string
+	ID           string
+	ConnectorID  string
 }
 
 type ToolPricingRow struct {
 	Name              string
-	TCreditsPerCall   string
+	CreditsPerCall    string
 	AuthorizationMode string
 	OwnershipType     string
 }
 
 func (q *Queries) ToolPricing(ctx context.Context, arg ToolPricingParams) (ToolPricingRow, error) {
-	row := q.db.QueryRow(ctx, toolPricing, arg.ID, arg.ConnectorID)
+	row := q.db.QueryRow(ctx, toolPricing,
+		arg.ToolName,
+		arg.CredentialID,
+		arg.ID,
+		arg.ConnectorID,
+	)
 	var i ToolPricingRow
 	err := row.Scan(
 		&i.Name,
-		&i.TCreditsPerCall,
+		&i.CreditsPerCall,
 		&i.AuthorizationMode,
 		&i.OwnershipType,
 	)

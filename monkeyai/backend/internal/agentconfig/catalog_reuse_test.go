@@ -71,32 +71,24 @@ func TestCatalogReusesConnectorAcrossExperts(t *testing.T) {
 			t.Fatal(err)
 		}
 		conn := manifest["connectors"].([]resource.Object)[0]
-		tools := conn["tools"].([]resource.Object)
-		if len(tools) != 1 || tools[0].String("name") != fmt.Sprintf("tool%d", i) {
-			t.Fatalf("专家过滤污染了共享连接器: %v", tools)
+		if _, ok := conn["tools"]; ok {
+			t.Fatalf("专家配置不应内嵌工具: %v", conn)
+		}
+		if got := resource.Strings(conn["tool_allowlist"]); len(got) != 1 || got[0] != fmt.Sprintf("tool%d", i) {
+			t.Fatalf("专家工具允许规则丢失: %v", conn)
 		}
 	}
-	if q.counts["ListTools"] != 1 {
-		t.Fatalf("共享连接器重复读取工具: %v", q.counts)
-	}
-	if len(c.connectorDTOs[connector]["tools"].([]resource.Object)) != 2 {
-		t.Fatal("过滤后的工具覆盖了请求内缓存")
+	if q.counts["ListTools"] != 0 || q.counts["ListCatalogTools"] != 0 {
+		t.Fatalf("专家配置不应查询工具目录: %v", q.counts)
 	}
 }
 
-func TestCloneConnectorCredentialFilters(t *testing.T) {
-	base := resource.Object{"authorization_mode": "independent", "credentials": []resource.Object{
-		{"id": "credential", "tools": []resource.Object{{"name": "one"}, {"name": "two"}}},
-	}}
-	first, second := cloneConnector(base), cloneConnector(base)
-	filterTools(first, resource.Object{"tool_allowlist": []string{"one"}})
-	filterTools(second, resource.Object{"tool_allowlist": []string{"two"}})
-	for i, item := range []resource.Object{first, second, base} {
-		tools := item["credentials"].([]resource.Object)[0]["tools"].([]resource.Object)
-		want := []int{1, 1, 2}[i]
-		if len(tools) != want {
-			t.Fatalf("凭证过滤相互污染: %v", item)
-		}
+func TestCloneConnectorCredentials(t *testing.T) {
+	base := resource.Object{"credentials": []resource.Object{{"id": "credential", "name": "原始凭证"}}}
+	cloned := cloneConnector(base)
+	cloned["credentials"].([]resource.Object)[0]["name"] = "修改凭证"
+	if base["credentials"].([]resource.Object)[0].String("name") != "原始凭证" {
+		t.Fatal("凭证修改污染了共享连接器")
 	}
 }
 
@@ -137,17 +129,15 @@ func TestCatalogIndependentToolsBatched(t *testing.T) {
 		t.Fatalf("凭证越过用户边界: %v", credentials)
 	}
 	for _, credential := range credentials {
-		tools := credential["tools"].([]resource.Object)
-		want := 1
-		if credential.String("name") == "credential2" {
-			want = 0
+		if _, ok := credential["tools"]; ok {
+			t.Fatalf("凭证目录不应内嵌工具: %v", credential)
 		}
-		if len(tools) != want || (want == 1 && tools[0].String("name") != "visible") {
-			t.Fatalf("工具没有按授权、启用状态和配置版本过滤: %v", credential)
+		if _, ok := credential["tools_version"]; ok {
+			t.Fatalf("凭证目录不应包含工具版本: %v", credential)
 		}
 	}
-	if q.counts["ListCatalogTools"] != 1 || q.counts["GetCredential"] != 0 {
-		t.Fatalf("工具查询随凭证数量增长: %v", q.counts)
+	if q.counts["ListCatalogTools"] != 0 || q.counts["ListTools"] != 0 || q.counts["GetCredential"] != 0 {
+		t.Fatalf("连接器目录不应读取工具配置: %v", q.counts)
 	}
 	encoded, _ := json.Marshal(out)
 	if strings.Contains(string(encoded), "secret-") || strings.Contains(string(encoded), "http_headers") {

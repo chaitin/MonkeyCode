@@ -97,7 +97,7 @@ func testMCPAddresses(t *testing.T, pool *pgxpool.Pool, handler http.Handler, us
 	enableCentral := func() {
 		t.Helper()
 		tool := call("GET", p3+"/tools", "", nil, 200)["items"].([]any)[0].(map[string]any)
-		call("PATCH", p3+"/tools/"+tool["id"].(string), "", resource.Object{"enabled": true, "credits_per_call": "0"}, 200)
+		call("PATCH", p3+"/tools/"+tool["id"].(string), "", resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": "0"}, 200)
 	}
 	enableCentral()
 	gateway := "/mcp/connectors/" + c1.String("id")

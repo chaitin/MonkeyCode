@@ -374,9 +374,6 @@ func (s *Service) saveCredential(w http.ResponseWriter, r *http.Request, admin b
 	} else {
 		out, err = resource.DecodeObject(queries.UpdateCredential(ctx, b))
 	}
-	if err == nil && in.Headers != nil {
-		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: id})
-	}
 	if err == nil {
 		err = resource.Audit(ctx, tx, u.ID, "connector_credential", id, "save")
 	}

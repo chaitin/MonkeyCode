@@ -165,9 +165,6 @@ func (s *Service) validateConnector(ctx context.Context, tx pgx.Tx, in, old reso
 		revision = 1
 	} else if changed {
 		revision++
-		if err := sqlc.New(tx).InvalidateConnectorTools(ctx, old.String("id")); err != nil {
-			return err
-		}
 		if mode != old.String("authorization_mode") {
 			if err := sqlc.New(tx).RevokeConnectorCredentials(ctx, old.String("id")); err != nil {
 				return err
@@ -189,20 +186,6 @@ func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o r
 	}
 	if key := o.String("icon_s3_key"); key != "" {
 		o["icon_path"] = "/api/admin/v1/connectors/" + o.String("id") + "/icon?v=" + resource.Hash(key)
-	}
-	o["enabled_tool_count"] = int64(0)
-	if o.String("authorization_mode") == "centralized" {
-		counts, err := sqlc.New(q).CountCentralTools(ctx, o.String("id"))
-		if err != nil {
-			return err
-		}
-		o["tool_count"], o["enabled_tool_count"] = counts.TotalCount, counts.EnabledCount
-	} else {
-		count, err := sqlc.New(q).CountTools(ctx, o.String("id"))
-		if err != nil {
-			return err
-		}
-		o["tool_count"] = count
 	}
 	creds := []resource.Object{}
 	var err error
@@ -298,10 +281,11 @@ func (s *Service) routes(r chi.Router, admin bool) {
 }
 func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 	var in struct {
+		Name    string         `json:"name"`
 		Enabled *bool          `json:"enabled"`
 		Credits billing.Amount `json:"credits_per_call"`
 	}
-	if err := resource.Decode(w, r, &in); err != nil || in.Enabled == nil || in.Credits < 0 {
+	if err := resource.Decode(w, r, &in); err != nil || in.Enabled == nil || in.Credits < 0 || len(in.Name) > 256 {
 		if err != nil {
 			slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "updateTool", "error", err)
 		}
@@ -321,6 +305,10 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if mode == "independent" {
+		resource.Fail(r.Context(), w, resource.Invalid("独立认证工具不支持配置开关或积分"))
+		return
+	}
 	if mode != "centralized" && in.Credits != 0 {
 		resource.Fail(r.Context(), w, resource.Invalid("仅集中认证工具可以设置非零积分"))
 		return
@@ -332,6 +320,7 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 	o, err := resource.DecodeObject(sqlc.New(tx).UpdateTool(r.Context(), sqlc.UpdateToolParams{
 		ConnectorID:    chi.URLParam(r, "id"),
 		ID:             chi.URLParam(r, "toolID"),
+		Name:           in.Name,
 		Enabled:        *in.Enabled,
 		CreditsPerCall: in.Credits.String(),
 	}))

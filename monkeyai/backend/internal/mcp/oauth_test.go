@@ -223,7 +223,10 @@ func TestConcurrentAutomaticRefresh(t *testing.T) {
 func TestOAuthDiscoveryStatus(t *testing.T) {
 	f := setup(t)
 	started, release := make(chan struct{}), make(chan struct{})
-	remote := mcpRemote(t, func() { close(started); <-release })
+	var first sync.Once
+	remote := mcpRemote(t, func() {
+		first.Do(func() { close(started); <-release })
+	})
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resource.JSON(r.Context(), w, 200, resource.Object{"access_token": "oauth-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
 	}))

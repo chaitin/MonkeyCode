@@ -472,7 +472,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	if !tool.Bool("enabled") {
 		t.Fatal("新工具必须默认启用")
 	}
-	must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+	must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": "0"}, "", "")
 	agentTools := must("GET", "/api/v1/connectors/"+conn.String("id")+"/tools", nil, "a", "")
 	if len(agentTools["items"].([]any)) != 1 {
 		t.Fatal("启用工具下发失败")
@@ -515,7 +515,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if len(out["result"].(map[string]any)["tools"].([]any)) != 1 {
 			t.Fatalf("代理目录缺失: %v", out)
 		}
-		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": false, "credits_per_call": "0"}, "", "")
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": false, "credits_per_call": "0"}, "", "")
 		must("POST", "/api/admin/v1/connectors/"+conn.String("id")+"/test", nil, "", "")
 		out = must("POST", gateway, in, invokeKeys["a"], "")
 		if len(out["result"].(map[string]any)["tools"].([]any)) != 0 {
@@ -525,7 +525,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if out["error"].(map[string]any)["code"] != float64(-32602) {
 			t.Fatal("禁用工具仍可执行")
 		}
-		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": "0"}, "", "")
 		must("POST", "/api/admin/v1/connectors/"+conn.String("id")+"/test", nil, "", "")
 		out = must("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": "unknown", "method": "resources/list"}, invokeKeys["a"], "")
 		if out["error"].(map[string]any)["code"] != float64(-32601) {
@@ -568,7 +568,7 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 			for _, raw := range catalog["connectors"].([]any) {
 				entry := resource.Object(raw.(map[string]any))
 				if entry.String("id") == connector.String("id") {
-					found = len(entry["tools"].([]any)) == 1
+					found = entry["tools"] == nil && entry["mcp_gateway"] != nil
 				}
 			}
 			if !found {
@@ -596,10 +596,10 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if err := pool.QueryRow(ctx, `SELECT bool_or(enabled) FROM mcp_tools WHERE connector_id=$1 OR (connector_id=$2 AND name IN ('removed','stale'))`, conn.String("id"), connector.String("id")).Scan(&enabled); err != nil || enabled {
 			t.Fatalf("重新发现启用了系统工具或失效个人工具：%v", err)
 		}
-		if after := must("GET", "/api/v1/connectors", nil, "a", ""); after.String("version") == before.String("version") {
-			t.Fatal("重新发现后资源目录版本未更新")
+		if after := must("GET", "/api/v1/connectors", nil, "a", ""); after.String("version") != before.String("version") {
+			t.Fatal("工具发现不应改变不含工具的资源目录版本")
 		}
-		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+		must("PATCH", "/api/admin/v1/connectors/"+conn.String("id")+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": "0"}, "", "")
 	})
 	resolved = must("POST", "/api/v1/resources/resolve", resource.Object{}, "b", "")
 	if len(resolved["rules"].([]any)) != 1 {
@@ -640,8 +640,6 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		if len(items) != 1 || items[0].(map[string]any)["name"] != "Tool-"+name {
 			t.Fatal("凭证目录未隔离")
 		}
-		tool := resource.Object(items[0].(map[string]any))
-		must("PATCH", "/api/admin/v1/connectors/"+c2.String("id")+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
 		out := must("POST", "/mcp"+path, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, invokeKeys[name], "")
 		if out["result"].(map[string]any)["tools"].([]any)[0].(map[string]any)["name"] != "Tool-"+name {
 			t.Fatal("网关跨凭证混用")
@@ -709,8 +707,9 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 		selected["expert_id"] = expert["id"]
 		selected["connector_bindings"] = resource.Object{id: credentialIDs["a"]}
 		out = must("POST", "/api/v1/resources/resolve", selected, "a", "")
-		if len(out["connectors"].([]any)[0].(map[string]any)["tools"].([]any)) != 0 {
-			t.Fatal("专家工具过滤未应用于所选凭证")
+		selectedConnector := resource.Object(out["connectors"].([]any)[0].(map[string]any))
+		if len(resource.Strings(selectedConnector["tool_denylist"])) != 1 || selectedConnector["tools"] != nil {
+			t.Fatal("解析应保留专家工具过滤规则，不内嵌工具目录")
 		}
 		if code, _, _ := call("DELETE", "/api/admin/v1/connectors/"+id, nil, "", `"1"`); code != 409 {
 			t.Fatal("连接删除未检查专家引用")
@@ -867,14 +866,14 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_test_tag();`)
 	must("POST", "/api/admin/v1/connectors/"+c3.String("id")+"/test", nil, "", "")
 	oauthTools := must("GET", "/api/admin/v1/connectors/"+c3.String("id")+"/tools", nil, "", "")["items"].([]any)
 	oauthTool := resource.Object(oauthTools[0].(map[string]any))
-	must("PATCH", "/api/admin/v1/connectors/"+c3.String("id")+"/tools/"+oauthTool.String("id"), resource.Object{"enabled": true, "credits_per_call": "0"}, "", "")
+	must("PATCH", "/api/admin/v1/connectors/"+c3.String("id")+"/tools/"+oauthTool.String("id"), resource.Object{"name": oauthTool["name"], "enabled": true, "credits_per_call": "0"}, "", "")
 	if _, err := pool.Exec(ctx, `UPDATE connector_credentials SET oauth_access_token='expired-token',oauth_expires_at=now()-interval '1 minute' WHERE connector_id=$1`, c3.String("id")); err != nil {
 		t.Fatal(err)
 	}
 	refreshable := must("GET", "/api/v1/connectors", nil, "a", "")
 	for _, raw := range refreshable["connectors"].([]any) {
 		entry := resource.Object(raw.(map[string]any))
-		if entry.String("id") == c3.String("id") && (entry.String("authorization_status") != "authorized" || len(entry["tools"].([]any)) != 1) {
+		if entry.String("id") == c3.String("id") && (entry.String("authorization_status") != "authorized" || entry["tools"] != nil) {
 			t.Fatal("可自动刷新的 OAuth 凭证不应要求手工重新授权")
 		}
 	}

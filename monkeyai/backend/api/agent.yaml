@@ -2223,7 +2223,7 @@ paths:
     post:
       summary: 调用免认证连接的 MCP 网关
       description: 仅用于免认证连接，使用全局 mcp:invoke API Key 认证用户并校验连接使用权。集中和独立认证必须改用具体凭证地址，省略凭证返回 400 credential_selection_required。
-        tools/list 和 tools/call 使用上游原始工具名称，并执行实时工具启停检查。
+        tools/list 和 tools/call 实时发现上游工具，使用上游原始工具名称，并叠加本地工具开关；没有开关记录时默认启用。
       security:
       - InvocationKey: []
       parameters:
@@ -2379,7 +2379,7 @@ paths:
     post:
       summary: 调用指定凭证的 MCP 网关
       description: 使用全局 mcp:invoke API Key 认证用户；地址明确指定集中或独立凭证。每次请求校验用户的连接使用权、凭证与连接关系及当前状态，独立凭证必须属于调用用户。撤销的凭证地址不自动切换到新凭证。 tools/list
-        和 tools/call 使用上游原始工具名称，并执行实时工具启停检查。
+        和 tools/call 实时发现上游工具，不读取目录缓存；独立认证不持久化工具，无认证／集中认证叠加本地开关，未配置默认启用。
       security:
       - InvocationKey: []
       parameters:
@@ -3394,7 +3394,8 @@ paths:
           format: uuid
   /api/v1/connectors/{id}/tools:
     get:
-      summary: 读取认证上下文的工具目录
+      summary: 实时读取认证上下文的工具目录
+      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证不读取或保存工具配置。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -3432,7 +3433,6 @@ paths:
         schema:
           type: string
           format: uuid
-      description: 独立认证必须使用包含 credential_id 的接口，否则返回 400 credential_selection_required。连接级工具适用于 none / centralized；集中测试仅限管理员。
   /api/v1/connectors/{id}/oauth/authorizations:
     parameters:
     - name: id
@@ -4118,7 +4118,7 @@ paths:
           $ref: '#/components/responses/ResourceError502'
     patch:
       summary: 改名或整组替换 Header
-      description: 替换 Header 后自动测试连接并更新工具目录；仅改名不触发测试。
+      description: 替换 Header 后自动测试连接与工具发现，不保存工具目录；仅改名不触发测试。
       responses:
         '200':
           description: 成功；不返回凭证秘密。
@@ -4288,7 +4288,8 @@ paths:
         format: uuid
   /api/v1/connectors/{id}/credentials/{credential_id}/tools:
     get:
-      summary: 读取认证上下文的工具目录
+      summary: 实时读取认证上下文的工具目录
+      description: 每次请求远端 MCP 获取完整工具定义，失败直接返回错误，不回退数据库目录。无认证／集中认证叠加本地开关和单价，未配置时默认启用、单价为零；独立认证不读取或保存工具配置。响应为 private, no-store。独立认证必须使用明确指定 credential_id 的接口，否则返回 400 credential_selection_required；始终校验连接和凭证的访问权限。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -4320,7 +4321,6 @@ paths:
         '502':
           $ref: '#/components/responses/ResourceError502'
       parameters: []
-      description: 操作明确指定的凭证上下文；校验连接、凭证、当前用户和配置版本。管理端工具只读上下文允许查看系统连接用户工具，不能代用户测试。
     parameters:
     - name: id
       in: path
@@ -7211,12 +7211,6 @@ components:
             - invoke
         mcp_gateway:
           $ref: '#/components/schemas/MCPGateway'
-        tools:
-          type: array
-          items:
-            $ref: '#/components/schemas/MCPTool'
-        tools_version:
-          type: string
         credentials:
           type: array
           items:
@@ -7233,7 +7227,7 @@ components:
       - description
       - authorization_mode
       - capabilities
-      description: 独立认证在 credentials 内返回每份凭证的工具和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。resolve 返回所选凭证、工具和 mcp_gateway，API Key 全局创建。
+      description: 独立认证在 credentials 内返回每份凭证的状态和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。目录、专家 manifest 和 resolve 均不返回 tools 或 tools_version；工具定义通过 REST 工具接口或 MCP tools/list 实时获取。resolve 返回所选凭证和 mcp_gateway，专家工具允许／拒绝规则由客户端应用。
     AgentExpert:
       type: object
       properties:
@@ -7777,14 +7771,6 @@ components:
           type: boolean
         connection_status:
           type: string
-        tool_count:
-          type: integer
-          description: 集中认证统计当前有效凭证及配置版本下未删除的全部工具，包含未启用项。
-        enabled_tool_count:
-          type: integer
-          minimum: 0
-          readOnly: true
-          description: 集中认证当前有效凭证及配置版本下已启用且未删除的工具数量；其他认证方式为 0。
         credentials:
           type: array
           items:
@@ -7841,12 +7827,6 @@ components:
       - $ref: '#/components/schemas/ConnectorCredential'
       - type: object
         properties:
-          tools:
-            type: array
-            items:
-              $ref: '#/components/schemas/MCPTool'
-          tools_version:
-            type: string
           mcp_gateway:
             $ref: '#/components/schemas/MCPGateway'
     AuthorizationName:

@@ -177,7 +177,7 @@ func (b modelBilling) Finish(ctx context.Context, id string, c proxy.Call) error
 type toolBilling struct{ service *billing.Service }
 
 func (b toolBilling) Begin(ctx context.Context, r mcp.Invocation) (string, error) {
-	v, err := b.service.Begin(ctx, billing.Request{UserID: r.UserID, ResourceID: r.ToolID, ConnectorID: r.ConnectorID, SessionID: r.SessionID, Category: "tool", IdempotencyKey: r.IdempotencyKey, RequestHash: r.RequestHash})
+	v, err := b.service.Begin(ctx, billing.Request{UserID: r.UserID, ResourceID: r.ToolID, ConnectorID: r.ConnectorID, CredentialID: r.CredentialID, ToolName: r.ToolName, SessionID: r.SessionID, Category: "tool", IdempotencyKey: r.IdempotencyKey, RequestHash: r.RequestHash})
 	return v.ID, err
 }
 func (b toolBilling) Start(ctx context.Context, id string) error { return b.service.Start(ctx, id) }

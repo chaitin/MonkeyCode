@@ -328,9 +328,6 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		cred, err = resource.DecodeObject(queries.UpdateCredential(ctx, b))
 	}
 	if err == nil {
-		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: id, CredentialID: credential})
-	}
-	if err == nil {
 		var rows int64
 		rows, err = queries.FinishOAuthRequest(ctx, sqlc.FinishOAuthRequestParams{ID: request.String("id"), Status: "processing", CredentialID: credential})
 		if err == nil && rows != 1 {
@@ -572,9 +569,6 @@ func (s *Service) refresh(ctx context.Context, c, cred resource.Object) (resourc
 	result, err := s.exchange(ctx, current, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {cred.String("oauth_refresh_token")}})
 	if errors.Is(err, invalidGrant) {
 		if err = sqlc.New(tx).ExpireCredential(ctx, cred.String("id")); err != nil {
-			return nil, err
-		}
-		if _, err = sqlc.New(tx).InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: current.String("id"), CredentialID: cred.String("id")}); err != nil {
 			return nil, err
 		}
 		if err = tx.Commit(ctx); err != nil {

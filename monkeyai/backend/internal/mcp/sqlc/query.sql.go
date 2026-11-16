@@ -45,49 +45,6 @@ func (q *Queries) ConsumeOAuthRequest(ctx context.Context, arg ConsumeOAuthReque
 	return to_jsonb, err
 }
 
-const countCentralTools = `-- name: CountCentralTools :one
-SELECT count(*) FILTER (WHERE t.enabled) AS enabled_count, count(*) AS total_count
-FROM mcp_tools t
-JOIN connectors c ON c.id = t.connector_id
-JOIN connector_credentials cr ON cr.id = t.credential_id AND cr.connector_id = c.id
-WHERE c.id = $1
-    AND c.authorization_mode = 'centralized'
-    AND t.deleted_at IS NULL
-    AND t.config_revision = c.config_revision
-    AND cr.user_id IS NULL
-    AND cr.revoked_at IS NULL
-    AND cr.config_revision = c.config_revision
-`
-
-type CountCentralToolsRow struct {
-	EnabledCount int64
-	TotalCount   int64
-}
-
-func (q *Queries) CountCentralTools(ctx context.Context, id string) (CountCentralToolsRow, error) {
-	row := q.db.QueryRow(ctx, countCentralTools, id)
-	var i CountCentralToolsRow
-	err := row.Scan(&i.EnabledCount, &i.TotalCount)
-	return i, err
-}
-
-const countTools = `-- name: CountTools :one
-SELECT
-    count(*)
-FROM
-    mcp_tools
-WHERE
-    connector_id = $1
-    AND deleted_at IS NULL
-`
-
-func (q *Queries) CountTools(ctx context.Context, connectorID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countTools, connectorID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createCredential = `-- name: CreateCredential :one
 INSERT INTO connector_credentials(id, connector_id, user_id, name, http_headers,
     oauth_access_token, oauth_refresh_token, oauth_expires_at, config_revision)
@@ -280,47 +237,6 @@ func (q *Queries) InvalidateTools(ctx context.Context, arg InvalidateToolsParams
 	return q.db.Exec(ctx, invalidateTools, arg.ConnectorID, arg.CredentialID)
 }
 
-const listCatalogTools = `-- name: ListCatalogTools :many
-SELECT COALESCE(t.credential_id::text, '')::text AS credential_id, to_jsonb(t) AS tool
-FROM mcp_tools t
-WHERE t.connector_id = $1::uuid
-    AND t.credential_id::text = ANY($2::text[])
-    AND t.config_revision = $3::bigint
-    AND t.deleted_at IS NULL AND t.enabled
-ORDER BY t.name, t.id
-`
-
-type ListCatalogToolsParams struct {
-	ConnectorID    string
-	CredentialIds  []string
-	ConfigRevision int64
-}
-
-type ListCatalogToolsRow struct {
-	CredentialID string
-	Tool         []byte
-}
-
-func (q *Queries) ListCatalogTools(ctx context.Context, arg ListCatalogToolsParams) ([]ListCatalogToolsRow, error) {
-	rows, err := q.db.Query(ctx, listCatalogTools, arg.ConnectorID, arg.CredentialIds, arg.ConfigRevision)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListCatalogToolsRow{}
-	for rows.Next() {
-		var i ListCatalogToolsRow
-		if err := rows.Scan(&i.CredentialID, &i.Tool); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listConnectorReferences = `-- name: ListConnectorReferences :many
 SELECT jsonb_build_object('id', e.id, 'name', e.name, 'type', 'expert')
 FROM experts e JOIN expert_connectors x ON x.expert_id = e.id
@@ -446,46 +362,36 @@ func (q *Queries) ListToolContexts(ctx context.Context, connectorID string) ([][
 
 const listTools = `-- name: ListTools :many
 SELECT
-    to_jsonb (t)
+    jsonb_build_object('id', t.id, 'name', t.name, 'enabled', t.enabled, 'credits_per_call', t.credits_per_call)
 FROM
     mcp_tools t
 WHERE
     connector_id = $1
     AND credential_id IS NOT DISTINCT FROM NULLIF ($2::text, '')::uuid
-    AND config_revision = $3
     AND deleted_at IS NULL
-    AND ($4::boolean
-        OR enabled)
 ORDER BY
     name,
     id
 `
 
 type ListToolsParams struct {
-	ConnectorID    string
-	CredentialID   string
-	ConfigRevision int64
-	IsAdmin        bool
+	ConnectorID  string
+	CredentialID string
 }
 
 func (q *Queries) ListTools(ctx context.Context, arg ListToolsParams) ([][]byte, error) {
-	rows, err := q.db.Query(ctx, listTools,
-		arg.ConnectorID,
-		arg.CredentialID,
-		arg.ConfigRevision,
-		arg.IsAdmin,
-	)
+	rows, err := q.db.Query(ctx, listTools, arg.ConnectorID, arg.CredentialID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := [][]byte{}
 	for rows.Next() {
-		var to_jsonb []byte
-		if err := rows.Scan(&to_jsonb); err != nil {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
 			return nil, err
 		}
-		items = append(items, to_jsonb)
+		items = append(items, jsonb_build_object)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -666,42 +572,52 @@ func (q *Queries) UpdateCredential(ctx context.Context, data []byte) ([]byte, er
 }
 
 const updateTool = `-- name: UpdateTool :one
-UPDATE
-    mcp_tools t
-SET
-    enabled = $3,
-    credits_per_call = $4,
-    updated_at = now()
-FROM
-    connectors c
-WHERE
-    t.id = $2
-    AND t.connector_id = $1
-    AND c.id = t.connector_id
-    AND c.ownership_type = 'system'
-    AND c.deleted_at IS NULL
-    AND t.deleted_at IS NULL
-RETURNING
-    to_jsonb (t)
+WITH setting AS (
+    SELECT c.id AS connector_id, cr.id AS credential_id, c.config_revision,
+        COALESCE(NULLIF($4::text, ''), (
+            SELECT t.name FROM mcp_tools t
+            WHERE t.id = $1::uuid AND t.connector_id = c.id
+                AND t.credential_id IS NOT DISTINCT FROM cr.id AND t.deleted_at IS NULL
+        )) AS name
+    FROM connectors c
+    LEFT JOIN connector_credentials cr ON cr.connector_id = c.id
+        AND c.authorization_mode = 'centralized' AND cr.user_id IS NULL
+        AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    WHERE c.id = $5::uuid AND c.ownership_type = 'system'
+        AND c.deleted_at IS NULL AND c.authorization_mode IN ('none', 'centralized')
+        AND (c.authorization_mode = 'centralized' OR $3 = 0)
+        AND (c.authorization_mode = 'none' OR cr.id IS NOT NULL)
+)
+INSERT INTO mcp_tools (id, connector_id, credential_id, name, enabled, credits_per_call, config_revision)
+SELECT $1::uuid, connector_id, credential_id, name,
+    $2::boolean, $3, config_revision
+FROM setting WHERE name IS NOT NULL
+ON CONFLICT (connector_id, credential_id, name) DO UPDATE SET
+    enabled = EXCLUDED.enabled, credits_per_call = EXCLUDED.credits_per_call,
+    config_revision = EXCLUDED.config_revision, updated_at = now(), deleted_at = NULL
+RETURNING jsonb_build_object('id', mcp_tools.id, 'name', mcp_tools.name,
+    'enabled', mcp_tools.enabled, 'credits_per_call', mcp_tools.credits_per_call)
 `
 
 type UpdateToolParams struct {
-	ConnectorID    string
 	ID             string
 	Enabled        bool
 	CreditsPerCall string
+	Name           string
+	ConnectorID    string
 }
 
 func (q *Queries) UpdateTool(ctx context.Context, arg UpdateToolParams) ([]byte, error) {
 	row := q.db.QueryRow(ctx, updateTool,
-		arg.ConnectorID,
 		arg.ID,
 		arg.Enabled,
 		arg.CreditsPerCall,
+		arg.Name,
+		arg.ConnectorID,
 	)
-	var to_jsonb []byte
-	err := row.Scan(&to_jsonb)
-	return to_jsonb, err
+	var jsonb_build_object []byte
+	err := row.Scan(&jsonb_build_object)
+	return jsonb_build_object, err
 }
 
 const updateToolCallDuration = `-- name: UpdateToolCallDuration :exec
@@ -719,45 +635,6 @@ type UpdateToolCallDurationParams struct {
 func (q *Queries) UpdateToolCallDuration(ctx context.Context, arg UpdateToolCallDurationParams) error {
 	_, err := q.db.Exec(ctx, updateToolCallDuration, arg.DurationMs, arg.ID)
 	return err
-}
-
-const upsertTool = `-- name: UpsertTool :execresult
-INSERT INTO mcp_tools (connector_id, credential_id, name, description, input_schema, config_revision, enabled)
-    VALUES ($1, NULLIF ($2::text, '')::uuid,
-	$3, $4, $5, $6, $7)
-ON CONFLICT (connector_id, credential_id, name)
-    DO UPDATE SET
-        description = EXCLUDED.description,
-        input_schema = EXCLUDED.input_schema,
-        config_revision = EXCLUDED.config_revision,
-        enabled = mcp_tools.enabled OR $8::boolean,
-        discovered_at = now(),
-        updated_at = now(),
-        deleted_at = NULL
-`
-
-type UpsertToolParams struct {
-	ConnectorID    string
-	CredentialID   string
-	Name           string
-	Description    string
-	InputSchema    []byte
-	ConfigRevision int64
-	Enabled        bool
-	EnableExisting bool
-}
-
-func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) (pgconn.CommandTag, error) {
-	return q.db.Exec(ctx, upsertTool,
-		arg.ConnectorID,
-		arg.CredentialID,
-		arg.Name,
-		arg.Description,
-		arg.InputSchema,
-		arg.ConfigRevision,
-		arg.Enabled,
-		arg.EnableExisting,
-	)
 }
 
 const userActive = `-- name: UserActive :one

@@ -2,10 +2,13 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
@@ -13,20 +16,66 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func credentialTools(ctx context.Context, q resource.Queryer, c, cred resource.Object, admin bool) ([]resource.Object, error) {
-	if c.String("authorization_mode") != "none" && credentialStatus(c, cred) != "authorized" {
-		return []resource.Object{}, nil
+func (s *Service) liveTools(ctx context.Context, q resource.Queryer, c, cred resource.Object, admin bool) ([]resource.Object, error) {
+	headers, cred, err := s.headers(ctx, c, cred)
+	if err != nil {
+		return nil, err
 	}
-	return resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
-		ConnectorID: c.String("id"), CredentialID: cred.String("id"), ConfigRevision: c.Int("config_revision"), IsAdmin: admin,
-	}))
+	h, err := s.clientFor(ctx, c.String("proxy_id"))
+	if err != nil {
+		return nil, err
+	}
+	setConnectorTimeout(h, c.Int("timeout_ms"))
+	remote, err := discoverWithClient(ctx, c.String("url"), headers, h)
+	if err != nil {
+		return nil, upstreamFailure(err, "mcp_protocol_invalid")
+	}
+	settings := []resource.Object{}
+	if c.String("authorization_mode") != "independent" {
+		settings, err = resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
+			ConnectorID: c.String("id"), CredentialID: cred.String("id"),
+		}))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return toolViews(c, cred, remote, settings, admin), nil
+}
+
+func toolID(c, cred resource.Object, name string) string {
+	// 未保存配置时也提供稳定标识，查询工具不需要为此创建数据库记录。
+	sum := sha256.Sum256([]byte(c.String("id") + "\x00" + cred.String("id") + "\x00" + name))
+	sum[6] = sum[6]&0x0f | 0x50
+	sum[8] = sum[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
+}
+
+func toolViews(c, cred resource.Object, remote []remoteTool, settings []resource.Object, admin bool) []resource.Object {
+	byName := make(map[string]resource.Object, len(settings))
+	if c.String("authorization_mode") != "independent" {
+		for _, setting := range settings {
+			byName[setting.String("name")] = setting
+		}
+	}
+	out := make([]resource.Object, 0, len(remote))
+	for _, tool := range remote {
+		view := resource.Object{"id": toolID(c, cred, tool.Name), "name": tool.Name, "description": tool.Description, "input_schema": tool.InputSchema, "enabled": true, "credits_per_call": int64(0)}
+		if setting := byName[tool.Name]; setting != nil {
+			view["id"], view["enabled"], view["credits_per_call"] = setting["id"], setting["enabled"], setting["credits_per_call"]
+		}
+		if admin || view.Bool("enabled") {
+			out = append(out, view)
+		}
+	}
+	slices.SortFunc(out, func(a, b resource.Object) int { return strings.Compare(a.String("name"), b.String("name")) })
+	return out
 }
 func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Object, user, id string, admin bool) ([]resource.Object, error) {
 	cred, err := s.Credential(ctx, q, c, user, id)
 	if err != nil {
 		return nil, err
 	}
-	return credentialTools(ctx, q, c, cred, admin)
+	return s.liveTools(ctx, q, c, cred, admin)
 }
 func safeTools(tools []resource.Object) []resource.Object {
 	out := []resource.Object{}
@@ -36,6 +85,7 @@ func safeTools(tools []resource.Object) []resource.Object {
 	return out
 }
 func (s *Service) tools(w http.ResponseWriter, r *http.Request, admin bool) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	u, _ := identity.UserFromContext(r.Context())
 	c, err := s.Connector(r.Context(), s.Store.Pool, chi.URLParam(r, "id"), u.ID, admin)
 	if err != nil {
@@ -167,25 +217,6 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if discoveryErr != nil {
 		fault = upstreamFailure(discoveryErr, "mcp_protocol_invalid")
 		status, message = "error", fault.Error()
-	} else {
-		_, err = queries.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: cred.String("id")})
-		for _, tool := range tools {
-			if err != nil {
-				slog.WarnContext(ctx, "操作失败", "module", "mcp", "operation", "testConnection", "error", err)
-				break
-			}
-			schema, marshalErr := json.Marshal(tool.InputSchema)
-			if marshalErr != nil {
-				return nil, fmt.Errorf("编码工具 %s 的输入结构: %w", tool.Name, marshalErr)
-			}
-			_, err = queries.UpsertTool(ctx, sqlc.UpsertToolParams{
-				ConnectorID: c.String("id"), CredentialID: cred.String("id"),
-				Name: tool.Name, Description: tool.Description, InputSchema: schema,
-				ConfigRevision: c.Int("config_revision"),
-				Enabled:        true,
-				EnableExisting: c.String("ownership_type") == "user",
-			})
-		}
 	}
 	if err == nil {
 		if cred == nil {
