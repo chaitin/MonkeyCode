@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -344,7 +345,17 @@ func (s *Service) deleteKB(ctx context.Context, actor, id, match string, persona
 	if err = resource.Audit(ctx, tx, actor, "kb", id, "delete"); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	if cleaner, ok := s.storage.(interface {
+		DeletePrefix(context.Context, string) error
+	}); ok {
+		if err = cleaner.DeletePrefix(ctx, assetPrefix(id)); err != nil {
+			slog.WarnContext(ctx, "知识库已删除，图片目录清理失败", "kb_id", id, "error", err)
+		}
+	}
+	return nil
 }
 
 func (s *Service) SetEnabled(ctx context.Context, actor, id, match string, enabled bool) (resource.Object, error) {

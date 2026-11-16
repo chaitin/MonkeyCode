@@ -263,6 +263,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings)
 	experts := expert.NewService(store).WithStorage(storage)
 	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
+
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
@@ -332,7 +333,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	}
 	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
-	resourceImports.WithDesignCatalog(designs)
+	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	endpoints.RegisterAdmin(admin)
@@ -353,8 +354,18 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
+
 	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
+	router.With(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "" {
+				identities.RequireAgent(next).ServeHTTP(w, r)
+			} else {
+				identities.RequireBrowser(next).ServeHTTP(w, r)
+			}
+		})
+	}).Get("/api/kb/{id}/assets/{name}", knowledgeBases.ServeAsset)
 	router.NotFound(web.NotFound)
 	router.MethodNotAllowed(web.MethodNotAllowed)
 	engineHosts.Register(router)

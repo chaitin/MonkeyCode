@@ -1050,6 +1050,24 @@ func (q *Queries) PageKbResources(ctx context.Context, dollar_1 []byte) ([][]byt
 	return items, nil
 }
 
+const resolveKbImportTag = `-- name: ResolveKbImportTag :one
+INSERT INTO tags(name,created_by_user_id) VALUES($1,$2)
+ON CONFLICT (lower(name)) WHERE deleted_at IS NULL
+DO UPDATE SET name=tags.name RETURNING id::text
+`
+
+type ResolveKbImportTagParams struct {
+	Name            string
+	CreatedByUserID string
+}
+
+func (q *Queries) ResolveKbImportTag(ctx context.Context, arg ResolveKbImportTagParams) (string, error) {
+	row := q.db.QueryRow(ctx, resolveKbImportTag, arg.Name, arg.CreatedByUserID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const searchKbChunksLexical = `-- name: SearchKbChunksLexical :many
 SELECT jsonb_build_object(
     'kb_id', c.kb_id,

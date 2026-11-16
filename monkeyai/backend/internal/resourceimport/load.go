@@ -16,6 +16,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -38,6 +39,7 @@ type loadedImport struct {
 	sha        string
 	cleanup    func()
 	tx         pgx.Tx
+	knowledge  *kb.ImportPackage
 	design     *designcatalog.Package
 	inspection designcatalog.Inspection
 	sections   []string
@@ -198,6 +200,17 @@ func (s *Service) loadImport(w http.ResponseWriter, r *http.Request) (loaded loa
 				slog.Error("关闭资源失败", "module", "resourceimport", "operation", "loadImport", "error", err)
 			}
 			previous()
+		}
+	}
+	if containsSection(loaded.sections, "knowledge") {
+		if s.knowledge == nil {
+			err = resource.Invalid("知识库导入服务未配置")
+			return
+		}
+		loaded.knowledge, err = kb.ParseImportPackage(reader, size)
+		if err != nil {
+			err = resource.Invalid("知识库资源包无效: " + err.Error())
+			return
 		}
 	}
 	if containsSection(loaded.sections, "agent") {

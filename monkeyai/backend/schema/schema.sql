@@ -2071,3 +2071,7 @@ ALTER TABLE knowledge_base_documents ADD COLUMN updated_by_user_id uuid;
 ALTER TABLE knowledge_base_documents ADD COLUMN content_updated_at timestamptz;
 
 ALTER TABLE knowledge_bases ADD COLUMN avatar_s3_key text NOT NULL DEFAULT '';
+
+ALTER TABLE resource_import_sections DROP CONSTRAINT resource_import_sections_section_check;
+
+ALTER TABLE resource_import_sections ADD CONSTRAINT resource_import_sections_section_check CHECK (section IN ('agent','design','knowledge'));

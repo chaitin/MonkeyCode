@@ -107,6 +107,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
   const filteredChanges = preview?.changes.filter((item) => (typeFilter === "all" || item.type === typeFilter) && (actionFilter === "all" || (actionFilter === "changed" ? item.action !== "skip" : item.action === actionFilter))) ?? []
   const retired = preview?.changes.filter((item) => item.action === "retire").length ?? 0
   const design = designSummary(preview?.section_plans)
+  const knowledge = preview?.section_plans?.knowledge?.knowledge
   const allDone = Boolean(preview?.already_imported) || Boolean(result && successfulSections(result)) || Boolean(preview?.section_plans && Object.values(preview.section_plans).every((plan) => plan.already_imported))
   const selectSection = (section: ImportSection, checked: boolean) => {
     setSections((current) => checked ? [...current.filter((value) => value !== section), section] : current.filter((value) => value !== section))
@@ -163,7 +164,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
         setResult(outcome)
         setConfirmed(false)
         setStale(!successfulSections(outcome))
-        setNotice(outcome.warning ?? (successfulSections(outcome) ? "所选分区已导入，可继续处理其他分区或关闭。" : "部分分区导入失败；已成功的分区会保留，请重新预览后重试。"))
+        setNotice(outcome.warning ?? (successfulSections(outcome) ? "所选分区已导入。知识库正文将自动学习，请到知识库页面查看进度。" : "部分分区导入失败；已成功的分区会保留，请重新预览后重试。"))
         onChanged()
         return
       }
@@ -292,13 +293,13 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           <legend className="px-1 text-sm font-medium">导入分区</legend>
           {discovery.available_sections.map((section) => <div key={section} className="flex items-start gap-2 text-sm">
             <Checkbox id={`import-section-${section}`} checked={sections.includes(section)} disabled={!discovery.sections[section].supported} onCheckedChange={(checked) => selectSection(section, checked)} />
-            <label htmlFor={`import-section-${section}`} className="space-y-1"><span className="font-medium">{section === "agent" ? "Agent 资源" : "设计资源"}</span><p className="text-muted-foreground">{!discovery.sections[section].supported ? "此分区版本暂不支持，不会导入。" : section === "agent" ? "替换该发布者的完整 Agent 清单；缺失项经确认后停用，仍被其他发布者或自建专家引用的资源自动保留。" : "激活此包的设计快照，历史快照保留；不更改 Agent 资源。"}</p></label>
+            <label htmlFor={`import-section-${section}`} className="space-y-1"><span className="font-medium">{section === "agent" ? "Agent 资源" : section === "knowledge" ? "知识库" : "设计资源"}</span><p className="text-muted-foreground">{!discovery.sections[section].supported ? "此分区版本暂不支持，不会导入。" : section === "agent" ? "替换该发布者的完整 Agent 清单；缺失项经确认后停用，仍被其他发布者或自建专家引用的资源自动保留。" : section === "knowledge" ? "每次新导入都创建独立系统知识库并学习正文；同一个 ZIP 再次上传也会创建新库，已有库不受影响。" : "激活此包的设计快照，历史快照保留；不更改 Agent 资源。"}</p></label>
           </div>)}
           {!discovery.available_sections.length && <p role="status" className="text-sm text-muted-foreground">包内没有可导入的分区。</p>}
         </fieldset>}
         {result && <div className="space-y-2 rounded-lg border p-3" aria-live="polite">
           <p className="text-sm font-medium">{result.status === "succeeded" ? "所选分区导入成功" : result.status === "partial" ? "部分分区导入成功" : "所选分区导入失败"}</p>
-          {Object.entries(result.sections).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "agent" ? "Agent 资源" : "设计资源"}：{item.status === "succeeded" ? item.replayed ? "已导入，保留原结果" : "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all text-xs text-muted-foreground">源发布 ID：{item.result.release_id}</p>}{item.error && <p role="alert" className="text-destructive">{item.error.message}</p>}</div>)}
+          {Object.entries(result.sections).map(([section, item]) => <div key={section} className="text-sm"><span>{section === "agent" ? "Agent 资源" : section === "knowledge" ? "知识库" : "设计资源"}：{item.status === "succeeded" ? item.replayed ? "已导入，保留原结果" : "成功" : "失败"}</span>{item.result?.release_id && <p className="break-all text-xs text-muted-foreground">源发布 ID：{item.result.release_id}</p>}{item.error && <p role="alert" className="text-destructive">{item.error.message}</p>}</div>)}
         </div>}
         {(error || selectionError) && <p role="alert" className="break-words text-sm text-destructive">{error || selectionError}</p>}
         {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
@@ -310,7 +311,15 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           <Button type="button" loading={busy && phase !== "discarding"} disabled={busy || Boolean(selectionError) || (!files.length && upload?.status !== "ready")} onClick={() => { setSourceActionLabel(sourceButtonLabel); void run(false) }}>{sourceActionLabel ?? sourceButtonLabel}</Button>
         </DialogFooter>}
         {preview && <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="break-all font-medium">{design && !preview.sections?.includes("agent") ? `设计快照 / ${design.release_id}` : `${preview.publisher} / v${preview.version}`}</h2><span className="text-sm text-muted-foreground">Agent {preview.changes.length} 项{design ? ` · 设计 ${Object.values(design.counts).reduce((total, count) => total + count, 0)} 项` : ""}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="break-all font-medium">{knowledge && !preview.sections?.includes("agent") ? `知识库 / ${knowledge.release_id}` : design && !preview.sections?.includes("agent") ? `设计快照 / ${design.release_id}` : `${preview.publisher} / v${preview.version}`}</h2><span className="text-sm text-muted-foreground">Agent {preview.changes.length} 项{design ? ` · 设计 ${Object.values(design.counts).reduce((total, count) => total + count, 0)} 项` : ""}</span></div>
+          {knowledge && <section className="flex flex-col gap-3 rounded-lg border p-4" aria-label="知识库预览">
+            <h3 className="font-medium">知识库</h3>
+            <p className="text-sm text-muted-foreground">每次新导入都创建独立知识库，同一个 ZIP 再次上传也会创建新库。新库仅管理员可见，可在知识库页面设置授权。</p>
+            <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">{knowledge.changes.map((item) => <div key={item.slug} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>{item.name}</span><Badge variant="outline">新增 · 文档 {item.documents} · 文件夹 {item.folders} · 图片 {item.images ?? 0}</Badge>
+            </div>)}</div>
+            <p className="text-sm text-muted-foreground">导入提交后自动学习，学习完成后可检索；图片和附件仍依赖源站。</p>
+          </section>}
           {design && <section className="space-y-3 rounded-lg border p-4" aria-label="设计快照预览">
             <div className="space-y-1 text-sm"><h3 className="font-medium">设计快照</h3><p className="break-all text-muted-foreground">发布者：{design.publisher_id}</p><p className="break-all text-muted-foreground">源发布 ID：{design.release_id}</p></div>
             <div className="flex flex-wrap gap-2">{([["template", "模板"], ["design-system", "设计系统"], ["style", "风格"], ["direction", "方向"]] as const).map(([kind, label]) => <Badge key={kind} variant="outline">{label} {design.counts[kind]}</Badge>)}</div>
@@ -344,7 +353,7 @@ export function ResourceImportDialog({ initialUpload, onClose, onChanged, onImpo
           {retired > 0 && <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm">本次将停用 {retired} 项资源，请核对上方停用明细。恢复资源时，仍有效的旧授权或凭证可能重新生效。</p>}
           {!allDone && <>
             {needsNormalization && <div className="flex items-start gap-2 text-sm"><Checkbox id="import-normalization" disabled={busy} checked={normalization} onCheckedChange={setNormalization} /><label htmlFor="import-normalization">我已确认上述技能 frontmatter 规范化</label></div>}
-            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用；仍被其他发布者或自建专家引用的资源将保留。"}</label></div>
+            <div className="flex items-start gap-2 text-sm"><Checkbox id="import-final" disabled={busy || stale} checked={confirmed} onCheckedChange={setConfirmed} /><label htmlFor="import-final">{sections.includes("knowledge") ? "我确认导入所选分区；每次新导入都创建独立系统知识库，不覆盖已有内容，正文自动学习。" : sections.includes("agent") && sections.includes("design") ? "我确认替换完整 Agent 清单并激活设计快照；两个分区分别保存结果。" : sections.includes("design") ? "我确认激活此设计快照，保留历史快照和现有 Agent 资源。" : "我确认这是该发布者的完整 Agent 集合，缺失项将被停用；仍被其他发布者或自建专家引用的资源将保留。"}</label></div>
           </>}
           <DialogFooter className="flex-wrap">
             <Button type="button" variant="outline" loading={phase === "discarding"} disabled={busy} onClick={() => { void restart() }}>重新选择</Button>

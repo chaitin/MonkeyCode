@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,4 +102,24 @@ func (s *S3) Ping(ctx context.Context) error {
 	_, s.checkErr = s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket})
 	s.checked = time.Now()
 	return s.checkErr
+}
+
+// DeletePrefix removes all objects below an explicit directory prefix.
+func (s *S3) DeletePrefix(ctx context.Context, prefix string) error {
+	if prefix == "" || !strings.HasSuffix(prefix, "/") {
+		return errors.New("对象清理需要明确的目录前缀")
+	}
+	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: &s.bucket, Prefix: &prefix})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		for _, object := range page.Contents {
+			if err := s.Delete(ctx, aws.ToString(object.Key)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
