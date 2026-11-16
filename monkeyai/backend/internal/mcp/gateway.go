@@ -30,7 +30,7 @@ type SessionResolver interface {
 	EnsureSession(context.Context, string, string, string, string) error
 }
 
-type Invocation struct{ UserID, ConnectorID, CredentialID, ToolID, SessionID, IdempotencyKey, RequestHash string }
+type Invocation struct{ UserID, ConnectorID, CredentialID, ToolID, ToolName, SessionID, IdempotencyKey, RequestHash string }
 type InvocationResult struct {
 	Known             bool
 	Result, ErrorCode string
@@ -178,18 +178,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			return
 		}
 	}
-	headers, credential, err := s.headers(r.Context(), connector, credential)
-	if err != nil {
-		rpcFail(r.Context(), w, in.ID, err)
-		return
-	}
-	if in.Method == "tools/list" && connector.String("authorization_mode") == "independent" {
-		if _, err := s.testConnection(r.Context(), connector, credential, user, false); err != nil {
-			rpcFail(r.Context(), w, in.ID, err)
-			return
-		}
-	}
-	tools, err := credentialTools(r.Context(), s.Store.Pool, connector, credential, false)
+	tools, err := s.liveTools(r.Context(), s.Store.Pool, connector, credential, false)
 	if err != nil {
 		rpcFail(r.Context(), w, in.ID, err)
 		return
@@ -240,6 +229,11 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			}
 		}
 	}
+	headers, credential, err := s.headers(r.Context(), connector, credential)
+	if err != nil {
+		rpcFail(r.Context(), w, in.ID, err)
+		return
+	}
 	h, err := s.clientFor(r.Context(), connector.String("proxy_id"))
 	if err != nil {
 		slog.WarnContext(r.Context(), "操作失败", "module", "mcp", "operation", "invoke", "error", err)
@@ -254,7 +248,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 		return
 	}
 	defer remote.close()
-	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), SessionID: sessionID, IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": sessionID})})
+	id, err := billing.Begin(r.Context(), Invocation{UserID: user, ConnectorID: connector.String("id"), CredentialID: credential.String("id"), ToolID: tool.String("id"), ToolName: name, SessionID: sessionID, IdempotencyKey: r.Header.Get("Idempotency-Key"), RequestHash: resource.Hash(resource.Object{"connector": connector.String("id"), "credential": credential.String("id"), "params": params, "session_id": sessionID})})
 	if err != nil {
 		rpcFail(r.Context(), w, in.ID, err)
 		return

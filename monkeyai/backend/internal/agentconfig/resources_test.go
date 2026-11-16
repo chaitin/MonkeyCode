@@ -75,20 +75,9 @@ func TestKnowledgeBaseConnectorCatalog(t *testing.T) {
 	if gateway.String("url") != "https://example.com/mcp/kb" || gateway.String("transport") != "streamable_http" || gateway.String("authentication") != "api_key" || gateway.String("required_scope") != "mcp:invoke" {
 		t.Fatalf("unexpected gateway: %v", gateway)
 	}
-	tools, _ := dto["tools"].([]resource.Object)
-	names := map[string]bool{}
-	for _, tool := range tools {
-		if tool["input_schema"] == nil {
-			t.Fatalf("tool schema missing: %v", tool)
+	for _, key := range []string{"tools", "tools_version"} {
+		if _, ok := dto[key]; ok {
+			t.Fatalf("知识库连接器目录不应内嵌 %s: %v", key, dto)
 		}
-		names[tool.String("name")] = true
-	}
-	for _, name := range []string{"kb_list", "kb_list_documents", "kb_get_document", "kb_create_document", "kb_update_document", "kb_delete_document", "kb_search"} {
-		if !names[name] {
-			t.Fatalf("tool %s missing from catalog: %v", name, names)
-		}
-	}
-	if dto.String("tools_version") == "" {
-		t.Fatal("tools_version must be set")
 	}
 }

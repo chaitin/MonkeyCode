@@ -872,19 +872,19 @@ ON CONFLICT (job_id,created_at) DO UPDATE SET status=EXCLUDED.status, output_dur
 
 -- name: ToolPricing :one
 SELECT
-    t.name,
-    t.credits_per_call::text,
+    COALESCE(t.name, sqlc.arg(tool_name)::text)::text AS name,
+    COALESCE(t.credits_per_call, 0)::text AS credits_per_call,
     c.authorization_mode,
     c.ownership_type
-FROM
-    mcp_tools t
-    JOIN connectors c ON c.id = t.connector_id
-WHERE
-    t.id = sqlc.arg(id)
-    AND c.id = sqlc.arg(connector_id)
-    AND t.enabled
-    AND t.deleted_at IS NULL
-    AND c.deleted_at IS NULL;
+FROM connectors c
+LEFT JOIN mcp_tools t ON t.connector_id = c.id
+    AND c.authorization_mode <> 'independent' AND t.deleted_at IS NULL
+    AND ((sqlc.arg(tool_name)::text <> '' AND t.name = sqlc.arg(tool_name)::text
+        AND t.credential_id IS NOT DISTINCT FROM NULLIF(sqlc.arg(credential_id)::text, '')::uuid)
+        OR (sqlc.arg(tool_name)::text = '' AND t.id = sqlc.arg(id)::uuid))
+WHERE c.id = sqlc.arg(connector_id) AND c.enabled AND c.deleted_at IS NULL
+    AND COALESCE(t.enabled, true)
+    AND (t.id IS NOT NULL OR sqlc.arg(tool_name)::text <> '');
 
 -- name: CreateTransaction :execresult
 INSERT INTO billing_transactions (id, user_id, account_id, session_id, category, resource_id, connector_id, item_name,

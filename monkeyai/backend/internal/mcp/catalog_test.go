@@ -83,7 +83,7 @@ func TestSystemToolsEnabledByDefault(t *testing.T) {
 				}
 			}
 			first := resource.Object(items[0].(map[string]any))
-			f.call("PATCH", path+"/tools/"+first.String("id"), resource.Object{"enabled": false, "credits_per_call": "0"}, "owner", "", 200)
+			f.call("PATCH", path+"/tools/"+first.String("id"), resource.Object{"name": first["name"], "enabled": false, "credits_per_call": "0"}, "owner", "", 200)
 			additional.Store(true)
 			f.call("POST", path+"/test", nil, "owner", "", 200)
 			items = f.call("GET", path+"/tools", nil, "owner", "", 200)["items"].([]any)
@@ -170,8 +170,11 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 					t.Fatalf("Agent 连接器描述 = %q", catalog.String("description"))
 				}
 				credentials := catalog["credentials"].([]resource.Object)
-				if len(credentials) != 1 || len(credentials[0]["tools"].([]resource.Object)) != want {
-					t.Fatal("用户目录中的工具与凭证工具接口不一致")
+				if len(credentials) != 1 {
+					t.Fatal("用户目录中的凭证数量错误")
+				}
+				if _, ok := credentials[0]["tools"]; ok {
+					t.Fatal("用户目录不应内嵌工具")
 				}
 				body, _ := json.Marshal(resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 				r := httptest.NewRequest("POST", "/mcp/connectors/"+c.String("id")+"/credentials/"+cred.String("id"), bytes.NewReader(body))
@@ -192,9 +195,9 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 			authorize()
 			items := check(1)
 			tool := items[0].(map[string]any)
-			f.call("PATCH", "/admin/connectors/"+c.String("id")+"/tools/"+tool["id"].(string), resource.Object{"enabled": false, "credits_per_call": "0"}, "owner", "", 200)
+			f.call("PATCH", "/admin/connectors/"+c.String("id")+"/tools/"+tool["id"].(string), resource.Object{"name": tool["name"], "enabled": false, "credits_per_call": "0"}, "owner", "", 400)
 			authorize()
-			check(0)
+			check(1)
 		})
 	}
 }

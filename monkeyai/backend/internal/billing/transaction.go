@@ -17,13 +17,13 @@ import (
 )
 
 type Request struct {
-	UserID, ResourceID, ConnectorID, SessionID, Category string
-	IdempotencyKey, RequestHash                          string
-	OutputLimit                                          int64
-	ImageUnitPrice                                       Amount
-	ImageCount                                           int64
-	VideoUnitPrice                                       Amount
-	VideoMaxDurationMs                                   int64
+	UserID, ResourceID, ConnectorID, CredentialID, SessionID, Category, ToolName string
+	IdempotencyKey, RequestHash                                                  string
+	OutputLimit                                                                  int64
+	ImageUnitPrice                                                               Amount
+	ImageCount                                                                   int64
+	VideoUnitPrice                                                               Amount
+	VideoMaxDurationMs                                                           int64
 }
 type Reservation struct {
 	ID string
@@ -191,9 +191,9 @@ func (s *Service) Begin(ctx context.Context, r Request) (Reservation, error) {
 	case "tool":
 		var credits, auth string
 		var row sqlc.ToolPricingRow
-		row, err = sqlc.New(tx).ToolPricing(ctx, sqlc.ToolPricingParams{ID: r.ResourceID, ConnectorID: r.ConnectorID})
+		row, err = sqlc.New(tx).ToolPricing(ctx, sqlc.ToolPricingParams{ID: r.ResourceID, ConnectorID: r.ConnectorID, CredentialID: r.CredentialID, ToolName: r.ToolName})
 		if err == nil {
-			item, credits, auth = row.Name, row.TCreditsPerCall, row.AuthorizationMode
+			item, credits, auth = row.Name, row.CreditsPerCall, row.AuthorizationMode
 		}
 		if err != nil {
 			return Reservation{}, err

@@ -435,9 +435,8 @@ func TestRefreshFailure(t *testing.T) {
 	if err != nil || current.String("oauth_refresh_token") != "" || current.Int("revision") != 2 {
 		t.Fatal("失效刷新凭证未清理或未递增版本")
 	}
-	var count int
-	if err = f.pool.QueryRow(ctx, `SELECT count(*) FROM mcp_tools WHERE credential_id=$1 AND deleted_at IS NULL`, id).Scan(&count); err != nil || count != 0 {
-		t.Fatal("无效凭证仍保留工具目录")
+	if _, err = f.service.Tools(ctx, f.pool, c, f.users["owner"], id, false); err != authorizationRequired {
+		t.Fatalf("无效凭证不应使用历史工具记录: %v", err)
 	}
 }
 

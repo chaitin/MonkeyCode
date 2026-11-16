@@ -212,9 +212,6 @@ func (s *Service) persistCredential(ctx context.Context, tx pgx.Tx, in resource.
 		return false, err
 	}
 	if input.Headers != nil {
-		if _, err = q.InvalidateTools(ctx, sqlc.InvalidateToolsParams{ConnectorID: c.String("id"), CredentialID: data.String("id")}); err != nil {
-			return false, err
-		}
 		change.testID = data.String("id")
 	}
 	return true, resource.Audit(ctx, tx, in.String("actor_id"), "connector_credential", data.String("id"), "save")

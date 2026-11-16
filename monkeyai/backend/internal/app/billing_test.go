@@ -425,7 +425,9 @@ func TestBillingIntegration(t *testing.T) {
 		if mode == "centralized" {
 			cost = "2.5"
 		}
-		must("PATCH", path+"/tools/"+tool.String("id"), resource.Object{"enabled": true, "credits_per_call": cost}, "")
+		if mode != "independent" {
+			must("PATCH", path+"/tools/"+tool.String("id"), resource.Object{"name": tool["name"], "enabled": true, "credits_per_call": cost}, "")
+		}
 		for _, failed := range []bool{false, true} {
 			_, _, h := call("POST", gateway, resource.Object{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": resource.Object{"name": "search", "arguments": resource.Object{"fail": failed}}}, key, "")
 			id := h.Get("X-Billing-Transaction-ID")
@@ -450,8 +452,7 @@ func TestBillingIntegration(t *testing.T) {
 			second := must("POST", "/api/v1/connectors/"+connector.String("id")+"/credentials", resource.Object{"name": "第二份", "http_headers": resource.Object{"X-Test": "second"}}, "")
 			cp := "/connectors/" + connector.String("id") + "/credentials/" + second.String("id")
 			must("POST", "/api/v1"+cp+"/test", nil, "")
-			two := must("GET", "/api/admin/v1"+cp+"/tools", nil, "")["items"].([]any)[0].(map[string]any)
-			must("PATCH", path+"/tools/"+two["id"].(string), resource.Object{"enabled": true, "credits_per_call": "0"}, "")
+			must("GET", "/api/admin/v1"+cp+"/tools", nil, "")
 			before := toolCalls.Load()
 			code, _, _ = call("POST", "/mcp"+cp, request, key, "cross-credential")
 			if code != 409 || toolCalls.Load() != before {

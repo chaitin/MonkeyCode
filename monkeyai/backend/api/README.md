@@ -189,7 +189,7 @@ Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `u
 
 模型、规则、技能、Connector 和专家的公开回包统一使用 `user: {id, name, email}`，移除 `owner_user_id` 和 `owner_name`。系统资源的 user 表示创建者，个人资源表示所有者。客户端使用 `ownership_type` 和 `user.id` 判断归属；姓名或邮箱变化会更新资源目录版本。数据库归属外键继续用于服务端权限校验。
 
-凭证响应（含 `credentials` 和管理端工具上下文）也使用 `user: {id, name, email}`，不再返回 `user_id`。这里是凭证所属的平台用户，不是 Connector 所有者或上游 OAuth 账户；集中凭证返回 `user: null`。Connector、凭证和专家解析均移除 `tools_path`，直接读取返回的 `tools`；单独查看工具或测试仍可请求下述 REST 接口。
+凭证响应（含 `credentials` 和管理端工具上下文）也使用 `user: {id, name, email}`，不再返回 `user_id`。这里是凭证所属的平台用户，不是 Connector 所有者或上游 OAuth 账户；集中凭证返回 `user: null`。Connector 目录、凭证目录、专家 manifest 和资源解析均不返回 `tools`、`tools_version` 或 `tools_path`。工具定义统一通过下述实时 REST 接口或 MCP `tools/list` 获取。
 
 ## MCP 代理
 
@@ -203,7 +203,7 @@ API Key 通过全局 `POST /api/v1/api-keys` 创建，负责认证调用用户�
 
 集中和独立认证的每份凭证都有独立地址；认证连接省略凭证 ID 时返回 `400 credential_selection_required`。集中凭证仅供有该连接使用权的用户调用，独立凭证还必须属于调用用户。免认证仍需平台 API Key 和连接使用权。请求 `/mcp` 返回 404。
 
-`GET /api/v1/connectors`、专家清单和资源 resolve 提供工具及 `mcp_gateway`。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
+`GET /api/v1/connectors`、专家清单和资源 resolve 仅提供连接配置、凭证状态及 `mcp_gateway`，不内嵌工具目录。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
 
 ```json
 {
@@ -245,9 +245,9 @@ Accept: application/json, text/event-stream
 
 随后发送无 ID 的 `notifications/initialized`，再使用 `tools/list` 和 `tools/call`。后续请求携带协商得到的 `MCP-Protocol-Version`。`tools/list` 仅返回地址对应凭证下当前启用的工具，`tools/call.params.name` 使用该列表返回的上游原始工具名。不同凭证可拥有同名工具，由 URL 区分；客户端自行管理多个 MCP Server 的命名空间。列表不接受非空分页游标；调用参数和有效结果保留原始数值精度、`_meta` 和 `structuredContent`。
 
-专家工具允许/排除列表用于生成专家资源清单，由 Agent 按清单挂载工具。代理校验用户的连接和凭证访问权及实时工具启停状态；请求中没有专家身份上下文，专家清单的过滤不构成代理授权边界。
+专家清单保留工具允许／排除规则，Agent 在获取实时工具目录后应用规则并挂载工具。代理校验用户的连接和凭证访问权及实时工具启停状态；请求中没有专家身份上下文，专家清单的过滤不构成代理授权边界。
 
-用户自定义 MCP（`ownership_type: user`）及独立认证 MCP（`authorization_mode: independent`）成功发现的新工具自动启用，用户认证完成后可直接从凭证工具接口、Agent 目录和 MCP `tools/list` 读取。系统 MCP 的集中认证及免认证新工具仍需管理员启用；重复发现保留系统工具已有的启停与积分配置，包括管理员明确禁用的工具。
+REST 工具接口及所有认证模式的 MCP `tools/list` 均实时发现远端工具，不回退旧目录。独立认证不读取或持久化 `mcp_tools`，工具默认可用。无认证／集中认证只读取本地工具开关及集中认证单价；没有配置记录时默认开启、单价为零。查询和连接测试均不创建工具记录。管理员首次通过 `PATCH /api/admin/v1/connectors/{id}/tools/{toolID}` 保存配置时需同时提交工具 `name`，随后可继续使用返回的稳定 ID 更新。数据库历史目录记录不清理，但描述和 Schema 不再用于回包；独立认证忽略历史工具配置。连接器详情不再返回基于旧目录计算的 `tool_count`、`enabled_tool_count`。
 
 入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
 
@@ -259,17 +259,17 @@ Accept: application/json, text/event-stream
 
 OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 `{MONKEYAI_PUBLIC_URL}/oauth/connectors/{id}/callback`，其中 `id` 为 Connector 实例 ID。非 OAuth 连接返回空字符串。创建后将此完整地址登记到第三方 OAuth 应用；每个 Connector 使用自己的地址。
 
-`POST /api/admin/v1/connectors/{id}/oauth/authorizations`（集中认证）或 `POST /api/v1/connectors/{id}/oauth/authorizations`（独立认证）请求体为 `{"name":"凭证名称"}`，生成带 state 和 PKCE 的授权 URL，`redirect_uri` 与 `callback_url` 一致。浏览器回调无需登录凭据，服务端核验路径 id、state、事务有效期、发起人权限和配置版本，单次消费后交换 Token，并按集中或独立认证上下文保存。保存凭证后服务端自动测试 MCP 连接并更新工具列表，完成测试尝试后授权状态才变为 `succeeded`。成功页面提示返回 MonkeyAI，发起端通过授权事务状态接口查询结果；连接测试失败不撤销已保存的认证，凭证的 `connection_status` 和 `last_error` 记录测试结果。
+`POST /api/admin/v1/connectors/{id}/oauth/authorizations`（集中认证）或 `POST /api/v1/connectors/{id}/oauth/authorizations`（独立认证）请求体为 `{"name":"凭证名称"}`，生成带 state 和 PKCE 的授权 URL，`redirect_uri` 与 `callback_url` 一致。浏览器回调无需登录凭据，服务端核验路径 id、state、事务有效期、发起人权限和配置版本，单次消费后交换 Token，并按集中或独立认证上下文保存。保存凭证后服务端自动测试 MCP 连接与工具发现，不保存工具目录，完成测试尝试后授权状态才变为 `succeeded`。成功页面提示返回 MonkeyAI，发起端通过授权事务状态接口查询结果；连接测试失败不撤销已保存的认证，凭证的 `connection_status` 和 `last_error` 记录测试结果。
 
 原有 OAuth 应用需将统一的 `/oauth/connectors/callback` 更新为各 MCP 的专属地址，再重新发起授权。
 
 
 ## Connector 多凭证
 
-独立认证连接目录返回当前用户的 `credentials`，每份包含名称、认证状态、测试状态、工具目录和以 `/mcp` 开头的专属凭证网关。连接本身不合并目录，也不返回隐式网关。凭证不包含上游账户身份，名称由用户填写，不获取 `sub` 或 UserInfo。
+独立认证连接目录返回当前用户的 `credentials`，每份包含名称、认证状态、测试状态和以 `/mcp` 开头的专属凭证网关，不包含工具目录。连接本身不合并目录，也不返回隐式网关。凭证不包含上游账户身份，名称由用户填写，不获取 `sub` 或 UserInfo。
 
 - 添加 Header：`POST /api/v1/connectors/{id}/credentials`，提交 `name` 和 `http_headers`，返回 `201` 和凭证 ETag。服务端在保存后自动测试连接并发现工具，响应包含最新测试状态；失败保留已保存凭证，可通过 `POST .../credentials/{credential_id}/test` 重试。
-- 改名/替换：`PATCH .../credentials/{credential_id}`，携带凭证 `If-Match`。未提交 Header 时保留原值，提交时整组替换、失效原目录，并自动重新测试和发现工具。仅改名不触发测试。Header 值只写不读。
+- 改名/替换：`PATCH .../credentials/{credential_id}`，携带凭证 `If-Match`。未提交 Header 时保留原值，提交时整组替换，并自动重新测试和发现工具，不保存目录。仅改名不触发测试。Header 值只写不读。
 - 重新授权：`POST .../credentials/{credential_id}/oauth/authorizations`，携带凭证 `If-Match`；只替换此 ID。添加 OAuth 每次成功产生新 ID，不按用户或 Token 去重。
 - 查询授权：`GET /api/v1/connector-authorizations/{id}`，状态为 `pending/processing/succeeded/failed/expired`；成功返回 `credential_id`，此时服务端已完成自动连接测试尝试，可直接读取凭证测试状态和工具目录。只有发起人可以查询。
 - 撤销：`DELETE .../credentials/{credential_id}`，携带凭证 `If-Match`；后续调用及旧回调不能恢复该凭证。OAuth 后台在启动时和每 15 秒检查一次，提前 30 秒使用 Refresh Token 自动续期；调用前仍检查有效期。并发刷新复用同一结果，刷新令牌轮换会保存新值，未返回新值时保留原值，自动刷新不改变人工 revision 或工具目录。上游明确返回 `invalid_grant` 时要求重新授权，临时故障保留凭证并在后续扫描重试。
@@ -307,9 +307,9 @@ OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 
 {"credential_id":"选中凭证 UUID","connection_status":"connected","tool_count":2}
 ```
 
-免认证的 `credential_id` 为空字符串。上游测试失败返回 502 和脱敏错误，凭证仍保留，最近测试状态记录为 error。查看工具仅读取已发现目录，返回 `{"items":[...]}`；每项包含 `id`、上游 `name`、`description`、`input_schema`、`enabled` 和 `credits_per_call`。
+免认证的 `credential_id` 为空字符串。上游测试失败返回 502 和脱敏错误，凭证仍保留，最近测试状态记录为 error。查看工具每次实时发现上游目录，失败直接返回错误；成功返回 `{"items":[...]}`；每项包含 `id`、上游 `name`、`description`、`input_schema`、`enabled` 和 `credits_per_call`。
 
-MCP Inspector 等标准 MCP 客户端单独调试时，复用全局创建的 `mcp:invoke` API Key，选择 Streamable HTTP，地址填写选中凭证的 `mcp_gateway.url`，Header 配置为 `Authorization: Bearer <api_key>`。更换凭证时切换地址，Key 可以继续使用。按上面的握手流程连接后，`tools/list` 仅返回该地址下可用的工具，`tools/call` 使用列表返回的工具名称。`ping` 仅检查网关是否响应，`tools/list` 读取已发现目录；验证上游可达性和刷新目录仍使用 REST `/test`。
+MCP Inspector 等标准 MCP 客户端单独调试时，复用全局创建的 `mcp:invoke` API Key，选择 Streamable HTTP，地址填写选中凭证的 `mcp_gateway.url`，Header 配置为 `Authorization: Bearer <api_key>`。更换凭证时切换地址，Key 可以继续使用。按上面的握手流程连接后，`tools/list` 仅返回该地址下可用的工具，`tools/call` 使用列表返回的工具名称。`ping` 仅检查网关是否响应，`tools/list` 每次实时发现工具；REST `/test` 用于显式检查并保存最近连接测试状态，不再维护目录缓存。
 
 ## 宿主安装接入
 

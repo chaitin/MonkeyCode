@@ -13,7 +13,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/logging"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp/sqlc/connector"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/jackc/pgx/v5"
@@ -50,9 +49,6 @@ func (s *Service) ensureOAuthClient(ctx context.Context, tx pgx.Tx, c resource.O
 	if o.ClientID != "" {
 		// 更换客户端后，旧凭证及未完成授权不能使用新客户端的密钥。
 		revision++
-		if err = sqlc.New(tx).InvalidateConnectorTools(ctx, c.String("id")); err != nil {
-			return err
-		}
 	}
 	o.ClientID, o.TokenAuthMethod, o.ClientSecretExpiresAt = registered.ClientID, registered.Method, registered.SecretExpires
 	data, err := json.Marshal(resource.Object{"id": c.String("id"), "oauth_config": o, "oauth_client_secret": registered.Secret, "config_revision": revision})

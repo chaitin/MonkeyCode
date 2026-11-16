@@ -225,7 +225,7 @@ func TestCatalogOAuthExpirationETag(t *testing.T) {
 				}
 			} else if after.Code != 200 || after.Header().Get("ETag") == etag ||
 				!strings.Contains(after.Body.String(), `"authorization_status":"authorization_required"`) ||
-				strings.Contains(after.Body.String(), `"mcp_gateway"`) {
+				strings.Contains(after.Body.String(), "/mcp/connectors/"+connector+"/credentials/") {
 				t.Fatalf("凭证过期后目录状态不正确: status=%d body=%s", after.Code, after.Body.String())
 			}
 		})

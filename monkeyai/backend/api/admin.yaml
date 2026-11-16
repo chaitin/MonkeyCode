@@ -4800,13 +4800,14 @@ paths:
   /api/admin/v1/connectors/{id}/tools/{toolID}:
     patch:
       summary: 配置工具启停和积分
+      description: 仅无认证／集中认证支持本地工具配置。查询工具不会创建配置记录；首次保存时须提交工具 name 和工具查询返回的 ID。未配置默认开启、单价为零，仅集中认证允许非零单价。
       responses:
         '200':
           description: 配置工具启停和积分
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MCPTool'
+                $ref: '#/components/schemas/MCPToolSetting'
         '400':
           $ref: '#/components/responses/ResourceError400'
         '401':
@@ -4832,6 +4833,11 @@ paths:
             schema:
               type: object
               properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                  description: 首次创建工具配置必填；更新已有配置时可省略。
                 enabled:
                   type: boolean
                 credits_per_call:
@@ -4896,7 +4902,8 @@ paths:
       description: 独立认证必须使用包含 credential_id 的接口，否则返回 400 credential_selection_required。连接级工具适用于 none / centralized；集中测试仅限管理员。
   /api/admin/v1/connectors/{id}/tools:
     get:
-      summary: 读取认证上下文的工具目录
+      summary: 实时读取认证上下文的工具目录
+      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证不读取或持久化工具配置。响应为 private, no-store，远端失败不返回旧目录。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -4934,7 +4941,6 @@ paths:
         schema:
           type: string
           format: uuid
-      description: 独立认证必须使用包含 credential_id 的接口，否则返回 400 credential_selection_required。连接级工具适用于 none / centralized；集中测试仅限管理员。
   /api/admin/v1/connectors/{id}/oauth/authorizations:
     parameters:
     - name: id
@@ -5200,7 +5206,8 @@ paths:
         format: uuid
   /api/admin/v1/connectors/{id}/credentials/{credential_id}/tools:
     get:
-      summary: 读取认证上下文的工具目录
+      summary: 实时读取认证上下文的工具目录
+      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证不读取或持久化工具配置。响应为 private, no-store，远端失败不返回旧目录。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -5232,7 +5239,6 @@ paths:
         '502':
           $ref: '#/components/responses/ResourceError502'
       parameters: []
-      description: 操作明确指定的凭证上下文；校验连接、凭证、当前用户和配置版本。管理端工具只读上下文允许查看系统连接用户工具，不能代用户测试。
     parameters:
     - name: id
       in: path
@@ -9176,6 +9182,14 @@ components:
       required:
       - code
       - blocking
+    MCPToolSetting:
+      type: object
+      required: [id, name, enabled, credits_per_call]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        enabled: {type: boolean}
+        credits_per_call: {type: number, minimum: 0}
     MCPTool:
       type: object
       properties:
@@ -9826,14 +9840,6 @@ components:
           type: boolean
         connection_status:
           type: string
-        tool_count:
-          type: integer
-          description: 集中认证统计当前有效凭证及配置版本下未删除的全部工具，包含未启用项。
-        enabled_tool_count:
-          type: integer
-          minimum: 0
-          readOnly: true
-          description: 集中认证当前有效凭证及配置版本下已启用且未删除的工具数量；其他认证方式为 0。
         credentials:
           type: array
           items:
