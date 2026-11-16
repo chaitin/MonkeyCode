@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["8Z56KX83T3.com.chaitin.monkeyai"],
+        "components": [
+          { "/": "/app-link/scan/" },
+          { "/": "/app-link/scan" }
+        ]
+      }
+    ]
+  }
+}

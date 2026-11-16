@@ -102,7 +102,7 @@ func TestPairingFlow(t *testing.T) {
 		t.Fatalf("创建响应无效: %+v %v", created, err)
 	}
 	payload, err := url.Parse(created.Payload)
-	if err != nil || payload.Scheme != "monkeyai-mobile" || payload.Host != "pair" || payload.Path != "/scan" {
+	if err != nil || payload.Scheme != "https" || payload.Host != "work.baizhi.cloud" || payload.Path != "/app-link/scan/" {
 		t.Fatalf("二维码地址错误: %s %v", created.Payload, err)
 	}
 	query := payload.Query()

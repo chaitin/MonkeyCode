@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.chaitin.monkeyai",
+      "sha256_cert_fingerprints": [
+        "52:BE:52:D9:30:49:AE:D9:2E:0D:C8:58:3A:C8:21:69:F2:F0:A6:E3:9F:A4:0C:E7:A2:8A:88:B4:E5:FE:FC:49"
+      ]
+    }
+  }
+]
