@@ -878,7 +878,7 @@ SELECT
     c.ownership_type
 FROM connectors c
 LEFT JOIN mcp_tools t ON t.connector_id = c.id
-    AND c.authorization_mode <> 'independent' AND t.deleted_at IS NULL
+    AND t.deleted_at IS NULL
     AND ((sqlc.arg(tool_name)::text <> '' AND t.name = sqlc.arg(tool_name)::text
         AND t.credential_id IS NOT DISTINCT FROM NULLIF(sqlc.arg(credential_id)::text, '')::uuid)
         OR (sqlc.arg(tool_name)::text = '' AND t.id = sqlc.arg(id)::uuid))
