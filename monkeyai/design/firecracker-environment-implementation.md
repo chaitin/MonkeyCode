@@ -97,6 +97,12 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 安装器默认值为系统盘20GiB、数据盘100GiB、逻辑池16TiB；物理空间critical/warning/recovery为2/4/8GiB，inode为1万/5万/10万，转换限16GiB/100万文件。通过 `--vm-config` JSON可调整容量、地址池、DNS、保护水位和限速；固定发行组件和中心服务例外由安装器生成。所有发行清单、内核及组件引用均需固定摘要，自检不通过不会改选其他驱动。
 
+## 完整本地发行目录
+
+完整双架构发行版本 `engine-03eadd05c9c44aa72cdce30172c85365` 已生成在 `.artifacts/firecracker-full-release/releases/engine-03eadd05c9c44aa72cdce30172c85365/`，包含原Docker/gVisor依赖、engine、installer及两架构VM包。`resources.tgz`大小346376123字节，SHA256为`0b7235e8791b3150ed2c5eac593e03417f0e034b6131fc5ed874dfc04eeed87c`，38项归档集合与摘要全部通过，固定版本根索引已生成。Pro对真实目录的复制、各架构基础宿主包生成和完整复核也通过。
+
+上述过程只执行本地构建和检查，`ENGINE_PUBLISH=false`；没有上传、目标宿主安装或部署。ARM64新开发镜像已本地构建为`monkeyai-environment:firecracker-dev-f227b878-arm64`，镜像ID为`sha256:5069ede392f8ce15e4455e0ab65df89c568364fc459ab67cc98578180adfa00a`。已检查init、mount、普通用户sudo、no-new-privileges阻止sudo，以及此新镜像中的真实runtime临时根目录准备／幂等激活。没有切换中心默认镜像，AMD64新开发镜像与KVM／完整安装验收仍是发布前置项。
+
 ## 后续阶段与阻断项
 
 - [x] 平台探测、候选优先级、失败分类、保留旧引擎及CLI接入。
@@ -109,4 +115,4 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 - [x] Pro安装器自动选择、默认配置保存、修复升级及回滚的代码与单元回归。
 - [ ] 双架构Linux真机、在线／离线安装和完整工作负载验收。
 
-默认容量和保护参数已给出可覆盖的实现值，正式支持矩阵仍需结合真实机器冻结。未完成完整双架构产物、KVM／jailer／工作负载／端到端安装验收和中断残留的完整自动修复前，不能宣称生产可用。没有发布、部署、线上数据库迁移、用户环境停机或真实账务操作。
+默认容量和保护参数已给出可覆盖的实现值，正式支持矩阵仍需结合真实机器冻结。未完成AMD64开发镜像、KVM／jailer／工作负载／端到端安装验收和中断残留的完整自动修复前，不能宣称生产可用。没有发布、部署、线上数据库迁移、用户环境停机或真实账务操作。
