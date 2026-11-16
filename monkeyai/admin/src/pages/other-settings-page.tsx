@@ -85,6 +85,7 @@ import { Switch } from "@/components/ui/switch"
 import { useSkillTags } from "@/hooks/use-skill-tags"
 import { api } from "@/lib/api"
 import { ProxySettings } from "@/components/proxy-settings"
+import { MCPNetworkSettings } from "@/components/mcp-network-settings"
 import { PaidLicenseCard } from "@/components/paid-license-card"
 import { AboutCard } from "@/components/about-card"
 import {
@@ -902,6 +903,7 @@ export function OtherSettingsPage() {
   return (
     <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
       <ProxySettings />
+      <MCPNetworkSettings />
       <Card>
         <CardHeader>
           <CardTitle>{t("pages.otherSettings.brandInfo.title")}</CardTitle>

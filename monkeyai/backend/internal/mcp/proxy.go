@@ -14,6 +14,7 @@ import (
 
 type checkedProxy struct {
 	address       string
+	network       NetworkSettings
 	skipTLSVerify bool
 }
 
@@ -26,10 +27,8 @@ func (p checkedProxy) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return nil, fmt.Errorf("无法解析连接目标")
 	}
-	for _, ip := range ips {
-		if ip.Zone() != "" || !allowedIP(ip) {
-			return nil, fmt.Errorf("目标地址不在允许范围内")
-		}
+	if err := checkIPs(req.Context(), ips, p.network); err != nil {
+		return nil, err
 	}
 	pinned := req.Clone(req.Context())
 	address := *req.URL
@@ -68,7 +67,7 @@ func setSkipTLSVerify(h *http.Client, skip bool) {
 }
 
 func (s *Service) clientFor(ctx context.Context, c resource.Object) (*http.Client, error) {
-	h := client()
+	h := client(s.network)
 	id := c.String("proxy_id")
 	if id == "" {
 		setSkipTLSVerify(h, c.Bool("skip_tls_verify"))
@@ -81,7 +80,7 @@ func (s *Service) clientFor(ctx context.Context, c resource.Object) (*http.Clien
 	if err != nil {
 		return nil, err
 	}
-	h.Transport = checkedProxy{address: address}
+	h.Transport = checkedProxy{address: address, network: s.network}
 	setSkipTLSVerify(h, c.Bool("skip_tls_verify"))
 	return h, nil
 }

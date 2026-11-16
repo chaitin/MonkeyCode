@@ -81,7 +81,7 @@ func TestUpgradeFrom14(t *testing.T) {
 		"21/u video_output_metadata_optional", "22/u video_poll_retry_limit", "23/u video_seedance_provider", "24/u remote_runtime", "25/u remote_runtime_access_version",
 		"26/u endpoint_platform_text", "31/u session_client_runtime_add",
 		"35/u billing_activity_lock_retry", "36/u user_profile_add", "37/u oauth_pairing", "38/u embedding_model", "39/u create_kb_tables", "40/u cloud_environments", "41/u kb_permissions",
-		"42/u mcp_live_tools", "43/u connector_skip_tls_verify",
+		"42/u mcp_live_tools", "43/u mcp_network_settings", "44/u connector_skip_tls_verify",
 	} {
 		index := strings.Index(output, migration)
 		if index <= last {
@@ -102,7 +102,7 @@ func TestUpgradeFrom14(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != latest || latest != 43 || dirty {
+	if version != latest || latest != 44 || dirty {
 		t.Fatalf("迁移状态错误: version=%d, dirty=%v", version, dirty)
 	}
 	var balance, frozen, description, origin, nameI18n string

@@ -2220,6 +2220,19 @@ export const zhCN = {
     },
     otherSettings: {
       about: "关于",
+      mcpNetwork: {
+        title: "MCP 网络访问",
+        description: "默认允许访问公网和私网，命中黑名单的地址始终拒绝访问。",
+        label: "IP 段黑名单",
+        hint: "使用 IPv4/IPv6 CIDR，例如 10.0.0.0/8、fd00::/8。单个 IP 使用 /32 或 /128。保存后对新的 MCP 和 OAuth 请求生效，包括代理请求。",
+        entry: "IP 段 {{index}}",
+        add: "添加 IP 段",
+        remove: "删除",
+        save: "保存",
+        cancel: "取消",
+        saved: "MCP 网络设置已保存",
+        empty: "未配置黑名单",
+      },
       proxies: {
         title: "系统代理",
         description:

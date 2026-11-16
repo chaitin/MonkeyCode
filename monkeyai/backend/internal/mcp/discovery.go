@@ -105,7 +105,7 @@ func metadataURLs(issuer, kind string) []string {
 }
 
 func discoverOAuth(ctx context.Context, target string) (oauthConfig, error) {
-	return discoverOAuthWithClient(ctx, target, client())
+	return discoverOAuthWithClient(ctx, target, client(nil))
 }
 
 func discoverOAuthWithClient(ctx context.Context, target string, h *http.Client) (oauthConfig, error) {

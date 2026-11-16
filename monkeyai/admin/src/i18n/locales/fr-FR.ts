@@ -1112,6 +1112,20 @@ export const frFR = {
     },
     otherSettings: {
       about: "À propos",
+      mcpNetwork: {
+        title: "Accès réseau MCP",
+        description:
+          "Les réseaux publics et privés sont autorisés par défaut. Les adresses bloquées sont toujours refusées.",
+        label: "Liste de blocage des plages IP",
+        hint: "Utilisez des CIDR IPv4/IPv6, comme 10.0.0.0/8 ou fd00::/8. Utilisez /32 ou /128 pour une seule IP. Les règles enregistrées s’appliquent aux nouvelles requêtes MCP et OAuth, y compris via proxy.",
+        entry: "Plage IP {{index}}",
+        add: "Ajouter une plage IP",
+        remove: "Supprimer",
+        save: "Enregistrer",
+        cancel: "Annuler",
+        saved: "Paramètres réseau MCP enregistrés",
+        empty: "Aucune plage IP bloquée",
+      },
       proxies: {
         title: "Proxys système",
         description:

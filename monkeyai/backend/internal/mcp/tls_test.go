@@ -173,7 +173,7 @@ func TestOAuthSkipTLSVerify(t *testing.T) {
 				} else if mode == "environment_proxy" {
 					proxy = func(*http.Request) (*url.URL, error) { return proxyURL, nil }
 				}
-				tokens, err := exchangeWithProxy(ctx, c, url.Values{"grant_type": {"client_credentials"}}, proxy)
+				tokens, err := exchangeWithProxy(ctx, c, url.Values{"grant_type": {"client_credentials"}}, proxy, nil)
 				if !skip {
 					if err == nil {
 						t.Fatal("未启用跳过校验的 OAuth 请求接受了自签名证书")
