@@ -129,6 +129,19 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 Linux原生ARM64在`umask 077`下使用真实systemd隔离执行通过OCI解包、whiteout、bootstrap、ext4生成及缓存复用验收，工具副本和内核读取权限回归也通过；未将该转换验证当作真实KVM工作负载验收。目标宿主运行文件与原环境未修改，需要新的engine发行才能生效。
 
+## 真实宿主完整启动验收与后续修复
+
+目标AMD64宿主已实际验证完整链路，最终独立实例`4157fde8-af6b-df3d-fc49-c18033cd0c1c`、实例标识`b8a8aad7-3a5f-1e56-a715-6d37ab9e98f5`通过KVM冷启动、vsock、guest、runtime 26.1114.1准备和版本核对；停止后再次冷启动，原实例及双盘复用通过，测试耗时38.86秒。该独立测试未进行用户登录授权（authorized=false），不把它描述为已验证客户端连接；测试实例按流程停止回收。原失败环境及中心默认镜像没有被改写。
+
+本轮真实镜像还暴露并修复以下问题：
+
+- 锁定umoci只接受OCI媒体类型。上游Docker v2清单先完成原始摘要、平台与DiffID校验，然后仅在私有副本中生成OCI清单；配置和层内容不变，模板身份仍绑定原始架构manifest摘要。
+- DynamicUser强制RestrictSUIDSGID，阻止恢复镜像内chage等文件的SUID/SGID。使用独立oneshot服务保留每任务动态UID租约，可信启动器在受限服务内降权后再执行解包程序；子进程仅保留文件元数据能力。无网络、只读根、NoNewPrivileges与输出/input不可执行约束保留。主写入cgroup确认退出后才释放身份，恢复逻辑同样遵守顺序。没有改用共享固定用户。
+- 原默认Docker镜像缺/sbin/init。基于同一原始镜像补齐systemd-sysv、sudo、mount及util-linux，独立兼容镜像摘要为`sha256:8656892d90bd1dc8b6f8ff1822f32f19221ec9100546e263e85295ed65ed285b`，没有替换中心默认镜像。干净转换模板SHA256为`d9ce4b1bbfb3f5cbea35225d872fe38e74faf15eba98651d3a687368687c873f`，无strace等诊断注入。
+- VM的/run挂载带nodev，原runtime准备逻辑在其中mknod创建/dev/null不可用，导致Go安装器无法启动账户查询进程而报service_account_unavailable。改为绑定VM现有/dev/null，显式设置临时目录、账户库和释放程序权限；只有固定安装子进程使用umask022，guest服务仍为0077。runtime安装错误以有界详情通过绑定身份的RPC返回。
+
+新增Docker/OCI真实解包、SUID/SGID与所有权、动态身份回收顺序、完整真实镜像转换及KVM启动复用测试。Pro发行会从当前源码重编译生产guest，固定第三方工具和最小自检程序继续复用OSS锁定依赖；guest更新进入新归档身份。升级为新环境选择新默认bundle，同时保留旧bundle及现有环境磁盘引用；只有最小自检程序、VMM、jailer、内核和mkfs摘要完全相同才沿用原硬件自检凭据和原时间，并记录等价来源，底层启动组件变化则要求重新真实自检。
+
 ## 后续阶段与阻断项
 
 - [x] 平台探测、候选优先级、失败分类、保留旧引擎及CLI接入。

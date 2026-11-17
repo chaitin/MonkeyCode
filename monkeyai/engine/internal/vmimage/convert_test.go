@@ -2,6 +2,7 @@ package vmimage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -47,6 +48,69 @@ func fakeUnpack(ctx context.Context, tool Tool, args ...string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(root, "etc/machine-id"), []byte("shared identity"), 0600)
+}
+
+func TestConverterNormalizesDockerMediaTypes(t *testing.T) {
+	for _, compressed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "tar", true: "gzip"}[compressed], func(t *testing.T) {
+			c, id, _, stage := converterFixture(t)
+			layout, source, _ := layoutFixture(t, compressed)
+			name, _ := blobPath(source)
+			raw, err := os.ReadFile(filepath.Join(layout, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var original imageManifest
+			if err := json.Unmarshal(raw, &original); err != nil {
+				t.Fatal(err)
+			}
+			original.MediaType = dockerManifest
+			original.Config.MediaType = "application/vnd.docker.container.image.v1+json"
+			original.Layers[0].MediaType = "application/vnd.docker.image.rootfs.diff.tar"
+			if compressed {
+				original.Layers[0].MediaType += ".gzip"
+			}
+			source = putJSON(t, layout, dockerManifest, original)
+			name, _ = blobPath(source)
+			before, err := os.ReadFile(filepath.Join(layout, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			id.ImageDigest = source.Digest
+			c.run = func(ctx context.Context, tool Tool, args ...string) error {
+				input := filepath.Join(stage, "input")
+				data, err := os.ReadFile(filepath.Join(input, "index.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var index struct {
+					Manifests []Descriptor `json:"manifests"`
+				}
+				if json.Unmarshal(data, &index) != nil || len(index.Manifests) != 1 || index.Manifests[0].MediaType != ociManifest || index.Manifests[0].Digest == id.ImageDigest {
+					t.Fatal("交给umoci的标签未指向新的OCI清单", string(data))
+				}
+				image, err := InspectLayout(ctx, input, index.Manifests[0].Digest, id.Architecture, c.Limits.Bytes)
+				if err != nil || image.Config.MediaType != "application/vnd.oci.image.config.v1+json" || image.Config.Digest != original.Config.Digest || image.Layers[0].Digest != original.Layers[0].Digest {
+					t.Fatal("规范化改变了原始层/配置内容，或未通过完整校验", image, err)
+				}
+				old, err := os.ReadFile(filepath.Join(input, name))
+				if err != nil || string(old) != string(before) {
+					t.Fatal("私有布局中的原始摘要被覆盖", err)
+				}
+				return fakeUnpack(ctx, tool, args...)
+			}
+			c.populate = func(_ context.Context, disk string, _ int64, _ string) error {
+				return os.WriteFile(disk, []byte("fake ext4"), 0600)
+			}
+			if err := c.Build(layout)(t.Context(), id, stage); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(filepath.Join(layout, name))
+			if err != nil || string(after) != string(before) || id.ImageDigest != source.Digest {
+				t.Fatal("共享输入或模板原始镜像身份改变", err)
+			}
+		})
+	}
 }
 
 func TestConverterPipeline(t *testing.T) {

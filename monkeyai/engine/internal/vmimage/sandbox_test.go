@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func TestSandboxRestoresMetadataWithoutExecutingImageContent(t *testing.T) {
+	args := strings.Join(sandboxArgs("ma-cvt-aaaaaaaaaaaaaaaaaaaaaaaa.service", "/private/sandbox", 62001), "\n")
+	for _, required := range []string{
+		"--property=DynamicUser=no", "--property=User=0", "--property=Group=0", "--property=PrivateNetwork=yes", "--property=PrivateDevices=yes",
+		"--property=ProtectSystem=strict", "--property=ReadWritePaths=+/output +/tmp",
+		"--property=RestrictSUIDSGID=no", "--property=NoExecPaths=+/output +/tmp +/oci +/assets",
+		"--property=NoNewPrivileges=yes", "--property=RestrictAddressFamilies=AF_UNIX",
+		"/bin/engine\nconvert-launch\n--uid\n62001",
+	} {
+		if !strings.Contains(args, required) {
+			t.Fatalf("缺少元数据恢复或隔离约束 %s", required)
+		}
+	}
+}
+
 func TestSandboxExecutableIsIndependentAndSearchable(t *testing.T) {
 	root := t.TempDir()
 	source, destination := filepath.Join(root, "installed-engine"), filepath.Join(root, "sandbox-engine")

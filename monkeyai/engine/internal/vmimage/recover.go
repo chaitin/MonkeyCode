@@ -16,14 +16,15 @@ import (
 var conversionUnit = regexp.MustCompile(`^ma-cvt-[a-f0-9]{24}\.service$`)
 
 type conversionJob struct {
-	Unit string `json:"unit"`
+	Unit         string `json:"unit"`
+	IdentityUnit string `json:"identity_unit,omitempty"`
 }
 
 func saveConversionJob(stage, unit string) error {
 	if !conversionUnit.MatchString(unit) {
 		return errors.New("转换服务标识无效")
 	}
-	raw, _ := json.Marshal(conversionJob{Unit: unit})
+	raw, _ := json.Marshal(conversionJob{Unit: unit, IdentityUnit: identityUnit(unit)})
 	return control.Write(filepath.Join(stage, "job.json"), raw, 0600)
 }
 func recoverConversion(ctx context.Context, stage string) error {
@@ -50,7 +51,7 @@ func recoverConversion(ctx context.Context, stage string) error {
 		return err
 	}
 	var job conversionJob
-	if json.Unmarshal(raw, &job) != nil || !conversionUnit.MatchString(job.Unit) {
+	if json.Unmarshal(raw, &job) != nil || !conversionUnit.MatchString(job.Unit) || job.IdentityUnit != "" && job.IdentityUnit != identityUnit(job.Unit) {
 		return errors.New("中断转换服务身份无效")
 	}
 	// systemd拥有完整进程组；只有确认其已退出后才回收非用户数据。
@@ -58,7 +59,28 @@ func recoverConversion(ctx context.Context, stage string) error {
 	if err != nil {
 		return errors.Join(ErrConversionCleanup, err)
 	}
-	return cleanConversionState(stage, job.Unit, string(result))
+	if err := verifyConversionState(job.Unit, string(result)); err != nil {
+		return err
+	}
+	if job.IdentityUnit != "" {
+		if err := releaseConversionIdentity(ctx, job.IdentityUnit); err != nil {
+			return errors.Join(ErrConversionCleanup, err)
+		}
+	}
+	return os.RemoveAll(stage)
+}
+
+func identityUnit(unit string) string {
+	return strings.TrimSuffix(unit, ".service") + "-identity.service"
+}
+
+func releaseConversionIdentity(ctx context.Context, unit string) error {
+	stopErr := exec.CommandContext(ctx, "systemctl", "stop", unit).Run()
+	state, err := exec.CommandContext(ctx, "systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID,ControlGroup").Output()
+	if err != nil {
+		return errors.Join(stopErr, err)
+	}
+	return verifyConversionState(unit, string(state))
 }
 func cleanConversionState(stage, unit, raw string) error {
 	if err := verifyConversionState(unit, raw); err != nil {

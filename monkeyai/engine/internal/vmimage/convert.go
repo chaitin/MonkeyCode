@@ -140,11 +140,15 @@ func (c *Converter) Build(layout string) Build {
 		if err := os.WriteFile(filepath.Join(input, "oci-layout"), []byte(`{"imageLayoutVersion":"1.0.0"}`), 0600); err != nil {
 			return err
 		}
+		selected, err := normalizeManifest(input, image)
+		if err != nil {
+			return err
+		}
 		// 仅修改私有布局，不污染共享下载缓存的标签或索引。
 		entry := struct {
 			Descriptor
 			Annotations map[string]string `json:"annotations"`
-		}{image.Manifest, map[string]string{"org.opencontainers.image.ref.name": "root"}}
+		}{selected, map[string]string{"org.opencontainers.image.ref.name": "root"}}
 		index := struct {
 			Version   int   `json:"schemaVersion"`
 			Manifests []any `json:"manifests"`
@@ -159,7 +163,7 @@ func (c *Converter) Build(layout string) Build {
 			runner = func(ctx context.Context, t Tool, args ...string) error { return t.Run(ctx, args...) }
 		}
 		if err := runner(ctx, c.Unpack, "unpack", "--image", input+":root", bundle); err != nil {
-			return err
+			return fmt.Errorf("OCI解包失败: %w", err)
 		}
 		rootfs := filepath.Join(bundle, "rootfs")
 		if err := c.checkTree(ctx, rootfs); err != nil {
@@ -196,7 +200,7 @@ func (c *Converter) Build(layout string) Build {
 			return err
 		}
 		if err := populate(ctx, filepath.Join(stage, "root.ext4"), id.SystemBytes, rootfs); err != nil {
-			return err
+			return fmt.Errorf("系统盘ext4生成失败: %w", err)
 		}
 		// ready 缓存只保留最终模板，不保留解包树和临时 OCI 副本。
 		if err := os.RemoveAll(bundle); err != nil {
@@ -204,6 +208,48 @@ func (c *Converter) Build(layout string) Build {
 		}
 		return os.RemoveAll(input)
 	}
+}
+
+// umoci只接受OCI媒体类型。原始manifest仍保留，缓存身份始终绑定已校验的上游摘要。
+func normalizeManifest(directory string, image Image) (Descriptor, error) {
+	manifest := imageManifest{SchemaVersion: 2, MediaType: ociManifest, Config: image.Config, Layers: append([]Descriptor(nil), image.Layers...)}
+	manifest.Config.MediaType = "application/vnd.oci.image.config.v1+json"
+	changed := image.Manifest.MediaType != ociManifest || image.Config.MediaType != manifest.Config.MediaType
+	for index := range manifest.Layers {
+		layer := &manifest.Layers[index]
+		switch layer.MediaType {
+		case "application/vnd.docker.image.rootfs.diff.tar":
+			layer.MediaType = "application/vnd.oci.image.layer.v1.tar"
+			changed = true
+		case "application/vnd.docker.image.rootfs.diff.tar.gzip":
+			layer.MediaType = "application/vnd.oci.image.layer.v1.tar+gzip"
+			changed = true
+		case "application/vnd.oci.image.layer.v1.tar", "application/vnd.oci.image.layer.v1.tar+gzip":
+		default:
+			return Descriptor{}, errors.New("不支持规范化此镜像层类型")
+		}
+	}
+	if !changed {
+		return image.Manifest, nil
+	}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	selected := Descriptor{MediaType: ociManifest, Digest: digestBytes(raw), Size: int64(len(raw)), Platform: image.Manifest.Platform}
+	name, err := blobPath(selected)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	file, err := os.OpenFile(filepath.Join(directory, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	_, writeErr := file.Write(raw)
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
+		return Descriptor{}, err
+	}
+	return selected, nil
 }
 
 func copyBlob(ctx context.Context, root *os.Root, d Descriptor, destination string) (err error) {

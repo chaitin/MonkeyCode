@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -20,12 +21,13 @@ import (
 type installBackend struct {
 	installed bool
 	root      string
+	failure   error
 }
 
 func (b *installBackend) Install(ctx context.Context, r lifecycle.RuntimePackage, input io.Reader) error {
 	err := receiveRuntime(ctx, b.root, r, input)
-	b.installed = err == nil
-	return err
+	b.installed = err == nil && b.failure == nil
+	return errors.Join(err, b.failure)
 }
 func (*installBackend) Status(context.Context) (standalone.Status, error) {
 	return standalone.Status{}, nil
@@ -73,6 +75,33 @@ func TestRuntimeTransportUsesBoundIdentityAndFixedFiles(t *testing.T) {
 		t.Fatal("其他环境管理身份被接受")
 	}
 }
+func TestRuntimeInstallReturnsBoundedFailureDetails(t *testing.T) {
+	for _, detail := range []string{"runtime准备失败", strings.Repeat("x", 10000)} {
+		binding := Binding{EnvironmentID: "env", InstanceID: "instance", BootID: "boot"}
+		service, err := NewService(binding, &installBackend{root: t.TempDir(), failure: errors.New(detail)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := httptest.NewServer(service)
+		client, err := NewClient(binding, func(ctx context.Context) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "tcp", server.Listener.Addr().String())
+		})
+		if err != nil {
+			server.Close()
+			t.Fatal(err)
+		}
+		err = client.Install(t.Context(), runtimeRelease(), func(string) (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("test")), nil })
+		client.Close()
+		server.Close()
+		if err == nil || !strings.Contains(err.Error(), "状态码409") || len(err.Error()) > 4500 {
+			t.Fatal("失败详情缺失或未限长", err)
+		}
+		if len(detail) < 4096 && !strings.Contains(err.Error(), detail) {
+			t.Fatal("原始失败详情被丢弃", err)
+		}
+	}
+}
+
 func TestRuntimeUploadRejectsUnsafeEntries(t *testing.T) {
 	for _, header := range []tar.Header{{Name: "../escape", Typeflag: tar.TypeReg, Size: 4}, {Name: "monkeyai-runtime", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"}, {Name: "monkeyai-runtime", Typeflag: tar.TypeReg, Size: 3}} {
 		var data bytes.Buffer

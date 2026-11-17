@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -38,13 +39,27 @@ func releaseRuntime(ctx context.Context, payload, version, digest string) (engin
 			dispose()
 		}
 	}()
-	for _, name := range []string{"payload", "etc/systemd/system", "proc", "dev", "tmp", "home/monkey", "usr/local/bin", "var/lib", "opt", "run", "root"} {
-		if err := os.MkdirAll(filepath.Join(root, name), 0755); err != nil {
+	for _, name := range []string{"payload", "etc", "etc/systemd", "etc/systemd/system", "proc", "dev", "tmp", "home", "home/monkey", "usr", "usr/local", "usr/local/bin", "var", "var/lib", "opt", "run", "root"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(path, 0755); err != nil {
+			return "", nil, err
+		}
+		if err := os.Chmod(path, 0755); err != nil {
 			return "", nil, err
 		}
 	}
+	if err := os.Chmod(filepath.Join(root, "tmp"), os.ModeSticky|0777); err != nil {
+		return "", nil, err
+	}
+	if err := os.Chown(filepath.Join(root, "home/monkey"), 1000, 1000); err != nil {
+		return "", nil, err
+	}
 	for name, value := range map[string]string{"passwd": "root:x:0:0:root:/root:/bin/sh\nmonkey:x:1000:1000:monkey:/home/monkey:/bin/sh\n", "group": "root:x:0:\nmonkey:x:1000:\n"} {
-		if err := os.WriteFile(filepath.Join(root, "etc", name), []byte(value), 0644); err != nil {
+		path := filepath.Join(root, "etc", name)
+		if err := os.WriteFile(path, []byte(value), 0644); err != nil {
+			return "", nil, err
+		}
+		if err := os.Chmod(path, 0644); err != nil {
 			return "", nil, err
 		}
 	}
@@ -72,9 +87,19 @@ func releaseRuntime(ctx context.Context, payload, version, digest string) (engin
 			return "", nil, err
 		}
 	}
-	if err := unix.Mknod(filepath.Join(root, "dev/null"), unix.S_IFCHR|0666, int(unix.Mkdev(1, 3))); err != nil {
-		return "", nil, fmt.Errorf("临时根目录null设备创建失败: %w", err)
+	null := filepath.Join(root, "dev/null")
+	placeholder, err := os.OpenFile(null, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return "", nil, err
 	}
+	if err := placeholder.Close(); err != nil {
+		return "", nil, err
+	}
+	// /run通常带nodev，不能在临时根目录mknod后使用设备。
+	if err := unix.Mount("/dev/null", null, "", unix.MS_BIND, ""); err != nil {
+		return "", nil, fmt.Errorf("临时根目录null设备绑定失败: %w", err)
+	}
+	mounts = append(mounts, null)
 	in, err := os.Open(payload)
 	if err != nil {
 		return "", nil, err
@@ -85,15 +110,21 @@ func releaseRuntime(ctx context.Context, payload, version, digest string) (engin
 		return "", nil, err
 	}
 	_, copyErr := io.Copy(out, in)
-	if err := errors.Join(copyErr, out.Sync(), out.Close()); err != nil {
+	if err := errors.Join(copyErr, out.Chmod(0755), out.Sync(), out.Close()); err != nil {
 		return "", nil, err
 	}
-	cmd := exec.CommandContext(ctx, "/payload/runtime", "setup", "--install-only", "--run-as", "monkey", "--json")
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", "umask 022; exec /payload/runtime setup --install-only --run-as monkey --json")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Chroot: root, Pdeathsig: syscall.SIGKILL}
 	cmd.Dir = "/"
 	cmd.Env = []string{"PATH=/bin:/usr/bin:/sbin:/usr/sbin", "HOME=/root", "USER=root", "LANG=C.UTF-8"}
+	var output boundedArtifact
+	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Run(); err != nil {
-		return "", nil, fmt.Errorf("虚拟机内临时根目录无法释放runtime资源: %w", err)
+		detail := strings.TrimSpace(string(output.data))
+		if len(detail) > 4096 {
+			detail = strings.ToValidUTF8(detail[len(detail)-4096:], "")
+		}
+		return "", nil, fmt.Errorf("虚拟机内临时根目录无法释放runtime资源: %w: %s", err, detail)
 	}
 	complete = true
 	return filepath.Join(root, "opt/monkeyai-runtime/versions", version+"-"+digest[:12], "ohmyagent"), dispose, nil

@@ -80,7 +80,7 @@ func prepareRuntime(ctx context.Context, payload, destination string, release li
 	}
 	sum := sha256.New()
 	n, copyErr := io.Copy(io.MultiWriter(target, sum), io.LimitReader(source, info.EngineSize+1))
-	if err := errors.Join(copyErr, target.Sync(), target.Close()); err != nil {
+	if err := errors.Join(copyErr, target.Chmod(0755), target.Sync(), target.Close()); err != nil {
 		return release, err
 	}
 	if n != info.EngineSize || hex.EncodeToString(sum.Sum(nil)) != info.EngineSHA256 {
@@ -89,7 +89,11 @@ func prepareRuntime(ctx context.Context, payload, destination string, release li
 	release.Files = maps.Clone(release.Files)
 	release.Files["ohmyagent"] = lifecycle.RuntimeFile{SHA256: info.EngineSHA256, Size: n}
 	for name, data := range map[string][]byte{"LICENSES.txt": notices, "bundle.json": metadata} {
-		if err := os.WriteFile(filepath.Join(destination, name), data, 0644); err != nil {
+		path := filepath.Join(destination, name)
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return release, err
+		}
+		if err := os.Chmod(path, 0644); err != nil {
 			return release, err
 		}
 		hash := sha256.Sum256(data)

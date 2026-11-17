@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/lifecycle"
@@ -41,7 +43,15 @@ func (s *Service) installRuntime(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
 	body := http.MaxBytesReader(w, r.Body, 1<<30)
 	if err := backend.Install(ctx, in.Release, body); err != nil {
+		detail := strings.ToValidUTF8(err.Error(), "")
+		if len(detail) > 4096 {
+			detail = strings.ToValidUTF8(detail[:4096], "")
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(409)
+		_ = json.NewEncoder(w).Encode(struct {
+			Detail string `json:"detail"`
+		}{Detail: detail})
 		return
 	}
 	w.WriteHeader(204)
@@ -114,9 +124,18 @@ func (c *Client) Install(ctx context.Context, release lifecycle.RuntimePackage, 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 204 {
-		reader.CloseWithError(errors.New("虚拟机拒绝runtime更新"))
+		failure := fmt.Errorf("虚拟机拒绝runtime更新（状态码%d）", response.StatusCode)
+		if data, err := io.ReadAll(io.LimitReader(response.Body, 8193)); err == nil && len(data) <= 8192 {
+			var body struct {
+				Detail string `json:"detail"`
+			}
+			if json.Unmarshal(data, &body) == nil && len(body.Detail) > 0 && len(body.Detail) <= 4096 {
+				failure = fmt.Errorf("%w: %s", failure, body.Detail)
+			}
+		}
+		reader.CloseWithError(failure)
 		<-done
-		return errors.New("虚拟机拒绝runtime更新")
+		return failure
 	}
 	return <-done
 }

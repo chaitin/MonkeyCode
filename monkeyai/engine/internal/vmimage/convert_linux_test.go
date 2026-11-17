@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -31,6 +32,12 @@ func TestConversionIntegration(t *testing.T) {
 	if os.Getenv("MONKEYAI_CONVERT_TEST") != "1" {
 		t.Skip("需在隔离Linux环境显式启用umoci/ext4转换验收")
 	}
+	for _, media := range []string{ociManifest, dockerManifest} {
+		t.Run(media, func(t *testing.T) { conversionIntegration(t, media) })
+	}
+}
+
+func conversionIntegration(t *testing.T, media string) {
 	tool := func(name string) Tool {
 		path, err := exec.LookPath(name)
 		if err != nil {
@@ -58,7 +65,11 @@ func TestConversionIntegration(t *testing.T) {
 		var data bytes.Buffer
 		tw := tar.NewWriter(&data)
 		for i, name := range names {
-			if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Uid: 0, Gid: 0, Size: int64(len(contents[i])), Typeflag: tar.TypeReg}); err != nil {
+			header := &tar.Header{Name: name, Mode: 0644, Uid: 0, Gid: 0, Size: int64(len(contents[i])), Typeflag: tar.TypeReg}
+			if name == "bin/metadata-proof" {
+				header.Mode, header.Gid = 06755, 42
+			}
+			if err := tw.WriteHeader(header); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := tw.Write([]byte(contents[i])); err != nil {
@@ -68,12 +79,20 @@ func TestConversionIntegration(t *testing.T) {
 		if err := tw.Close(); err != nil {
 			t.Fatal(err)
 		}
-		return putBlob(t, layout, "application/vnd.oci.image.layer.v1.tar", data.Bytes())
+		layerMedia := "application/vnd.oci.image.layer.v1.tar"
+		if media == dockerManifest {
+			layerMedia = "application/vnd.docker.image.rootfs.diff.tar"
+		}
+		return putBlob(t, layout, layerMedia, data.Bytes())
 	}
-	first := layer([]string{"keep", "removed"}, []string{"original", "delete-me"})
+	first := layer([]string{"keep", "removed", "bin/metadata-proof"}, []string{"original", "delete-me", "metadata only; never execute"})
 	second := layer([]string{".wh.removed", "keep"}, []string{"", "updated"})
-	config := putJSON(t, layout, "application/vnd.oci.image.config.v1+json", map[string]any{"architecture": runtime.GOARCH, "os": "linux", "rootfs": map[string]any{"type": "layers", "diff_ids": []string{first.Digest, second.Digest}}, "config": map[string]any{}})
-	manifest := putJSON(t, layout, ociManifest, imageManifest{SchemaVersion: 2, MediaType: ociManifest, Config: config, Layers: []Descriptor{first, second}})
+	configMedia := "application/vnd.oci.image.config.v1+json"
+	if media == dockerManifest {
+		configMedia = "application/vnd.docker.container.image.v1+json"
+	}
+	config := putJSON(t, layout, configMedia, map[string]any{"architecture": runtime.GOARCH, "os": "linux", "rootfs": map[string]any{"type": "layers", "diff_ids": []string{first.Digest, second.Digest}}, "config": map[string]any{}})
+	manifest := putJSON(t, layout, media, imageManifest{SchemaVersion: 2, MediaType: media, Config: config, Layers: []Descriptor{first, second}})
 	asset := filepath.Join(base, "bootstrap")
 	if err := os.WriteFile(asset, []byte("platform-bootstrap"), 0600); err != nil {
 		t.Fatal(err)
@@ -121,7 +140,11 @@ func TestConversionIntegration(t *testing.T) {
 			t.Fatalf("转换后文件不符: %s %s %v", pair.path, data, err)
 		}
 	}
-	data, err := exec.Command(debug, "-R", "stat /removed", template.Path).CombinedOutput()
+	data, err := exec.Command(debug, "-R", "stat /bin/metadata-proof", template.Path).CombinedOutput()
+	if err != nil || !strings.Contains(string(data), "06755") || !regexp.MustCompile(`User:\s+0\s+Group:\s+42\b`).Match(data) {
+		t.Fatalf("SUID/SGID与所有权未正确进入虚拟机磁盘: %s %v", data, err)
+	}
+	data, err = exec.Command(debug, "-R", "stat /removed", template.Path).CombinedOutput()
 	if err != nil || !strings.Contains(string(data), "File not found") {
 		t.Fatalf("whiteout未生效: %s %v", data, err)
 	}

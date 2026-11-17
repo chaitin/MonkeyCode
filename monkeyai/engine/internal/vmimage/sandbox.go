@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -133,17 +134,18 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 			return err
 		}
 		unit := "ma-cvt-" + hex.EncodeToString(nonce[:]) + ".service"
-		caps := "CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_SETFCAP"
-		args := []string{"--wait", "--quiet", "--unit=" + unit, "--service-type=exec", "--property=RootDirectory=" + root, "--property=WorkingDirectory=/", "--property=MountAPIVFS=yes", "--property=DynamicUser=yes", "--property=PrivateNetwork=yes", "--property=PrivateDevices=yes", "--property=ProtectSystem=strict", "--property=ReadWritePaths=+/output +/tmp", "--property=ProtectHome=yes", "--property=ProtectProc=invisible", "--property=ProcSubset=pid", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=" + caps, "--property=AmbientCapabilities=" + caps, "--property=RestrictAddressFamilies=AF_UNIX", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--property=CPUQuota=200%", "--property=TasksMax=128", "--property=RuntimeMaxSec=900s", "--property=TimeoutStopSec=10s", "--property=KillMode=control-group", "--property=StandardOutput=null", "--property=StandardError=null", "--", "/bin/engine", "convert", "--request", "/request.json"}
 		job, cancel := context.WithTimeout(ctx, 16*time.Minute)
 		if err := saveConversionJob(stage, unit); err != nil {
 			cancel()
 			return err
 		}
 		defer cancel()
-		command := exec.CommandContext(job, "systemd-run", args...)
-		command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-		runErr := command.Run()
+		uid, runErr := reserveConversionIdentity(job, stage, unit)
+		if runErr == nil {
+			command := exec.CommandContext(job, "systemd-run", sandboxArgs(unit, root, uid)...)
+			command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
+			runErr = command.Run()
+		}
 		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer stop()
 		stopErr := exec.CommandContext(cleanup, "systemctl", "stop", unit).Run()
@@ -154,6 +156,9 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 		if err := verifyConversionState(unit, string(state)); err != nil {
 			return errors.Join(ErrConversionCleanup, runErr, stopErr, err)
 		}
+		if err := releaseConversionIdentity(cleanup, identityUnit(unit)); err != nil {
+			return errors.Join(ErrConversionCleanup, runErr, err)
+		}
 		if runErr != nil {
 			return fmt.Errorf("隔离转换失败（服务%s）: %w", unit, runErr)
 		}
@@ -163,7 +168,7 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 		if err := os.RemoveAll(root); err != nil {
 			return err
 		}
-		return os.Remove(filepath.Join(stage, "job.json"))
+		return errors.Join(os.Remove(filepath.Join(stage, "job.json")), os.Remove(filepath.Join(stage, "identity.uid")))
 	}
 }
 
@@ -198,6 +203,27 @@ func ConvertRequest(ctx context.Context, path string) error {
 	}
 	return converter.Build("/oci")(ctx, request.Identity, "/output")
 }
+func sandboxArgs(unit, root string, uid uint32) []string {
+	caps := "CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_SETFCAP CAP_SETUID CAP_SETGID"
+	return []string{
+		"--wait", "--quiet", "--unit=" + unit, "--service-type=exec",
+		"--property=RootDirectory=" + root, "--property=WorkingDirectory=/", "--property=MountAPIVFS=yes",
+		"--property=DynamicUser=no", "--property=User=0", "--property=Group=0",
+		"--property=PrivateTmp=yes", "--property=RemoveIPC=yes",
+		"--property=PrivateNetwork=yes", "--property=PrivateDevices=yes",
+		"--property=ProtectSystem=strict", "--property=ReadWritePaths=+/output +/tmp",
+		// 恢复虚拟机文件的SUID/SGID元数据，但禁止在宿主执行解包内容。
+		"--property=RestrictSUIDSGID=no", "--property=NoExecPaths=+/output +/tmp +/oci +/assets",
+		"--property=ProtectHome=yes", "--property=ProtectProc=invisible", "--property=ProcSubset=pid",
+		"--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=" + caps, "--property=AmbientCapabilities=" + caps,
+		"--property=RestrictAddressFamilies=AF_UNIX", "--property=MemoryMax=1G", "--property=MemorySwapMax=0",
+		"--property=CPUQuota=200%", "--property=TasksMax=128", "--property=RuntimeMaxSec=900s",
+		"--property=TimeoutStopSec=10s", "--property=KillMode=control-group",
+		"--property=StandardOutput=null", "--property=StandardError=journal",
+		"--", "/bin/engine", "convert-launch", "--uid", strconv.FormatUint(uint64(uid), 10),
+	}
+}
+
 func copyExecutable(ctx context.Context, source, destination string) error {
 	in, err := os.Open(source)
 	if err != nil {

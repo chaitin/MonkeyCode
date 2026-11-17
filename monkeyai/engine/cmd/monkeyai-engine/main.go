@@ -81,6 +81,8 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		fmt.Fprintln(out, version)
 		return 0
+	case "convert-launch":
+		return convertLaunchCommand(ctx, args[1:], stderr)
 	case "convert":
 		return convertCommand(ctx, args[1:], stderr)
 	case "selftest":
