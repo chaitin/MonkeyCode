@@ -11,7 +11,7 @@ import (
 )
 
 const countHosts = `-- name: CountHosts :one
-SELECT count(*) FROM hosts WHERE deleted_at IS NULL
+SELECT count(*) FROM hosts WHERE deleted_at IS NULL AND status <> 'pending'
 `
 
 func (q *Queries) CountHosts(ctx context.Context) (int64, error) {
@@ -192,7 +192,7 @@ const listHosts = `-- name: ListHosts :many
 SELECT id,user_id,name,architecture,version,status,activated_at,last_seen_at,report,created_at,enabled,max_environments,
 (SELECT count(*) FROM environments e WHERE e.host_id=hosts.id
  AND NOT(e.desired='deleted' AND e.phase='deleted' AND e.observed_generation=e.generation)) AS environment_count
-FROM hosts WHERE deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2
+FROM hosts WHERE deleted_at IS NULL AND status <> 'pending' ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2
 `
 
 type ListHostsParams struct {

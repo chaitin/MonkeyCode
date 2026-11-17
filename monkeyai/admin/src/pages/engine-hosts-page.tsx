@@ -10,7 +10,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import { useTranslation } from "react-i18next"
@@ -27,14 +27,12 @@ import {
 import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { HostStatus } from "@/components/environments/status-badge"
-import { Identity } from "@/components/environments/common"
 import { loadEngineHosts } from "@/lib/engine-hosts"
 import {
   HostUpgrade,
   type HostUpgradeState,
 } from "@/components/environments/host-upgrade"
 import { HostSetupDialog } from "@/components/environments/host-setup-dialog"
-import { ResourceMeter } from "@/components/environments/resource-meter"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Info, RefreshCw } from "lucide-react"
 import {
@@ -44,12 +42,8 @@ import {
   PauseIcon,
   Edit02Icon,
   Delete02Icon,
-  ArrowUp02Icon,
-  CpuIcon,
-  RamMemoryIcon,
-  HardDriveIcon,
-  ArrowDown02Icon,
-  Wifi01Icon,
+  ArrowRight01Icon,
+  DotIcon,
 } from "@hugeicons/core-free-icons"
 import {
   DropdownMenu,
@@ -102,19 +96,82 @@ type HostSystem = {
 }
 function bytes(value: number) {
   if (!Number.isFinite(value) || value < 0) return "—"
-  const unit = value >= 1024 ** 4 ? "TiB" : value >= 1024 ** 3 ? "GiB" : "MiB"
+  const unit = value >= 1000 ** 4 ? "TB" : value >= 1000 ** 3 ? "GB" : "MB"
   const scale =
-    unit === "TiB" ? 1024 ** 4 : unit === "GiB" ? 1024 ** 3 : 1024 ** 2
+    unit === "TB" ? 1000 ** 4 : unit === "GB" ? 1000 ** 3 : 1000 ** 2
   return `${(value / scale).toFixed(1)} ${unit}`
 }
 function rate(value?: number) {
   if (value === undefined || !Number.isFinite(value) || value < 0) return "—"
-  const units = ["B/s", "KiB/s", "MiB/s", "GiB/s"]
+  const units = ["Bps", "KBps", "MBps", "GBps"]
   const index = Math.min(
     3,
-    Math.max(0, Math.floor(Math.log2(Math.max(1, value)) / 10))
+    Math.max(0, Math.floor(Math.log10(Math.max(1, value)) / 3))
   )
-  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`
+  return `${(value / 1000 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`
+}
+function relativeTime(
+  value: string,
+  now: number,
+  formatter: Intl.RelativeTimeFormat
+) {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return "—"
+  const elapsed = Math.max(0, now - timestamp)
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["year", 365 * 86_400_000],
+    ["month", 30 * 86_400_000],
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000],
+    ["second", 1000],
+  ]
+  const [unit, duration] = units.find(
+    ([, duration]) => elapsed >= duration
+  ) ?? ["second", 1000]
+  return formatter
+    .format(-Math.floor(elapsed / duration), unit)
+    .replace(/([0-9])(?=[一-龥])/g, "$1 ")
+}
+const missingValue = <span className="text-muted-foreground">—</span>
+
+function displayValue(value: string) {
+  const trimmed = value.trim()
+  return trimmed === "" || /^[−–—-]$/.test(trimmed) ? missingValue : value
+}
+
+function ReportAge({
+  value,
+  formatter,
+}: {
+  value: string
+  formatter: Intl.RelativeTimeFormat
+}) {
+  const [receivedAt] = useState(Date.now)
+  return relativeTime(value, receivedAt, formatter)
+}
+
+function percentColor(value?: number) {
+  if (
+    value === undefined ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 100
+  )
+    return undefined
+  return value > 80
+    ? "text-destructive"
+    : value > 50
+      ? "text-orange-600 dark:text-orange-400"
+      : undefined
+}
+function percent(value?: number) {
+  return value !== undefined &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100
+    ? `${value.toFixed(1)}%`
+    : "—"
 }
 function usage(value?: Usage) {
   return value && value.total_bytes > 0
@@ -152,7 +209,12 @@ type Enrollment = {
 }
 
 export function EngineHostsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const relativeFormatter = useMemo(
+    () => new Intl.RelativeTimeFormat(locale, { numeric: "always" }),
+    [locale]
+  )
   const { user } = useAuth()
   const text = (key: string, options?: Record<string, string | number>) =>
     t(`pages.engineHosts.${key}`, options)
@@ -177,11 +239,18 @@ export function EngineHostsPage() {
   const hosts = result.data?.items ?? []
   const refresh = result.refresh
   const detail = hosts.find((host) => host.id === checking?.id) ?? checking
+  const detailAddresses = [
+    ...new Set([
+      ...(detail?.report.system?.public_ips ?? []),
+      ...(detail?.report.system?.private_ips ?? []),
+    ]),
+  ].join(", ")
 
   useEffect(() => {
+    if (!open || !enrollment) return
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [open, enrollment])
 
   async function create() {
     if (busy) return
@@ -348,11 +417,21 @@ export function EngineHostsPage() {
                         <Badge variant="outline">{text("disabled")}</Badge>
                       )}
                     </CardTitle>
-                    <CardDescription
-                      className="truncate"
-                      title={addresses || text("ipPending")}
-                    >
-                      {addresses || text("ipPending")}
+                    <CardDescription className="flex min-w-0 items-center gap-1">
+                      <span className="shrink-0">
+                        {system?.os_name || missingValue}
+                      </span>
+                      <HugeiconsIcon
+                        icon={DotIcon}
+                        className="size-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span
+                        className="truncate"
+                        title={addresses || text("ipPending")}
+                      >
+                        {addresses || text("ipPending")}
+                      </span>
                     </CardDescription>
                   </div>
                   <DropdownMenu>
@@ -494,18 +573,14 @@ export function EngineHostsPage() {
                 {system?.memory && system.memory.total_bytes > 0 && (
                   <Badge variant="outline">
                     {text("memoryCapacityBadge", {
-                      size: Number(
-                        (system.memory.total_bytes / 1024 ** 3).toFixed(1)
-                      ),
+                      size: Math.ceil(system.memory.total_bytes / 1024 ** 3),
                     })}
                   </Badge>
                 )}
                 {system?.disk && system.disk.total_bytes > 0 && (
                   <Badge variant="outline">
                     {text("diskCapacityBadge", {
-                      size: Number(
-                        (system.disk.total_bytes / 1024 ** 3).toFixed(1)
-                      ),
+                      size: Math.ceil(system.disk.total_bytes / 1024 ** 3),
                     })}
                   </Badge>
                 )}
@@ -537,36 +612,34 @@ export function EngineHostsPage() {
         >
           <DialogHeader>
             <DialogTitle>{text("details")}</DialogTitle>
-            <DialogDescription className="break-all">
-              {detail?.name}
-              {detail && !detail.online && ` · ${text("lastReport")}`}
-            </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="-me-3 flex min-h-0 flex-1 flex-col [&_[data-slot=scroll-area-viewport]]:min-h-0">
+          <ScrollArea className="-me-6 flex min-h-0 flex-1 flex-col [&_[data-slot=scroll-area-viewport]]:min-h-0">
             {detail && (
-              <div className="space-y-6 pe-3">
-                {detail.status === "pending" && (
-                  <HostCommand
-                    key={detail.id}
-                    host={detail}
-                    refresh={refresh}
-                    onRenewed={(value) => {
-                      setChecking(null)
-                      setEnrollment(value)
-                      setOpen(true)
-                    }}
-                  />
-                )}
+              <div className="space-y-6 pe-6">
                 <section className="space-y-4 rounded-xl bg-muted/40 p-4">
                   <div className="flex items-center gap-3">
-                    <OSIcon name={detail.report.system?.os_name} />
+                    <OSIcon name={detail.report.system?.os_name} avatar />
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-base font-semibold">
-                        {detail.report.system?.hostname || detail.name}
+                        {displayValue(
+                          detail.report.system?.hostname || detail.name || ""
+                        )}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {detail.report.system?.os_name || text("notReported")} ·{" "}
-                        {detail.architecture} · {detail.version}
+                      <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                        <span>
+                          {detail.report.system?.os_name || missingValue}
+                        </span>
+                        <HugeiconsIcon
+                          icon={DotIcon}
+                          className="size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="min-w-0 truncate"
+                          title={detailAddresses || "—"}
+                        >
+                          {detailAddresses || "—"}
+                        </span>
                       </p>
                     </div>
                     <HostStatus
@@ -581,306 +654,404 @@ export function EngineHostsPage() {
                       }
                     />
                   </div>
-                  <dl className="grid gap-3 border-t pt-4 sm:grid-cols-2">
-                    <Identity
-                      label={t("environmentAdmin.activatedAt")}
-                      value={
-                        detail.activated_at
-                          ? new Date(detail.activated_at).toLocaleString()
-                          : "—"
-                      }
-                    />
-                    <Identity
-                      label={t("environmentAdmin.hostMaxEnvironments")}
-                      value={detail.max_environments}
-                    />
-                    <Identity
-                      label={text("privateIP")}
-                      value={
-                        detail.report.system?.private_ips?.join(", ") ||
-                        text("notReported")
-                      }
-                    />
-                    <Identity
-                      label={text("publicIP")}
-                      value={
-                        detail.report.system?.public_ips?.join(", ") ||
-                        text("notReported")
-                      }
-                    />
-                  </dl>
                 </section>
-                <section
-                  className="space-y-4 rounded-lg border p-4"
-                  aria-label={text("resourceUsage")}
-                >
-                  <div>
-                    <h3 className="text-sm font-medium">
-                      {text("resourceUsage")}
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {text("lastSeen")} ·{" "}
-                      {detail.last_seen_at
-                        ? new Date(detail.last_seen_at).toLocaleString()
-                        : "—"}
-                    </p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-3 [&>div]:rounded-lg [&>div]:bg-muted/40 [&>div]:p-3 [&_.font-medium]:text-2xl">
-                    <div>
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <HugeiconsIcon
-                          icon={CpuIcon}
-                          className="size-4"
-                          aria-hidden="true"
-                        />
-                        CPU
-                      </p>
-                      <ResourceMeter
-                        label={text("cpuUsage")}
-                        value={detail.report.system?.cpu?.usage_percent}
-                        stale={!detail.online}
-                        detail={
-                          detail.report.system?.cpu
-                            ? text("cores", {
-                                count: detail.report.system.cpu.logical_cores,
-                              })
-                            : text("notReported")
-                        }
-                      />
-                    </div>
-                    <div>
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <HugeiconsIcon
-                          icon={RamMemoryIcon}
-                          className="size-4"
-                          aria-hidden="true"
-                        />
-                        {text("memory")}
-                      </p>
-                      <ResourceMeter
-                        label={text("memoryUsage")}
-                        value={usage(detail.report.system?.memory)}
-                        stale={!detail.online}
-                        detail={
-                          detail.report.system?.memory
-                            ? `${bytes(detail.report.system.memory.used_bytes)} / ${bytes(detail.report.system.memory.total_bytes)}`
-                            : text("notReported")
-                        }
-                      />
-                    </div>
-                    <div>
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <HugeiconsIcon
-                          icon={HardDriveIcon}
-                          className="size-4"
-                          aria-hidden="true"
-                        />
-                        {text("disk")}
-                      </p>
-                      <ResourceMeter
-                        label={text("diskUsage")}
-                        value={usage(detail.report.system?.disk)}
-                        stale={!detail.online}
-                        detail={
-                          detail.report.system?.disk
-                            ? `${bytes(detail.report.system.disk.used_bytes)} / ${bytes(detail.report.system.disk.total_bytes)}`
-                            : text("notReported")
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {[
-                      {
-                        icon: Wifi01Icon,
-                        label: text("networkThroughput"),
-                        first: text("receiveRate"),
-                        second: text("transmitRate"),
-                        a: detail.report.system?.network
-                          ?.receive_bytes_per_second,
-                        b: detail.report.system?.network
-                          ?.transmit_bytes_per_second,
-                      },
-                      {
-                        icon: HardDriveIcon,
-                        label: text("diskThroughput"),
-                        first: text("readRate"),
-                        second: text("writeRate"),
-                        a: detail.report.system?.disk_io?.read_bytes_per_second,
-                        b: detail.report.system?.disk_io
-                          ?.write_bytes_per_second,
-                      },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="space-y-3 rounded-lg bg-muted/40 p-3"
-                      >
-                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <HugeiconsIcon
-                            icon={item.icon}
-                            className="size-4"
-                            aria-hidden="true"
-                          />
-                          {item.label}
-                          {!detail.online &&
-                            (item.a !== undefined || item.b !== undefined) && (
-                              <span className="ml-auto">
-                                {text("lastReport")}
-                              </span>
-                            )}
-                        </p>
-                        <dl className="grid grid-cols-2 gap-3">
-                          <div>
-                            <dt className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <HugeiconsIcon
-                                icon={ArrowDown02Icon}
-                                className="size-3"
-                                aria-hidden="true"
-                              />
-                              {item.first}
-                            </dt>
-                            <dd className="mt-1 text-sm font-semibold tabular-nums">
-                              {rate(item.a)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <HugeiconsIcon
-                                icon={ArrowUp02Icon}
-                                className="size-3"
-                                aria-hidden="true"
-                              />
-                              {item.second}
-                            </dt>
-                            <dd className="mt-1 text-sm font-semibold tabular-nums">
-                              {rate(item.b)}
-                            </dd>
-                          </div>
-                        </dl>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {text("throughputHint")}
-                  </p>
-                </section>
-                <Collapsible className="rounded-lg border p-4">
-                  <CollapsibleTrigger className="group/section flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {text("systemDetails")}
+                <Collapsible defaultOpen className="rounded-lg border">
+                  <CollapsibleTrigger
+                    type="button"
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                  >
+                    <span className="font-medium">
+                      {text("engineInformation")}
+                    </span>
                     <HugeiconsIcon
-                      icon={ArrowDown02Icon}
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
                       aria-hidden="true"
-                      className="size-4 group-aria-expanded/section:rotate-180"
+                      className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
                     />
                   </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-4 space-y-4">
-                    <dl className="grid gap-4 sm:grid-cols-2">
-                      <Identity
-                        label={text("hostname")}
-                        value={
-                          detail.report.system?.hostname || text("notReported")
-                        }
-                      />
-                      <Identity
-                        label={t("environmentAdmin.host")}
-                        value={detail.id}
-                      />
-                      <Identity
-                        label={text("system")}
-                        value={
-                          detail.report.system?.os_name &&
-                          detail.report.system.os_name.toLowerCase() !== "linux"
-                            ? detail.report.system.os_name
-                            : text("notReported")
-                        }
-                      />
-                      <Identity
-                        label={text("kernel")}
-                        value={
-                          detail.report.system?.kernel_version ||
-                          text("notReported")
-                        }
-                      />
-                      <Identity
-                        label={text("architecture")}
-                        value={
-                          detail.status === "pending"
-                            ? "—"
-                            : detail.architecture
-                        }
-                      />
-                      <Identity
-                        label={t("environmentAdmin.version")}
-                        value={detail.version}
-                      />
-                      <Identity
-                        label={text("cpuModel")}
-                        value={
-                          detail.report.system?.cpu?.model ||
-                          text("notReported")
-                        }
-                      />
-                      <Identity
-                        label={text("lastSeen")}
-                        value={
-                          detail.last_seen_at
-                            ? new Date(detail.last_seen_at).toLocaleString()
-                            : "—"
-                        }
-                      />
+                  <CollapsibleContent keepMounted className="border-t">
+                    <dl className="divide-y">
+                      {(
+                        [
+                          [
+                            t("environmentAdmin.activatedAt"),
+                            detail.activated_at
+                              ? new Date(detail.activated_at).toLocaleString()
+                              : missingValue,
+                          ],
+                          [
+                            t("environmentAdmin.version"),
+                            <span className="flex flex-wrap items-center justify-end gap-2">
+                              {detail.status === "active" && (
+                                <HostUpgrade
+                                  key={detail.id}
+                                  host={detail}
+                                  refresh={refresh}
+                                  dialog
+                                />
+                              )}
+                              <span>{displayValue(detail.version || "")}</span>
+                            </span>,
+                          ] as const,
+                          [
+                            t("environmentAdmin.hostMaxEnvironments"),
+                            detail.max_environments == null
+                              ? missingValue
+                              : String(detail.max_environments),
+                          ],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div
+                          key={label}
+                          className={cn(
+                            "flex items-center justify-between gap-4 px-4 text-sm",
+                            label === t("environmentAdmin.version") &&
+                              detail.status === "active" &&
+                              detail.upgrade?.update_available
+                              ? "py-2.5"
+                              : "py-3"
+                          )}
+                        >
+                          <dt className="shrink-0 text-muted-foreground">
+                            {label}
+                          </dt>
+                          <dd className="min-w-0 break-all text-right">
+                            {typeof value === "string"
+                              ? displayValue(value)
+                              : value}
+                          </dd>
+                        </div>
+                      ))}
                     </dl>
-                    <dl className="grid gap-4 sm:grid-cols-2">
-                      <Identity
-                        label={text("dataDir")}
-                        value={
-                          detail.report.system?.disk?.path ||
-                          text("notReported")
-                        }
-                      />
-                      <Identity
-                        label={text("diskAvailable")}
-                        value={
-                          detail.report.system?.disk
-                            ? bytes(detail.report.system.disk.available_bytes)
-                            : text("notReported")
-                        }
-                      />
-                    </dl>
-                    <p className="text-xs text-muted-foreground">
-                      {text("metricsHint")}
-                    </p>
                   </CollapsibleContent>
                 </Collapsible>
-                {detail.status === "active" && (
-                  <Collapsible
-                    key={`upgrade-${detail.id}`}
-                    defaultOpen={Boolean(
-                      detail.upgrade?.update_available ||
-                      (detail.upgrade?.task &&
-                        detail.upgrade.task.status !== "succeeded")
-                    )}
-                    className="rounded-lg border p-4"
+                <Collapsible defaultOpen className="rounded-lg border">
+                  <CollapsibleTrigger
+                    type="button"
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
                   >
-                    <CollapsibleTrigger className="group/section flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      {text("engineMaintenance")}
-                      <HugeiconsIcon
-                        icon={ArrowDown02Icon}
-                        aria-hidden="true"
-                        className="size-4 group-aria-expanded/section:rotate-180"
-                      />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-4">
-                      <HostUpgrade
-                        key={detail.id}
-                        host={detail}
-                        refresh={refresh}
-                      />
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
+                    <span className="font-medium">{text("resourceUsage")}</span>
+                    <HugeiconsIcon
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent keepMounted className="border-t">
+                    <dl className="divide-y">
+                      {(
+                        [
+                          [
+                            "CPU",
+                            detail.report.system?.cpu ? (
+                              <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                                <span className="text-muted-foreground">
+                                  {detail.report.system?.cpu
+                                    ? text("cores", {
+                                        count:
+                                          detail.report.system.cpu
+                                            .logical_cores,
+                                      })
+                                    : missingValue}
+                                </span>
+                                <HugeiconsIcon
+                                  icon={DotIcon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  className={percentColor(
+                                    detail.report.system?.cpu?.usage_percent
+                                  )}
+                                >
+                                  {displayValue(
+                                    percent(
+                                      detail.report.system?.cpu?.usage_percent
+                                    )
+                                  )}
+                                </span>
+                              </span>
+                            ) : (
+                              missingValue
+                            ),
+                          ],
+                          [
+                            text("memory"),
+                            detail.report.system?.memory ? (
+                              <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                                <span className="text-muted-foreground">
+                                  {displayValue(
+                                    bytes(
+                                      detail.report.system.memory.used_bytes
+                                    )
+                                  )}{" "}
+                                  /{" "}
+                                  {displayValue(
+                                    bytes(
+                                      detail.report.system.memory.total_bytes
+                                    )
+                                  )}
+                                </span>
+                                <HugeiconsIcon
+                                  icon={DotIcon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  className={percentColor(
+                                    usage(detail.report.system.memory)
+                                  )}
+                                >
+                                  {displayValue(
+                                    percent(usage(detail.report.system.memory))
+                                  )}
+                                </span>
+                              </span>
+                            ) : (
+                              missingValue
+                            ),
+                          ],
+                          [
+                            text("disk"),
+                            detail.report.system?.disk ? (
+                              <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                                <span className="text-muted-foreground">
+                                  {displayValue(
+                                    bytes(detail.report.system.disk.used_bytes)
+                                  )}{" "}
+                                  /{" "}
+                                  {displayValue(
+                                    bytes(detail.report.system.disk.total_bytes)
+                                  )}
+                                </span>
+                                <HugeiconsIcon
+                                  icon={DotIcon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  className={percentColor(
+                                    usage(detail.report.system.disk)
+                                  )}
+                                >
+                                  {displayValue(
+                                    percent(usage(detail.report.system.disk))
+                                  )}
+                                </span>
+                              </span>
+                            ) : (
+                              missingValue
+                            ),
+                          ],
+                          [
+                            text("networkThroughput"),
+                            detail.report.system?.network ? (
+                              <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                                <span>
+                                  {text("receiveRate")}{" "}
+                                  {displayValue(
+                                    rate(
+                                      detail.report.system?.network
+                                        ?.receive_bytes_per_second
+                                    )
+                                  )}
+                                </span>
+                                <HugeiconsIcon
+                                  icon={DotIcon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {text("transmitRate")}{" "}
+                                  {displayValue(
+                                    rate(
+                                      detail.report.system?.network
+                                        ?.transmit_bytes_per_second
+                                    )
+                                  )}
+                                </span>
+                              </span>
+                            ) : (
+                              missingValue
+                            ),
+                          ],
+                          [
+                            text("diskThroughput"),
+                            detail.report.system?.disk_io ? (
+                              <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                                <span>
+                                  {text("readRate")}{" "}
+                                  {displayValue(
+                                    rate(
+                                      detail.report.system?.disk_io
+                                        ?.read_bytes_per_second
+                                    )
+                                  )}
+                                </span>
+                                <HugeiconsIcon
+                                  icon={DotIcon}
+                                  className="size-4 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {text("writeRate")}{" "}
+                                  {displayValue(
+                                    rate(
+                                      detail.report.system?.disk_io
+                                        ?.write_bytes_per_second
+                                    )
+                                  )}
+                                </span>
+                              </span>
+                            ) : (
+                              missingValue
+                            ),
+                          ],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                        >
+                          <dt className="shrink-0 text-muted-foreground">
+                            {label}
+                          </dt>
+                          <dd className="min-w-0 break-all text-right tabular-nums">
+                            {typeof value === "string"
+                              ? displayValue(value)
+                              : value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </CollapsibleContent>
+                </Collapsible>
+                <Collapsible defaultOpen className="rounded-lg border">
+                  <CollapsibleTrigger
+                    type="button"
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-start hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+                  >
+                    <span className="font-medium">{text("systemDetails")}</span>
+                    <HugeiconsIcon
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="ms-auto size-4 transition-transform group-aria-expanded:rotate-90 [[dir=rtl]_&]:rotate-180 [[dir=rtl]_&]:group-aria-expanded:-rotate-90"
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent keepMounted className="border-t">
+                    <dl className="divide-y">
+                      {(
+                        [
+                          [
+                            text("hostname"),
+                            detail.report.system?.hostname || missingValue,
+                          ],
+                          [
+                            text("system"),
+                            detail.report.system?.os_name &&
+                            detail.report.system.os_name.toLowerCase() !==
+                              "linux"
+                              ? detail.report.system.os_name
+                              : missingValue,
+                          ],
+                          [
+                            text("kernel"),
+                            detail.report.system?.kernel_version ||
+                              missingValue,
+                          ],
+                          [
+                            text("architecture"),
+                            detail.status === "pending"
+                              ? missingValue
+                              : detail.architecture || missingValue,
+                          ],
+                          [
+                            text("cpuModel"),
+                            detail.report.system?.cpu?.model || missingValue,
+                          ],
+                          [
+                            text("privateIP"),
+                            detail.report.system?.private_ips?.join(", ") ||
+                              missingValue,
+                          ],
+                          [
+                            text("publicIP"),
+                            detail.report.system?.public_ips?.join(", ") ||
+                              missingValue,
+                          ],
+                          [
+                            text("dataDir"),
+                            detail.report.system?.disk?.path || missingValue,
+                          ],
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                        >
+                          <dt className="shrink-0 text-muted-foreground">
+                            {label}
+                          </dt>
+                          <dd className="min-w-0 break-all text-right">
+                            {typeof value === "string"
+                              ? displayValue(value)
+                              : value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
             )}
           </ScrollArea>
+          {detail && (
+            <DialogFooter className="shrink-0 items-center pt-4 sm:justify-between">
+              <p className="text-xs text-muted-foreground">
+                {text("reportTime")}
+                {"："}
+                {detail.last_seen_at ? (
+                  <time
+                    dateTime={detail.last_seen_at}
+                    title={new Date(detail.last_seen_at).toLocaleString()}
+                  >
+                    <ReportAge
+                      key={detail.last_seen_at}
+                      value={detail.last_seen_at}
+                      formatter={relativeFormatter}
+                    />
+                  </time>
+                ) : (
+                  missingValue
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                {detail.status === "pending" && (
+                  <HostCommand
+                    host={detail}
+                    refresh={refresh}
+                    onRenewed={(value) => {
+                      setChecking((current) =>
+                        current
+                          ? {
+                              ...current,
+                              id: value.host_id,
+                              version: value.version,
+                            }
+                          : current
+                      )
+                    }}
+                  />
+                )}
+                <Button size="sm" onClick={() => setChecking(null)}>
+                  {text("close")}
+                </Button>
+              </div>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog open={open} onOpenChange={close}>

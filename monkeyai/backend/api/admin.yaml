@@ -6831,7 +6831,7 @@ paths:
   /api/admin/v1/engine-hosts:
     get:
       summary: 分页查询宿主及最近预检报告
-      description: online 仅表示 90 秒内有签名心跳；prerequisites_met 只表示预检前置条件，不能据此接收工作负载。不会返回令牌、密钥或签名挑战。
+      description: 不返回等待接入（pending）的宿主，total 同样排除这些记录。online 仅表示 90 秒内有签名心跳；prerequisites_met 只表示预检前置条件，不能据此接收工作负载。不会返回令牌、密钥或签名挑战。
       parameters:
       - name: page
         in: query

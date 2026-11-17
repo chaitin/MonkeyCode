@@ -1,10 +1,18 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { useAppToast } from "@/components/animated-toast-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Field, FieldLabel } from "@/components/ui/field"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogContent,
@@ -48,6 +56,7 @@ export function HostUpgradeBadge({ value }: { value?: HostUpgradeState }) {
 export function HostUpgrade({
   host,
   refresh,
+  dialog = false,
 }: {
   host: {
     id: string
@@ -57,10 +66,15 @@ export function HostUpgrade({
     upgrade?: HostUpgradeState
   }
   refresh: () => void
+  dialog?: boolean
 }) {
   const { t } = useTranslation()
+  const { showToast } = useAppToast()
   const text = (key: string, options?: Record<string, string>) =>
     t(`pages.engineHosts.upgrade.${key}`, options)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const commandId = useId()
   const [target, setTarget] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -103,6 +117,11 @@ export function HostUpgrade({
     if (busy) return
     setBusy(true)
     setError("")
+    if (dialog) {
+      setCommandOpen(true)
+      setCommand("")
+      setNotice("")
+    }
     try {
       const result = await api<{ command: string }>(
         "/api/admin/v1/engine-upgrade"
@@ -115,47 +134,82 @@ export function HostUpgrade({
     }
   }
 
+  function closeCommand() {
+    if (busy) return
+    setCommandOpen(false)
+    setError("")
+    setNotice("")
+  }
+
   async function copy() {
+    setError("")
+    setNotice("")
     try {
       await navigator.clipboard.writeText(command)
-      setNotice(text("copied"))
+      showToast({ status: "success", title: text("copied") })
     } catch {
       setError(text("copyFailed"))
     }
   }
 
-  return (
+  const actions = (
+    <>
+      <Button
+        size="sm"
+        variant={dialog ? "outline" : "default"}
+        disabled={busy || !value.can_upgrade}
+        onClick={() => {
+          setTarget(value.target_version)
+          setError("")
+          setNotice("")
+        }}
+      >
+        {running
+          ? text("states.running")
+          : text(dialog ? "automatic" : "action")}
+      </Button>
+      {!running && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void loadCommand()}
+        >
+          {text(dialog ? "manualUpgrade" : "manual")}
+        </Button>
+      )}
+    </>
+  )
+
+  const content = (
     <section
-      className="min-w-0 space-y-3 rounded-lg border p-4"
+      className={
+        dialog ? "min-w-0 space-y-3" : "min-w-0 space-y-3 rounded-lg border p-4"
+      }
       aria-label={text("title")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{text("title")}</h3>
-        <HostUpgradeBadge value={value} />
-      </div>
+      {!dialog && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">{text("title")}</h3>
+          <HostUpgradeBadge value={value} />
+        </div>
+      )}
       <p className="break-all text-sm">
         {text("versions", {
           current: host.version,
           target: value.target_version || "—",
         })}
       </p>
-      <p className="text-sm text-muted-foreground">{text(`hints.${hint}`)}</p>
-      {task && (
+      {!dialog && (
+        <p className="text-sm text-muted-foreground">{text(`hints.${hint}`)}</p>
+      )}
+      {task?.status === "failed" && (
         <p className="break-words text-xs text-muted-foreground" role="status">
-          {text("task", {
-            version: task.version,
-            status: text(`states.${task.status}`),
-          })}
-          {" · "}
-          {new Date(task.updated_at).toLocaleString()}
-          {task.status === "failed" && (
-            <span className="mt-1 block">
-              {text(`reasons.${task.reason || "upgrade_failed"}`)}
-            </span>
-          )}
+          {text(`reasons.${task.reason || "upgrade_failed"}`)}
         </p>
       )}
       {notice &&
+        !commandOpen &&
         (notice !== text("submitted") ||
           !task ||
           task.status === "pending") && (
@@ -163,41 +217,17 @@ export function HostUpgrade({
             {notice}
           </p>
         )}
-      {error && !target && (
+      {error && !target && !commandOpen && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          disabled={busy || !value.can_upgrade}
-          onClick={() => {
-            setTarget(value.target_version)
-            setError("")
-            setNotice("")
-          }}
-        >
-          {running ? text("states.running") : text("action")}
-        </Button>
-        {!running && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void loadCommand()}
-          >
-            {text("manual")}
-          </Button>
-        )}
-      </div>
-      {command && (
+      {!dialog && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {command && !dialog && (
         <Field>
-          <FieldLabel htmlFor={`upgrade-command-${host.id}`}>
-            {text("manual")}
-          </FieldLabel>
+          <FieldLabel htmlFor={commandId}>{text("manual")}</FieldLabel>
           <Textarea
-            id={`upgrade-command-${host.id}`}
+            id={commandId}
             readOnly
             value={command}
             className="min-h-24 w-full resize-none break-all font-mono text-xs"
@@ -214,7 +244,7 @@ export function HostUpgrade({
           if (!open && !busy) setTarget("")
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>{text("confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -239,14 +269,111 @@ export function HostUpgrade({
               {text("cancel")}
             </Button>
             <Button
+              loading={busy}
               disabled={busy || !value.can_upgrade}
               onClick={() => void upgrade()}
             >
-              {busy ? text("submitting") : text("action")}
+              {t("environmentAdmin.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {dialog && (
+        <Dialog
+          open={commandOpen}
+          onOpenChange={(open) => {
+            if (!open) closeCommand()
+          }}
+        >
+          <DialogContent
+            className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
+            closeLabel={text("cancel")}
+          >
+            <DialogHeader>
+              <DialogTitle>{text("manualUpgrade")}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm">{text("manualHint")}</p>
+            {busy && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {t("resources.loading")}
+              </p>
+            )}
+            {command && (
+              <pre
+                aria-label={text("manual")}
+                className="max-h-64 select-text overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 font-mono text-xs"
+              >
+                <code>{command}</code>
+              </pre>
+            )}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {notice}
+              </p>
+            )}
+            <DialogFooter>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !command}
+                onClick={() => void copy()}
+              >
+                {text("copy")}
+              </Button>
+              <Button
+                size="sm"
+                variant="default"
+                disabled={busy}
+                onClick={closeCommand}
+              >
+                {text("cancel")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </section>
+  )
+  if (!dialog) return content
+  return (
+    <>
+      {value.update_available && (
+        <Button size="xs" variant="default" onClick={() => setDialogOpen(true)}>
+          {text("needsUpgrade")}
+        </Button>
+      )}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!busy) setDialogOpen(open)
+        }}
+      >
+        <DialogContent
+          className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
+          closeLabel={text("cancel")}
+        >
+          <DialogHeader>
+            <DialogTitle>{text("upgradeEngine")}</DialogTitle>
+          </DialogHeader>
+          {content}
+          <DialogFooter>
+            {actions}
+            <Button
+              size="sm"
+              variant="default"
+              disabled={busy}
+              onClick={() => setDialogOpen(false)}
+            >
+              {text("cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
