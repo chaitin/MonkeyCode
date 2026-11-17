@@ -8,7 +8,7 @@ OpenAPI 源文件按调用方分为 `admin.yaml` 和 `agent.yaml`。管理后台
 
 手机首次登录可用扫码配对替代浏览器授权：桌面端使用带 `device:manage` 的 Bearer 调用 `POST /oauth/pairing`，生成 60 秒有效的二维码；手机调用 `POST /oauth/pairing/{pairingID}/join` 换取八位配对码，用户在桌面端输入后调用 `POST /oauth/pairing/{pairingID}/approve` 批准，手机再以 `grant_type=urn:monkeyai:params:oauth:grant-type:pairing_code`、`client_id=monkeyai-mobile`、`device_code` 和原始 `code_verifier` 兑换账号级 token。桌面端可通过 `GET /oauth/pairing/{pairingID}` 查询状态并展示手机信息。
 
-二维码固定为 `monkeyai-mobile://pair/scan`，只包含 `v=1`、`server`、`id`、`secret` 四个参数，server 来自服务端公开地址。join 严格校验 JSON，最多 16 KiB；二维码过期、secret 错误与不存在统一返回 `404 pairing_not_found`。join 后窗口延长到当前时间后 60 秒，硬上限为创建后 180 秒。手机每 5 秒轮询，遇到 `slow_down` 再增加 5 秒；状态并发变更占用配对锁时返回可重试的 `authorization_pending`。所有配对响应均为 `Cache-Control: no-store`。
+二维码固定为 `https://work.baizhi.cloud/app-link/scan/`，只包含 `v=1`、`server`、`id`、`secret` 四个参数，server 来自服务端公开地址。join 严格校验 JSON，最多 16 KiB；二维码过期、secret 错误与不存在统一返回 `404 pairing_not_found`。join 后窗口延长到当前时间后 60 秒，硬上限为创建后 180 秒。手机每 5 秒轮询，遇到 `slow_down` 再增加 5 秒；状态并发变更占用配对锁时返回可重试的 `authorization_pending`。所有配对响应均为 `Cache-Control: no-store`。
 
 四条安全约束：二维码 secret 只存摘要、只返回一次；PKCE S256 在 join 时绑定；配对码错五次整条作废；改密时同事务把未兑换的 pending、joined、approved 配对置为 `denied`。配对是一次性的，不形成长期设备绑定。手机固定取得 `device:connect files:read files:write resources:manage session:control session:read`，沿用现有刷新、取票与 ACP 流程，不取得设备管理或发布权限。
 

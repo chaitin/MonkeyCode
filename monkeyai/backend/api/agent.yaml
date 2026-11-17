@@ -796,7 +796,7 @@ paths:
                 properties:
                   pairing_id: {type: string, format: uuid, description: 一次性配对标识}
                   secret: {type: string, minLength: 43, maxLength: 43, description: 32 字节随机数的无填充 base64url，仅返回一次}
-                  qr_payload: {type: string, format: uri, description: 'monkeyai-mobile://pair/scan?v=1&server=<公开服务地址>&id=<uuid>&secret=<secret>；仅这四个参数'}
+                  qr_payload: {type: string, format: uri, description: 'https://work.baizhi.cloud/app-link/scan/?v=1&server=<公开服务地址>&id=<uuid>&secret=<secret>；仅这四个参数'}
                   expires_in: {type: integer, const: 60, description: 二维码有效秒数}
         '400': {$ref: '#/components/responses/PairingInvalidRequest'}
         '401': {$ref: '#/components/responses/PairingUnauthorized'}

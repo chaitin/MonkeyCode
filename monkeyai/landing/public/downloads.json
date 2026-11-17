@@ -1,6 +1,7 @@
 {
   "android": "https://release.monkeycode-ai.com/public/monkeyai/mobile/apk/MonkeyAI-latest.apk",
   "ios": "https://apps.apple.com/cn/app/%E7%99%BE%E6%99%BA%E5%8A%9E%E5%85%AC%E5%B9%B3%E5%8F%B0/id6829699295",
+  "harmony": "https://appgallery.huawei.com/link/invite-test-wap?taskId=c5d7821130c1dfa19c5e72e020e377fb&invitationCode=3PQc5YwXR3e",
   "windows": "https://release.monkeycode-ai.com/public/monkeyai/desktop/win/x64/MonkeyAI-latest-win-x64.exe",
   "windows7": "https://release.monkeycode-ai.com/public/monkeyai/desktop/win7/x64/MonkeyAI-latest-win7-x64.exe",
   "linux_arm64": "https://release.monkeycode-ai.com/public/monkeyai/desktop/linux/arm64/MonkeyAI-latest-linux-arm64.AppImage",
