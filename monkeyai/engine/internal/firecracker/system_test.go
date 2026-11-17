@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/guest"
 	"github.com/chaitin/MonkeyCode/monkeyai/engine/internal/storage"
@@ -91,6 +92,94 @@ func TestSystemHostRejectsUnsafeControlGroup(t *testing.T) {
 		}
 	}
 }
+func TestJailerReceivesOnlyOneInstanceID(t *testing.T) {
+	h := systemFixture(t)
+	lease := NetworkLease{UID: 100001, Namespace: "/run/netns/mfc-test"}
+	for _, selftest := range []bool{false, true} {
+		launch := Launch{ID: strings.Repeat("a", 64), BootID: "boot-1", VCPUs: 1, MemoryMiB: 256, SelfTest: selftest}
+		args := h.launchCommand(launch, lease)
+		separators, ids := 0, 0
+		for index, arg := range args {
+			if arg == "--" {
+				separators++
+			}
+			if arg == "--id" {
+				ids++
+				if separators != 1 || index+1 >= len(args) || args[index+1] != launch.ID {
+					t.Fatal("实例ID必须只传给jailer，由jailer自动注入Firecracker", args)
+				}
+			}
+		}
+		if separators != 2 || ids != 1 || strings.Contains(strings.Join(args, " "), "--daemonize") {
+			t.Fatal("jailer实例参数不合法，或脱离systemd进程管理", args)
+		}
+		text := strings.Join(args, " ")
+		output := "--property=StandardOutput=null"
+		if selftest {
+			output = "--property=StandardOutput=journal"
+		}
+		if !strings.Contains(text, output) || !strings.Contains(text, "--property=StandardError=journal") {
+			t.Fatal("未保留启动错误日志，或非自检环境的控制台被记录", args)
+		}
+	}
+}
+
+func TestAPIStartupReportsEarlyExitAndJournal(t *testing.T) {
+	h := systemFixture(t)
+	record := saveHostRecord(t, h)
+	client, err := NewClient(h.socket(record.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	started := time.Now()
+	calls := 0
+	h.command = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		calls++
+		if name == "systemctl" {
+			return []byte("LoadState=loaded\nActiveState=failed\nDescription=MonkeyAI Firecracker boot-1\nMainPID=0\nResult=exit-code\nExecMainStatus=153\n"), nil
+		}
+		if name != "journalctl" || !strings.Contains(strings.Join(args, " "), "--unit="+h.unit(record.ID)) || !strings.Contains(strings.Join(args, " "), "--since=@") {
+			t.Fatal("日志查询未限定实例和本次启动时间", name, args)
+		}
+		return []byte("Arguments parsing error: The argument 'id' was provided more than once."), nil
+	}
+	err = h.waitAPI(t.Context(), client, record, started)
+	if err == nil || !strings.Contains(err.Error(), "status=153") || !strings.Contains(err.Error(), "provided more than once") || calls != 2 {
+		t.Fatal("提前退出未报告原始日志或仍反复等待API", calls, err)
+	}
+}
+
+func TestStartupDiagnosticPreservesCauseAndLimitsOutput(t *testing.T) {
+	h := systemFixture(t)
+	record := saveHostRecord(t, h)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	cause := errors.New("API startup failed")
+	for _, broken := range []bool{false, true} {
+		h.command = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if ctx.Err() != nil {
+				t.Fatal("日志读取复用了已取消的启动上下文")
+			}
+			if broken {
+				return nil, errors.New("journal unavailable")
+			}
+			return []byte(strings.Repeat("x", 10000) + " last diagnostic"), nil
+		}
+		err := h.startError(ctx, record, time.Now(), cause)
+		if !errors.Is(err, cause) || len(err.Error()) > 9000 {
+			t.Fatal("丢失启动原因或日志未限长", err)
+		}
+		want := "last diagnostic"
+		if broken {
+			want = "journal unavailable"
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Fatal("丢失最后日志或采集失败原因", err)
+		}
+	}
+}
+
 func TestBoundedHostCommandOutput(t *testing.T) {
 	var out boundedOutput
 	data := []byte(strings.Repeat("x", 100000))

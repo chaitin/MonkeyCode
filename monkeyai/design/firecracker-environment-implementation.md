@@ -103,6 +103,16 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 上述过程只执行本地构建和检查，`ENGINE_PUBLISH=false`；没有上传、目标宿主安装或部署。ARM64新开发镜像已本地构建为`monkeyai-environment:firecracker-dev-f227b878-arm64`，镜像ID为`sha256:5069ede392f8ce15e4455e0ab65df89c568364fc459ab67cc98578180adfa00a`。已检查init、mount、普通用户sudo、no-new-privileges阻止sudo，以及此新镜像中的真实runtime临时根目录准备／幂等激活。没有切换中心默认镜像，AMD64新开发镜像与KVM／完整安装验收仍是发布前置项。
 
+## 2026-11-17：修复jailer重复实例参数
+
+目标AMD64宿主首次安装的真实自检报告显示平台探测通过，但`Firecracker API启动超时`。检查锁定Firecracker v1.18.0的jailer实现确认：jailer的`exec_command`会自动向VMM注入`--id`，原SystemHost启动参数又额外传入`--id`，导致VMM参数解析立即失败。
+
+在Linux环境使用同一锁定版本的真实Firecracker与jailer复现：原参数输出`DuplicateArgument("id")`并以153退出；删除额外参数后，实际Unix API的`GET /`返回200，实例状态为`Not started`。该验证未启动虚拟机、不依赖KVM，不能替代真实KVM、虚拟机内启动和vsock握手验收。
+
+修复只向jailer传入实例ID。VMM stderr改由journal保留，自检stdout也写journal；普通环境控制台仍不写入日志。等待API期间检查systemd服务状态，服务提前退出时直接返回退出状态和本次启动的有界journal尾部，不再空等10秒。安装器现已能呈现自检失败报告；遇到后续错误可直接看到该阶段详情。
+
+需要生成新的固定engine发行才能在目标宿主生效，不覆盖已发布的`v26111701`。这次问题位于宿主engine的启动参数，已有OSS Firecracker工具包无需为此修改。
+
 ## 后续阶段与阻断项
 
 - [x] 平台探测、候选优先级、失败分类、保留旧引擎及CLI接入。

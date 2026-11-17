@@ -191,7 +191,7 @@ func (h *SystemHost) load(id string) (hostRecord, error) {
 	return record, nil
 }
 func (h *SystemHost) status(ctx context.Context, record hostRecord) (map[string]string, error) {
-	out, err := h.command(ctx, "systemctl", "show", h.unit(record.ID), "--property=LoadState,ActiveState,SubState,Description,MainPID,ControlGroup")
+	out, err := h.command(ctx, "systemctl", "show", h.unit(record.ID), "--property=LoadState,ActiveState,SubState,Description,MainPID,ControlGroup,Result,ExecMainStatus")
 	if err != nil {
 		return nil, err
 	}
@@ -389,32 +389,90 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 	if len(h.socket(l.ID)) > 100 {
 		return errors.New("jailer数据路径超过Unix socket长度限制")
 	}
-	command := []string{"--unit=" + h.unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID, "--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group", "--property=TimeoutStopSec=25s", "--property=MemoryMax=" + strconv.FormatInt(l.MemoryMiB+h.config.OverheadMiB, 10) + "M", "--property=MemorySwapMax=0", "--property=CPUQuota=" + cpuQuota(l), "--property=TasksMax=512", "--property=LimitNOFILE=4096", "--property=StandardOutput=null", "--property=StandardError=null", "--", h.config.Jailer.Path, "--id", l.ID, "--exec-file", h.config.Firecracker.Path, "--uid", strconv.FormatUint(uint64(lease.UID), 10), "--gid", strconv.FormatUint(uint64(lease.UID), 10), "--chroot-base-dir", filepath.Join(h.config.Root, "jailer"), "--netns", lease.Namespace, "--", "--api-sock", "/run/firecracker.socket", "--id", l.ID}
+	command := h.launchCommand(l, lease)
+	started := time.Now()
 	if _, err := h.command(ctx, "systemd-run", command...); err != nil {
-		return err
+		return h.startError(ctx, record, started, err)
 	}
 	client, err := NewClient(h.socket(l.ID))
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	ready, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	for {
-		if _, err := client.Info(ready); err == nil {
-			break
-		}
-		select {
-		case <-ready.Done():
-			return errors.New("Firecracker API启动超时")
-		case <-time.After(50 * time.Millisecond):
-		}
+	if err := h.waitAPI(ctx, client, record, started); err != nil {
+		return err
 	}
 	if err := client.Configure(ctx, config); err != nil {
 		return err
 	}
 	return client.Start(ctx, l.ID)
 }
+
+func (h *SystemHost) waitAPI(ctx context.Context, client *Client, record hostRecord, started time.Time) error {
+	ready, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var lastErr error
+	var checked time.Time
+	for {
+		if _, lastErr = client.Info(ready); lastErr == nil {
+			return nil
+		}
+		if ready.Err() != nil {
+			return h.startError(ctx, record, started, fmt.Errorf("Firecracker API启动超时: %w", errors.Join(lastErr, ready.Err())))
+		}
+		if time.Since(checked) >= 250*time.Millisecond {
+			props, err := h.status(ready, record)
+			if err != nil {
+				return h.startError(ctx, record, started, err)
+			}
+			if props["LoadState"] == "not-found" || props["ActiveState"] == "inactive" || props["ActiveState"] == "failed" {
+				return h.startError(ctx, record, started, fmt.Errorf("Firecracker API尚未就绪，服务已退出（state=%s，result=%s，status=%s）", props["ActiveState"], props["Result"], props["ExecMainStatus"]))
+			}
+			checked = time.Now()
+		}
+		select {
+		case <-ready.Done():
+			return h.startError(ctx, record, started, fmt.Errorf("Firecracker API启动超时: %w", lastErr))
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+func (h *SystemHost) launchCommand(l Launch, lease NetworkLease) []string {
+	output := "null"
+	if l.SelfTest {
+		output = "journal"
+	}
+	return []string{
+		"--unit=" + h.unit(l.ID), "--description=MonkeyAI Firecracker " + l.BootID,
+		"--service-type=exec", "--property=Restart=no", "--property=KillMode=control-group",
+		"--property=TimeoutStopSec=25s", "--property=MemoryMax=" + strconv.FormatInt(l.MemoryMiB+h.config.OverheadMiB, 10) + "M",
+		"--property=MemorySwapMax=0", "--property=CPUQuota=" + cpuQuota(l), "--property=TasksMax=512",
+		"--property=LimitNOFILE=4096", "--property=StandardOutput=" + output, "--property=StandardError=journal",
+		"--", h.config.Jailer.Path, "--id", l.ID, "--exec-file", h.config.Firecracker.Path,
+		"--uid", strconv.FormatUint(uint64(lease.UID), 10), "--gid", strconv.FormatUint(uint64(lease.UID), 10),
+		"--chroot-base-dir", filepath.Join(h.config.Root, "jailer"), "--netns", lease.Namespace,
+		// jailer会自动向Firecracker注入--id，不能再重复传入。
+		"--", "--api-sock", "/run/firecracker.socket",
+	}
+}
+
+func (h *SystemHost) startError(ctx context.Context, record hostRecord, started time.Time, cause error) error {
+	diagnostic, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	out, err := h.command(diagnostic, "journalctl", "--unit="+h.unit(record.ID), "--since=@"+strconv.FormatInt(started.Unix(), 10), "--lines=20", "--no-pager", "--output=cat")
+	if err != nil {
+		return fmt.Errorf("%w；读取Firecracker启动日志失败: %v", cause, err)
+	}
+	text := strings.TrimSpace(string(out))
+	if text == "" || text == "-- No entries --" {
+		return cause
+	}
+	if len(text) > 8192 {
+		text = strings.ToValidUTF8(text[len(text)-8192:], "") + "\n…启动日志已截断"
+	}
+	return fmt.Errorf("%w\nFirecracker启动日志：\n%s", cause, text)
+}
+
 func copyKernel(ctx context.Context, source, target string) error {
 	in, err := os.Open(source)
 	if err != nil {
