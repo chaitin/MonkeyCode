@@ -186,7 +186,11 @@ function RealtimeMetricCard({
   )
 }
 
-export function RealtimeStatusPage() {
+export function RealtimeStatusPage({
+  overviewOnly = false,
+}: {
+  overviewOnly?: boolean
+}) {
   const { i18n, t } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const numberFormatter = new Intl.NumberFormat(locale)
@@ -354,36 +358,49 @@ export function RealtimeStatusPage() {
   }
 
   return (
-    <section className="flex flex-1 flex-col gap-4 p-4 pt-0">
+    <section
+      className={cn(
+        "flex min-w-0 flex-col gap-4",
+        !overviewOnly && "flex-1 p-4 pt-0"
+      )}
+    >
       <div className="flex flex-col gap-5">
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {METRICS.map(renderMetric)}
+          {METRICS.filter(
+            (metric) => !overviewOnly || PERIOD_METRICS.has(metric.key)
+          ).map(renderMetric)}
         </div>
-        <ModelMessageDistributionCard
-          distribution={model?.message_distribution}
-          loading={modelRequest.loading}
-        />
+        {!overviewOnly && (
+          <ModelMessageDistributionCard
+            distribution={model?.message_distribution}
+            loading={modelRequest.loading}
+          />
+        )}
         <div className="flex flex-col gap-2">
           <div className="grid gap-5 lg:grid-cols-2">
-            <TrendCard
-              icon={Coins01Icon}
-              title={t("pages.realtimeStatus.metrics.modelConsumption")}
-              periodLabel={t("pages.realtimeStatus.period90d")}
-              points={modelCreditsTrend}
-              loading={modelRequest.loading}
-              formatValue={formatCreditsAmount}
-              color="var(--color-yellow-500)"
-              barClassName="fill-yellow-500"
-            />
-            <TrendCard
-              icon={Activity01Icon}
-              title={t("pages.realtimeStatus.callsTrend")}
-              periodLabel={t("pages.realtimeStatus.period90d")}
-              points={modelCallsTrend}
-              loading={modelRequest.loading}
-              color="var(--color-emerald-500)"
-              barClassName="fill-emerald-500"
-            />
+            {!overviewOnly && (
+              <>
+                <TrendCard
+                  icon={Coins01Icon}
+                  title={t("pages.realtimeStatus.metrics.modelConsumption")}
+                  periodLabel={t("pages.realtimeStatus.period90d")}
+                  points={modelCreditsTrend}
+                  loading={modelRequest.loading}
+                  formatValue={formatCreditsAmount}
+                  color="var(--color-yellow-500)"
+                  barClassName="fill-yellow-500"
+                />
+                <TrendCard
+                  icon={Activity01Icon}
+                  title={t("pages.realtimeStatus.callsTrend")}
+                  periodLabel={t("pages.realtimeStatus.period90d")}
+                  points={modelCallsTrend}
+                  loading={modelRequest.loading}
+                  color="var(--color-emerald-500)"
+                  barClassName="fill-emerald-500"
+                />
+              </>
+            )}
             <TrendCard
               icon={TokenCircleIcon}
               title={t("pages.realtimeStatus.metrics.inputTokens")}

@@ -73,7 +73,11 @@ function AnalysisCard({
   )
 }
 
-export function TaskAnalysisPage() {
+export function TaskAnalysisPage({
+  overviewOnly = false,
+}: {
+  overviewOnly?: boolean
+}) {
   const { t } = useTranslation()
   const request = useStatistics<SessionOverview>(
     "/api/admin/v1/statistics/session-reporting/sessions/overview",
@@ -83,7 +87,10 @@ export function TaskAnalysisPage() {
   if (request.loading)
     return (
       <section
-        className="flex min-h-96 flex-1 items-center justify-center p-4"
+        className={cn(
+          "flex items-center justify-center",
+          overviewOnly ? "min-h-20" : "min-h-96 flex-1 p-4"
+        )}
         role="status"
         aria-label={t("statistics.loading")}
       >
@@ -96,7 +103,10 @@ export function TaskAnalysisPage() {
   if (!request.data)
     return (
       <section
-        className="flex min-h-96 flex-1 flex-col items-center justify-center gap-3 p-4 text-center"
+        className={cn(
+          "flex flex-col items-center justify-center gap-3 text-center",
+          overviewOnly ? "min-h-20" : "min-h-96 flex-1 p-4"
+        )}
         role="alert"
       >
         <p className="text-sm text-muted-foreground">
@@ -105,6 +115,16 @@ export function TaskAnalysisPage() {
         <Button variant="outline" onClick={request.reload}>
           {t("statistics.retry")}
         </Button>
+      </section>
+    )
+  if (overviewOnly)
+    return (
+      <section className="flex min-w-0 flex-col gap-5">
+        <TaskOverviewCards
+          overview={request.data}
+          modelUsage={null}
+          overviewOnly
+        />
       </section>
     )
   return <TaskAnalysisContent overview={request.data} />

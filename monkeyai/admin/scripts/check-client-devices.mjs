@@ -305,7 +305,7 @@ try {
       }
       try {
         await page.goto(
-          "http://monkeyai.test/console/statistics/session-reporting/clients"
+          "http://monkeyai.test/console/statistics/clients"
         )
         await page.waitForFunction(
           () =>
@@ -397,7 +397,7 @@ try {
           .filter({ hasText: /^客户端$/ })
         assert.equal(
           await clientLink.getAttribute("href"),
-          `/console/statistics/session-reporting/clients?user_id=${id}`
+          `/console/statistics/clients?user_id=${id}`
         )
         const filteredList = page.waitForResponse((response) => {
           const url = new URL(response.url())

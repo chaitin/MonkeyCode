@@ -32,6 +32,7 @@ import { MembersAndGroupsPage } from "@/pages/members-and-groups-page"
 import { ModelsPage } from "@/pages/models-page"
 import { OperationLogsPage } from "@/pages/operation-logs-page"
 import { OtherSettingsPage } from "@/pages/other-settings-page"
+import { OverviewPage } from "@/pages/overview-page"
 import { RealtimeStatusPage } from "@/pages/realtime-status-page"
 import { RulesPage } from "@/pages/rules-page"
 import { ResourceImportsPage } from "@/pages/resource-imports-page"
@@ -104,10 +105,6 @@ export function App() {
               element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
             />
             <Route
-              path="statistics/models"
-              element={<Navigate to={DEFAULT_CONSOLE_PATH} replace />}
-            />
-            <Route
               path="resources/knowledge-bases"
               element={<Navigate to={CONSOLE_ROUTES.kb} replace />}
             />
@@ -116,7 +113,9 @@ export function App() {
                 key={page.path}
                 path={page.path.slice(CONSOLE_PATH.length + 1)}
                 element={
-                  page.path === CONSOLE_ROUTES.cloudHosts ? (
+                  page.path === CONSOLE_ROUTES.overview ? (
+                    <OverviewPage />
+                  ) : page.path === CONSOLE_ROUTES.cloudHosts ? (
                     <CloudHostsPage />
                   ) : page.path === CONSOLE_ROUTES.realtimeStatus ? (
                     <RealtimeStatusPage />

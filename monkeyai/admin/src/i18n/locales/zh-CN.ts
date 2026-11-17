@@ -670,6 +670,10 @@ export const zhCN = {
     systemSettings: "系统设置",
   },
   pages: {
+    overview: {
+      title: "总览",
+      description: "",
+    },
     clientDevices: {
       title: "客户端接入记录",
       description: "每行对应一个用户的一台设备，展示最近登记的客户端信息。",

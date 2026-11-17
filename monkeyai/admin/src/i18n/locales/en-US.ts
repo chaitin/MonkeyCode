@@ -726,6 +726,10 @@ export const enUS = {
     systemSettings: "System Settings",
   },
   pages: {
+    overview: {
+      title: "Overview",
+      description: "",
+    },
     clientDevices: {
       title: "Client registrations",
       description:

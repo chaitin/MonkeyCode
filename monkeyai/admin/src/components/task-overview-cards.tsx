@@ -15,7 +15,9 @@ import type { SessionOverview } from "@/lib/statistics"
 export function TaskOverviewCards({
   overview,
   modelUsage,
+  overviewOnly = false,
 }: {
+  overviewOnly?: boolean
   modelUsage: ReactNode
   overview: SessionOverview
 }) {
@@ -120,21 +122,23 @@ export function TaskOverviewCards({
         />
       </div>
       <div className="grid gap-5 lg:grid-cols-2">{metricCards.slice(3)}</div>
-      <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-        <StatisticsTrendCard
-          icon={AiChat02Icon}
-          title={t(`${key}.conversationCount`)}
-          periodLabel={t("pages.realtimeStatus.period90d")}
-          points={overview.days.map((day) => ({
-            date: day.date,
-            count: day.messages,
-          }))}
-          loading={false}
-          color="var(--color-emerald-500)"
-          barClassName="fill-emerald-500"
-        />
-        {modelUsage}
-      </div>
+      {!overviewOnly && (
+        <div className="grid min-w-0 gap-5 lg:grid-cols-2">
+          <StatisticsTrendCard
+            icon={AiChat02Icon}
+            title={t(`${key}.conversationCount`)}
+            periodLabel={t("pages.realtimeStatus.period90d")}
+            points={overview.days.map((day) => ({
+              date: day.date,
+              count: day.messages,
+            }))}
+            loading={false}
+            color="var(--color-emerald-500)"
+            barClassName="fill-emerald-500"
+          />
+          {modelUsage}
+        </div>
+      )}
     </>
   )
 }

@@ -11,7 +11,7 @@ const baseURL = process.env.ADMIN_DEV_URL || "http://admin.test"
 const dist = fileURLToPath(new URL("../dist/", import.meta.url))
 const prefix = "/api/admin/v1/statistics/session-reporting/members/"
 const overviewPath = `${prefix}overview`
-const memberPath = "/console/statistics/session-reporting/members"
+const memberPath = "/console/statistics/members"
 const modelOverviewPath = "/api/admin/v1/statistics/models/overview"
 const messageModels = [
   ["GPT-5.2", 93],
@@ -676,7 +676,7 @@ try {
     }
     // Model analysis only requests model statistics; user/session cards live on their own pages.
     overviewRequests.length = 0
-    await page.goto(`${baseURL}/console/statistics/realtime`)
+    await page.goto(`${baseURL}/console/statistics/models`)
     const loadingDistribution = page.getByRole("region", {
       name: "模型使用分布",
       exact: true,

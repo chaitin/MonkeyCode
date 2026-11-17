@@ -238,7 +238,7 @@ try {
   )
 
   await page.evaluate(() => document.querySelector("#compat-has").remove())
-  await page.goto(`${baseURL}/console/statistics/session-reporting/clients`)
+  await page.goto(`${baseURL}/console/statistics/clients`)
   await page.waitForFunction(() =>
     document.querySelector('[role="figure"][data-container-wide]')
   )

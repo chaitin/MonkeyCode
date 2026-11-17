@@ -49,6 +49,10 @@ export function AppSidebar({
       icon: <HugeiconsIcon icon={ChartRingIcon} strokeWidth={2} />,
       items: [
         {
+          title: t("pages.overview.title"),
+          url: CONSOLE_ROUTES.overview,
+        },
+        {
           title: t("pages.realtimeStatus.title"),
           url: CONSOLE_ROUTES.realtimeStatus,
         },

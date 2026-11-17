@@ -440,7 +440,11 @@ function MemberUsageDetails({ userID }: { userID: string }) {
   )
 }
 
-export function MemberAnalysisPage() {
+export function MemberAnalysisPage({
+  overviewOnly = false,
+}: {
+  overviewOnly?: boolean
+}) {
   const { t, i18n } = useTranslation()
   const { data: overview, loading } = useStatistics<MemberOverview>(
     "/api/admin/v1/statistics/session-reporting/members/overview"
@@ -484,7 +488,10 @@ export function MemberAnalysisPage() {
     value === undefined ? "—" : number.format(value)
   return (
     <section
-      className="flex min-w-0 flex-1 flex-col gap-5 p-4 pt-0"
+      className={cn(
+        "flex min-w-0 flex-col gap-5",
+        !overviewOnly && "flex-1 p-4 pt-0"
+      )}
       aria-label={t(`${key}.title`)}
     >
       <div
@@ -545,46 +552,48 @@ export function MemberAnalysisPage() {
           barClassName="fill-orange-400"
         />
       </div>
-      <Card className="min-w-0 flex-1 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 px-3 py-0">
-          <CardTitle className="min-w-0" role="heading" aria-level={2}>
-            {t(`${key}.memberDetails`)}
-          </CardTitle>
-          <MemberPicker
-            id={pickerID}
-            userID={selectedID}
-            onSelect={selectMember}
-          />
-        </CardHeader>
-        <CardContent className="min-w-0 flex-1 rounded-xl border border-border/60 bg-card p-4">
-          {selectedID ? (
-            <MemberUsageDetails key={selectedID} userID={selectedID} />
-          ) : (
-            <div className="flex min-h-96 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-              <div className="mb-1 flex size-14 items-center justify-center rounded-full bg-muted">
-                <HugeiconsIcon
-                  icon={User02Icon}
-                  className="size-7 text-muted-foreground"
-                  strokeWidth={1.5}
-                />
+      {!overviewOnly && (
+        <Card className="min-w-0 flex-1 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 px-3 py-0">
+            <CardTitle className="min-w-0" role="heading" aria-level={2}>
+              {t(`${key}.memberDetails`)}
+            </CardTitle>
+            <MemberPicker
+              id={pickerID}
+              userID={selectedID}
+              onSelect={selectMember}
+            />
+          </CardHeader>
+          <CardContent className="min-w-0 flex-1 rounded-xl border border-border/60 bg-card p-4">
+            {selectedID ? (
+              <MemberUsageDetails key={selectedID} userID={selectedID} />
+            ) : (
+              <div className="flex min-h-96 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+                <div className="mb-1 flex size-14 items-center justify-center rounded-full bg-muted">
+                  <HugeiconsIcon
+                    icon={User02Icon}
+                    className="size-7 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                </div>
+                <p className="font-medium">{t(`${key}.emptyTitle`)}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-1"
+                  onClick={() => {
+                    const picker = document.getElementById(pickerID)
+                    picker?.focus()
+                    picker?.click()
+                  }}
+                >
+                  {t(`${key}.selectMember`)}
+                </Button>
               </div>
-              <p className="font-medium">{t(`${key}.emptyTitle`)}</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-1"
-                onClick={() => {
-                  const picker = document.getElementById(pickerID)
-                  picker?.focus()
-                  picker?.click()
-                }}
-              >
-                {t(`${key}.selectMember`)}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </section>
   )
 }
