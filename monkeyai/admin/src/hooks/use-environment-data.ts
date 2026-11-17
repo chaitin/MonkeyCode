@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
 import { api } from "@/lib/api"
 
-export function useEnvironmentData<T>(path: string | null, poll = false) {
+export function useEnvironmentData<T>(
+  path: string | null,
+  poll = false,
+  loadData: (path: string, init?: RequestInit) => Promise<T> = api<T>
+) {
   const [revision, setRevision] = useState(0)
   const [result, setResult] = useState<{
     key: string
@@ -18,7 +22,7 @@ export function useEnvironmentData<T>(path: string | null, poll = false) {
       if (initial || !document.hidden) {
         initial = false
         try {
-          const data = await api<T>(path!, { signal: controller.signal })
+          const data = await loadData(path!, { signal: controller.signal })
           if (!controller.signal.aborted) setResult({ key, data })
         } catch (error) {
           if (!controller.signal.aborted)
@@ -35,7 +39,7 @@ export function useEnvironmentData<T>(path: string | null, poll = false) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [path, key, poll])
+  }, [path, key, poll, loadData])
   const refresh = useCallback(() => setRevision((value) => value + 1), [])
   const current = result?.key === key ? result : undefined
   return {

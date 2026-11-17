@@ -1,8 +1,6 @@
 import {
   CloudSection,
   CloudGrid,
-  CloudCard,
-  CloudField,
 } from "@/components/environments/cloud-section"
 import {
   AlertDialog,
@@ -17,11 +15,20 @@ import { Link } from "react-router-dom"
 import { CONSOLE_ROUTES } from "@/lib/routes"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { HostStatus } from "@/components/environments/status-badge"
-import { Pagination, Identity } from "@/components/environments/common"
+import { Identity } from "@/components/environments/common"
+import { loadEngineHosts } from "@/lib/engine-hosts"
 import {
   HostUpgrade,
   type HostUpgradeState,
@@ -29,9 +36,14 @@ import {
 import { HostSetupDialog } from "@/components/environments/host-setup-dialog"
 import { ResourceMeter } from "@/components/environments/resource-meter"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { RefreshCw } from "lucide-react"
+import { Info, RefreshCw } from "lucide-react"
 import {
   Add01Icon,
+  MoreHorizontalIcon,
+  PlayIcon,
+  PauseIcon,
+  Edit02Icon,
+  Delete02Icon,
   ArrowUp02Icon,
   CpuIcon,
   RamMemoryIcon,
@@ -39,7 +51,14 @@ import {
   ArrowDown02Icon,
   Wifi01Icon,
 } from "@hugeicons/core-free-icons"
-import { ActionButton } from "@/components/environments/action-button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { OSIcon } from "@/components/environments/os-icon"
 import { HostCommand } from "@/components/environments/host-command"
 import { rememberCommand } from "@/lib/host-command"
@@ -137,7 +156,6 @@ export function EngineHostsPage() {
   const { user } = useAuth()
   const text = (key: string, options?: Record<string, string | number>) =>
     t(`pages.engineHosts.${key}`, options)
-  const [page, setPage] = useState(1)
   const [formError, setFormError] = useState("")
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -152,11 +170,11 @@ export function EngineHostsPage() {
   const [configuring, setConfiguring] = useState<Host | null>(null)
   const [checking, setChecking] = useState<Host | null>(null)
   const result = useEnvironmentData<{ items: Host[]; total: number }>(
-    `/api/admin/v1/engine-hosts?page=${page}&page_size=20`,
-    true
+    "/api/admin/v1/engine-hosts",
+    true,
+    loadEngineHosts<Host>
   )
   const hosts = result.data?.items ?? []
-  const total = result.data?.total ?? 0
   const refresh = result.refresh
   const detail = hosts.find((host) => host.id === checking?.id) ?? checking
 
@@ -181,7 +199,6 @@ export function EngineHostsPage() {
       )
       setEnrollment(result)
       rememberCommand(user?.id ?? "", result)
-      setPage(1)
       refresh()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : text("createFailed"))
@@ -230,8 +247,7 @@ export function EngineHostsPage() {
       if (checking?.id === deleting.id) setChecking(null)
       setNotice(text("deleteSuccess"))
       setDeleting(null)
-      if (hosts.length === 1 && page > 1) setPage(page - 1)
-      else refresh()
+      refresh()
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : text("deleteFailed"))
     } finally {
@@ -299,186 +315,202 @@ export function EngineHostsPage() {
                   ? "online"
                   : "offline"
           const system = host.report.system
-          const stale = !host.online || host.status !== "active"
+          const addresses = [
+            ...new Set([
+              ...(system?.public_ips ?? []),
+              ...(system?.private_ips ?? []),
+            ]),
+          ].join(", ")
           return (
-            <CloudCard horizontal key={host.id}>
-              <CloudField label={text("name")}>
-                <div className="flex items-center gap-3">
-                  <OSIcon name={system?.os_name} />
-                  <div className="min-w-0">
-                    <Button
-                      variant="link"
-                      className="h-auto max-w-48 justify-start truncate p-0 font-medium"
-                      title={host.name}
-                      onClick={() => setChecking(host)}
+            <Card
+              key={host.id}
+              size="sm"
+              className={cn(
+                "min-w-0",
+                !host.enabled &&
+                  "bg-muted ring-gray-300 dark:bg-muted dark:ring-gray-700"
+              )}
+            >
+              <CardHeader>
+                <div className="flex min-w-0 items-start gap-3">
+                  <OSIcon name={system?.os_name} avatar />
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="flex min-w-0 items-center gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-start transition-colors hover:text-blue-600 dark:hover:text-blue-400"
+                        title={host.name}
+                        onClick={() => setChecking(host)}
+                      >
+                        {host.name}
+                      </button>
+                      {!host.enabled && (
+                        <Badge variant="outline">{text("disabled")}</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription
+                      className="truncate"
+                      title={addresses || text("ipPending")}
                     >
-                      {host.name}
-                    </Button>
-                    <p
-                      className="mt-1 max-w-48 truncate font-mono text-xs text-muted-foreground"
-                      title={system?.hostname || host.id}
-                    >
-                      {system?.hostname || host.id}
-                    </p>
+                      {addresses || text("ipPending")}
+                    </CardDescription>
                   </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          aria-label={t("common.more")}
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        />
+                      }
+                    >
+                      <HugeiconsIcon
+                        icon={MoreHorizontalIcon}
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          disabled={
+                            host.enabled ||
+                            host.status !== "active" ||
+                            scheduling !== null ||
+                            busy
+                          }
+                          onClick={() => void changeScheduling(host, true)}
+                        >
+                          <HugeiconsIcon
+                            icon={PlayIcon}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          {text("enable")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={
+                            !host.enabled ||
+                            host.status !== "active" ||
+                            scheduling !== null ||
+                            busy
+                          }
+                          onClick={() => void changeScheduling(host, false)}
+                        >
+                          <HugeiconsIcon
+                            icon={PauseIcon}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          {text("disable")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          disabled={host.status !== "active" || busy}
+                          onClick={() => setConfiguring(host)}
+                        >
+                          <HugeiconsIcon
+                            icon={Edit02Icon}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          {t("environmentAdmin.configure")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setChecking(host)}>
+                          <Info aria-hidden="true" />
+                          {t("environmentAdmin.details")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={busy}
+                          onClick={() => {
+                            setDeleting(host)
+                            setNotice("")
+                            setDeleteError("")
+                          }}
+                        >
+                          <HugeiconsIcon
+                            icon={Delete02Icon}
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          />
+                          {t("environmentAdmin.targets.deleted")}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </CloudField>
-              <CloudField label={t("environmentAdmin.status")}>
+              </CardHeader>
+              <CardFooter
+                className={cn(
+                  "min-w-0 flex-wrap gap-2 border-t",
+                  !host.enabled && "border-gray-300 dark:border-gray-700"
+                )}
+              >
                 <HostStatus status={status} />
-              </CloudField>
-              <CloudField label={text("environmentCount")}>
-                {typeof host.environment_count === "number" ? (
-                  <Link
-                    to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: host.name })}`}
-                    className={`${buttonVariants({ variant: "link" })} min-w-10 tabular-nums`}
+                {typeof host.environment_count === "number" && (
+                  <Badge
+                    variant="outline"
+                    className="border-blue-200 bg-blue-50 tabular-nums text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 [&:is(a)]:hover:bg-blue-100 [&:is(a)]:hover:text-blue-900 dark:[&:is(a)]:hover:bg-blue-900 dark:[&:is(a)]:hover:text-blue-100"
+                    render={
+                      <Link
+                        to={`${CONSOLE_ROUTES.cloudHosts}?${new URLSearchParams({ host_id: host.id, host_name: host.name })}`}
+                      />
+                    }
                     aria-label={text("viewEnvironments", {
                       name: host.name,
                       count: host.environment_count,
                     })}
                     title={text("environmentCountHint")}
                   >
-                    {host.environment_count}
-                  </Link>
-                ) : (
-                  "—"
+                    {text("environmentCountBadge", {
+                      count: host.environment_count,
+                    })}
+                  </Badge>
                 )}
-              </CloudField>
-              <CloudField label={text("system")}>
-                <p className="max-w-48 truncate" title={system?.os_name}>
-                  {system?.os_name && system.os_name.toLowerCase() !== "linux"
-                    ? system.os_name
-                    : text("notReported")}
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>
-                    {host.status === "pending" ? "—" : host.architecture} ·{" "}
-                    {host.version}
-                  </span>
-                  {host.status === "active" &&
-                    host.upgrade?.update_available && (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        aria-label={text("upgrade.action")}
-                        title={text("upgrade.versions", {
-                          current: host.version,
-                          target: host.upgrade.target_version,
-                        })}
-                        onClick={() => setChecking(host)}
-                      >
-                        {text("upgrade.shortAction")}
-                      </Button>
-                    )}
-                </div>
-              </CloudField>
-              <CloudField label={text("network")}>
-                <div className="space-y-1 text-xs">
-                  {(["private_ips", "public_ips"] as const).map((key) => (
-                    <div key={key} className="flex items-baseline gap-2">
-                      <span className="shrink-0 text-muted-foreground">
-                        {text(key === "private_ips" ? "privateIP" : "publicIP")}
-                      </span>
-                      <span
-                        className="max-w-48 truncate font-mono"
-                        title={system?.[key]?.join(", ")}
-                      >
-                        {system?.[key]?.join(", ") || "—"}
-                      </span>
-                    </div>
-                  ))}
-                  <p className="flex flex-wrap gap-x-3 tabular-nums text-muted-foreground">
-                    <span title={text("receiveRate")}>
-                      ↓ {rate(system?.network?.receive_bytes_per_second)}
-                    </span>
-                    <span title={text("transmitRate")}>
-                      ↑ {rate(system?.network?.transmit_bytes_per_second)}
-                    </span>
-                    {!host.online && system?.network && (
-                      <span>{text("lastReport")}</span>
-                    )}
-                  </p>
-                </div>
-              </CloudField>
-              <CloudField label={"CPU"}>
-                <ResourceMeter
-                  label={text("cpuUsage")}
-                  value={system?.cpu?.usage_percent}
-                  stale={stale}
-                  detail={
-                    system?.cpu
-                      ? text("cores", { count: system.cpu.logical_cores })
-                      : text("notReported")
-                  }
-                />
-              </CloudField>
-              <CloudField label={text("memory")}>
-                <ResourceMeter
-                  label={text("memoryUsage")}
-                  value={usage(system?.memory)}
-                  stale={stale}
-                  detail={
-                    system?.memory
-                      ? `${bytes(system.memory.used_bytes)} / ${bytes(system.memory.total_bytes)}`
-                      : text("notReported")
-                  }
-                />
-              </CloudField>
-              <CloudField label={text("disk")}>
-                <ResourceMeter
-                  label={text("diskUsage")}
-                  value={usage(system?.disk)}
-                  stale={stale}
-                  detail={
-                    system?.disk
-                      ? `${bytes(system.disk.used_bytes)} / ${bytes(system.disk.total_bytes)}`
-                      : text("notReported")
-                  }
-                />
-                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  {text("readRate")}{" "}
-                  {rate(system?.disk_io?.read_bytes_per_second)} ·{" "}
-                  {text("writeRate")}{" "}
-                  {rate(system?.disk_io?.write_bytes_per_second)}
-                </p>
-              </CloudField>
-              <CloudField label={t("environmentAdmin.scheduling")}>
-                <Switch
-                  checked={host.enabled}
-                  disabled={
-                    host.status !== "active" || scheduling !== null || busy
-                  }
-                  aria-label={`${t("environmentAdmin.schedulingLabel")} · ${host.name}`}
-                  title={t("environmentAdmin.schedulingLabel")}
-                  aria-busy={scheduling === host.id}
-                  onCheckedChange={(enabled) =>
-                    void changeScheduling(host, enabled)
-                  }
-                />
-              </CloudField>
-              <CloudField label={t("environmentAdmin.actions")}>
-                <div className="flex items-center gap-1">
-                  <ActionButton
-                    label={t("environmentAdmin.configure")}
-                    disabled={host.status !== "active" || busy}
-                    onClick={() => setConfiguring(host)}
-                  />
-                  <ActionButton
-                    label={t("environmentAdmin.details")}
-                    onClick={() => setChecking(host)}
-                  />
-                  <ActionButton
-                    label={t("environmentAdmin.targets.deleted")}
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    disabled={busy}
-                    onClick={() => {
-                      setDeleting(host)
-                      setNotice("")
-                      setDeleteError("")
-                    }}
-                  />
-                </div>
-              </CloudField>
-            </CloudCard>
+                {host.status !== "pending" && host.architecture && (
+                  <Badge
+                    variant="outline"
+                    className="border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200"
+                    title={text("architecture")}
+                  >
+                    {host.architecture}
+                  </Badge>
+                )}
+                {system?.cpu && system.cpu.logical_cores > 0 && (
+                  <Badge variant="outline">
+                    {text("cpuCapacityBadge", {
+                      count: system.cpu.logical_cores,
+                    })}
+                  </Badge>
+                )}
+                {system?.memory && system.memory.total_bytes > 0 && (
+                  <Badge variant="outline">
+                    {text("memoryCapacityBadge", {
+                      size: Number(
+                        (system.memory.total_bytes / 1024 ** 3).toFixed(1)
+                      ),
+                    })}
+                  </Badge>
+                )}
+                {system?.disk && system.disk.total_bytes > 0 && (
+                  <Badge variant="outline">
+                    {text("diskCapacityBadge", {
+                      size: Number(
+                        (system.disk.total_bytes / 1024 ** 3).toFixed(1)
+                      ),
+                    })}
+                  </Badge>
+                )}
+              </CardFooter>
+            </Card>
           )
         })}
       </CloudGrid>
@@ -493,13 +525,6 @@ export function EngineHostsPage() {
           }}
         />
       )}
-      <Pagination
-        page={page}
-        count={hosts.length}
-        total={total}
-        disabled={result.loading || !!result.error || busy}
-        onChange={setPage}
-      />
       <Dialog
         open={!!checking}
         onOpenChange={(value) => {

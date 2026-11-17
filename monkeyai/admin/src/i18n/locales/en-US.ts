@@ -788,7 +788,15 @@ export const enUS = {
       },
     },
     engineHosts: {
+      ipPending: "IP address not yet available",
+      enable: "Enable",
+      disable: "Disable",
+      disabled: "Disabled",
       environmentCount: "Environments",
+      environmentCountBadge: "{{count}} cloud computers",
+      cpuCapacityBadge: "{{count}} CPU cores",
+      memoryCapacityBadge: "{{size}} GB RAM",
+      diskCapacityBadge: "{{size}} GB disk",
       environmentCountHint:
         "Environments not yet confirmed deleted, including stopped, failed, and deleting environments",
       viewEnvironments: "View {{count}} environments on host “{{name}}”",

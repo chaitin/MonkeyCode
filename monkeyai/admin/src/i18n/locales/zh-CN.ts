@@ -729,9 +729,17 @@ export const zhCN = {
       },
     },
     engineHosts: {
+      ipPending: "尚未获取到 IP 地址",
+      enable: "启用",
+      disable: "禁用",
+      disabled: "已禁用",
       environmentCount: "环境数",
+      environmentCountBadge: "{{count}} 个云电脑",
+      cpuCapacityBadge: "{{count}} 核 CPU",
+      memoryCapacityBadge: "{{size}} GB 内存",
+      diskCapacityBadge: "{{size}} GB 磁盘",
       environmentCountHint: "尚未确认删除的环境，包括停止、失败和删除中的环境",
-      viewEnvironments: "查看宿主「{{name}}」的 {{count}} 个环境",
+      viewEnvironments: "查看宿主「{{name}}」的 {{count}} 个云电脑",
       upgrade: {
         title: "Engine 升级",
         action: "升级 engine",

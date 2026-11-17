@@ -99,22 +99,11 @@ export function CloudGrid({
   )
 }
 
-export function CloudCard({
-  children,
-  horizontal = false,
-}: {
-  children: ReactNode
-  horizontal?: boolean
-}) {
+export function CloudCard({ children }: { children: ReactNode }) {
   return (
     <Card
       size="sm"
-      className={cn(
-        "h-full gap-4 p-4 [&>div:first-child>p]:hidden",
-        horizontal
-          ? "flex flex-row flex-wrap items-center [&>div:first-child]:flex-[1.5_1_10rem] [&>div:last-child]:flex-none [&>div]:flex-[1_1_8rem] xl:[&>div]:flex-[1_1_0%] [&_.min-w-32]:min-w-0"
-          : "grid grid-cols-2 content-start [&>div:first-child]:col-span-2 [&>div:last-child]:col-span-2 [&>div:last-child]:mt-auto [&>div:last-child]:border-t [&>div:last-child]:pt-3"
-      )}
+      className="grid h-full grid-cols-2 content-start gap-4 p-4 [&>div:first-child>p]:hidden [&>div:first-child]:col-span-2 [&>div:last-child]:col-span-2 [&>div:last-child]:mt-auto [&>div:last-child]:border-t [&>div:last-child]:pt-3"
     >
       {children}
     </Card>
