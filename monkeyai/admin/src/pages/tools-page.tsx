@@ -214,6 +214,8 @@ type McpServer = {
   authorization: AuthorizationSelection
   connectionStatus: ConnectionStatus
   enabled: boolean
+  toolCount: number
+  enabledToolCount: number
 }
 
 function toServer(row: ResourceRow, language: string): McpServer {
@@ -250,6 +252,8 @@ function toServer(row: ResourceRow, language: string): McpServer {
     type: row.ownership_type,
     creator: row.user.name || row.user.email || row.user.id,
     enabled: row.enabled,
+    toolCount: row.tool_count ?? 0,
+    enabledToolCount: row.enabled_tool_count ?? 0,
     oauthConfig: row.oauth_config ?? {},
     callbackURL: row.callback_url ?? "",
   }
@@ -1555,6 +1559,21 @@ export function ToolsPage() {
                             `pages.tools.authorizationModes.${server.authorizationMode}`
                           )}
                         </Badge>
+                        {server.authorizationMode === "centralized" && (
+                          <Badge
+                            variant="outline"
+                            className={
+                              server.enabledToolCount > 0
+                                ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-200"
+                                : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200"
+                            }
+                          >
+                            {t("pages.tools.toolCountSummary", {
+                              enabled: server.enabledToolCount,
+                              total: server.toolCount,
+                            })}
+                          </Badge>
+                        )}
                       </>
                     }
                   />
