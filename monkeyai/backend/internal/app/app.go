@@ -263,6 +263,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	connectors := mcp.NewService(store, cfg.PublicURL).WithStorage(storage).WithProxyResolver(settings).WithNetworkSettings(settings)
 	experts := expert.NewService(store).WithStorage(storage)
 	knowledgeBases := kb.NewService(store, models).WithStorage(storage)
+
 	models.WithEmbeddingChangeHook(knowledgeBases.SyncEmbeddingModels)
 	resources := agentconfig.NewResources(store, connectors, skills)
 
@@ -332,7 +333,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 		}
 	}
 	designs := designcatalog.NewService(pool, storage).WithAccess(designcatalog.AccessConfig{PublicURL: cfg.PublicURL, InstanceID: instanceID, PublisherID: cfg.DesignPublisherID, RespubURL: cfg.DesignRespubURL, RespubSecret: cfg.DesignRespubJWTSecret, MediaSecret: cfg.DesignMediaJWTSecret}).WithDevices(designDevices{endpointStore})
-	resourceImports.WithDesignCatalog(designs)
+	resourceImports.WithDesignCatalog(designs).WithKnowledgeCatalog(knowledgeBases)
 	endpoints := endpoint.NewService(endpointStore, endpointAuth{identities}, logger, cfg.PublicURL).WithMaxConnections(cfg.EndpointMaxConnections)
 	endpoints.RegisterAgent(agent)
 	endpoints.RegisterAdmin(admin)
@@ -353,6 +354,7 @@ func newApplicationHandlerWithMembers(ctx context.Context, logger *slog.Logger, 
 	sessions.RegisterAgent(agent)
 
 	router := chi.NewRouter()
+
 	router.Use(web.New(logger).Middleware)
 	router.Use(relay.PreviewGuard(cfg.RuntimePreviewOriginTemplate))
 	router.With(func(next http.Handler) http.Handler {

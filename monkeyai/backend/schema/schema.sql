@@ -2081,3 +2081,7 @@ ALTER TABLE environments ADD COLUMN deleted_at timestamptz;
 
 ALTER TABLE environments ADD CONSTRAINT environments_deleted_at_check
 CHECK(deleted_at IS NULL OR (desired='deleted' AND phase='deleted' AND observed_generation=generation));
+
+ALTER TABLE resource_import_sections DROP CONSTRAINT resource_import_sections_section_check;
+
+ALTER TABLE resource_import_sections ADD CONSTRAINT resource_import_sections_section_check CHECK (section IN ('agent','design','knowledge'));
