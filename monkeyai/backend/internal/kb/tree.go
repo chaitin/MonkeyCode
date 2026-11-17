@@ -223,11 +223,37 @@ func objectFloat(value any) float64 {
 
 const maxBatchDocuments = 200
 
-type BatchDocumentInput struct {
-	ExpectedRevisions map[string]int64 `json:"expected_revisions,omitempty"`
-	Action            string           `json:"action"`
+// DocumentOperationInput is shared by the native move and delete endpoints.
+type DocumentOperationInput struct {
 	IDs               []string         `json:"ids"`
+	ExpectedRevisions map[string]int64 `json:"expected_revisions,omitempty"`
 	ParentID          *string          `json:"parent_id"`
+	PrevID            string           `json:"prev_id,omitempty"`
+	NextID            string           `json:"next_id,omitempty"`
+}
+
+func (s *Service) operateDocuments(ctx context.Context, kbID, action string, input DocumentOperationInput, actor string) (BatchDocumentResult, error) {
+	if strings.TrimSpace(kbID) == "" {
+		return BatchDocumentResult{}, resource.Invalid("kb_id 必填")
+	}
+	ids, err := normalizeBatchIDs(input.IDs)
+	if err != nil {
+		return BatchDocumentResult{}, err
+	}
+	if action == "move" && (input.PrevID != "" || input.NextID != "") {
+		if len(ids) != 1 {
+			return BatchDocumentResult{}, resource.Invalid("指定相邻节点排序时只能移动一个内容")
+		}
+		_, err := s.moveDocument(ctx, kbID, ids[0], MoveDocumentInput{ParentID: input.ParentID, PrevID: input.PrevID, NextID: input.NextID, ExpectedRevision: input.ExpectedRevisions[ids[0]]}, actor)
+		if err != nil {
+			return BatchDocumentResult{}, err
+		}
+		return BatchDocumentResult{Succeeded: ids, Failed: []BatchDocumentFailure{}}, nil
+	}
+	if action == "delete" {
+		return s.batchDeleteDocuments(ctx, kbID, ids, actor, input.ExpectedRevisions)
+	}
+	return s.batchMoveDocuments(ctx, kbID, ids, input.ParentID, actor, input.ExpectedRevisions)
 }
 
 type BatchDocumentFailure struct {
@@ -238,24 +264,6 @@ type BatchDocumentFailure struct {
 type BatchDocumentResult struct {
 	Succeeded []string               `json:"succeeded"`
 	Failed    []BatchDocumentFailure `json:"failed"`
-}
-
-func (s *Service) BatchDocuments(ctx context.Context, kbID string, input BatchDocumentInput) (BatchDocumentResult, error) {
-	return s.batchDocuments(ctx, kbID, input, "")
-}
-func (s *Service) batchDocuments(ctx context.Context, kbID string, input BatchDocumentInput, actor string) (BatchDocumentResult, error) {
-	ids, err := normalizeBatchIDs(input.IDs)
-	if err != nil {
-		return BatchDocumentResult{}, err
-	}
-	switch input.Action {
-	case "delete":
-		return s.batchDeleteDocuments(ctx, kbID, ids, actor, input.ExpectedRevisions)
-	case "move":
-		return s.batchMoveDocuments(ctx, kbID, ids, input.ParentID, actor, input.ExpectedRevisions)
-	default:
-		return BatchDocumentResult{}, resource.Invalid("不支持的批量操作")
-	}
 }
 
 func normalizeBatchIDs(ids []string) ([]string, error) {
@@ -302,15 +310,16 @@ func (s *Service) batchDeleteDocuments(ctx context.Context, kbID string, ids []s
 		byID[id] = node
 		children[node.String("parent_id")] = append(children[node.String("parent_id")], id)
 	}
-	if actor != "" {
-		for _, id := range ids {
-			node, exists := byID[id]
-			if !exists {
+	for _, id := range ids {
+		node, exists := byID[id]
+		if !exists {
+			if actor != "" {
 				return BatchDocumentResult{}, resource.NotFound
 			}
-			if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
-				return BatchDocumentResult{}, err
-			}
+			continue
+		}
+		if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
+			return BatchDocumentResult{}, err
 		}
 	}
 	selected := map[string]bool{}
@@ -422,15 +431,16 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 			return BatchDocumentResult{}, resource.Invalid("只能放到文件夹下")
 		}
 	}
-	if actor != "" {
-		for _, id := range ids {
-			node, exists := byID[id]
-			if !exists {
+	for _, id := range ids {
+		node, exists := byID[id]
+		if !exists {
+			if actor != "" {
 				return BatchDocumentResult{}, resource.NotFound
 			}
-			if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
-				return BatchDocumentResult{}, err
-			}
+			continue
+		}
+		if err = requireDocumentVersion(ctx, tx, node, actor, expected[id]); err != nil {
+			return BatchDocumentResult{}, err
 		}
 	}
 	selected := map[string]bool{}
@@ -447,6 +457,7 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 		}
 		selected[id] = true
 	}
+	moved := map[string]bool{}
 	for _, id := range ids {
 		if !selected[id] || batchAncestorSelected(id, selected, parents) {
 			continue
@@ -472,6 +483,19 @@ func (s *Service) batchMoveDocuments(ctx context.Context, kbID string, ids []str
 			return BatchDocumentResult{}, err
 		}
 		result.Succeeded = append(result.Succeeded, id)
+		moved[id] = true
+	}
+	// Selected descendants keep their parent and move with the selected ancestor.
+	// Report them only after that ancestor has actually moved successfully.
+	for _, id := range ids {
+		if !selected[id] || !batchAncestorSelected(id, selected, parents) {
+			continue
+		}
+		if batchAncestorSelected(id, moved, parents) {
+			result.Succeeded = append(result.Succeeded, id)
+		} else {
+			result.Failed = append(result.Failed, BatchDocumentFailure{ID: id, Reason: "父文件夹移动失败"})
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return BatchDocumentResult{}, err

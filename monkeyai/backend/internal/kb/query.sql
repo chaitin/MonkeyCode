@@ -608,3 +608,8 @@ UPDATE knowledge_bases SET avatar_s3_key = $2 WHERE id = $1;
 
 -- name: AvatarReferenced :one
 SELECT EXISTS (SELECT 1 FROM knowledge_bases WHERE avatar_s3_key = $1);
+
+-- name: ResolveKbImportTag :one
+INSERT INTO tags(name,created_by_user_id) VALUES($1,$2)
+ON CONFLICT (lower(name)) WHERE deleted_at IS NULL
+DO UPDATE SET name=tags.name RETURNING id::text;

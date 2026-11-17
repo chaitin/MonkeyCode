@@ -18,6 +18,7 @@ import (
 type Service struct {
 	Pool        *pgxpool.Pool
 	Storage     resource.Storage
+	knowledge   KnowledgeCatalog
 	design      DesignCatalog
 	importSlots chan struct{}
 }

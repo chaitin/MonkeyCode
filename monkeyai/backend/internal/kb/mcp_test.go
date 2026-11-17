@@ -123,7 +123,7 @@ func TestKBMCPInitializeAndToolsList(t *testing.T) {
 	for _, tool := range result.Result.Tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"kb_create", "kb_list", "kb_list_documents", "kb_get_document", "kb_create_document", "kb_update_document", "kb_delete_document", "kb_search"}
+	want := []string{"kb_upload_image", "kb_create", "kb_list", "kb_list_documents", "kb_get_document", "kb_create_folder", "kb_create_document", "kb_update_document", "kb_delete_document", "kb_search", "kb_get", "kb_list_tags", "kb_list_permissions", "kb_get_image", "kb_list_chunks", "kb_update", "kb_move_document", "kb_restudy_document"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("tools = %v, want %v", names, want)
 	}
@@ -156,7 +156,7 @@ func TestKBMCPKbSearchSchemaHasNoRetrievalControls(t *testing.T) {
 }
 
 func TestKBMCPDocumentToolsRequireArguments(t *testing.T) {
-	for _, tool := range []string{"kb_list_documents", "kb_get_document", "kb_create_document", "kb_update_document", "kb_delete_document"} {
+	for _, tool := range []string{"kb_list_documents", "kb_get_document", "kb_create_folder", "kb_create_document", "kb_update_document", "kb_delete_document"} {
 		t.Run(tool, func(t *testing.T) {
 			response := mcpTestRequest(
 				`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"`+tool+`","arguments":{}}}`,

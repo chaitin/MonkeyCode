@@ -1,6 +1,7 @@
 package kb
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -40,28 +41,36 @@ func (s *Service) serveAvatar(w http.ResponseWriter, req *http.Request, admin bo
 		resource.Fail(req.Context(), w, resource.NotFound)
 		return
 	}
-	body, err := s.storage.Get(ctx, key)
+	data, mime, err := s.readAvatarObject(ctx, key)
 	if err != nil {
 		resource.Fail(req.Context(), w, err)
 		return
 	}
-	defer func() {
-		if err := body.Close(); err != nil {
-			slog.Error("关闭资源失败", "module", "kb", "operation", "serveAvatar", "error", err)
-		}
-	}()
-	data, err := io.ReadAll(io.LimitReader(body, 2<<20))
-	if err != nil || len(data) >= 2<<20 {
-		if err != nil {
-			slog.WarnContext(req.Context(), "操作失败", "module", "kb", "operation", "serveAvatar", "error", err)
-		}
-		resource.Fail(req.Context(), w, &resource.Error{Status: 502, Code: "storage_corrupted", Message: "知识库图标读取失败"})
-		return
-	}
-	w.Header().Set("Content-Type", http.DetectContentType(data))
+	w.Header().Set("Content-Type", mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	if _, err := w.Write(data); err != nil {
 		slog.Error("写入输出失败", "module", "kb", "operation", "serveAvatar", "error", err)
 	}
+}
+
+func (s *Service) readAvatarObject(ctx context.Context, key string) ([]byte, string, error) {
+	body, err := s.storage.Get(ctx, key)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() {
+		if err := body.Close(); err != nil {
+			slog.ErrorContext(ctx, "关闭资源失败", "module", "kb", "operation", "readAvatarObject", "error", err)
+		}
+	}()
+	data, err := io.ReadAll(io.LimitReader(body, 2<<20))
+	if err != nil {
+		slog.WarnContext(ctx, "操作失败", "module", "kb", "operation", "readAvatarObject", "error", err)
+		return nil, "", &resource.Error{Status: http.StatusBadGateway, Code: "storage_corrupted", Message: "知识库图标读取失败"}
+	}
+	if len(data) >= 2<<20 || assetMIME(data) == "" {
+		return nil, "", &resource.Error{Status: http.StatusBadGateway, Code: "storage_corrupted", Message: "知识库图标读取失败"}
+	}
+	return data, assetMIME(data), nil
 }

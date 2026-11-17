@@ -16,6 +16,10 @@ func (s *Service) gateway(c resource.Object, credential string) resource.Object 
 	return resource.Object{"url": url, "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}
 }
 func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	c, err := resource.DecodeObject(sqlc.New(q).GetConnector(ctx, c.String("id")))
+	if err != nil {
+		return nil, err
+	}
 	out := resource.Object{"id": c["id"], "name": c["name"], "description": c["description"], "name_i18n": c["name_i18n"], "description_i18n": c["description_i18n"], "authorization_mode": c["authorization_mode"], "authorization_method": c["authorization_method"], "auth_header_name": c["auth_header_name"], "icon_path": "", "capabilities": []string{"catalog", "invoke"}}
 	if key := c.String("icon_s3_key"); key != "" {
 		out["icon_path"] = "/api/v1/connectors/" + c.String("id") + "/icon?v=" + resource.Hash(key)
@@ -29,13 +33,20 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 		if err != nil {
 			return nil, err
 		}
-		for _, cred := range creds {
+		for i, cred := range creds {
 			// 自动刷新令牌的时间变化不影响公开目录版本。
 			delete(cred, "updated_at")
 			delete(cred, "oauth_expires_at")
+			tools := []resource.Object{}
 			if cred.String("authorization_status") == "authorized" {
+				tools, err = s.liveTools(ctx, q, c, raw[i], false)
+				if err != nil {
+					return nil, err
+				}
 				cred["mcp_gateway"] = s.gateway(c, cred.String("id"))
 			}
+			visible := safeTools(tools)
+			cred["tools"], cred["tools_version"] = visible, resource.Hash(visible)
 		}
 		out["credentials"] = creds
 		return out, nil
@@ -53,8 +64,15 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 			out["credential_id"] = cred["id"]
 		}
 	}
+	tools := []resource.Object{}
 	if c.String("authorization_mode") == "none" || credentialStatus(c, cred) == "authorized" {
+		tools, err = s.liveTools(ctx, q, c, cred, false)
+		if err != nil {
+			return nil, err
+		}
 		out["mcp_gateway"] = s.gateway(c, cred.String("id"))
 	}
+	visible := safeTools(tools)
+	out["tools"], out["tools_version"] = visible, resource.Hash(visible)
 	return out, nil
 }

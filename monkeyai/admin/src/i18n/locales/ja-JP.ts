@@ -460,6 +460,9 @@ export const jaJP = {
       editorSaved: "ドキュメントを保存し、再学習を開始しました。",
       editorDiscard: "未保存の変更を破棄して移動しますか？",
       editorUnsaved: "未保存の変更。10秒後に自動保存します",
+      imageUploading: "画像をアップロード中…",
+      imageUploadInvalid: "PNG、JPEG、GIF、WebP 画像のみ対応しています",
+      imageUploadTooLarge: "画像は空にできず、32 MiB 以下である必要があります",
       editorSaving: "自動保存中",
       editorClean: "保存済み",
 

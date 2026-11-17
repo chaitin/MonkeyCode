@@ -1561,6 +1561,9 @@ export const enUS = {
       editorSaved: "Document saved. Relearning has started.",
       editorDiscard: "Leave with unsaved changes?",
       editorUnsaved: "Unsaved changes. Autosaving in 10 seconds",
+      imageUploading: "Uploading image…",
+      imageUploadInvalid: "Only PNG, JPEG, GIF, and WebP images are supported",
+      imageUploadTooLarge: "Images must not be empty or exceed 32 MiB",
       editorSaving: "Autosaving",
       editorClean: "Saved",
 

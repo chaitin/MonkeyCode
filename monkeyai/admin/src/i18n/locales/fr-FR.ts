@@ -476,6 +476,10 @@ export const frFR = {
       editorSaved: "Document enregistré. Réapprentissage lancé.",
       editorDiscard: "Quitter sans enregistrer les modifications ?",
       editorUnsaved: "Modifications non enregistrées. Enregistrement automatique dans 10 secondes",
+      imageUploading: "Téléversement de l’image…",
+      imageUploadInvalid:
+        "Seules les images PNG, JPEG, GIF et WebP sont acceptées",
+      imageUploadTooLarge: "L’image ne doit pas être vide ni dépasser 32 MiB",
       editorSaving: "Enregistrement automatique",
       editorClean: "Enregistré",
 

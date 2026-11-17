@@ -152,7 +152,6 @@ CREATE TABLE connectors (
     name text NOT NULL,
     description text NOT NULL DEFAULT '',
     url text NOT NULL,
-    skip_tls_verify boolean NOT NULL DEFAULT false,
     authorization_mode text NOT NULL CHECK (authorization_mode IN ('none','centralized','independent')),
     authorization_method text CHECK (authorization_method IN ('http_header','oauth')),
     oauth_config jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -2075,3 +2074,14 @@ ALTER TABLE knowledge_bases ADD COLUMN avatar_s3_key text NOT NULL DEFAULT '';
 
 ALTER TABLE settings DROP CONSTRAINT settings_key_check,
     ADD CONSTRAINT settings_key_check CHECK (key IN ('branding', 'authentication', 'email', 'billing', 'session_reporting', 'proxies', 'mcp'));
+
+ALTER TABLE connectors ADD COLUMN skip_tls_verify boolean NOT NULL DEFAULT false;
+
+ALTER TABLE environments ADD COLUMN deleted_at timestamptz;
+
+ALTER TABLE environments ADD CONSTRAINT environments_deleted_at_check
+CHECK(deleted_at IS NULL OR (desired='deleted' AND phase='deleted' AND observed_generation=generation));
+
+ALTER TABLE resource_import_sections DROP CONSTRAINT resource_import_sections_section_check;
+
+ALTER TABLE resource_import_sections ADD CONSTRAINT resource_import_sections_section_check CHECK (section IN ('agent','design','knowledge'));

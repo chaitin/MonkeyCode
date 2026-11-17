@@ -7,6 +7,25 @@ servers:
 security:
   - AdminSession: []
 paths:
+  /api/kb/{id}/assets/{name}:
+    get:
+      summary: 读取知识库正文图片
+      description: 支持浏览器会话或 Agent Bearer token。管理员可读取未删除库；普通用户必须拥有启用库的阅读权限。每次读取检查权限，响应 private/no-store；不接受源站 URL，始终读取该知识库对象存储目录下已校验的图片。
+      security: [{BrowserSession: []}, {KnowledgeAssetBearer: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}\.(png|jpg|gif|webp)$'}}
+      responses:
+        '200':
+          description: 原始图片二进制，PNG/JPEG/GIF/WebP
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+
   /api/auth/v1/profile:
     get:
       summary: 读取本人账户设置
@@ -208,7 +227,7 @@ paths:
   /api/admin/v1/resource-imports/preview:
     post:
       summary: 解析资源发布包并预览变更
-      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
+      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包或知识库包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
       requestBody:
         required: true
         content:
@@ -222,13 +241,13 @@ paths:
                 package: {type: string, format: binary}
                 options: {type: string, description: JSON 编码的认证归属选项}
       responses:
-        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
+        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。知识库计划在knowledge对象中包含publisher_id/release_id/changes（slug/name/action/kb_id/documents/folders/images）。知识库分区严格校验v1清单、文件SHA/size和目录树；每次新上传确认导入均创建独立系统库（同一ZIP也不去重）；同一次上传的确认重试复用已有成功回执，仅管理员可见，提交后异步学习。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '409': {description: 资源身份或现有数据关联冲突}
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认所选资源分区
-      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
+      description: 固定agent→design→knowledge顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
       requestBody:
         required: true
         content:
@@ -4836,7 +4855,7 @@ paths:
   /api/admin/v1/connectors/{id}/tools/{toolID}:
     patch:
       summary: 配置工具启停和积分
-      description: 仅无认证／集中认证支持本地工具配置。查询工具不会创建配置记录；首次保存时须提交工具 name 和工具查询返回的 ID。未配置默认开启、单价为零，仅集中认证允许非零单价。
+      description: 无认证／集中认证可创建或更新本地配置；独立认证仅兼容更新已有工具配置的开关，不新增配置且不允许非零单价。查询工具不会创建配置记录。兼容省略 name 的旧请求：已有配置按 ID 更新，无认证／集中认证的新工具按返回 ID 实时反查名称。未配置默认开启、单价为零，仅集中认证允许非零单价。
       responses:
         '200':
           description: 配置工具启停和积分
@@ -4873,7 +4892,7 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 256
-                  description: 首次创建工具配置必填；更新已有配置时可省略。
+                  description: 可省略以兼容旧客户端；无认证／集中认证的新工具可按查询返回的 ID 实时反查名称。
                 enabled:
                   type: boolean
                 credits_per_call:
@@ -4939,7 +4958,7 @@ paths:
   /api/admin/v1/connectors/{id}/tools:
     get:
       summary: 实时读取认证上下文的工具目录
-      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证不读取或持久化工具配置。响应为 private, no-store，远端失败不返回旧目录。
+      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证保留历史工具 ID 和启停配置，不新增配置且单价固定为零。响应为 private, no-store，远端失败不返回旧目录。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -5243,7 +5262,7 @@ paths:
   /api/admin/v1/connectors/{id}/credentials/{credential_id}/tools:
     get:
       summary: 实时读取认证上下文的工具目录
-      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证不读取或持久化工具配置。响应为 private, no-store，远端失败不返回旧目录。
+      description: 每次实时请求远端 MCP 获取工具定义，叠加本地开关和单价，包含禁用工具；没有配置记录时默认开启、单价为零。独立认证保留历史工具 ID 和启停配置，不新增配置且单价固定为零。响应为 private, no-store，远端失败不返回旧目录。
       responses:
         '200':
           description: 读取认证上下文的工具目录
@@ -5657,6 +5676,40 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '409': {$ref: '#/components/responses/ResourceError409'}
+  /api/admin/v1/kb/{id}/images/upload:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 上传知识库正文图片
+      description: 需要管理员会话，仅允许上传系统知识库图片；个人知识库在管理端只读。 使用 multipart/form-data 的 file 字段上传一张图片，最多 32 MiB、2500 万像素，支持 PNG、JPEG、GIF、WebP；按真实内容完整解码校验，拒绝 SVG。图片按知识库和内容摘要存入对象存储，不新增关联表。返回的 url 及 markdown 可写入文档正文，读取时仍检查当前权限。此操作不创建或修改文档。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: 图片已保存；重复上传相同图片返回同一知识库内的相同地址。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, url, mime_type, size_bytes, markdown]
+                properties:
+                  name: {type: string, description: 内容摘要加真实图片扩展名}
+                  url: {type: string, description: 受权限保护的 /api/kb/<id>/assets/<name> 相对地址}
+                  mime_type: {type: string, enum: [image/png, image/jpeg, image/gif, image/webp]}
+                  size_bytes: {type: integer, minimum: 1, maximum: 33554432}
+                  markdown: {type: string, description: 可直接插入正文的 Markdown 图片语法}
+        '400': {description: 无效图片、文件超限或 multipart 字段不合法}
+        '401': {description: 未登录或凭证失效}
+        '403': {description: 无正文写权限或非管理员调用管理端接口}
+        '404': {description: 知识库不存在或不可访问}
+        '409': {description: 知识库不允许编辑}
+        '503': {description: 未配置知识库对象存储}
   /api/admin/v1/kb/{id}/avatar:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -5853,10 +5906,28 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
+  /api/admin/v1/kb/{id}/documents/delete:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 删除知识库文档或文件夹（支持多个 ID）
+      description: ids 去重后最多 200 项，文件夹删除覆盖子树。协作写入须逐项提供 expected_revisions，全部归属与版本校验通过后执行。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentDeleteInput'}
+      responses:
+        '200': {description: 操作结果, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 无写入权限}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
   /api/admin/v1/kb/{id}/documents/move:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     post:
-      summary: 移动知识库文档树节点
+      summary: 移动知识库文档树节点（支持多个 ID）
       description: 将文件夹或文档移动到指定父节点，并按前后相邻节点计算排序。不能移动到自身或子孙节点下。
       requestBody:
         required: true
@@ -5868,7 +5939,7 @@ paths:
           description: 已移动
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/KbDocument'}
+              schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
@@ -5903,13 +5974,7 @@ paths:
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
-    delete:
-      summary: 删除文档
-      description: 取消活跃学习任务，并硬删除该文档及其 chunk。
-      responses:
-        '204': {description: 已删除}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '404': {$ref: '#/components/responses/ResourceError404'}
+
   /api/admin/v1/kb/{id}/documents/restudy:
     parameters:
       - {$ref: '#/components/parameters/ResourceID'}
@@ -5927,6 +5992,7 @@ paths:
                 ids:
                   type: array
                   minItems: 1
+                  maxItems: 200
                   items: {type: string, format: uuid}
                   description: 待重新学习的文档 ID，单条操作也传数组
       responses:
@@ -5949,21 +6015,6 @@ paths:
                       properties:
                         id: {type: string}
                         reason: {type: string}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/admin/v1/kb/{id}/documents/{documentId}/restudy:
-    parameters:
-      - {$ref: '#/components/parameters/ResourceID'}
-      - {name: documentId, in: path, required: true, schema: {type: string, format: uuid}}
-    post:
-      summary: 重试文档学习
-      responses:
-        '202':
-          description: 已重置状态并进入学习队列
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/KbDocument'}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '404': {$ref: '#/components/responses/ResourceError404'}
@@ -6983,6 +7034,9 @@ paths:
           description: 宿主仍有关联环境或环境尚未清理完成
 components:
   securitySchemes:
+    KnowledgeAssetBearer:
+      type: http
+      scheme: bearer
     BrowserSession:
       type: apiKey
       in: cookie
@@ -7387,7 +7441,7 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
-          items: {type: string, enum: [agent, design]}
+          items: {type: string, enum: [agent, design, knowledge]}
         section_plan_digests:
           type: object
           additionalProperties: {type: string}
@@ -9250,7 +9304,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          description: 普通 MCP 保留已有 UUID，未配置工具使用稳定 UUID；内置知识库沿用工具名称作为 ID。
         name:
           type: string
         description:
@@ -9367,8 +9421,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MCPTool'
+          description: 实时启用工具，字段结构兼容旧客户端；无工具时为 []。独立认证目录在 credentials 内返回，resolve 和预览提升所选凭证的工具。
         tools_version:
           type: string
+          description: tools 内容的哈希；专家清单和预览基于服务端过滤后的工具计算。
         credentials:
           type: array
           items:
@@ -9386,7 +9442,7 @@ components:
       - name
       - authorization_mode
       - capabilities
-      description: 独立认证在 credentials 内返回每份凭证的工具和专属代理地址；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。resolve 返回所选凭证、工具和 mcp_gateway，API Key 全局创建。
+      description: 连接目录、专家 manifest、resolve 和专家预览保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态、实时工具和专属代理地址，resolve 和预览提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。服务端应用专家工具允许／拒绝规则，拒绝规则优先；远端失败不回退旧目录，API Key 全局创建。
     AgentExpert:
       type: object
       properties:
@@ -10196,16 +10252,37 @@ components:
         file_name: {type: string}
         mime_type: {type: string}
         size_bytes: {type: integer, minimum: 0}
+    KbDocumentDeleteInput:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
+    KbDocumentOperationResult:
+      type: object
+      required: [succeeded, failed]
+      properties:
+        succeeded: {type: array, items: {type: string, format: uuid}}
+        failed:
+          type: array
+          items:
+            type: object
+            required: [id, reason]
+            properties:
+              id: {type: string}
+              reason: {type: string}
     KbDocumentMoveInput:
       type: object
       additionalProperties: false
-      required: [id]
+      required: [ids]
       properties:
-        expected_revision: {type: integer, minimum: 1, description: 可选文档版本，提供时校验冲突。}
-        id: {type: string, format: uuid}
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
         parent_id: {type: [string, 'null'], format: uuid}
-        prev_id: {type: string, format: uuid}
-        next_id: {type: string, format: uuid}
+        prev_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+        next_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+
     KbDocument:
       type: object
       required: [id, kb_id, node_type, title, source_type, content, status, chunk_count, revision, created_at, updated_at]
@@ -10484,6 +10561,7 @@ components:
       - workload_verified
       - spec
       - created_at
+      - deleted_at
       properties:
         billing:
           $ref: agent.yaml#/components/schemas/EnvironmentBilling
@@ -10586,6 +10664,10 @@ components:
         created_at:
           type: string
           format: date-time
+        deleted_at:
+          type: [string, 'null']
+          format: date-time
+          description: 宿主确认当前代次删除完成的时间；未完成或失败时为 null，历史记录继续保留。
       description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，尚不代表 runtime
         登录或用户可连接。
     EnvironmentImage:

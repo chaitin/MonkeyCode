@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/agentconfig/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/httpapi"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/mcp"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/skill"
@@ -224,6 +225,21 @@ func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c cata
 	return cloneConnector(dto), nil
 }
 
+func knowledgeBaseConnectorTools() []resource.Object {
+	tools := []resource.Object{}
+	for _, tool := range kb.MCPTools() {
+		tools = append(tools, resource.Object{
+			"id":               tool["name"],
+			"name":             tool["name"],
+			"description":      tool["description"],
+			"input_schema":     tool["inputSchema"],
+			"enabled":          true,
+			"credits_per_call": int64(0),
+		})
+	}
+	return tools
+}
+
 func cloneConnector(dto resource.Object) resource.Object {
 	out := maps.Clone(dto)
 	if credentials, ok := dto["credentials"].([]resource.Object); ok {
@@ -253,6 +269,7 @@ func knowledgeBaseConnector(user string) resource.Object {
 }
 
 func (r *Resources) knowledgeBaseConnectorDTO(o resource.Object) resource.Object {
+	tools := knowledgeBaseConnectorTools()
 	return resource.Object{
 		"id":                   o["id"],
 		"name":                 o["name"],
@@ -266,12 +283,35 @@ func (r *Resources) knowledgeBaseConnectorDTO(o resource.Object) resource.Object
 		"capabilities":         []string{"catalog", "invoke"},
 		"authorization_status": "not_required",
 		"connection_status":    "connected",
+		"tools":                tools,
+		"tools_version":        resource.Hash(tools),
 		"mcp_gateway": resource.Object{
 			"url":            r.mcp.PublicURL + "/mcp/kb",
 			"transport":      "streamable_http",
 			"authentication": "api_key",
 			"required_scope": "mcp:invoke",
 		},
+	}
+}
+
+func filterTools(dto, link resource.Object) {
+	filter := func(target resource.Object) {
+		tools, _ := target["tools"].([]resource.Object)
+		filtered := []resource.Object{}
+		allow, deny := resource.Strings(link["tool_allowlist"]), resource.Strings(link["tool_denylist"])
+		for _, tool := range tools {
+			if (len(allow) == 0 || slices.Contains(allow, tool.String("name"))) && !slices.Contains(deny, tool.String("name")) {
+				filtered = append(filtered, tool)
+			}
+		}
+		target["tools"], target["tools_version"] = filtered, resource.Hash(filtered)
+	}
+	if dto.String("authorization_mode") == "independent" {
+		for _, credential := range dto["credentials"].([]resource.Object) {
+			filter(credential)
+		}
+	} else {
+		filter(dto)
 	}
 }
 
@@ -320,6 +360,7 @@ func (r *Resources) manifest(ctx context.Context, q resource.Queryer, c catalog,
 			return nil, err
 		}
 		dto["required"], dto["tool_allowlist"], dto["tool_denylist"] = link["required"], link["tool_allowlist"], link["tool_denylist"]
+		filterTools(dto, link)
 		if !connectorReady(dto) {
 			issues = append(issues, resource.Object{"code": "authorization_required", "connector_id": link["connector_id"], "blocking": link.Bool("required")})
 		}
@@ -789,7 +830,7 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 			continue
 		}
 		conn["credential_id"] = chosen["id"]
-		for _, key := range []string{"authorization_status", "connection_status", "mcp_gateway"} {
+		for _, key := range []string{"authorization_status", "connection_status", "tools", "tools_version", "mcp_gateway"} {
 			conn[key] = chosen[key]
 		}
 		delete(conn, "credentials")

@@ -15,6 +15,8 @@ interface Props {
   type?: 'website' | 'article';
   schema?: Record<string, unknown> | Array<Record<string, unknown>>;
   bodyClass?: string;
+  robots?: string;
+  showFooter?: boolean;
 }
 
 const {
@@ -25,6 +27,8 @@ const {
   type = 'website',
   schema,
   bodyClass = '',
+  robots = 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+  showFooter = true,
 } = Astro.props;
 
 const siteOrigin = Astro.site ?? Astro.url.origin;
@@ -43,7 +47,7 @@ const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <meta name="robots" content={robots} />
     <meta name="theme-color" content="#fafcfb" />
     <meta name="color-scheme" content="light" />
     <link rel="canonical" href={canonical} />
@@ -84,7 +88,7 @@ const hasValidGaId = /^G-[A-Z0-9]+$/.test(gaId);
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <SiteTopbar />
     <slot />
-    <SiteFooter />
+    {showFooter && <SiteFooter />}
     <script is:inline defer src="https://work.docs.baizhi.cloud/widget-bot.js"></script>
   </body>
 </html>

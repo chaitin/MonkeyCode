@@ -52,6 +52,10 @@ http://127.0.0.1:8080 {
 	@releasePackages path /releases/jiying.exe /releases/jiying.dmg /releases/jiying.amd.AppImage /releases/jiying.arm.AppImage /releases/jiying.apk
 	header @releasePackages Cache-Control "no-cache"
 
+	# AASA 没有扩展名，显式声明 JSON，否则 iOS 可能拒绝解析。
+	@aasa path /.well-known/apple-app-site-association
+	header @aasa Content-Type application/json
+
 	header {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
@@ -65,6 +69,13 @@ http://127.0.0.1:8080 {
 
 		handle_path /releases/* {
 			root * /srv/releases
+			file_server
+		}
+
+		# 兼容无尾斜杠的旧链接：直接返回页面而不是 308，避免丢掉配对 query。
+		handle /app-link/scan {
+			root * /srv
+			rewrite * /app-link/scan/index.html
 			file_server
 		}
 

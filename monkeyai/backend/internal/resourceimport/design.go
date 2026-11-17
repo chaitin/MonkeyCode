@@ -11,6 +11,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/designcatalog"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
+	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resourceimport/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -22,14 +23,23 @@ type DesignCatalog interface {
 	Apply(context.Context, pgx.Tx, *designcatalog.Package, string, string) (designcatalog.Plan, error)
 }
 
+type KnowledgeCatalog interface {
+	PlanImport(context.Context, *kb.ImportPackage) (kb.ImportPlan, error)
+	ApplyImport(context.Context, pgx.Tx, *kb.ImportPackage, string, string) (kb.ImportPlan, error)
+}
+
+func (s *Service) WithKnowledgeCatalog(catalog KnowledgeCatalog) *Service {
+	s.knowledge = catalog
+	return s
+}
 func (s *Service) WithDesignCatalog(catalog DesignCatalog) *Service { s.design = catalog; return s }
 func containsSection(sections []string, section string) bool {
 	return slices.Contains(sections, section)
 }
 func selectSections(request []string, info designcatalog.Inspection) ([]string, error) {
 	if request == nil {
-		if info.NewDesign {
-			return nil, resource.Invalid("新设计包必须显式选择导入分区")
+		if info.NewDesign || info.Knowledge.Present {
+			return nil, resource.Invalid("设计或知识库包必须显式选择导入分区")
 		}
 		return []string{"agent"}, nil
 	}
@@ -38,19 +48,22 @@ func selectSections(request []string, info designcatalog.Inspection) ([]string, 
 	}
 	seen := map[string]bool{}
 	for _, section := range request {
-		if (section != "agent" && section != "design") || seen[section] {
+		if (section != "agent" && section != "design" && section != "knowledge") || seen[section] {
 			return nil, resource.Invalid("导入分区无效或重复")
 		}
 		seen[section] = true
-		if section == "agent" && !info.Agent.Present || section == "design" && !info.Design.Present {
+		if section == "agent" && !info.Agent.Present || section == "design" && !info.Design.Present || section == "knowledge" && !info.Knowledge.Present {
 			return nil, resource.Invalid("所选分区不存在")
+		}
+		if section == "knowledge" && !info.Knowledge.Supported {
+			return nil, resource.Invalid("不支持知识库分区版本")
 		}
 		if section == "design" && !info.Design.Supported {
 			return nil, &resource.Error{Status: 400, Code: "unsupported_design_section", Message: "不支持设计分区版本"}
 		}
 	}
 	out := []string{}
-	for _, section := range []string{"agent", "design"} {
+	for _, section := range []string{"agent", "design", "knowledge"} {
 		if seen[section] {
 			out = append(out, section)
 		}
@@ -62,6 +75,7 @@ type SectionPlan struct {
 	PlanDigest      string              `json:"plan_digest"`
 	Agent           *Preview            `json:"agent,omitempty"`
 	Design          *designcatalog.Plan `json:"design,omitempty"`
+	Knowledge       *kb.ImportPlan      `json:"knowledge,omitempty"`
 	AlreadyImported bool                `json:"already_imported"`
 }
 type SectionError struct {
@@ -125,6 +139,12 @@ func (s *Service) previewSections(ctx context.Context, loaded loadedImport) (Pre
 					return out, err
 				}
 				plan.Agent = &pre
+			} else if section == "knowledge" {
+				var pre kb.ImportPlan
+				if err = json.Unmarshal(result.Result, &pre); err != nil {
+					return out, err
+				}
+				plan.Knowledge = &pre
 			} else {
 				var pre designcatalog.Plan
 				if err = json.Unmarshal(result.Result, &pre); err != nil {
@@ -138,6 +158,12 @@ func (s *Service) previewSections(ctx context.Context, loaded loadedImport) (Pre
 				return out, conflict(err.Error())
 			}
 			plan = SectionPlan{PlanDigest: pre.PlanDigest, Agent: &pre}
+		} else if section == "knowledge" {
+			pre, err := s.knowledge.PlanImport(ctx, loaded.knowledge)
+			if err != nil {
+				return out, err
+			}
+			plan = SectionPlan{PlanDigest: pre.PlanDigest, Knowledge: &pre}
 		} else {
 			pre, err := s.design.Plan(ctx, loaded.design)
 			if err != nil {
@@ -145,6 +171,10 @@ func (s *Service) previewSections(ctx context.Context, loaded loadedImport) (Pre
 				return out, &resource.Error{Status: status, Code: code, Message: message}
 			}
 			plan = SectionPlan{PlanDigest: pre.PlanDigest, Design: &pre}
+		}
+		if plan.Knowledge != nil && out.Publisher == "" {
+			out.Publisher = plan.Knowledge.PublisherID
+			out.ReleaseID = plan.Knowledge.ReleaseID
 		}
 		out.SectionPlans[section] = plan
 		if plan.Agent != nil {
@@ -252,6 +282,21 @@ func (s *Service) applySections(ctx context.Context, loaded loadedImport) (Secti
 					err = saveSection(ctx, s.Pool, loaded, section, plan.PlanDigest, result)
 				}
 			}
+		} else if section == "knowledge" {
+			var tx pgx.Tx
+			tx, err = s.Pool.Begin(ctx)
+			if err == nil {
+				var pre kb.ImportPlan
+				pre, err = s.knowledge.ApplyImport(ctx, tx, loaded.knowledge, actor.ID, plan.PlanDigest)
+				if err == nil {
+					result.Result = payload(pre)
+					err = saveSection(ctx, tx, loaded, section, plan.PlanDigest, result)
+				}
+				if err == nil {
+					err = tx.Commit(ctx)
+				}
+				_ = tx.Rollback(context.WithoutCancel(ctx))
+			}
 		} else {
 			err = s.design.Prepare(ctx, loaded.design)
 			if err == nil {
@@ -316,7 +361,7 @@ func (s *Service) finishSections(ctx context.Context, loaded loadedImport) error
 	for _, row := range rows {
 		done[row.Section] = row.Status == "succeeded"
 	}
-	all := (!loaded.inspection.Agent.Present || done["agent"]) && (!loaded.inspection.Design.Present || !loaded.inspection.Design.Supported || done["design"])
+	all := (!loaded.inspection.Agent.Present || done["agent"]) && (!loaded.inspection.Design.Present || !loaded.inspection.Design.Supported || done["design"]) && (!loaded.inspection.Knowledge.Present || !loaded.inspection.Knowledge.Supported || done["knowledge"])
 	if all {
 		if err = sqlc.New(loaded.tx).FinishImportUpload(ctx, loaded.input.UploadID); err != nil {
 			return err
@@ -331,6 +376,9 @@ func (s *Service) discovery(w http.ResponseWriter, r *http.Request, loaded loade
 	}
 	if loaded.inspection.Design.Present {
 		available = append(available, "design")
+	}
+	if loaded.inspection.Knowledge.Present {
+		available = append(available, "knowledge")
 	}
 	resource.JSON(r.Context(), w, 200, resource.Object{"available_sections": available, "sections": loaded.inspection, "package_sha256": loaded.sha})
 }

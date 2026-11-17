@@ -323,10 +323,6 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mode == "independent" {
-		resource.Fail(r.Context(), w, resource.Invalid("独立认证工具不支持配置开关或积分"))
-		return
-	}
 	if mode != "centralized" && in.Credits != 0 {
 		resource.Fail(r.Context(), w, resource.Invalid("仅集中认证工具可以设置非零积分"))
 		return
@@ -335,18 +331,37 @@ func (s *Service) updateTool(w http.ResponseWriter, r *http.Request) {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	o, err := resource.DecodeObject(sqlc.New(tx).UpdateTool(r.Context(), sqlc.UpdateToolParams{
+	u, _ := identity.UserFromContext(r.Context())
+	queries := sqlc.New(tx)
+	params := sqlc.UpdateToolParams{
 		ConnectorID:    chi.URLParam(r, "id"),
 		ID:             chi.URLParam(r, "toolID"),
 		Name:           in.Name,
 		Enabled:        *in.Enabled,
 		CreditsPerCall: in.Credits.String(),
-	}))
+	}
+	var data []byte
+	if mode == "independent" {
+		data, err = queries.UpdateIndependentTool(r.Context(), sqlc.UpdateIndependentToolParams{
+			ConnectorID: params.ConnectorID, ID: params.ID, Enabled: params.Enabled,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = resource.Invalid("独立认证仅支持修改已有工具配置")
+		}
+	} else {
+		data, err = queries.UpdateTool(r.Context(), params)
+		if errors.Is(err, pgx.ErrNoRows) && params.Name == "" {
+			params.Name, err = s.toolName(r.Context(), tx, params.ConnectorID, u.ID, params.ID)
+			if err == nil {
+				data, err = queries.UpdateTool(r.Context(), params)
+			}
+		}
+	}
+	o, err := resource.DecodeObject(data, err)
 	if err != nil {
 		resource.Fail(r.Context(), w, err)
 		return
 	}
-	u, _ := identity.UserFromContext(r.Context())
 	err = resource.Audit(r.Context(), tx, u.ID, "mcp_tool", o.String("id"), "configure")
 
 	if err == nil {

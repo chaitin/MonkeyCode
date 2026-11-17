@@ -85,7 +85,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `43` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `46` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 

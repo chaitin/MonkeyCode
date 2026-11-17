@@ -117,12 +117,12 @@ export function ResourceImportsPage() {
               <TableHeader className="sticky top-0 z-10"><TableRow>{["导入时间", "版本", "状态", "资源内容"].map((column) => <TableHead key={column}>{column}</TableHead>)}</TableRow></TableHeader>
               <TableBody className={!history?.items.length ? "h-full" : undefined}>{history?.items.map((batch) => <TableRow key={batch.id}>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{dateFormat.format(new Date(batch.created_at))}</TableCell>
-                <TableCell>{batch.version > 0 ? batch.version : "设计快照"}</TableCell>
+                <TableCell>{batch.version > 0 ? batch.version : batch.section_results?.knowledge ? "知识库资源包" : "设计快照"}</TableCell>
                 <TableCell><Badge variant={batch.status === "succeeded" ? "successOutline" : "destructiveOutline"}>{batch.status === "succeeded" ? "成功" : batch.status === "partial" ? "部分成功" : "失败"}</Badge></TableCell>
                 <TableCell className="text-muted-foreground">{counts
                   .filter(([key]) => (batch.result_counts[key] ?? 0) !== 0)
                   .map(([key, label]) => `${label} ${batch.result_counts[key]}`)
-                  .join(" · ") || "无变更"}</TableCell>
+                  .join(" · ") || (batch.section_results?.knowledge?.result?.changes?.map((item) => `${item.name}：新增 ${item.documents} 篇文档`).join(" · ") ?? "无变更")}</TableCell>
               </TableRow>)}
                 {!history?.items.length && !historyError && <TableRow className="h-full">
                   <TableCell colSpan={4} className="h-full text-center text-muted-foreground">

@@ -211,8 +211,7 @@ func TestAdminPersonalKBWriteRoutesAreReadOnly(t *testing.T) {
 	for _, call := range []struct{ method, path, body string }{
 		{"POST", "/documents", `{"title":"injected","content":"injected"}`},
 		{"PUT", "/documents/" + docID, `{"content":"overwritten"}`},
-		{"DELETE", "/documents/" + docID, ""},
-		{"POST", "/documents/" + docID + "/restudy", ""},
+		{"POST", "/documents/delete", `{"ids":["` + docID + `"]}`},
 		{"POST", "/documents/restudy", `{"ids":["` + docID + `"]}`},
 		{"POST", "/embedding-model/switch", `{"embedding_model_id":null}`},
 		{"POST", "/index/rebuild", `{"operation":"rebuild_parse"}`},

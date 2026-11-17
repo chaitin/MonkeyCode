@@ -127,6 +127,36 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 	}
 	var payload any
 	switch call.Name {
+	case "kb_get", "kb_list_tags", "kb_list_permissions", "kb_list_chunks":
+		item, err := s.readMCPKnowledgeBase(ctx, userID, call.Name, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
+	case "kb_get_image":
+		return s.readMCPImage(ctx, userID, call.Arguments)
+	case "kb_update":
+		item, err := s.updateMCPKnowledgeBase(ctx, userID, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
+	case "kb_move_document", "kb_restudy_document":
+		item, err := s.writeMCPDocument(ctx, userID, call.Name, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		if _, batch := call.Arguments["ids"]; batch {
+			payload = item
+		} else {
+			payload = publicDocument(item)
+		}
+	case "kb_upload_image":
+		item, err := s.uploadMCPImage(ctx, userID, call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		payload = item
 	case "kb_create":
 		input, err := mcpCreateKnowledgeBaseInput(call.Arguments)
 		if err != nil {
@@ -186,6 +216,16 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 			delete(out, "content")
 		}
 		payload = publicDocument(out)
+	case "kb_create_folder":
+		input, err := mcpFolderInput(call.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		item, err := s.CreateUserDocument(ctx, userID, input)
+		if err != nil {
+			return nil, err
+		}
+		payload = publicDocument(item)
 	case "kb_create_document":
 		input, err := mcpDocumentInput(call.Arguments)
 		if err != nil {
@@ -221,6 +261,15 @@ func (s *Service) callMCPTool(ctx context.Context, userID string, params json.Ra
 		}
 		payload = publicDocument(item)
 	case "kb_delete_document":
+		if _, ok := call.Arguments["ids"]; ok {
+			result, err := s.writeMCPDocuments(ctx, userID, call.Name, call.Arguments)
+			if err != nil {
+				return nil, err
+			}
+			payload = result
+			break
+		}
+
 		kbID, err := mcpRequiredString(call.Arguments, "kb_id")
 		if err != nil {
 			return nil, err
@@ -316,7 +365,20 @@ func mcpTagIDs(values ...string) []string {
 
 // MCPTools 返回知识库 MCP 暴露的工具目录，供 MCP 端点和 Agent 资源目录共同使用。
 func MCPTools() []resource.Object {
-	return []resource.Object{
+	return append([]resource.Object{
+		{
+			"name":        "kb_upload_image",
+			"description": "上传知识库正文图片，要求知识库启用且调用者有正文读写权限。data_base64 为标准 Base64（无 data URL 前缀），原图最多 32 MiB、2500 万像素，支持 PNG/JPEG/GIF/WebP。返回 name、url、mime_type、size_bytes、markdown；将 markdown 写入文档正文后通过文档工具保存，上传本身不修改文档。",
+			"inputSchema": resource.Object{
+				"type": "object",
+				"properties": resource.Object{
+					"kb_id":       resource.Object{"type": "string", "format": "uuid"},
+					"data_base64": resource.Object{"type": "string", "minLength": 1, "maxLength": mcpImageBase64Limit, "description": "图片原始字节的标准 Base64 编码，不包含 data URL 前缀"},
+				},
+				"required":             []string{"kb_id", "data_base64"},
+				"additionalProperties": false,
+			},
+		},
 		{
 			"name":        "kb_create",
 			"description": "创建归当前调用者所有的个人知识库，返回知识库 id；可随后通过 kb_create_document 添加文档。不支持创建系统知识库或指定其他所有者。",
@@ -375,11 +437,20 @@ func MCPTools() []resource.Object {
 			},
 		},
 		{
+			"name":        "kb_create_folder",
+			"description": "在启用且具有正文读写权限的知识库中创建文件夹。kb_id、title 必填，parent_id 可指定同库父文件夹，省略、null 或空字符串表示根目录。返回文件夹 id、parent_id、node_type 和 revision；文件夹不进入学习队列。",
+			"inputSchema": mcpObjectSchema(resource.Object{
+				"kb_id":     mcpIDSchema(),
+				"title":     resource.Object{"type": "string", "minLength": 1},
+				"parent_id": mcpCreateParentSchema(),
+			}, "kb_id", "title"),
+		},
+		{
 			"name":        "kb_create_document",
-			"description": "仅当知识库为当前用户拥有或具有读写权限的知识库时创建文档，并进入学习队列",
+			"description": "仅当知识库为当前用户拥有或具有读写权限的知识库时创建文档，并进入学习队列。parent_id 可指定同库父文件夹，省略、null 或空字符串表示根目录。",
 			"inputSchema": resource.Object{
 				"type":                 "object",
-				"properties":           mcpDocumentProperties(true),
+				"properties":           mcpCreateDocumentProperties(),
 				"required":             []string{"kb_id", "title", "content"},
 				"additionalProperties": false,
 			},
@@ -396,13 +467,12 @@ func MCPTools() []resource.Object {
 		},
 		{
 			"name":        "kb_delete_document",
-			"description": "删除当前用户拥有或具有读写权限的知识库下的文档，并取消活跃学习任务；只读用户不可写入；协作更新和删除须先读取文档并提供 expected_revision",
-			"inputSchema": resource.Object{
-				"type":                 "object",
-				"properties":           resource.Object{"kb_id": resource.Object{"type": "string", "format": "uuid"}, "document_id": resource.Object{"type": "string", "format": "uuid"}, "expected_revision": resource.Object{"type": "integer", "minimum": 1}},
-				"required":             []string{"kb_id", "document_id"},
-				"additionalProperties": false,
-			},
+			"description": "删除知识库文档或文件夹并取消活跃学习任务；支持 ids 数组（最多 200 项），返回 succeeded/failed，协作调用提供 expected_revisions；兼容 document_id 和 expected_revision。只读用户不可写入。",
+			"inputSchema": mcpDocumentOperationSchema(resource.Object{
+				"kb_id": mcpIDSchema(), "document_id": mcpIDSchema(),
+				"expected_revision":  resource.Object{"type": "integer", "minimum": 1},
+				"expected_revisions": resource.Object{"type": "object", "additionalProperties": resource.Object{"type": "integer", "minimum": 1}},
+			}),
 		},
 		{
 			"name":        "kb_search",
@@ -418,7 +488,7 @@ func MCPTools() []resource.Object {
 				"required": []string{"query"},
 			},
 		},
-	}
+	}, additionalMCPTools()...)
 }
 
 func mcpRequiredString(arguments map[string]any, key string) (string, error) {
@@ -508,7 +578,7 @@ func supportedKBProtocolVersion(version string) bool {
 
 func readMCPRequest(w http.ResponseWriter, r *http.Request) (mcpRequest, bool) {
 	var request mcpRequest
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, mcpImageRequestLimit))
 	if err != nil {
 		writeMCPReply(r.Context(), w, http.StatusBadRequest, nil, nil, &mcpError{Code: -32700, Message: "请求超限或不完整"})
 		return request, false
@@ -520,6 +590,16 @@ func readMCPRequest(w http.ResponseWriter, r *http.Request) (mcpRequest, bool) {
 	if json.Unmarshal(body, &request) != nil || request.Version != "2.0" || request.Method == "" {
 		writeMCPReply(r.Context(), w, http.StatusBadRequest, nil, nil, &mcpError{Code: -32600, Message: "JSON-RPC 请求无效"})
 		return request, false
+	}
+	if len(body) > 1<<20 {
+		var call struct {
+			Name string `json:"name"`
+		}
+		if request.Method != "tools/call" || json.Unmarshal(request.Params, &call) != nil ||
+			(call.Name != "kb_upload_image" && (call.Name != "kb_update" || len(body) > mcpAvatarRequestLimit)) {
+			writeMCPReply(r.Context(), w, http.StatusBadRequest, request.ID, nil, &mcpError{Code: -32700, Message: "请求超限或不完整"})
+			return request, false
+		}
 	}
 	if bytes.Equal(bytes.TrimSpace(request.Params), []byte("null")) {
 		request.Params = nil

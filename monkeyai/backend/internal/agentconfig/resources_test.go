@@ -75,9 +75,13 @@ func TestKnowledgeBaseConnectorCatalog(t *testing.T) {
 	if gateway.String("url") != "https://example.com/mcp/kb" || gateway.String("transport") != "streamable_http" || gateway.String("authentication") != "api_key" || gateway.String("required_scope") != "mcp:invoke" {
 		t.Fatalf("unexpected gateway: %v", gateway)
 	}
-	for _, key := range []string{"tools", "tools_version"} {
-		if _, ok := dto[key]; ok {
-			t.Fatalf("知识库连接器目录不应内嵌 %s: %v", key, dto)
+	tools := dto["tools"].([]resource.Object)
+	if len(tools) == 0 || dto.String("tools_version") != resource.Hash(tools) {
+		t.Fatalf("知识库连接器应返回工具及版本: %v", dto)
+	}
+	for _, tool := range tools {
+		if tool.String("id") != tool.String("name") {
+			t.Fatalf("知识库工具标识不兼容: %v", tool)
 		}
 	}
 }
