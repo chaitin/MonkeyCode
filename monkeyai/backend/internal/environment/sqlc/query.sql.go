@@ -126,7 +126,7 @@ func (q *Queries) AvailableHosts(ctx context.Context, arg AvailableHostsParams) 
 }
 
 const billedUserEnvironments = `-- name: BilledUserEnvironments :many
-SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
+SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
  AND (c.billing->>'enabled')::boolean AND ((c.billing->>'cpu_credits_per_core_hour')::numeric>0 OR (c.billing->>'memory_credits_per_gib_hour')::numeric>0)
 ORDER BY e.id FOR UPDATE OF e
 `
@@ -159,6 +159,7 @@ func (q *Queries) BilledUserEnvironments(ctx context.Context, userID string) ([]
 			&i.ObservedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -171,7 +172,7 @@ func (q *Queries) BilledUserEnvironments(ctx context.Context, userID string) ([]
 }
 
 const billingEnvironment = `-- name: BillingEnvironment :one
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE id=$1
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1
 `
 
 func (q *Queries) BillingEnvironment(ctx context.Context, id string) (Environment, error) {
@@ -196,6 +197,7 @@ func (q *Queries) BillingEnvironment(ctx context.Context, id string) (Environmen
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -296,8 +298,8 @@ func (q *Queries) BindRuntime(ctx context.Context, arg BindRuntimeParams) (int64
 }
 
 const changeTarget = `-- name: ChangeTarget :one
-UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,
-billing_stop_reason=CASE WHEN $3='running' THEN '' ELSE billing_stop_reason END,updated_at=now() WHERE id=$1 RETURNING id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at
+UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,deleted_at=NULL,
+billing_stop_reason=CASE WHEN $3='running' THEN '' ELSE billing_stop_reason END,updated_at=now() WHERE id=$1 RETURNING id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at
 `
 
 type ChangeTargetParams struct {
@@ -334,6 +336,7 @@ func (q *Queries) ChangeTarget(ctx context.Context, arg ChangeTargetParams) (Env
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -432,7 +435,7 @@ func (q *Queries) ConfirmBillingPeriod(ctx context.Context, arg ConfirmBillingPe
 
 const createEnvironment = `-- name: CreateEnvironment :one
 INSERT INTO environments(id,user_id,host_id,name,generation,instance_id,desired,spec,cpu_millis,memory_bytes)
-VALUES($1,$2,$3,$4,1,$5,'running',$6,$7,$8) RETURNING id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at
+VALUES($1,$2,$3,$4,1,$5,'running',$6,$7,$8) RETURNING id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at
 `
 
 type CreateEnvironmentParams struct {
@@ -477,6 +480,7 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -678,7 +682,7 @@ func (q *Queries) FindOperation(ctx context.Context, arg FindOperationParams) (E
 }
 
 const getEnvironment = `-- name: GetEnvironment :one
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE id=$1 AND (user_id=$2::uuid OR $2::uuid IS NULL)
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1 AND (user_id=$2::uuid OR $2::uuid IS NULL)
 `
 
 type GetEnvironmentParams struct {
@@ -708,6 +712,7 @@ func (q *Queries) GetEnvironment(ctx context.Context, arg GetEnvironmentParams) 
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -772,7 +777,7 @@ func (q *Queries) GetRuntime(ctx context.Context, environmentID string) (Environ
 }
 
 const hostEnvironment = `-- name: HostEnvironment :one
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE id=$1 AND host_id=$2
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1 AND host_id=$2
 `
 
 type HostEnvironmentParams struct {
@@ -802,6 +807,7 @@ func (q *Queries) HostEnvironment(ctx context.Context, arg HostEnvironmentParams
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -876,7 +882,7 @@ func (q *Queries) HostUsage(ctx context.Context, hostID string) (int64, error) {
 }
 
 const inactiveTargets = `-- name: InactiveTargets :many
-SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at FROM environments e JOIN users u ON e.user_id=u.id
+SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e JOIN users u ON e.user_id=u.id
 WHERE e.host_id=$1 AND e.desired='running' AND (u.status<>'active' OR u.deleted_at IS NOT NULL) ORDER BY e.id LIMIT 16
 `
 
@@ -908,6 +914,7 @@ func (q *Queries) InactiveTargets(ctx context.Context, hostID string) ([]Environ
 			&i.ObservedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -920,7 +927,7 @@ func (q *Queries) InactiveTargets(ctx context.Context, hostID string) ([]Environ
 }
 
 const listEnvironments = `-- name: ListEnvironments :many
-SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at FROM environments e
+SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e
 CROSS JOIN LATERAL (
  SELECT CASE WHEN e.generation<>e.observed_generation THEN 'pending_' || e.desired ELSE e.phase END AS state,
  CASE WHEN e.desired='running' AND e.phase='running' AND e.generation=e.observed_generation
@@ -932,24 +939,26 @@ CROSS JOIN LATERAL (
 ) metrics
 WHERE (e.user_id=$3::uuid OR $3::uuid IS NULL)
 AND (e.host_id=$4::uuid OR $4::uuid IS NULL)
-AND ($5::text='all'
- OR ($5::text='active' AND metrics.state<>'deleted')
- OR metrics.state=$5::text)
+AND ($5::boolean OR e.deleted_at IS NULL)
+AND ($6::text='all'
+ OR ($6::text='active' AND metrics.state<>'deleted')
+ OR metrics.state=$6::text)
 ORDER BY
- CASE WHEN $6::text='cpu_desc' THEN metrics.cpu_usage END DESC NULLS LAST,
- CASE WHEN $6::text='cpu_asc' THEN metrics.cpu_usage END ASC NULLS LAST,
- CASE WHEN $6::text='memory_desc' THEN metrics.memory_usage END DESC NULLS LAST,
- CASE WHEN $6::text='memory_asc' THEN metrics.memory_usage END ASC NULLS LAST,
+ CASE WHEN $7::text='cpu_desc' THEN metrics.cpu_usage END DESC NULLS LAST,
+ CASE WHEN $7::text='cpu_asc' THEN metrics.cpu_usage END ASC NULLS LAST,
+ CASE WHEN $7::text='memory_desc' THEN metrics.memory_usage END DESC NULLS LAST,
+ CASE WHEN $7::text='memory_asc' THEN metrics.memory_usage END ASC NULLS LAST,
  e.created_at DESC,e.id DESC LIMIT $1 OFFSET $2
 `
 
 type ListEnvironmentsParams struct {
-	Limit  int32   `json:"limit"`
-	Offset int32   `json:"offset"`
-	UserID *string `json:"user_id"`
-	HostID *string `json:"host_id"`
-	Status string  `json:"status"`
-	Sort   string  `json:"sort"`
+	Limit          int32   `json:"limit"`
+	Offset         int32   `json:"offset"`
+	UserID         *string `json:"user_id"`
+	HostID         *string `json:"host_id"`
+	IncludeDeleted bool    `json:"include_deleted"`
+	Status         string  `json:"status"`
+	Sort           string  `json:"sort"`
 }
 
 func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsParams) ([]Environment, error) {
@@ -958,6 +967,7 @@ func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsPara
 		arg.Offset,
 		arg.UserID,
 		arg.HostID,
+		arg.IncludeDeleted,
 		arg.Status,
 		arg.Sort,
 	)
@@ -987,6 +997,7 @@ func (q *Queries) ListEnvironments(ctx context.Context, arg ListEnvironmentsPara
 			&i.ObservedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1134,7 +1145,7 @@ func (q *Queries) LockControl(ctx context.Context) error {
 }
 
 const lockEnvironment = `-- name: LockEnvironment :one
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE id=$1 AND (user_id=$2::uuid OR $2::uuid IS NULL) FOR UPDATE
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1 AND (user_id=$2::uuid OR $2::uuid IS NULL) FOR UPDATE
 `
 
 type LockEnvironmentParams struct {
@@ -1164,12 +1175,13 @@ func (q *Queries) LockEnvironment(ctx context.Context, arg LockEnvironmentParams
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const lockHostEnvironment = `-- name: LockHostEnvironment :one
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE id=$1 AND host_id=$2 FOR UPDATE
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1 AND host_id=$2 FOR UPDATE
 `
 
 type LockHostEnvironmentParams struct {
@@ -1199,6 +1211,7 @@ func (q *Queries) LockHostEnvironment(ctx context.Context, arg LockHostEnvironme
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -1356,7 +1369,8 @@ func (q *Queries) ReportRuntimeVersion(ctx context.Context, arg ReportRuntimeVer
 }
 
 const reportState = `-- name: ReportState :execrows
-UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7
+UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7,
+deleted_at=CASE WHEN desired='deleted' AND $5='deleted' THEN COALESCE(deleted_at,now()) ELSE NULL END
 WHERE id=$1 AND host_id=$2 AND instance_id=$3 AND generation=$4
 `
 
@@ -1549,7 +1563,7 @@ func (q *Queries) SupersedeOperations(ctx context.Context, environmentID string)
 }
 
 const targets = `-- name: Targets :many
-SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at FROM environments WHERE host_id=$1 AND id>$2::uuid
+SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE host_id=$1 AND id>$2::uuid
 AND NOT(desired='deleted' AND phase='deleted' AND observed_generation=generation)
 ORDER BY id LIMIT 16
 `
@@ -1587,6 +1601,7 @@ func (q *Queries) Targets(ctx context.Context, arg TargetsParams) ([]Environment
 			&i.ObservedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

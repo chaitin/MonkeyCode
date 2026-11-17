@@ -70,6 +70,7 @@ CROSS JOIN LATERAL (
 ) metrics
 WHERE (e.user_id=sqlc.narg(user_id)::uuid OR sqlc.narg(user_id)::uuid IS NULL)
 AND (e.host_id=sqlc.narg(host_id)::uuid OR sqlc.narg(host_id)::uuid IS NULL)
+AND (sqlc.arg(include_deleted)::boolean OR e.deleted_at IS NULL)
 AND (sqlc.arg(status)::text='all'
  OR (sqlc.arg(status)::text='active' AND metrics.state<>'deleted')
  OR metrics.state=sqlc.arg(status)::text)
@@ -81,7 +82,7 @@ ORDER BY
  e.created_at DESC,e.id DESC LIMIT $1 OFFSET $2;
 
 -- name: ChangeTarget :one
-UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,
+UPDATE environments SET generation=generation+1,instance_id=$2,desired=$3,spec=$4,usage=NULL,deleted_at=NULL,
 billing_stop_reason=CASE WHEN $3='running' THEN '' ELSE billing_stop_reason END,updated_at=now() WHERE id=$1 RETURNING *;
 
 -- name: CreateOperation :one
@@ -105,7 +106,8 @@ UPDATE environment_operations SET status='superseded',finished_at=now() WHERE en
 UPDATE environment_operations SET status=$3,reason=$4,finished_at=now() WHERE environment_id=$1 AND generation=$2 AND status='pending';
 
 -- name: ReportState :execrows
-UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7
+UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7,
+deleted_at=CASE WHEN desired='deleted' AND $5='deleted' THEN COALESCE(deleted_at,now()) ELSE NULL END
 WHERE id=$1 AND host_id=$2 AND instance_id=$3 AND generation=$4;
 
 -- name: ReportRuntimeVersion :exec

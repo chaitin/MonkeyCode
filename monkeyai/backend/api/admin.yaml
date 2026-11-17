@@ -10561,6 +10561,7 @@ components:
       - workload_verified
       - spec
       - created_at
+      - deleted_at
       properties:
         billing:
           $ref: agent.yaml#/components/schemas/EnvironmentBilling
@@ -10663,6 +10664,10 @@ components:
         created_at:
           type: string
           format: date-time
+        deleted_at:
+          type: [string, 'null']
+          format: date-time
+          description: 宿主确认当前代次删除完成的时间；未完成或失败时为 null，历史记录继续保留。
       description: phase 是最后一次观察结果，判断当前目标是否完成必须同时检查 observed_generation == generation。running 仅表示容器进程运行，尚不代表 runtime
         登录或用户可连接。
     EnvironmentImage:
