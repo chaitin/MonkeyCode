@@ -505,7 +505,7 @@ func copyKernel(ctx context.Context, source, target string) error {
 			break
 		}
 	}
-	return errors.Join(result, out.Sync(), out.Close())
+	return errors.Join(result, out.Chmod(0444), out.Sync(), out.Close())
 }
 func cpuQuota(l Launch) string {
 	if l.CPUMillis > 0 {

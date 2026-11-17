@@ -5,9 +5,41 @@ import {
   canStop,
   environmentState,
   hostSyncFresh,
+  hostDriver,
+  diskSizes,
   units,
   GiB,
 } from "../src/lib/environments.ts"
+
+test("驱动展示仅兼容确认的历史gVisor协议，不猜测未知宿主", () => {
+  assert.equal(
+    hostDriver({ driver: "firecracker", environment_protocol: 4 }),
+    "Firecracker"
+  )
+  assert.equal(hostDriver({ driver: "gvisor" }), "gVisor")
+  assert.equal(hostDriver({ environment_protocol: 3 }), "gVisor")
+  assert.equal(hostDriver({ environment_protocol: 2 }), "gVisor")
+  assert.equal(hostDriver({}), null)
+  assert.equal(hostDriver({ driver: "unknown", environment_protocol: 3 }), null)
+  assert.equal(hostDriver({ environment_protocol: 4 }), null)
+})
+
+test("双盘GiB配置精确换算字节，拒绝越界和未对齐输入", () => {
+  assert.deepEqual(diskSizes("20", "100"), {
+    system_bytes: 20 * GiB,
+    data_bytes: 100 * GiB,
+  })
+  assert.deepEqual(diskSizes("0.0625", "16384"), {
+    system_bytes: GiB / 16,
+    data_bytes: 16384 * GiB,
+  })
+  for (const value of ["", "0", "-1", "0.01", "0.1", "16385", "Infinity"])
+    for (const [system, data] of [
+      [value, "100"],
+      ["20", value],
+    ])
+      assert.throws(() => diskSizes(system, data))
+})
 
 test("旧观察代次不能显示新目标已完成", () => {
   const env = {

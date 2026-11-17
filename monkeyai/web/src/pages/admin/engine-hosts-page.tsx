@@ -36,6 +36,7 @@ import { HostStatus } from "@/components/environments/status-badge"
 import { ResourceAuthorizationBadge } from "@/components/resource-authorization-badge"
 import type { Grant } from "@/lib/resources"
 import { loadEngineHosts } from "@/lib/engine-hosts"
+import { hostDriver } from "@/lib/environments"
 import {
   HostUpgrade,
   type HostUpgradeState,
@@ -204,6 +205,8 @@ type Host = {
   activated_at: string | null
   last_seen_at: string | null
   report: {
+    driver?: string
+    environment_protocol?: number
     at?: string
     os?: string
     system?: HostSystem
@@ -766,6 +769,10 @@ export function EngineHostsPage({
                     <dl className="divide-y">
                       {(
                         [
+                          [
+                            t("environmentAdmin.driver"),
+                            hostDriver(detail.report) || text("notReported"),
+                          ],
                           [
                             t("environmentAdmin.activatedAt"),
                             detail.activated_at

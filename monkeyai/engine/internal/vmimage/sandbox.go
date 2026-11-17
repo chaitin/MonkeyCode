@@ -71,8 +71,13 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 			return err
 		}
 		root := filepath.Join(stage, "sandbox")
-		for _, name := range []string{"bin", "assets", "oci", "output", "tmp", "proc", "sys", "dev"} {
-			if err := os.MkdirAll(filepath.Join(root, name), 0755); err != nil {
+		for _, name := range []string{"", "bin", "assets", "oci", "oci/blobs", "oci/blobs/sha256", "output", "tmp", "proc", "sys", "dev"} {
+			directory := filepath.Join(root, name)
+			if err := os.MkdirAll(directory, 0755); err != nil {
+				return err
+			}
+			// daemon使用UMask=0077；动态用户须能在exec之前进入隔离根目录。
+			if err := os.Chmod(directory, 0755); err != nil {
 				return err
 			}
 		}
@@ -84,7 +89,7 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 			if err := item.tool.Verify(ctx); err != nil {
 				return err
 			}
-			if err := copyInput(ctx, item.tool.Path, filepath.Join(root, "bin", item.name)); err != nil {
+			if err := copyExecutable(ctx, item.tool.Path, filepath.Join(root, "bin", item.name)); err != nil {
 				return err
 			}
 		}
@@ -129,7 +134,7 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 		}
 		unit := "ma-cvt-" + hex.EncodeToString(nonce[:]) + ".service"
 		caps := "CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_SETFCAP"
-		args := []string{"--wait", "--quiet", "--unit=" + unit, "--service-type=exec", "--property=RootDirectory=" + root, "--property=MountAPIVFS=yes", "--property=DynamicUser=yes", "--property=PrivateNetwork=yes", "--property=PrivateDevices=yes", "--property=ProtectSystem=strict", "--property=ReadWritePaths=+/output +/tmp", "--property=ProtectHome=yes", "--property=ProtectProc=invisible", "--property=ProcSubset=pid", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=" + caps, "--property=AmbientCapabilities=" + caps, "--property=RestrictAddressFamilies=AF_UNIX", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--property=CPUQuota=200%", "--property=TasksMax=128", "--property=RuntimeMaxSec=900s", "--property=TimeoutStopSec=10s", "--property=KillMode=control-group", "--property=StandardOutput=null", "--property=StandardError=null", "--", "/bin/engine", "convert", "--request", "/request.json"}
+		args := []string{"--wait", "--quiet", "--unit=" + unit, "--service-type=exec", "--property=RootDirectory=" + root, "--property=WorkingDirectory=/", "--property=MountAPIVFS=yes", "--property=DynamicUser=yes", "--property=PrivateNetwork=yes", "--property=PrivateDevices=yes", "--property=ProtectSystem=strict", "--property=ReadWritePaths=+/output +/tmp", "--property=ProtectHome=yes", "--property=ProtectProc=invisible", "--property=ProcSubset=pid", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=" + caps, "--property=AmbientCapabilities=" + caps, "--property=RestrictAddressFamilies=AF_UNIX", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--property=CPUQuota=200%", "--property=TasksMax=128", "--property=RuntimeMaxSec=900s", "--property=TimeoutStopSec=10s", "--property=KillMode=control-group", "--property=StandardOutput=null", "--property=StandardError=null", "--", "/bin/engine", "convert", "--request", "/request.json"}
 		job, cancel := context.WithTimeout(ctx, 16*time.Minute)
 		if err := saveConversionJob(stage, unit); err != nil {
 			cancel()
@@ -150,7 +155,7 @@ func (c *Converter) BuildIsolated(layout string, engine Tool) Build {
 			return errors.Join(ErrConversionCleanup, runErr, stopErr, err)
 		}
 		if runErr != nil {
-			return fmt.Errorf("隔离转换失败: %w", runErr)
+			return fmt.Errorf("隔离转换失败（服务%s）: %w", unit, runErr)
 		}
 		if err := os.Rename(filepath.Join(root, "output", "root.ext4"), filepath.Join(stage, "root.ext4")); err != nil {
 			return err
@@ -193,6 +198,21 @@ func ConvertRequest(ctx context.Context, path string) error {
 	}
 	return converter.Build("/oci")(ctx, request.Identity, "/output")
 }
+func copyExecutable(ctx context.Context, source, destination string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, contextReader{ctx, in})
+	// 工具必须是独立副本；不能chmod硬链接而改动已安装程序。
+	return errors.Join(copyErr, out.Chmod(0555), out.Sync(), out.Close())
+}
+
 func copyInput(ctx context.Context, source, destination string) error {
 	info, err := os.Lstat(source)
 	if err != nil {

@@ -225,6 +225,12 @@ export const zhCN = {
     setupResource: "新建环境规格",
     setupCpu: "CPU",
     setupMemory: "内存",
+    driver: "执行驱动",
+    setupSystemDisk: "系统盘",
+    setupDataDisk: "数据盘",
+    setupDiskHint:
+      "系统盘保存系统和软件，数据盘保存项目、用户目录和运行时数据。仅对新环境生效，存储暂时免费。",
+    setupDiskInvalid: "容量须为 0.0625～16384 GiB，并按 4 KiB 对齐。",
     setupEnvironmentCount: "环境数量上限",
     setupRunningCount: "同时运行上限",
     setupCoreUnit: "核",
@@ -363,7 +369,8 @@ export const zhCN = {
       superseded: "已被新操作替代",
     },
     reasons: {
-      storage_pressure: "宿主磁盘空间不足，已暂停保护，暂停期间免计算费。请联系管理员释放空间，再停止并重新启动环境；恢复后不会自动启动。",
+      storage_pressure:
+        "宿主磁盘空间不足，已暂停保护，暂停期间免计算费。请联系管理员释放空间，再停止并重新启动环境；恢复后不会自动启动。",
       apply_failed: "执行失败，请检查宿主日志；清理后可重新启动。",
       inspect_failed: "无法核对运行状态，请检查宿主后重试清理。",
       process_exited: "容器进程已退出，不会自动重启。",

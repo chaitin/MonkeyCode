@@ -1,5 +1,33 @@
 export const GiB = 1024 ** 3
 export const MiB = 1024 ** 2
+export type Disks = { system_bytes: number; data_bytes: number }
+
+export function hostDriver(report: {
+  driver?: string
+  environment_protocol?: number
+}) {
+  if (report.driver === "firecracker") return "Firecracker"
+  if (
+    report.driver === "gvisor" ||
+    (!report.driver && [2, 3].includes(report.environment_protocol ?? 0))
+  )
+    return "gVisor"
+  return null
+}
+
+export function diskSizes(system: string, data: string): Disks {
+  const disks = {
+    system_bytes: units(system, GiB),
+    data_bytes: units(data, GiB),
+  }
+  if (
+    Object.values(disks).some(
+      (size) => size < 64 * MiB || size > 16384 * GiB || size % 4096 !== 0
+    )
+  )
+    throw new Error("Invalid disk sizes")
+  return disks
+}
 export type Page<T> = { items: T[]; page: number; page_size: number }
 export type Resources = {
   cpu_millis: number

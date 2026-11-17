@@ -10692,6 +10692,9 @@ components:
       description: 当前宿主独立保存授权范围，不设置环境数量上限。CPU／内存规格独立全局管理；billing 为只读全局计费配置，须到费用设置统一修改。
       required: [host_id, host_name, capacity, image_ready, billing, grants]
       properties:
+        driver: {type: string, enum: [gvisor, firecracker], description: 宿主当前固定执行驱动；兼容未上报driver的历史gVisor宿主。}
+        disks:
+          $ref: '#/components/schemas/EnvironmentDisks'
         host_id: {type: string, format: uuid}
         host_name: {type: string}
         grants:

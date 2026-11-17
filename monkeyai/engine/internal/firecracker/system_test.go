@@ -92,6 +92,25 @@ func TestSystemHostRejectsUnsafeControlGroup(t *testing.T) {
 		}
 	}
 }
+func TestCopiedKernelIsReadableByVMM(t *testing.T) {
+	root := t.TempDir()
+	source, destination := filepath.Join(root, "fixed-kernel"), filepath.Join(root, "jailed-kernel")
+	if err := os.WriteFile(source, []byte("fixed kernel"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyKernel(t.Context(), source, destination); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(destination)
+	if err != nil || info.Mode().Perm() != 0444 {
+		t.Fatal("隔离VMM无法读取内核", info, err)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil || string(data) != "fixed kernel" {
+		t.Fatal(string(data), err)
+	}
+}
+
 func TestJailerReceivesOnlyOneInstanceID(t *testing.T) {
 	h := systemFixture(t)
 	lease := NetworkLease{UID: 100001, Namespace: "/run/netns/mfc-test"}

@@ -236,6 +236,12 @@ export const enUS = {
     setupResource: "New environment resources",
     setupCpu: "CPU",
     setupMemory: "Memory",
+    driver: "Execution driver",
+    setupSystemDisk: "System disk",
+    setupDataDisk: "Data disk",
+    setupDiskHint:
+      "The system disk stores the OS and software; the data disk stores workspace, home, and runtime data. Applies to new environments only. Storage is currently free.",
+    setupDiskInvalid: "Enter 0.0625–16384 GiB, aligned to 4 KiB.",
     setupEnvironmentCount: "Environment limit",
     setupRunningCount: "Concurrent limit",
     setupCoreUnit: "cores",
@@ -380,7 +386,8 @@ export const enUS = {
       superseded: "Superseded",
     },
     reasons: {
-      storage_pressure: "Host storage is low. The environment is protected and compute billing is paused. Ask an administrator to free space, then stop and start the environment. It will not restart automatically.",
+      storage_pressure:
+        "Host storage is low. The environment is protected and compute billing is paused. Ask an administrator to free space, then stop and start the environment. It will not restart automatically.",
       apply_failed:
         "Execution failed. Inspect host logs and clean up before starting again.",
       inspect_failed:

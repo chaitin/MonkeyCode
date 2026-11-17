@@ -113,6 +113,22 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 需要生成新的固定engine发行才能在目标宿主生效，不覆盖已发布的`v26111701`。这次问题位于宿主engine的启动参数，已有OSS Firecracker工具包无需为此修改。
 
+## 宿主驱动和新建环境磁盘规格
+
+宿主详情摘要展示上报驱动，品牌名为Firecracker／gVisor；兼容已知历史gVisor协议，未上报或未知驱动不推测。宿主规格接口返回`driver`以及Firecracker的`disks.system_bytes`、`disks.data_bytes`，表单用GiB输入，验证64 MiB～16 TiB和4 KiB对齐。省略磁盘字段保留现有设置，首次沿用宿主上报的默认值；gVisor拒绝磁盘字段。
+
+磁盘设置和计算资源一起保存到现有宿主规格JSON文档，不新增数据库列或迁移。调度仅将所选磁盘值写入新环境的VirtualMachine快照，执行协议中的计算资源仍只有原四个字段。修改宿主规格不会扩缩已有磁盘。CPU／内存计费和存储暂时免费规则不变。
+
+已验证数据库保存、回显、旧客户端省略字段、gVisor拒绝与已有实例快照保留；前端类型检查、lint、构建和相关测试通过；浏览器验证驱动摘要、双盘默认值／非法输入／保存回显／gVisor隐藏和390px布局。
+
+## 受限umask下的首次镜像转换权限修复
+
+真实AMD64宿主的首次环境启动失败停在镜像隔离转换：转换服务退出`200/CHDIR`，尚未创建VMM。定位到daemon固定`UMask=0077`使新建sandbox目录和输入程序收紧为0700；DynamicUser在进入RootDirectory和exec之前不能使用程序启动后才获得的能力。目标机独立临时目录的version诊断复现200；仅改根目录后进一步复现203/EXEC。
+
+修复在私有暂存父目录中显式设置隔离目录0755，三个隔离工具使用独立副本并设置0555，不通过chmod硬链接改变已安装程序；WorkingDirectory明确为隔离根。输入文件和私有父目录仍受保护，DynamicUser／私网／能力集合／只写output和tmp的限制保留。相同umask也会把内核副本0444收紧为0400，现显式设置0444供独立VMM用户读取。
+
+Linux原生ARM64在`umask 077`下使用真实systemd隔离执行通过OCI解包、whiteout、bootstrap、ext4生成及缓存复用验收，工具副本和内核读取权限回归也通过；未将该转换验证当作真实KVM工作负载验收。目标宿主运行文件与原环境未修改，需要新的engine发行才能生效。
+
 ## 后续阶段与阻断项
 
 - [x] 平台探测、候选优先级、失败分类、保留旧引擎及CLI接入。
