@@ -17,6 +17,7 @@ type SectionInfo struct {
 type Inspection struct {
 	Agent     SectionInfo `json:"agent"`
 	Design    SectionInfo `json:"design"`
+	Knowledge SectionInfo `json:"knowledge"`
 	NewDesign bool        `json:"-"`
 }
 
@@ -70,6 +71,17 @@ func Inspect(reader io.ReaderAt, size int64) (Inspection, error) {
 	}
 	raw, ok := fields["agent_resources"]
 	out.Agent = SectionInfo{Present: ok && string(raw) != "null", Supported: true}
+	knowledge, exists := fields["knowledge_resources"]
+	out.Knowledge.Present = exists && string(knowledge) != "null"
+	if out.Knowledge.Present {
+		var header struct {
+			SchemaVersion int `json:"schema_version"`
+		}
+		if json.Unmarshal(knowledge, &header) == nil {
+			out.Knowledge.SchemaVersion = header.SchemaVersion
+			out.Knowledge.Supported = header.SchemaVersion == 1
+		}
+	}
 	raw, ok = fields["design_resources"]
 	out.Design.Present = ok && string(raw) != "null"
 	if !out.Design.Present {

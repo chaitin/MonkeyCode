@@ -227,7 +227,7 @@ paths:
   /api/admin/v1/resource-imports/preview:
     post:
       summary: 解析资源发布包并预览变更
-      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
+      description: 使用封存的 upload_id 或不超过2 GiB的ZIP。discover_only=true 仅发现分区，不产生可执行计划；新版设计包或知识库包必须显式 sections，正式preview由服务端计算package_sha256和plan_digest。仅Agent时保留旧宽松解析；选择design时严格校验全外包CHECKSUMS、发布身份、JCS业务摘要和源映射。设计-only不解析Agent业务内容、不计划Agent退役；返回逐分区计划，Agent变更含声明的tags并参与变更判断，变更选项后须重新预览。
       requestBody:
         required: true
         content:
@@ -241,13 +241,13 @@ paths:
                 package: {type: string, format: binary}
                 options: {type: string, description: JSON 编码的认证归属选项}
       responses:
-        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
+        '200': {description: discovery返回available_sections和支持状态；正式preview返回sections/package_sha256/plan_digest/section_plans，设计计划在design对象中包含publisher_id/release_id/counts/changes/current_revision/snapshot_digest。知识库计划在knowledge对象中包含publisher_id/release_id/changes（slug/name/action/kb_id/documents/folders/images）。知识库分区严格校验v1清单、文件SHA/size和目录树；每次新上传确认导入均创建独立系统库（同一ZIP也不去重）；同一次上传的确认重试复用已有成功回执，仅管理员可见，提交后异步学习。已成功分区标记already_imported，不能以整包去重跳过未导分区。}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '409': {description: 资源身份或现有数据关联冲突}
   /api/admin/v1/resource-imports:
     post:
       summary: 按预览确认所选资源分区
-      description: 固定agent→design顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
+      description: 固定agent→design→knowledge顺序，分区独立提交，允许部分成功；HTTP200仍须检查顶层status和逐分区结果。sections/package_sha256/总plan_digest/section_plan_digests须与正式preview一致，options.confirm_final必须true。成功回执与业务写入同事务，重放不重新激活；失败分区重新preview后重试。同upload可在保留期内补导另一分区，过期后保留历史但清理上传字节。旧Agent-only保持既有事务和请求兼容。Agent条目的tags按名称复用或创建标签并同步关联，空数组清空关联，未声明时保留原标签；已有使用授权不变。
       requestBody:
         required: true
         content:
@@ -7441,7 +7441,7 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
-          items: {type: string, enum: [agent, design]}
+          items: {type: string, enum: [agent, design, knowledge]}
         section_plan_digests:
           type: object
           additionalProperties: {type: string}
