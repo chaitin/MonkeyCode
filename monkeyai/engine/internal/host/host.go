@@ -137,7 +137,15 @@ func Apply(ctx context.Context, s lifecycle.Spec) (lifecycle.State, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
-	return coordinator.Apply(ctx, s)
+	state, applyErr := coordinator.Apply(ctx, s)
+	if applyErr != nil {
+		detail := applyErr.Error()
+		if len(detail) > 8192 {
+			detail = detail[:8192]
+		}
+		slog.Error("云环境执行失败", "environment_id", s.EnvironmentID, "generation", s.Generation, "phase", state.Phase, "reason", state.Reason, "error", detail)
+	}
+	return state, applyErr
 }
 
 type Status struct {

@@ -34,7 +34,7 @@ func validate(s lifecycle.Spec, n firecracker.State, ref string) error {
 	}
 	return nil
 }
-func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) error {
+func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) (result error) {
 	_, manager, _, err := d.stores(s)
 	if err != nil {
 		return err
@@ -70,6 +70,14 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) error {
 	if err := pool.ReserveFiles(ctx, s.EnvironmentID, s.VirtualMachine.SystemBytes+s.VirtualMachine.DataBytes, physical, d.config.ConversionFiles+2048); err != nil {
 		return err
 	}
+	defer func() {
+		if result == nil || errors.Is(result, vmimage.ErrConversionCleanup) {
+			return
+		}
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		result = errors.Join(result, d.releasePreparation(cleanup, s))
+	}()
 	fetchRoot := filepath.Join(d.data, "fetches")
 	if err := storage.PrivateDir(fetchRoot); err != nil {
 		return err

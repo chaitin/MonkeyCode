@@ -236,6 +236,13 @@ func (c *Coordinator) stop(ctx context.Context, state State) (State, error) {
 	if err != nil {
 		return c.fail(state, "inspect", err)
 	}
+	if instance.Phase == InstanceAbsent && state.ProviderRef == "" {
+		if cleanup, ok := c.driver.(PreparationCleaner); ok {
+			if err := cleanup.CleanupPreparation(ctx, state.Spec); err != nil {
+				return c.fail(state, "prepare_cleanup", err)
+			}
+		}
+	}
 	if instance.Phase == InstanceAbsent && state.Spec.RetainsInstance() && state.ProviderRef != "" {
 		if state.Spec.DesiredState != DesiredDeleted {
 			return c.fail(state, "inspect", errors.New("持久容器已丢失，不能作为正常停止处理"))

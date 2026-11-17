@@ -168,6 +168,15 @@ func (p *Pool) Commit(id string) error {
 
 // Release 只在调用方确认文件和句柄已清理后使用。停止或删除但保留数据不能释放。
 func (p *Pool) Release(ctx context.Context, id string, removed func(context.Context) (bool, error)) error {
+	return p.release(ctx, id, removed, false)
+}
+
+// Cancel 只取消尚未提交的准备预算，不可用于释放已初始化的持久盘。
+func (p *Pool) Cancel(ctx context.Context, id string, removed func(context.Context) (bool, error)) error {
+	return p.release(ctx, id, removed, true)
+}
+
+func (p *Pool) release(ctx context.Context, id string, removed func(context.Context) (bool, error), preparing bool) error {
 	if removed == nil {
 		return errors.New("释放容量必须确认数据已回收")
 	}
@@ -180,8 +189,12 @@ func (p *Pool) Release(ctx context.Context, id string, removed func(context.Cont
 	if err != nil {
 		return err
 	}
-	if _, ok := all[id]; !ok {
+	reservation, exists := all[id]
+	if !exists && !preparing {
 		return nil
+	}
+	if preparing && reservation.Committed {
+		return errors.New("已初始化磁盘的逻辑容量不能按准备预算释放")
 	}
 	ok, err := removed(ctx)
 	if err != nil {

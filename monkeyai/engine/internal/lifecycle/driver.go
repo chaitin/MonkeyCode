@@ -21,6 +21,10 @@ type Instance struct {
 
 // Driver 的操作必须按环境和实例标识幂等。Inspect 在 ref 为空时仍须按标识查找，
 // 用于恢复 Create 成功但引用尚未持久化的情况。Remove 只删除实例资源，不删除持久卷。
+type PreparationCleaner interface {
+	CleanupPreparation(context.Context, Spec) error
+}
+
 type StoppedCleaner interface {
 	FinalizeStop(context.Context, Spec, string) error
 }

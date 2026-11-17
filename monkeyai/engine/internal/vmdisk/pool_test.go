@@ -22,6 +22,40 @@ func testPool(t *testing.T) *Pool {
 	}
 	return p
 }
+func TestCancelPreparationDoesNotReleaseCommittedDisks(t *testing.T) {
+	for _, committed := range []bool{false, true} {
+		p := testPool(t)
+		if err := p.Reserve(t.Context(), "env", 100, 40); err != nil {
+			t.Fatal(err)
+		}
+		if committed {
+			if err := p.Commit("env"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		called := false
+		err := p.Cancel(t.Context(), "env", func(context.Context) (bool, error) { called = true; return true, nil })
+		all, readErr := p.load()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		_, exists := all["env"]
+		if committed {
+			if err == nil || called || !exists {
+				t.Fatal("准备取消释放了持久盘容量", err)
+			}
+		} else {
+			if err != nil || !called || exists {
+				t.Fatal("取消未释放已确认清理的准备预算", err)
+			}
+		}
+	}
+	p := testPool(t)
+	if err := p.Cancel(t.Context(), "missing", func(context.Context) (bool, error) { return false, nil }); err == nil {
+		t.Fatal("没有预留记录时仍须确认资源不存在")
+	}
+}
+
 func TestPoolReservesLogicalAndPhysicalSeparately(t *testing.T) {
 	p := testPool(t)
 	ctx := context.Background()
