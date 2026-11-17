@@ -829,6 +829,7 @@ export function SkillsPage() {
                       >
                         {skill.type === "system" ? (
                           <HugeiconsIcon
+                            className="size-6"
                             icon={DocumentValidationIcon}
                             strokeWidth={2}
                           />

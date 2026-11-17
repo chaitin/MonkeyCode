@@ -598,6 +598,7 @@ export function ExpertsPage() {
                     >
                       {expert.ownership === "system" ? (
                         <HugeiconsIcon
+                          className="size-6"
                           icon={GraduationCapIcon}
                           strokeWidth={2}
                         />

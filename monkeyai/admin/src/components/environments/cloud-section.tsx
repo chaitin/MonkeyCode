@@ -40,7 +40,7 @@ export function CloudSection({
             strokeWidth={2}
           />
         </CollapsibleTrigger>
-        <span className="pointer-events-none relative min-w-0 flex-1 font-medium">
+        <span className="pointer-events-none relative min-w-0 flex-1 text-sm font-medium">
           {title}
         </span>
         {headerAction && <div className="relative ms-auto">{headerAction}</div>}

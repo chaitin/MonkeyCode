@@ -724,8 +724,7 @@ export function ToolsPage() {
   }
 
   const handleSaveTools = async () => {
-    if (!viewingServer || readOnlyTools || toolsBusy)
-      return
+    if (!viewingServer || readOnlyTools || toolsBusy) return
     await remote.run(async () => {
       for (const tool of toolDrafts) {
         await api(base + `/connectors/${viewingServer.id}/tools/${tool.id}`, {
@@ -1335,9 +1334,7 @@ export function ToolsPage() {
                                   aria-describedby="mcp-skip-tls-verify-description"
                                 />
                               </div>
-                              <FieldDescription
-                                id="mcp-skip-tls-verify-description"
-                              >
+                              <FieldDescription id="mcp-skip-tls-verify-description">
                                 {t("pages.tools.skipTLSVerifyDescription")}
                               </FieldDescription>
                             </Field>
@@ -1413,7 +1410,11 @@ export function ToolsPage() {
                         }
                       >
                         {server.type === "system" ? (
-                          <HugeiconsIcon icon={McpServerIcon} strokeWidth={2} />
+                          <HugeiconsIcon
+                            className="size-6"
+                            icon={McpServerIcon}
+                            strokeWidth={2}
+                          />
                         ) : (
                           getCreatorInitial(server.creator)
                         )}

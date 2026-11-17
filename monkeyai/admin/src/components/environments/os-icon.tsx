@@ -25,7 +25,7 @@ export function OSIcon({
     return (
       <Avatar size="lg" aria-hidden="true">
         <AvatarFallback>
-          <Iconfont name={icon} className="size-7" />
+          <Iconfont name={icon} className="size-8" />
         </AvatarFallback>
       </Avatar>
     )

@@ -369,7 +369,7 @@ export function KbPage() {
                       <AvatarImage
                         src={kb.avatar_path}
                         alt=""
-                        className="object-contain"
+                        className="m-0.5 size-9 self-center object-contain"
                       />
                     )}
                     <AvatarFallback
@@ -381,6 +381,7 @@ export function KbPage() {
                     >
                       {kb.ownership_type === "system" ? (
                         <HugeiconsIcon
+                          className="size-6"
                           icon={BookOpenTextIcon}
                           strokeWidth={2}
                         />

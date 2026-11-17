@@ -2049,7 +2049,7 @@ export function ModelsPage() {
                                 <Avatar size="lg">
                                   <AvatarFallback>
                                     <Iconfont
-                                      className="size-7"
+                                      className="size-8"
                                       name={getModelIconName(model.modelId)}
                                     />
                                   </AvatarFallback>

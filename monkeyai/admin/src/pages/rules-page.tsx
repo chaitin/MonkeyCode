@@ -490,6 +490,7 @@ export function RulesPage() {
                       >
                         {rule.type === "system" ? (
                           <HugeiconsIcon
+                            className="size-6"
                             icon={DocumentValidationIcon}
                             strokeWidth={2}
                           />
