@@ -84,6 +84,17 @@ export function TaskAnalysisPage({
     0,
     { retryAction: false }
   )
+  if (overviewOnly && (request.loading || request.data))
+    return (
+      <section className="flex min-w-0 flex-col gap-5">
+        <TaskOverviewCards
+          overview={request.data}
+          loading={request.loading}
+          modelUsage={null}
+          overviewOnly
+        />
+      </section>
+    )
   if (request.loading)
     return (
       <section
@@ -115,16 +126,6 @@ export function TaskAnalysisPage({
         <Button variant="outline" onClick={request.reload}>
           {t("statistics.retry")}
         </Button>
-      </section>
-    )
-  if (overviewOnly)
-    return (
-      <section className="flex min-w-0 flex-col gap-5">
-        <TaskOverviewCards
-          overview={request.data}
-          modelUsage={null}
-          overviewOnly
-        />
       </section>
     )
   return <TaskAnalysisContent overview={request.data} />
