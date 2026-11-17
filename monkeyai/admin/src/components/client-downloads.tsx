@@ -2,8 +2,8 @@ import { useEffect, useState } from "react"
 import {
   AndroidIcon,
   AppleIcon,
+  ArrowDown01Icon,
   ComputerIcon,
-  Download01Icon,
   LaptopIcon,
   TerminalIcon,
   WindowsNewIcon,
@@ -12,17 +12,57 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 const platforms = [
   { key: "android", icon: AndroidIcon, variants: ["android"] },
   { key: "ios", icon: AppleIcon, variants: ["ios"] },
   { key: "windows", icon: WindowsNewIcon, variants: ["windows"] },
-  { key: "linux", icon: TerminalIcon, variants: ["linux_arm64", "linux_x64"] },
-  { key: "macos", icon: LaptopIcon, variants: ["macos_arm64", "macos_x64"] },
+  {
+    key: "linux",
+    icon: TerminalIcon,
+    variants: ["linux_x64"],
+  },
+  { key: "macos", icon: LaptopIcon, variants: ["macos_arm64"] },
+  { key: "kylin", icon: ComputerIcon, variants: [] },
+  { key: "uos", icon: ComputerIcon, variants: ["linux_x64"] },
+  { key: "harmonyMobile", icon: ComputerIcon, variants: ["harmony"] },
   { key: "harmonyDesktop", icon: ComputerIcon, variants: ["harmony_desktop"] },
 ] as const
 
-type DownloadKey = (typeof platforms)[number]["variants"][number]
+const clientGroups = [
+  {
+    key: "desktopClients",
+    platforms: ["windows", "macos", "linux", "kylin", "uos", "harmonyDesktop"],
+  },
+  {
+    key: "mobileClients",
+    platforms: ["android", "ios", "harmonyMobile"],
+  },
+] as const
+
+type DownloadKey =
+  | (typeof platforms)[number]["variants"][number]
+  | "linux_x64_deb"
+  | "linux_arm64"
+  | "linux_arm64_deb"
+  | "macos_x64"
+  | "windows7"
 type DownloadLinks = Partial<Record<DownloadKey, string>>
 
 function downloadUrl(value: unknown) {
@@ -71,67 +111,217 @@ export function ClientDownloads() {
             {t("landing.downloads.description")}
           </p>
         </div>
-        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {platforms.map((platform) => (
-            <div
-              key={platform.key}
-              className="flex min-h-40 flex-col rounded-2xl border bg-card p-5"
+        <div className="mt-10 grid gap-4">
+          {clientGroups.map((group) => (
+            <section
+              key={group.key}
+              aria-labelledby={group.key}
+              className="rounded-2xl border bg-card p-5 sm:p-6"
             >
-              <div className="flex items-center gap-3">
-                <span className="flex size-10 items-center justify-center rounded-xl bg-muted">
-                  <HugeiconsIcon
-                    icon={platform.icon}
-                    className="size-5"
-                    aria-hidden="true"
-                  />
-                </span>
-                <h3 className="font-heading text-base font-medium">
-                  {t(`landing.downloads.${platform.key}`)}
-                </h3>
-              </div>
-              <div className="mt-auto flex flex-wrap items-center gap-2 pt-6">
-                {platform.variants.map((variant) => {
-                  const url = downloadUrl(links[variant])
-                  const label =
-                    variant === "linux_arm64"
-                      ? "ARM64"
-                      : variant === "linux_x64"
-                        ? "x64"
-                        : variant === "macos_arm64"
-                          ? t("landing.downloads.appleSilicon")
-                          : variant === "macos_x64"
-                            ? t("landing.downloads.intel")
-                            : t("landing.downloads.download")
-                  return url ? (
-                    <Button
-                      key={variant}
-                      nativeButton={false}
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full"
-                      render={
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      }
-                    >
-                      <HugeiconsIcon icon={Download01Icon} aria-hidden="true" />
-                      {label}
-                    </Button>
-                  ) : (
-                    <span
-                      key={variant}
-                      className="rounded-full border border-dashed px-3 py-2 text-xs text-muted-foreground"
-                    >
-                      {platform.variants.length > 1 ? `${label} · ` : ""}
-                      {t("landing.downloads.unavailable")}
-                    </span>
+              <h3 id={group.key} className="font-heading text-base font-medium">
+                {t(`landing.downloads.${group.key}`)}
+              </h3>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                {group.platforms
+                  .map((key) =>
+                    platforms.find((platform) => platform.key === key)!
                   )
-                })}
+                  .map((platform) => (
+                    <div key={platform.key} className="contents">
+                      {platform.key === "kylin" ||
+                      platform.key === "harmonyMobile" ||
+                      platform.key === "harmonyDesktop" ? (
+                        <Dialog>
+                          <DialogTrigger
+                            render={
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-full"
+                              />
+                            }
+                          >
+                            <HugeiconsIcon
+                              icon={platform.icon}
+                              aria-hidden="true"
+                            />
+                            {t(`landing.downloads.${platform.key}`)}
+                          </DialogTrigger>
+                          <DialogContent closeLabel={t("common.close")}>
+                            <DialogHeader>
+                              <DialogTitle>
+                                {t(
+                                  platform.key === "kylin"
+                                    ? "landing.downloads.kylinStore"
+                                    : `landing.downloads.${platform.key}`
+                                )}
+                              </DialogTitle>
+                              <DialogDescription>
+                                {t(
+                                  platform.key === "kylin"
+                                    ? "landing.downloads.kylinStoreDescription"
+                                    : "landing.downloads.harmonyListingDescription"
+                                )}
+                              </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <DialogClose render={<Button />}>
+                                {t("common.close")}
+                              </DialogClose>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      ) : (
+                        platform.variants.map((variant) => {
+                          if (
+                            platform.key === "windows" ||
+                            platform.key === "macos" ||
+                            platform.key === "linux"
+                          ) {
+                            const options: {
+                              label: string
+                              key: DownloadKey
+                            }[] =
+                              platform.key === "windows"
+                                ? [
+                                    {
+                                      label: t(
+                                        "landing.downloads.windowsStandard"
+                                      ),
+                                      key: "windows",
+                                    },
+                                    {
+                                      label: t("landing.downloads.windows7"),
+                                      key: "windows7",
+                                    },
+                                  ]
+                                : platform.key === "macos"
+                                  ? [
+                                      {
+                                        label: t(
+                                          "landing.downloads.appleSilicon"
+                                        ),
+                                        key: "macos_arm64",
+                                      },
+                                      {
+                                        label: t("landing.downloads.intel"),
+                                        key: "macos_x64",
+                                      },
+                                    ]
+                                  : [
+                                      {
+                                        label: "X86_64 · AppImage",
+                                        key: "linux_x64",
+                                      },
+                                      {
+                                        label: "X86_64 · DEB",
+                                        key: "linux_x64_deb",
+                                      },
+                                      {
+                                        label: "ARM64 · AppImage",
+                                        key: "linux_arm64",
+                                      },
+                                      {
+                                        label: "ARM64 · DEB",
+                                        key: "linux_arm64_deb",
+                                      },
+                                    ]
+                            return (
+                              <DropdownMenu key={variant}>
+                                <DropdownMenuTrigger
+                                  render={
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="rounded-full"
+                                    />
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={platform.icon}
+                                    aria-hidden="true"
+                                  />
+                                  {t(`landing.downloads.${platform.key}`)}
+                                  <HugeiconsIcon
+                                    icon={ArrowDown01Icon}
+                                    aria-hidden="true"
+                                  />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-max min-w-40">
+                                  {options.map((format) => {
+                                    const url = downloadUrl(links[format.key])
+                                    return url ? (
+                                      <DropdownMenuItem
+                                        key={format.key}
+                                        nativeButton={false}
+                                        render={
+                                          <a
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          />
+                                        }
+                                      >
+                                        {format.label}
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      <DropdownMenuItem
+                                        key={format.key}
+                                        disabled
+                                      >
+                                        {format.label} ·{" "}
+                                        {t("landing.downloads.unavailable")}
+                                      </DropdownMenuItem>
+                                    )
+                                  })}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )
+                          }
+                          const url = downloadUrl(links[variant])
+                          const label = t(`landing.downloads.${platform.key}`)
+                          return url ? (
+                            <Button
+                              key={variant}
+                              nativeButton={false}
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full"
+                              render={
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                />
+                              }
+                            >
+                              <HugeiconsIcon
+                                icon={platform.icon}
+                                aria-hidden="true"
+                              />
+                              {label}
+                            </Button>
+                          ) : (
+                            <Button
+                              key={variant}
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full"
+                              disabled
+                            >
+                              <HugeiconsIcon
+                                icon={platform.icon}
+                                aria-hidden="true"
+                              />
+                              {label}
+                            </Button>
+                          )
+                        })
+                      )}
+                    </div>
+                  ))}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       </div>

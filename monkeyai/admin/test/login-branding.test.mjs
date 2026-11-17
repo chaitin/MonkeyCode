@@ -224,20 +224,43 @@ test("client download configuration covers every platform and both desktop archi
   )
   assert.deepEqual(Object.keys(config).sort(), [
     "android",
+    "harmony",
     "harmony_desktop",
     "ios",
     "linux_arm64",
+    "linux_arm64_deb",
     "linux_x64",
+    "linux_x64_deb",
     "macos_arm64",
     "macos_x64",
     "windows",
+    "windows7",
   ])
   assert.deepEqual(
-    Object.keys(config)
-      .filter((key) => config[key])
-      .sort(),
-    ["linux_x64", "macos_arm64", "macos_x64", "windows"]
+    Object.keys(config).filter((key) => !config[key]),
+    ["harmony", "harmony_desktop"]
   )
+  const landingConfig = JSON.parse(
+    await readFile(
+      new URL("../../landing/public/downloads.json", import.meta.url),
+      "utf8"
+    )
+  )
+  // 鸿蒙内测邀请不在 admin 首页公开。
+  assert.equal(config.harmony, "")
+  assert.deepEqual(config, { ...landingConfig, harmony: "" })
+  for (const [language, resource] of Object.entries(resources)) {
+    for (const key of [
+      "windows7",
+      "kylin",
+      "kylinStore",
+      "uos",
+      "harmonyMobile",
+      "harmonyTest",
+    ]) {
+      assert.ok(resource.landing.downloads[key], `${language}: ${key}`)
+    }
+  }
   assert.equal(
     config.macos_x64,
     "https://release.monkeycode-ai.com/public/monkeyai/desktop/mac/x64/MonkeyAI-latest-mac-x64.dmg"
