@@ -470,6 +470,11 @@ export const ruRU = {
       editorSaved: "Документ сохранён. Повторное обучение запущено.",
       editorDiscard: "Выйти без сохранения изменений?",
       editorUnsaved: "Несохранённые изменения. Автосохранение через 10 секунд",
+      imageUploading: "Загрузка изображения…",
+      imageUploadInvalid:
+        "Поддерживаются только изображения PNG, JPEG, GIF и WebP",
+      imageUploadTooLarge:
+        "Изображение не должно быть пустым или превышать 32 MiB",
       editorSaving: "Автосохранение",
       editorClean: "Сохранено",
 

@@ -770,9 +770,26 @@ func floatValue(value any) float64 {
 
 // RestudyDocuments reports per-document failures without retrying successful items.
 func (s *Service) RestudyDocuments(ctx context.Context, kbID string, ids []string) (BatchDocumentResult, error) {
+	return s.restudyDocuments(ctx, kbID, ids, "")
+}
+
+func (s *Service) restudyDocuments(ctx context.Context, kbID string, ids []string, actor string) (BatchDocumentResult, error) {
+	if strings.TrimSpace(kbID) == "" {
+		return BatchDocumentResult{}, resource.Invalid("kb_id 必填")
+	}
 	ids, err := normalizeBatchIDs(ids)
 	if err != nil {
 		return BatchDocumentResult{}, err
+	}
+	if actor != "" {
+		if err := requireContentWrite(ctx, s.store.Pool, kbID, actor); err != nil {
+			return BatchDocumentResult{}, err
+		}
+		for _, id := range ids {
+			if _, err := s.GetAccessibleDocumentInKB(ctx, actor, kbID, id); err != nil {
+				return BatchDocumentResult{}, err
+			}
+		}
 	}
 	result := BatchDocumentResult{Succeeded: []string{}, Failed: []BatchDocumentFailure{}}
 	for _, id := range ids {
@@ -781,7 +798,7 @@ func (s *Service) RestudyDocuments(ctx context.Context, kbID string, ids []strin
 		}
 		_, err := s.documentInKB(ctx, kbID, id)
 		if err == nil {
-			_, err = s.RestudyDocument(ctx, id)
+			_, err = s.restudyDocument(ctx, id, actor)
 		}
 		if err != nil {
 			result.Failed = append(result.Failed, BatchDocumentFailure{ID: id, Reason: err.Error()})

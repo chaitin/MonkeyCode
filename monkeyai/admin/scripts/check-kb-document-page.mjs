@@ -26,6 +26,9 @@ try {
   let ownership = "system"
   let failLoad = false
   let failSave = false
+  let failUpload = false
+  let uploads = 0
+  let uploadGate = null
   const saved = []
   const kbId = "11111111-1111-4111-8111-111111111111"
   const documentId = "44444444-4444-4444-8444-444444444444"
@@ -44,7 +47,10 @@ try {
     created_at: "2026-11-05T00:00:00Z",
     updated_at: "2026-11-05T00:00:00Z",
   }
-  page.on("pageerror", (error) => errors.push(error.message))
+  page.on("pageerror", (error) => {
+    errors.push(error.message)
+    console.error(error.stack)
+  })
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
     const pathname = url.pathname
@@ -118,6 +124,32 @@ try {
         }
       } else if (pathname === `/api/admin/v1/kb/${kbId}`) {
         body = { id: kbId, ownership_type: ownership }
+      } else if (pathname === `/api/admin/v1/kb/${kbId}/images/upload`) {
+        uploads++
+        assert.equal(route.request().method(), "POST")
+        assert.match(
+          route.request().headers()["content-type"],
+          /multipart\/form-data; boundary=/
+        )
+        assert.match(
+          route.request().postData(),
+          /name="file"; filename="clipboard.png"/
+        )
+        if (uploadGate) await uploadGate
+        if (failUpload)
+          return route.fulfill({
+            status: 500,
+            json: { error: { message: "模拟图片上传失败" } },
+          })
+        body = { url: `/api/kb/${kbId}/assets/${"a".repeat(64)}.png` }
+      } else if (pathname.startsWith(`/api/kb/${kbId}/assets/`)) {
+        return route.fulfill({
+          contentType: "image/png",
+          body: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII=",
+            "base64"
+          ),
+        })
       } else if (
         pathname === `/api/admin/v1/kb/${kbId}/documents/${documentId}`
       ) {
@@ -177,16 +209,103 @@ try {
   })
   const title = page.getByRole("textbox", { name: "内容标题", exact: true })
   await title.fill("编辑后的文档")
-  const ace = page.locator(".ace_text-input")
+  const ace = page.locator(".ace_text-input:not([aria-hidden=true])")
   await ace.focus()
   await page.keyboard.press("ControlOrMeta+End")
   await page.keyboard.type("\n\nUpdated content")
+  async function pasteImage(
+    type = "image/png",
+    selector = ".ace_text-input:not([aria-hidden=true])",
+    count = 1
+  ) {
+    await page.locator(selector).evaluate(
+      (element, { type, count }) => {
+        const data = new DataTransfer()
+        for (let i = 0; i < count; i++)
+          data.items.add(
+            new File([new Uint8Array([137, 80, 78, 71])], "clipboard.png", {
+              type,
+            })
+          )
+        element.dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData: data,
+            bubbles: true,
+            cancelable: true,
+          })
+        )
+      },
+      { type, count }
+    )
+  }
+  let releaseUpload
+  uploadGate = new Promise((resolve) => {
+    releaseUpload = resolve
+  })
+  await pasteImage()
+  await page.getByText("图片上传中…", { exact: true }).waitFor()
+  assert.equal(
+    await page.getByRole("button", { name: "保存并重新学习" }).isDisabled(),
+    true
+  )
+  // Typing and moving focus during the upload must not replace or relocate the image.
+  await page.keyboard.type(" preserved while uploading")
+  await title.focus()
+  releaseUpload()
+  uploadGate = null
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".ace_editor")
+      .env.editor.getValue()
+      .includes("/assets/")
+  )
+  assert.equal(uploads, 1)
+  const imageURL = `/api/kb/${kbId}/assets/${"a".repeat(64)}.png`
+  let draft = await page
+    .locator("[data-markdown-editor] .ace_editor:not(.ace_autocomplete)")
+    .evaluate((el) => el.env.editor.getValue())
+  assert.ok(
+    draft.includes(
+      `Updated content\n![](${imageURL})\n preserved while uploading`
+    ),
+    JSON.stringify(draft)
+  )
+  await pasteImage("image/png", ".ace_text-input:not([aria-hidden=true])", 2)
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector(".ace_editor")
+        .env.editor.getValue()
+        .split("/assets/").length === 4
+  )
+  draft = await page
+    .locator("[data-markdown-editor] .ace_editor:not(.ace_autocomplete)")
+    .evaluate((el) => el.env.editor.getValue())
+  assert.equal(uploads, 3, "all clipboard images should upload")
+  // Failed uploads and unsupported formats must preserve the current draft.
+  failUpload = true
+  await pasteImage()
+  await page.getByText("模拟图片上传失败", { exact: true }).waitFor()
+  assert.equal(
+    await page
+      .locator("[data-markdown-editor] .ace_editor:not(.ace_autocomplete)")
+      .evaluate((el) => el.env.editor.getValue()),
+    draft
+  )
+  failUpload = false
+  await pasteImage("image/svg+xml")
+  await page
+    .getByText("仅支持 PNG、JPEG、GIF 或 WebP 图片", { exact: true })
+    .waitFor()
+  assert.equal(uploads, 4)
   await page.getByText("未保存更改，10 秒后自动保存", { exact: true }).waitFor()
   await page.getByRole("button", { name: "保存并重新学习" }).click()
   await page.getByText("已保存", { exact: true }).waitFor()
   assert.equal(saved.length, 1)
   assert.equal(saved[0].title, "编辑后的文档")
   assert.ok(saved[0].content.includes("Updated content"))
+  assert.ok(saved[0].content.includes(`![](${imageURL})`))
+  assert.ok(saved[0].content.includes("preserved while uploading"))
   assert.equal(
     saved[0].size_bytes,
     new TextEncoder().encode(saved[0].content).length
@@ -247,6 +366,8 @@ try {
     0
   )
   assert.equal(await page.locator('.tiptap[contenteditable="true"]').count(), 0)
+  await pasteImage("image/png", "[data-markdown-editor]")
+  assert.equal(uploads, 4, "read-only documents must not upload pasted images")
   for (const width of [1440, 375]) {
     await page.setViewportSize({ width, height: 1000 })
     assert.ok(

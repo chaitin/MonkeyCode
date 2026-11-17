@@ -1447,6 +1447,9 @@ export const zhCN = {
       editorSaved: "文档已保存，正在重新学习",
       editorDiscard: "有未保存的修改，确定离开吗？",
       editorUnsaved: "未保存更改，10 秒后自动保存",
+      imageUploading: "图片上传中…",
+      imageUploadInvalid: "仅支持 PNG、JPEG、GIF 或 WebP 图片",
+      imageUploadTooLarge: "图片不能为空且不能超过 32 MiB",
       editorSaving: "正在自动保存",
       editorClean: "已保存",
 

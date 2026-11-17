@@ -279,9 +279,9 @@ export default function KbDetailPage() {
     if (!batchSelectedIds.length || batchPending) return
     setBatchPending(true)
     try {
-      const result = await api<{ succeeded?: string[]; failed?: { id: string; reason: string }[] }>(`${base}/kb/${kbId}/documents/${action === "restudy" ? "restudy" : "batch"}`, {
+      const result = await api<{ succeeded?: string[]; failed?: { id: string; reason: string }[] }>(`${base}/kb/${kbId}/documents/${action}`, {
         method: "POST",
-        body: JSON.stringify({ action: action === "restudy" ? undefined : action, ids: batchSelectedIds, parent_id: action === "move" ? parentId || null : undefined }),
+        body: JSON.stringify({ ids: batchSelectedIds, parent_id: action === "move" ? parentId || null : undefined }),
       })
       const failed = result.failed ?? []
       showToast({
@@ -304,7 +304,8 @@ export default function KbDetailPage() {
   const handleDeleteDocument = async () => {
     if (!documentPendingDeletion) return
     try {
-      await api(`${base}/kb/${kbId}/documents/${documentPendingDeletion.id}`, { method: "DELETE" })
+      const result = await api<{ failed: { id: string; reason: string }[] }>(`${base}/kb/${kbId}/documents/delete`, { method: "POST", body: JSON.stringify({ ids: [documentPendingDeletion.id] }) })
+      if (result.failed.length) throw new Error(result.failed[0].reason)
       setDocumentPendingDeletion(null)
       reload()
     } catch (reason) {
@@ -341,15 +342,16 @@ export default function KbDetailPage() {
     const parentId = reason.draggedItem.parentId
     setDocuments(stripTreeItems(nextItems))
     try {
-      await api(`${base}/kb/${kbId}/documents/move`, {
+      const result = await api<{ failed: { id: string; reason: string }[] }>(`${base}/kb/${kbId}/documents/move`, {
         method: "POST",
         body: JSON.stringify({
-          id: reason.draggedItem.id,
+          ids: [String(reason.draggedItem.id)],
           parent_id: parentId,
           prev_id: prevItemId ?? "",
           next_id: nextItemId ?? "",
         }),
       })
+      if (result.failed.length) throw new Error(result.failed[0].reason)
       reload()
     } catch (reasonError) {
       showToast({ status: "error", title: reasonError instanceof Error ? reasonError.message : String(reasonError) })

@@ -154,7 +154,7 @@ func TestKnowledgeBaseIndexAndTreeRegressions(t *testing.T) {
 		}
 		done := make(chan error, 1)
 		go func() {
-			_, e := s.BatchDocuments(ctx, id, BatchDocumentInput{Action: "move", IDs: []string{aid}, ParentID: &bid})
+			_, e := s.operateDocuments(ctx, id, "move", DocumentOperationInput{IDs: []string{aid}, ParentID: &bid}, "")
 			done <- e
 		}()
 		waiting := false

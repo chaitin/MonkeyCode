@@ -456,6 +456,9 @@ export const zhTW = {
       editorSaved: "文件已儲存，正在重新學習",
       editorDiscard: "有未儲存的變更，確定離開嗎？",
       editorUnsaved: "未儲存變更，10 秒後自動儲存",
+      imageUploading: "圖片上傳中…",
+      imageUploadInvalid: "僅支援 PNG、JPEG、GIF 或 WebP 圖片",
+      imageUploadTooLarge: "圖片不能為空且不能超過 32 MiB",
       editorSaving: "正在自動儲存",
       editorClean: "已儲存",
 

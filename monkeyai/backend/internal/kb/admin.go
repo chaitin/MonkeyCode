@@ -39,6 +39,8 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		})
 	})
 
+	r.Post("/kb/{id}/images/upload", func(w http.ResponseWriter, r *http.Request) { s.uploadContentImage(w, r, true) })
+
 	r.Get("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
 		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
 		if _, err := s.Get(r.Context(), kbID); err != nil {
@@ -53,14 +55,13 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		resource.JSON(r.Context(), w, http.StatusOK, resource.Object{"items": publicDocumentTree(items)})
 	})
 
-	r.Post("/kb/{id}/documents/batch", func(w http.ResponseWriter, r *http.Request) {
-		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
-		var input BatchDocumentInput
+	r.Post("/kb/{id}/documents/delete", func(w http.ResponseWriter, r *http.Request) {
+		var input DocumentOperationInput
 		if err := resource.Decode(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		result, err := s.BatchDocuments(r.Context(), kbID, input)
+		result, err := s.operateDocuments(r.Context(), strings.TrimSpace(chi.URLParam(r, "id")), "delete", input, "")
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -69,25 +70,17 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 	})
 
 	r.Post("/kb/{id}/documents/move", func(w http.ResponseWriter, r *http.Request) {
-		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
-		var input struct {
-			MoveDocumentInput
-			ID string `json:"id"`
-		}
+		var input DocumentOperationInput
 		if err := resource.Decode(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		if _, err := s.documentInKB(r.Context(), kbID, input.ID); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		item, err := s.MoveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput)
+		result, err := s.operateDocuments(r.Context(), strings.TrimSpace(chi.URLParam(r, "id")), "move", input, "")
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusOK, result)
 	})
 
 	r.Post("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
@@ -139,18 +132,6 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 		resource.JSON(r.Context(), w, http.StatusAccepted, item)
 	})
 
-	r.Delete("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := s.documentInKB(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "documentId")); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		if err := s.DeleteDocument(r.Context(), chi.URLParam(r, "documentId")); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	r.Post("/kb/{id}/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			IDs []string `json:"ids"`
@@ -165,19 +146,6 @@ func (s *Service) RegisterAdmin(r chi.Router) {
 			return
 		}
 		resource.JSON(r.Context(), w, http.StatusAccepted, result)
-	})
-
-	r.Post("/kb/{id}/documents/{documentId}/restudy", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := s.documentInKB(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "documentId")); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		item, err := s.RestudyDocument(r.Context(), chi.URLParam(r, "documentId"))
-		if err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		resource.JSON(r.Context(), w, http.StatusAccepted, item)
 	})
 
 	r.Get("/kb/{id}/documents/{documentId}/chunks", func(w http.ResponseWriter, r *http.Request) {

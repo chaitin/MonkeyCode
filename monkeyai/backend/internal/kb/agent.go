@@ -17,26 +17,24 @@ func (s *Service) RegisterAgent(r chi.Router) {
 	if s.storage != nil {
 		r.Get("/kb/{id}/avatar", func(w http.ResponseWriter, req *http.Request) { s.serveAvatar(w, req, false) })
 	}
+	r.Post("/kb/{id}/images/upload", func(w http.ResponseWriter, r *http.Request) { s.uploadContentImage(w, r, false) })
+
 	r.Post("/kb/documents/restudy", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			KbID       string `json:"kb_id"`
-			DocumentID string `json:"document_id"`
+			KbID string   `json:"kb_id"`
+			IDs  []string `json:"ids"`
 		}
 		if err := resource.Decode(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
 		user, _ := identity.UserFromContext(r.Context())
-		if _, err := s.GetAccessibleDocumentInKB(r.Context(), user.ID, input.KbID, input.DocumentID); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		item, err := s.restudyDocument(r.Context(), input.DocumentID, user.ID)
+		result, err := s.restudyDocuments(r.Context(), strings.TrimSpace(input.KbID), input.IDs, user.ID)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, 202, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusAccepted, result)
 	})
 	r.Get("/kb", func(w http.ResponseWriter, r *http.Request) {
 		page, size, err := resource.PageParams(r)
@@ -171,15 +169,14 @@ func (s *Service) RegisterAgent(r chi.Router) {
 		resource.JSON(r.Context(), w, http.StatusOK, result)
 	})
 
-	r.Post("/kb/{id}/documents/batch", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/kb/{id}/documents/delete", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
-		var input BatchDocumentInput
+		var input DocumentOperationInput
 		if err := resource.Decode(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
-		result, err := s.batchDocuments(r.Context(), kbID, input, user.ID)
+		result, err := s.operateDocuments(r.Context(), strings.TrimSpace(chi.URLParam(r, "id")), "delete", input, user.ID)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
@@ -189,25 +186,17 @@ func (s *Service) RegisterAgent(r chi.Router) {
 
 	r.Post("/kb/{id}/documents/move", func(w http.ResponseWriter, r *http.Request) {
 		user, _ := identity.UserFromContext(r.Context())
-		var input struct {
-			MoveDocumentInput
-			ID string `json:"id"`
-		}
+		var input DocumentOperationInput
 		if err := resource.Decode(w, r, &input); err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		kbID := strings.TrimSpace(chi.URLParam(r, "id"))
-		if _, err := s.GetAccessibleDocumentInKB(r.Context(), user.ID, kbID, input.ID); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		item, err := s.moveDocument(r.Context(), kbID, input.ID, input.MoveDocumentInput, user.ID)
+		result, err := s.operateDocuments(r.Context(), strings.TrimSpace(chi.URLParam(r, "id")), "move", input, user.ID)
 		if err != nil {
 			resource.Fail(r.Context(), w, err)
 			return
 		}
-		resource.JSON(r.Context(), w, http.StatusOK, publicDocument(item))
+		resource.JSON(r.Context(), w, http.StatusOK, result)
 	})
 
 	r.Post("/kb/{id}/documents", func(w http.ResponseWriter, r *http.Request) {
@@ -263,25 +252,4 @@ func (s *Service) RegisterAgent(r chi.Router) {
 		resource.JSON(r.Context(), w, http.StatusAccepted, publicDocument(item))
 	})
 
-	r.Delete("/kb/{id}/documents/{documentId}", func(w http.ResponseWriter, r *http.Request) {
-		user, _ := identity.UserFromContext(r.Context())
-		if _, err := s.GetAccessibleDocumentInKB(r.Context(), user.ID, chi.URLParam(r, "id"), chi.URLParam(r, "documentId")); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		var expected int64
-		if match := r.Header.Get("If-Match"); match != "" {
-			var err error
-			expected, err = strconv.ParseInt(strings.Trim(match, "\""), 10, 64)
-			if err != nil || expected <= 0 {
-				resource.Fail(r.Context(), w, resource.Invalid("文档版本无效"))
-				return
-			}
-		}
-		if err := s.deleteDocument(r.Context(), chi.URLParam(r, "documentId"), user.ID, expected); err != nil {
-			resource.Fail(r.Context(), w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
 }

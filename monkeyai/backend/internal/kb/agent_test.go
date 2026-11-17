@@ -33,7 +33,9 @@ func TestAgentKBRoutes(t *testing.T) {
 		"POST /kb/{id}/documents",
 		"GET /kb/{id}/documents/{documentId}",
 		"PUT /kb/{id}/documents/{documentId}",
-		"DELETE /kb/{id}/documents/{documentId}",
+		"POST /kb/{id}/documents/delete",
+		"POST /kb/{id}/documents/move",
+		"POST /kb/documents/restudy",
 	} {
 		if !routes[route] {
 			t.Fatalf("缺少路由 %s", route)

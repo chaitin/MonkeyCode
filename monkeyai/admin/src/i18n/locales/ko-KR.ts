@@ -450,6 +450,9 @@ export const koKR = {
       editorSaved: "문서가 저장되었으며 재학습을 시작했습니다.",
       editorDiscard: "저장하지 않은 변경 사항을 버리고 나가시겠습니까?",
       editorUnsaved: "저장하지 않은 변경 사항. 10초 후 자동 저장",
+      imageUploading: "이미지 업로드 중…",
+      imageUploadInvalid: "PNG, JPEG, GIF, WebP 이미지만 지원합니다",
+      imageUploadTooLarge: "이미지는 비어 있거나 32 MiB를 초과할 수 없습니다",
       editorSaving: "자동 저장 중",
       editorClean: "저장됨",
 

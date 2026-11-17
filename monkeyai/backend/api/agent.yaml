@@ -4553,6 +4553,40 @@ paths:
               schema: {$ref: '#/components/schemas/KbSearchResponse'}
         '400': {description: 参数无效，控制面错误信封}
         '401': {description: 未登录，控制面错误信封}
+  /api/v1/kb/{id}/images/upload:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 上传知识库正文图片
+      description: 需要 OAuth access token 及启用知识库的正文写权限，支持个人库所有者或拥有 read_write 授权的成员；只有阅读权限时返回 403，无访问权限时返回 404。 使用 multipart/form-data 的 file 字段上传一张图片，最多 32 MiB、2500 万像素，支持 PNG、JPEG、GIF、WebP；按真实内容完整解码校验，拒绝 SVG。图片按知识库和内容摘要存入对象存储，不新增关联表。返回的 url 及 markdown 可写入文档正文，读取时仍检查当前权限。此操作不创建或修改文档。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: 图片已保存；重复上传相同图片返回同一知识库内的相同地址。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, url, mime_type, size_bytes, markdown]
+                properties:
+                  name: {type: string, description: 内容摘要加真实图片扩展名}
+                  url: {type: string, description: 受权限保护的 /api/kb/<id>/assets/<name> 相对地址}
+                  mime_type: {type: string, enum: [image/png, image/jpeg, image/gif, image/webp]}
+                  size_bytes: {type: integer, minimum: 1, maximum: 33554432}
+                  markdown: {type: string, description: 可直接插入正文的 Markdown 图片语法}
+        '400': {description: 无效图片、文件超限或 multipart 字段不合法}
+        '401': {description: 未登录或凭证失效}
+        '403': {description: 无正文写权限或非管理员调用管理端接口}
+        '404': {description: 知识库不存在或不可访问}
+        '409': {description: 知识库不允许编辑}
+        '503': {description: 未配置知识库对象存储}
   /api/v1/kb/{id}/avatar:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -4686,64 +4720,23 @@ paths:
   /api/v1/kb/documents/restudy:
     post:
       summary: 重新学习有读写权限的知识库文档
-      description: 个人库所有者或读写成员可调用；支持系统库，文件夹不允许学习。文档须属于指定知识库。
+      description: 个人库所有者或读写成员可调用；支持系统库，文件夹不允许学习。ids 去重后最多 200 项。先检查全部文档归属；逐项返回 succeeded/failed，文件夹失败不影响其他文档。
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [kb_id, document_id]
+              required: [kb_id, ids]
               properties:
                 kb_id: {type: string, format: uuid}
-                document_id: {type: string, format: uuid}
-      responses:
-        '202': {description: 已接受文档学习, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
-        '400': {$ref: '#/components/responses/ResourceError400'}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '403': {description: 仅有只读权限}
-        '404': {$ref: '#/components/responses/ResourceError404'}
-  /api/v1/kb/{id}/documents/batch:
-    parameters: [{$ref: '#/components/parameters/ResourceID'}]
-    post:
-      summary: 批量移动或删除有读写权限的知识库内容
-      description: 协作写入须为每个所选文档提供 expected_revisions。所有所选文档必须属于指定知识库，先检查全部归属与版本；文件夹删除覆盖子树。其他操作失败按 succeeded/failed 返回。个人库所有者保留旧无版本请求兼容。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [action, ids]
-              properties:
-                action: {type: string, enum: [move, delete]}
                 ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
-                parent_id: {type: [string, 'null'], format: uuid}
-                expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}, description: 所选文档 ID 到读取时 revision 的映射。}
       responses:
-        '200':
-          description: 批量操作结果
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [succeeded, failed]
-                properties:
-                  succeeded: {type: array, items: {type: string, format: uuid}}
-                  failed:
-                    type: array
-                    items:
-                      type: object
-                      required: [id, reason]
-                      properties:
-                        id: {type: string, format: uuid}
-                        reason: {type: string}
+        '202': {description: 已接受文档学习, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}}}}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '403': {description: 仅有只读权限}
         '404': {$ref: '#/components/responses/ResourceError404'}
-        '412': {description: 文档版本已变化}
-        '428': {description: 缺少文档版本}
   /api/v1/kb/{id}/documents:
     parameters: [{$ref: '#/components/parameters/ResourceID'}]
     get:
@@ -4795,19 +4788,37 @@ paths:
         '403': {description: 仅有只读权限}
         '404': {$ref: '#/components/responses/ResourceError404'}
         '500': {$ref: '#/components/responses/ResourceError500'}
+  /api/v1/kb/{id}/documents/delete:
+    parameters: [{$ref: '#/components/parameters/ResourceID'}]
+    post:
+      summary: 删除知识库文档或文件夹（支持多个 ID）
+      description: ids 去重后最多 200 项，文件夹删除覆盖子树。协作写入须逐项提供 expected_revisions，全部归属与版本校验通过后执行。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KbDocumentDeleteInput'}
+      responses:
+        '200': {description: 操作结果, content: {application/json: {schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}}}}
+        '400': {$ref: '#/components/responses/ResourceError400'}
+        '401': {$ref: '#/components/responses/ResourceError401'}
+        '403': {description: 无写入权限}
+        '404': {$ref: '#/components/responses/ResourceError404'}
+        '412': {description: 文档版本已变化}
+        '428': {description: 缺少文档版本}
   /api/v1/kb/{id}/documents/move:
     parameters:
       - $ref: '#/components/parameters/ResourceID'
     post:
       summary: 移动当前用户可写的知识库文档树节点
-      description: 个人库所有者或具有读写权限的成员可移动文件夹或文档。协作写入需提供 expected_revision。parent_id 为空表示根节点，prev_id 和 next_id 用于同级排序。
+      description: 个人库所有者或具有读写权限的成员可移动文件夹或文档。协作写入需提供 expected_revisions。parent_id 为空表示根节点，prev_id 和 next_id 用于同级排序。
       requestBody:
         required: true
         content:
           application/json:
             schema: {$ref: '#/components/schemas/KbDocumentMoveInput'}
       responses:
-        '200': {description: '节点已移动', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocument'}}}}
+        '200': {description: '节点已移动', content: {application/json: {schema: {$ref: '#/components/schemas/KbDocumentOperationResult'}}}}
         '400': {$ref: '#/components/responses/ResourceError400'}
         '401': {$ref: '#/components/responses/ResourceError401'}
         '403': {description: 仅有只读权限}
@@ -4850,22 +4861,7 @@ paths:
         '412': {description: 文档版本已变化}
         '428': {description: 缺少文档版本}
         '500': {$ref: '#/components/responses/ResourceError500'}
-    delete:
-      parameters:
-        - name: If-Match
-          in: header
-          schema: {type: string}
-          description: 文档 revision，加双引号；协作删除必填，协作更新可改用正文 expected_revision。
-      summary: 删除当前用户可写的知识库文档
-      description: 个人库所有者或具有读写权限的成员可删除；协作删除需提供 If-Match 文档版本，只读返回 403，版本缺失返回 428，冲突返回 412。删除文档、分片并取消活跃学习任务；文档必须属于路径中的知识库。
-      responses:
-        '204': {description: 文档已删除}
-        '401': {$ref: '#/components/responses/ResourceError401'}
-        '404': {$ref: '#/components/responses/ResourceError404'}
-        '403': {description: 仅有只读权限}
-        '412': {description: 文档版本已变化}
-        '428': {description: 缺少文档版本}
-        '500': {$ref: '#/components/responses/ResourceError500'}
+
   /mcp/kb:
     post:
       summary: 百智办公知识库 MCP
@@ -8103,16 +8099,37 @@ components:
         learned_at: {type: [string, 'null'], format: date-time}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    KbDocumentDeleteInput:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
+    KbDocumentOperationResult:
+      type: object
+      required: [succeeded, failed]
+      properties:
+        succeeded: {type: array, items: {type: string, format: uuid}}
+        failed:
+          type: array
+          items:
+            type: object
+            required: [id, reason]
+            properties:
+              id: {type: string}
+              reason: {type: string}
     KbDocumentMoveInput:
       type: object
       additionalProperties: false
-      required: [id]
+      required: [ids]
       properties:
-        expected_revision: {type: integer, minimum: 1, description: 协作写入必须提供读取到的文档版本。}
-        id: {type: string, format: uuid}
+        ids: {type: array, minItems: 1, maxItems: 200, items: {type: string, format: uuid}}
+        expected_revisions: {type: object, additionalProperties: {type: integer, minimum: 1}}
         parent_id: {type: [string, 'null'], format: uuid}
-        prev_id: {type: string, format: uuid}
-        next_id: {type: string, format: uuid}
+        prev_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+        next_id: {type: string, format: uuid, description: 指定相邻节点排序时 ids 只能含一个 ID。}
+
     KbDocumentCreateInput:
       type: object
       additionalProperties: false

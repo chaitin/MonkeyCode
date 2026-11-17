@@ -468,6 +468,10 @@ export const es419 = {
       editorSaved: "Documento guardado. Se inició el reaprendizaje.",
       editorDiscard: "¿Salir sin guardar los cambios?",
       editorUnsaved: "Cambios sin guardar. Se guardarán automáticamente en 10 segundos",
+      imageUploading: "Subiendo imagen…",
+      imageUploadInvalid: "Solo se admiten imágenes PNG, JPEG, GIF y WebP",
+      imageUploadTooLarge:
+        "La imagen no debe estar vacía ni superar los 32 MiB",
       editorSaving: "Guardando automáticamente",
       editorClean: "Guardado",
 
