@@ -92,6 +92,14 @@ func TestCatalogFailureIsolation(t *testing.T) {
 		t.Fatalf("故障不应阻断专家清单: %v, %v", view, err)
 	}
 
+	c, err := r.mcp.Connector(t.Context(), r.store.Pool, connector, user, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.mcp.Tools(t.Context(), r.store.Pool, c, user, good, false); err != nil {
+		t.Fatal(err)
+	}
+	resolvedBefore := calls.Load()
 	for _, credential := range []string{good, bad} {
 		input := resource.Object{"expert_id": expert, "connector_bindings": map[string]any{connector: credential}}
 		body, _ := json.Marshal(input)
@@ -111,9 +119,12 @@ func TestCatalogFailureIsolation(t *testing.T) {
 			t.Fatalf("不应自动切换凭证: %v", conn)
 		}
 		tools := conn["tools"].([]any)
-		if credential == good && len(tools) != 1 || credential == bad && (len(tools) != 0 || conn.String("connection_status") != "error") {
+		if credential == good && len(tools) != 1 || credential == bad && len(tools) != 0 {
 			t.Fatalf("所选凭证的故障状态或工具不正确: %v", conn)
 		}
+	}
+	if calls.Load() != resolvedBefore {
+		t.Fatal("解析绑定不应查询远端")
 	}
 	for _, value := range []string{"mcp.catalog.tools.failed", "WARN", connector, bad, "mcp_upstream_unavailable"} {
 		if !strings.Contains(logs.String(), value) {

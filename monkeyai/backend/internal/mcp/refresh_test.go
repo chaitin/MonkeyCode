@@ -108,12 +108,12 @@ func TestLiveTools(t *testing.T) {
 				t.Helper()
 				var count int
 				if err := f.pool.QueryRow(t.Context(), "SELECT count(*) FROM mcp_tools WHERE connector_id=$1", c.String("id")).Scan(&count); err != nil || count != want {
-					t.Fatalf("工具目录不应入库，记录数=%d，预期=%d: %v", count, want, err)
+					t.Fatalf("工具快照记录数=%d，预期=%d: %v", count, want, err)
 				}
 			}
 			items := f.call("GET", toolsPath, nil, "owner", "", 200)["items"].([]any)
 			stable := resource.Object(items[1].(map[string]any))
-			storedCount(0)
+			storedCount(2)
 			revision.Store(1)
 			before := lists.Load()
 			out := rpc("tools/list", nil, 200)
@@ -132,12 +132,10 @@ func TestLiveTools(t *testing.T) {
 			if calls.Load() != 1 || len(billing.calls) != 1 || billing.calls[0].ToolName != "stable" {
 				t.Fatal("工具未正常调用或未保留计费名称")
 			}
-			storedCount(0)
+			storedCount(3)
 			adminPath := "/admin/connectors/" + c.String("id")
-			wantStored := 0
 			if mode != "independent" {
 				f.call("PATCH", adminPath+"/tools/"+stable.String("id"), resource.Object{"name": "stable", "enabled": false, "credits_per_call": 0}, "owner", "", 200)
-				wantStored = 1
 				out = rpc("tools/call", resource.Object{"name": "stable"}, 200)
 				if out["error"] == nil || calls.Load() != 1 {
 					t.Fatal("禁用工具仍被调用")
@@ -153,10 +151,15 @@ func TestLiveTools(t *testing.T) {
 				f.call("POST", adminPath+"/test", nil, "owner", "", 200)
 				f.call("PATCH", adminPath+"/tools/"+stable.String("id"), resource.Object{"name": "stable", "enabled": true, "credits_per_call": 0}, "owner", "", 200)
 			} else {
-				f.call("PATCH", adminPath+"/tools/"+stable.String("id"), resource.Object{"name": "stable", "enabled": false, "credits_per_call": 0}, "owner", "", 400)
+				f.call("PATCH", adminPath+"/tools/"+resource.ID(), resource.Object{"name": "unknown", "enabled": false, "credits_per_call": 0}, "owner", "", 400)
+				f.call("PATCH", adminPath+"/tools/"+stable.String("id"), resource.Object{"enabled": false, "credits_per_call": 0}, "owner", "", 200)
 				f.call("POST", path+"/credentials/"+credential.String("id")+"/test", nil, "owner", "", 200)
+				tools = rpc("tools/list", nil, 200)["result"].(map[string]any)["tools"].([]any)
+				if len(tools) != 1 || tools[0].(map[string]any)["name"] != "added" {
+					t.Fatal("独立凭证的开关应在刷新后保留")
+				}
 			}
-			storedCount(wantStored)
+			storedCount(3)
 			before = lists.Load()
 			rpc("tools/list", resource.Object{"cursor": "invalid"}, 200)
 			if lists.Load() != before {
@@ -165,7 +168,7 @@ func TestLiveTools(t *testing.T) {
 			revision.Store(2)
 			rpc("tools/list", nil, 502)
 			f.call("GET", toolsPath, nil, "owner", "", 502)
-			storedCount(wantStored)
+			storedCount(3)
 		})
 	}
 }
