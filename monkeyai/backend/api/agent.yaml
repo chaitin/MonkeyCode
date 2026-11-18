@@ -3273,7 +3273,7 @@ paths:
   /api/v1/resources/resolve:
     post:
       summary: 解析专家、规则、技能与连接绑定
-      description: 返回兼容旧客户端的 tools 和 tools_version，工具定义实时获取；沿用 REST 工具接口的权限、历史开关和单价规则。服务端应用专家工具允许／拒绝规则，拒绝规则优先。远端工具查询故障记录日志，对应连接标记 connection_status=error 并返回空 tools，不阻断资源解析，也不回退旧目录；权限、数据库错误及请求取消仍返回错误。
+      description: 返回兼容旧客户端的 tools 和 tools_version。工具读取选定认证上下文最近一次成功同步的目录，不访问上游；没有有效快照时返回空 tools。服务端保留权限、工具开关和单价规则，并应用专家工具允许／拒绝规则，拒绝规则优先。
       responses:
         '200':
           description: 解析专家、规则、技能与连接绑定

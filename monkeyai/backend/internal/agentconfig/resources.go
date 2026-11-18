@@ -41,6 +41,7 @@ type catalog struct {
 	required                           map[string]bool
 	links                              map[string][]resource.Object
 	connectorDTOs                      map[string]resource.Object
+	bindings                           map[string]string
 }
 
 func (r *Resources) load(ctx context.Context, q resource.Queryer, user, kind string) (catalog, error) {
@@ -214,7 +215,11 @@ func (r *Resources) connectorDTO(ctx context.Context, q resource.Queryer, c cata
 	dto, ok := c.connectorDTOs[id]
 	if !ok {
 		var err error
-		dto, err = r.mcp.Catalog(ctx, q, o, user)
+		if c.bindings != nil {
+			dto, err = r.mcp.ResolveEntry(ctx, q, o, user, c.bindings[id])
+		} else {
+			dto, err = r.mcp.Catalog(ctx, q, o, user)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -685,6 +690,20 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 	if err != nil {
 		return nil, err
 	}
+	c.bindings = map[string]string{}
+	if raw, exists := in["connector_bindings"]; exists {
+		values, ok := raw.(map[string]any)
+		if !ok {
+			return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定必须为连接 ID 到凭证 ID 的对象")
+		}
+		for id, value := range values {
+			credential, ok := value.(string)
+			if !ok || credential == "" {
+				return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定无效，必须先选择连接")
+			}
+			c.bindings[id] = credential
+		}
+	}
 	out := resource.Object{"expert_id": "", "prompt": "", "rules": []resource.Object{}, "skills": []resource.Object{}, "connectors": []resource.Object{}, "issues": []resource.Object{}, "available": true}
 	if id := in.String("expert_id"); id != "" {
 		out, err = r.manifest(ctx, tx, c, id, user)
@@ -763,18 +782,9 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 		selectedConnectors = append(selectedConnectors, dto)
 		seenConnectors[id] = true
 	}
-	bindings := map[string]string{}
-	if raw, exists := in["connector_bindings"]; exists {
-		values, ok := raw.(map[string]any)
-		if !ok {
-			return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定必须为连接 ID 到凭证 ID 的对象")
-		}
-		for id, value := range values {
-			credential, ok := value.(string)
-			if !ok || credential == "" || !seenConnectors[id] {
-				return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定无效，必须先选择连接")
-			}
-			bindings[id] = credential
+	for id := range c.bindings {
+		if !seenConnectors[id] {
+			return nil, resource.InvalidCode("credential_binding_invalid", "凭证绑定无效，必须先选择连接")
 		}
 	}
 	resolved := []resource.Object{}
@@ -795,7 +805,7 @@ func (r *Resources) Resolve(ctx context.Context, user string, in resource.Object
 	}
 	for _, conn := range selectedConnectors {
 		id := conn.String("id")
-		selected := bindings[id]
+		selected := c.bindings[id]
 		if conn.String("authorization_mode") != "independent" {
 			if selected != "" {
 				return nil, resource.InvalidCode("credential_binding_unsupported", "此连接不使用独立凭证绑定")

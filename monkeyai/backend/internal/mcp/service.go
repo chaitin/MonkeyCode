@@ -217,6 +217,7 @@ func (s *Service) decorateConnector(ctx context.Context, q resource.Queryer, o r
 			return err
 		}
 	}
+	delete(o, "tools_synced_at")
 	o["credentials"], o["credential_configured"] = creds, false
 	for _, cred := range creds {
 		if cred.String("authorization_status") == "authorized" {

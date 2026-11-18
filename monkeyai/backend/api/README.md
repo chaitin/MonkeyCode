@@ -203,7 +203,7 @@ API Key 通过全局 `POST /api/v1/api-keys` 创建，负责认证调用用户�
 
 集中和独立认证的每份凭证都有独立地址；认证连接省略凭证 ID 时返回 `400 credential_selection_required`。集中凭证仅供有该连接使用权的用户调用，独立凭证还必须属于调用用户。免认证仍需平台 API Key 和连接使用权。请求 `/mcp` 返回 404。
 
-`GET /api/v1/connectors` 仅返回连接及凭证元数据（含内置知识库），保留 `tools: []` 与空数组对应的 `tools_version`，不发起远端工具查询；其 ETag 不随远端工具变化。专家清单、资源 resolve 和管理员专家预览保留实时 `tools` 与 `tools_version`，无工具时为 `[]`。目录版本及 ETag 随返回内容变化；兼容工具查询遇到 MCP 上游故障时记录 WARN 日志（事件 `mcp.catalog.tools.failed`，含 `connector_id`、凭证 ID `resource_id` 及 `upstream_error_code`），对应连接或凭证标记 `connection_status=error` 并返回 `tools: []` 及其哈希，不回退旧目录缓存，也不阻断其他连接、专家清单或资源解析。权限校验、数据库错误及请求取消仍正常返回；显式 REST 工具查询、连接测试和 MCP 调用仍报告实际错误。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象，并按所选凭证获取工具；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
+`GET /api/v1/connectors` 仅返回连接及凭证元数据（含内置知识库），保留 `tools: []` 与空数组对应的 `tools_version`，不发起远端工具查询；其 ETag 不随远端工具变化。专家清单仍实时发现工具；资源 resolve 和管理员专家预览只读 `mcp_tools` 中当前连接及凭证的成功快照，保留 `tools` 与 `tools_version`，没有快照或工具时为 `[]`。目录版本及 ETag 随返回内容变化；兼容工具查询遇到 MCP 上游故障时记录 WARN 日志（事件 `mcp.catalog.tools.failed`，含 `connector_id`、凭证 ID `resource_id` 及 `upstream_error_code`），对应连接或凭证标记 `connection_status=error` 并返回 `tools: []` 及其哈希，不回退旧目录缓存，也不阻断其他连接或专家清单。这是实时清单的降级行为，不适用于只读快照的资源解析。权限校验、数据库错误及请求取消仍正常返回；显式 REST 工具查询、连接测试和 MCP 调用仍报告实际错误。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象，并按所选凭证获取工具；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
 
 ```json
 {
@@ -247,7 +247,7 @@ Accept: application/json, text/event-stream
 
 专家 manifest、资源 resolve 和管理员预览在服务端应用工具允许／排除规则，拒绝规则优先，`tools_version` 基于过滤后的工具计算；同时保留规则字段供客户端展示。代理校验用户的连接和凭证访问权及实时工具启停状态；请求中没有专家身份上下文，专家清单的过滤不构成代理授权边界。
 
-专家清单、资源 resolve、REST 工具接口及所有认证模式的 MCP `tools/list` 均实时发现远端工具，不回退旧目录。各认证模式保留历史工具 ID 和启停配置，独立认证的单价固定为零；无认证／集中认证叠加本地单价，没有配置记录时默认开启、单价为零。查询和连接测试均不创建工具记录。`PATCH /api/admin/v1/connectors/{id}/tools/{toolID}` 兼容省略 `name` 的旧请求：已有配置按 ID 更新，无认证／集中认证的新工具实时反查名称后创建配置；独立认证仅允许修改已有配置的开关，不新增配置。数据库历史目录记录不清理，但描述和 Schema 不再用于回包。连接器详情不再返回基于旧目录计算的 `tool_count`、`enabled_tool_count`。
+专家清单、REST 工具接口及所有认证模式的 MCP `tools/list` 仍实时发现远端工具，不回退旧目录。显式工具查询、MCP `tools/list`、连接测试和独立后台刷新在成功发现后更新快照。临时远端故障不覆盖同版本的成功快照；上游拒绝认证、凭证失效或连接变更后不再使用旧快照。各认证模式保留历史工具 ID 和启停配置，独立认证的单价固定为零；无认证／集中认证叠加本地单价，没有配置记录时默认开启、单价为零。快照记录保留工具定义和已有设置；工具消失时从当前目录移除，重新出现时沿用原 ID、开关和单价。`PATCH /api/admin/v1/connectors/{id}/tools/{toolID}` 兼容省略 `name` 的旧请求：已有配置按 ID 更新，无认证／集中认证的新工具实时反查名称后创建配置；独立认证仅允许修改已有配置的开关，不新增配置。旧版本的历史目录记录不会自动当作有效快照。连接器详情不再返回基于旧目录计算的 `tool_count`、`enabled_tool_count`。
 
 入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
 

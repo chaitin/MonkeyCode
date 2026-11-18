@@ -178,7 +178,7 @@ func (s *Service) invoke(w http.ResponseWriter, r *http.Request, in request, con
 			return
 		}
 	}
-	tools, err := s.liveTools(r.Context(), s.Store.Pool, connector, credential, false)
+	tools, err := s.listLiveTools(r.Context(), s.Store.Pool, connector, credential, false, in.Method == "tools/list")
 	if err != nil {
 		rpcFail(r.Context(), w, in.ID, err)
 		return

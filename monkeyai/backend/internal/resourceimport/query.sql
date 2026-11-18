@@ -109,6 +109,7 @@ UPDATE connectors SET origin='package',name=d->>'name',description=d->>'descript
        config_revision=(d->>'config_revision')::bigint,connection_status=d->>'connection_status',
        last_checked_at=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_checked_at END,
        last_error=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE last_error END,
+       tools_synced_at=CASE WHEN (d->>'config_changed')::boolean THEN NULL ELSE tools_synced_at END,
        enabled=COALESCE((d->>'enabled')::boolean,true),revision=revision+1,updated_at=now()
 FROM (SELECT sqlc.arg(data)::jsonb AS d) input WHERE id=(d->>'id')::uuid;
 

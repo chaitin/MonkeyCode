@@ -628,7 +628,11 @@ func (s *Service) refreshCredentials(ctx context.Context) error {
 	workers.Wait()
 	return nil
 }
-func (s *Service) Run(ctx context.Context) {
+func (s *Service) Run(parent context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() { defer close(done); s.runToolRefresh(ctx) }()
+	defer func() { cancel(); <-done }()
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	cleanupWorker := logging.NewWorker(slog.Default(), "mcp", "cleanup_oauth", "database")
