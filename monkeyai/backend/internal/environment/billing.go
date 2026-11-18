@@ -79,7 +79,7 @@ func (s *Service) billingConfig(ctx context.Context, q *sqlc.Queries, tx pgx.Tx,
 	return b, nil
 }
 
-func (s *Service) billingAdmission(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user, host string) error {
+func (s *Service) billingAdmission(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user, host string, cpu, memory int64) error {
 	b, err := s.billingConfig(ctx, q, tx, host)
 	if err != nil {
 		return err
@@ -91,8 +91,12 @@ func (s *Service) billingAdmission(ctx context.Context, q *sqlc.Queries, tx pgx.
 	if err != nil {
 		return err
 	}
-	if a.Available <= 0 {
-		return &failure{402, "insufficient_credits", "积分余额不足，无法创建或启动云环境"}
+	hourly, err := computePrice(b, cpu, memory, 3600)
+	if err != nil {
+		return err
+	}
+	if a.Available < hourly {
+		return &failure{402, "insufficient_credits", "积分不足以预付一小时，无法创建或启动云环境"}
 	}
 	return nil
 }

@@ -37,6 +37,7 @@ export type EnvironmentBilling = {
   hourly_credits: string
   settled_credits: string
   settled_seconds: number
+  prepaid_until?: string
   stop_reason?: "insufficient_credits" | "billing_unavailable"
   budget?: {
     balance: string

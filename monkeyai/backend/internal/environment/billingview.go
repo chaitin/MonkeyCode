@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"math/big"
 	"time"
 
@@ -21,6 +20,7 @@ type BillingView struct {
 	SettledSeconds int64          `json:"settled_seconds"`
 	StopReason     string         `json:"stop_reason,omitempty"`
 	Budget         *BillingBudget `json:"budget,omitempty"`
+	PrepaidUntil   *time.Time     `json:"prepaid_until,omitempty"`
 }
 type BillingBudget struct {
 	Balance             billing.Amount `json:"balance"`
@@ -38,11 +38,13 @@ func (s *Service) billingBudget(ctx context.Context, user string) (*BillingBudge
 		if err != nil {
 			return err
 		}
+		var pricing BillingConfig
 		for _, h := range hosts {
 			b, err := decodeBilling(h.Billing)
 			if err != nil {
 				return err
 			}
+			pricing = b
 			if b.Enabled && (b.CPU > 0 || b.Memory > 0) {
 				active = true
 			}
@@ -67,15 +69,15 @@ func (s *Service) billingBudget(ctx context.Context, user string) (*BillingBudge
 		if err != nil {
 			return err
 		}
-		periods, err := q.UserBillingPeriods(ctx, sqlc.UserBillingPeriodsParams{UserID: user, ConfirmedUntil: at.Add(-90 * time.Second)})
+		periods, err := q.UserPaidBillingHours(ctx, sqlc.UserPaidBillingHoursParams{UserID: user, PrepaidUntil: &at})
 		if err != nil {
 			return err
 		}
 		rate := new(big.Int)
+		var earliest *time.Time
 		for _, p := range periods {
-			pricing, err := decodeBilling(p.Pricing)
-			if err != nil {
-				return err
+			if p.PrepaidUntil != nil && (earliest == nil || p.PrepaidUntil.Before(*earliest)) {
+				earliest = p.PrepaidUntil
 			}
 			hourly, err := computePrice(pricing, p.CpuMillis, p.MemoryBytes, 3600)
 			if err != nil {
@@ -84,18 +86,10 @@ func (s *Service) billingBudget(ctx context.Context, user string) (*BillingBudge
 			rate.Add(rate, big.NewInt(int64(hourly)))
 		}
 		out = &BillingBudget{Balance: a.Available, HourlyCredits: new(big.Rat).SetFrac(rate, big.NewInt(1000000)).FloatString(6), RunningEnvironments: len(periods)}
-		if rate.Sign() > 0 {
-			remaining := new(big.Int).Mul(big.NewInt(int64(a.Available)), big.NewInt(3600))
-			remaining.Quo(remaining, rate)
-			seconds := int64(0)
-			if remaining.Sign() > 0 {
-				seconds = math.MaxInt64
-				if remaining.IsInt64() {
-					seconds = remaining.Int64()
-				}
-			}
-			out.RemainingSeconds = new(seconds)
-			out.LowBalance = seconds <= 300
+		if earliest != nil {
+			seconds := max(int64(earliest.Sub(at)/time.Second), 0)
+			out.RemainingSeconds = &seconds
+			out.LowBalance = big.NewInt(int64(a.Available)).Cmp(rate) < 0
 		}
 		return nil
 	})
@@ -157,10 +151,13 @@ func (s *Service) billingViews(ctx context.Context, items []View) error {
 			v.State = "waiting"
 		}
 		if p, ok := byID[e.ID]; ok {
+			if p.PrepaidUntil.After(time.Unix(0, 0)) {
+				v.PrepaidUntil = &p.PrepaidUntil
+			}
 			v.SettledCredits = p.Amount
 			v.SettledSeconds = p.Seconds
 			if enabled {
-				if p.Running {
+				if e.Desired == "running" && p.PrepaidUntil.After(s.now()) {
 					v.State = "running"
 				}
 				if e.Stale || e.Phase == "failed" {

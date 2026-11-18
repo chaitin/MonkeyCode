@@ -11,7 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var ErrComputeInsufficientCredits = errors.New("积分不足以预付一小时")
+
 type ComputeCharge struct {
+	Prepaid                                     bool
 	UserID, AccountID, EnvironmentID, Name, Key string
 	From, Until                                 time.Time
 	Amount                                      Amount
@@ -88,12 +91,19 @@ func (s *Service) ChargeCompute(ctx context.Context, tx pgx.Tx, in ComputeCharge
 	if err != nil {
 		return err
 	}
+	if in.Prepaid && account.Available < in.Amount {
+		return ErrComputeInsufficientCredits
+	}
+	completedAt := in.Until
+	if in.Prepaid {
+		completedAt = in.From
+	}
 	id := resource.ID()
 	_, err = q.CreateTransaction(ctx, sqlc.CreateTransactionParams{ID: id, UserID: in.UserID, AccountID: in.AccountID, Category: "environment", ResourceID: in.EnvironmentID, ItemName: in.Name, UserName: user.Name, UserEmail: user.Email, GroupID: account.GroupID, Mode: "local", Status: "settling", Reserve: in.Amount.String(), Pricing: in.Pricing, IdempotencyKey: in.Key, RequestHash: hash, StartedAt: in.From})
 	if err != nil {
 		return err
 	}
-	_, err = q.SaveUsage(ctx, sqlc.SaveUsageParams{ID: id, Status: "settled", Amount: new(in.Amount.String()), RawAmount: new(in.Amount.String()), Usage: in.Usage, Result: new("succeeded"), CompletedAt: new(in.Until)})
+	_, err = q.SaveUsage(ctx, sqlc.SaveUsageParams{ID: id, Status: "settled", Amount: new(in.Amount.String()), RawAmount: new(in.Amount.String()), Usage: in.Usage, Result: new("succeeded"), CompletedAt: &completedAt})
 	if err != nil {
 		return err
 	}

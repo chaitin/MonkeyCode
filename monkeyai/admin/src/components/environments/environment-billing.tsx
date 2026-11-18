@@ -98,6 +98,12 @@ export function EnvironmentBillingInfo({
           label={t("environmentAdmin.billing.duration")}
           value={duration(bill.settled_seconds)}
         />
+        {bill.prepaid_until && (
+          <Identity
+            label={t("environmentAdmin.billing.paidUntil")}
+            value={new Date(bill.prepaid_until).toLocaleString(i18n.language)}
+          />
+        )}
         {budget && (
           <>
             <Identity

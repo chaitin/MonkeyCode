@@ -30,19 +30,26 @@ type Price struct {
 	ImageUnit  Amount `json:"image_unit,omitempty"`
 	VideoUnit  Amount `json:"video_unit,omitempty"`
 }
+type ComputePricing struct {
+	Enabled bool   `json:"enabled"`
+	CPU     Amount `json:"cpu_credits_per_core_hour"`
+	Memory  Amount `json:"memory_credits_per_gib_hour"`
+}
+
 type Policy struct {
-	RootCredits      Amount     `json:"root_credits"`
-	Input            Amount     `json:"input_credits_per_million_tokens"`
-	Cached           Amount     `json:"cached_input_credits_per_million_tokens"`
-	Output           Amount     `json:"output_credits_per_million_tokens"`
-	Cycle            string     `json:"quota_refresh_cycle"`
-	Mode             string     `json:"charging_mode"`
-	Enabled          bool       `json:"enabled"`
-	PendingCycle     string     `json:"pending_cycle,omitempty"`
-	CycleEffectiveAt *time.Time `json:"cycle_effective_at,omitempty"`
-	CycleAnchor      *time.Time `json:"cycle_anchor,omitempty"`
-	TransitionStart  *time.Time `json:"cycle_transition_start,omitempty"`
-	Revision         int64      `json:"revision"`
+	Environment      ComputePricing `json:"environment"`
+	RootCredits      Amount         `json:"root_credits"`
+	Input            Amount         `json:"input_credits_per_million_tokens"`
+	Cached           Amount         `json:"cached_input_credits_per_million_tokens"`
+	Output           Amount         `json:"output_credits_per_million_tokens"`
+	Cycle            string         `json:"quota_refresh_cycle"`
+	Mode             string         `json:"charging_mode"`
+	Enabled          bool           `json:"enabled"`
+	PendingCycle     string         `json:"pending_cycle,omitempty"`
+	CycleEffectiveAt *time.Time     `json:"cycle_effective_at,omitempty"`
+	CycleAnchor      *time.Time     `json:"cycle_anchor,omitempty"`
+	TransitionStart  *time.Time     `json:"cycle_transition_start,omitempty"`
+	Revision         int64          `json:"revision"`
 }
 
 func defaultPolicy() Policy {

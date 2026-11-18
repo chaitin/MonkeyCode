@@ -160,6 +160,9 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 		if err != nil {
 			return err
 		}
+		if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
+			return err
+		}
 		if err := q.CreateRuntime(ctx, id); err != nil {
 			return err
 		}
@@ -170,6 +173,9 @@ func (s *Service) CreateOnHost(ctx context.Context, user, requestedHost string, 
 		result = Result{view(env), operation(op)}
 		return nil
 	})
+	if err == nil {
+		s.wakeBilling()
+	}
 	return result, err
 }
 func quota(ctx context.Context, q *sqlc.Queries, user, host string) (int32, error) {
@@ -255,9 +261,6 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 			if err := hostAllowed(ctx, tx, env.HostID, env.UserID); err != nil {
 				return err
 			}
-			if err := s.billingAdmission(ctx, q, tx, env.UserID, env.HostID); err != nil {
-				return err
-			}
 			host, err := q.GetHost(ctx, env.HostID)
 			if err != nil {
 				return err
@@ -307,6 +310,11 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 		if err != nil {
 			return err
 		}
+		if desired == "running" {
+			if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
+				return err
+			}
+		}
 		op, err = q.CreateOperation(ctx, sqlc.CreateOperationParams{EnvironmentID: id, Generation: env.Generation, Desired: desired, RequestKey: in.RequestKey, RequestHash: requestHash})
 		if err != nil {
 			return err
@@ -314,6 +322,9 @@ func (s *Service) Change(ctx context.Context, user *string, id, desired string, 
 		result = Result{withRuntime(view(env), runtime), operation(op)}
 		return nil
 	})
+	if err == nil {
+		s.wakeBilling()
+	}
 	if err == nil && s.runtime != nil {
 		for _, id := range revoked {
 			s.runtime.auth.NotifyGrantRevoked(id)

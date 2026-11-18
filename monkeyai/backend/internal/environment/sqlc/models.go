@@ -43,6 +43,7 @@ type EnvironmentBillingPeriod struct {
 	ClosedAt       *time.Time `json:"closed_at"`
 	SettledSeconds int64      `json:"settled_seconds"`
 	SettledAmount  string     `json:"settled_amount"`
+	PrepaidUntil   *time.Time `json:"prepaid_until"`
 }
 
 type EnvironmentOperation struct {

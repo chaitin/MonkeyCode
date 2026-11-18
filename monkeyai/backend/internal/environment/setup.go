@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/audit"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/environment/sqlc"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/identity"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -131,9 +130,7 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 		}
 	}
 	if in.Billing != nil {
-		if err := in.Billing.validate(); err != nil {
-			return out, err
-		}
+		return out, bad("云电脑计费已改为全局配置，请到费用设置修改")
 	}
 	err := s.transactionWithTx(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		h, err := q.HostStatus(ctx, id)
@@ -147,10 +144,6 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 		if err != nil {
 			return err
 		}
-		billing := current.Billing
-		if in.Billing != nil {
-			billing = *in.Billing
-		}
 		actor, hasActor := identity.UserFromContext(ctx)
 		if in.Grants != nil && !sameHostGrants(*in.Grants, current.Grants) {
 			if !hasActor {
@@ -163,27 +156,8 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 				return err
 			}
 		}
-		if billing != current.Billing {
-			if billing.Enabled && (billing.CPU > 0 || billing.Memory > 0) {
-				if s.credits == nil {
-					return conflict("billing_unavailable", "环境积分计费服务不可用")
-				}
-				if _, err = s.credits.ComputeEnabled(ctx, tx); err != nil {
-					return err
-				}
-			}
-			if err = q.CloseHostBillingPeriods(ctx, id); err != nil {
-				return err
-			}
-			if hasActor {
-				if err = audit.Write(ctx, tx, audit.Event{ActorID: actor.ID, Action: "environment.billing.update", Category: "billing", TargetType: "host", TargetID: id, Params: map[string]any{"before": current.Billing, "after": billing}}); err != nil {
-					return err
-				}
-			}
-		}
 		raw, _ := json.Marshal(in.Resource)
-		pricing, _ := json.Marshal(billing)
-		if err = q.SetHostSetup(ctx, sqlc.SetHostSetupParams{HostID: id, Resource: raw, UserMaxEnvironments: in.UserMaxEnvironments, Billing: pricing}); err != nil {
+		if err = q.SetHostSetup(ctx, sqlc.SetHostSetupParams{HostID: id, Resource: raw, UserMaxEnvironments: in.UserMaxEnvironments}); err != nil {
 			return err
 		}
 		if err = q.SetHostLimit(ctx, sqlc.SetHostLimitParams{ID: id, MaxEnvironments: in.MaxEnvironments}); err != nil {
@@ -192,8 +166,5 @@ func (s *Service) saveSetup(ctx context.Context, id string, in Setup) (SetupView
 		out, err = s.setupView(ctx, q, id, tx)
 		return err
 	})
-	if err == nil && in.Billing != nil {
-		s.wakeBilling()
-	}
 	return out, err
 }

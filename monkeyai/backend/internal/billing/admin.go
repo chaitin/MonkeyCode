@@ -75,6 +75,8 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	section := chi.URLParam(r, "section")
 	allowed := []string{"revision"}
 	switch section {
+	case "environment":
+		allowed = append(allowed, "enabled", "cpu_credits_per_core_hour", "memory_credits_per_gib_hour")
 	case "pricing":
 		allowed = append(allowed, "input_credits_per_million_tokens", "cached_input_credits_per_million_tokens", "output_credits_per_million_tokens")
 	case "cycle":
@@ -116,6 +118,21 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	before := p
 	var walletBefore, walletAfter WalletInfo
 	switch section {
+	case "environment":
+		if json.Unmarshal(in["enabled"], &p.Environment.Enabled) != nil {
+			resource.Fail(r.Context(), w, resource.Invalid("云电脑计费开关无效"))
+			return
+		}
+		for key, target := range map[string]*Amount{"cpu_credits_per_core_hour": &p.Environment.CPU, "memory_credits_per_gib_hour": &p.Environment.Memory} {
+			if err = json.Unmarshal(in[key], target); err != nil || *target < 0 || *target > Amount(1_000_000*scale) {
+				resource.Fail(r.Context(), w, resource.Invalid("单价须为 0 到 1000000 的积分值，最多六位小数"))
+				return
+			}
+		}
+		if p.Environment.Enabled && p.Mode != "local" {
+			resource.Fail(r.Context(), w, resource.Invalid("云电脑计费仅支持本地积分"))
+			return
+		}
 	case "pricing":
 		for key, target := range map[string]*Amount{"input_credits_per_million_tokens": &p.Input, "cached_input_credits_per_million_tokens": &p.Cached, "output_credits_per_million_tokens": &p.Output} {
 			if err = json.Unmarshal(in[key], target); err != nil || *target < 0 || *target > Amount(1_000_000*scale) {
@@ -142,6 +159,10 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	case "mode":
 		if json.Unmarshal(in["charging_mode"], &p.Mode) != nil || !slices.Contains([]string{"local", "remote"}, p.Mode) || json.Unmarshal(in["enabled"], &p.Enabled) != nil {
 			resource.Fail(r.Context(), w, resource.Invalid("计费方式或启用状态无效"))
+			return
+		}
+		if p.Mode == "remote" && p.Environment.Enabled {
+			resource.Fail(r.Context(), w, resource.Invalid("请先关闭云电脑计费再切换远程模式"))
 			return
 		}
 		if p.Mode == "remote" {

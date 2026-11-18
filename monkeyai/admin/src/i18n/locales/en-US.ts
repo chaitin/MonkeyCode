@@ -72,7 +72,7 @@ export const enUS = {
     billing: {
       title: "Usage billing",
       description:
-        "Charge allocated CPU and memory while running. Compute charges end after confirmed stop; storage is currently free.",
+        "Prepay whole hours for allocated CPU and memory. Early stops are not refunded; storage is currently free.",
       resourceHint:
         "CPU and memory allocated by this host to each new environment. Existing environments remain unchanged.",
       cpuPrice: "CPU price",
@@ -84,28 +84,29 @@ export const enUS = {
         "Enter a nonnegative price with up to 6 decimal places within the supported billing range.",
       previewTitle: "Estimated cost per environment",
       hourly: "{{credits}} credits / hour",
-      meteringHint: "Metered per second · Settled every minute",
+      meteringHint: "Prepay one hour · Renew on expiry · No early-stop refunds",
       disabledHint: "Billing disabled",
       enable: "Enable billing",
       storageFree: "Free storage",
       activationHint:
-        "Saving applies only to subsequent running time. No historical usage is back-charged. Local credit billing is currently supported and system credit billing must be enabled; model and tool calls are charged separately.",
+        "Prepay one hour before starting and renew on expiry. Early stops are not refunded; restarting within the paid hour is free. Price changes apply at renewal. Requires local system credit billing; model and tool calls are charged separately.",
       lowBalance: "Low user balance",
       stoppingForBalance:
-        "Credits exhausted. Stopping environments; data will be retained.",
+        "Insufficient credits for another hour. Stopping environments; data will be retained.",
       stoppedForBalance: "Stopped due to insufficient credits. Data retained.",
       unavailableStop:
         "Billing is unavailable. A stop has been requested; data will be retained.",
       settled: "Settled credits",
-      duration: "Settled running time",
+      duration: "Total paid duration",
+      paidUntil: "Paid until",
       rangeFrom: "Billing start",
       rangeUntil: "Billing end",
       seconds: "{{seconds}} sec",
       userBalance: "User credit balance",
       userRate: "Total user environment rate",
-      remaining: "Estimated remaining time",
+      remaining: "Next renewal in",
       budgetHint:
-        "Estimated using all confirmed running environments owned by this user. Model and tool usage also affects the balance.",
+        "Shows the earliest paid expiry among running environments. A warning indicates insufficient credits to renew all environments for one hour. Other spending does not revoke a paid hour.",
       minutesSeconds: "{{minutes}} min {{seconds}} sec",
       hoursMinutes: "{{hours}} hr {{minutes}} min",
       overYear: "More than a year",
@@ -817,7 +818,8 @@ export const enUS = {
         shortAction: "Upgrade",
         upgradeEngine: "Upgrade engine",
         needsUpgrade: "Update needed",
-        chooseMethod: "Choose automatic upgrade or get a command to run manually on the host.",
+        chooseMethod:
+          "Choose automatic upgrade or get a command to run manually on the host.",
         automatic: "Automatic upgrade",
         manualUpgrade: "Manual upgrade",
         manualHint: "Copy the command below and run it on the host.",

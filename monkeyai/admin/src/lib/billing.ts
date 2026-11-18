@@ -1,4 +1,7 @@
+import type { EnvironmentBillingConfig } from "./environments"
+
 export type Policy = {
+  environment: EnvironmentBillingConfig
   input_credits_per_million_tokens: string
   cached_input_credits_per_million_tokens: string
   output_credits_per_million_tokens: string

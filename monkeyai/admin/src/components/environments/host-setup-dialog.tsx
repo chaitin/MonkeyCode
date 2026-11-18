@@ -1,26 +1,13 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { CpuIcon, UserGroupIcon, Coins01Icon } from "@hugeicons/core-free-icons"
+import { CpuIcon, UserGroupIcon } from "@hugeicons/core-free-icons"
 import { api } from "@/lib/api"
-import {
-  GiB,
-  MiB,
-  units,
-  type EnvironmentBillingConfig,
-  type Resources,
-} from "@/lib/environments"
-import {
-  environmentCreditPrice,
-  environmentHourlyCredits,
-} from "@/lib/environment-billing"
-import { credits } from "@/lib/billing"
+import { GiB, MiB, units, type Resources } from "@/lib/environments"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import { FormError, LoadState } from "./common"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
   GroupSelect,
@@ -60,7 +47,6 @@ type Setup = {
   resource: Resources | null
   image_ready: boolean
   image_reason?: string
-  billing?: EnvironmentBillingConfig
 }
 
 export function HostSetupDialog({
@@ -154,13 +140,6 @@ function SetupForm({
     environments: String(value.max_environments || (resource ? 0 : 100)),
     userEnvironments: String(value.user_max_environments),
   })
-  const [pricing, setPricing] = useState<EnvironmentBillingConfig>(
-    value.billing ?? {
-      enabled: false,
-      cpu_credits_per_core_hour: "0",
-      memory_credits_per_gib_hour: "0",
-    }
-  )
   const root = groups.find((group) => !group.parentId)?.id
   const [authorization, setAuthorization] = useState(() => ({
     groupIds: value.grants?.length
@@ -174,44 +153,10 @@ function SetupForm({
   }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [priceErrors, setPriceErrors] = useState<Record<string, string>>({})
-  let hourly: string | null = null
-  try {
-    hourly = environmentHourlyCredits(
-      {
-        cpu_millis: units(values.cpu, 1000),
-        memory_bytes: units(values.memory, GiB),
-      },
-      pricing
-    )
-  } catch {
-    /* 保留未完成输入，在失焦或提交时显示校验错误。 */
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (busy) return
     setError("")
-    let billing: EnvironmentBillingConfig
-    try {
-      billing = {
-        enabled: pricing.enabled,
-        cpu_credits_per_core_hour: environmentCreditPrice(
-          pricing.cpu_credits_per_core_hour
-        ),
-        memory_credits_per_gib_hour: environmentCreditPrice(
-          pricing.memory_credits_per_gib_hour
-        ),
-      }
-      environmentHourlyCredits(
-        { cpu_millis: 256000, memory_bytes: 1024 * GiB },
-        billing
-      )
-      setPriceErrors({})
-    } catch {
-      setError(t("environmentAdmin.billing.invalidPrice"))
-      return
-    }
     let body
     try {
       const resource = {
@@ -240,7 +185,6 @@ function SetupForm({
         resource,
         max_environments,
         user_max_environments,
-        billing,
         grants,
       }
     } catch {
@@ -306,57 +250,6 @@ function SetupForm({
             </span>
           )}
         </div>
-      </Field>
-    )
-  }
-
-  function price(
-    key: "cpu_credits_per_core_hour" | "memory_credits_per_gib_hour",
-    label: string,
-    unit: string
-  ) {
-    const id = `setup-${key}`
-    return (
-      <Field>
-        <div className="flex items-center justify-between gap-2">
-          <FieldLabel id={`${id}-label`} htmlFor={id}>
-            {t(`environmentAdmin.billing.${label}`)}
-          </FieldLabel>
-          <span id={`${id}-unit`} className="text-xs text-muted-foreground">
-            {t(`environmentAdmin.billing.${unit}`)}
-          </span>
-        </div>
-        <Input
-          id={id}
-          type="text"
-          inputMode="decimal"
-          className="tabular-nums"
-          required
-          value={pricing[key]}
-          aria-invalid={!!priceErrors[key]}
-          aria-labelledby={`${id}-label`}
-          aria-describedby={`${id}-unit${priceErrors[key] ? ` ${id}-error` : ""}`}
-          onChange={(event) =>
-            setPricing((old) => ({ ...old, [key]: event.target.value }))
-          }
-          onBlur={() => {
-            try {
-              const normalized = environmentCreditPrice(pricing[key])
-              setPricing((old) => ({ ...old, [key]: normalized }))
-              setPriceErrors((old) => ({ ...old, [key]: "" }))
-            } catch {
-              setPriceErrors((old) => ({
-                ...old,
-                [key]: t("environmentAdmin.billing.invalidPrice"),
-              }))
-            }
-          }}
-        />
-        {priceErrors[key] && (
-          <p id={`${id}-error`} className="text-xs text-destructive">
-            {priceErrors[key]}
-          </p>
-        )}
       </Field>
     )
   }
@@ -472,78 +365,6 @@ function SetupForm({
                 1,
                 t("environmentAdmin.setupCountUnit")
               )}
-            </div>
-          </section>
-          <section
-            className="space-y-4 border-t pt-5"
-            aria-labelledby="setup-billing-heading"
-          >
-            <div className="space-y-2">
-              <h3
-                id="setup-billing-heading"
-                className="flex items-center gap-2 text-sm font-medium"
-              >
-                <HugeiconsIcon
-                  icon={Coins01Icon}
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                {t("environmentAdmin.billing.title")}
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {t("environmentAdmin.billing.meteringHint")}
-              </p>
-              <Badge variant="outline" className="font-normal">
-                {t("environmentAdmin.billing.storageFree")}
-              </Badge>
-            </div>
-            <div className="space-y-4">
-              <div className="flex min-h-6 items-center justify-between gap-4">
-                <FieldLabel htmlFor="setup-billing-enabled">
-                  {t("environmentAdmin.billing.enable")}
-                </FieldLabel>
-                <Switch
-                  id="setup-billing-enabled"
-                  checked={pricing.enabled}
-                  disabled={busy}
-                  onCheckedChange={(enabled) =>
-                    setPricing((old) => ({ ...old, enabled }))
-                  }
-                />
-              </div>
-              <div className="grid gap-4">
-                {price("cpu_credits_per_core_hour", "cpuPrice", "cpuUnit")}
-                {price(
-                  "memory_credits_per_gib_hour",
-                  "memoryPrice",
-                  "memoryUnit"
-                )}
-              </div>
-              <div className="space-y-2 rounded-lg border bg-muted/30 px-3 py-3">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {t("environmentAdmin.billing.previewTitle")}
-                  </p>
-                  <p className="text-xs tabular-nums">
-                    {t("environmentAdmin.setupSpecSummary", {
-                      cpu: values.cpu || "—",
-                      memory: values.memory || "—",
-                    })}
-                  </p>
-                </div>
-                <p
-                  className="text-base font-semibold tabular-nums"
-                  aria-live="polite"
-                >
-                  {!pricing.enabled
-                    ? t("environmentAdmin.billing.disabledHint")
-                    : hourly === null
-                      ? "—"
-                      : t("environmentAdmin.billing.hourly", {
-                          credits: credits(hourly, i18n.language),
-                        })}
-                </p>
-              </div>
             </div>
           </section>
         </fieldset>

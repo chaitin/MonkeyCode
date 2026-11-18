@@ -53,7 +53,7 @@ func (s *Service) schedule(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user
 			lastErr = err
 			continue
 		}
-		if err = s.billingAdmission(ctx, q, tx, user, h.HostID); err != nil {
+		if err = s.billingAdmission(ctx, q, tx, user, h.HostID, r.CPUMillis, r.MemoryBytes); err != nil {
 			lastErr = err
 			continue
 		}

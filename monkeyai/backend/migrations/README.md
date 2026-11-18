@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=43, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=47, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -27,6 +27,16 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 新增迁移 `000004_credit_account_overdraft` 允许余额为负及冻结额超过余额，仅保留冻结额非负约束。付费调用在可用积分（余额减冻结额）大于零时获准执行，完整预留费用，按实际用量结算；零或负可用积分不再接收新的付费调用，免费调用不受影响。百智云钱包自身的预扣限制不变。回滚前需结清负余额并释放超额冻结，否则回滚会失败，不会截断余额或改写历史流水。
 
 本次单版重置是重新部署的特定安排。后续正式发布后的 schema 变更正常追加六位递增迁移版本，已发布迁移不再改写。字符串统一使用 `text`，候选值使用 `CHECK`。
+
+## 云环境整小时预付升级
+
+云电脑计价统一保存在 `settings.billing.environment`，由费用设置中的「云电脑扣费规则」配置。旧宿主单价不再读取或覆盖全局配置；未配置时默认关闭，请发布后在费用设置中确认统一单价并启用。宿主配置接口不再接受计费修改，历史账单及已购买小时保持原价。
+
+版本 `47` 为计费区间增加 `prepaid_until`。启动前在同一事务中扣除一小时费用并保存有效期；到期续扣，余额不足则停止，不允许新增预付产生透支。提前停止不退款，同一环境在已购买小时内重启不重复扣费；启动准备时间包含在购买的一小时内。调价从下一次续费生效，已付费小时不会因余额变化失效。
+
+必须停止旧后端、执行迁移，再启动新后端，禁止旧计量进程与新版本并行。旧按秒记录只结清已确认未结算部分，历史价格及断线空档不重算；新购买小时不会按秒重复结算。暂停期间不续费，恢复后先购买当前小时，不追扣暂停空档。扣费周期归属于购买时的账户，不拆分跨账户周期的一小时。
+
+分钟级后台检查用于恢复和停机检查，不代表每分钟扣款；已知到期时间会提前安排唤醒。存在任何预付账务记录时，`down` 拒绝删除字段，避免丢失已购买时长；先备份并归档账务后才能回退。
 
 ## 实时工具目录升级
 
@@ -85,7 +95,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `46` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `47` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 

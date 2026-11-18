@@ -2085,3 +2085,17 @@ CHECK(deleted_at IS NULL OR (desired='deleted' AND phase='deleted' AND observed_
 ALTER TABLE resource_import_sections DROP CONSTRAINT resource_import_sections_section_check;
 
 ALTER TABLE resource_import_sections ADD CONSTRAINT resource_import_sections_section_check CHECK (section IN ('agent','design','knowledge'));
+
+ALTER TABLE environment_billing_periods ADD COLUMN IF NOT EXISTS prepaid_until timestamptz;
+
+ALTER TABLE environment_billing_periods DROP CONSTRAINT IF EXISTS environment_billing_periods_check2;
+
+ALTER TABLE environment_billing_periods DROP CONSTRAINT IF EXISTS environment_billing_settled_duration;
+
+ALTER TABLE environment_billing_periods ADD CONSTRAINT environment_billing_settled_duration
+ CHECK(settled_seconds<=EXTRACT(EPOCH FROM COALESCE(prepaid_until,confirmed_until)-started_at));
+
+ALTER TABLE environment_billing_periods DROP CONSTRAINT IF EXISTS environment_billing_prepaid_hour;
+
+ALTER TABLE environment_billing_periods ADD CONSTRAINT environment_billing_prepaid_hour
+ CHECK(prepaid_until IS NULL OR prepaid_until=started_at+interval '1 hour');

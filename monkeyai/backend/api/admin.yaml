@@ -1593,9 +1593,10 @@ paths:
         - cycle
         - mode
         - wallet
+        - environment
       required: true
     patch:
-      summary: 独立保存计价、周期、模式或百智云连接配置
+      summary: 独立保存计价、周期、模式、云电脑全局计费或百智云连接配置
       description: wallet 配置保存后无需重启，各实例在下次使用时读取。证书和私钥省略或留空时保留原值。首次保存必须提供全部证书。客户端证书与私钥须匹配且处于有效期，私钥须为 PKCS#8 ECDSA 格式。CA 须为有效的 CA 证书。服务 URL 或应用 ID 变更不能影响未完成的远程交易。校验仅在本地执行，不代表远程网络或账户权限验证成功。
       responses:
         '200':
@@ -1692,6 +1693,16 @@ paths:
                 - revision
                 - charging_mode
                 - enabled
+              - type: object
+                additionalProperties: false
+                required: [revision, enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
+                properties:
+                  revision: {type: integer}
+                  enabled: {type: boolean}
+                  cpu_credits_per_core_hour:
+                    $ref: '#/components/schemas/CreditAmount'
+                  memory_credits_per_gib_hour:
+                    $ref: '#/components/schemas/CreditAmount'
               - $ref: '#/components/schemas/BillingWalletInput'
   /api/admin/v1/billing/quotas:
     get:
@@ -8330,6 +8341,8 @@ components:
     BillingPolicy:
       type: object
       properties:
+        environment:
+          $ref: '#/components/schemas/EnvironmentBillingConfig'
         root_credits:
           $ref: "#/components/schemas/CreditAmount"
         revision:
@@ -10415,7 +10428,7 @@ components:
       type: object
       additionalProperties: false
       required: [enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
-      description: 默认关闭；按分配CPU和内存按秒计量，每分钟结算。存储暂不收费，当前仅支持本地积分。配置修改不追溯历史时段。
+      description: 全局配置，适用于所有宿主机，默认关闭且不继承旧宿主计价；仅通过费用设置保存。启动前按分配CPU和内存预扣完整一小时，到期续扣；提前停止不退款，已付费期限内重启不重复扣费。存储暂不收费，仅支持本地积分。调价从下一次续费生效，历史按秒账单仍按已确认用量结清。
       properties:
         enabled: {type: boolean}
         cpu_credits_per_core_hour:
@@ -10440,15 +10453,13 @@ components:
         user_max_environments: {type: integer, minimum: 0, maximum: 1000000, description: 本宿主每位用户的默认数量上限}
         resource:
           $ref: host.yaml#/components/schemas/EnvironmentResource
-        billing:
-          $ref: '#/components/schemas/EnvironmentBillingConfig'
         grants:
           type: array
           items: {$ref: '#/components/schemas/HostGrantInput'}
           description: 省略时保留现有范围；显式空数组撤回全部新建／启动权限，不打断已有环境。
     EnvironmentSetup:
       type: object
-      description: 当前宿主独立保存资源、用户配额、计费和授权范围。修改一个宿主不影响其他宿主或已有资源快照。
+      description: 当前宿主独立保存资源、用户配额和授权范围。billing 为只读全局计费配置，须到费用设置统一修改。
       required: [host_id, host_name, max_environments, user_max_environments, resource, capacity, image_ready, billing, grants]
       properties:
         host_id: {type: string, format: uuid}

@@ -76,6 +76,7 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 		seen[o.EnvironmentID] = true
 	}
 	out := Commands{Protocol: 1, UsageProtocol: 1, Targets: []json.RawMessage{}, Acknowledged: in.Results}
+	var billingStopped []sqlc.Environment
 	err := s.transactionWithTx(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		status, err := q.HostStatus(ctx, host)
 		if err != nil {
@@ -153,6 +154,14 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 			if err := s.observeBilling(ctx, q, tx, env, o.Phase, usable); err != nil {
 				return err
 			}
+			current, err := q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: env.ID})
+			if err != nil {
+				return err
+			}
+			if env.Desired == "running" && current.Desired == "stopped" {
+				billingStopped = append(billingStopped, current)
+				continue
+			}
 			if o.Phase == "running" && !usable {
 				continue
 			}
@@ -195,6 +204,22 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 			return err
 		}
 		for _, env := range rows {
+			if env.Desired == "running" && env.Phase != "failed" {
+				if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
+					var denied *failure
+					if !errors.As(err, &denied) || (denied.code != "insufficient_credits" && denied.code != "billing_unavailable") {
+						return err
+					}
+					if err := s.stopBillingEnvironment(ctx, q, env, denied.code); err != nil {
+						return err
+					}
+					env, err = q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: env.ID})
+					if err != nil {
+						return err
+					}
+					billingStopped = append(billingStopped, env)
+				}
+			}
 			out.Targets = append(out.Targets, wireSpec(env))
 		}
 		if len(rows) == 16 {
@@ -211,6 +236,12 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 		}
 	}
 	if err == nil && s.disconnect != nil {
+		for _, env := range billingStopped {
+			runtime, lookupErr := sqlc.New(s.pool).GetRuntime(ctx, env.ID)
+			if lookupErr == nil && runtime.MachineID != nil {
+				s.disconnect(env.UserID, *runtime.MachineID)
+			}
+		}
 		for _, o := range in.Results {
 			if o.Phase != "failed" {
 				continue

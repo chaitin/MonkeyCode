@@ -22,68 +22,36 @@ func (s *Service) wakeBilling() {
 }
 
 func (s *Service) observeBilling(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, e sqlc.Environment, phase string, usable bool) error {
-	at := s.now().UTC().Truncate(time.Second)
-	p, err := q.LockOpenBillingPeriod(ctx, e.ID)
-	open := err == nil
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if phase == "running" && usable && e.Desired == "running" {
+		err := s.prepayBillingHour(ctx, q, tx, e)
+		var denied *failure
+		if errors.As(err, &denied) && (denied.code == "insufficient_credits" || denied.code == "billing_unavailable") {
+			return s.stopBillingEnvironment(ctx, q, e, denied.code)
+		}
 		return err
 	}
-	if open && (at.Sub(p.ConfirmedUntil) > 90*time.Second || (phase == "running" && p.Generation != e.Generation)) {
-		if _, err = q.CloseBillingPeriod(ctx, p.ID); err != nil {
-			return err
-		}
-		s.wakeBilling()
-		open = false
-	}
-	if phase != "running" || !usable {
-		if !open {
-			return nil
-		}
-		if phase == "stopped" || phase == "deleted" {
-			if _, err = q.ConfirmBillingPeriod(ctx, sqlc.ConfirmBillingPeriodParams{ID: p.ID, ConfirmedUntil: at}); err != nil {
-				return err
-			}
-		}
-		if _, err = q.CloseBillingPeriod(ctx, p.ID); err != nil {
-			return err
-		}
-		s.wakeBilling()
+	p, err := q.LockOpenBillingPeriod(ctx, e.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
-	b, err := s.billingConfig(ctx, q, tx, e.HostID)
 	if err != nil {
 		return err
 	}
-	if !b.Enabled || b.CPU == 0 && b.Memory == 0 {
-		if open {
-			_, err = q.CloseBillingPeriod(ctx, p.ID)
-			s.wakeBilling()
-		}
+	// 预付区间不延长、不退款。尚未启动完成时保留已购买小时。
+	if phase == "running" && p.PrepaidUntil != nil {
+		return nil
+	}
+	if _, err = q.CloseBillingPeriod(ctx, p.ID); err != nil {
 		return err
 	}
-	var previous BillingConfig
-	if open {
-		previous, err = decodeBilling(p.Pricing)
-		if err != nil {
-			return err
-		}
-	}
-	if open && previous.CPU == b.CPU && previous.Memory == b.Memory && p.CpuMillis == e.CpuMillis && p.MemoryBytes == e.MemoryBytes {
-		_, err = q.ConfirmBillingPeriod(ctx, sqlc.ConfirmBillingPeriodParams{ID: p.ID, ConfirmedUntil: at})
-		return err
-	}
-	if open {
-		if _, err = q.CloseBillingPeriod(ctx, p.ID); err != nil {
-			return err
-		}
-		s.wakeBilling()
-	}
-	raw, _ := json.Marshal(resource.Object{"cpu_credits_per_core_hour": b.CPU, "memory_credits_per_gib_hour": b.Memory})
-	_, err = q.OpenBillingPeriod(ctx, sqlc.OpenBillingPeriodParams{EnvironmentID: e.ID, UserID: e.UserID, Generation: e.Generation, Pricing: raw, CpuMillis: e.CpuMillis, MemoryBytes: e.MemoryBytes, StartedAt: at})
-	return err
+	s.wakeBilling()
+	return nil
 }
 
 func (s *Service) settlePeriod(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, p sqlc.EnvironmentBillingPeriod) error {
+	if p.PrepaidUntil != nil {
+		return nil
+	}
 	b, err := decodeBilling(p.Pricing)
 	if err != nil {
 		return err
@@ -130,29 +98,20 @@ func (s *Service) stopBillingUser(ctx context.Context, q *sqlc.Queries, user, re
 	if err != nil {
 		return nil, err
 	}
+	var stopped []sqlc.Environment
+	at := s.now().UTC().Truncate(time.Second)
 	for _, env := range rows {
-		spec, err := executionSpec(env)
-		if err != nil {
+		if _, err := q.PaidBillingHour(ctx, sqlc.PaidBillingHourParams{EnvironmentID: env.ID, PrepaidUntil: &at}); err == nil {
+			continue
+		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		spec.Generation++
-		spec.DesiredState = "stopped"
-		spec.RuntimePackage = nil
-		raw := saveSpec(spec)
-		if err = q.SupersedeOperations(ctx, env.ID); err != nil {
+		if err := s.stopBillingEnvironment(ctx, q, env, reason); err != nil {
 			return nil, err
 		}
-		if _, err = q.ChangeTarget(ctx, sqlc.ChangeTargetParams{ID: env.ID, InstanceID: env.InstanceID, Desired: "stopped", Spec: raw}); err != nil {
-			return nil, err
-		}
-		if err = q.SetBillingStopReason(ctx, sqlc.SetBillingStopReasonParams{ID: env.ID, BillingStopReason: reason}); err != nil {
-			return nil, err
-		}
-		if _, err = q.CreateOperation(ctx, sqlc.CreateOperationParams{EnvironmentID: env.ID, Generation: spec.Generation, Desired: "stopped", RequestKey: "billing-" + resource.ID(), RequestHash: hash(reason)}); err != nil {
-			return nil, err
-		}
+		stopped = append(stopped, env)
 	}
-	return rows, nil
+	return stopped, nil
 }
 
 func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) error {
@@ -196,7 +155,7 @@ func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) er
 				return err
 			}
 			for _, p := range rows {
-				if p.ClosedAt == nil && at.Sub(p.ConfirmedUntil) > 90*time.Second {
+				if p.ClosedAt == nil {
 					if _, err = q.CloseBillingPeriod(ctx, p.ID); err != nil {
 						return err
 					}
@@ -225,14 +184,36 @@ func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) er
 		} else if err != nil {
 			return err
 		}
-		a, err := s.credits.ComputeAccount(ctx, tx, user, at)
+		envs, err := q.BilledUserEnvironments(ctx, user)
 		if err != nil {
 			return err
 		}
-		if a.Available <= 0 {
-			stopped, err = s.stopBillingUser(ctx, q, user, "insufficient_credits")
+		for _, env := range envs {
+			if _, err := q.PaidBillingHour(ctx, sqlc.PaidBillingHourParams{EnvironmentID: env.ID, PrepaidUntil: &at}); err == nil {
+				continue
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			// 未确认运行的时间不追补扣费；已到期且失联的环境转为停止目标。
+			if env.Phase != "running" || env.ObservedGeneration != env.Generation || env.ObservedAt == nil || at.Sub(*env.ObservedAt) > 90*time.Second {
+				if err := s.stopBillingEnvironment(ctx, q, env, "billing_unavailable"); err != nil {
+					return err
+				}
+				stopped = append(stopped, env)
+				continue
+			}
+			if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
+				var denied *failure
+				if !errors.As(err, &denied) || denied.code != "insufficient_credits" {
+					return err
+				}
+				if err := s.stopBillingEnvironment(ctx, q, env, "insufficient_credits"); err != nil {
+					return err
+				}
+				stopped = append(stopped, env)
+			}
 		}
-		return err
+		return nil
 	})
 	if err == nil && s.disconnect != nil {
 		for _, env := range stopped {
@@ -260,20 +241,25 @@ func (s *Service) settleBilling(ctx context.Context, closedOnly bool) error {
 }
 
 func (s *Service) Run(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	closedOnly := false
 	for {
-		if err := s.settleBilling(ctx, closedOnly); err != nil && ctx.Err() == nil {
+		if err := s.settleBilling(ctx, false); err != nil && ctx.Err() == nil {
 			slog.ErrorContext(ctx, "环境计费结算失败", "error", err)
 		}
+		at := s.now().UTC()
+		expiry, err := sqlc.New(s.pool).NextBillingExpiry(ctx, at)
+		delay := time.Minute
+		if err == nil && expiry.After(at) && expiry.Sub(at) < delay {
+			delay = expiry.Sub(at)
+		}
+		// 一分钟仅作恢复检查；实际扣款只发生在每台环境的已付费小时到期后。
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			closedOnly = false
+		case <-timer.C:
 		case <-s.billingWake:
-			closedOnly = true
+			timer.Stop()
 		}
 	}
 }

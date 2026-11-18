@@ -46,6 +46,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import type { EnvironmentBillingConfig } from "@/lib/environments"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import {
@@ -108,6 +110,8 @@ export function BillingSettingsPage() {
   const [settings, setSettings] = useState<BillingSettings | null>(null)
   const [quotas, setQuotas] = useState<Quotas | null>(null)
   const [pricing, setPricing] = useState<PricingSettings | null>(null)
+  const [environment, setEnvironment] =
+    useState<EnvironmentBillingConfig | null>(null)
   const [cycle, setCycle] = useState("weekly")
   const [cycleDialogOpen, setCycleDialogOpen] = useState(false)
   const [cycleValue, setCycleValue] = useState("weekly")
@@ -178,6 +182,7 @@ export function BillingSettingsPage() {
         .then((result) => {
           if (signal?.aborted) return
           setSettings(result)
+          setEnvironment(result.policy.environment)
           setSettingsLoadFailed(false)
           setPricing({
             input_credits_per_million_tokens:
@@ -294,13 +299,15 @@ export function BillingSettingsPage() {
     setBusy(section)
     try {
       const values =
-        section === "wallet"
-          ? wallet
-          : section === "pricing"
-            ? (pricingOverride ?? pricing)
-            : section === "cycle"
-              ? { quota_refresh_cycle: cycleOverride ?? cycle }
-              : { charging_mode: mode, enabled }
+        section === "environment"
+          ? environment
+          : section === "wallet"
+            ? wallet
+            : section === "pricing"
+              ? (pricingOverride ?? pricing)
+              : section === "cycle"
+                ? { quota_refresh_cycle: cycleOverride ?? cycle }
+                : { charging_mode: mode, enabled }
       const result = await api<BillingSettings>(
         `/api/admin/v1/billing/settings/${section}`,
         {
@@ -324,7 +331,9 @@ export function BillingSettingsPage() {
               : "百智云连接配置已保存，无需重启；请保存计费方式以启用远程计费。"
             : section === "cycle"
               ? `重置设置已保存，将于 ${dateTime(result.next_refresh_at)} 重置，当前余额不变。`
-              : "设置已保存，对新调用生效。",
+              : section === "environment"
+                ? "云电脑计费已保存，新单价在下次预付时生效，已付费小时不变。"
+                : "设置已保存，对新调用生效。",
       })
     } catch (e) {
       showToast({ status: "error", title: (e as Error).message })
@@ -480,7 +489,7 @@ export function BillingSettingsPage() {
             onClick={openGroupQuota}
           >
             <span className="min-w-0 flex-1 truncate text-start">{g.name}</span>
-            <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums transition-colors group-hover/quota-row:text-foreground">
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground transition-colors group-hover/quota-row:text-foreground">
               {savedLocalBilling
                 ? periodicQuotaLabel(effective)
                 : savedBillingStateLabel}
@@ -617,8 +626,8 @@ export function BillingSettingsPage() {
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
               {quotas && settings ? (
-                <ScrollArea className="-ms-1 -me-[var(--card-spacing)] min-h-0 lg:flex-1">
-                  <div className="flex flex-col gap-1 ps-1 pe-[var(--card-spacing)]">
+                <ScrollArea className="-me-[var(--card-spacing)] -ms-1 min-h-0 lg:flex-1">
+                  <div className="flex flex-col gap-1 pe-[var(--card-spacing)] ps-1">
                     {quotas.groups
                       .filter((g) => !g.parent_id)
                       .map((g) => renderGroup(g, "10000"))}
@@ -711,7 +720,7 @@ export function BillingSettingsPage() {
           </Card>
         </div>
         <ScrollArea className="min-h-0 lg:h-full">
-          <div className="grid gap-4 ps-px pe-3 pt-px pb-px">
+          <div className="grid gap-4 pb-px pe-3 ps-px pt-px">
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -935,6 +944,87 @@ export function BillingSettingsPage() {
                     data-icon="inline-end"
                   />
                 </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>云电脑扣费规则</CardTitle>
+                <CardDescription>
+                  所有宿主机统一使用以下价格。启动前预付一小时，到期续费；提前停止不退款，存储不扣费。仅支持本地积分。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {environment ? (
+                  <>
+                    <div className="flex items-center justify-between gap-4">
+                      <FieldLabel htmlFor="environment-billing-enabled">
+                        启用云电脑计费
+                      </FieldLabel>
+                      <Switch
+                        id="environment-billing-enabled"
+                        checked={environment.enabled}
+                        disabled={
+                          !!busy || settings?.policy.charging_mode !== "local"
+                        }
+                        onCheckedChange={(enabled) =>
+                          setEnvironment({ ...environment, enabled })
+                        }
+                      />
+                    </div>
+                    {(
+                      [
+                        [
+                          "cpu_credits_per_core_hour",
+                          "CPU 单价（积分 / 核 / 小时）",
+                        ],
+                        [
+                          "memory_credits_per_gib_hour",
+                          "内存单价（积分 / GiB / 小时）",
+                        ],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Field key={key}>
+                        <FieldLabel htmlFor={key}>{label}</FieldLabel>
+                        <Input
+                          id={key}
+                          inputMode="decimal"
+                          value={environment[key]}
+                          disabled={!!busy}
+                          onChange={(event) =>
+                            setEnvironment({
+                              ...environment,
+                              [key]: event.target.value,
+                            })
+                          }
+                        />
+                      </Field>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      支持 0 到 1000000
+                      积分，最多六位小数。关闭总计费开关时不扣费。
+                    </p>
+                    <Button
+                      disabled={
+                        !!busy ||
+                        !validCredits(environment.cpu_credits_per_core_hour) ||
+                        !validCredits(
+                          environment.memory_credits_per_gib_hour
+                        ) ||
+                        Number(environment.cpu_credits_per_core_hour) >
+                          1000000 ||
+                        Number(environment.memory_credits_per_gib_hour) >
+                          1000000 ||
+                        JSON.stringify(environment) ===
+                          JSON.stringify(settings?.policy.environment)
+                      }
+                      onClick={() => void save("environment")}
+                    >
+                      {busy === "environment" ? "保存中…" : "保存"}
+                    </Button>
+                  </>
+                ) : (
+                  loadState(settingsLoadFailed, retrySettings)
+                )}
               </CardContent>
             </Card>
           </div>

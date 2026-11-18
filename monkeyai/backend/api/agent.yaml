@@ -5218,7 +5218,7 @@ components:
     EnvironmentBillingBudget:
       type: object
       required: [balance, hourly_credits, remaining_seconds, running_environments, low_balance]
-      description: 当前用户全部已确认运行环境的合计费率和余额估算；模型及工具消费也会影响余额。
+      description: 当前用户已预付运行环境的合计费率；remaining_seconds为最近的已付费到期时间距离现在的秒数，不含余额可购买的时长。
       properties:
         balance:
           $ref: '#/components/schemas/CreditAmount'
@@ -5233,7 +5233,7 @@ components:
           minimum: 0
         low_balance:
           type: boolean
-          description: 按当前环境总费率预计余额只能维持不超过5分钟；不代表已向客户端发送通知。
+          description: 当前可用余额不足以按已付费小时的单价再续付全部运行环境一小时；不影响已购买小时的有效期。
     EnvironmentBilling:
       type: object
       required: [enabled, state, hourly_credits, settled_credits, settled_seconds]
@@ -5246,7 +5246,8 @@ components:
           $ref: '#/components/schemas/CreditAmount'
         settled_credits:
           $ref: '#/components/schemas/CreditAmount'
-        settled_seconds: {type: integer, format: int64, minimum: 0}
+        settled_seconds: {type: integer, format: int64, minimum: 0, description: 累计已付费时长；新增预付记录每笔3600秒，包含尚未使用时间及历史按秒结算时长}
+        prepaid_until: {type: string, format: date-time, description: 最近购买小时的到期时间；停止不退款，期限内重启不重复扣费}
         stop_reason:
           type: string
           enum: [insufficient_credits, billing_unavailable]

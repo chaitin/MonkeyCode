@@ -11,7 +11,7 @@ import (
 )
 
 const accessibleHostCandidates = `-- name: AccessibleHostCandidates :many
-SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.max_environments,h.last_seen_at,h.environment_synced_at,h.report,c.resource,c.user_max_environments,c.billing
+SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.max_environments,h.last_seen_at,h.environment_synced_at,h.report,c.resource,c.user_max_environments,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
 FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL AND c.resource IS NOT NULL ORDER BY h.id
 `
 
@@ -127,7 +127,7 @@ func (q *Queries) AvailableHosts(ctx context.Context, arg AvailableHostsParams) 
 
 const billedUserEnvironments = `-- name: BilledUserEnvironments :many
 SELECT e.id, e.user_id, e.host_id, e.name, e.instance_id, e.generation, e.desired, e.phase, e.observed_generation, e.spec, e.cpu_millis, e.memory_bytes, e.usage, e.reason, e.billing_stop_reason, e.observed_at, e.created_at, e.updated_at, e.deleted_at FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
- AND (c.billing->>'enabled')::boolean AND ((c.billing->>'cpu_credits_per_core_hour')::numeric>0 OR (c.billing->>'memory_credits_per_gib_hour')::numeric>0)
+ AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
 ORDER BY e.id FOR UPDATE OF e
 `
 
@@ -204,15 +204,16 @@ func (q *Queries) BillingEnvironment(ctx context.Context, id string) (Environmen
 
 const billingSummaries = `-- name: BillingSummaries :many
 SELECT environment_id,COALESCE(sum(settled_amount),0)::text AS amount,
- COALESCE(sum(settled_seconds),0)::bigint AS seconds,bool_or(closed_at IS NULL) AS running
+ COALESCE(sum(settled_seconds),0)::bigint AS seconds,bool_or(closed_at IS NULL) AS running,COALESCE(max(prepaid_until),'epoch'::timestamptz)::timestamptz AS prepaid_until
 FROM environment_billing_periods WHERE environment_id=ANY($1::uuid[]) GROUP BY environment_id
 `
 
 type BillingSummariesRow struct {
-	EnvironmentID string `json:"environment_id"`
-	Amount        string `json:"amount"`
-	Seconds       int64  `json:"seconds"`
-	Running       bool   `json:"running"`
+	EnvironmentID string    `json:"environment_id"`
+	Amount        string    `json:"amount"`
+	Seconds       int64     `json:"seconds"`
+	Running       bool      `json:"running"`
+	PrepaidUntil  time.Time `json:"prepaid_until"`
 }
 
 func (q *Queries) BillingSummaries(ctx context.Context, ids []string) ([]BillingSummariesRow, error) {
@@ -229,6 +230,7 @@ func (q *Queries) BillingSummaries(ctx context.Context, ids []string) ([]Billing
 			&i.Amount,
 			&i.Seconds,
 			&i.Running,
+			&i.PrepaidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -241,10 +243,10 @@ func (q *Queries) BillingSummaries(ctx context.Context, ids []string) ([]Billing
 }
 
 const billingUsers = `-- name: BillingUsers :many
-SELECT user_id FROM environment_billing_periods WHERE settled_seconds<EXTRACT(EPOCH FROM confirmed_until-started_at)
- OR (closed_at IS NULL AND confirmed_until<$1)
+SELECT user_id FROM environment_billing_periods WHERE prepaid_until IS NULL AND (settled_seconds<EXTRACT(EPOCH FROM confirmed_until-started_at)
+ OR (closed_at IS NULL AND confirmed_until<$1))
 UNION SELECT e.user_id FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.desired='running'
- AND (c.billing->>'enabled')::boolean AND ((c.billing->>'cpu_credits_per_core_hour')::numeric>0 OR (c.billing->>'memory_credits_per_gib_hour')::numeric>0)
+ AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
 ORDER BY user_id
 `
 
@@ -342,7 +344,7 @@ func (q *Queries) ChangeTarget(ctx context.Context, arg ChangeTargetParams) (Env
 }
 
 const closeBillingPeriod = `-- name: CloseBillingPeriod :one
-UPDATE environment_billing_periods SET closed_at=confirmed_until WHERE id=$1 RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount
+UPDATE environment_billing_periods SET closed_at=confirmed_until WHERE id=$1 RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
 `
 
 func (q *Queries) CloseBillingPeriod(ctx context.Context, id string) (EnvironmentBillingPeriod, error) {
@@ -361,12 +363,13 @@ func (q *Queries) CloseBillingPeriod(ctx context.Context, id string) (Environmen
 		&i.ClosedAt,
 		&i.SettledSeconds,
 		&i.SettledAmount,
+		&i.PrepaidUntil,
 	)
 	return i, err
 }
 
 const closeHostBillingPeriods = `-- name: CloseHostBillingPeriods :exec
-UPDATE environment_billing_periods p SET closed_at=confirmed_until FROM environments e WHERE p.environment_id=e.id AND e.host_id=$1 AND p.closed_at IS NULL
+UPDATE environment_billing_periods p SET closed_at=confirmed_until FROM environments e WHERE p.environment_id=e.id AND e.host_id=$1 AND p.closed_at IS NULL AND p.prepaid_until IS NULL
 `
 
 func (q *Queries) CloseHostBillingPeriods(ctx context.Context, hostID string) error {
@@ -375,7 +378,7 @@ func (q *Queries) CloseHostBillingPeriods(ctx context.Context, hostID string) er
 }
 
 const closeUserBillingPeriods = `-- name: CloseUserBillingPeriods :exec
-UPDATE environment_billing_periods SET closed_at=confirmed_until WHERE user_id=$1 AND closed_at IS NULL
+UPDATE environment_billing_periods SET closed_at=confirmed_until WHERE user_id=$1 AND closed_at IS NULL AND prepaid_until IS NULL
 `
 
 func (q *Queries) CloseUserBillingPeriods(ctx context.Context, userID string) error {
@@ -405,7 +408,7 @@ func (q *Queries) CompleteOperation(ctx context.Context, arg CompleteOperationPa
 }
 
 const confirmBillingPeriod = `-- name: ConfirmBillingPeriod :one
-UPDATE environment_billing_periods SET confirmed_until=GREATEST(confirmed_until,$2) WHERE id=$1 RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount
+UPDATE environment_billing_periods SET confirmed_until=GREATEST(confirmed_until,$2) WHERE id=$1 RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
 `
 
 type ConfirmBillingPeriodParams struct {
@@ -429,6 +432,7 @@ func (q *Queries) ConfirmBillingPeriod(ctx context.Context, arg ConfirmBillingPe
 		&i.ClosedAt,
 		&i.SettledSeconds,
 		&i.SettledAmount,
+		&i.PrepaidUntil,
 	)
 	return i, err
 }
@@ -814,7 +818,7 @@ func (q *Queries) HostEnvironment(ctx context.Context, arg HostEnvironmentParams
 
 const hostSetup = `-- name: HostSetup :one
 SELECT h.id,h.name,h.architecture,h.status,h.max_environments,c.resource,COALESCE(c.user_max_environments,3)::integer AS user_max_environments,
-COALESCE(c.billing,'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
+COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL
 `
 
@@ -1217,7 +1221,7 @@ func (q *Queries) LockHostEnvironment(ctx context.Context, arg LockHostEnvironme
 }
 
 const lockOpenBillingPeriod = `-- name: LockOpenBillingPeriod :one
-SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount FROM environment_billing_periods WHERE environment_id=$1 AND closed_at IS NULL FOR UPDATE
+SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until FROM environment_billing_periods WHERE environment_id=$1 AND closed_at IS NULL FOR UPDATE
 `
 
 func (q *Queries) LockOpenBillingPeriod(ctx context.Context, environmentID string) (EnvironmentBillingPeriod, error) {
@@ -1236,6 +1240,7 @@ func (q *Queries) LockOpenBillingPeriod(ctx context.Context, environmentID strin
 		&i.ClosedAt,
 		&i.SettledSeconds,
 		&i.SettledAmount,
+		&i.PrepaidUntil,
 	)
 	return i, err
 }
@@ -1264,9 +1269,24 @@ func (q *Queries) LockRuntimeEnvironment(ctx context.Context, machineID *string)
 	return items, nil
 }
 
+const nextBillingExpiry = `-- name: NextBillingExpiry :one
+SELECT COALESCE(min(p.prepaid_until),$1::timestamptz+interval '1 minute')::timestamptz AS expires_at
+FROM environment_billing_periods p JOIN environments e ON e.id=p.environment_id
+JOIN host_environment_configs c ON c.host_id=e.host_id
+WHERE e.desired='running' AND p.prepaid_until>$1::timestamptz
+AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
+`
+
+func (q *Queries) NextBillingExpiry(ctx context.Context, at time.Time) (time.Time, error) {
+	row := q.db.QueryRow(ctx, nextBillingExpiry, at)
+	var expires_at time.Time
+	err := row.Scan(&expires_at)
+	return expires_at, err
+}
+
 const openBillingPeriod = `-- name: OpenBillingPeriod :one
 INSERT INTO environment_billing_periods(environment_id,user_id,generation,pricing,cpu_millis,memory_bytes,started_at,confirmed_until)
-VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount
+VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
 `
 
 type OpenBillingPeriodParams struct {
@@ -1303,13 +1323,90 @@ func (q *Queries) OpenBillingPeriod(ctx context.Context, arg OpenBillingPeriodPa
 		&i.ClosedAt,
 		&i.SettledSeconds,
 		&i.SettledAmount,
+		&i.PrepaidUntil,
+	)
+	return i, err
+}
+
+const openPrepaidBillingHour = `-- name: OpenPrepaidBillingHour :one
+INSERT INTO environment_billing_periods(environment_id,user_id,generation,pricing,cpu_millis,memory_bytes,started_at,confirmed_until,prepaid_until)
+VALUES($1,$2,$3,$4,$5,$6,$7,$7,$7+interval '1 hour') RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
+`
+
+type OpenPrepaidBillingHourParams struct {
+	EnvironmentID string    `json:"environment_id"`
+	UserID        string    `json:"user_id"`
+	Generation    int64     `json:"generation"`
+	Pricing       []byte    `json:"pricing"`
+	CpuMillis     int64     `json:"cpu_millis"`
+	MemoryBytes   int64     `json:"memory_bytes"`
+	StartedAt     time.Time `json:"started_at"`
+}
+
+func (q *Queries) OpenPrepaidBillingHour(ctx context.Context, arg OpenPrepaidBillingHourParams) (EnvironmentBillingPeriod, error) {
+	row := q.db.QueryRow(ctx, openPrepaidBillingHour,
+		arg.EnvironmentID,
+		arg.UserID,
+		arg.Generation,
+		arg.Pricing,
+		arg.CpuMillis,
+		arg.MemoryBytes,
+		arg.StartedAt,
+	)
+	var i EnvironmentBillingPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.EnvironmentID,
+		&i.UserID,
+		&i.Generation,
+		&i.Pricing,
+		&i.CpuMillis,
+		&i.MemoryBytes,
+		&i.StartedAt,
+		&i.ConfirmedUntil,
+		&i.ClosedAt,
+		&i.SettledSeconds,
+		&i.SettledAmount,
+		&i.PrepaidUntil,
+	)
+	return i, err
+}
+
+const paidBillingHour = `-- name: PaidBillingHour :one
+SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until FROM environment_billing_periods
+WHERE environment_id=$1 AND prepaid_until>$2 AND started_at<=$2
+ORDER BY prepaid_until DESC LIMIT 1
+`
+
+type PaidBillingHourParams struct {
+	EnvironmentID string     `json:"environment_id"`
+	PrepaidUntil  *time.Time `json:"prepaid_until"`
+}
+
+func (q *Queries) PaidBillingHour(ctx context.Context, arg PaidBillingHourParams) (EnvironmentBillingPeriod, error) {
+	row := q.db.QueryRow(ctx, paidBillingHour, arg.EnvironmentID, arg.PrepaidUntil)
+	var i EnvironmentBillingPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.EnvironmentID,
+		&i.UserID,
+		&i.Generation,
+		&i.Pricing,
+		&i.CpuMillis,
+		&i.MemoryBytes,
+		&i.StartedAt,
+		&i.ConfirmedUntil,
+		&i.ClosedAt,
+		&i.SettledSeconds,
+		&i.SettledAmount,
+		&i.PrepaidUntil,
 	)
 	return i, err
 }
 
 const pendingBillingPeriods = `-- name: PendingBillingPeriods :many
-SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount FROM environment_billing_periods
-WHERE user_id=$1 AND (NOT $2::boolean OR closed_at IS NOT NULL)
+SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until FROM environment_billing_periods
+WHERE prepaid_until IS NULL AND user_id=$1 AND (NOT $2::boolean OR closed_at IS NOT NULL)
 AND (settled_seconds<EXTRACT(EPOCH FROM confirmed_until-started_at)
  OR (closed_at IS NULL AND confirmed_until<$3))
 ORDER BY started_at,id LIMIT 128 FOR UPDATE
@@ -1343,6 +1440,7 @@ func (q *Queries) PendingBillingPeriods(ctx context.Context, arg PendingBillingP
 			&i.ClosedAt,
 			&i.SettledSeconds,
 			&i.SettledAmount,
+			&i.PrepaidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -1405,6 +1503,13 @@ SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=$1::uuid) 
  SELECT 1 FROM environments e JOIN environment_runtimes r ON r.environment_id=e.id JOIN users u ON u.id=e.user_id JOIN hosts h ON h.id=e.host_id
  WHERE r.machine_id=$1::uuid AND e.user_id=$2::uuid AND e.desired='running' AND e.phase<>'failed'
  AND e.generation=r.generation AND e.instance_id=r.instance_id AND u.status='active' AND u.deleted_at IS NULL AND h.status='active'
+ AND (
+  NOT EXISTS(SELECT 1 FROM settings c WHERE c.key='billing'
+   AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
+   AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0))
+  OR NOT COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key='billing'),false)
+  OR EXISTS(SELECT 1 FROM environment_billing_periods p WHERE p.environment_id=e.id AND p.prepaid_until>now() AND p.started_at<=now())
+ )
 ) AS allowed
 `
 
@@ -1494,24 +1599,18 @@ func (q *Queries) SetHostLimit(ctx context.Context, arg SetHostLimitParams) erro
 }
 
 const setHostSetup = `-- name: SetHostSetup :exec
-INSERT INTO host_environment_configs(host_id,resource,user_max_environments,billing) VALUES($1,$2,$3,$4)
-ON CONFLICT(host_id) DO UPDATE SET resource=EXCLUDED.resource,user_max_environments=EXCLUDED.user_max_environments,billing=EXCLUDED.billing
+INSERT INTO host_environment_configs(host_id,resource,user_max_environments) VALUES($1,$2,$3)
+ON CONFLICT(host_id) DO UPDATE SET resource=EXCLUDED.resource,user_max_environments=EXCLUDED.user_max_environments
 `
 
 type SetHostSetupParams struct {
 	HostID              string `json:"host_id"`
 	Resource            []byte `json:"resource"`
 	UserMaxEnvironments int32  `json:"user_max_environments"`
-	Billing             []byte `json:"billing"`
 }
 
 func (q *Queries) SetHostSetup(ctx context.Context, arg SetHostSetupParams) error {
-	_, err := q.db.Exec(ctx, setHostSetup,
-		arg.HostID,
-		arg.Resource,
-		arg.UserMaxEnvironments,
-		arg.Billing,
-	)
+	_, err := q.db.Exec(ctx, setHostSetup, arg.HostID, arg.Resource, arg.UserMaxEnvironments)
 	return err
 }
 
@@ -1631,7 +1730,7 @@ func (q *Queries) TouchHost(ctx context.Context, arg TouchHostParams) (int64, er
 }
 
 const userBillingPeriods = `-- name: UserBillingPeriods :many
-SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount FROM environment_billing_periods WHERE user_id=$1 AND closed_at IS NULL AND confirmed_until>=$2 ORDER BY id
+SELECT id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until FROM environment_billing_periods WHERE user_id=$1 AND closed_at IS NULL AND confirmed_until>=$2 ORDER BY id
 `
 
 type UserBillingPeriodsParams struct {
@@ -1661,6 +1760,7 @@ func (q *Queries) UserBillingPeriods(ctx context.Context, arg UserBillingPeriods
 			&i.ClosedAt,
 			&i.SettledSeconds,
 			&i.SettledAmount,
+			&i.PrepaidUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -1673,7 +1773,7 @@ func (q *Queries) UserBillingPeriods(ctx context.Context, arg UserBillingPeriods
 }
 
 const userEnvironmentHosts = `-- name: UserEnvironmentHosts :many
-SELECT DISTINCT c.host_id,c.billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
+SELECT DISTINCT c.host_id,COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{"enabled":false,"cpu_credits_per_core_hour":"0","memory_credits_per_gib_hour":"0"}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
 `
 
 type UserEnvironmentHostsRow struct {
@@ -1715,6 +1815,55 @@ func (q *Queries) UserHostUsage(ctx context.Context, arg UserHostUsageParams) (i
 	var environments int64
 	err := row.Scan(&environments)
 	return environments, err
+}
+
+const userPaidBillingHours = `-- name: UserPaidBillingHours :many
+SELECT DISTINCT ON(p.environment_id) p.id, p.environment_id, p.user_id, p.generation, p.pricing, p.cpu_millis, p.memory_bytes, p.started_at, p.confirmed_until, p.closed_at, p.settled_seconds, p.settled_amount, p.prepaid_until FROM environment_billing_periods p
+JOIN environments e ON e.id=p.environment_id
+JOIN host_environment_configs c ON c.host_id=e.host_id
+WHERE p.user_id=$1 AND p.prepaid_until>$2 AND p.started_at<=$2 AND e.desired='running' AND e.phase<>'failed'
+AND ((SELECT value->'environment' FROM settings WHERE key='billing')->>'enabled')::boolean
+AND (((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric>0 OR ((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric>0)
+ORDER BY p.environment_id,p.prepaid_until DESC
+`
+
+type UserPaidBillingHoursParams struct {
+	UserID       string     `json:"user_id"`
+	PrepaidUntil *time.Time `json:"prepaid_until"`
+}
+
+func (q *Queries) UserPaidBillingHours(ctx context.Context, arg UserPaidBillingHoursParams) ([]EnvironmentBillingPeriod, error) {
+	rows, err := q.db.Query(ctx, userPaidBillingHours, arg.UserID, arg.PrepaidUntil)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EnvironmentBillingPeriod{}
+	for rows.Next() {
+		var i EnvironmentBillingPeriod
+		if err := rows.Scan(
+			&i.ID,
+			&i.EnvironmentID,
+			&i.UserID,
+			&i.Generation,
+			&i.Pricing,
+			&i.CpuMillis,
+			&i.MemoryBytes,
+			&i.StartedAt,
+			&i.ConfirmedUntil,
+			&i.ClosedAt,
+			&i.SettledSeconds,
+			&i.SettledAmount,
+			&i.PrepaidUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const userUsage = `-- name: UserUsage :one
