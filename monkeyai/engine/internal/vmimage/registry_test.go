@@ -58,7 +58,11 @@ func registryFixture(t *testing.T, mode string) (*Registry, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := control.New(server.URL, key)
+	canonical := server.URL
+	if mode == "internal" {
+		canonical = "https://center.example"
+	}
+	client, err := (control.Config{Server: canonical, ServerURL: server.URL}).Client(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +90,17 @@ func TestRegistryPullFromCurrentCenterOnly(t *testing.T) {
 		t.Fatal("允许回源其他仓库")
 	}
 }
+func TestRegistryUsesInternalTransportAndCanonicalIdentity(t *testing.T) {
+	registry, reference, want := registryFixture(t, "internal")
+	if registry.client.Server != "https://center.example" {
+		t.Fatal("内网下载改变了签名身份")
+	}
+	image, err := registry.Pull(t.Context(), reference, "amd64", 1<<20, filepath.Join(t.TempDir(), "oci"))
+	if err != nil || image.Manifest.Digest != want {
+		t.Fatal("镜像未通过内网地址下载或固定身份失效", err)
+	}
+}
+
 func TestRegistryFailuresDoNotPublish(t *testing.T) {
 	for _, mode := range []string{"redirect", "not-ready", "tamper"} {
 		t.Run(mode, func(t *testing.T) {

@@ -132,7 +132,7 @@ func (d *Driver) fetchRuntime(ctx context.Context, release lifecycle.RuntimePack
 		}
 	}()
 	for name, file := range release.Files {
-		request, err := http.NewRequestWithContext(ctx, "GET", d.client.Server+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
+		request, err := http.NewRequestWithContext(ctx, "GET", d.client.URL+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
 		if err != nil {
 			return "", err
 		}

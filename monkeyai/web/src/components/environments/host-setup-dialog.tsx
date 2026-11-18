@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "@/lib/api"
+import { diskSize, GiB } from "@/lib/environments"
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import { FormError, LoadState } from "./common"
 import { Input } from "@/components/ui/input"
@@ -36,6 +37,8 @@ type Subjects = {
   }[]
 }
 type Setup = {
+  driver?: string
+  disk_bytes?: number
   host_id: string
   host_name: string
   grants: HostGrant[]
@@ -126,6 +129,7 @@ function SetupForm({
 }) {
   const { t, i18n } = useTranslation()
   const [name, setName] = useState(value.host_name)
+  const [disk, setDisk] = useState(String((value.disk_bytes ?? 120 * GiB) / GiB))
   const [grantsChanged, setGrantsChanged] = useState(false)
   const root = groups.find((group) => !group.parentId)?.id
   const [authorization, setAuthorization] = useState(() => ({
@@ -147,7 +151,17 @@ function SetupForm({
       setError(t("environmentAdmin.hostNameTooLong"))
       return
     }
+    let diskBytes: number | undefined
+    if (value.driver === "firecracker") {
+      try {
+        diskBytes = diskSize(disk)
+      } catch {
+        setError(t("environmentAdmin.setupDiskInvalid"))
+        return
+      }
+    }
     const body = {
+      ...(diskBytes !== undefined && diskBytes !== value.disk_bytes && { disk_bytes: diskBytes }),
       ...(normalizedName !== value.host_name && { name: normalizedName }),
       ...(grantsChanged && {
         grants: [
@@ -216,6 +230,13 @@ function SetupForm({
               noResultsText={t("pages.models.noMatchingAuthorization")}
             />
           </Field>
+          {value.driver === "firecracker" && (
+            <Field>
+              <FieldLabel htmlFor="setup-disk">{t("environmentAdmin.setupDisk")} (GiB)</FieldLabel>
+              <Input id="setup-disk" type="number" required min="0.0625" max="16384" step="any" value={disk} onChange={(event) => setDisk(event.target.value)} />
+              <p className="text-xs text-muted-foreground">{t("environmentAdmin.setupDiskHint")}</p>
+            </Field>
+          )}
         </fieldset>
         {!value.image_ready && (
           <p role="status" className="text-xs text-destructive">

@@ -34,6 +34,9 @@ func NewRegistry(client *control.Client, host string) (*Registry, error) {
 	if err := control.ValidateServer(client.Server); err != nil {
 		return nil, err
 	}
+	if err := control.ValidateServer(client.URL); err != nil {
+		return nil, err
+	}
 	return &Registry{client, host}, nil
 }
 func (r *Registry) credentials(reference string) (string, string, string, error) {
@@ -41,7 +44,7 @@ func (r *Registry) credentials(reference string) (string, string, string, error)
 	if !ok {
 		return "", "", "", errors.New("镜像引用缺少仓库")
 	}
-	server, err := url.Parse(r.client.Server)
+	server, err := url.Parse(r.client.URL)
 	if err != nil || !strings.EqualFold(server.Host, registry) {
 		return "", "", "", errors.New("镜像只允许来自当前中心服务")
 	}
@@ -69,7 +72,7 @@ func (r *Registry) credentials(reference string) (string, string, string, error)
 	return repository, digest, auth.Password, nil
 }
 func (r *Registry) get(ctx context.Context, repository, kind, digest, password string) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(ctx, "GET", r.client.Server+"/v2/"+repository+"/"+kind+"/"+digest, nil)
+	request, err := http.NewRequestWithContext(ctx, "GET", r.client.URL+"/v2/"+repository+"/"+kind+"/"+digest, nil)
 	if err != nil {
 		return nil, err
 	}
