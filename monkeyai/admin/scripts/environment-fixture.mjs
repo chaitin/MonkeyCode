@@ -120,7 +120,7 @@ for (const host of hosts) {
   }
 }
 const setupFor = (id) => {
-  if (!setups.has(id)) setups.set(id, {resource:null,billing:{enabled:false,cpu_credits_per_core_hour:"0.1",memory_credits_per_gib_hour:"0.025"},grants:[{group_id:uuid(0)}]})
+  if (!setups.has(id)) setups.set(id, {resource:null,billing:{cpu_credits_per_core_hour:"0.1",memory_credits_per_gib_hour:"0.025"},grants:[{group_id:uuid(0)}]})
   return setups.get(id)
 }
 const environments = Array.from({ length: 21 }, (_, i) => ({
@@ -179,15 +179,15 @@ const hourlyUnits = (env) => {
   return (numerator + denominator / 2n) / denominator
 }
 const withBilling = (env) => {
-  const setupBilling = setupFor(env.host_id).billing
-  const active = environments.filter(item => item.phase === "running" && item.desired === "running" && setupFor(item.host_id).billing.enabled)
+  const active = environments.filter(item => item.phase === "running" && item.desired === "running" && hourlyUnits(item) > 0n)
   const total = active.reduce((sum, item) => sum + hourlyUnits(item), 0n)
-  const enabled = setupBilling.enabled && total > 0n
+  const pricing = setupFor(env.host_id).billing
+  const priced = creditUnits(pricing.cpu_credits_per_core_hour) > 0n || creditUnits(pricing.memory_credits_per_gib_hour) > 0n
   return {...env, billing: {
-    enabled, state: !enabled ? "disabled" : env.phase === "stopped" || env.phase === "deleted" ? "stopped" : env.phase === "running" ? "running" : "waiting",
-    hourly_credits: enabled ? creditDecimal(hourlyUnits(env)) : "0",
-    settled_credits: enabled ? "0.0125" : "0", settled_seconds: enabled ? 150 : 0,
-    ...(enabled ? {budget: {balance: creditDecimal(total / 15n), hourly_credits: creditDecimal(total), remaining_seconds: 240, running_environments: active.length, low_balance: true}} : {}),
+    state: !priced ? "free" : env.phase === "stopped" || env.phase === "deleted" ? "stopped" : env.phase === "running" ? "running" : "waiting",
+    hourly_credits: creditDecimal(hourlyUnits(env)),
+    settled_credits: priced ? "0.0125" : "0", settled_seconds: priced ? 150 : 0,
+    ...(priced ? {budget: {balance: creditDecimal(total / 15n), hourly_credits: creditDecimal(total), remaining_seconds: 240, running_environments: active.length, low_balance: true}} : {}),
   }}
 }
 const mime = {

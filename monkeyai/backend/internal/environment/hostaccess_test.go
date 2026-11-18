@@ -120,7 +120,7 @@ func TestHostScopeIncludesDescendantGroups(t *testing.T) {
 func TestHostPriceChangeOnlyClosesItsOwnPeriods(t *testing.T) {
 	s, user, first, at := meterFixture(t, "10000")
 	second := addConfiguredHost(t, s, user, first)
-	pricing, _ := json.Marshal(BillingConfig{Enabled: true, CPU: 7200_000000})
+	pricing, _ := json.Marshal(BillingConfig{CPU: 7200_000000})
 	if _, err := s.pool.Exec(t.Context(), "UPDATE host_environment_configs SET billing=$1 WHERE host_id=$2", pricing, second); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestHostPriceChangeOnlyClosesItsOwnPeriods(t *testing.T) {
 	*at = at.Add(30 * time.Second)
 	syncState(t, s, first, observe(a.Environment, "running"))
 	syncState(t, s, second, observe(b.Environment, "running"))
-	next := BillingConfig{Enabled: true, CPU: 10800_000000}
+	next := BillingConfig{CPU: 10800_000000}
 	if _, err = s.saveSetup(t.Context(), first, Setup{Billing: &next}); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestHostPriceChangeOnlyClosesItsOwnPeriods(t *testing.T) {
 	}
 	settle(t, s, false)
 	cost(t, s, user, "90", 2)
-	budget, _, err := s.billingBudget(t.Context(), user)
+	budget, err := testBudget(t, s, user)
 	if err != nil || budget == nil || budget.HourlyCredits != "7200.000000" {
 		t.Fatalf("跨宿主合计费率错误：%v %+v", err, budget)
 	}

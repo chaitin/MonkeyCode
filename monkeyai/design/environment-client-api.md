@@ -129,11 +129,11 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 ## 环境计费查询
 
-本仓不实现客户端页面或通知。云电脑无独立计费开关，仍受系统总计费开关控制；CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节）。管理员可在全局费用设置调整单价，按实例快照中的 CPU／内存整小时预付，启动前扣一小时、到期续扣。提前停止不退款，同一环境在已付费小时内重启不重复扣费；调价从下一次续费生效。存储暂不收费，模型与工具另计；当前仅支持本地积分。
+本仓不实现客户端页面或通知。云电脑按全局单价计费，不受系统计费开关控制，零单价不扣积分；CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节）。管理员可在全局费用设置调整单价，按实例快照中的 CPU／内存整小时预付，启动前扣一小时、到期续扣。提前停止不退款，同一环境在已付费小时内重启不重复扣费；调价从下一次续费生效。存储暂不收费，模型与工具另计；当前仅支持本地积分。
 
-客户端本人列表／详情可返回 `billing`：`enabled`、`state`、`hourly_credits`、`settled_credits`、`settled_seconds` 及可选 `prepaid_until`、`stop_reason`、`budget`。管理端列表／详情不再附带此计费扩展。创建／操作响应可不含此扩展，需再次查询。积分为最多六位小数的十进制字符串，不能用浮点数推导实际扣款。
+客户端本人列表／详情可返回 `billing`：`state`、`hourly_credits`、`settled_credits`、`settled_seconds` 及可选 `prepaid_until`、`stop_reason`、`budget`。管理端列表／详情不再附带此计费扩展。创建／操作响应可不含此扩展，需再次查询。积分为最多六位小数的十进制字符串，不能用浮点数推导实际扣款。
 
-- `state`为disabled／waiting／running／stopped／unknown，表示计费状态，不替代环境phase／generation或connectable。
+- `state`为 free／waiting／running／stopped／unknown。free 表示 CPU 和内存单价均为零，不清除历史账务。这些值表示计费状态，不替代环境phase／generation或connectable。
 - `hourly_credits`是当前配置下该环境实际规格的每小时价格；已停止时仅为再次运行的价格参考，不表示仍在扣费。累计已结算时长和积分来自持久账务。
 - `budget` 按同一用户全部仍在运行目标且处于已付费小时内的环境汇总，不受当前分页或宿主筛选限制。包含账户余额、合计小时费率、环境数、距离最近付费到期的秒数和 `low_balance`；余额不足以给这些环境续付一小时即标记低余额，无有效付费小时则剩余时间为 null。
 - `billing_stop_reason=insufficient_credits` 表示余额不足以续付下一小时而发起停止，尚需看代次和实际 phase 判断是否已停；持久数据保留。新增预付不能透支，已付费小时不因其他消费而被撤销。billing_unavailable 表示服务端因计费不可用发起停止。

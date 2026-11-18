@@ -31,7 +31,6 @@ export type HostCapacity = Capacity & {
   last_seen_at: string | null
 }
 export type EnvironmentBillingConfig = {
-  enabled: boolean
   cpu_credits_per_core_hour: string
   memory_credits_per_gib_hour: string
 }

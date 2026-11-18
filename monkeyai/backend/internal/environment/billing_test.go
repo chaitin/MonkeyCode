@@ -25,7 +25,7 @@ func meterFixture(t *testing.T, credits string) (*Service, string, string, *time
 	if _, err := s.pool.Exec(t.Context(), `UPDATE settings SET value=jsonb_set(value,'{root_credits}',$1::jsonb) WHERE key='billing'`, credits); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := json.Marshal(BillingConfig{Enabled: true, CPU: 3600_000000})
+	b, _ := json.Marshal(BillingConfig{CPU: 3600_000000})
 	if _, err := s.pool.Exec(t.Context(), `UPDATE host_environment_configs SET billing=$1`, b); err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +45,14 @@ func cost(t *testing.T, s *Service, user, want string, count int) {
 	if err != nil || a.String() != want || n != count {
 		t.Fatalf("费用=%s 笔数=%d，期望%s/%d，错误=%v", amount, n, want, count, err)
 	}
+}
+func testBudget(t *testing.T, s *Service, user string) (*BillingBudget, error) {
+	t.Helper()
+	pricing, err := globalPricing(t.Context(), sqlc.New(s.pool))
+	if err != nil {
+		return nil, err
+	}
+	return s.billingBudget(t.Context(), user, pricing)
 }
 func balance(t *testing.T, s *Service, user string) string {
 	t.Helper()
@@ -234,7 +242,7 @@ func TestComputeConfigChangeAndDisable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pricing := BillingConfig{Enabled: true, CPU: 7200_000000}
+	pricing := BillingConfig{CPU: 7200_000000}
 	saved, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing})
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +257,7 @@ func TestComputeConfigChangeAndDisable(t *testing.T) {
 	syncState(t, s, host, observe(e.Environment, "running"))
 	settle(t, s, false)
 	cost(t, s, user, "50", 2)
-	pricing.Enabled = false
+	pricing = BillingConfig{}
 	if _, err = s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +267,7 @@ func TestComputeConfigChangeAndDisable(t *testing.T) {
 	cost(t, s, user, "50", 2)
 	current, err := sqlc.New(s.pool).GetEnvironment(t.Context(), sqlc.GetEnvironmentParams{ID: e.Environment.ID})
 	if err != nil || current.Desired != "running" {
-		t.Fatalf("关闭收费不应停止环境：%v", err)
+		t.Fatalf("零单价不应停止环境：%v", err)
 	}
 }
 
@@ -277,8 +285,8 @@ func TestComputeBudgetIncludesAllRunningEnvironments(t *testing.T) {
 	*at = at.Add(60 * time.Second)
 	syncState(t, s, host, observe(a.Environment, "running"), observe(b.Environment, "running"))
 	settle(t, s, false)
-	budget, enabled, err := s.billingBudget(t.Context(), user)
-	if err != nil || !enabled || budget == nil {
+	budget, err := testBudget(t, s, user)
+	if err != nil || budget == nil {
 		t.Fatalf("预算查询失败：%v", err)
 	}
 	if budget.Balance.String() != "480" || budget.RunningEnvironments != 2 || budget.RemainingSeconds == nil || *budget.RemainingSeconds != 240 || !budget.LowBalance {
@@ -295,7 +303,7 @@ func TestComputeBudgetIncludesAllRunningEnvironments(t *testing.T) {
 
 func TestComputeMinuteRoundingAccumulatesExactly(t *testing.T) {
 	s, user, host, at := meterFixture(t, "10000")
-	pricing, _ := json.Marshal(BillingConfig{Enabled: true, CPU: 100000})
+	pricing, _ := json.Marshal(BillingConfig{CPU: 100000})
 	if _, err := s.pool.Exec(t.Context(), `UPDATE host_environment_configs SET billing=$1`, pricing); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +329,7 @@ func TestComputeRejectsInvalidPricingAndRemoteMode(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, pricing := range []BillingConfig{{Enabled: true, CPU: -1}, {Enabled: true, CPU: 1000000000000_000000}} {
+	for _, pricing := range []BillingConfig{{CPU: -1}, {CPU: 1000000000000_000000}} {
 		if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err == nil {
 			t.Fatal("接受非法环境价格")
 		}
@@ -329,7 +337,7 @@ func TestComputeRejectsInvalidPricingAndRemoteMode(t *testing.T) {
 	if _, err := s.pool.Exec(t.Context(), `UPDATE settings SET value=jsonb_set(value,'{charging_mode}','"remote"'::jsonb) WHERE key='billing'`); err != nil {
 		t.Fatal(err)
 	}
-	pricing := BillingConfig{Enabled: true, CPU: 1_000000}
+	pricing := BillingConfig{CPU: 1_000000}
 	if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &pricing}); err == nil {
 		t.Fatal("远程模式静默开启了本地环境收费")
 	}
@@ -361,7 +369,7 @@ func TestComputeDeletedUserStillSettlesHistoricalUsage(t *testing.T) {
 		t.Fatalf("删除用户未触发停止或过早释放资源：%v", err)
 	}
 	*at = at.Add(8 * 24 * time.Hour)
-	budget, _, err := s.billingBudget(t.Context(), user)
+	budget, err := testBudget(t, s, user)
 	if err != nil || budget != nil {
 		t.Fatalf("已删除用户创建了新周期预算：%v %+v", err, budget)
 	}

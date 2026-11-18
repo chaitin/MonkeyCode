@@ -5255,12 +5255,12 @@ components:
           description: 当前可用余额不足以按已付费小时的单价再续付全部运行环境一小时；不影响已购买小时的有效期。
     EnvironmentBilling:
       type: object
-      required: [enabled, state, hourly_credits, settled_credits, settled_seconds]
+      required: [state, hourly_credits, settled_credits, settled_seconds]
       properties:
-        enabled: {type: boolean}
         state:
           type: string
-          enum: [disabled, waiting, running, stopped, unknown]
+          description: CPU 和内存单价均为零时为 free，不影响历史结算记录。
+          enum: [free, waiting, running, stopped, unknown]
         hourly_credits:
           $ref: '#/components/schemas/CreditAmount'
         settled_credits:

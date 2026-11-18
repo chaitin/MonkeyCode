@@ -56,7 +56,7 @@ func TestCloudMigrationRejectsActiveEnvironmentRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	pricing, err := decodeBilling(d.Billing)
-	if err != nil || !pricing.Enabled {
+	if err != nil || pricing.CPU <= 0 {
 		t.Fatal("重放覆盖已有宿主计费配置", err)
 	}
 	if got := balance(t, s, user); got != "10000" {
@@ -93,8 +93,8 @@ func TestCloudMigrationRoundtripPreservesBusinessData(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, err := decodeBilling(d.Billing)
-	if err != nil || cfg.Enabled {
-		t.Fatal("重新创建云环境未默认关闭收费", err)
+	if err != nil || cfg.CPU <= 0 {
+		t.Fatal("重新创建云环境未读取全局单价", err)
 	}
 	if got := balance(t, s, user); got != "10000" {
 		t.Fatal("重新升级改变已有账户余额", got)

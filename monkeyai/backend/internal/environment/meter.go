@@ -23,11 +23,10 @@ func (s *Service) wakeBilling() {
 
 func (s *Service) observeBilling(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, e sqlc.Environment, phase string, usable bool) error {
 	if phase == "running" && usable && e.Desired == "running" {
-		err := s.prepayBillingHour(ctx, q, tx, e)
-		var denied *failure
-		if errors.As(err, &denied) && (denied.code == "insufficient_credits" || denied.code == "billing_unavailable") {
-			return s.stopBillingEnvironment(ctx, q, e, denied.code)
+		if !freshRunning(e, s.now()) {
+			return nil
 		}
+		_, err := s.renewOrStop(ctx, q, tx, e)
 		return err
 	}
 	p, err := q.LockOpenBillingPeriod(ctx, e.ID)
@@ -128,7 +127,7 @@ func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) er
 			if err != nil {
 				return err
 			}
-			if b.Enabled && (b.CPU > 0 || b.Memory > 0) {
+			if b.CPU > 0 || b.Memory > 0 {
 				active = true
 			} else {
 				if err = q.CloseHostBillingPeriods(ctx, h.HostID); err != nil {
@@ -141,7 +140,10 @@ func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) er
 			if s.credits == nil {
 				configErr = errors.New("环境积分计费服务不可用")
 			} else {
-				active, configErr = s.credits.ComputeEnabled(ctx, tx)
+				configErr = s.credits.CheckComputeMode(ctx, tx)
+				if configErr != nil && !errors.Is(configErr, billing.ErrComputeModeUnavailable) {
+					return configErr
+				}
 			}
 		}
 		if configErr != nil || !active {
@@ -195,21 +197,18 @@ func (s *Service) billUser(ctx context.Context, user string, closedOnly bool) er
 				return err
 			}
 			// 未确认运行的时间不追补扣费；已到期且失联的环境转为停止目标。
-			if env.Phase != "running" || env.ObservedGeneration != env.Generation || env.ObservedAt == nil || at.Sub(*env.ObservedAt) > 90*time.Second {
+			if !freshRunning(env, at) {
 				if err := s.stopBillingEnvironment(ctx, q, env, "billing_unavailable"); err != nil {
 					return err
 				}
 				stopped = append(stopped, env)
 				continue
 			}
-			if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
-				var denied *failure
-				if !errors.As(err, &denied) || denied.code != "insufficient_credits" {
-					return err
-				}
-				if err := s.stopBillingEnvironment(ctx, q, env, "insufficient_credits"); err != nil {
-					return err
-				}
+			didStop, err := s.renewOrStop(ctx, q, tx, env)
+			if err != nil {
+				return err
+			}
+			if didStop {
 				stopped = append(stopped, env)
 			}
 		}

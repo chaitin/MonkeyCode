@@ -22,15 +22,17 @@ type ComputeCharge struct {
 	Usage                                       json.RawMessage
 }
 
-func (s *Service) ComputeEnabled(ctx context.Context, tx pgx.Tx) (bool, error) {
+var ErrComputeModeUnavailable = fail(409, "environment_billing_mode_unavailable", "云电脑计费仅支持本地积分，请切换为直接计费模式")
+
+func (s *Service) CheckComputeMode(ctx context.Context, tx pgx.Tx) error {
 	p, err := s.policy(ctx, tx, false)
-	if err != nil || !p.Enabled {
-		return false, err
+	if err != nil {
+		return err
 	}
 	if p.Mode != "local" {
-		return false, fail(409, "environment_billing_mode_unavailable", "云电脑计费仅支持本地积分，请切换为直接计费模式")
+		return ErrComputeModeUnavailable
 	}
-	return true, nil
+	return nil
 }
 
 // 由环境用例持有控制锁，并与计量进度在同一事务内锁定账户、入账。

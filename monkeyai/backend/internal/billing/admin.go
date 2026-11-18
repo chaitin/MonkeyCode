@@ -76,7 +76,7 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	allowed := []string{"revision"}
 	switch section {
 	case "environment":
-		allowed = append(allowed, "enabled", "cpu_credits_per_core_hour", "memory_credits_per_gib_hour")
+		allowed = append(allowed, "cpu_credits_per_core_hour", "memory_credits_per_gib_hour")
 	case "pricing":
 		allowed = append(allowed, "input_credits_per_million_tokens", "cached_input_credits_per_million_tokens", "output_credits_per_million_tokens")
 	case "cycle":
@@ -119,21 +119,13 @@ func (s *Service) saveSettings(w http.ResponseWriter, r *http.Request) {
 	var walletBefore, walletAfter WalletInfo
 	switch section {
 	case "environment":
-		if raw, ok := in["enabled"]; ok {
-			var enabled *bool
-			if json.Unmarshal(raw, &enabled) != nil || enabled == nil || !*enabled {
-				resource.Fail(r.Context(), w, resource.Invalid("云电脑计费不支持单独关闭"))
-				return
-			}
-		}
-		p.Environment.Enabled = true
 		for key, target := range map[string]*Amount{"cpu_credits_per_core_hour": &p.Environment.CPU, "memory_credits_per_gib_hour": &p.Environment.Memory} {
 			if err = json.Unmarshal(in[key], target); err != nil || *target < 0 || *target > Amount(1_000_000*scale) {
 				resource.Fail(r.Context(), w, resource.Invalid("单价须为 0 到 1000000 的积分值，最多六位小数"))
 				return
 			}
 		}
-		if p.Enabled && p.Mode != "local" {
+		if p.Mode != "local" && (p.Environment.CPU > 0 || p.Environment.Memory > 0) {
 			resource.Fail(r.Context(), w, resource.Invalid("云电脑计费仅支持本地积分"))
 			return
 		}

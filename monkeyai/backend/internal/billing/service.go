@@ -31,9 +31,8 @@ type Price struct {
 	VideoUnit  Amount `json:"video_unit,omitempty"`
 }
 type ComputePricing struct {
-	Enabled bool   `json:"enabled"`
-	CPU     Amount `json:"cpu_credits_per_core_hour"`
-	Memory  Amount `json:"memory_credits_per_gib_hour"`
+	CPU    Amount `json:"cpu_credits_per_core_hour"`
+	Memory Amount `json:"memory_credits_per_gib_hour"`
 }
 
 type Policy struct {
@@ -53,7 +52,7 @@ type Policy struct {
 }
 
 func defaultPolicy() Policy {
-	return Policy{Environment: ComputePricing{Enabled: true, CPU: 100 * Amount(scale), Memory: 50 * Amount(scale)}, RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
+	return Policy{Environment: ComputePricing{CPU: 100 * Amount(scale), Memory: 50 * Amount(scale)}, RootCredits: 10000 * Amount(scale), Input: 100 * Amount(scale), Cached: 20 * Amount(scale), Output: 400 * Amount(scale), Cycle: "weekly", Mode: "local", Enabled: true}
 }
 func (p Policy) period(now time.Time) (time.Time, time.Time) {
 	zone, err := time.LoadLocation("Asia/Shanghai")
@@ -171,8 +170,6 @@ func (s *Service) policy(ctx context.Context, q resource.Queryer, lock bool) (Po
 	if err = json.Unmarshal(record.Value, &p); err != nil {
 		return p, fmt.Errorf("读取计费策略: %w", err)
 	}
-	// 云电脑无独立计费开关，兼容旧配置中的 enabled 字段。
-	p.Environment.Enabled = true
 	p.Revision = record.Revision
 	p.activateCycle(s.now())
 	return p, nil

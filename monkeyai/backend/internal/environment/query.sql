@@ -126,7 +126,7 @@ UPDATE environment_operations SET status='superseded',finished_at=now() WHERE en
 UPDATE environment_operations SET status=$3,reason=$4,finished_at=now() WHERE environment_id=$1 AND generation=$2 AND status='pending';
 
 -- name: ReportState :execrows
-UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7,
+UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=sqlc.arg(observed_at)::timestamptz,updated_at=now(),usage=$7,
 deleted_at=CASE WHEN desired='deleted' AND $5='deleted' THEN COALESCE(deleted_at,now()) ELSE NULL END
 WHERE id=$1 AND host_id=$2 AND instance_id=$3 AND generation=$4;
 
@@ -157,9 +157,7 @@ SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=sqlc.arg(m
  WHERE r.machine_id=sqlc.arg(machine_id)::uuid AND e.user_id=sqlc.arg(user_id)::uuid AND e.desired='running' AND e.phase<>'failed'
  AND e.generation=r.generation AND e.instance_id=r.instance_id AND u.status='active' AND u.deleted_at IS NULL AND h.status='active'
  AND (
-  NOT EXISTS(SELECT 1 FROM settings c WHERE c.key='billing'
-   AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0))
-  OR NOT COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key='billing'),false)
+  (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)=0 AND COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)=0)
   OR EXISTS(SELECT 1 FROM environment_billing_periods p WHERE p.environment_id=e.id AND p.prepaid_until>now() AND p.started_at<=now())
  )
 ) AS allowed;
@@ -231,9 +229,12 @@ SELECT environment_id,COALESCE(sum(settled_amount),0)::text AS amount,
  COALESCE(sum(settled_seconds),0)::bigint AS seconds,bool_or(closed_at IS NULL) AS running,COALESCE(max(prepaid_until),'epoch'::timestamptz)::timestamptz AS prepaid_until
 FROM environment_billing_periods WHERE environment_id=ANY(sqlc.arg(ids)::uuid[]) GROUP BY environment_id;
 
+-- name: GlobalEnvironmentPricing :one
+SELECT ('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing;
+
 -- name: HostSetup :one
 SELECT h.id,h.name,h.architecture,h.status,c.resource,
-('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL;
 
 -- name: SetHostSetup :exec
@@ -244,7 +245,7 @@ ON CONFLICT(host_id) DO NOTHING;
 UPDATE environment_billing_periods p SET closed_at=confirmed_until FROM environments e WHERE p.environment_id=e.id AND e.host_id=$1 AND p.closed_at IS NULL AND p.prepaid_until IS NULL;
 
 -- name: UserEnvironmentHosts :many
-SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1;
+SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1;
 
 -- name: BilledUserEnvironments :many
 SELECT e.* FROM environments e JOIN host_environment_configs c ON c.host_id=e.host_id WHERE e.user_id=$1 AND e.desired='running'
@@ -252,7 +253,7 @@ SELECT e.* FROM environments e JOIN host_environment_configs c ON c.host_id=e.ho
 ORDER BY e.id FOR UPDATE OF e;
 
 -- name: AccessibleHostCandidates :many
-SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
 FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL ORDER BY h.id;
 
 -- name: PaidBillingHour :one
@@ -262,7 +263,7 @@ ORDER BY prepaid_until DESC LIMIT 1;
 
 -- name: OpenPrepaidBillingHour :one
 INSERT INTO environment_billing_periods(environment_id,user_id,generation,pricing,cpu_millis,memory_bytes,started_at,confirmed_until,prepaid_until)
-VALUES($1,$2,$3,$4,$5,$6,$7,$7,$7+interval '1 hour') RETURNING *;
+VALUES($1,$2,$3,$4,$5,$6,sqlc.arg(started_at)::timestamptz,sqlc.arg(started_at)::timestamptz,sqlc.arg(started_at)::timestamptz+interval '1 hour') RETURNING *;
 
 -- name: UserPaidBillingHours :many
 SELECT DISTINCT ON(p.environment_id) p.* FROM environment_billing_periods p

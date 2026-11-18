@@ -1698,7 +1698,6 @@ paths:
                 required: [revision, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
                 properties:
                   revision: {type: integer}
-                  enabled: {type: boolean}
                   cpu_credits_per_core_hour:
                     $ref: '#/components/schemas/CreditAmount'
                   memory_credits_per_gib_hour:
@@ -10369,10 +10368,9 @@ components:
     EnvironmentBillingConfig:
       type: object
       additionalProperties: false
-      required: [enabled, cpu_credits_per_core_hour, memory_credits_per_gib_hour]
-      description: 全局配置，适用于所有宿主机，无独立关闭开关；enabled 为兼容字段，始终为 true。CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节），不继承旧宿主计价；仅通过费用设置保存，仍受系统总计费开关控制。启动前按分配CPU和内存预扣完整一小时，到期续扣；提前停止不退款，已付费期限内重启不重复扣费。存储暂不收费，仅支持本地积分。调价从下一次续费生效，历史按秒账单仍按已确认用量结清。
+      required: [cpu_credits_per_core_hour, memory_credits_per_gib_hour]
+      description: 全局配置，适用于所有宿主机，无计费开关。CPU 默认每核每小时100积分，内存默认每GB每小时50积分（GB=1024³字节），不继承旧宿主计价；仅通过费用设置保存，零单价不扣积分。启动前按分配CPU和内存预扣完整一小时，到期续扣；提前停止不退款，已付费期限内重启不重复扣费。存储暂不收费，仅支持本地积分。调价从下一次续费生效，历史按秒账单仍按已确认用量结清。
       properties:
-        enabled: {type: boolean}
         cpu_credits_per_core_hour:
           $ref: '#/components/schemas/CreditAmount'
         memory_credits_per_gib_hour:

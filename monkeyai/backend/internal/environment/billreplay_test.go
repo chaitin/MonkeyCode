@@ -30,7 +30,7 @@ func TestRepeatedExchangeCannotAdvanceUsageBillingOrReopenPrices(t *testing.T) {
 	}
 	settle(t, s, false)
 	cost(t, s, user, "30", 1)
-	price := BillingConfig{Enabled: true, CPU: 7200_000000}
+	price := BillingConfig{CPU: 7200_000000}
 	if _, err := s.saveSetup(t.Context(), host, Setup{Billing: &price}); err != nil {
 		t.Fatal(err)
 	}

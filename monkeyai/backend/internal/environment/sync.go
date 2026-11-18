@@ -77,6 +77,7 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 	}
 	out := Commands{Protocol: 1, UsageProtocol: 1, Targets: []json.RawMessage{}, Acknowledged: in.Results}
 	var billingStopped []sqlc.Environment
+	var pendingRenewal bool
 	err := s.transactionWithTx(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		status, err := q.HostStatus(ctx, host)
 		if err != nil {
@@ -125,7 +126,7 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 				}
 			}
 			usage, _ := json.Marshal(o.Usage)
-			if _, err := q.ReportState(ctx, sqlc.ReportStateParams{ID: env.ID, HostID: host, InstanceID: o.InstanceID, ObservedGeneration: o.Generation, Phase: o.Phase, Reason: o.Reason, Usage: usage}); err != nil {
+			if _, err := q.ReportState(ctx, sqlc.ReportStateParams{ID: env.ID, HostID: host, InstanceID: o.InstanceID, ObservedGeneration: o.Generation, Phase: o.Phase, Reason: o.Reason, Usage: usage, ObservedAt: at}); err != nil {
 				return err
 			}
 			if err := q.ReportRuntimeVersion(ctx, sqlc.ReportRuntimeVersionParams{EnvironmentID: env.ID, RuntimeVersion: o.RuntimeVersion}); err != nil {
@@ -151,6 +152,7 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 					}
 				}
 			}
+			env.Phase, env.ObservedGeneration, env.ObservedAt = o.Phase, o.Generation, &at
 			if err := s.observeBilling(ctx, q, tx, env, o.Phase, usable); err != nil {
 				return err
 			}
@@ -204,13 +206,25 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 			return err
 		}
 		for _, env := range rows {
-			if env.Desired == "running" && env.Phase != "failed" {
-				if err := s.prepayBillingHour(ctx, q, tx, env); err != nil {
-					var denied *failure
-					if !errors.As(err, &denied) || (denied.code != "insufficient_credits" && denied.code != "billing_unavailable") {
+			if env.Desired == "running" {
+				_, err := q.ActiveUser(ctx, env.UserID)
+				active := err == nil
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				covered := false
+				if active {
+					covered, err = s.targetCovered(ctx, q, env.ID)
+					if err != nil {
 						return err
 					}
-					if err := s.stopBillingEnvironment(ctx, q, env, denied.code); err != nil {
+				}
+				if !covered {
+					if active && freshRunning(env, s.now()) {
+						pendingRenewal = true
+						continue
+					}
+					if err := s.stopBillingEnvironment(ctx, q, env, "billing_unavailable"); err != nil {
 						return err
 					}
 					env, err = q.GetEnvironment(ctx, sqlc.GetEnvironmentParams{ID: env.ID})
@@ -228,6 +242,9 @@ func (s *Service) ExchangeAt(ctx context.Context, host string, raw json.RawMessa
 		return nil
 	})
 	if err == nil {
+		if pendingRenewal {
+			s.wakeBilling()
+		}
 		for _, o := range in.Results {
 			if o.Phase != "running" {
 				s.wakeBilling()

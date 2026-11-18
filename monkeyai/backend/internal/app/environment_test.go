@@ -132,7 +132,7 @@ func TestEnvironmentClientAPI(t *testing.T) {
 	call("POST", "/environments", manage, strings.Replace(input, "项目 A", "项目 B", 1), 409)
 	id := created.Environment.ID
 	var billed environment.View
-	if err := json.Unmarshal(call("GET", "/environments/"+id, read, "", 200).Body.Bytes(), &billed); err != nil || billed.Billing == nil || !billed.Billing.Enabled || billed.Billing.Budget == nil || billed.Billing.Budget.Balance.String() != "10000" || billed.Billing.HourlyCredits.String() != "1" {
+	if err := json.Unmarshal(call("GET", "/environments/"+id, read, "", 200).Body.Bytes(), &billed); err != nil || billed.Billing == nil || billed.Billing.State == "free" || billed.Billing.Budget == nil || billed.Billing.Budget.Balance.String() != "10000" || billed.Billing.HourlyCredits.String() != "1" {
 		t.Fatalf("所属用户未收到真实计费预算：%v %+v", err, billed.Billing)
 	}
 	for _, path := range []string{"/environments/" + id, "/environments/" + id + "/operations"} {

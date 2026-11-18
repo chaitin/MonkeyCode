@@ -11,7 +11,7 @@ import (
 )
 
 const accessibleHostCandidates = `-- name: AccessibleHostCandidates :many
-SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+SELECT h.id,h.name,h.architecture,h.status,h.enabled,h.last_seen_at,h.environment_synced_at,h.report,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
 FROM hosts h JOIN host_environment_configs c ON c.host_id=h.id WHERE h.deleted_at IS NULL ORDER BY h.id
 `
 
@@ -784,6 +784,17 @@ func (q *Queries) GetSpecification(ctx context.Context, id string) (GetSpecifica
 	return i, err
 }
 
+const globalEnvironmentPricing = `-- name: GlobalEnvironmentPricing :one
+SELECT ('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
+`
+
+func (q *Queries) GlobalEnvironmentPricing(ctx context.Context) ([]byte, error) {
+	row := q.db.QueryRow(ctx, globalEnvironmentPricing)
+	var billing []byte
+	err := row.Scan(&billing)
+	return billing, err
+}
+
 const hostEnvironment = `-- name: HostEnvironment :one
 SELECT id, user_id, host_id, name, instance_id, generation, desired, phase, observed_generation, spec, cpu_millis, memory_bytes, usage, reason, billing_stop_reason, observed_at, created_at, updated_at, deleted_at FROM environments WHERE id=$1 AND host_id=$2
 `
@@ -822,7 +833,7 @@ func (q *Queries) HostEnvironment(ctx context.Context, arg HostEnvironmentParams
 
 const hostSetup = `-- name: HostSetup :one
 SELECT h.id,h.name,h.architecture,h.status,c.resource,
-('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing
+('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing
 FROM hosts h LEFT JOIN host_environment_configs c ON c.host_id=h.id WHERE h.id=$1 AND h.deleted_at IS NULL
 `
 
@@ -1384,7 +1395,7 @@ func (q *Queries) OpenBillingPeriod(ctx context.Context, arg OpenBillingPeriodPa
 
 const openPrepaidBillingHour = `-- name: OpenPrepaidBillingHour :one
 INSERT INTO environment_billing_periods(environment_id,user_id,generation,pricing,cpu_millis,memory_bytes,started_at,confirmed_until,prepaid_until)
-VALUES($1,$2,$3,$4,$5,$6,$7,$7,$7+interval '1 hour') RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
+VALUES($1,$2,$3,$4,$5,$6,$7::timestamptz,$7::timestamptz,$7::timestamptz+interval '1 hour') RETURNING id, environment_id, user_id, generation, pricing, cpu_millis, memory_bytes, started_at, confirmed_until, closed_at, settled_seconds, settled_amount, prepaid_until
 `
 
 type OpenPrepaidBillingHourParams struct {
@@ -1521,19 +1532,20 @@ func (q *Queries) ReportRuntimeVersion(ctx context.Context, arg ReportRuntimeVer
 }
 
 const reportState = `-- name: ReportState :execrows
-UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=now(),updated_at=now(),usage=$7,
+UPDATE environments SET phase=$5,reason=$6,observed_generation=$4,observed_at=$8::timestamptz,updated_at=now(),usage=$7,
 deleted_at=CASE WHEN desired='deleted' AND $5='deleted' THEN COALESCE(deleted_at,now()) ELSE NULL END
 WHERE id=$1 AND host_id=$2 AND instance_id=$3 AND generation=$4
 `
 
 type ReportStateParams struct {
-	ID                 string `json:"id"`
-	HostID             string `json:"host_id"`
-	InstanceID         string `json:"instance_id"`
-	ObservedGeneration int64  `json:"observed_generation"`
-	Phase              string `json:"phase"`
-	Reason             string `json:"reason"`
-	Usage              []byte `json:"usage"`
+	ID                 string    `json:"id"`
+	HostID             string    `json:"host_id"`
+	InstanceID         string    `json:"instance_id"`
+	ObservedGeneration int64     `json:"observed_generation"`
+	Phase              string    `json:"phase"`
+	Reason             string    `json:"reason"`
+	Usage              []byte    `json:"usage"`
+	ObservedAt         time.Time `json:"observed_at"`
 }
 
 func (q *Queries) ReportState(ctx context.Context, arg ReportStateParams) (int64, error) {
@@ -1545,6 +1557,7 @@ func (q *Queries) ReportState(ctx context.Context, arg ReportStateParams) (int64
 		arg.Phase,
 		arg.Reason,
 		arg.Usage,
+		arg.ObservedAt,
 	)
 	if err != nil {
 		return 0, err
@@ -1567,9 +1580,7 @@ SELECT NOT EXISTS(SELECT 1 FROM environment_runtimes WHERE machine_id=$1::uuid) 
  WHERE r.machine_id=$1::uuid AND e.user_id=$2::uuid AND e.desired='running' AND e.phase<>'failed'
  AND e.generation=r.generation AND e.instance_id=r.instance_id AND u.status='active' AND u.deleted_at IS NULL AND h.status='active'
  AND (
-  NOT EXISTS(SELECT 1 FROM settings c WHERE c.key='billing'
-   AND (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)>0 OR COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)>0))
-  OR NOT COALESCE((SELECT (value->>'enabled')::boolean FROM settings WHERE key='billing'),false)
+  (COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'cpu_credits_per_core_hour')::numeric,100)=0 AND COALESCE(((SELECT value->'environment' FROM settings WHERE key='billing')->>'memory_credits_per_gib_hour')::numeric,50)=0)
   OR EXISTS(SELECT 1 FROM environment_billing_periods p WHERE p.environment_id=e.id AND p.prepaid_until>now() AND p.started_at<=now())
  )
 ) AS allowed
@@ -1845,7 +1856,7 @@ func (q *Queries) UserBillingPeriods(ctx context.Context, arg UserBillingPeriods
 }
 
 const userEnvironmentHosts = `-- name: UserEnvironmentHosts :many
-SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb) || '{"enabled":true}'::jsonb)::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
+SELECT DISTINCT c.host_id,('{"cpu_credits_per_core_hour":"100","memory_credits_per_gib_hour":"50"}'::jsonb || COALESCE((SELECT value->'environment' FROM settings WHERE key='billing'),'{}'::jsonb))::jsonb AS billing FROM host_environment_configs c JOIN environments e ON e.host_id=c.host_id WHERE e.user_id=$1
 `
 
 type UserEnvironmentHostsRow struct {

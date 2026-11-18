@@ -13,7 +13,6 @@ import (
 )
 
 type BillingView struct {
-	Enabled        bool           `json:"enabled"`
 	State          string         `json:"state"`
 	HourlyCredits  billing.Amount `json:"hourly_credits"`
 	SettledCredits string         `json:"settled_credits"`
@@ -30,36 +29,19 @@ type BillingBudget struct {
 	LowBalance          bool           `json:"low_balance"`
 }
 
-func (s *Service) billingBudget(ctx context.Context, user string) (*BillingBudget, bool, error) {
+func (s *Service) billingBudget(ctx context.Context, user string, pricing BillingConfig) (*BillingBudget, error) {
 	var out *BillingBudget
-	active := false
+	if pricing.CPU == 0 && pricing.Memory == 0 {
+		return nil, nil
+	}
 	err := s.transactionWithTx(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
-		hosts, err := q.UserEnvironmentHosts(ctx, user)
-		if err != nil {
-			return err
-		}
-		var pricing BillingConfig
-		for _, h := range hosts {
-			b, err := decodeBilling(h.Billing)
-			if err != nil {
-				return err
-			}
-			pricing = b
-			if b.Enabled && (b.CPU > 0 || b.Memory > 0) {
-				active = true
-			}
-		}
-		if !active {
-			return nil
-		}
 		if s.credits == nil {
 			return errors.New("环境积分计费服务不可用")
 		}
-		active, err = s.credits.ComputeEnabled(ctx, tx)
-		if err != nil || !active {
+		if err := s.credits.CheckComputeMode(ctx, tx); err != nil {
 			return err
 		}
-		if _, err = q.ActiveUser(ctx, user); errors.Is(err, pgx.ErrNoRows) {
+		if _, err := q.ActiveUser(ctx, user); errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		} else if err != nil {
 			return err
@@ -93,7 +75,7 @@ func (s *Service) billingBudget(ctx context.Context, user string) (*BillingBudge
 		}
 		return nil
 	})
-	return out, active, err
+	return out, err
 }
 func (s *Service) billingViews(ctx context.Context, items []View) error {
 	if len(items) == 0 {
@@ -112,42 +94,28 @@ func (s *Service) billingViews(ctx context.Context, items []View) error {
 	for _, p := range summaries {
 		byID[p.EnvironmentID] = p
 	}
-	type budgetResult struct {
-		value   *BillingBudget
-		enabled bool
+	budgets := make(map[string]*BillingBudget)
+	b, err := globalPricing(ctx, q)
+	if err != nil {
+		return err
 	}
-	budgets := make(map[string]budgetResult)
-	hosts := make(map[string]BillingConfig)
+	priced := b.CPU > 0 || b.Memory > 0
 	for i := range items {
 		e := &items[i]
-		b, ok := hosts[e.HostID]
-		if !ok {
-			h, err := q.HostSetup(ctx, e.HostID)
-			if err != nil {
-				return err
-			}
-			b, err = decodeBilling(h.Billing)
-			if err != nil {
-				return err
-			}
-			hosts[e.HostID] = b
-		}
-		enabled := b.Enabled && (b.CPU > 0 || b.Memory > 0)
-		budget := budgetResult{}
-		if enabled {
+		var budget *BillingBudget
+		if priced {
 			var ok bool
 			budget, ok = budgets[e.UserID]
 			if !ok {
-				budget.value, budget.enabled, err = s.billingBudget(ctx, e.UserID)
+				budget, err = s.billingBudget(ctx, e.UserID, b)
 				if err != nil {
 					return err
 				}
 				budgets[e.UserID] = budget
 			}
-			enabled = budget.enabled
 		}
-		v := &BillingView{Enabled: enabled, State: "disabled", SettledCredits: "0", StopReason: e.BillingStopReason, Budget: budget.value}
-		if enabled {
+		v := &BillingView{State: "free", SettledCredits: "0", StopReason: e.BillingStopReason, Budget: budget}
+		if priced {
 			v.State = "waiting"
 		}
 		if p, ok := byID[e.ID]; ok {
@@ -156,7 +124,7 @@ func (s *Service) billingViews(ctx context.Context, items []View) error {
 			}
 			v.SettledCredits = p.Amount
 			v.SettledSeconds = p.Seconds
-			if enabled {
+			if priced {
 				if e.Desired == "running" && p.PrepaidUntil.After(s.now()) {
 					v.State = "running"
 				}
@@ -165,7 +133,7 @@ func (s *Service) billingViews(ctx context.Context, items []View) error {
 				}
 			}
 		}
-		if enabled {
+		if priced {
 			var spec Spec
 			if err := json.Unmarshal(e.Spec, &spec); err != nil {
 				return err

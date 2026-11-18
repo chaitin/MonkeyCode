@@ -13,13 +13,12 @@ import (
 )
 
 type BillingConfig struct {
-	Enabled bool           `json:"enabled"`
-	CPU     billing.Amount `json:"cpu_credits_per_core_hour"`
-	Memory  billing.Amount `json:"memory_credits_per_gib_hour"`
+	CPU    billing.Amount `json:"cpu_credits_per_core_hour"`
+	Memory billing.Amount `json:"memory_credits_per_gib_hour"`
 }
 
 type CreditBilling interface {
-	ComputeEnabled(context.Context, pgx.Tx) (bool, error)
+	CheckComputeMode(context.Context, pgx.Tx) error
 	ComputeAccount(context.Context, pgx.Tx, string, time.Time) (billing.Account, error)
 	ChargeCompute(context.Context, pgx.Tx, billing.ComputeCharge) error
 }
@@ -59,24 +58,41 @@ func decodeBilling(raw []byte) (BillingConfig, error) {
 	return b, b.validate()
 }
 
+func globalPricing(ctx context.Context, q *sqlc.Queries) (BillingConfig, error) {
+	raw, err := q.GlobalEnvironmentPricing(ctx)
+	if err != nil {
+		return BillingConfig{}, err
+	}
+	return decodeBilling(raw)
+}
+
+// 下发目标只检查现有覆盖，不购买新时段。
+func (s *Service) targetCovered(ctx context.Context, q *sqlc.Queries, id string) (bool, error) {
+	at := s.now().UTC()
+	_, err := q.PaidBillingHour(ctx, sqlc.PaidBillingHourParams{EnvironmentID: id, PrepaidUntil: &at})
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, err
+	}
+	b, err := globalPricing(ctx, q)
+	return b.CPU == 0 && b.Memory == 0, err
+}
+
 func (s *Service) billingConfig(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, host string) (BillingConfig, error) {
 	d, err := q.HostSetup(ctx, host)
 	if err != nil {
 		return BillingConfig{}, err
 	}
 	b, err := decodeBilling(d.Billing)
-	if err != nil || !b.Enabled || b.CPU == 0 && b.Memory == 0 {
+	if err != nil || b.CPU == 0 && b.Memory == 0 {
 		return b, err
 	}
 	if s.credits == nil {
 		return b, conflict("billing_unavailable", "环境积分计费服务不可用")
 	}
-	enabled, err := s.credits.ComputeEnabled(ctx, tx)
-	if err != nil {
-		return b, err
-	}
-	b.Enabled = enabled
-	return b, nil
+	return b, s.credits.CheckComputeMode(ctx, tx)
 }
 
 func (s *Service) billingAdmission(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, user, host string, cpu, memory int64) error {
@@ -84,7 +100,7 @@ func (s *Service) billingAdmission(ctx context.Context, q *sqlc.Queries, tx pgx.
 	if err != nil {
 		return err
 	}
-	if !b.Enabled || b.CPU == 0 && b.Memory == 0 {
+	if b.CPU == 0 && b.Memory == 0 {
 		return nil
 	}
 	a, err := s.credits.ComputeAccount(ctx, tx, user, s.now().UTC())

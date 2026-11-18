@@ -29,7 +29,7 @@ func (s *Service) prepayBillingHour(ctx context.Context, q *sqlc.Queries, tx pgx
 	if err != nil {
 		return err
 	}
-	if !b.Enabled || b.CPU == 0 && b.Memory == 0 {
+	if b.CPU == 0 && b.Memory == 0 {
 		return nil
 	}
 	// 旧按秒区间仅结清已确认用量，不补收断线时间，也不改写历史单价。
@@ -77,6 +77,38 @@ func (s *Service) prepayBillingHour(ctx context.Context, q *sqlc.Queries, tx pgx
 		return err
 	}
 	return q.SetBillingSettlement(ctx, sqlc.SetBillingSettlementParams{ID: p.ID, SettledSeconds: 3600, SettledAmount: hourly.String()})
+}
+
+func freshRunning(e sqlc.Environment, at time.Time) bool {
+	return e.Desired == "running" && e.Phase == "running" && e.Generation == e.ObservedGeneration && e.ObservedAt != nil && at.Sub(*e.ObservedAt) <= 90*time.Second
+}
+
+// 只隔离明确的业务拒绝；即使在写入预付区间后才发现余额不足，也不能提交半笔账。
+func (s *Service) renewOrStop(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, env sqlc.Environment) (bool, error) {
+	sub, err := tx.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	err = s.prepayBillingHour(ctx, q.WithTx(sub), sub, env)
+	if err == nil {
+		return false, sub.Commit(ctx)
+	}
+	if rollbackErr := sub.Rollback(ctx); rollbackErr != nil {
+		return false, rollbackErr
+	}
+	reason := ""
+	var denied *failure
+	switch {
+	case errors.Is(err, billing.ErrComputeModeUnavailable):
+		reason = "billing_unavailable"
+	case errors.Is(err, billing.ErrComputeInsufficientCredits):
+		reason = "insufficient_credits"
+	case errors.As(err, &denied) && (denied.code == "billing_unavailable" || denied.code == "insufficient_credits"):
+		reason = denied.code
+	default:
+		return false, err
+	}
+	return true, s.stopBillingEnvironment(ctx, q, env, reason)
 }
 
 func (s *Service) stopBillingEnvironment(ctx context.Context, q *sqlc.Queries, env sqlc.Environment, reason string) error {
