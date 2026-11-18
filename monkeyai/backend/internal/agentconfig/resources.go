@@ -455,7 +455,13 @@ func (r *Resources) list(ctx context.Context, q resource.Queryer, user, kind str
 				dto = resource.Object{"id": id, "name": o["name"], "description": o["description"], "name_i18n": o["name_i18n"], "description_i18n": o["description_i18n"], "avatar_path": manifest["avatar_path"], "version": manifest["version"], "manifest_path": "/api/v1/experts/" + id + "/manifest", "available": manifest["available"], "issues": manifest["issues"]}
 			}
 		case "connectors":
-			dto, err = r.connectorDTO(ctx, q, c, o, user)
+			if id == knowledgeBaseConnectorID {
+				dto = r.knowledgeBaseConnectorDTO(o)
+				dto["tools"] = []resource.Object{}
+				dto["tools_version"] = resource.Hash(dto["tools"])
+			} else {
+				dto, err = r.mcp.ListEntry(ctx, q, o, user)
+			}
 		}
 		if err != nil {
 			return nil, err

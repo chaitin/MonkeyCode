@@ -20,7 +20,9 @@ func TestResolveConnectorTools(t *testing.T) {
 			r, user, other := catalogDatabase(t)
 			t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
 			var revision atomic.Int32
+			var calls atomic.Int32
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				calls.Add(1)
 				var in struct {
 					ID     json.RawMessage `json:"id"`
 					Method string          `json:"method"`
@@ -121,6 +123,7 @@ func TestResolveConnectorTools(t *testing.T) {
 				t.Fatalf("实时工具或清单版本未更新: %v", updated)
 			}
 
+			before := calls.Load()
 			items, err := r.list(t.Context(), r.store.Pool, user, "connectors", resource.CatalogFilter{}, []string{connector})
 			if err != nil {
 				t.Fatal(err)
@@ -131,12 +134,12 @@ func TestResolveConnectorTools(t *testing.T) {
 					t.Fatalf("连接目录应只包含当前用户的凭证: %v", items)
 				}
 				for _, cred := range credentials {
-					if cred.String("tools_version") != resource.Hash(cred["tools"]) {
-						t.Fatalf("内嵌凭证缺少兼容工具版本: %v", cred)
-					}
+					assertEmptyCatalogTools(t, cred)
 				}
-			} else if items[0].String("tools_version") != resource.Hash(items[0]["tools"]) {
-				t.Fatal("连接目录缺少兼容工具版本")
+			}
+			assertEmptyCatalogTools(t, items[0])
+			if calls.Load() != before {
+				t.Fatal("连接列表不应查询远端工具")
 			}
 
 			expert := resource.ID()
@@ -177,13 +180,14 @@ func TestResolveConnectorTools(t *testing.T) {
 			}
 
 			revision.Store(2)
-			if _, err := r.Resolve(t.Context(), user, in); err == nil {
-				t.Fatal("远端失败不应返回旧工具目录")
-			} else {
-				var fault *resource.Error
-				if !errors.As(err, &fault) || fault.Status != http.StatusBadGateway {
-					t.Fatalf("远端失败应返回 502: %v", err)
-				}
+			degraded, err := r.Resolve(t.Context(), user, in)
+			if err != nil || !degraded.Bool("available") {
+				t.Fatalf("远端失败不应阻断资源解析: %v, %v", degraded, err)
+			}
+			failed := degraded["connectors"].([]resource.Object)[0]
+			failedTools := failed["tools"].([]resource.Object)
+			if failed.String("connection_status") != "error" || failedTools == nil || len(failedTools) != 0 || failed.String("tools_version") != resource.Hash(failedTools) {
+				t.Fatalf("远端失败应标记异常且不回退旧工具: %v", failed)
 			}
 			revision.Store(3)
 			empty, err := r.Resolve(t.Context(), user, in)

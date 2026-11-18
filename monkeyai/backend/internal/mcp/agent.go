@@ -15,7 +15,15 @@ func (s *Service) gateway(c resource.Object, credential string) resource.Object 
 	}
 	return resource.Object{"url": url, "transport": "streamable_http", "authentication": "api_key", "required_scope": "mcp:invoke"}
 }
+func (s *Service) ListEntry(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	return s.catalog(ctx, q, c, user, false)
+}
+
 func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string) (resource.Object, error) {
+	return s.catalog(ctx, q, c, user, true)
+}
+
+func (s *Service) catalog(ctx context.Context, q resource.Queryer, c resource.Object, user string, includeTools bool) (resource.Object, error) {
 	c, err := resource.DecodeObject(sqlc.New(q).GetConnector(ctx, c.String("id")))
 	if err != nil {
 		return nil, err
@@ -39,7 +47,9 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 			delete(cred, "oauth_expires_at")
 			tools := []resource.Object{}
 			if cred.String("authorization_status") == "authorized" {
-				tools, err = s.liveTools(ctx, q, c, raw[i], false)
+				if includeTools {
+					tools, err = s.catalogTools(ctx, q, c, raw[i], cred)
+				}
 				if err != nil {
 					return nil, err
 				}
@@ -66,7 +76,9 @@ func (s *Service) Catalog(ctx context.Context, q resource.Queryer, c resource.Ob
 	}
 	tools := []resource.Object{}
 	if c.String("authorization_mode") == "none" || credentialStatus(c, cred) == "authorized" {
-		tools, err = s.liveTools(ctx, q, c, cred, false)
+		if includeTools {
+			tools, err = s.catalogTools(ctx, q, c, cred, out)
+		}
 		if err != nil {
 			return nil, err
 		}

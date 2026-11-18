@@ -189,7 +189,7 @@ Agent 模型列表包含 `ownership_type`（固定为 `system` / `user`）及 `u
 
 模型、规则、技能、Connector 和专家的公开回包统一使用 `user: {id, name, email}`，移除 `owner_user_id` 和 `owner_name`。系统资源的 user 表示创建者，个人资源表示所有者。客户端使用 `ownership_type` 和 `user.id` 判断归属；姓名或邮箱变化会更新资源目录版本。数据库归属外键继续用于服务端权限校验。
 
-凭证响应（含 `credentials` 和管理端工具上下文）也使用 `user: {id, name, email}`，不再返回 `user_id`。这里是凭证所属的平台用户，不是 Connector 所有者或上游 OAuth 账户；集中凭证返回 `user: null`。为兼容旧客户端，Connector 目录、专家 manifest 和资源解析继续返回 `tools` 与 `tools_version`，不返回 `tools_path`。独立认证在目录内嵌的每份当前用户凭证下返回工具与版本，resolve 选定后提升到连接对象；未认证凭证的工具为 `[]`。工具结构与 REST 工具接口一致（包含 `input_schema`），版本为工具内容的哈希；内置知识库直接返回本地定义，工具 ID 沿用工具名称。普通 MCP 保留既有工具 ID，未配置工具使用稳定 ID。工具也可通过下述实时 REST 接口或 MCP `tools/list` 获取。
+凭证响应（含 `credentials` 和管理端工具上下文）也使用 `user: {id, name, email}`，不再返回 `user_id`。这里是凭证所属的平台用户，不是 Connector 所有者或上游 OAuth 账户；集中凭证返回 `user: null`。连接列表保留空 `tools` 数组及对应 `tools_version`，但不查询远端；独立认证的工具字段位于每份凭证下。为兼容旧客户端，专家 manifest 和资源解析继续返回 `tools` 与 `tools_version`，不返回 `tools_path`。独立认证在专家清单内嵌的每份当前用户凭证下返回工具与版本，resolve 选定后提升到连接对象；未认证凭证的工具为 `[]`。工具结构与 REST 工具接口一致（包含 `input_schema`），版本为工具内容的哈希；内置知识库直接返回本地定义，工具 ID 沿用工具名称。普通 MCP 保留既有工具 ID，未配置工具使用稳定 ID。工具也可通过下述实时 REST 接口或 MCP `tools/list` 获取。
 
 ## MCP 代理
 
@@ -203,7 +203,7 @@ API Key 通过全局 `POST /api/v1/api-keys` 创建，负责认证调用用户�
 
 集中和独立认证的每份凭证都有独立地址；认证连接省略凭证 ID 时返回 `400 credential_selection_required`。集中凭证仅供有该连接使用权的用户调用，独立凭证还必须属于调用用户。免认证仍需平台 API Key 和连接使用权。请求 `/mcp` 返回 404。
 
-`GET /api/v1/connectors`、专家清单、资源 resolve 和管理员专家预览均保留实时 `tools` 与 `tools_version`，无工具时为 `[]`。目录版本及 ETag 随实时工具内容变化；上游查询失败直接返回错误，不回退旧目录缓存。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象，并按所选凭证获取工具；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
+`GET /api/v1/connectors` 仅返回连接及凭证元数据（含内置知识库），保留 `tools: []` 与空数组对应的 `tools_version`，不发起远端工具查询；其 ETag 不随远端工具变化。专家清单、资源 resolve 和管理员专家预览保留实时 `tools` 与 `tools_version`，无工具时为 `[]`。目录版本及 ETag 随返回内容变化；兼容工具查询遇到 MCP 上游故障时记录 WARN 日志（事件 `mcp.catalog.tools.failed`，含 `connector_id`、凭证 ID `resource_id` 及 `upstream_error_code`），对应连接或凭证标记 `connection_status=error` 并返回 `tools: []` 及其哈希，不回退旧目录缓存，也不阻断其他连接、专家清单或资源解析。权限校验、数据库错误及请求取消仍正常返回；显式 REST 工具查询、连接测试和 MCP 调用仍报告实际错误。独立连接的每份 `credentials` 各自提供网关，resolve 选定后返回到连接对象，并按所选凭证获取工具；集中连接返回当前集中凭证的 ID 和地址。需要重新认证的凭证不下发可调用网关。示例：
 
 ```json
 {
@@ -247,7 +247,7 @@ Accept: application/json, text/event-stream
 
 专家 manifest、资源 resolve 和管理员预览在服务端应用工具允许／排除规则，拒绝规则优先，`tools_version` 基于过滤后的工具计算；同时保留规则字段供客户端展示。代理校验用户的连接和凭证访问权及实时工具启停状态；请求中没有专家身份上下文，专家清单的过滤不构成代理授权边界。
 
-连接目录、专家清单、资源 resolve、REST 工具接口及所有认证模式的 MCP `tools/list` 均实时发现远端工具，不回退旧目录。各认证模式保留历史工具 ID 和启停配置，独立认证的单价固定为零；无认证／集中认证叠加本地单价，没有配置记录时默认开启、单价为零。查询和连接测试均不创建工具记录。`PATCH /api/admin/v1/connectors/{id}/tools/{toolID}` 兼容省略 `name` 的旧请求：已有配置按 ID 更新，无认证／集中认证的新工具实时反查名称后创建配置；独立认证仅允许修改已有配置的开关，不新增配置。数据库历史目录记录不清理，但描述和 Schema 不再用于回包。连接器详情不再返回基于旧目录计算的 `tool_count`、`enabled_tool_count`。
+专家清单、资源 resolve、REST 工具接口及所有认证模式的 MCP `tools/list` 均实时发现远端工具，不回退旧目录。各认证模式保留历史工具 ID 和启停配置，独立认证的单价固定为零；无认证／集中认证叠加本地单价，没有配置记录时默认开启、单价为零。查询和连接测试均不创建工具记录。`PATCH /api/admin/v1/connectors/{id}/tools/{toolID}` 兼容省略 `name` 的旧请求：已有配置按 ID 更新，无认证／集中认证的新工具实时反查名称后创建配置；独立认证仅允许修改已有配置的开关，不新增配置。数据库历史目录记录不清理，但描述和 Schema 不再用于回包。连接器详情不再返回基于旧目录计算的 `tool_count`、`enabled_tool_count`。
 
 入口为无状态 Streamable HTTP：POST 返回 JSON，通知返回空的 202，GET/DELETE 返回 405；不产生下游 `Mcp-Session-Id`，不提供主动推送、resources、prompts 或 sampling/elicitation。上游支持 HTTP POST 的 JSON/SSE 响应，每次调用独立握手并在结束后发送 DELETE 清理上游会话；不支持旧版 GET SSE 传输、跨调用上游会话状态或本地 stdio 进程。非空 Origin 必须与 `MONKEYAI_PUBLIC_URL` 同源。
 
@@ -266,7 +266,7 @@ OAuth MCP 创建、详情和管理列表响应提供 `callback_url`，格式为 
 
 ## Connector 多凭证
 
-独立认证连接目录返回当前用户的 `credentials`，每份包含名称、认证状态、测试状态、实时 `tools`、`tools_version` 和以 `/mcp` 开头的专属凭证网关。连接本身不合并目录，也不返回隐式网关。凭证不包含上游账户身份，名称由用户填写，不获取 `sub` 或 UserInfo。
+独立认证连接目录返回当前用户的 `credentials`，每份包含名称、认证状态、最近测试状态和以 `/mcp` 开头的专属凭证网关。连接本身不合并目录，也不返回隐式网关。凭证不包含上游账户身份，名称由用户填写，不获取 `sub` 或 UserInfo。
 
 - 添加 Header：`POST /api/v1/connectors/{id}/credentials`，提交 `name` 和 `http_headers`，返回 `201` 和凭证 ETag。服务端在保存后自动测试连接并发现工具，响应包含最新测试状态；失败保留已保存凭证，可通过 `POST .../credentials/{credential_id}/test` 重试。
 - 改名/替换：`PATCH .../credentials/{credential_id}`，携带凭证 `If-Match`。未提交 Header 时保留原值，提交时整组替换，并自动重新测试和发现工具，不保存目录。仅改名不触发测试。Header 值只写不读。
