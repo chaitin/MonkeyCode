@@ -215,7 +215,7 @@ export function TaskHistoryPage() {
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form onSubmit={applySearch} className="px-[var(--card-spacing)]">
-            <FieldGroup className="flex-row flex-wrap items-end gap-3">
+            <FieldGroup className="flex-row flex-wrap items-end gap-2">
               {visibleFields.has("taskName") && (
                 <Field className="sm:w-44">
                   <FieldLabel

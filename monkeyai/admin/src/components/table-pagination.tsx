@@ -13,6 +13,7 @@ export function TablePagination({
   error = false,
   hasNext,
   onPageSizeChange,
+  pageSizeOptions,
   onPrevious,
   onNext,
 }: {
@@ -24,6 +25,7 @@ export function TablePagination({
   error?: boolean
   hasNext?: boolean
   onPageSizeChange?: (size: number) => void
+  pageSizeOptions?: readonly string[]
   onPrevious: () => void
   onNext: () => void
 }) {
@@ -43,6 +45,7 @@ export function TablePagination({
         {onPageSizeChange && (
           <PageSizeSelect
             value={pageSize}
+            options={pageSizeOptions}
             onValueChange={(size) => {
               if (size !== pageSize) onPageSizeChange(size)
             }}

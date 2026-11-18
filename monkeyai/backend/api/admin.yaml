@@ -6050,7 +6050,7 @@ paths:
   /api/admin/v1/environments:
     get:
       summary: 查询环境列表
-      description: '默认隐藏已确认删除的环境，等待删除和删除失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
+      description: '默认隐藏已确认删除的环境，等待删除和删除失败仍显示。可按host_id精确筛选宿主；筛选先于排序和分页。状态与页面目标代次一致。列表不返回 usage 和 usage_stale，资源使用数据仅在详情返回。按实际 CPU 核数或内存字节排序，未上报、过期超过 90 秒及非运行实例排最后；相同占用按创建时间、ID 降序。所有响应使用 Cache-Control: no-store。'
       responses:
         '200':
           description: 成功。
@@ -10584,7 +10584,7 @@ components:
           description: 最近一次宿主上报的 runtime 版本，未知为空。
         usage_stale:
           type: boolean
-          description: 最新资源样本超过 90 秒；由服务端计算，不能当作当前实时值。
+          description: 仅详情返回，最新资源样本超过 90 秒时为 true；省略表示 false，不能当作当前实时值。
         usage:
           $ref: '#/components/schemas/EnvironmentUsage'
         id:

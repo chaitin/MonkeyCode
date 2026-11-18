@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { TablePagination } from "@/components/table-pagination"
 import { TableLoading } from "@/components/table-loading"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Table,
   TableBody,
@@ -72,7 +73,10 @@ export function EnvironmentTable({
   children: ReactNode
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-auto [&_[data-slot=table-container]]:h-full">
+    <ScrollArea
+      horizontal
+      className="min-h-0 min-w-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+    >
       <Table
         aria-label={title}
         aria-busy={loading}
@@ -110,7 +114,7 @@ export function EnvironmentTable({
           )}
         </TableBody>
       </Table>
-    </div>
+    </ScrollArea>
   )
 }
 export function LoadState({

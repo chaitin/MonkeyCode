@@ -13,13 +13,15 @@ export function PageSizeSelect({
   value,
   onValueChange,
   disabled = false,
+  options = PAGE_SIZE_OPTIONS,
 }: {
   value: number
   onValueChange: (size: number) => void
   disabled?: boolean
+  options?: readonly string[]
 }) {
   const { t } = useTranslation()
-  const items = PAGE_SIZE_OPTIONS.map((size) => ({
+  const items = options.map((size) => ({
     value: size,
     label: t("pages.operationLogs.pagination.perPage", { count: size }),
   }))

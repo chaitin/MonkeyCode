@@ -1,13 +1,31 @@
+import { Card, CardContent } from "@/components/ui/card"
+import { TableCell, TableRow } from "@/components/ui/table"
 import {
-  CloudSection,
-  CloudGrid,
-  CloudCard,
-  CloudField,
-} from "@/components/environments/cloud-section"
-import { ArrowDown02Icon } from "@hugeicons/core-free-icons"
-import { ActionButton } from "@/components/environments/action-button"
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip"
+import { TablePagination } from "@/components/table-pagination"
+import {
+  ArrowDown02Icon,
+  Search02Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  ViewIcon,
+  PauseIcon,
+  Delete02Icon,
+} from "@hugeicons/core-free-icons"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+  DropdownMenuOptionsContent,
+} from "@/components/ui/dropdown-menu"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { RefreshCw } from "lucide-react"
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -18,6 +36,7 @@ import { EnvironmentBillingInfo } from "@/components/environments/environment-bi
 import { EnvironmentStatus } from "@/components/environments/status-badge"
 import { OSIcon } from "@/components/environments/os-icon"
 import { UserAvatar } from "@/components/user-avatar"
+import { AccountDialog } from "@/components/billing/account-dialog"
 import {
   AlertDialog,
   AlertDialogContent,
@@ -30,6 +49,8 @@ import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, ApiError } from "@/lib/api"
+import { loadEngineHosts } from "@/lib/engine-hosts"
+import { TABLE_DATE_TIME_OPTIONS } from "@/lib/date-time"
 import {
   MiB,
   canStop,
@@ -41,6 +62,7 @@ import {
 import { useEnvironmentData } from "@/hooks/use-environment-data"
 import {
   LoadState,
+  EnvironmentTable,
   Pagination,
   Identity,
   FormError,
@@ -78,37 +100,77 @@ const statuses = [
   "pending_deleted",
   "deleted",
 ]
-const sorts = ["newest", "cpu_desc", "cpu_asc", "memory_desc", "memory_asc"]
+const columns = [
+  "createdAt",
+  "user",
+  "status",
+  "name",
+  "runtimeVersion",
+  "host",
+  "actions",
+] as const
+type EnvironmentColumn = (typeof columns)[number]
+const pageSizeOptions = ["20", "50", "100"] as const
 export function EnvironmentsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [params, setParams] = useSearchParams()
+  const [visibleColumns, setVisibleColumns] = useState<Set<EnvironmentColumn>>(
+    () => new Set(columns.filter((column) => column !== "runtimeVersion"))
+  )
+  const displayedColumns = columns.filter((column) =>
+    visibleColumns.has(column)
+  )
   const page = Math.max(
     1,
     Math.min(100000, Number.parseInt(params.get("page") || "1", 10) || 1)
   )
+  const pageSize = Number(
+    pageSizeOptions.find((size) => size === params.get("page_size")) ?? "20"
+  )
   const selected = params.get("environment")
   const hostID = params.get("host_id") || ""
-  const hostName = params.get("host_name") || hostID
+  const hosts = useEnvironmentData<{
+    items: { id: string; name: string }[]
+    total: number
+  }>(
+    "/api/admin/v1/engine-hosts",
+    false,
+    loadEngineHosts<{ id: string; name: string }>
+  )
+  const hostOptions = [
+    { value: "all", label: t("environmentAdmin.allHosts") },
+    ...(hosts.data?.items ?? []).map((host) => ({
+      value: host.id,
+      label: host.name,
+    })),
+  ]
+  if (hostID && !hostOptions.some((option) => option.value === hostID)) {
+    hostOptions.push({
+      value: hostID,
+      label: params.get("host_name") || hostID,
+    })
+  }
   const status = statuses.includes(params.get("status") || "")
     ? params.get("status")!
     : "active"
-  const sort = sorts.includes(params.get("sort") || "")
-    ? params.get("sort")!
-    : "newest"
+  const filterKey = JSON.stringify([status, hostID, params.get("host_name")])
+  const [previousFilterKey, setPreviousFilterKey] = useState(filterKey)
+  const [draft, setDraft] = useState({ status, hostID })
+  if (previousFilterKey !== filterKey) {
+    setPreviousFilterKey(filterKey)
+    setDraft({ status, hostID })
+  }
   const statusOptions = statuses.map((value) => ({
     value,
     label: t(
       `environmentAdmin.${value === "active" || value === "all" ? `filters.${value}` : `states.${value}`}`
     ),
   }))
-  const sortOptions = sorts.map((value) => ({
-    value,
-    label: t(`environmentAdmin.sorts.${value}`),
-  }))
   const result = useEnvironmentData<Page<Environment>>(
-    `/api/admin/v1/environments?page=${page}&page_size=20&status=${status}&sort=${sort}${hostID ? `&host_id=${encodeURIComponent(hostID)}` : ""}`,
+    `/api/admin/v1/environments?page=${page}&page_size=${pageSize}&status=${status}&sort=newest${hostID ? `&host_id=${encodeURIComponent(hostID)}` : ""}`,
     true
   )
+  const [accountUserID, setAccountUserID] = useState<string | null>(null)
   const [action, setAction] = useState<Action | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -156,209 +218,328 @@ export function EnvironmentsPage() {
       return next
     })
   }
-  function filter(key: "status" | "sort", value: string | null) {
-    if (!value) return
-    setParams((old) => {
-      const next = new URLSearchParams(old)
-      next.set(key, value)
-      next.delete("page")
-      return next
-    })
-  }
   return (
-    <CloudSection
-      title={t("environmentAdmin.environmentsTitle")}
-      description={t("environmentAdmin.environmentsDescription")}
-      action={
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            items={statusOptions}
-            value={status}
-            onValueChange={(value) => filter("status", value)}
+    <>
+      <Card
+        className="min-w-0 flex-1"
+        aria-label={t("environmentAdmin.environmentsTitle")}
+      >
+        <CardContent className="min-w-0 flex-1 gap-4 px-0">
+          <form
+            className="flex shrink-0 flex-wrap items-end gap-2 px-[var(--card-spacing)]"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (result.loading) return
+              const next = new URLSearchParams(params)
+              next.set("status", draft.status)
+              if (draft.hostID) {
+                next.set("host_id", draft.hostID)
+                next.set(
+                  "host_name",
+                  hostOptions.find((option) => option.value === draft.hostID)
+                    ?.label ?? draft.hostID
+                )
+              } else {
+                next.delete("host_id")
+                next.delete("host_name")
+              }
+              next.delete("sort")
+              next.delete("page")
+              next.delete("environment")
+              if (next.toString() !== params.toString()) setParams(next)
+              if (
+                draft.status === status &&
+                draft.hostID === hostID &&
+                page === 1
+              )
+                result.refresh()
+            }}
           >
-            <SelectTrigger
-              aria-label={t("environmentAdmin.statusFilter")}
-              className="min-w-32"
+            <Select
+              items={statusOptions}
+              value={draft.status}
+              onValueChange={(value) => {
+                if (value) setDraft((old) => ({ ...old, status: value }))
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            items={sortOptions}
-            value={sort}
-            onValueChange={(value) => filter("sort", value)}
-          >
-            <SelectTrigger
-              aria-label={t("environmentAdmin.sortLabel")}
-              className="min-w-44"
+              <SelectTrigger
+                aria-label={t("environmentAdmin.statusFilter")}
+                className="min-w-32"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              items={hostOptions}
+              value={draft.hostID || "all"}
+              onValueChange={(value) => {
+                if (value)
+                  setDraft((old) => ({
+                    ...old,
+                    hostID: value === "all" ? "" : value,
+                  }))
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sortOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={t("environmentAdmin.refresh")}
-            title={t("environmentAdmin.refresh")}
-            disabled={result.loading}
-            onClick={result.refresh}
+              <SelectTrigger
+                aria-label={t("environmentAdmin.host")}
+                className="min-w-32 max-w-64"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {hostOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit" disabled={result.loading}>
+              <HugeiconsIcon
+                icon={result.loading ? Loading03Icon : Search02Icon}
+                className={
+                  result.loading
+                    ? "animate-spin motion-reduce:animate-none"
+                    : undefined
+                }
+                data-icon="inline-start"
+              />
+              {t("pages.operationLogs.filters.search")}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" variant="outline" className="ms-auto" />
+                }
+              >
+                {t("pages.sessionReporting.clients.selectColumns")}
+              </DropdownMenuTrigger>
+              <DropdownMenuOptionsContent align="end" className="max-h-80">
+                <DropdownMenuGroup>
+                  {columns.map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column}
+                      checked={visibleColumns.has(column)}
+                      onCheckedChange={(checked) =>
+                        setVisibleColumns((current) => {
+                          if (!checked && current.size === 1) return current
+                          const next = new Set(current)
+                          if (checked) next.add(column)
+                          else next.delete(column)
+                          return next
+                        })
+                      }
+                    >
+                      {t("environmentAdmin." + column)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuOptionsContent>
+            </DropdownMenu>
+          </form>
+
+          {notice && (
+            <p role="status" className="px-[var(--card-spacing)] text-sm">
+              {notice}
+            </p>
+          )}
+          <EnvironmentTable
+            title={t("environmentAdmin.environmentsTitle")}
+            columns={displayedColumns.map((column) =>
+              t("environmentAdmin." + column)
+            )}
+            {...result}
+            empty={!result.data?.items.length}
           >
-            <RefreshCw aria-hidden="true" />
-          </Button>
-        </div>
-      }
-    >
-      {hostID && (
-        <div className="flex flex-wrap items-center gap-2 border-b px-[var(--card-spacing)] py-2 text-sm">
-          <span className="min-w-0 break-all">
-            {t("environmentAdmin.hostFilter", { name: hostName })}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
+            {result.data?.items.map((env) => (
+              <TableRow
+                key={env.id}
+                className="[&>td:first-child]:ps-[var(--card-spacing)] [&>td:last-child]:pe-[var(--card-spacing)]"
+              >
+                {visibleColumns.has("createdAt") && (
+                  <TableCell className="text-muted-foreground">
+                    {new Date(env.created_at).toLocaleString(
+                      i18n.resolvedLanguage ?? i18n.language,
+                      TABLE_DATE_TIME_OPTIONS
+                    )}
+                  </TableCell>
+                )}
+                {visibleColumns.has("user") && (
+                  <TableCell>
+                    <button
+                      type="button"
+                      className="flex w-full min-w-0 items-center gap-2 rounded-sm text-start underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring enabled:cursor-pointer [&:enabled:hover_span]:underline"
+                      title={env.user?.email}
+                      disabled={!env.user_id}
+                      onClick={() => setAccountUserID(env.user_id)}
+                    >
+                      <UserAvatar src={env.user?.avatar_url} />
+                      <span className="min-w-0 truncate">
+                        {env.user?.name || env.user?.email || env.user_id}
+                      </span>
+                    </button>
+                  </TableCell>
+                )}
+                {visibleColumns.has("status") && (
+                  <TableCell>
+                    {env.reason &&
+                    env.generation === env.observed_generation ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<span tabIndex={0} className="inline-flex" />}
+                        >
+                          <EnvironmentStatus environment={env} />
+                        </TooltipTrigger>
+                        <TooltipContent className="whitespace-normal break-words">
+                          {t(`environmentAdmin.reasons.${env.reason}`, {
+                            defaultValue: env.reason,
+                          })}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <EnvironmentStatus environment={env} />
+                    )}
+                  </TableCell>
+                )}
+                {visibleColumns.has("name") && (
+                  <TableCell>
+                    <Button
+                      variant="link"
+                      className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium"
+                      onClick={() => select(env.id)}
+                    >
+                      {env.name}
+                    </Button>
+                  </TableCell>
+                )}
+                {visibleColumns.has("runtimeVersion") && (
+                  <TableCell>
+                    {env.runtime_version ||
+                      t("environmentAdmin.runtimeUnknown")}
+                  </TableCell>
+                )}
+                {visibleColumns.has("host") && (
+                  <TableCell>
+                    <span
+                      className="block max-w-48 truncate"
+                      title={
+                        env.host?.hostname || env.host?.name || env.host_id
+                      }
+                    >
+                      {env.host?.hostname || env.host?.name || env.host_id}
+                    </span>
+                  </TableCell>
+                )}
+                {visibleColumns.has("actions") && (
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t("common.more")}
+                          />
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={MoreHorizontalIcon}
+                          strokeWidth={2}
+                          aria-hidden="true"
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem onClick={() => select(env.id)}>
+                            <HugeiconsIcon
+                              icon={ViewIcon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {t("environmentAdmin.details")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={!canStop(env) || busy}
+                            onClick={() => request(env, "stopped")}
+                          >
+                            <HugeiconsIcon
+                              icon={PauseIcon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {t("environmentAdmin.stop")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={!canDelete(env) || busy}
+                            onClick={() => request(env, "deleted")}
+                          >
+                            <HugeiconsIcon
+                              icon={Delete02Icon}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            {t("environmentAdmin.targets.deleted")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </EnvironmentTable>
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
+            itemCount={result.data?.items.length ?? 0}
+            hasNext={(result.data?.items.length ?? 0) >= pageSize}
+            loading={result.loading || busy}
+            error={!!result.error}
+            onPageSizeChange={(size) =>
               setParams((old) => {
                 const next = new URLSearchParams(old)
-                for (const key of [
-                  "host_id",
-                  "host_name",
-                  "page",
-                  "environment",
-                ])
-                  next.delete(key)
+                next.set("page_size", String(size))
+                next.delete("page")
                 return next
               })
             }
-          >
-            {t("environmentAdmin.clearHostFilter")}
-          </Button>
-        </div>
+            onPrevious={() =>
+              setParams((old) => {
+                const next = new URLSearchParams(old)
+                next.set("page", String(Math.max(1, page - 1)))
+                return next
+              })
+            }
+            onNext={() =>
+              setParams((old) => {
+                const next = new URLSearchParams(old)
+                next.set("page", String(page + 1))
+                return next
+              })
+            }
+          />
+        </CardContent>
+      </Card>
+      {accountUserID && (
+        <AccountDialog
+          key={accountUserID}
+          userId={accountUserID}
+          onClose={() => setAccountUserID(null)}
+        />
       )}
-      {notice && (
-        <p role="status" className="px-[var(--card-spacing)] text-sm">
-          {notice}
-        </p>
-      )}
-      <CloudGrid
-        title={t("environmentAdmin.environmentsTitle")}
-        {...result}
-        empty={!result.data?.items.length}
-      >
-        {result.data?.items.map((env) => (
-          <CloudCard key={env.id}>
-            <CloudField label={t("environmentAdmin.name")}>
-              <Button
-                variant="link"
-                className="h-auto max-w-60 justify-start whitespace-normal break-all p-0 text-start font-medium"
-                onClick={() => select(env.id)}
-              >
-                {env.name}
-              </Button>
-            </CloudField>
-            <CloudField label={t("environmentAdmin.status")}>
-              <EnvironmentStatus environment={env} />
-              {env.reason && env.generation === env.observed_generation && (
-                <p className="mt-1 max-w-60 whitespace-normal break-words text-xs text-destructive">
-                  {t(`environmentAdmin.reasons.${env.reason}`, {
-                    defaultValue: env.reason,
-                  })}
-                </p>
-              )}
-            </CloudField>
-            <CloudField label={t("environmentAdmin.runtimeVersion")}>
-              {env.runtime_version || t("environmentAdmin.runtimeUnknown")}
-            </CloudField>
-            <CloudField wide label={t("environmentAdmin.resourceUsage")}>
-              <EnvironmentUsage environment={env} />
-            </CloudField>
-            <CloudField wide label={t("environmentAdmin.billing.title")}>
-              <EnvironmentBillingInfo environment={env} compact />
-            </CloudField>
-            <CloudField label={t("environmentAdmin.user")}>
-              <div className="flex items-center gap-2.5">
-                <UserAvatar src={env.user?.avatar_url} size="default" />
-                <div className="min-w-0">
-                  <p
-                    className="max-w-48 truncate font-medium"
-                    title={env.user?.name || env.user_id}
-                  >
-                    {env.user?.name || env.user?.email || env.user_id}
-                  </p>
-                  {env.user?.email && (
-                    <p
-                      className="mt-1 max-w-48 truncate text-xs text-muted-foreground"
-                      title={env.user.email}
-                    >
-                      {env.user.email}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CloudField>
-            <CloudField label={t("environmentAdmin.host")}>
-              <div className="flex items-center gap-2.5">
-                <OSIcon name={env.host?.os_name} />
-                <span
-                  className="max-w-48 truncate"
-                  title={env.host?.hostname || env.host?.name || env.host_id}
-                >
-                  {env.host?.hostname || env.host?.name || env.host_id}
-                </span>
-              </div>
-            </CloudField>
-            <CloudField label={t("environmentAdmin.observed")}>
-              {env.observed_at
-                ? new Date(env.observed_at).toLocaleString()
-                : t("environmentAdmin.notObserved")}
-            </CloudField>
-            <CloudField label={t("environmentAdmin.actions")}>
-              <div className="flex items-center gap-1">
-                <ActionButton
-                  label={t("environmentAdmin.details")}
-                  onClick={() => select(env.id)}
-                />
-                <ActionButton
-                  label={t("environmentAdmin.stop")}
-                  disabled={!canStop(env) || busy}
-                  onClick={() => request(env, "stopped")}
-                />
-                <ActionButton
-                  label={t("environmentAdmin.targets.deleted")}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={!canDelete(env) || busy}
-                  onClick={() => request(env, "deleted")}
-                />
-              </div>
-            </CloudField>
-          </CloudCard>
-        ))}
-      </CloudGrid>
-      <Pagination
-        page={page}
-        count={result.data?.items.length ?? 0}
-        disabled={result.loading || !!result.error || busy}
-        onChange={(value) =>
-          setParams((old) => {
-            const next = new URLSearchParams(old)
-            next.set("page", String(value))
-            return next
-          })
-        }
-      />
       {selected && (
         <EnvironmentDetail
           key={selected}
@@ -412,7 +593,7 @@ export function EnvironmentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </CloudSection>
+    </>
   )
 }
 function EnvironmentDetail({ id, close }: { id: string; close: () => void }) {

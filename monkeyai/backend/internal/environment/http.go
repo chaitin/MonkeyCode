@@ -150,6 +150,10 @@ func (s *Service) list(admin bool) http.HandlerFunc {
 				fail(w, r, err)
 				return
 			}
+			if admin {
+				item.Usage = nil
+				item.UsageStale = false
+			}
 			items = append(items, item)
 		}
 		if err := s.billingViews(r.Context(), items); err != nil {

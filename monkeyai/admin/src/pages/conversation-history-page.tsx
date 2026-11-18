@@ -386,7 +386,7 @@ export function ConversationHistoryPage() {
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
           <form
             ref={formRef}
-            className="flex flex-wrap items-end gap-3 px-[var(--card-spacing)]"
+            className="flex flex-wrap items-end gap-2 px-[var(--card-spacing)]"
             onSubmit={search}
           >
             {visibleFields.has("taskName") && (

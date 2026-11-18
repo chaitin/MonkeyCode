@@ -31,9 +31,12 @@ export const enUS = {
     save: "Save changes",
   },
   environmentAdmin: {
+    environmentName: "Cloud computer name",
     cloudHostsTitle: "Cloud Hosts",
     cloudHostsDescription: "Manage hosts and cloud environments.",
     statusFilter: "Filter status",
+    createdAt: "Created at",
+    allHosts: "All hosts",
     hostFilter: "Host: {{name}}",
     clearHostFilter: "Clear host filter",
     sortLabel: "Sort environments",
@@ -600,8 +603,10 @@ export const enUS = {
         "See how your team uses resources with clear usage statistics.",
     },
     downloads: {
-      harmonyListingDescription: "The app is going through the store listing process. Stay tuned.",
-      kylinStoreDescription: "Open the Kylin App Store on your Kylin system to download and install the client.",
+      harmonyListingDescription:
+        "The app is going through the store listing process. Stay tuned.",
+      kylinStoreDescription:
+        "Open the Kylin App Store on your Kylin system to download and install the client.",
       desktopClients: "Desktop clients",
       mobileClients: "Mobile clients",
       windowsStandard: "Standard",

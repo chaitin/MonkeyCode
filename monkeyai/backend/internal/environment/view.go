@@ -29,7 +29,7 @@ type View struct {
 	RuntimeVersion     string          `json:"runtime_version"`
 	Billing            *BillingView    `json:"billing,omitempty"`
 	BillingStopReason  string          `json:"billing_stop_reason,omitempty"`
-	UsageStale         bool            `json:"usage_stale"`
+	UsageStale         bool            `json:"usage_stale,omitempty"`
 	Usage              *Usage          `json:"usage,omitempty"`
 	User               *UserIdentity   `json:"user,omitempty"`
 	Host               *HostIdentity   `json:"host,omitempty"`

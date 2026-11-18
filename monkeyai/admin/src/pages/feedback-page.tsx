@@ -366,7 +366,7 @@ export function FeedbackPage() {
     <section className="flex min-h-0 flex-1 flex-col p-4 pt-px md:h-[calc(100vh-5rem)] md:flex-none md:overflow-hidden">
       <Card className="min-h-0 flex-1">
         <CardContent className="min-h-0 flex-1 gap-4 px-0">
-          <div className="flex flex-wrap items-center gap-3 px-[var(--card-spacing)]">
+          <div className="flex flex-wrap items-center gap-2 px-[var(--card-spacing)]">
             <Select
               items={[
                 { value: "all", label: t("pages.feedback.allCategories") },
