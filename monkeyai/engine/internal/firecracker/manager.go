@@ -20,7 +20,7 @@ import (
 
 type Spec struct {
 	Fingerprint string      `json:"fingerprint,omitempty"`
-	Disks       vmdisk.Spec `json:"disks"`
+	Disk        vmdisk.Spec `json:"disk"`
 	VCPUs       int         `json:"vcpus"`
 	CPUMillis   int64       `json:"cpu_millis,omitempty"`
 	MemoryMiB   int64       `json:"memory_mib"`
@@ -42,7 +42,7 @@ type Launch struct {
 	SelfTest    bool
 	ID          string
 	BootID      string
-	Disks       vmdisk.Disks
+	Disk        vmdisk.Disk
 	VCPUs       int
 	MemoryMiB   int64
 	Binding     guest.Binding
@@ -80,7 +80,7 @@ func (m *Manager) save(s State) error {
 	if err != nil {
 		return err
 	}
-	return control.Write(m.path(s.Spec.Disks.EnvironmentID), raw, 0600)
+	return control.Write(m.path(s.Spec.Disk.EnvironmentID), raw, 0600)
 }
 func (m *Manager) load(id string) (State, error) {
 	path := m.path(id)
@@ -96,7 +96,7 @@ func (m *Manager) load(id string) (State, error) {
 		return State{}, err
 	}
 	var s State
-	if json.Unmarshal(raw, &s) != nil || s.Spec.Disks.EnvironmentID != id || s.ID != storage.Key(id) || s.Generation < 1 || s.Generation < s.ProtectionGeneration {
+	if json.Unmarshal(raw, &s) != nil || s.Spec.Disk.EnvironmentID != id || s.ID != storage.Key(id) || s.Generation < 1 || s.Generation < s.ProtectionGeneration {
 		return State{}, errors.New("虚拟机状态损坏")
 	}
 	if s.ProtectionGeneration != 0 && s.Protection == nil || s.Protection != nil && !s.Protection.Valid(s.Generation) {
@@ -113,12 +113,12 @@ func (m *Manager) Create(ctx context.Context, spec Spec, template string) (State
 	if spec.Generation < 1 || spec.VCPUs < 1 || spec.VCPUs > 32 || spec.MemoryMiB < 256 || spec.MemoryMiB > 1048576 {
 		return State{}, errors.New("虚拟机规格无效")
 	}
-	unlock, err := m.lock(spec.Disks.EnvironmentID)
+	unlock, err := m.lock(spec.Disk.EnvironmentID)
 	if err != nil {
 		return State{}, err
 	}
 	defer unlock()
-	previous, err := m.load(spec.Disks.EnvironmentID)
+	previous, err := m.load(spec.Disk.EnvironmentID)
 	if err == nil {
 		if previous.Spec != spec {
 			return State{}, errors.New("已有环境的规格不能被创建操作覆盖")
@@ -128,10 +128,10 @@ func (m *Manager) Create(ctx context.Context, spec Spec, template string) (State
 	if !errors.Is(err, os.ErrNotExist) {
 		return State{}, err
 	}
-	if _, err := m.disks.Ensure(ctx, spec.Disks, template); err != nil {
+	if _, err := m.disks.Ensure(ctx, spec.Disk, template); err != nil {
 		return State{}, err
 	}
-	s := State{Spec: spec, ID: storage.Key(spec.Disks.EnvironmentID), Phase: "created", Generation: spec.Generation}
+	s := State{Spec: spec, ID: storage.Key(spec.Disk.EnvironmentID), Phase: "created", Generation: spec.Generation}
 	return s, m.save(s)
 }
 func (m *Manager) Start(ctx context.Context, id string, generation int64) (State, error) {
@@ -185,7 +185,7 @@ func (m *Manager) start(ctx context.Context, id string, generation int64, mainte
 	if running {
 		return s, errors.New("已有宿主进程，拒绝创建第二个写入者")
 	}
-	disks, err := m.disks.Acquire(id, s.Spec.Disks.InstanceID)
+	disks, err := m.disks.Acquire(id, s.Spec.Disk.InstanceID)
 	if err != nil {
 		return s, err
 	}
@@ -200,7 +200,7 @@ func (m *Manager) start(ctx context.Context, id string, generation int64, mainte
 	if err := m.save(s); err != nil {
 		return s, err
 	}
-	launch := Launch{Maintenance: maintenance, ID: s.ID, BootID: s.BootID, Disks: disks, VCPUs: s.Spec.VCPUs, CPUMillis: s.Spec.CPUMillis, MemoryMiB: s.Spec.MemoryMiB, Binding: guest.Binding{EnvironmentID: id, InstanceID: s.Spec.Disks.InstanceID, BootID: s.BootID}}
+	launch := Launch{Maintenance: maintenance, ID: s.ID, BootID: s.BootID, Disk: disks, VCPUs: s.Spec.VCPUs, CPUMillis: s.Spec.CPUMillis, MemoryMiB: s.Spec.MemoryMiB, Binding: guest.Binding{EnvironmentID: id, InstanceID: s.Spec.Disk.InstanceID, BootID: s.BootID}}
 	if err := m.host.Start(ctx, launch); err != nil {
 		s.Phase = "failed"
 		return s, errors.Join(err, m.save(s))
@@ -248,7 +248,7 @@ func (m *Manager) Stop(ctx context.Context, id string, generation int64) (State,
 		return s, errors.New("尚未确认虚拟机已退出")
 	}
 	if s.Lease != "" {
-		if err := m.disks.Release(ctx, id, s.Spec.Disks.InstanceID, s.Lease, func(ctx context.Context) (bool, error) {
+		if err := m.disks.Release(ctx, id, s.Spec.Disk.InstanceID, s.Lease, func(ctx context.Context) (bool, error) {
 			running, err := m.host.Running(ctx, s.ID)
 			return !running, err
 		}); err != nil {
@@ -341,7 +341,7 @@ func (m *Manager) Retain(ctx context.Context, id string, generation int64) (Stat
 	if err := m.host.Remove(ctx, s.ID); err != nil {
 		return s, err
 	}
-	if err := m.disks.Retain(id, s.Spec.Disks.InstanceID); err != nil {
+	if err := m.disks.Retain(id, s.Spec.Disk.InstanceID); err != nil {
 		return s, err
 	}
 	s.Phase = "retained"

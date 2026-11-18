@@ -18,7 +18,7 @@ import (
 )
 
 func (d *Driver) Report(ctx context.Context, cfg control.Config) (preflight.Report, error) {
-	report := preflight.Report{Version: 1, At: time.Now().UTC(), OS: runtime.GOOS, Architecture: runtime.GOARCH, Driver: "firecracker", RuntimeProtocol: 1, RuntimeUpdateProtocol: 2, EnvironmentProtocol: 4, ProtectionProtocol: 1, NetworkPolicies: []string{"isolated", "public-only"}, System: preflight.ReadSystem(d.data), Prerequisites: true, Checks: []preflight.Check{}}
+	report := preflight.Report{Version: 1, At: time.Now().UTC(), OS: runtime.GOOS, Architecture: runtime.GOARCH, Driver: "firecracker", RuntimeProtocol: 1, RuntimeUpdateProtocol: 2, EnvironmentProtocol: 5, ProtectionProtocol: 1, NetworkPolicies: []string{"isolated", "public-only"}, System: preflight.ReadSystem(d.data), Prerequisites: true, Checks: []preflight.Check{}}
 	check := func(name string, passed bool, detail string) {
 		report.Checks = append(report.Checks, preflight.Check{Name: name, Passed: passed, Detail: detail})
 		if !passed {
@@ -27,8 +27,8 @@ func (d *Driver) Report(ctx context.Context, cfg control.Config) (preflight.Repo
 	}
 	platform, err := hostprobe.Inspect(ctx, hostprobe.Config{Architecture: cfg.Architecture, Driver: hostprobe.Firecracker})
 	check("firecracker_platform", err == nil && platform.CandidateDriver == hostprobe.Firecracker, "Linux、KVM、TUN及宿主基础条件")
-	vm := lifecycle.VirtualMachine{Architecture: cfg.Architecture, BundleSHA256: d.config.DefaultBundle, SystemBytes: d.config.SystemBytes, DataBytes: d.config.DataBytes}
-	check("virtual_machine_defaults", vm.Validate() == nil, "固定组件及默认双盘规格")
+	vm := lifecycle.VirtualMachine{Architecture: cfg.Architecture, BundleSHA256: d.config.DefaultBundle, DiskBytes: d.config.DiskBytes}
+	check("virtual_machine_defaults", vm.Validate() == nil, "固定组件及默认磁盘总容量")
 	receipt := cfg.SelfTest
 	check("driver_selftest", receipt != nil && receipt.Driver == "firecracker" && receipt.Architecture == cfg.Architecture && receipt.BundleSHA256 == d.config.DefaultBundle && !receipt.At.IsZero(), "对应内核和VMM组件的真实启动与vsock自检记录")
 	if vm.Validate() == nil {

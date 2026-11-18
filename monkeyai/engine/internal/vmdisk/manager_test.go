@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func diskFixture(t *testing.T) (*Manager, Spec, string) {
@@ -24,13 +25,13 @@ func diskFixture(t *testing.T) (*Manager, Spec, string) {
 		}
 		return errors.Join(f.Truncate(size), f.Close())
 	}
-	m, err := New(filepath.Join(root, "store"), format)
+	m, err := New(filepath.Join(root, "store"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := Spec{EnvironmentID: "env-1", InstanceID: "instance-1", TemplateID: "template-1", SystemBytes: 64 << 20, DataBytes: 64 << 20}
+	spec := Spec{EnvironmentID: "env-1", InstanceID: "instance-1", TemplateID: "template-1", DiskBytes: 64 << 20}
 	template := filepath.Join(root, "template.raw")
-	if err := format(context.Background(), template, spec.SystemBytes); err != nil {
+	if err := format(context.Background(), template, spec.DiskBytes); err != nil {
 		t.Fatal(err)
 	}
 	return m, spec, template
@@ -46,7 +47,11 @@ func TestManagerLifecycle(t *testing.T) {
 	if disks.State != "ready" {
 		t.Fatalf("state = %q", disks.State)
 	}
-	f, err := os.OpenFile(disks.Data, os.O_WRONLY, 0)
+	entries, err := os.ReadDir(filepath.Dir(disks.Path))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "disk.ext4" {
+		t.Fatal("环境必须只创建一块持久盘", entries, err)
+	}
+	f, err := os.OpenFile(disks.Path, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +76,7 @@ func TestManagerLifecycle(t *testing.T) {
 	if err := m.Retain(spec.EnvironmentID, spec.InstanceID); err == nil {
 		t.Fatal("retained an active disk")
 	}
-	m2, err := New(m.root, m.format)
+	m2, err := New(m.root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +101,7 @@ func TestManagerLifecycle(t *testing.T) {
 	if err := m2.Destroy(spec.EnvironmentID, spec.InstanceID, false); err == nil {
 		t.Fatal("destroyed without confirmation")
 	}
-	if _, err := os.Stat(disks.Data); err != nil {
+	if _, err := os.Stat(disks.Path); err != nil {
 		t.Fatal("retention lost data:", err)
 	}
 	if err := m2.Destroy(spec.EnvironmentID, spec.InstanceID, true); err != nil {
@@ -105,7 +110,7 @@ func TestManagerLifecycle(t *testing.T) {
 	if err := m2.Destroy(spec.EnvironmentID, spec.InstanceID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(disks.Data); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(disks.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("disk still exists: %v", err)
 	}
 	if _, err := m2.Ensure(ctx, spec, template); err == nil {
@@ -123,17 +128,17 @@ func TestManagerRefusesMissingOrChangedDisk(t *testing.T) {
 			}
 			switch change {
 			case "missing-directory":
-				err = os.RemoveAll(filepath.Dir(disks.System))
+				err = os.RemoveAll(filepath.Dir(disks.Path))
 			case "missing-disk":
-				err = os.Remove(disks.Data)
+				err = os.Remove(disks.Path)
 			case "truncated":
-				err = os.Truncate(disks.Data, 4096)
+				err = os.Truncate(disks.Path, 4096)
 			case "spec":
-				spec.DataBytes *= 2
+				spec.DiskBytes *= 2
 			case "symlink":
-				err = os.Remove(disks.System)
+				err = os.Remove(disks.Path)
 				if err == nil {
-					err = os.Symlink(template, disks.System)
+					err = os.Symlink(template, disks.Path)
 				}
 			}
 			if err != nil {
@@ -148,9 +153,12 @@ func TestManagerRefusesMissingOrChangedDisk(t *testing.T) {
 
 func TestManagerPreparationFailureFailsClosed(t *testing.T) {
 	m, spec, template := diskFixture(t)
-	m.format = func(context.Context, string, int64) error { return errors.New("format failed") }
+	intent := Disk{Spec: spec, Path: filepath.Join(m.location(spec.EnvironmentID), "disk.ext4"), State: "preparing", CreatedAt: time.Now().UTC()}
+	if err := m.save(intent); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := m.Ensure(context.Background(), spec, template); err == nil {
-		t.Fatal("accepted failed formatting")
+		t.Fatal("accepted unfinished disk preparation")
 	}
 	got, err := m.Load(spec.EnvironmentID)
 	if err != nil || got.State != "preparing" {

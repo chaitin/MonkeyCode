@@ -181,16 +181,12 @@ func testFirecracker(ctx context.Context, c Config, work string) (clean bool, re
 	if err := os.WriteFile(filepath.Join(rootfs, "monkeyai-selftest"), data, 0755); err != nil {
 		return true, err
 	}
-	system := filepath.Join(work, "system.ext4")
-	if err := formatter.Populate(ctx, system, 64<<20, rootfs); err != nil {
-		return true, err
-	}
-	dataPath := filepath.Join(work, "data.ext4")
-	if err := formatter.Format(ctx, dataPath, 64<<20); err != nil {
+	disk := filepath.Join(work, "disk.ext4")
+	if err := formatter.Populate(ctx, disk, 64<<20, rootfs); err != nil {
 		return true, err
 	}
 	binding := guest.Binding{EnvironmentID: name, InstanceID: name, BootID: name}
-	launch := firecracker.Launch{ID: id, BootID: name, VCPUs: 1, MemoryMiB: 256, Binding: binding, SelfTest: true, Disks: vmdisk.Disks{Spec: vmdisk.Spec{EnvironmentID: name, InstanceID: name, SystemBytes: 64 << 20, DataBytes: 64 << 20}, System: system, Data: dataPath, Lease: name}}
+	launch := firecracker.Launch{ID: id, BootID: name, VCPUs: 1, MemoryMiB: 256, Binding: binding, SelfTest: true, Disk: vmdisk.Disk{Spec: vmdisk.Spec{EnvironmentID: name, InstanceID: name, DiskBytes: 64 << 20}, Path: disk, Lease: name}}
 	// Start可能在创建网络或启动进程后失败，因此无论返回值如何都尝试可信清理。
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)

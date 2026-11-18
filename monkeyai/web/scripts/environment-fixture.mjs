@@ -55,6 +55,9 @@ const hosts = [
     activated_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
     report: {
+      driver: "firecracker",
+      environment_protocol: 5,
+      virtual_machine: {disk_bytes: 120 * GiB},
       prerequisites_met: false,
       system: {
         hostname: "dev-worker-01",
@@ -398,6 +401,7 @@ const server = createServer(async (req, res) => {
         if (req.method === "PUT") {
           if (mode === "setup-save-error") return fail(503, "配置暂时无法保存")
           setup.resource = body.resource
+          if (body.disk_bytes !== undefined) setup.disk_bytes = body.disk_bytes
           if (body.billing) setup.billing = body.billing
           if (typeof body.name === "string") {
             const host = hosts.find(h => h.id === id)
@@ -405,7 +409,8 @@ const server = createServer(async (req, res) => {
           }
           if (body.grants) setup.grants = body.grants
         }
-        return send({...setup,host_id:id,host_name:hosts.find(h=>h.id===id)?.name ?? id,image_ready:true,capacity})
+        const driver = hosts.find(h=>h.id===id)?.report?.driver ?? "gvisor"
+        return send({...setup,driver,...(driver === "firecracker" ? {disk_bytes:setup.disk_bytes ?? 120*GiB} : {}),host_id:id,host_name:hosts.find(h=>h.id===id)?.name ?? id,image_ready:true,capacity})
       }
       const paginate = (items, pageSize = 20) => {
         const page = Number(url.searchParams.get("page") || 1)

@@ -57,7 +57,7 @@ func managerFixture(t *testing.T) (*Manager, *vmdisk.Manager, *fakeHost, Spec, s
 		}
 		return errors.Join(f.Truncate(size), f.Close())
 	}
-	disks, err := vmdisk.New(filepath.Join(root, "disks"), format)
+	disks, err := vmdisk.New(filepath.Join(root, "disks"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +66,9 @@ func managerFixture(t *testing.T) (*Manager, *vmdisk.Manager, *fakeHost, Spec, s
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := Spec{Disks: vmdisk.Spec{EnvironmentID: "env-1", InstanceID: "instance-1", TemplateID: "template-1", SystemBytes: 64 << 20, DataBytes: 64 << 20}, VCPUs: 2, MemoryMiB: 512, Generation: 1}
+	spec := Spec{Disk: vmdisk.Spec{EnvironmentID: "env-1", InstanceID: "instance-1", TemplateID: "template-1", DiskBytes: 64 << 20}, VCPUs: 2, MemoryMiB: 512, Generation: 1}
 	template := filepath.Join(root, "template.ext4")
-	if err := format(context.Background(), template, spec.Disks.SystemBytes); err != nil {
+	if err := format(context.Background(), template, spec.Disk.DiskBytes); err != nil {
 		t.Fatal(err)
 	}
 	return manager, disks, host, spec, template
@@ -76,7 +76,7 @@ func managerFixture(t *testing.T) (*Manager, *vmdisk.Manager, *fakeHost, Spec, s
 func TestPersistentVMLifecycle(t *testing.T) {
 	m, disks, h, spec, template := managerFixture(t)
 	ctx := t.Context()
-	id := spec.Disks.EnvironmentID
+	id := spec.Disk.EnvironmentID
 	created, err := m.Create(ctx, spec, template)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestPersistentVMLifecycle(t *testing.T) {
 	if _, err := m.Start(ctx, id, 2); err == nil {
 		t.Fatal("运行中接受新启动")
 	}
-	if _, err := disks.Acquire(id, spec.Disks.InstanceID); err == nil {
+	if _, err := disks.Acquire(id, spec.Disk.InstanceID); err == nil {
 		t.Fatal("运行中磁盘可被第二实例占用")
 	}
 	stopped, err := m.Stop(ctx, id, 2)
@@ -125,7 +125,7 @@ func TestPersistentVMLifecycle(t *testing.T) {
 func TestProtectionSurvivesRestartAndOldTargets(t *testing.T) {
 	m, disks, h, spec, template := managerFixture(t)
 	ctx := t.Context()
-	id := spec.Disks.EnvironmentID
+	id := spec.Disk.EnvironmentID
 	if _, err := m.Create(ctx, spec, template); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestProtectionSurvivesRestartAndOldTargets(t *testing.T) {
 func TestStartFailureKeepsLeaseUntilStop(t *testing.T) {
 	m, disks, h, spec, template := managerFixture(t)
 	ctx := t.Context()
-	id := spec.Disks.EnvironmentID
+	id := spec.Disk.EnvironmentID
 	if _, err := m.Create(ctx, spec, template); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestStartFailureKeepsLeaseUntilStop(t *testing.T) {
 	if _, err := m.Start(ctx, id, 1); err == nil {
 		t.Fatal("未拒绝启动失败")
 	}
-	if _, err := disks.Acquire(id, spec.Disks.InstanceID); err == nil {
+	if _, err := disks.Acquire(id, spec.Disk.InstanceID); err == nil {
 		t.Fatal("未知启动结果释放了占用")
 	}
 	if _, err := m.Start(ctx, id, 2); err == nil {
@@ -187,7 +187,7 @@ func TestStartFailureKeepsLeaseUntilStop(t *testing.T) {
 	if _, err := m.Stop(ctx, id, 4); err == nil {
 		t.Fatal("停止失败仍成功")
 	}
-	if _, err := disks.Acquire(id, spec.Disks.InstanceID); err == nil {
+	if _, err := disks.Acquire(id, spec.Disk.InstanceID); err == nil {
 		t.Fatal("停止失败释放了占用")
 	}
 }

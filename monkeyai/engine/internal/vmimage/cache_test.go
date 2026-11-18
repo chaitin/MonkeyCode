@@ -11,7 +11,7 @@ import (
 
 func testIdentity() Identity {
 	d := "sha256:" + strings.Repeat("a", 64)
-	return Identity{Architecture: "amd64", ImageDigest: d, ConverterDigest: d, KernelDigest: d, BootstrapDigest: d, SystemBytes: 64 << 20}
+	return Identity{Architecture: "amd64", ImageDigest: d, ConverterDigest: d, KernelDigest: d, BootstrapDigest: d, DiskBytes: 64 << 20}
 }
 
 func testCache(t *testing.T) *Cache {
@@ -33,7 +33,7 @@ func buildDisk(ctx context.Context, identity Identity, dir string) error {
 		return err
 	}
 	defer f.Close()
-	return f.Truncate(identity.SystemBytes)
+	return f.Truncate(identity.DiskBytes)
 }
 
 func TestIdentity(t *testing.T) {
@@ -51,7 +51,7 @@ func TestIdentity(t *testing.T) {
 		func(i *Identity) { i.BootstrapDigest = "sha256:" + strings.Repeat("b", 64) },
 		func(i *Identity) { i.ConverterDigest = "sha256:" + strings.Repeat("b", 64) },
 		func(i *Identity) { i.ImageDigest = "sha256:" + strings.Repeat("b", 64) },
-		func(i *Identity) { i.SystemBytes += 4096 },
+		func(i *Identity) { i.DiskBytes += 4096 },
 	} {
 		copy := id
 		change(&copy)
@@ -64,7 +64,7 @@ func TestIdentity(t *testing.T) {
 		func(i *Identity) { i.Architecture = "x86_64" },
 		func(i *Identity) { i.ImageDigest = "latest" },
 		func(i *Identity) { i.KernelDigest = "sha256:" + strings.Repeat("A", 64) },
-		func(i *Identity) { i.SystemBytes = 1 },
+		func(i *Identity) { i.DiskBytes = 1 },
 	} {
 		copy := id
 		change(&copy)

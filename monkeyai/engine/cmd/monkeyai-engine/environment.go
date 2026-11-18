@@ -84,7 +84,7 @@ func environment(ctx context.Context, args []string, out, stderr io.Writer) int 
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		fmt.Fprintln(out, "保留双盘已永久销毁")
+		fmt.Fprintln(out, "保留磁盘已永久销毁")
 		return 0
 	case "inspect":
 		id := f.String("id", "", "环境 ID")

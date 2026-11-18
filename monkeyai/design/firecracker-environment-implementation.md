@@ -48,25 +48,25 @@ KVM测试逻辑及CLI在本机通过，Linux两架构测试二进制可交叉编
 
 现有依赖隔离Docker环境的集成测试按原条件跳过；新增真实KVM测试未运行。交叉编译和模拟通过不能代替真实KVM、jailer、网络、磁盘、runtime和安装器验收。
 
-## 第二阶段：转换、双盘与宿主组件（进行中）
+## 第二阶段：转换、单盘与宿主组件（进行中）
 
 已实现：
 
 - `vmimage`：固定摘要的中心服务Registry直读，不依赖Docker；OCI索引／平台清单／层SHA及DiffID校验，解压预算和特殊归档限制；固定摘要umoci解包、启动组件注入、ext4生成、只读模板缓存和原子发布。
-- `vmdisk`：reflink优先及稀疏复制、独立双盘、先写创建意图、持久磁盘占用、停止确认后释放、保留和独立销毁；逻辑／物理容量和在途inode预算持久化，容量与保护循环已经接入服务代码。
+- `vmdisk`：reflink优先及稀疏复制、独立持久单盘、先写创建意图、持久磁盘占用、停止确认后释放、保留和独立销毁；逻辑／物理容量和在途inode预算持久化，容量与保护循环已经接入服务代码。
 - `firecracker`：有界Unix API、强制Writeback/Sync与限速、实例与启动身份校验；持久实例状态、保护锁定和单写占用；systemd/jailer宿主执行器及独立网络接口。当前未替换既有生产gVisor驱动。
-- `guest`及`cmd/monkeyai-guest`：vsock握手、仅宿主CID连接、有限管理RPC，普通用户status/login/serve与关机请求；数据盘和启动标识检查；独立runtime升级通过临时根目录释放内嵌引擎并核对摘要，维护启动不登录或运行用户runtime；停止时复用宿主记录查询版本。
+- `guest`及`cmd/monkeyai-guest`：vsock握手、仅宿主CID连接、有限管理RPC，普通用户status/login/serve与关机请求；持久根盘和启动标识检查；独立runtime升级通过临时根目录释放内嵌引擎并核对摘要，维护启动不登录或运行用户runtime；停止时复用宿主记录查询版本。
 - `vmnet`：网络地址登记、私有namespace/TAP/veth、专用nftables出口隔离和固定例外；已在本地Linux完成真实namespace／TAP／veth／路由／nftables创建、核验和回收，以及两种策略的nft语法检查；完整流量攻击验收和准备中断后的完整自动恢复仍待补齐。
 - `selftest`及CLI：固定驱动真实自检入口、最小PID1测试程序、受限gVisor版本执行、microVM+vsock测试及清理确认。无KVM时不谎报就绪，尚未验证真实KVM启动。
 - 组件锁定Firecracker v1.18.0、Linux 6.1.167、umoci v0.5.1、e2fsprogs 1.47.2；`buildvm.py`提供独立Linux构建机原生构建流程，`packagevm.py`提供静态ELF／SHA校验和确定性归档。当前ARM64开发包对应代码提交`cf94f92d`，位于工作空间`.artifacts/firecracker-cf94f92d-arm64/package/`，归档SHA256为`8664154778c929dc1e01181440b1485467cce2d4553e1d16baecf8a6ca9a8bf4`，已通过Pro installer对实际归档的完整解包、逐文件摘要和静态ELF／架构校验。此前65cff420版本的开发产物保留用于追溯。AMD64开发包也已构建完成，位于`.artifacts/firecracker-cf94f92d-amd64/package/`，归档SHA256为`0e68d7085b28890b316b7c8beb330d283cd149ed541428750f523dade65f5553`。它使用macOS上的静态Go交叉编译产物及ARM64 Linux上的AMD64 GCC交叉工具链构建，未运行模拟架构中的Go/GCC；已通过Pro安装器对实际归档的完整校验。两个包都是本地开发产物，没有发布。
 - Pro：新增VM清单、独立归档下载／SHA／静态ELF校验；在线／离线engine分发和资源包支持可选firecracker.tgz；发行脚本纳入其摘要和源码指纹。`Run`已接通平台选择、固定包准备、真实自检记录、驱动配置和服务保存；Firecracker服务不依赖Docker，升级保留驱动和旧组件路径。旧版无VM清单的发行继续走历史gVisor路径。
-- 中心服务enginehost：按可信发行清单提供可选firecracker.tgz，拒绝缺失、未声明和符号链接归档。中心调度和环境创建支持协议4的Firecracker规格，冻结组件清单摘要与双盘容量；普通停止／恢复保持实例ID，gVisor继续按原协议执行。
+- 中心服务enginehost：按可信发行清单提供可选firecracker.tgz，拒绝缺失、未声明和符号链接归档。中心调度和环境创建支持协议5的Firecracker规格，冻结组件清单摘要与磁盘总容量；普通停止／恢复保持实例ID，gVisor继续按原协议执行。
 
 真实工具验证：在隔离Linux ARM64容器中执行了mke2fs/debugfs生成与复制验证，以及OCI白化删除／覆盖→umoci→ext4→缓存复用的端到端测试。先验证系统umoci 0.4.7，再用锁定源码构建的静态umoci 0.5.1重新验证通过；过程中修正了测试OCI manifest错误序列化的manifests:null。测试容器已清理，没有发布镜像或组件。
 
 当前Colima/Linux没有/dev/kvm。用户已选择先完成代码和打包，真实KVM、jailer、网络及工作负载验收保留未完成，不部署。
 
-用户另行确认：平台磁盘压力导致保护暂停期间免计算费，显式恢复并重新可用后恢复计费。该规则已经接入代码，增量迁移为 `000047_environment_protection`，通过sqlc生成查询，没有改写000040或手改生成文件。迁移仅在测试数据库应用，未应用到线上。
+用户另行确认：平台磁盘压力导致保护暂停期间免计算费，显式恢复并重新可用后恢复计费。该规则已经接入代码，增量迁移为 `000048_environment_protection`，通过sqlc生成查询，没有改写000040或手改生成文件。迁移仅在测试数据库应用，未应用到线上。
 
 ## 第三阶段：控制链路与保护账务
 
@@ -77,7 +77,7 @@ KVM测试逻辑及CLI在本机通过，Linux两架构测试二进制可交叉编
 - 暂停关闭收费时段，报告重放不推进实际观测时间；显式停止／更高代次重新可用后开启新时段。实际PostgreSQL测试覆盖延迟上报、重复事件、内容冲突、停止期间免计和恢复后重新计费，并保持旧gVisor计费测试通过。
 - 模板缓存回收与磁盘准备共用跨进程锁；从磁盘登记核对引用，保留、准备中、登记不一致或未知条目都会阻止删除。只清理无引用模板，实际物理占用以块数核对；critical先暂停活动写入者再尝试回收，空间恢复仍不自动启动。
 - 管理端增加存储保护状态、筛选、免计费及恢复步骤说明；前端类型检查、相关ESLint及全部前端测试通过。
-- 普通环境删除保留双盘与逻辑预算。新增本地 `environment retained` 列举，以及 `environment destroy-disks --id <ID> --confirm-environment <同一ID>` 独立销毁入口；没有执行真实用户数据销毁。
+- 普通环境删除保留磁盘与逻辑预算。新增本地 `environment retained` 列举，以及 `environment destroy-disks --id <ID> --confirm-environment <同一ID>` 独立销毁入口；没有执行真实用户数据销毁。
 - Linux隔离容器中的真实官方runtime单文件准备、内嵌引擎校验、原子激活和重复安装已通过。该验证不能替代vsock上的真实虚拟机升级验收。
 
 ## 安装与构建示例
@@ -95,7 +95,7 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 首次安装保存对应组件的真实自检记录；同版本修复和升级会复核记录及固定摘要，保留内核／组件与驱动，不在已有虚拟机旁另起可能争用地址的自检虚拟机。缺失或不匹配的记录明确拒绝，需要人工核对活动实例后处理。
 
-安装器默认值为系统盘20GiB、数据盘100GiB、逻辑池16TiB；物理空间critical/warning/recovery为2/4/8GiB，inode为1万/5万/10万，转换限16GiB/100万文件。通过 `--vm-config` JSON可调整容量、地址池、DNS、保护水位和限速；固定发行组件和中心服务例外由安装器生成。所有发行清单、内核及组件引用均需固定摘要，自检不通过不会改选其他驱动。
+安装器默认值为磁盘总容量120GiB、逻辑池16TiB；物理空间critical/warning/recovery为2/4/8GiB，inode为1万/5万/10万，转换限16GiB/100万文件。通过 `--vm-config` JSON可调整容量、地址池、DNS、保护水位和限速；固定发行组件和中心服务例外由安装器生成。所有发行清单、内核及组件引用均需固定摘要，自检不通过不会改选其他驱动。
 
 ## 完整本地发行目录
 
@@ -115,7 +115,7 @@ python3 scripts/packagevm.py --arch arm64 --components /artifacts/components-arm
 
 ## 宿主驱动和新建环境磁盘规格
 
-宿主详情摘要展示上报驱动，品牌名为Firecracker／gVisor；兼容已知历史gVisor协议，未上报或未知驱动不推测。宿主规格接口返回`driver`以及Firecracker的`disks.system_bytes`、`disks.data_bytes`，表单用GiB输入，验证64 MiB～16 TiB和4 KiB对齐。省略磁盘字段保留现有设置，首次沿用宿主上报的默认值；gVisor拒绝磁盘字段。
+宿主详情摘要展示上报驱动，品牌名为Firecracker／gVisor；兼容已知历史gVisor协议，未上报或未知驱动不推测。宿主规格接口返回`driver`以及Firecracker的`disk_bytes`总容量，表单用GiB输入，验证64 MiB～16 TiB和4 KiB对齐。省略磁盘字段保留现有设置，首次沿用宿主上报的默认值；gVisor拒绝磁盘字段。
 
 磁盘设置和计算资源一起保存到现有宿主规格JSON文档，不新增数据库列或迁移。调度仅将所选磁盘值写入新环境的VirtualMachine快照，执行协议中的计算资源仍只有原四个字段。修改宿主规格不会扩缩已有磁盘。CPU／内存计费和存储暂时免费规则不变。
 
@@ -141,6 +141,16 @@ Linux原生ARM64在`umask 077`下使用真实systemd隔离执行通过OCI解包�
 - VM的/run挂载带nodev，原runtime准备逻辑在其中mknod创建/dev/null不可用，导致Go安装器无法启动账户查询进程而报service_account_unavailable。改为绑定VM现有/dev/null，显式设置临时目录、账户库和释放程序权限；只有固定安装子进程使用umask022，guest服务仍为0077。runtime安装错误以有界详情通过绑定身份的RPC返回。
 
 新增Docker/OCI真实解包、SUID/SGID与所有权、动态身份回收顺序、完整真实镜像转换及KVM启动复用测试。Pro发行会从当前源码重编译生产guest，固定第三方工具和最小自检程序继续复用OSS锁定依赖；guest更新进入新归档身份。升级为新环境选择新默认bundle，同时保留旧bundle及现有环境磁盘引用；只有最小自检程序、VMM、jailer、内核和mkfs摘要完全相同才沿用原硬件自检凭据和原时间，并记录等价来源，底层启动组件变化则要求重新真实自检。
+
+## 单盘总容量：移除未上线双盘布局
+
+每环境只生成`disk.ext4`，从固定根盘模板独立稀疏克隆；VMM只配置`/drives/root`一个可写根设备。系统、软件、项目、用户目录和runtime状态共同受`disk_bytes`总容量上限约束。guest不再挂载第二块盘，启动前核对根盘是可写ext4，所有持久目录属于同一设备，已有初始化标记下缺失目录不自动重建。
+
+协议、配置、模板身份、宿主上报、后台设置和界面统一为`disk_bytes`；虚拟机环境协议升至5。未上线的双盘逻辑直接移除，不增加兼容分支。安装器缺少有效磁盘总容量时拒绝升级，旧测试配置需重新接入；没有删除已有测试文件。逻辑账计单盘总容量，物理准备预算包含最大镜像内容、文件系统元数据与转换暂存；保留水位保护及停止后的持久数据保留。
+
+已通过Engine全量竞态测试与vet、Linux AMD64／ARM64编译、ARM64原生磁盘生命周期测试、真实PostgreSQL事务回归、安装器竞态测试及前端构建／类型／lint。128 MiB独立ext4盘实测系统、项目、家目录与运行时状态四类目录共用同一设备，在占满后均返回ENOSPC；这属于Linux文件系统验收，不代替KVM验收。浏览器通过单一容量字段、非法输入、40 GiB保存回显、gVisor隐藏和390px布局。
+
+原双盘真机验收仅为历史结果，不代表单盘已完成KVM验收。目前目标123.56.205.99的SSH从本机和中心均不可达，中心最后心跳为2026-11-17 14:25:34Z，待机器恢复后继续单盘完整转换、真实启动、容量及停止重启验收。
 
 ## 准备失败后的容量预留清理
 

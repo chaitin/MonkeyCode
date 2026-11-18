@@ -10678,11 +10678,22 @@ components:
               version: {type: integer, format: int64, minimum: 0, description: 新增为0，已有项携带最新版本}
               cpu_millis: {type: integer, format: int64, minimum: 100, maximum: 256000}
               memory_bytes: {type: integer, format: int64, minimum: 268435456, maximum: 1099511627776}
+    EnvironmentDiskBytes:
+      type: integer
+      format: int64
+      minimum: 67108864
+      maximum: 17592186044416
+      multipleOf: 4096
+      description: Firecracker每台新环境的磁盘总容量；系统、软件、项目、用户目录和运行时数据共用一块持久磁盘。保存时不修改已有环境的磁盘快照。
     EnvironmentSetupInput:
       type: object
       additionalProperties: false
       properties:
         name: {type: string, maxLength: 128, description: 去除首尾空白后最多 128 个 UTF-8 字节。省略时保留原名，清空后由下一次有效宿主名称上报补全。}
+        disk_bytes:
+          allOf:
+          - $ref: '#/components/schemas/EnvironmentDiskBytes'
+          description: 仅Firecracker宿主可设置；省略保留现有设置，首次采用宿主上报默认值。
         grants:
           type: array
           items: {$ref: '#/components/schemas/HostGrantInput'}
@@ -10693,8 +10704,8 @@ components:
       required: [host_id, host_name, capacity, image_ready, billing, grants]
       properties:
         driver: {type: string, enum: [gvisor, firecracker], description: 宿主当前固定执行驱动；兼容未上报driver的历史gVisor宿主。}
-        disks:
-          $ref: '#/components/schemas/EnvironmentDisks'
+        disk_bytes:
+          $ref: '#/components/schemas/EnvironmentDiskBytes'
         host_id: {type: string, format: uuid}
         host_name: {type: string}
         grants:

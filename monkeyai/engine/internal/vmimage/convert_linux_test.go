@@ -121,7 +121,7 @@ func conversionIntegration(t *testing.T, media string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := Identity{Architecture: runtime.GOARCH, ImageDigest: manifest.Digest, ConverterDigest: cd, KernelDigest: cd, BootstrapDigest: bd, SystemBytes: 64 << 20}
+	id := Identity{Architecture: runtime.GOARCH, ImageDigest: manifest.Digest, ConverterDigest: cd, KernelDigest: cd, BootstrapDigest: bd, DiskBytes: 64 << 20}
 	build := converter.Build(layout)
 	if implementation.Path != "" {
 		build = converter.BuildIsolated(layout, implementation)

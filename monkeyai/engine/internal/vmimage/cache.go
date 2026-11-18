@@ -25,7 +25,7 @@ type Identity struct {
 	ConverterDigest string `json:"converter_digest"`
 	KernelDigest    string `json:"kernel_digest"`
 	BootstrapDigest string `json:"bootstrap_digest"`
-	SystemBytes     int64  `json:"system_bytes"`
+	DiskBytes       int64  `json:"disk_bytes"`
 }
 
 func (i Identity) Validate() error {
@@ -37,7 +37,7 @@ func (i Identity) Validate() error {
 			return errors.New("镜像及转换组件必须使用固定 sha256 摘要")
 		}
 	}
-	if i.SystemBytes < 64<<20 || i.SystemBytes > 16<<40 || i.SystemBytes%4096 != 0 {
+	if i.DiskBytes < 64<<20 || i.DiskBytes > 16<<40 || i.DiskBytes%4096 != 0 {
 		return errors.New("系统盘容量无效")
 	}
 	return nil
@@ -128,7 +128,7 @@ func (c *Cache) Ensure(ctx context.Context, identity Identity, build Build) (Tem
 		return Template{}, fmt.Errorf("转换镜像: %w", err)
 	}
 	path := filepath.Join(stage, "root.ext4")
-	sum, err := hashDisk(ctx, path, identity.SystemBytes)
+	sum, err := hashDisk(ctx, path, identity.DiskBytes)
 	if err != nil {
 		return Template{}, err
 	}
@@ -196,7 +196,7 @@ func (c *Cache) load(ctx context.Context, dir string, identity Identity) (Templa
 		return Template{}, errors.New("缓存身份不匹配")
 	}
 	t.Path = filepath.Join(dir, "root.ext4")
-	sum, err := hashDisk(ctx, t.Path, identity.SystemBytes)
+	sum, err := hashDisk(ctx, t.Path, identity.DiskBytes)
 	if err != nil {
 		return Template{}, err
 	}

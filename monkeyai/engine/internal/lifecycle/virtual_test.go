@@ -9,7 +9,7 @@ import (
 func virtualSpec() Spec {
 	s := testSpec()
 	s.Driver = "firecracker"
-	s.VirtualMachine = &VirtualMachine{Architecture: "amd64", BundleSHA256: strings.Repeat("a", 64), SystemBytes: 128 << 20, DataBytes: 128 << 20}
+	s.VirtualMachine = &VirtualMachine{Architecture: "amd64", BundleSHA256: strings.Repeat("a", 64), DiskBytes: 128 << 20}
 	return s
 }
 func TestVirtualMachineStopRetainsOriginalInstance(t *testing.T) {
@@ -47,7 +47,7 @@ func TestVirtualMachineStopRetainsOriginalInstance(t *testing.T) {
 	}
 	s.Generation++
 	s.DesiredState = DesiredRunning
-	s.VirtualMachine.DataBytes *= 2
+	s.VirtualMachine.DiskBytes *= 2
 	if _, err := c.Apply(t.Context(), s); err == nil {
 		t.Fatal("允许原实例更改磁盘冻结规格")
 	}

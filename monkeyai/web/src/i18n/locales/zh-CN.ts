@@ -226,10 +226,9 @@ export const zhCN = {
     setupCpu: "CPU",
     setupMemory: "内存",
     driver: "执行驱动",
-    setupSystemDisk: "系统盘",
-    setupDataDisk: "数据盘",
+    setupDisk: "磁盘总容量",
     setupDiskHint:
-      "系统盘保存系统和软件，数据盘保存项目、用户目录和运行时数据。仅对新环境生效，存储暂时免费。",
+      "系统、软件、项目、用户目录和运行时数据共用此容量。实际可用空间需扣除文件系统开销。仅对新环境生效，存储暂时免费。",
     setupDiskInvalid: "容量须为 0.0625～16384 GiB，并按 4 KiB 对齐。",
     setupEnvironmentCount: "环境数量上限",
     setupRunningCount: "同时运行上限",

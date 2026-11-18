@@ -33,7 +33,7 @@ func systemFixture(t *testing.T) *SystemHost {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewSystemHost(HostConfig{Root: filepath.Join(root, "data"), SocketRoot: filepath.Join(root, "s"), Firecracker: vmimage.Tool{Path: "/trusted/firecracker"}, OverheadMiB: 128, DiskRate: sampleConfig().System.Rate, Network: fakeNetwork{}})
+	h, err := NewSystemHost(HostConfig{Root: filepath.Join(root, "data"), SocketRoot: filepath.Join(root, "s"), Firecracker: vmimage.Tool{Path: "/trusted/firecracker"}, OverheadMiB: 128, DiskRate: sampleConfig().Disk.Rate, Network: fakeNetwork{}})
 	if err != nil {
 		t.Fatal(err)
 	}

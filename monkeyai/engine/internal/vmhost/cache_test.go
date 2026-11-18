@@ -18,7 +18,7 @@ func TestTemplateDeletionRejectsPinsAndNeverTouchesDisks(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := "sha256:" + strings.Repeat("a", 64)
-	identity := vmimage.Identity{Architecture: "amd64", ImageDigest: digest, ConverterDigest: digest, KernelDigest: digest, BootstrapDigest: digest, SystemBytes: 64 << 20}
+	identity := vmimage.Identity{Architecture: "amd64", ImageDigest: digest, ConverterDigest: digest, KernelDigest: digest, BootstrapDigest: digest, DiskBytes: 64 << 20}
 	key, err := identity.Key()
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestTemplateDeletionRejectsPinsAndNeverTouchesDisks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := file.Truncate(identity.SystemBytes); err != nil {
+	if err := file.Truncate(identity.DiskBytes); err != nil {
 		t.Fatal(err)
 	}
 	file.Close()

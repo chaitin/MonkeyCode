@@ -168,7 +168,7 @@ paths:
                         version: {type: string}
                         status: {type: string, enum: [running, succeeded, failed]}
                         reason: {type: string, enum: ['', launch_failed, upgrade_failed, upgrade_interrupted]}
-                    environment_protocol: {type: integer, enum: [0, 2, 3, 4], description: 2 为保留容器；3 支持固定版本tag；4 为固定组件和双盘Firecracker虚拟机。}
+                    environment_protocol: {type: integer, enum: [0, 2, 3, 5], description: 2 为保留容器；3 支持固定版本tag；5 为固定组件和单盘Firecracker虚拟机。}
                     driver: {type: string, enum: [gvisor, firecracker]}
                     protection_protocol: {type: integer, enum: [1]}
                     disk_pressure: {type: string, enum: [normal, warning, critical]}
@@ -402,12 +402,11 @@ components:
       additionalProperties: false
     VirtualMachine:
       type: object
-      required: [architecture, bundle_sha256, system_bytes, data_bytes]
+      required: [architecture, bundle_sha256, disk_bytes]
       properties:
         architecture: {type: string, enum: [amd64, arm64]}
         bundle_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
-        system_bytes: {type: integer, format: int64, minimum: 67108864, maximum: 17592186044416, multipleOf: 4096}
-        data_bytes: {type: integer, format: int64, minimum: 67108864, maximum: 17592186044416, multipleOf: 4096}
+        disk_bytes: {type: integer, format: int64, minimum: 67108864, maximum: 17592186044416, multipleOf: 4096}
       additionalProperties: false
     EnvironmentProtection:
       type: object

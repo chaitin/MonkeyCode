@@ -22,7 +22,7 @@ func (m *Manager) Destroy(ctx context.Context, id string, confirmed bool) (State
 		return state, nil
 	}
 	if state.Phase != "retained" || state.Lease != "" {
-		return state, errors.New("永久销毁仅允许已删除且保留、没有写入者的双盘")
+		return state, errors.New("永久销毁仅允许已删除且保留、没有写入者的磁盘")
 	}
 	running, err := m.host.Running(ctx, state.ID)
 	if err != nil {
@@ -34,7 +34,7 @@ func (m *Manager) Destroy(ctx context.Context, id string, confirmed bool) (State
 	if err := m.host.Remove(ctx, state.ID); err != nil {
 		return state, err
 	}
-	if err := m.disks.Destroy(id, state.Spec.Disks.InstanceID, true); err != nil {
+	if err := m.disks.Destroy(id, state.Spec.Disk.InstanceID, true); err != nil {
 		return state, err
 	}
 	state.Phase = "destroyed"

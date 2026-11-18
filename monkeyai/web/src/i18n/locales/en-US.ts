@@ -237,10 +237,9 @@ export const enUS = {
     setupCpu: "CPU",
     setupMemory: "Memory",
     driver: "Execution driver",
-    setupSystemDisk: "System disk",
-    setupDataDisk: "Data disk",
+    setupDisk: "Total disk capacity",
     setupDiskHint:
-      "The system disk stores the OS and software; the data disk stores workspace, home, and runtime data. Applies to new environments only. Storage is currently free.",
+      "The OS, software, projects, home, and runtime data share this capacity. Filesystem overhead reduces usable space. Applies to new environments only. Storage is currently free.",
     setupDiskInvalid: "Enter 0.0625–16384 GiB, aligned to 4 KiB.",
     setupEnvironmentCount: "Environment limit",
     setupRunningCount: "Concurrent limit",

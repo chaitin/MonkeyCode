@@ -285,7 +285,7 @@ func (h *SystemHost) emptyCgroup(group string) error {
 	})
 }
 func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
-	if l.ID != storage.Key(l.Binding.EnvironmentID) || l.Binding.BootID != l.BootID || l.Binding.InstanceID != l.Disks.Spec.InstanceID || l.Disks.Lease == "" {
+	if l.ID != storage.Key(l.Binding.EnvironmentID) || l.Binding.BootID != l.BootID || l.Binding.InstanceID != l.Disk.Spec.InstanceID || l.Disk.Lease == "" {
 		return errors.New("启动身份与磁盘占用不匹配")
 	}
 	if l.CPUMillis < 0 || l.CPUMillis > int64(l.VCPUs)*1000 || l.CPUMillis > 32000 {
@@ -347,20 +347,18 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 	if err := os.Chown(filepath.Join(root, "run"), int(lease.UID), int(lease.UID)); err != nil {
 		return err
 	}
-	for _, disk := range []struct{ source, name string }{{l.Disks.System, "system.ext4"}, {l.Disks.Data, "data.ext4"}} {
-		info, err := os.Lstat(disk.source)
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("磁盘不是普通文件")
-		}
-		if err := os.Link(disk.source, filepath.Join(root, disk.name)); err != nil {
-			return err
-		}
-		if err := os.Chown(filepath.Join(root, disk.name), int(lease.UID), int(lease.UID)); err != nil {
-			return err
-		}
+	info, err := os.Lstat(l.Disk.Path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("磁盘不是普通文件")
+	}
+	if err := os.Link(l.Disk.Path, filepath.Join(root, "disk.ext4")); err != nil {
+		return err
+	}
+	if err := os.Chown(filepath.Join(root, "disk.ext4"), int(lease.UID), int(lease.UID)); err != nil {
+		return err
 	}
 	if err := os.Symlink(filepath.Join(root, "run"), h.socketDir(l.ID)); err != nil {
 		return err
@@ -382,7 +380,7 @@ func (h *SystemHost) Start(ctx context.Context, l Launch) (result error) {
 		console = "console=ttyAMA0 keep_bootcon "
 	}
 	args := console + "reboot=k panic=1 pci=off root=/dev/vda rw rootfstype=ext4 init=" + init + " " + extra + lease.BootArgs + " monkeyai.guest=1 monkeyai.environment=" + l.Binding.EnvironmentID + " monkeyai.instance=" + l.Binding.InstanceID + " monkeyai.boot=" + l.BootID
-	config := Config{ID: l.ID, Machine: Machine{VCPUCount: l.VCPUs, MemoryMiB: l.MemoryMiB}, Boot: Boot{Kernel: "/kernel", Args: args}, System: Drive{ID: "system", Path: "/system.ext4", Root: true, Cache: "Writeback", IOEngine: "Sync", Rate: h.config.DiskRate}, Data: Drive{ID: "data", Path: "/data.ext4", Cache: "Writeback", IOEngine: "Sync", Rate: h.config.DiskRate}, Vsock: Vsock{ID: "management", CID: 3, Path: "/run/guest.sock"}, Network: &lease.Interface}
+	config := Config{ID: l.ID, Machine: Machine{VCPUCount: l.VCPUs, MemoryMiB: l.MemoryMiB}, Boot: Boot{Kernel: "/kernel", Args: args}, Disk: Drive{ID: "root", Path: "/disk.ext4", Root: true, Cache: "Writeback", IOEngine: "Sync", Rate: h.config.DiskRate}, Vsock: Vsock{ID: "management", CID: 3, Path: "/run/guest.sock"}, Network: &lease.Interface}
 	if err := config.Validate(); err != nil {
 		return err
 	}

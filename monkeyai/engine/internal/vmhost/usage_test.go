@@ -29,14 +29,14 @@ func TestUsageKeepsBootSamplesSeparate(t *testing.T) {
 	}
 }
 func TestFingerprintFreezesVMResourcesAndAllowsControlGeneration(t *testing.T) {
-	s := lifecycle.Spec{EnvironmentID: "env", InstanceID: "instance", Generation: 1, DesiredState: lifecycle.DesiredRunning, Driver: "firecracker", VirtualMachine: &lifecycle.VirtualMachine{SystemBytes: 1 << 30, DataBytes: 1 << 30}}
+	s := lifecycle.Spec{EnvironmentID: "env", InstanceID: "instance", Generation: 1, DesiredState: lifecycle.DesiredRunning, Driver: "firecracker", VirtualMachine: &lifecycle.VirtualMachine{DiskBytes: 1 << 30}}
 	original := fingerprint(s)
 	s.Generation = 2
 	s.DesiredState = lifecycle.DesiredStopped
 	if fingerprint(s) != original {
 		t.Fatal("停止控制更改了实例冻结身份")
 	}
-	s.VirtualMachine.DataBytes *= 2
+	s.VirtualMachine.DiskBytes *= 2
 	if fingerprint(s) == original {
 		t.Fatal("磁盘规格未纳入冻结身份")
 	}

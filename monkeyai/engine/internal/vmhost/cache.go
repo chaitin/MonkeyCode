@@ -79,7 +79,7 @@ func diskTemplateReferences(root string) (map[string]bool, error) {
 		if err != nil {
 			return nil, err
 		}
-		var disk vmdisk.Disks
+		var disk vmdisk.Disk
 		if json.Unmarshal(raw, &disk) != nil || !templateKey.MatchString(disk.Spec.TemplateID) || entry.Name() != storage.Key(disk.Spec.EnvironmentID)+".json" || disk.Spec.InstanceID == "" {
 			return nil, errors.New("磁盘模板引用损坏，拒绝回收")
 		}
@@ -150,7 +150,7 @@ func (s templateStore) Images(ctx context.Context) ([]cache.Image, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !disk.Mode().IsRegular() || disk.Mode().Perm() != 0400 || disk.Size() != template.Identity.SystemBytes {
+		if !disk.Mode().IsRegular() || disk.Mode().Perm() != 0400 || disk.Size() != template.Identity.DiskBytes {
 			return nil, errors.New("模板盘类型或容量无效")
 		}
 		images = append(images, cache.Image{Name: entry.Name(), Target: template.Identity.ImageDigest, Managed: true, Pinned: s.pinned[entry.Name()], UsedAt: info.ModTime()})

@@ -14,7 +14,7 @@ import (
 
 func sampleConfig() Config {
 	rate := Rate{Bandwidth: Bucket{Size: 1048576, RefillMS: 100}, Operations: Bucket{Size: 100, RefillMS: 100}}
-	return Config{ID: "env-1", Machine: Machine{VCPUCount: 2, MemoryMiB: 512}, Boot: Boot{Kernel: "/kernel", Args: "console=ttyS0 root=/dev/vda rw"}, System: Drive{ID: "system", Path: "/system.ext4", Root: true, Cache: "Writeback", IOEngine: "Sync", Rate: rate}, Data: Drive{ID: "data", Path: "/data.ext4", Cache: "Writeback", IOEngine: "Sync", Rate: rate}, Vsock: Vsock{ID: "management", CID: 3, Path: "/run/guest.sock"}}
+	return Config{ID: "env-1", Machine: Machine{VCPUCount: 2, MemoryMiB: 512}, Boot: Boot{Kernel: "/kernel", Args: "console=ttyS0 root=/dev/vda rw"}, Disk: Drive{ID: "root", Path: "/disk.ext4", Root: true, Cache: "Writeback", IOEngine: "Sync", Rate: rate}, Vsock: Vsock{ID: "management", CID: 3, Path: "/run/guest.sock"}}
 }
 func apiFixture(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
@@ -78,7 +78,7 @@ func TestConfigureAndLifecycle(t *testing.T) {
 	if err := c.Configure(ctx, config); err != nil {
 		t.Fatal(err)
 	}
-	expected := []string{"GET /", "PUT /machine-config", "PUT /boot-source", "PUT /drives/system", "PUT /drives/data", "PUT /vsock"}
+	expected := []string{"GET /", "PUT /machine-config", "PUT /boot-source", "PUT /drives/root", "PUT /vsock"}
 	if fmt.Sprint(paths) != fmt.Sprint(expected) {
 		t.Fatalf("配置顺序错误: %v", paths)
 	}
@@ -131,7 +131,7 @@ func TestAPIFailClosed(t *testing.T) {
 }
 func TestConfigValidation(t *testing.T) {
 	for _, change := range []func(*Config){
-		func(c *Config) { c.ID = "../../evil" }, func(c *Config) { c.Machine.SMT = true }, func(c *Config) { c.Data.Path = c.System.Path }, func(c *Config) { c.System.Cache = "Unsafe" }, func(c *Config) { c.System.IOEngine = "Async" }, func(c *Config) { c.Data.ReadOnly = true }, func(c *Config) { c.Data.Rate.Bandwidth.Size = 0 }, func(c *Config) { c.Vsock.CID = 2 }, func(c *Config) { c.Boot.Kernel = "relative" }, func(c *Config) { c.Boot.Args = "bad\nargument" },
+		func(c *Config) { c.ID = "../../evil" }, func(c *Config) { c.Machine.SMT = true }, func(c *Config) { c.Disk.Root = false }, func(c *Config) { c.Disk.Cache = "Unsafe" }, func(c *Config) { c.Disk.IOEngine = "Async" }, func(c *Config) { c.Disk.ReadOnly = true }, func(c *Config) { c.Disk.Rate.Bandwidth.Size = 0 }, func(c *Config) { c.Vsock.CID = 2 }, func(c *Config) { c.Boot.Kernel = "relative" }, func(c *Config) { c.Boot.Args = "bad\nargument" },
 	} {
 		config := sampleConfig()
 		change(&config)

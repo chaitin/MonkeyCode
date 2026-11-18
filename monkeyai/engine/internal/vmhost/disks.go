@@ -50,10 +50,8 @@ func (d *Driver) DestroyDisks(ctx context.Context, s lifecycle.Spec, confirmed b
 		if record.State != "destroyed" {
 			return false, nil
 		}
-		for _, path := range []string{record.System, record.Data} {
-			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-				return false, errors.New("磁盘文件仍存在或无法核对")
-			}
+		if _, err := os.Lstat(record.Path); !errors.Is(err, os.ErrNotExist) {
+			return false, errors.New("磁盘文件仍存在或无法核对")
 		}
 		return true, nil
 	})

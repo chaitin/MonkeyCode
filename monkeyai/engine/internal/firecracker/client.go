@@ -106,7 +106,7 @@ func (c *Client) Configure(ctx context.Context, config Config) error {
 		data any
 	}{
 		{"/machine-config", config.Machine}, {"/boot-source", config.Boot},
-		{"/drives/system", config.System}, {"/drives/data", config.Data},
+		{"/drives/root", config.Disk},
 		{"/vsock", config.Vsock},
 	}
 	if config.Network != nil {

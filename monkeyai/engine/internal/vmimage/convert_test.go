@@ -33,7 +33,7 @@ func converterFixture(t *testing.T) (*Converter, Identity, string, string) {
 		t.Fatal(err)
 	}
 	layout, manifest, _ := layoutFixture(t, true)
-	id := Identity{Architecture: "amd64", ImageDigest: manifest.Digest, ConverterDigest: cd, KernelDigest: cd, BootstrapDigest: bd, SystemBytes: 64 << 20}
+	id := Identity{Architecture: "amd64", ImageDigest: manifest.Digest, ConverterDigest: cd, KernelDigest: cd, BootstrapDigest: bd, DiskBytes: 64 << 20}
 	stage := filepath.Join(base, "stage")
 	if err := os.Mkdir(stage, 0700); err != nil {
 		t.Fatal(err)

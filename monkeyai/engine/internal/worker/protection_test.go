@@ -25,7 +25,7 @@ func TestWorkerPersistsProtectionAndNeverTreatsPauseAsExit(t *testing.T) {
 	s := target(t)
 	s.Driver = "firecracker"
 	s.PersistentContainer = false
-	s.VirtualMachine = &lifecycle.VirtualMachine{Architecture: "amd64", BundleSHA256: strings.Repeat("a", 64), SystemBytes: 1 << 30, DataBytes: 1 << 30}
+	s.VirtualMachine = &lifecycle.VirtualMachine{Architecture: "amd64", BundleSHA256: strings.Repeat("a", 64), DiskBytes: 1 << 30}
 	p := &lifecycle.Protection{ID: "11111111-1111-4111-8111-111111111111", At: time.Now().UTC(), Generation: s.Generation, Reason: "storage_pressure"}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

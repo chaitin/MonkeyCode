@@ -29,7 +29,7 @@ func fingerprint(s lifecycle.Spec) string {
 	return hex.EncodeToString(hash[:])
 }
 func validate(s lifecycle.Spec, n firecracker.State, ref string) error {
-	if n.ID != storage.Key(s.EnvironmentID) || ref != "" && ref != n.ID || n.Spec.Fingerprint != fingerprint(s) || n.Spec.Disks.InstanceID != s.InstanceID || n.Generation > s.Generation {
+	if n.ID != storage.Key(s.EnvironmentID) || ref != "" && ref != n.ID || n.Spec.Fingerprint != fingerprint(s) || n.Spec.Disk.InstanceID != s.InstanceID || n.Generation > s.Generation {
 		return errors.New("虚拟机冻结规格、代次或实例归属不匹配")
 	}
 	return nil
@@ -66,8 +66,9 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) (result error) {
 	if err != nil {
 		return err
 	}
-	physical := s.VirtualMachine.SystemBytes + s.VirtualMachine.DataBytes/16 + d.config.ConversionBytes*3
-	if err := pool.ReserveFiles(ctx, s.EnvironmentID, s.VirtualMachine.SystemBytes+s.VirtualMachine.DataBytes, physical, d.config.ConversionFiles+2048); err != nil {
+	// 转换预留之外，持久盘克隆还需覆盖镜像内容和文件系统元数据。
+	physical := min(s.VirtualMachine.DiskBytes, d.config.ConversionBytes) + s.VirtualMachine.DiskBytes/16 + d.config.ConversionBytes*3
+	if err := pool.ReserveFiles(ctx, s.EnvironmentID, s.VirtualMachine.DiskBytes, physical, d.config.ConversionFiles+2048); err != nil {
 		return err
 	}
 	defer func() {
@@ -132,7 +133,7 @@ func (d *Driver) Prepare(ctx context.Context, s lifecycle.Spec) (result error) {
 	if err != nil {
 		return err
 	}
-	identity := vmimage.Identity{Architecture: s.VirtualMachine.Architecture, ImageDigest: image.Manifest.Digest, ConverterDigest: cd, KernelDigest: "sha256:" + r.Files["kernel"], BootstrapDigest: bd, SystemBytes: s.VirtualMachine.SystemBytes}
+	identity := vmimage.Identity{Architecture: s.VirtualMachine.Architecture, ImageDigest: image.Manifest.Digest, ConverterDigest: cd, KernelDigest: "sha256:" + r.Files["kernel"], BootstrapDigest: bd, DiskBytes: s.VirtualMachine.DiskBytes}
 	cache, err := vmimage.New(filepath.Join(d.data, "templates"))
 	if err != nil {
 		return err

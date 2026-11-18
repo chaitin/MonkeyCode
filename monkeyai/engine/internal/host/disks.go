@@ -64,7 +64,7 @@ func DestroyDisks(ctx context.Context, id, confirmedID string) error {
 		return err
 	}
 	if state.Spec.Driver != "firecracker" || state.Phase != lifecycle.PhaseDeleted {
-		return errors.New("仅允许永久销毁已删除虚拟机的保留双盘")
+		return errors.New("仅允许永久销毁已删除虚拟机的保留磁盘")
 	}
 	executor, err := open("firecracker")
 	if err != nil {

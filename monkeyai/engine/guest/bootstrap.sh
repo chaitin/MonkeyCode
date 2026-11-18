@@ -6,24 +6,20 @@ case " $(cat /proc/cmdline) " in
   *) echo '缺少平台虚拟机启动标识' >&2; exit 1 ;;
 esac
 
-mkdir -p /mnt/monkeyai-data
-mountpoint -q /mnt/monkeyai-data || mount -t ext4 -o rw,nodev,nosuid /dev/vdb /mnt/monkeyai-data
-for name in workspace home runtime; do
-  test ! -L "/mnt/monkeyai-data/$name"
-  mkdir -p "/mnt/monkeyai-data/$name"
+for path in /workspace /home/monkey /var/lib/monkeyai /var/lib/monkeyai/state; do
+  test ! -L "$path"
+  if test -e /var/lib/monkeyai/.initialized; then
+    test -d "$path"
+  else
+    mkdir -p "$path"
+  fi
 done
-mkdir -p /workspace /home/monkey /var/lib/monkeyai
-mountpoint -q /workspace || mount --bind /mnt/monkeyai-data/workspace /workspace
-mountpoint -q /home/monkey || mount --bind /mnt/monkeyai-data/home /home/monkey
-mountpoint -q /var/lib/monkeyai || mount --bind /mnt/monkeyai-data/runtime /var/lib/monkeyai
-
-if test ! -e /mnt/monkeyai-data/.initialized; then
-  mkdir -p /var/lib/monkeyai/state
+if test ! -e /var/lib/monkeyai/.initialized; then
   chown 1000:1000 /workspace /home/monkey /var/lib/monkeyai/state
   chown 0:0 /var/lib/monkeyai
   chmod 755 /var/lib/monkeyai
   chmod 700 /var/lib/monkeyai/state
-  touch /mnt/monkeyai-data/.initialized
+  touch /var/lib/monkeyai/.initialized
   sync
 fi
 

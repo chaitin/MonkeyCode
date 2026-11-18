@@ -199,7 +199,7 @@ func (c *Converter) Build(layout string) Build {
 		if err := c.Mkfs.Verify(ctx); err != nil {
 			return err
 		}
-		if err := populate(ctx, filepath.Join(stage, "root.ext4"), id.SystemBytes, rootfs); err != nil {
+		if err := populate(ctx, filepath.Join(stage, "root.ext4"), id.DiskBytes, rootfs); err != nil {
 			return fmt.Errorf("系统盘ext4生成失败: %w", err)
 		}
 		// ready 缓存只保留最终模板，不保留解包树和临时 OCI 副本。

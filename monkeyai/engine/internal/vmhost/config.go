@@ -24,8 +24,7 @@ import (
 )
 
 type Config struct {
-	SystemBytes   int64  `json:"system_bytes"`
-	DataBytes     int64  `json:"data_bytes"`
+	DiskBytes     int64  `json:"disk_bytes"`
 	DefaultBundle string `json:"default_bundle"`
 
 	Bundles         map[string]string     `json:"bundles"`
@@ -67,7 +66,7 @@ func New(data, state string, raw json.RawMessage, client *control.Client, hostID
 	if json.Unmarshal(raw, &config) != nil || len(config.Bundles) == 0 || config.LogicalLimit <= 0 || config.ConversionBytes <= 0 || config.ConversionBytes > 16<<40 || config.ConversionFiles <= 0 || config.ConversionFiles > 10000000 || config.OverheadMiB < 64 || config.OverheadMiB > 4096 {
 		return nil, errors.New("缺少固定组件、存储池或转换资源配置")
 	}
-	defaults := lifecycle.VirtualMachine{Architecture: runtime.GOARCH, BundleSHA256: config.DefaultBundle, SystemBytes: config.SystemBytes, DataBytes: config.DataBytes}
+	defaults := lifecycle.VirtualMachine{Architecture: runtime.GOARCH, BundleSHA256: config.DefaultBundle, DiskBytes: config.DiskBytes}
 	if err := defaults.Validate(); err != nil {
 		return nil, err
 	}
@@ -147,16 +146,7 @@ func (d *Driver) stores(s lifecycle.Spec) (*vmdisk.Manager, *firecracker.Manager
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	formatter, err := vmdisk.NewExt4(filepath.Join(dir, "mke2fs"))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	disks, err := vmdisk.New(filepath.Join(d.data, "disks"), func(ctx context.Context, path string, size int64) error {
-		if err := (vmimage.Tool{Path: filepath.Join(dir, "mke2fs"), Digest: "sha256:" + r.Files["mke2fs"]}).Verify(ctx); err != nil {
-			return err
-		}
-		return formatter.Format(ctx, path, size)
-	})
+	disks, err := vmdisk.New(filepath.Join(d.data, "disks"))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -175,7 +165,7 @@ func (d *Driver) stores(s lifecycle.Spec) (*vmdisk.Manager, *firecracker.Manager
 	return disks, manager, host, err
 }
 func (d *Driver) nativeSpec(s lifecycle.Spec, template string) firecracker.Spec {
-	return firecracker.Spec{Fingerprint: fingerprint(s), Disks: vmdisk.Spec{EnvironmentID: s.EnvironmentID, InstanceID: s.InstanceID, TemplateID: template, SystemBytes: s.VirtualMachine.SystemBytes, DataBytes: s.VirtualMachine.DataBytes}, VCPUs: int((s.Resource.CPUMillis + 999) / 1000), CPUMillis: s.Resource.CPUMillis, MemoryMiB: s.Resource.MemoryBytes >> 20, Generation: s.Generation}
+	return firecracker.Spec{Fingerprint: fingerprint(s), Disk: vmdisk.Spec{EnvironmentID: s.EnvironmentID, InstanceID: s.InstanceID, TemplateID: template, DiskBytes: s.VirtualMachine.DiskBytes}, VCPUs: int((s.Resource.CPUMillis + 999) / 1000), CPUMillis: s.Resource.CPUMillis, MemoryMiB: s.Resource.MemoryBytes >> 20, Generation: s.Generation}
 }
 func (d *Driver) guest(ctx context.Context, s lifecycle.Spec) (*guest.Client, error) {
 	_, manager, host, err := d.stores(s)
@@ -186,7 +176,7 @@ func (d *Driver) guest(ctx context.Context, s lifecycle.Spec) (*guest.Client, er
 	if err != nil {
 		return nil, err
 	}
-	if actual.Spec.Disks.InstanceID != s.InstanceID || actual.Generation != s.Generation || actual.Phase != "running" || actual.ProtectionGeneration != 0 {
+	if actual.Spec.Disk.InstanceID != s.InstanceID || actual.Generation != s.Generation || actual.Phase != "running" || actual.ProtectionGeneration != 0 {
 		return nil, errors.New("runtime目标与当前可运行虚拟机不匹配")
 	}
 	return host.GuestClient(actual.ID)

@@ -65,7 +65,7 @@ journalctl -u monkeyai-engine -u docker --since '-10 min'
 
 ## 持久目录
 
-新安装的数据目录默认是`/data/monkeyai-engine`，交互安装可修改，已有目录保持不变。以下普通目录说明适用于gVisor；Firecracker在该数据目录下创建独立双盘，详见[Firecracker实施记录](../design/firecracker-environment-implementation.md)。项目、用户目录和 runtime 状态保存在普通目录中，停止／重建容器时保留。无需配置 XFS／ext4 项目配额、quota 内核模块或独立磁盘镜像，也无需安装 xfsprogs。
+新安装的数据目录默认是`/data/monkeyai-engine`，交互安装可修改，已有目录保持不变。以下普通目录说明适用于gVisor；Firecracker在该数据目录下为每个环境创建一块独立持久磁盘，详见[Firecracker实施记录](../design/firecracker-environment-implementation.md)。项目、用户目录和 runtime 状态保存在普通目录中，停止／重建容器时保留。无需配置 XFS／ext4 项目配额、quota 内核模块或独立磁盘镜像，也无需安装 xfsprogs。
 
 当前不限制每台云电脑的持久目录容量或 inode 数，不为其预分配磁盘空间。CPU、内存、宿主进程数和临时 tmpfs 限制继续生效；宿主总磁盘空间由管理员维护。镜像缓存的空间检查和回收仍独立生效。
 

@@ -52,8 +52,7 @@ type Config struct {
 	ID      string
 	Machine Machine
 	Boot    Boot
-	System  Drive
-	Data    Drive
+	Disk    Drive
 	Vsock   Vsock
 	Network *Network
 }
@@ -79,16 +78,14 @@ func (c Config) Validate() error {
 	if !validPath(c.Boot.Kernel) || len(c.Boot.Args) > 2048 || c.Boot.Args == "" || strings.ContainsAny(c.Boot.Args, "\x00\r\n") {
 		return errors.New("虚拟机启动配置无效")
 	}
-	if c.System.ID != "system" || !c.System.Root || c.Data.ID != "data" || c.Data.Root || c.System.Path == c.Data.Path {
-		return errors.New("系统盘和数据盘绑定无效")
+	if c.Disk.ID != "root" || !c.Disk.Root {
+		return errors.New("虚拟磁盘绑定无效")
 	}
-	for _, drive := range []Drive{c.System, c.Data} {
-		if !validPath(drive.Path) || drive.ReadOnly || drive.Cache != "Writeback" || drive.IOEngine != "Sync" {
-			return errors.New("持久盘必须可写并支持 flush，首版使用 Sync IO")
-		}
-		if err := drive.Rate.Validate(); err != nil {
-			return err
-		}
+	if !validPath(c.Disk.Path) || c.Disk.ReadOnly || c.Disk.Cache != "Writeback" || c.Disk.IOEngine != "Sync" {
+		return errors.New("持久盘必须可写并支持flush，使用Sync IO")
+	}
+	if err := c.Disk.Rate.Validate(); err != nil {
+		return err
 	}
 	if c.Vsock.ID != "management" || c.Vsock.CID < 3 || c.Vsock.CID == ^uint32(0) || !validPath(c.Vsock.Path) {
 		return errors.New("虚拟机管理通道配置无效")

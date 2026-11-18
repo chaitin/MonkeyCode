@@ -43,7 +43,11 @@ func TestRealImageStartup(t *testing.T) {
 		Insecure       bool
 		Firecracker    json.RawMessage
 	}
-	raw, err := os.ReadFile("/etc/monkeyai-engine/config.json")
+	configFile := os.Getenv("MONKEYAI_VM_STARTUP_CONFIG")
+	if configFile == "" {
+		configFile = "/etc/monkeyai-engine/config.json"
+	}
+	raw, err := os.ReadFile(configFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +109,10 @@ func TestRealImageStartup(t *testing.T) {
 	}
 	spec.Image = image + "@" + spec.ImageDigest
 	spec.DesiredState = lifecycle.DesiredRunning
-	_, manager, host, err := driver.stores(spec)
+	if err := spec.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	disks, manager, host, err := driver.stores(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +121,18 @@ func TestRealImageStartup(t *testing.T) {
 	state, err := manager.Create(ctx, driver.nativeSpec(spec, strings.TrimPrefix(spec.ImageDigest, "sha256:")), template)
 	if err != nil {
 		t.Fatal(err)
+	}
+	disk, err := disks.Load(spec.EnvironmentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(disk.Path))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "disk.ext4" {
+		t.Fatal("真实环境没有使用单块持久盘", entries, err)
+	}
+	info, err := os.Stat(disk.Path)
+	if err != nil || info.Size() != spec.VirtualMachine.DiskBytes {
+		t.Fatal("磁盘总容量与冻结规格不一致", err)
 	}
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 40*time.Second)
@@ -154,5 +173,5 @@ func TestRealImageStartup(t *testing.T) {
 	if current, err := driver.RuntimeVersion(ctx, spec); err != nil || current != version {
 		t.Fatal("停止重启后runtime未保留", current, err)
 	}
-	t.Logf("原实例与双盘冷启动复用通过：instance=%s runtime=%s", spec.InstanceID, version)
+	t.Logf("原实例与单盘冷启动复用通过：instance=%s runtime=%s", spec.InstanceID, version)
 }

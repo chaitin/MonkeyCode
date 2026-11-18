@@ -45,18 +45,15 @@ type Runtime struct {
 type VirtualMachine struct {
 	Architecture string `json:"architecture"`
 	BundleSHA256 string `json:"bundle_sha256"`
-	SystemBytes  int64  `json:"system_bytes"`
-	DataBytes    int64  `json:"data_bytes"`
+	DiskBytes    int64  `json:"disk_bytes"`
 }
 
 func (v VirtualMachine) Validate() error {
 	if (v.Architecture != "amd64" && v.Architecture != "arm64") || !runtimeSHA.MatchString(v.BundleSHA256) {
 		return errors.New("虚拟机架构或固定组件摘要无效")
 	}
-	for _, size := range []int64{v.SystemBytes, v.DataBytes} {
-		if size < 64<<20 || size > 16<<40 || size%4096 != 0 {
-			return errors.New("虚拟磁盘容量无效")
-		}
+	if v.DiskBytes < 64<<20 || v.DiskBytes > 16<<40 || v.DiskBytes%4096 != 0 {
+		return errors.New("虚拟磁盘容量无效")
 	}
 	return nil
 }
