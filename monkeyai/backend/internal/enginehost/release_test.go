@@ -92,7 +92,7 @@ func TestInstallationScriptAndAutomaticIdentity(t *testing.T) {
 		t.Fatal("脚本不可用或可被缓存")
 	}
 	body := script.Body.String()
-	if !strings.Contains(body, "x86_64|amd64") || !strings.Contains(body, "aarch64|arm64") || strings.Contains(body, "release.monkeycode-ai.com") || !strings.Contains(body, "https://control.example") || !strings.Contains(body, "$1/api/host/v1/releases/$3/$4/$8") {
+	if !strings.Contains(body, "x86_64|amd64") || !strings.Contains(body, "aarch64|arm64") || strings.Contains(body, "release.monkeycode-ai.com") || !strings.Contains(body, "https://control.example") || !strings.Contains(body, "${server_url:-$1}/api/host/v1/releases/$3/$4/$8") {
 		t.Fatal("脚本未自动识别架构或依赖外部发行源")
 	}
 	if !strings.Contains(body, "curl -k --proto") || !strings.Contains(body, "monkeyai-engine install --insecure --server") {

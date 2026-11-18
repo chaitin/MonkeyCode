@@ -56,6 +56,12 @@ func (s *Service) script(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, web.Message(r.Context(), "", "后台 HTTP(S) 地址无效"), 503)
 		return
 	}
+	serverURL := r.URL.Query().Get("server_url")
+	if serverURL != "" && !validServer(serverURL) {
+		fail(w, r, 400, "server_url 必须为无凭据、路径或查询参数的 HTTP 或 HTTPS 根地址")
+		return
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
 	secret := r.URL.Query().Get("token")
 	version := r.URL.Query().Get("version")
 	if secret != "" || r.URL.Query().Has("token") {
@@ -73,7 +79,9 @@ func (s *Service) script(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body strings.Builder
-	body.WriteString("#!/bin/bash\ninstall_engine() {\ncase \"$(uname -m)\" in\n")
+	body.WriteString("#!/bin/bash\ninstall_engine() {\n")
+	fmt.Fprintf(&body, "server_url=%s\n", quote(serverURL))
+	body.WriteString("case \"$(uname -m)\" in\n")
 	for _, arch := range []string{"amd64", "arm64"} {
 		m, raw, err := s.manifest(version, arch)
 		if err != nil {
@@ -86,6 +94,10 @@ func (s *Service) script(w http.ResponseWriter, r *http.Request) {
 		}
 		binary := "installer"
 		if !hasInstaller(m.Files) {
+			if serverURL != "" {
+				fail(w, r, 503, "指定 server_url 需要使用包含新版 installer 的 engine 发行版本")
+				return
+			}
 			if secret == "" {
 				http.Error(w, web.Message(r.Context(), "", "服务器安装资源不完整"), 503)
 				return
