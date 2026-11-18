@@ -2100,6 +2100,10 @@ ALTER TABLE environment_billing_periods DROP CONSTRAINT IF EXISTS environment_bi
 ALTER TABLE environment_billing_periods ADD CONSTRAINT environment_billing_prepaid_hour
  CHECK(prepaid_until IS NULL OR prepaid_until=started_at+interval '1 hour');
 
+ALTER TABLE connectors ADD COLUMN tools_synced_at timestamptz;
+
+ALTER TABLE connector_credentials ADD COLUMN tools_synced_at timestamptz;
+
 CREATE TABLE IF NOT EXISTS environment_specification_catalog (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
     revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0)

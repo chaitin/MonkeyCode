@@ -154,6 +154,7 @@ SET
     END,
     last_checked_at = CASE WHEN (sqlc.arg(DATA)::jsonb ->> 'config_revision')::bigint IS DISTINCT FROM config_revision THEN NULL ELSE last_checked_at END,
     last_error = CASE WHEN (sqlc.arg(DATA)::jsonb ->> 'config_revision')::bigint IS DISTINCT FROM config_revision THEN NULL ELSE last_error END,
+    tools_synced_at = CASE WHEN (sqlc.arg(DATA)::jsonb ->> 'config_revision')::bigint IS DISTINCT FROM config_revision THEN NULL ELSE tools_synced_at END,
     revision = revision + 1,
     updated_at = now()
 WHERE

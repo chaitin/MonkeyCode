@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/kb"
 	"github.com/chaitin/MonkeyCode/monkeyai/backend/internal/resource"
@@ -20,7 +21,12 @@ func TestResolveConnectorTools(t *testing.T) {
 			r, user, other := catalogDatabase(t)
 			t.Setenv("MONKEYAI_MCP_ALLOWED_CIDRS", "127.0.0.0/8")
 			var revision atomic.Int32
+			var calls atomic.Int32
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				calls.Add(1)
+				if req.Header.Get("X-Account") == "unselected" {
+					t.Error("不应使用未选凭证请求远端")
+				}
 				var in struct {
 					ID     json.RawMessage `json:"id"`
 					Method string          `json:"method"`
@@ -37,6 +43,10 @@ func TestResolveConnectorTools(t *testing.T) {
 					w.WriteHeader(http.StatusAccepted)
 					return
 				case "tools/list":
+					if revision.Load() == 4 {
+						w.WriteHeader(http.StatusUnauthorized)
+						return
+					}
 					if revision.Load() == 2 {
 						w.WriteHeader(http.StatusServiceUnavailable)
 						return
@@ -74,11 +84,14 @@ func TestResolveConnectorTools(t *testing.T) {
 			}
 			if mode == "independent" {
 				for _, owner := range []string{user, other} {
-					catalogExec(t, r, "INSERT INTO connector_credentials(id,connector_id,user_id,http_headers,config_revision) VALUES($1,$2,$3,'{\"X-Account\":\"另一账户\"}',1)", resource.ID(), connector, owner)
+					catalogExec(t, r, "INSERT INTO connector_credentials(id,connector_id,user_id,http_headers,config_revision) VALUES($1,$2,$3,'{\"X-Account\":\"unselected\"}',1)", resource.ID(), connector, owner)
 				}
 				out, err := r.Resolve(t.Context(), user, in)
 				if err != nil || out.Bool("available") {
 					t.Fatalf("多份凭证时应要求明确选择: %v, %v", out, err)
+				}
+				if calls.Load() != 0 {
+					t.Fatal("多份凭证未绑定时不应请求远端")
 				}
 				in["connector_bindings"] = map[string]any{connector: credential}
 			}
@@ -86,10 +99,34 @@ func TestResolveConnectorTools(t *testing.T) {
 			visibleID := resource.ID()
 			catalogExec(t, r, "INSERT INTO mcp_tools(id,connector_id,credential_id,name,enabled,credits_per_call,config_revision) VALUES($1,$2,$3,'visible',true,5,1)", visibleID, connector, credential)
 
-			out, err := r.Resolve(t.Context(), user, in)
+			c, err := r.mcp.Connector(t.Context(), r.store.Pool, connector, user, false)
 			if err != nil {
 				t.Fatal(err)
 			}
+			refresh := func(wantStatus int) {
+				t.Helper()
+				id, _ := credential.(string)
+				if mode == "centralized" {
+					id = ""
+				}
+				_, err := r.mcp.Tools(t.Context(), r.store.Pool, c, user, id, false)
+				if wantStatus == 200 && err != nil || wantStatus != 200 && (err == nil || resource.AsError(err).Status != wantStatus) {
+					t.Fatalf("刷新工具失败: want=%d, err=%v", wantStatus, err)
+				}
+			}
+			resolve := func(input resource.Object) resource.Object {
+				t.Helper()
+				before := calls.Load()
+				out, err := r.Resolve(t.Context(), user, input)
+				if err != nil || calls.Load() != before {
+					t.Fatalf("解析必须只读缓存: %v，远端请求次数变化=%d", err, calls.Load()-before)
+				}
+				return out
+			}
+			cold := resolve(in)["connectors"].([]resource.Object)[0]
+			assertEmptyCatalogTools(t, cold)
+			refresh(200)
+			out := resolve(in)
 			conn := out["connectors"].([]resource.Object)[0]
 			tools, ok := conn["tools"].([]resource.Object)
 			if !ok || len(tools) != 1 || !out.Bool("available") || conn.String("tools_version") != resource.Hash(tools) {
@@ -111,16 +148,18 @@ func TestResolveConnectorTools(t *testing.T) {
 			}
 
 			revision.Store(1)
-			updated, err := r.Resolve(t.Context(), user, in)
-			if err != nil {
-				t.Fatal(err)
+			if cached := resolve(in); cached.String("version") != out.String("version") {
+				t.Fatalf("上游变化在同步前不应改变快照: %v", cached)
 			}
+			refresh(200)
+			updated := resolve(in)
 			updatedTools := updated["connectors"].([]resource.Object)[0]["tools"].([]resource.Object)
 			current := updatedTools[len(updatedTools)-1]
 			if current.String("description") != account+"-1" || current.String("id") != visible.String("id") || updated.String("version") == out.String("version") {
 				t.Fatalf("实时工具或清单版本未更新: %v", updated)
 			}
 
+			before := calls.Load()
 			items, err := r.list(t.Context(), r.store.Pool, user, "connectors", resource.CatalogFilter{}, []string{connector})
 			if err != nil {
 				t.Fatal(err)
@@ -131,12 +170,12 @@ func TestResolveConnectorTools(t *testing.T) {
 					t.Fatalf("连接目录应只包含当前用户的凭证: %v", items)
 				}
 				for _, cred := range credentials {
-					if cred.String("tools_version") != resource.Hash(cred["tools"]) {
-						t.Fatalf("内嵌凭证缺少兼容工具版本: %v", cred)
-					}
+					assertEmptyCatalogTools(t, cred)
 				}
-			} else if items[0].String("tools_version") != resource.Hash(items[0]["tools"]) {
-				t.Fatal("连接目录缺少兼容工具版本")
+			}
+			assertEmptyCatalogTools(t, items[0])
+			if calls.Load() != before {
+				t.Fatal("连接列表不应查询远端工具")
 			}
 
 			expert := resource.ID()
@@ -146,20 +185,14 @@ func TestResolveConnectorTools(t *testing.T) {
 			if mode == "independent" {
 				expertInput["connector_bindings"] = in["connector_bindings"]
 			}
-			expertOut, err := r.Resolve(t.Context(), user, expertInput)
-			if err != nil {
-				t.Fatal(err)
-			}
+			expertOut := resolve(expertInput)
 			expertConn := expertOut["connectors"].([]resource.Object)[0]
 			expertTools := expertConn["tools"].([]resource.Object)
 			if len(expertTools) != 1 || expertTools[0].String("name") != "visible" || expertConn.String("tools_version") != resource.Hash(expertTools) {
 				t.Fatalf("专家连接的工具或过滤规则丢失: %v", expertConn)
 			}
 			catalogExec(t, r, "UPDATE expert_connectors SET tool_denylist=ARRAY['visible'] WHERE expert_id=$1", expert)
-			denied, err := r.Resolve(t.Context(), user, expertInput)
-			if err != nil {
-				t.Fatal(err)
-			}
+			denied := resolve(expertInput)
 			deniedConn := denied["connectors"].([]resource.Object)[0]
 			deniedTools := deniedConn["tools"].([]resource.Object)
 			if len(deniedTools) != 0 || deniedConn.String("tools_version") != resource.Hash(deniedTools) || denied.String("version") == expertOut.String("version") {
@@ -177,26 +210,32 @@ func TestResolveConnectorTools(t *testing.T) {
 			}
 
 			revision.Store(2)
-			if _, err := r.Resolve(t.Context(), user, in); err == nil {
-				t.Fatal("远端失败不应返回旧工具目录")
-			} else {
-				var fault *resource.Error
-				if !errors.As(err, &fault) || fault.Status != http.StatusBadGateway {
-					t.Fatalf("远端失败应返回 502: %v", err)
-				}
+			refresh(502)
+			if stale := resolve(in); !stale.Bool("available") || stale.String("version") != updated.String("version") {
+				t.Fatalf("临时故障不应覆盖同版本快照: %v", stale)
 			}
+			revision.Store(4)
+			refresh(502)
+			assertEmptyCatalogTools(t, resolve(in)["connectors"].([]resource.Object)[0])
 			revision.Store(3)
-			empty, err := r.Resolve(t.Context(), user, in)
-			if err != nil {
-				t.Fatal(err)
-			}
+			refresh(200)
+			empty := resolve(in)
 			emptyTools := empty["connectors"].([]resource.Object)[0]["tools"].([]resource.Object)
 			if emptyTools == nil || len(emptyTools) != 0 {
 				t.Fatalf("无工具应返回空数组: %v", empty)
 			}
+			var synced, checked *time.Time
+			if mode == "none" {
+				err = r.store.Pool.QueryRow(t.Context(), "SELECT tools_synced_at, last_checked_at FROM connectors WHERE id=$1", connector).Scan(&synced, &checked)
+			} else {
+				err = r.store.Pool.QueryRow(t.Context(), "SELECT tools_synced_at, last_checked_at FROM connector_credentials WHERE id=$1", credential).Scan(&synced, &checked)
+			}
+			if err != nil || synced == nil || checked != nil {
+				t.Fatalf("成功空快照必须记录时间，但不改变连接测试时间: %v, %v, %v", synced, checked, err)
+			}
 			var count int
 			if err := r.store.Pool.QueryRow(t.Context(), "SELECT count(*) FROM mcp_tools WHERE connector_id=$1", connector).Scan(&count); err != nil || count != 2 {
-				t.Fatalf("解析不应持久化工具目录，count=%d: %v", count, err)
+				t.Fatalf("成功空快照应保留原工具配置，count=%d: %v", count, err)
 			}
 		})
 	}

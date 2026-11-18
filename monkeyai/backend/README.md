@@ -225,6 +225,22 @@ MONKEYAI_RUNTIME_PREVIEW_KEY_FILE=/run/secrets/preview/tls.key
 
 服务端组件测试：`go test ./internal/relay/... ./internal/endpoint/... ./internal/session/...`，设置隔离 `MONKEYAI_TEST_DATABASE_URL` 后覆盖真实数据库和双通道；`MONKEYAI_TEST_NGINX_IMAGE=nginx:1.28-alpine` 额外启动并清理专用 Docker 容器验证 Nginx。应用组装测试还需配置隔离的 `MONKEYAI_S3_*`，执行 `go test ./internal/app -run '^TestRuntimeRelayApplication$'`。功能上线仍需真实 Mac/Win runtime 的操作恢复、权限、产物预览及代理验收。
 
+## MCP 工具快照刷新
+
+`/api/v1/resources/resolve` 始终只读数据库中的工具快照，不在未命中时回源。无认证按连接同步，集中认证只同步当前凭证，独立认证按凭证分别同步。后台按 ID 固定错峰，多实例只由一个 worker 调度。下列变量均可覆盖默认值：
+
+~~~dotenv
+MONKEYAI_MCP_TOOLS_REFRESH_INTERVAL=10m
+MONKEYAI_MCP_TOOLS_REFRESH_SCAN_INTERVAL=10s
+MONKEYAI_MCP_TOOLS_REFRESH_MAX_CONCURRENT=10
+MONKEYAI_MCP_TOOLS_REFRESH_GLOBAL_MIN_START_INTERVAL=500ms
+MONKEYAI_MCP_TOOLS_REFRESH_PER_UPSTREAM_MAX_CONCURRENT=1
+MONKEYAI_MCP_TOOLS_REFRESH_PER_UPSTREAM_MIN_START_INTERVAL=1s
+MONKEYAI_MCP_TOOLS_REFRESH_TIMEOUT=30s
+~~~
+
+限速只针对后台任务，以归一化后的上游 `host:port` 分组。积压时延后，同一目标不会补跑多次；10 分钟是刷新目标，不是快照失效时间。后台刷新不更新连接测试的 `last_checked_at`。升级时先执行数据库迁移，再预热活跃连接（可通过连接测试或新实例的后台刷新），确认后切流；未预热时旧客户端可能把空工具列表视为不可用。
+
 ## 资源功能验证
 
 `go test ./...` 和 `go vet ./...` 运行常规检查。真实 PostgreSQL / RustFS 集成验证需要：

@@ -17,7 +17,7 @@
 
 runtime 卷挂载在 `/var/lib/monkeyai`，实际传入 `--state-dir /var/lib/monkeyai/state`。现有 runtime 在 state-dir 的父目录创建维护锁，所以父目录也必须位于可写持久卷内；不能直接把只读 `/var/lib` 当作维护锁目录。项目与用户目录分别为 `/workspace`、`/home/monkey`。
 
-托管规格必须使用 `public-only`，并确保固定 DNS、后台 HTTP(S)、中转 WS(S) 和所需服务可达。后台位于私网时由管理员配置固定服务例外；不自动放宽私网规则。`isolated` 保留给本地容器执行，不可用于客户端云电脑登录。
+托管规格必须使用 `public-only`，并确保固定 DNS、后台 HTTP(S)、中转 WS(S) 和所需服务可达。后台位于私网时由管理员配置[网段白名单](NETWORK.md)；不自动放宽私网规则。宿主配置的 HTTP(S) 代理会传给引擎启动的 Runtime 进程（含登录及 serve），也会影响继承这些变量的子进程；已运行的 serve 须重新启动云电脑才能改用新代理。`isolated` 保留给本地容器执行，不可用于客户端云电脑登录。
 
 ## 启动流程
 

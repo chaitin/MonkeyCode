@@ -26,6 +26,51 @@ WHERE
     c.id = $1
     AND c.deleted_at IS NULL
     AND c.enabled;
+-- name: ListSnapshotTools :many
+SELECT jsonb_build_object('id', id, 'name', name, 'description', description, 'input_schema', input_schema,
+    'enabled', enabled, 'credits_per_call', CASE WHEN sqlc.arg(independent)::boolean THEN 0 ELSE credits_per_call END)
+FROM mcp_tools
+WHERE connector_id = sqlc.arg(connector_id)
+    AND credential_id IS NOT DISTINCT FROM NULLIF(sqlc.arg(credential_id)::text, '')::uuid
+    AND config_revision = sqlc.arg(config_revision) AND discovered_at = sqlc.arg(synced_at)
+    AND deleted_at IS NULL AND enabled
+ORDER BY name;
+
+-- name: SaveSnapshotTools :exec
+INSERT INTO mcp_tools (id, connector_id, credential_id, name, description, input_schema, enabled, config_revision, discovered_at)
+SELECT (t->>'id')::uuid, sqlc.arg(connector_id)::uuid, NULLIF(sqlc.arg(credential_id)::text, '')::uuid,
+    t->>'name', t->>'description', t->'inputSchema', true, sqlc.arg(config_revision)::bigint, sqlc.arg(synced_at)::timestamptz
+FROM jsonb_array_elements(sqlc.arg(tools)::jsonb) t
+ON CONFLICT (connector_id, credential_id, name) DO UPDATE SET
+    description = EXCLUDED.description, input_schema = EXCLUDED.input_schema,
+    enabled = CASE WHEN mcp_tools.deleted_at IS NULL THEN mcp_tools.enabled ELSE true END,
+    credits_per_call = CASE WHEN mcp_tools.deleted_at IS NULL THEN mcp_tools.credits_per_call ELSE 0 END,
+    config_revision = EXCLUDED.config_revision, discovered_at = EXCLUDED.discovered_at, deleted_at = NULL;
+
+-- name: SetConnectorToolsSynced :exec
+UPDATE connectors SET tools_synced_at = sqlc.narg(synced_at)::timestamptz WHERE id = sqlc.arg(id)::uuid;
+
+-- name: SetCredentialToolsSynced :exec
+UPDATE connector_credentials SET tools_synced_at = sqlc.narg(synced_at)::timestamptz WHERE id = sqlc.arg(id)::uuid;
+
+-- name: TryToolRefreshLock :one
+SELECT pg_try_advisory_lock(hashtextextended('monkeyai.mcp.tools.refresh', 0));
+
+-- name: ListToolRefreshTargets :many
+SELECT c.id AS connector_id, ''::text AS credential_id, c.url, c.tools_synced_at
+FROM connectors c
+WHERE c.enabled AND c.deleted_at IS NULL AND c.authorization_mode = 'none'
+UNION ALL
+SELECT c.id, cr.id::text, c.url, cr.tools_synced_at
+FROM connectors c JOIN connector_credentials cr ON cr.connector_id = c.id
+WHERE c.enabled AND c.deleted_at IS NULL AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    AND ((c.authorization_mode = 'centralized' AND cr.user_id IS NULL)
+        OR (c.authorization_mode = 'independent' AND EXISTS (
+            SELECT 1 FROM users u WHERE u.id = cr.user_id AND u.status = 'active' AND u.deleted_at IS NULL)))
+    AND ((c.authorization_method = 'http_header' AND cr.http_headers <> '{}'::jsonb)
+        OR (c.authorization_method = 'oauth' AND (cr.oauth_refresh_token <> '' OR
+            (cr.oauth_access_token <> '' AND (cr.oauth_expires_at IS NULL OR cr.oauth_expires_at > now())))));
+
 -- name: ListTools :many
 SELECT
     jsonb_build_object('id', t.id, 'name', t.name, 'enabled', t.enabled, 'credits_per_call', t.credits_per_call)
@@ -179,6 +224,7 @@ UPDATE connector_credentials SET
     config_revision = COALESCE((sqlc.arg(data)::jsonb->>'config_revision')::bigint, config_revision),
     connection_status = CASE WHEN (sqlc.arg(data)::jsonb->>'auth_change')::boolean THEN 'unknown' ELSE connection_status END,
     last_checked_at = CASE WHEN (sqlc.arg(data)::jsonb->>'auth_change')::boolean THEN NULL ELSE last_checked_at END,
+    tools_synced_at = CASE WHEN (sqlc.arg(data)::jsonb->>'auth_change')::boolean THEN NULL ELSE tools_synced_at END,
     last_error = CASE WHEN (sqlc.arg(data)::jsonb->>'auth_change')::boolean THEN NULL ELSE last_error END,
     revision = revision + 1, updated_at = now()
 WHERE id = (sqlc.arg(data)::jsonb->>'id')::uuid AND revoked_at IS NULL
@@ -208,7 +254,8 @@ RETURNING to_jsonb(connector_credentials);
 
 -- name: ExpireCredential :exec
 UPDATE connector_credentials SET oauth_access_token = '', oauth_refresh_token = '', oauth_expires_at = now(),
-    revision = revision + 1, connection_status = 'error', last_error = 'OAuth 已失效，请重新授权', updated_at = now()
+    revision = revision + 1, connection_status = 'error', last_error = 'OAuth 已失效，请重新授权',
+    tools_synced_at = NULL, updated_at = now()
 WHERE id = $1 AND revoked_at IS NULL;
 
 -- name: SetCredentialTest :exec

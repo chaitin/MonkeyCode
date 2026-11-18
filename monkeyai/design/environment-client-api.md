@@ -165,9 +165,9 @@ ticket 有效期 15 分钟；按响应 expires_in 提前串行续期，携带原
 
 隐藏执行限制由服务端生成：host_tasks=1024，temporary_bytes 为 min(512 MiB, 内存一半向下按 4096 字节对齐)。它们随环境资源快照保存，不接受客户端自定义。
 
-宿主 `GET/PUT /api/admin/v1/environment-hosts/{id}/setup` 保存 `{grants}`。不再接受或返回 resource；响应 billing 仅供读取，全局价格不能在此写入。宿主配置仍为最后有效提交覆盖；省略 grants 保留原授权。不设置数量上限，不删除或停止已有环境。个人配额接口已移除，宿主目录不再返回 quota。迁移49删除个人配额表及默认每用户数量字段；迁移50删除 hosts.max_environments，既有环境不受影响。
+宿主 `GET/PUT /api/admin/v1/environment-hosts/{id}/setup` 保存 `{grants}`。不再接受或返回 resource；响应 billing 仅供读取，全局价格不能在此写入。宿主配置仍为最后有效提交覆盖；省略 grants 保留原授权。不设置数量上限，不删除或停止已有环境。个人配额接口已移除，宿主目录不再返回 quota。迁移50删除个人配额表及默认每用户数量字段；迁移51删除 hosts.max_environments，既有环境不受影响。
 
-统一40直接创建八表：hosts、host_environment_configs、host_upgrades、environments、environment_runtimes、environment_operations、environment_quotas、environment_billing_periods；1～39不改。迁移50后的hosts含创建者user_id、enabled和首次activated_at，配置、升级历史与runtime独立存储。环境spec不重复存ID／实例／代次／目标／CPU／内存，按列组装下发；创建幂等放在operations，价格按内容快照判断变化。删除environment_defaults和compute_reserved，控制使用按schema区分的事务级advisory lock。重放保持配置、授权和账务，开放或已收费时段、财务历史、待完成宿主／runtime更新及未确认删除环境阻止回退。旧开发数据库不能靠up、force或重放补齐差异，需要独立的数据保留迁移方案。
+统一40直接创建八表：hosts、host_environment_configs、host_upgrades、environments、environment_runtimes、environment_operations、environment_quotas、environment_billing_periods；1～39不改。迁移51后的hosts含创建者user_id、enabled和首次activated_at，配置、升级历史与runtime独立存储。环境spec不重复存ID／实例／代次／目标／CPU／内存，按列组装下发；创建幂等放在operations，价格按内容快照判断变化。删除environment_defaults和compute_reserved，控制使用按schema区分的事务级advisory lock。重放保持配置、授权和账务，开放或已收费时段、财务历史、待完成宿主／runtime更新及未确认删除环境阻止回退。旧开发数据库不能靠up、force或重放补齐差异，需要独立的数据保留迁移方案。
 
 宿主接入使用服务端签名短期凭证，host创建者取当前登录用户；重发撤销原待接入记录并产生新ID。心跳／交换用v2签名及/time取得的服务端时间，严格推进业务报告时间；重复或旧报告被拒绝，不能延长计费区间。不新增认证表或JSON状态，原宿主私钥及已运行环境保持。
 
@@ -205,7 +205,7 @@ server 准备完整的双架构镜像，宿主仅从 server 的标准只读 Regi
 
 ## 全局规格发布与迁移
 
-部署顺序：先应用 `000048_environment_specifications`，再部署后端与管理端，最后让客户端按新接口选择规格。此变更不修改客户端应用代码。
+部署顺序：先应用 `000049_environment_specifications`，再部署后端与管理端，最后让客户端按新接口选择规格。此变更不修改客户端应用代码。
 
 迁移新增独立规格表与目录版本表，初始目录包含 1 核 2 GB 规格，不会把历史宿主 CPU／内存组合自动公开为全局可选规格。历史宿主 resource 列暂留以保留原数据，但新配置、宿主目录与调度不再使用它；已有环境资源及账务数据不迁移、不重写。管理员删除默认规格后不会自动补回。
 

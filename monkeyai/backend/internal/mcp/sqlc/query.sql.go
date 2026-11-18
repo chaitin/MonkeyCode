@@ -86,7 +86,8 @@ func (q *Queries) CreateOAuthRequest(ctx context.Context, data []byte) ([]byte, 
 
 const expireCredential = `-- name: ExpireCredential :exec
 UPDATE connector_credentials SET oauth_access_token = '', oauth_refresh_token = '', oauth_expires_at = now(),
-    revision = revision + 1, connection_status = 'error', last_error = 'OAuth 已失效，请重新授权', updated_at = now()
+    revision = revision + 1, connection_status = 'error', last_error = 'OAuth 已失效，请重新授权',
+    tools_synced_at = NULL, updated_at = now()
 WHERE id = $1 AND revoked_at IS NULL
 `
 
@@ -335,6 +336,51 @@ func (q *Queries) ListExpiringCredentials(ctx context.Context) ([]ListExpiringCr
 	return items, nil
 }
 
+const listSnapshotTools = `-- name: ListSnapshotTools :many
+SELECT jsonb_build_object('id', id, 'name', name, 'description', description, 'input_schema', input_schema,
+    'enabled', enabled, 'credits_per_call', CASE WHEN $1::boolean THEN 0 ELSE credits_per_call END)
+FROM mcp_tools
+WHERE connector_id = $2
+    AND credential_id IS NOT DISTINCT FROM NULLIF($3::text, '')::uuid
+    AND config_revision = $4 AND discovered_at = $5
+    AND deleted_at IS NULL AND enabled
+ORDER BY name
+`
+
+type ListSnapshotToolsParams struct {
+	Independent    bool
+	ConnectorID    string
+	CredentialID   string
+	ConfigRevision int64
+	SyncedAt       time.Time
+}
+
+func (q *Queries) ListSnapshotTools(ctx context.Context, arg ListSnapshotToolsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listSnapshotTools,
+		arg.Independent,
+		arg.ConnectorID,
+		arg.CredentialID,
+		arg.ConfigRevision,
+		arg.SyncedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var jsonb_build_object []byte
+		if err := rows.Scan(&jsonb_build_object); err != nil {
+			return nil, err
+		}
+		items = append(items, jsonb_build_object)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listToolContexts = `-- name: ListToolContexts :many
 SELECT to_jsonb(c) FROM connector_credentials c
 WHERE connector_id = $1 AND revoked_at IS NULL ORDER BY user_id, created_at, id
@@ -353,6 +399,54 @@ func (q *Queries) ListToolContexts(ctx context.Context, connectorID string) ([][
 			return nil, err
 		}
 		items = append(items, to_jsonb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listToolRefreshTargets = `-- name: ListToolRefreshTargets :many
+SELECT c.id AS connector_id, ''::text AS credential_id, c.url, c.tools_synced_at
+FROM connectors c
+WHERE c.enabled AND c.deleted_at IS NULL AND c.authorization_mode = 'none'
+UNION ALL
+SELECT c.id, cr.id::text, c.url, cr.tools_synced_at
+FROM connectors c JOIN connector_credentials cr ON cr.connector_id = c.id
+WHERE c.enabled AND c.deleted_at IS NULL AND cr.revoked_at IS NULL AND cr.config_revision = c.config_revision
+    AND ((c.authorization_mode = 'centralized' AND cr.user_id IS NULL)
+        OR (c.authorization_mode = 'independent' AND EXISTS (
+            SELECT 1 FROM users u WHERE u.id = cr.user_id AND u.status = 'active' AND u.deleted_at IS NULL)))
+    AND ((c.authorization_method = 'http_header' AND cr.http_headers <> '{}'::jsonb)
+        OR (c.authorization_method = 'oauth' AND (cr.oauth_refresh_token <> '' OR
+            (cr.oauth_access_token <> '' AND (cr.oauth_expires_at IS NULL OR cr.oauth_expires_at > now())))))
+`
+
+type ListToolRefreshTargetsRow struct {
+	ConnectorID   string
+	CredentialID  string
+	Url           string
+	ToolsSyncedAt *time.Time
+}
+
+func (q *Queries) ListToolRefreshTargets(ctx context.Context) ([]ListToolRefreshTargetsRow, error) {
+	rows, err := q.db.Query(ctx, listToolRefreshTargets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListToolRefreshTargetsRow{}
+	for rows.Next() {
+		var i ListToolRefreshTargetsRow
+		if err := rows.Scan(
+			&i.ConnectorID,
+			&i.CredentialID,
+			&i.Url,
+			&i.ToolsSyncedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -501,6 +595,37 @@ func (q *Queries) RevokeCredential(ctx context.Context, id string) error {
 	return err
 }
 
+const saveSnapshotTools = `-- name: SaveSnapshotTools :exec
+INSERT INTO mcp_tools (id, connector_id, credential_id, name, description, input_schema, enabled, config_revision, discovered_at)
+SELECT (t->>'id')::uuid, $1::uuid, NULLIF($2::text, '')::uuid,
+    t->>'name', t->>'description', t->'inputSchema', true, $3::bigint, $4::timestamptz
+FROM jsonb_array_elements($5::jsonb) t
+ON CONFLICT (connector_id, credential_id, name) DO UPDATE SET
+    description = EXCLUDED.description, input_schema = EXCLUDED.input_schema,
+    enabled = CASE WHEN mcp_tools.deleted_at IS NULL THEN mcp_tools.enabled ELSE true END,
+    credits_per_call = CASE WHEN mcp_tools.deleted_at IS NULL THEN mcp_tools.credits_per_call ELSE 0 END,
+    config_revision = EXCLUDED.config_revision, discovered_at = EXCLUDED.discovered_at, deleted_at = NULL
+`
+
+type SaveSnapshotToolsParams struct {
+	ConnectorID    string
+	CredentialID   string
+	ConfigRevision int64
+	SyncedAt       time.Time
+	Tools          []byte
+}
+
+func (q *Queries) SaveSnapshotTools(ctx context.Context, arg SaveSnapshotToolsParams) error {
+	_, err := q.db.Exec(ctx, saveSnapshotTools,
+		arg.ConnectorID,
+		arg.CredentialID,
+		arg.ConfigRevision,
+		arg.SyncedAt,
+		arg.Tools,
+	)
+	return err
+}
+
 const setConnectionTest = `-- name: SetConnectionTest :exec
 UPDATE connectors SET connection_status = $2, last_checked_at = now(), last_error = NULLIF($3, ''), updated_at = now()
 WHERE id = $1
@@ -531,6 +656,20 @@ func (q *Queries) SetConnectorIcon(ctx context.Context, arg SetConnectorIconPara
 	return err
 }
 
+const setConnectorToolsSynced = `-- name: SetConnectorToolsSynced :exec
+UPDATE connectors SET tools_synced_at = $1::timestamptz WHERE id = $2::uuid
+`
+
+type SetConnectorToolsSyncedParams struct {
+	SyncedAt *time.Time
+	ID       string
+}
+
+func (q *Queries) SetConnectorToolsSynced(ctx context.Context, arg SetConnectorToolsSyncedParams) error {
+	_, err := q.db.Exec(ctx, setConnectorToolsSynced, arg.SyncedAt, arg.ID)
+	return err
+}
+
 const setCredentialTest = `-- name: SetCredentialTest :exec
 UPDATE connector_credentials SET connection_status = $2, last_checked_at = now(), last_error = NULLIF($3, ''), updated_at = now()
 WHERE id = $1
@@ -547,6 +686,31 @@ func (q *Queries) SetCredentialTest(ctx context.Context, arg SetCredentialTestPa
 	return err
 }
 
+const setCredentialToolsSynced = `-- name: SetCredentialToolsSynced :exec
+UPDATE connector_credentials SET tools_synced_at = $1::timestamptz WHERE id = $2::uuid
+`
+
+type SetCredentialToolsSyncedParams struct {
+	SyncedAt *time.Time
+	ID       string
+}
+
+func (q *Queries) SetCredentialToolsSynced(ctx context.Context, arg SetCredentialToolsSyncedParams) error {
+	_, err := q.db.Exec(ctx, setCredentialToolsSynced, arg.SyncedAt, arg.ID)
+	return err
+}
+
+const tryToolRefreshLock = `-- name: TryToolRefreshLock :one
+SELECT pg_try_advisory_lock(hashtextextended('monkeyai.mcp.tools.refresh', 0))
+`
+
+func (q *Queries) TryToolRefreshLock(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, tryToolRefreshLock)
+	var pg_try_advisory_lock bool
+	err := row.Scan(&pg_try_advisory_lock)
+	return pg_try_advisory_lock, err
+}
+
 const updateCredential = `-- name: UpdateCredential :one
 UPDATE connector_credentials SET
     name = COALESCE($1::jsonb->>'name', name),
@@ -558,6 +722,7 @@ UPDATE connector_credentials SET
     config_revision = COALESCE(($1::jsonb->>'config_revision')::bigint, config_revision),
     connection_status = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN 'unknown' ELSE connection_status END,
     last_checked_at = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN NULL ELSE last_checked_at END,
+    tools_synced_at = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN NULL ELSE tools_synced_at END,
     last_error = CASE WHEN ($1::jsonb->>'auth_change')::boolean THEN NULL ELSE last_error END,
     revision = revision + 1, updated_at = now()
 WHERE id = ($1::jsonb->>'id')::uuid AND revoked_at IS NULL

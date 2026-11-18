@@ -17,18 +17,17 @@ import (
 )
 
 func (s *Service) liveTools(ctx context.Context, q resource.Queryer, c, cred resource.Object, admin bool) ([]resource.Object, error) {
-	headers, cred, err := s.headers(ctx, c, cred)
+	return s.listLiveTools(ctx, q, c, cred, admin, false)
+}
+
+func (s *Service) listLiveTools(ctx context.Context, q resource.Queryer, c, cred resource.Object, admin, syncSnapshot bool) ([]resource.Object, error) {
+	started := snapshotTime()
+	remote, err := s.discoverTools(ctx, c, cred)
+	if syncSnapshot && (err == nil || snapshotDenied(err)) {
+		s.recordTools(ctx, c, cred, started, remote, err != nil)
+	}
 	if err != nil {
 		return nil, err
-	}
-	h, err := s.clientFor(ctx, c)
-	if err != nil {
-		return nil, err
-	}
-	setConnectorTimeout(h, c.Int("timeout_ms"))
-	remote, err := discoverWithClient(ctx, c.String("url"), headers, h)
-	if err != nil {
-		return nil, upstreamFailure(err, "mcp_protocol_invalid")
 	}
 	settings, err := resource.DecodeObjects(sqlc.New(q).ListTools(ctx, sqlc.ListToolsParams{
 		ConnectorID: c.String("id"), CredentialID: cred.String("id"),
@@ -73,14 +72,18 @@ func (s *Service) Tools(ctx context.Context, q resource.Queryer, c resource.Obje
 	if err != nil {
 		return nil, err
 	}
-	return s.liveTools(ctx, q, c, cred, admin)
+	return s.listLiveTools(ctx, q, c, cred, admin, true)
 }
 func (s *Service) toolName(ctx context.Context, q resource.Queryer, connectorID, user, id string) (string, error) {
 	connector, err := s.Connector(ctx, q, connectorID, user, true)
 	if err != nil {
 		return "", err
 	}
-	tools, err := s.Tools(ctx, q, connector, user, "", true)
+	cred, err := s.Credential(ctx, q, connector, user, "")
+	if err != nil {
+		return "", err
+	}
+	tools, err := s.liveTools(ctx, q, connector, cred, true)
 	if err != nil {
 		return "", err
 	}
@@ -195,6 +198,8 @@ func (s *Service) test(w http.ResponseWriter, r *http.Request, admin bool) {
 	resource.JSON(r.Context(), w, 200, out)
 }
 func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, user string, admin bool) (resource.Object, error) {
+	started := snapshotTime()
+	original := cred
 	headers, cred, err := s.headers(ctx, c, cred)
 	if err != nil {
 		return nil, err
@@ -214,11 +219,12 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 	if err != nil {
 		return nil, err
 	}
-	if current.Int("config_revision") != c.Int("config_revision") {
+	if current.Int("config_revision") != c.Int("config_revision") || original.Int("revision") != cred.Int("revision") {
 		return nil, resource.Conflict
 	}
+	var fresh resource.Object
 	if cred != nil {
-		fresh, err := resource.DecodeObject(sqlc.New(tx).LockCredential(ctx, cred.String("id")))
+		fresh, err = resource.DecodeObject(sqlc.New(tx).LockCredential(ctx, cred.String("id")))
 		if err != nil {
 			return nil, err
 		}
@@ -239,6 +245,9 @@ func (s *Service) testConnection(ctx context.Context, c, cred resource.Object, u
 		} else {
 			err = queries.SetCredentialTest(ctx, sqlc.SetCredentialTestParams{ID: cred.String("id"), ConnectionStatus: status, Column3: message})
 		}
+	}
+	if err == nil && (discoveryErr == nil || snapshotDenied(fault)) {
+		err = saveSnapshot(ctx, queries, current, fresh, started, tools, discoveryErr != nil)
 	}
 	if err == nil {
 		err = tx.Commit(ctx)

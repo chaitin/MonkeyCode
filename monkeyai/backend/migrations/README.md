@@ -14,7 +14,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-成功后 `schema_migrations` 应为 `version=50, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
+成功后 `schema_migrations` 应为 `version=51, dirty=false`，再次 `up` 返回 `no change`。可丢弃测试库执行 `down -all` 后再 `up`，应能完整重建。
 
 初始化不预置用户、分组或业务设置。首次管理员由后端按部署环境变量创建，RustFS Bucket 由后端启动流程检查并按需创建。团队根节点仅用于界面展示，名称读取 `settings.branding.workspace_name`；顶层分组使用 `parent_id IS NULL`，成员关系通过 `group_users` 显式维护。
 
@@ -30,23 +30,23 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 
 ## 取消宿主云电脑数量限制
 
-版本 `50` 删除 `hosts.max_environments`，同步移除管理端输入／详情展示及接口字段。自动调度在满足授权、调度开关、在线、协议、镜像及计费准入的宿主中，优先选择现有环境数最少者，不按环境数量或物理 CPU／内存总量拒绝新建。
+版本 `51` 删除 `hosts.max_environments`，同步移除管理端输入／详情展示及接口字段。自动调度在满足授权、调度开关、在线、协议、镜像及计费准入的宿主中，优先选择现有环境数最少者，不按环境数量或物理 CPU／内存总量拒绝新建。
 
 部署前备份、停止旧后端，执行迁移后同步部署新版后端和管理端。本次不执行实际迁移，也不修改客户端应用。已有云电脑、授权及账务不改写；down 仅恢复默认0的旧字段，不能恢复历史上限，回退旧服务前须重新配置。
 
 ## 取消每用户云电脑数量限制
 
-版本 `49` 删除 `host_environment_configs.user_max_environments` 列和 `environment_quotas` 表，同时移除个人配额管理接口与宿主目录 quota 字段。迁移50继续取消宿主总数量上限；授权、积分准入和已有云电脑不受影响。
+版本 `50` 删除 `host_environment_configs.user_max_environments` 列和 `environment_quotas` 表，同时移除个人配额管理接口与宿主目录 quota 字段。迁移51继续取消宿主总数量上限；授权、积分准入和已有云电脑不受影响。
 
 部署前备份并停止旧后端，执行迁移后同步部署新版后端和管理端；客户端需停止依赖 quota 字段，本次不修改客户端应用代码。旧个人配额值会被删除，down 仅恢复默认每用户上限3和空配额表，不能还原历史配置。禁止旧服务连接已升级结构。
 
 ## 云电脑全局规格升级
 
-版本 `48` 新增 `environment_specifications` 和 `environment_specification_catalog`，将可选 CPU／内存规格从宿主配置中独立出来。初始目录包含 1 核 2 GB 规格，不自动发布历史宿主的资源组合。管理员可以修改或删除默认规格，清空后不会自动补回。
+版本 `49` 新增 `environment_specifications` 和 `environment_specification_catalog`，将可选 CPU／内存规格从宿主配置中独立出来。初始目录包含 1 核 2 GB 规格，不自动发布历史宿主的资源组合。管理员可以修改或删除默认规格，清空后不会自动补回。
 
 先应用迁移，再同步部署后端与管理端。客户端需通过 `GET /api/v1/environment-specifications` 获取目录，新建提交 `specification_id` 与 `specification_version`；不携带规格的新请求将被拒绝。此变更不修改客户端应用工程，需由客户端工程按接口文档接入。
 
-历史宿主 resource 数据保留，但不再参与宿主目录、配置写入或新建调度。授权仍按宿主维护，数量限制在迁移49／50取消；计费仍使用全局单价及实例实际资源快照。已有环境数据、账务与幂等记录不改写，规格修改／删除不阻止旧实例按原快照重启。
+历史宿主 resource 数据保留，但不再参与宿主目录、配置写入或新建调度。授权仍按宿主维护，数量限制在迁移50／51取消；计费仍使用全局单价及实例实际资源快照。已有环境数据、账务与幂等记录不改写，规格修改／删除不阻止旧实例按原快照重启。
 
 回滚前必须停止新版服务并备份规格目录；down 会删除这两张规格表，不删除已有环境或账务，但不会将全局规格转换回宿主预设。旧版新建逻辑依赖旧预设，新版创建的宿主配置可能没有该值，因此回退后须单独检查宿主配置。
 
@@ -117,7 +117,7 @@ migrate -path migrations -database "$MONKEYAI_DATABASE_URL" up
 migrate -path migrations -database "$MONKEYAI_DATABASE_URL" version
 ```
 
-最终应为 `50` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
+最终应为 `51` 且没有 dirty 标记；再次 `up` 返回 `no change`，随后启动新后端。Compose 部署使用配套的 `MIGRATE_IMAGE` 执行迁移服务，命令已配置为 `up`。
 
 版本 `28` 首次升级会锁定调用、计费交易和账本写入，并在结构变更锁持有期间阻塞调用表读取；同时扫描历史数据完成回填，请停止旧后端并安排迁移窗口；升级后每次调用完成、状态/用量修正、退款均在原事务内增量维护。版本 `28` 回滚只删除统计投影与新增标记，保留原始调用和账本，再次升级可完整重建。
 

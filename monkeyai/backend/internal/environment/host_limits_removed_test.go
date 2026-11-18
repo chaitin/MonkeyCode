@@ -25,7 +25,7 @@ func TestHostLimitMigrationPreservesExistingEnvironments(t *testing.T) {
 	}
 	apply := func(direction string) {
 		t.Helper()
-		raw, err := os.ReadFile("../../migrations/000050_remove_environment_host_limit." + direction + ".sql")
+		raw, err := os.ReadFile("../../migrations/000051_remove_environment_host_limit." + direction + ".sql")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -196,8 +196,11 @@ func TestIndependentToolsVisibleAfterAuthorization(t *testing.T) {
 			authorize()
 			items := check(1)
 			tool := items[0].(map[string]any)
-			f.call("PATCH", "/admin/connectors/"+c.String("id")+"/tools/"+tool["id"].(string), resource.Object{"name": tool["name"], "enabled": false, "credits_per_call": "0"}, "owner", "", 400)
+			toolPath := "/admin/connectors/" + c.String("id") + "/tools/" + tool["id"].(string)
+			f.call("PATCH", toolPath, resource.Object{"enabled": false, "credits_per_call": "0"}, "owner", "", 200)
 			authorize()
+			check(0)
+			f.call("PATCH", toolPath, resource.Object{"enabled": true, "credits_per_call": "0"}, "owner", "", 200)
 			check(1)
 		})
 	}

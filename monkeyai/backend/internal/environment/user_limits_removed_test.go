@@ -10,7 +10,7 @@ func TestUserLimitsMigrationRemovesOnlyPersonalLimits(t *testing.T) {
 	ctx := t.Context()
 	apply := func(direction string) {
 		t.Helper()
-		raw, err := os.ReadFile("../../migrations/000049_remove_environment_user_limits." + direction + ".sql")
+		raw, err := os.ReadFile("../../migrations/000050_remove_environment_user_limits." + direction + ".sql")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -9381,7 +9381,7 @@ components:
       - name
       - authorization_mode
       - capabilities
-      description: 连接目录、专家 manifest、resolve 和专家预览保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态、实时工具和专属代理地址，resolve 和预览提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。服务端应用专家工具允许／拒绝规则，拒绝规则优先；远端失败不回退旧目录，API Key 全局创建。
+      description: 连接列表保留空 tools 数组及对应 tools_version（独立认证在内嵌凭证下返回），不发起远端工具查询。专家 manifest、resolve 和专家预览保留 tools 与 tools_version。独立认证目录在 credentials 内返回当前用户每份凭证的状态和专属代理地址，resolve 和预览提升所选凭证的工具及网关；集中认证返回当前集中凭证的代理地址，免认证返回连接地址。服务端应用专家工具允许／拒绝规则，拒绝规则优先；远端工具查询故障记录日志并在对应连接或凭证标记 connection_status=error、返回空 tools，不阻断目录和预览，也不回退旧目录；API Key 全局创建。
     AgentExpert:
       type: object
       properties:
