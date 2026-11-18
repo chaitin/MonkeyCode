@@ -7807,8 +7807,31 @@ components:
         active_members: {type: integer, minimum: 0, description: 窗口内有上报轮次的去重未删除成员数。}
     StatisticsMembersOverview:
       type: object
-      required: [total_members, last_7d, previous_7d, last_24h, previous_24h, timezone, generated_at, days]
+      required: [total_members, last_7d, previous_7d, last_24h, previous_24h, timezone, generated_at, days, message_depth]
       properties:
+        message_depth:
+          type: object
+          description: 最近 168 小时内按轮次开始时间统计，每个有效上报的顶层会话轮次计一条消息，排除占位、已删除或已清除会话。成员范围同 total_members。
+          required: [percentiles, top_members]
+          properties:
+            percentiles:
+              type: array
+              maxItems: 101
+              description: 按 P0 至 P100 顺序返回最近秩法的消息数，包含零消息成员；没有成员时为空数组。
+              items: {type: integer, minimum: 0}
+            top_members:
+              type: array
+              maxItems: 15
+              description: 仅含消息数大于零的成员，按消息数降序、同数按成员 ID 升序。
+              items:
+                type: object
+                required: [id, name, email, avatar_url, messages]
+                properties:
+                  id: {type: string, format: uuid}
+                  name: {type: string}
+                  email: {type: string}
+                  avatar_url: {type: [string, "null"]}
+                  messages: {type: integer, minimum: 1}
         total_members: {type: integer, minimum: 0, description: 与成员管理一致的未删除成员总数，包含管理员及停用成员。}
         last_7d:
           $ref: "#/components/schemas/StatisticsMemberActivity"

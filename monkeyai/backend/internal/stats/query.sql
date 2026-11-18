@@ -328,6 +328,9 @@ WITH bounds AS (
     FROM bounds b CROSS JOIN LATERAL generate_series((b.today - 89)::timestamp, b.today::timestamp, interval '1 day') AS d(day)
 ), activity AS MATERIALIZED (
     SELECT s.owner_user_id, (t.started_at AT TIME ZONE 'Asia/Shanghai')::date AS day,
+           count(*) FILTER (WHERE t.started_at >= b.now_at - interval '168 hours'
+               AND s.parent_session_id IS NULL AND s.reporting_enabled_at IS NOT NULL AND NOT s.placeholder
+               AND s.deleted_at IS NULL AND s.purged_at IS NULL AND s.started_at < b.now_at) AS sent_messages,
            bool_or(t.started_at >= b.now_at - interval '168 hours') AS last_7d,
            bool_or(t.started_at >= b.now_at - interval '336 hours' AND t.started_at < b.now_at - interval '168 hours') AS previous_7d,
            bool_or(t.started_at >= b.now_at - interval '24 hours') AS last_24h,
@@ -349,8 +352,21 @@ WITH bounds AS (
     GROUP BY 1
 ), active_by_day AS (
     SELECT day, count(*) AS total FROM activity GROUP BY day
+), member_counts AS MATERIALIZED (
+    SELECT m.id, coalesce(sum(a.sent_messages), 0)::bigint AS messages
+    FROM members m LEFT JOIN activity a ON a.owner_user_id = m.id GROUP BY m.id
+), ordered_counts AS (
+    SELECT array_agg(messages ORDER BY messages) AS counts, count(*) AS n FROM member_counts
+), leaders AS (
+    SELECT id, messages FROM member_counts WHERE messages > 0 ORDER BY messages DESC, id LIMIT 15
 )
 SELECT jsonb_build_object(
+    'message_depth', jsonb_build_object(
+        'percentiles', coalesce((SELECT jsonb_agg(o.counts[greatest(1, (p.rank * o.n + 99) / 100)::int] ORDER BY p.rank)
+            FROM ordered_counts o CROSS JOIN generate_series(0, 100) AS p(rank) WHERE o.n > 0), '[]'::jsonb),
+        'top_members', coalesce((SELECT jsonb_agg(jsonb_build_object('id', u.id, 'name', u.name, 'email', u.email,
+            'avatar_url', coalesce(nullif(btrim(u.custom_avatar_url), ''), nullif(btrim(u.avatar_url), '')), 'messages', l.messages)
+            ORDER BY l.messages DESC, l.id) FROM leaders l JOIN users u ON u.id = l.id), '[]'::jsonb)),
     'total_members', (SELECT count(*) FROM members),
     'last_7d', jsonb_build_object('active_members', summary.last_7d),
     'previous_7d', jsonb_build_object('active_members', summary.previous_7d),

@@ -79,7 +79,19 @@ export type SessionOverview = {
   }[]
 }
 
+export type MemberMessageDepth = {
+  percentiles: number[]
+  top_members: {
+    id: string
+    name: string
+    email: string
+    avatar_url: string | null
+    messages: number
+  }[]
+}
+
 export type MemberOverview = {
+  message_depth: MemberMessageDepth
   total_members: number
   last_7d: { active_members: number }
   previous_7d: { active_members: number }

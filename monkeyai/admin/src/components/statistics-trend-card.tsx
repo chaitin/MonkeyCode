@@ -16,6 +16,7 @@ export type StatisticsTrendPoint = { date: string; count: number }
 export function StatisticsTrendCard({
   icon,
   title,
+  valueLabel = title,
   periodLabel,
   points,
   color,
@@ -25,6 +26,7 @@ export function StatisticsTrendCard({
 }: {
   icon: IconSvgElement
   title: string
+  valueLabel?: string
   periodLabel: string
   points?: StatisticsTrendPoint[]
   color: string
@@ -33,7 +35,7 @@ export function StatisticsTrendCard({
   formatValue?: (value: number) => string
 }) {
   const { t } = useTranslation()
-  const config = { count: { label: title, color } } satisfies ChartConfig
+  const config = { count: { label: valueLabel, color } } satisfies ChartConfig
   return (
     <Card
       className="min-w-0 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70"

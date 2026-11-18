@@ -15,6 +15,10 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 
 import { MemberActivityHeatmap } from "@/components/member-activity-heatmap"
+import {
+  MemberUsageDepthChart,
+  MemberMessageRanking,
+} from "@/components/member-usage-depth-examples"
 import { StatisticsTrendCard } from "@/components/statistics-trend-card"
 import { StatisticsPeriodComparison } from "@/components/statistics-period-comparison"
 import { UserSearch } from "@/components/user-search"
@@ -446,7 +450,11 @@ export function MemberAnalysisPage({
   overviewOnly?: boolean
 }) {
   const { t, i18n } = useTranslation()
-  const { data: overview, loading } = useStatistics<MemberOverview>(
+  const {
+    data: overview,
+    loading,
+    error,
+  } = useStatistics<MemberOverview>(
     "/api/admin/v1/statistics/session-reporting/members/overview"
   )
   const overviewTrends = useMemo(
@@ -533,27 +541,45 @@ export function MemberAnalysisPage({
         />
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
-        <StatisticsTrendCard
-          icon={UserAdd01Icon}
-          title={t("pages.realtimeStatus.newUsersTrend")}
-          periodLabel={t("pages.realtimeStatus.period90d")}
-          points={overviewTrends.newUsers}
-          loading={loading}
-          color="var(--color-orange-500)"
-          barClassName="fill-orange-500"
-        />
-        <StatisticsTrendCard
-          icon={User02Icon}
-          title={t("pages.realtimeStatus.activeUsersTrend")}
-          periodLabel={t("pages.realtimeStatus.period90d")}
-          points={overviewTrends.activeUsers}
-          loading={loading}
-          color="var(--color-orange-400)"
-          barClassName="fill-orange-400"
-        />
+        <div className={overviewOnly ? "contents" : "grid min-w-0 gap-5"}>
+          <StatisticsTrendCard
+            icon={UserAdd01Icon}
+            title={t("pages.realtimeStatus.newUsersTrend")}
+            periodLabel={t("pages.realtimeStatus.period90d")}
+            points={overviewTrends.newUsers}
+            loading={loading}
+            color="var(--color-orange-500)"
+            barClassName="fill-orange-500"
+          />
+          <StatisticsTrendCard
+            icon={User02Icon}
+            title={t("pages.realtimeStatus.activeUsersTrend")}
+            periodLabel={t("pages.realtimeStatus.period90d")}
+            points={overviewTrends.activeUsers}
+            loading={loading}
+            color="var(--color-orange-400)"
+            barClassName="fill-orange-400"
+          />
+          {!overviewOnly && (
+            <MemberUsageDepthChart
+              data={overview?.message_depth}
+              loading={loading}
+            />
+          )}
+        </div>
+        {!overviewOnly && (
+          <MemberMessageRanking
+            data={overview?.message_depth}
+            loading={loading}
+            error={error}
+          />
+        )}
       </div>
       {!overviewOnly && (
-        <Card className="min-w-0 flex-1 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70">
+        <Card
+          id="member-details"
+          className="min-w-0 flex-1 gap-2 bg-muted/40 p-2 shadow-none ring-1 ring-border/70"
+        >
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 px-3 py-0">
             <CardTitle className="min-w-0" role="heading" aria-level={2}>
               {t(`${key}.memberDetails`)}
