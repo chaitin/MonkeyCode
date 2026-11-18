@@ -513,7 +513,9 @@ func (d *Driver) Start(ctx context.Context, s lifecycle.Spec, ref string) error 
 		if err != nil {
 			return err
 		}
-		if (files.Version != s.RuntimePackage.Version || files.Binary == standalone.Binary) && c.State.Status == "created" && d.runtimeUpdater != nil {
+		missing := files.Binary == standalone.Binary
+		canInstall := c.State.Status == "created" || s.PersistentContainer && c.State.Status == "exited" && missing
+		if (files.Version != s.RuntimePackage.Version || missing) && canInstall && d.runtimeUpdater != nil {
 			if err := d.runtimeUpdater(ctx, s); err != nil {
 				return err
 			}

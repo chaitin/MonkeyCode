@@ -88,8 +88,7 @@ func (s *Service) stopBillingEnvironment(ctx context.Context, q *sqlc.Queries, e
 		return err
 	}
 	spec.Generation++
-	spec.DesiredState = "stopped"
-	spec.RuntimePackage = nil
+	spec.stop()
 	if err = q.SupersedeOperations(ctx, env.ID); err != nil {
 		return err
 	}
