@@ -12,6 +12,18 @@ sudo bash -c "$(curl -kfsSL 'https://server.example/api/host/v1/install.sh?token
 
 脚本自动识别 amd64／arm64；engine 注册时上报 hostname，使用默认数据目录 `/var/lib/monkeyai-engine/data`。全部组件从该 server 的 `/api/host/v1/releases/<version>/<arch>/<file>` 下载，不访问 OSS、GitHub 或系统软件源。脚本包含固定版本和摘要，校验统一 installer 后执行 `installer monkeyai-engine install`，installer 负责组件下载、注册和服务安装。首次注册绑定公钥和架构，重试保留身份。
 
+## 宿主代理与私网访问
+
+新版统一安装器 `installer monkeyai-engine install` 支持：
+
+- `--proxy http://proxy.example:443`：无凭据的 HTTP(S) 代理，应用于安装器下载与注册、宿主引擎请求、Docker 拉镜像、云电脑 Runtime 的 HTTP(S) 请求。代理要能转发所需的 WebSocket 连接。配置 Docker 代理需要重启 Docker，如有运行中或暂停的容器，安装器会拒绝重启。
+- `--no-proxy 10.2.98.116,localhost`：逗号分隔的直连目标；须与 `--proxy` 一起使用。
+- `--allow-private-cidrs 10.2.98.116/32`：放行容器到指定远端内网地址。若代理本身位于私网，也须显式放行代理地址；公网代理端口仍须符合公网规则。详见[网络说明](NETWORK.md)。
+
+从后台复制一键命令时，可把 `sudo bash -c` 替换为 `sudo MONKEYAI_ENGINE_PROXY=http://proxy.example:443 MONKEYAI_ENGINE_NO_PROXY=10.2.98.116 MONKEYAI_ENGINE_ALLOW_PRIVATE_CIDRS=10.2.98.116/32 bash -c`。首次下载引导脚本的外层 `curl` 在 sudo 之前执行；如也需要代理，请在调用终端设置 `http_proxy`、`https_proxy`、`no_proxy`。
+
+现有宿主升级会保留 `/etc/monkeyai-engine/config.json` 的 `proxy`、`no_proxy` 和 `allow_private_cidrs`。需要改值时先停相关云电脑，再修改宿主配置并重启引擎；若也要更新 Docker 代理，可用新版安装器修复同版本安装。代理可被云电脑访问，因此不要填写账号或令牌，且应在代理侧限制允许转发的目标。
+
 ## server 自带安装资源
 
 MonkeyCodePro 的 server 打包默认从 `https://release.monkeycode-ai.com/public/monkeyai/engine/latest.json` 解析 engine 版本，也可通过 `ENGINE_VERSION` 指定测试版本，不触发 engine 构建或发布。在线 server 包保存 engine 下载清单，installer 在安装／升级时从固定 OSS 地址按需下载包含双架构资源的 `resources.tgz`，显示整体进度并在校验摘要后解压；本地同版本且摘要匹配时不下载。离线 server 包直接携带完整资源。安装器将资源校验后安装到 `<安装目录>/engine-releases/<version>/`，只读挂载给后台并配置固定版本。engine 宿主自身不区分在线／离线安装，仍只访问 server。

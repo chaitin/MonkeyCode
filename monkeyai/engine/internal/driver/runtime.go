@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,17 +53,27 @@ func (d *Driver) execCreate(ctx context.Context, c container, spec lifecycle.Spe
 	if err != nil {
 		return "", err
 	}
-	environment := build(spec, image, nil, "").Env
-	for index, value := range environment {
-		if strings.HasPrefix(value, "PATH=") {
-			environment[index] = "PATH=" + filepath.Dir(binary) + ":" + strings.TrimPrefix(value, "PATH=")
-		}
-	}
+	environment := runtimeEnv(build(spec, image, nil, "").Env, d.proxyEnv, binary)
 	var out struct {
 		ID string `json:"Id"`
 	}
 	err = d.client.Do(ctx, "POST", "/containers/"+c.ID+"/exec", map[string]any{"User": "1000:1000", "Privileged": false, "AttachStdout": true, "AttachStderr": true, "Tty": false, "WorkingDir": "/workspace", "Env": environment, "Cmd": append([]string{binary}, args...)}, &out)
 	return out.ID, err
+}
+
+func runtimeEnv(environment, proxy []string, binary string) []string {
+	if len(proxy) > 0 {
+		environment = slices.DeleteFunc(environment, func(value string) bool {
+			key, _, _ := strings.Cut(value, "=")
+			return slices.ContainsFunc(proxy, func(setting string) bool { return strings.HasPrefix(setting, key+"=") })
+		})
+	}
+	for index, value := range environment {
+		if strings.HasPrefix(value, "PATH=") {
+			environment[index] = "PATH=" + filepath.Dir(binary) + ":" + strings.TrimPrefix(value, "PATH=")
+		}
+	}
+	return append(environment, proxy...)
 }
 func (d *Driver) execInfo(ctx context.Context, id, containerID, binary string) (execution, error) {
 	var e execution

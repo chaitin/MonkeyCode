@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,6 +33,8 @@ type Volumes interface {
 	Ensure(context.Context, lifecycle.Spec) ([]storage.Mount, error)
 }
 type Driver struct {
+	privateCIDRs   []netip.Prefix
+	proxyEnv       []string
 	runtimeUpdater func(context.Context, lifecycle.Spec) error
 	runtimeSource  func(context.Context, lifecycle.Spec) (standalone.Files, error)
 	registryAuth   func(string) (string, error)
@@ -49,6 +52,12 @@ func New(socket, root string, volumes Volumes) (*Driver, error) {
 	}
 	return &Driver{client: dockerapi.New(socket), volumes: volumes, root: root}, nil
 }
+func (d *Driver) WithNetwork(cfg control.NetworkConfig) *Driver {
+	d.privateCIDRs = cfg.AllowPrivateCIDRs
+	d.proxyEnv = cfg.ProxyEnv()
+	return d
+}
+
 func (d *Driver) WithRuntimeUpdater(update func(context.Context, lifecycle.Spec) error) *Driver {
 	d.runtimeUpdater = update
 	return d
@@ -462,7 +471,7 @@ func (d *Driver) Create(ctx context.Context, s lifecycle.Spec) (string, error) {
 		return "", err
 	}
 	if s.NetworkPolicy == "public-only" {
-		n, e := dockernet.Ensure(ctx, d.client, instanceKey(s), fingerprint(s), containerName(s))
+		n, e := dockernet.Ensure(ctx, d.client, instanceKey(s), fingerprint(s), containerName(s), d.privateCIDRs...)
 		if e != nil {
 			return "", e
 		}
@@ -486,7 +495,7 @@ func (d *Driver) guard(ctx context.Context, s lifecycle.Spec, name string) error
 	if err != nil {
 		return err
 	}
-	return dockernet.Guard(ctx, n, fingerprint(s))
+	return dockernet.Guard(ctx, n, fingerprint(s), d.privateCIDRs...)
 }
 func (d *Driver) Start(ctx context.Context, s lifecycle.Spec, ref string) error {
 	c, err := d.load(ctx, s, ref)

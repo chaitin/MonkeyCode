@@ -21,6 +21,7 @@ import (
 )
 
 type Config struct {
+	NetworkConfig
 	Insecure     bool   `json:"insecure,omitempty"`
 	Server       string `json:"server"`
 	ServerURL    string `json:"server_url,omitempty"`
@@ -59,7 +60,14 @@ func (c Config) Client(key ed25519.PrivateKey) (*Client, error) {
 		}
 		client.URL = strings.TrimRight(c.ServerURL, "/")
 	}
-	return client.WithInsecure(c.Insecure), nil
+	if err := c.NetworkConfig.Validate(); err != nil {
+		return nil, err
+	}
+	client.WithInsecure(c.Insecure)
+	if c.Proxy != "" {
+		client.HTTP.Transport.(*http.Transport).Proxy = c.proxyFunc()
+	}
+	return client, nil
 }
 
 func (c *Client) WithInsecure(insecure bool) *Client {

@@ -46,7 +46,13 @@ done
 [ -n "$work" ] || fail '找不到允许执行的私有临时目录'
 trap 'exit 1' HUP INT TERM
 printf '下载并校验 installer / engine %s（%s）…\n' "$3" "$arch"
-curl -k --proto '=http,https' --tlsv1.2 --fail --progress-bar --show-error --retry 3 --connect-timeout 15 --max-time 900 "${server_url:-$1}/api/host/v1/releases/$3/$4/$8" -o "$work/installer"
+(
+ if [ -n "${MONKEYAI_ENGINE_PROXY:-}" ]; then
+  export http_proxy="$MONKEYAI_ENGINE_PROXY" https_proxy="$MONKEYAI_ENGINE_PROXY"
+  export no_proxy="${MONKEYAI_ENGINE_NO_PROXY:-}" NO_PROXY="${MONKEYAI_ENGINE_NO_PROXY:-}"
+ fi
+ curl -k --proto '=http,https' --tlsv1.2 --fail --progress-bar --show-error --retry 3 --connect-timeout 15 --max-time 900 "${server_url:-$1}/api/host/v1/releases/$3/$4/$8" -o "$work/installer"
+)
 printf '%s  %s\n' "$5" "$work/installer" | sha256sum -c - >/dev/null || fail '安装器校验失败'
 chmod 700 "$work/installer"
 case "$8" in
@@ -55,6 +61,9 @@ case "$8" in
  *) fail '安装器名称无效' ;;
 esac
 [ -z "${server_url:-}" ] || set -- "$@" --server-url "$server_url"
+[ -z "${MONKEYAI_ENGINE_PROXY:-}" ] || set -- "$@" --proxy "$MONKEYAI_ENGINE_PROXY"
+[ -z "${MONKEYAI_ENGINE_NO_PROXY:-}" ] || set -- "$@" --no-proxy "$MONKEYAI_ENGINE_NO_PROXY"
+[ -z "${MONKEYAI_ENGINE_ALLOW_PRIVATE_CIDRS:-}" ] || set -- "$@" --allow-private-cidrs "$MONKEYAI_ENGINE_ALLOW_PRIVATE_CIDRS"
 # 完成回执避免依赖旧 systemd 保留已结束的任务状态。
 unit=monkeyai-engine-install-${work##*.}.service
 printf '%s' "$$" > "$work/owner"
