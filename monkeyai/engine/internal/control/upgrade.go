@@ -172,11 +172,10 @@ func RunUpgrade(ctx context.Context, id string, out io.Writer) (result error) {
 	if err != nil {
 		return err
 	}
-	client, err := New(cfg.Server, key)
+	client, err := cfg.Client(key)
 	if err != nil {
 		return err
 	}
-	client.WithInsecure(cfg.Insecure)
 	ctx, cancel := context.WithTimeout(ctx, 24*time.Minute)
 	defer cancel()
 	dir, err := os.MkdirTemp("/opt/monkeyai-engine", ".upgrade-")
@@ -202,7 +201,7 @@ func downloadInstaller(ctx context.Context, c *Client, task UpgradeTask, arch, p
 	if !task.valid() || (arch != "amd64" && arch != "arm64") {
 		return errors.New("升级发行参数无效")
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", c.Server+"/api/host/v1/releases/"+task.Version+"/"+arch+"/installer", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.URL+"/api/host/v1/releases/"+task.Version+"/"+arch+"/installer", nil)
 	if err != nil {
 		return err
 	}

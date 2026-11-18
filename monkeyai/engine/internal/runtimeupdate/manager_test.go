@@ -50,11 +50,15 @@ func TestRuntimeUpdateIsAtomicAndKeepsIdentity(t *testing.T) {
 		if secure {
 			name = "https"
 		}
-		t.Run(name, func(t *testing.T) { testAtomicUpdate(t, secure) })
+		t.Run(name, func(t *testing.T) { testAtomicUpdate(t, secure, false) })
 	}
 }
 
-func testAtomicUpdate(t *testing.T, secure bool) {
+func TestRuntimeUpdateServerURL(t *testing.T) {
+	testAtomicUpdate(t, false, true)
+}
+
+func testAtomicUpdate(t *testing.T, secure, override bool) {
 	first, firstFiles := packageFixture("26.1105.1")
 	second, secondFiles := packageFixture("26.1105.2")
 	var corrupt atomic.Bool
@@ -85,11 +89,14 @@ func testAtomicUpdate(t *testing.T, secure bool) {
 	}
 	defer server.Close()
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
-	client, err := control.New(server.URL, key)
+	cfg := control.Config{Server: server.URL, Insecure: secure}
+	if override {
+		cfg.ServerURL, cfg.Server = server.URL, "https://control.example"
+	}
+	client, err := cfg.Client(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	client.WithInsecure(secure)
 	root := t.TempDir()
 	if err := os.Chmod(root, 0755); err != nil {
 		t.Fatal(err)

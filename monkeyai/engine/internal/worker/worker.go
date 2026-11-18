@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,6 +170,30 @@ func (w *Worker) Close() {
 	w.mu.Unlock()
 	w.wg.Wait()
 }
+func hostTarget(s lifecycle.Spec, cfg control.Config) (lifecycle.Spec, error) {
+	if cfg.ServerURL == "" {
+		return s, nil
+	}
+	if err := control.ValidateServer(cfg.ServerURL); err != nil {
+		return s, err
+	}
+	server, err := url.Parse(cfg.Server)
+	if err != nil {
+		return s, err
+	}
+	endpoint, _ := url.Parse(cfg.ServerURL)
+	registry, repository, ok := strings.Cut(s.Image, "/")
+	if ok && strings.EqualFold(registry, server.Host) && strings.HasPrefix(repository, "environments/") {
+		s.Image = endpoint.Host + "/" + repository
+	}
+	if s.Runtime != nil && strings.TrimRight(s.Runtime.Server, "/") == strings.TrimRight(cfg.Server, "/") {
+		runtime := *s.Runtime
+		runtime.Server = strings.TrimRight(cfg.ServerURL, "/")
+		s.Runtime = &runtime
+	}
+	return s, s.Validate()
+}
+
 func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.Config) error {
 	w.mu.Lock()
 	in := exchange{Protocol: 1, Cursor: w.cursor, Results: []Observation{}}
@@ -202,6 +228,10 @@ func (w *Worker) Tick(ctx context.Context, client *control.Client, cfg control.C
 	targets := make([]lifecycle.Spec, 0, len(out.Targets))
 	for _, raw := range out.Targets {
 		s, err := lifecycle.Decode(bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		s, err = hostTarget(s, cfg)
 		if err != nil {
 			return err
 		}

@@ -230,7 +230,7 @@ func (m *Manager) download(ctx context.Context, release lifecycle.RuntimePackage
 	expected := release.Files[name]
 	client := *m.client.HTTP
 	client.Timeout = 10 * time.Minute
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.client.Server+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, m.client.URL+"/api/host/v1/runtime-releases/"+release.Version+"/"+release.Architecture+"/"+name, nil)
 	if err != nil {
 		return err
 	}
