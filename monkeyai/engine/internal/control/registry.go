@@ -12,7 +12,7 @@ import (
 )
 
 func (c *Client) RegistryAuth(host, reference string) (string, error) {
-	server, err := url.Parse(c.Server)
+	server, err := url.Parse(c.URL)
 	if err != nil || host == "" {
 		return "", errors.New("宿主仓库身份无效")
 	}

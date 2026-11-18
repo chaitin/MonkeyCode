@@ -44,11 +44,10 @@ func open() (*driver.Driver, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := control.New(cfg.Server, key)
+	client, err := cfg.Client(key)
 	if err != nil {
 		return nil, err
 	}
-	client.WithInsecure(cfg.Insecure)
 	d, err := driver.New("/var/run/docker.sock", filepath.Join(root, "instances"), volumes)
 	if err != nil {
 		return nil, err

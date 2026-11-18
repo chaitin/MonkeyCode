@@ -46,7 +46,7 @@ done
 [ -n "$work" ] || fail '找不到允许执行的私有临时目录'
 trap 'exit 1' HUP INT TERM
 printf '下载并校验 installer / engine %s（%s）…\n' "$3" "$arch"
-curl -k --proto '=http,https' --tlsv1.2 --fail --progress-bar --show-error --retry 3 --connect-timeout 15 --max-time 900 "$1/api/host/v1/releases/$3/$4/$8" -o "$work/installer"
+curl -k --proto '=http,https' --tlsv1.2 --fail --progress-bar --show-error --retry 3 --connect-timeout 15 --max-time 900 "${server_url:-$1}/api/host/v1/releases/$3/$4/$8" -o "$work/installer"
 printf '%s  %s\n' "$5" "$work/installer" | sha256sum -c - >/dev/null || fail '安装器校验失败'
 chmod 700 "$work/installer"
 case "$8" in
@@ -54,6 +54,7 @@ case "$8" in
  monkeyai-engine) [ -n "$2" ] || fail '首次安装请从后台添加宿主并复制接入命令'; [ -n "$7" ] || set -- "$1" "$2" "$3" "$4" "$5" "$6" /var/lib/monkeyai-engine/data "$8"; set -- "$work/installer" install --insecure --server "$1" --enrollment "$2" --release "$3" --architecture "$4" --manifest-sha256 "$6" --data-dir "$7" ;;
  *) fail '安装器名称无效' ;;
 esac
+[ -z "${server_url:-}" ] || set -- "$@" --server-url "$server_url"
 # 完成回执避免依赖旧 systemd 保留已结束的任务状态。
 unit=monkeyai-engine-install-${work##*.}.service
 printf '%s' "$$" > "$work/owner"

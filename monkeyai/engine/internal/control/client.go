@@ -23,6 +23,7 @@ import (
 type Config struct {
 	Insecure     bool   `json:"insecure,omitempty"`
 	Server       string `json:"server"`
+	ServerURL    string `json:"server_url,omitempty"`
 	HostID       string `json:"host_id"`
 	Architecture string `json:"architecture"`
 	Version      string `json:"version"`
@@ -30,6 +31,7 @@ type Config struct {
 }
 type Client struct {
 	Server  string
+	URL     string
 	Key     ed25519.PrivateKey
 	HTTP    *http.Client
 	Upgrade *UpgradeTask
@@ -42,8 +44,24 @@ func New(server string, key ed25519.PrivateKey) (*Client, error) {
 	if len(key) != ed25519.PrivateKeySize {
 		return nil, errors.New("宿主密钥无效")
 	}
-	return &Client{Server: strings.TrimRight(server, "/"), Key: key, HTTP: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("拒绝重定向") }}}, nil
+	return &Client{Server: strings.TrimRight(server, "/"), URL: strings.TrimRight(server, "/"), Key: key, HTTP: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("拒绝重定向") }}}, nil
 }
+
+// Client 保留后台原地址参与签名，仅用 server_url 覆盖实际请求地址。
+func (c Config) Client(key ed25519.PrivateKey) (*Client, error) {
+	client, err := New(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	if c.ServerURL != "" {
+		if err := ValidateServer(c.ServerURL); err != nil {
+			return nil, err
+		}
+		client.URL = strings.TrimRight(c.ServerURL, "/")
+	}
+	return client.WithInsecure(c.Insecure), nil
+}
+
 func (c *Client) WithInsecure(insecure bool) *Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecure} // 由安装参数显式选择，兼容 IP 和自签名证书。
@@ -66,7 +84,7 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.Server+"/api/host/v1/"+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.URL+"/api/host/v1/"+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

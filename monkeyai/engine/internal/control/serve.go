@@ -63,11 +63,10 @@ func ServeVersion(ctx context.Context, log io.Writer, commands CommandLoop, vers
 	if err != nil {
 		return err
 	}
-	c, err := New(cfg.Server, key)
+	c, err := cfg.Client(key)
 	if err != nil {
 		return err
 	}
-	c.WithInsecure(cfg.Insecure)
 	pc := preflight.DefaultConfig()
 	pc.Architecture = cfg.Architecture
 	pc.DataDir = cfg.DataDir
