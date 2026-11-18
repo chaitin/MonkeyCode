@@ -950,7 +950,7 @@ export function BillingSettingsPage() {
               <CardHeader>
                 <CardTitle>云电脑扣费规则</CardTitle>
                 <CardDescription>
-                  所有宿主机统一使用以下价格。启动前预付一小时，到期续费；提前停止不退款，存储不扣费。仅支持本地积分。
+                  设置云电脑每小时的积分消耗。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
